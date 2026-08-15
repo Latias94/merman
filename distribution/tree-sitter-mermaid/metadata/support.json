@@ -21,13 +21,13 @@
       "publicId": "architecture",
       "rootNode": "architecture_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:architecture",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:architecture",
@@ -63,7 +63,7 @@
           "id": "u3-conformance:architecture",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:architecture",
@@ -88,6 +88,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:architecture",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:architecture",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/architecture.mmd",
+          "sha256": "8ae51e2cf1c4b6d181031d05aa5795cee38dd287c4a3487d57a9163a6b16b071"
+        },
+        {
+          "id": "u9-metrics:architecture",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -289,13 +307,13 @@
       "publicId": "block",
       "rootNode": "block_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:block",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u5-corpus:block",
@@ -331,7 +349,7 @@
           "id": "u5-conformance:block",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:block",
@@ -356,6 +374,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:block",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:block",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/block.mmd",
+          "sha256": "b74a9dd5517e5610a760cedd64ac5f719f685eb26e6b04a7eacb02759a3b8036"
+        },
+        {
+          "id": "u9-metrics:block",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -561,13 +597,13 @@
       "publicId": "c4",
       "rootNode": "c4_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:c4",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u5-corpus:c4",
@@ -603,7 +639,7 @@
           "id": "u5-conformance:c4",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:c4",
@@ -628,6 +664,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:c4",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:c4",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/c4.mmd",
+          "sha256": "67ed26e57b462f0778b46bfa00054b9c609fcde19210b628225bf4d9bc4dc1cd"
+        },
+        {
+          "id": "u9-metrics:c4",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -833,13 +887,13 @@
       "publicId": "class",
       "rootNode": "class_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:class",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u5-corpus:class",
@@ -875,7 +929,7 @@
           "id": "u5-conformance:class",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:class",
@@ -900,6 +954,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:class",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:class",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/class.mmd",
+          "sha256": "a7f0ad03f03a0c1c7bb9b27032ecb37f3029499f5a403fc7a07cf810289e6c7f"
+        },
+        {
+          "id": "u9-metrics:class",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -1105,13 +1177,13 @@
       "publicId": "cynefin",
       "rootNode": "cynefin_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:cynefin",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:cynefin",
@@ -1147,7 +1219,7 @@
           "id": "u3-conformance:cynefin",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:cynefin",
@@ -1172,6 +1244,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:cynefin",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:cynefin",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/cynefin.mmd",
+          "sha256": "7bc8679989ee7943c8c394f645accd5d013046a18c47036d41f1ca06ca91e9b3"
+        },
+        {
+          "id": "u9-metrics:cynefin",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -1359,13 +1449,13 @@
       "publicId": "er",
       "rootNode": "entity_relationship_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:er",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u5-corpus:er",
@@ -1401,7 +1491,7 @@
           "id": "u5-conformance:er",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:er",
@@ -1426,6 +1516,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:er",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:er",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/entity-relationship.mmd",
+          "sha256": "c3b14e6b56ca1d0655779681d2894af3ac38d3f556efd44c8473bc5ee6503c68"
+        },
+        {
+          "id": "u9-metrics:er",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -1629,13 +1737,13 @@
       "publicId": "eventmodeling",
       "rootNode": "event_modeling_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:eventmodeling",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:eventmodeling",
@@ -1671,7 +1779,7 @@
           "id": "u6-conformance:eventmodeling",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:eventmodeling",
@@ -1696,6 +1804,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:eventmodeling",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:eventmodeling",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/event-modeling.mmd",
+          "sha256": "25c8b03495ade4835b8c12351e46008b59859b086d822534669ca69d4db54e6b"
+        },
+        {
+          "id": "u9-metrics:eventmodeling",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -1903,13 +2029,13 @@
       "publicId": "flowchart",
       "rootNode": "flowchart_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:flowchart",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u5-corpus:flowchart",
@@ -1945,7 +2071,7 @@
           "id": "u5-conformance:flowchart",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:flowchart",
@@ -1970,6 +2096,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:flowchart",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:flowchart",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/flowchart.mmd",
+          "sha256": "b13c0f279a0f398336a998e053b2ccd3d59d798da46490e6ececa52365211023"
+        },
+        {
+          "id": "u9-metrics:flowchart",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -2177,13 +2321,13 @@
       "publicId": "gantt",
       "rootNode": "gantt_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:gantt",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u4-corpus:gantt",
@@ -2219,7 +2363,7 @@
           "id": "u4-conformance:gantt",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:gantt",
@@ -2244,6 +2388,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:gantt",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:gantt",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/gantt.mmd",
+          "sha256": "6dc7b228a7464c70c1ca0ba5e2192410cd64372d632531bc6cd73784a9b02ae8"
+        },
+        {
+          "id": "u9-metrics:gantt",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -2443,13 +2605,13 @@
       "publicId": "gitgraph",
       "rootNode": "git_graph_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:gitgraph",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:gitgraph",
@@ -2485,7 +2647,7 @@
           "id": "u3-conformance:gitgraph",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:gitgraph",
@@ -2510,6 +2672,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:gitgraph",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:gitgraph",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/git-graph.mmd",
+          "sha256": "a9011de800a18086f73d240047091061cbb69ad6e8edca15e46a9f453a0b6b1b"
+        },
+        {
+          "id": "u9-metrics:gitgraph",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -2705,13 +2885,13 @@
       "publicId": "info",
       "rootNode": "info_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:info",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:info",
@@ -2747,7 +2927,7 @@
           "id": "u3-conformance:info",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:info",
@@ -2772,6 +2952,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:info",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:info",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/info.mmd",
+          "sha256": "8435fb0c4c4a0cdaa3a876ab3900df43ff8700ccf1666ed14d2cf0ecef0ceb74"
+        },
+        {
+          "id": "u9-metrics:info",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -2959,13 +3157,13 @@
       "publicId": "ishikawa",
       "rootNode": "ishikawa_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:ishikawa",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u4-corpus:ishikawa",
@@ -3001,7 +3199,7 @@
           "id": "u4-conformance:ishikawa",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:ishikawa",
@@ -3026,6 +3224,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:ishikawa",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:ishikawa",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/ishikawa.mmd",
+          "sha256": "787ed90db87b58e928fad8b7441f7aefd9bb9964df671f69b45f56097d2a504f"
+        },
+        {
+          "id": "u9-metrics:ishikawa",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -3215,13 +3431,13 @@
       "publicId": "journey",
       "rootNode": "journey_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:journey",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u4-corpus:journey",
@@ -3257,7 +3473,7 @@
           "id": "u4-conformance:journey",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:journey",
@@ -3282,6 +3498,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:journey",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:journey",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/journey.mmd",
+          "sha256": "a4f741b3286ac121c6e0c913397bf96e1521e2ed3731991141a25a67ba0b6bae"
+        },
+        {
+          "id": "u9-metrics:journey",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -3471,13 +3705,13 @@
       "publicId": "kanban",
       "rootNode": "kanban_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:kanban",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:kanban",
@@ -3513,7 +3747,7 @@
           "id": "u6-conformance:kanban",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:kanban",
@@ -3538,6 +3772,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:kanban",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:kanban",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/kanban.mmd",
+          "sha256": "4128897dc4d08040c5eed7434d1029a09b2750bb7901af254ffade2c3e1bab14"
+        },
+        {
+          "id": "u9-metrics:kanban",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -3735,13 +3987,13 @@
       "publicId": "mindmap",
       "rootNode": "mindmap_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:mindmap",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:mindmap",
@@ -3777,7 +4029,7 @@
           "id": "u6-conformance:mindmap",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:mindmap",
@@ -3802,6 +4054,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:mindmap",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:mindmap",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/mindmap.mmd",
+          "sha256": "0533ca2da5391946a23f14186bd06359286b79e57f17de67618db630920e2c1f"
+        },
+        {
+          "id": "u9-metrics:mindmap",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -3999,13 +4269,13 @@
       "publicId": "packet",
       "rootNode": "packet_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:packet",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:packet",
@@ -4041,7 +4311,7 @@
           "id": "u3-conformance:packet",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:packet",
@@ -4066,6 +4336,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:packet",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:packet",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/packet.mmd",
+          "sha256": "7eaadac72ede3421ccaf7a9340bde20b2f9c7bc1ff795b5c359a5dbb608a95ff"
+        },
+        {
+          "id": "u9-metrics:packet",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -4253,13 +4541,13 @@
       "publicId": "pie",
       "rootNode": "pie_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:pie",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:pie",
@@ -4295,7 +4583,7 @@
           "id": "u3-conformance:pie",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:pie",
@@ -4320,6 +4608,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:pie",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:pie",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/pie.mmd",
+          "sha256": "357491e48a4c9a323d74d7ef1c87c5c9dd62c41ac230d39225775b3d37b86a67"
+        },
+        {
+          "id": "u9-metrics:pie",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -4507,13 +4813,13 @@
       "publicId": "quadrantchart",
       "rootNode": "quadrant_chart_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:quadrantchart",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u4-corpus:quadrantchart",
@@ -4549,7 +4855,7 @@
           "id": "u4-conformance:quadrantchart",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:quadrantchart",
@@ -4574,6 +4880,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:quadrantchart",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:quadrantchart",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/quadrant-chart.mmd",
+          "sha256": "e332fe74f76383433dd3eded85b898db54897b3e9ff6fe74ba474da75484c1f1"
+        },
+        {
+          "id": "u9-metrics:quadrantchart",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -4767,13 +5091,13 @@
       "publicId": "radar",
       "rootNode": "radar_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:radar",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:radar",
@@ -4809,7 +5133,7 @@
           "id": "u3-conformance:radar",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:radar",
@@ -4834,6 +5158,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:radar",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:radar",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/radar.mmd",
+          "sha256": "3015c15a1b9f0ca33dd12ed3f3c412b47662fc2f31ada993cf2c706ac982188f"
+        },
+        {
+          "id": "u9-metrics:radar",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -5031,13 +5373,13 @@
       "publicId": "railroad",
       "rootNode": "railroad_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:railroad",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u7-corpus:railroad",
@@ -5073,7 +5415,7 @@
           "id": "u7-conformance:railroad",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:railroad",
@@ -5098,6 +5440,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:railroad",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:railroad",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/railroad.mmd",
+          "sha256": "3703ab1c34afa916c28efec4c8f331e8e74037476e2c4cb91593a408ad8e5ff3"
+        },
+        {
+          "id": "u9-metrics:railroad",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -5299,13 +5659,13 @@
       "publicId": "railroadAbnf",
       "rootNode": "railroad_abnf_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:railroadAbnf",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u7-corpus:railroadAbnf",
@@ -5341,7 +5701,7 @@
           "id": "u7-conformance:railroadAbnf",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:railroadAbnf",
@@ -5366,6 +5726,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:railroadAbnf",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:railroadAbnf",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/railroad-abnf.mmd",
+          "sha256": "0d8458761c894b372a43ea319089aa4af7f6717af8ec4f811faba1b3f293d841"
+        },
+        {
+          "id": "u9-metrics:railroadAbnf",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -5567,13 +5945,13 @@
       "publicId": "railroadEbnf",
       "rootNode": "railroad_ebnf_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:railroadEbnf",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u7-corpus:railroadEbnf",
@@ -5609,7 +5987,7 @@
           "id": "u7-conformance:railroadEbnf",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:railroadEbnf",
@@ -5634,6 +6012,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:railroadEbnf",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:railroadEbnf",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/railroad-ebnf.mmd",
+          "sha256": "f5e03dddf6c46cc6f4e8a6db8273eac40fb7ad7477b2441c16df71d87e249928"
+        },
+        {
+          "id": "u9-metrics:railroadEbnf",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -5835,13 +6231,13 @@
       "publicId": "railroadPeg",
       "rootNode": "railroad_peg_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:railroadPeg",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u7-corpus:railroadPeg",
@@ -5877,7 +6273,7 @@
           "id": "u7-conformance:railroadPeg",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:railroadPeg",
@@ -5902,6 +6298,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:railroadPeg",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:railroadPeg",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/railroad-peg.mmd",
+          "sha256": "d23903e3c220120f0e24e9039c3496488a47cc3b16d60386e3be806d933427d8"
+        },
+        {
+          "id": "u9-metrics:railroadPeg",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -6103,13 +6517,13 @@
       "publicId": "requirement",
       "rootNode": "requirement_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:requirement",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u4-corpus:requirement",
@@ -6145,7 +6559,7 @@
           "id": "u4-conformance:requirement",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:requirement",
@@ -6170,6 +6584,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:requirement",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:requirement",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/requirement.mmd",
+          "sha256": "5dacdf248d9e64e0c0d0493686cee3690e2b58354b9d60979ba00672519e058a"
+        },
+        {
+          "id": "u9-metrics:requirement",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -6375,13 +6807,13 @@
       "publicId": "sankey",
       "rootNode": "sankey_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:sankey",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:sankey",
@@ -6417,7 +6849,7 @@
           "id": "u6-conformance:sankey",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:sankey",
@@ -6442,6 +6874,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:sankey",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:sankey",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/sankey.mmd",
+          "sha256": "49cb9e897ccc1b38cb673256780123495b55a118c8857ea9d272886aa190f502"
+        },
+        {
+          "id": "u9-metrics:sankey",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -6633,13 +7083,13 @@
       "publicId": "sequence",
       "rootNode": "sequence_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:sequence",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:sequence",
@@ -6675,7 +7125,7 @@
           "id": "u6-conformance:sequence",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:sequence",
@@ -6700,6 +7150,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:sequence",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:sequence",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/sequence.mmd",
+          "sha256": "2a82ab302fd4e61cb50519f7e500dae43590aa313809a131980891a653af12d0"
+        },
+        {
+          "id": "u9-metrics:sequence",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -6905,13 +7373,13 @@
       "publicId": "state",
       "rootNode": "state_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:state",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u5-corpus:state",
@@ -6947,7 +7415,7 @@
           "id": "u5-conformance:state",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:state",
@@ -6972,6 +7440,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:state",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:state",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/state.mmd",
+          "sha256": "82897389e655625fd7a4b92ccf1c781554ac8f740f3227de2f5fa2af7eb8d907"
+        },
+        {
+          "id": "u9-metrics:state",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -7177,13 +7663,13 @@
       "publicId": "swimlane",
       "rootNode": "swimlane_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:swimlane",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u5-corpus:swimlane",
@@ -7219,7 +7705,7 @@
           "id": "u5-conformance:swimlane",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:swimlane",
@@ -7244,6 +7730,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:swimlane",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:swimlane",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/swimlane.mmd",
+          "sha256": "c392323927685df4cd0781cb1a033782663c0d2b36dd6301bb9e9914c15cff79"
+        },
+        {
+          "id": "u9-metrics:swimlane",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -7451,13 +7955,13 @@
       "publicId": "timeline",
       "rootNode": "timeline_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:timeline",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u4-corpus:timeline",
@@ -7493,7 +7997,7 @@
           "id": "u4-conformance:timeline",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:timeline",
@@ -7518,6 +8022,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:timeline",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:timeline",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/timeline.mmd",
+          "sha256": "90e4920be3631a7af828a35aaea1f8670e47a0ecf16322b1ecbea1824c22992e"
+        },
+        {
+          "id": "u9-metrics:timeline",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -7707,13 +8229,13 @@
       "publicId": "treeView",
       "rootNode": "tree_view_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:treeView",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:treeView",
@@ -7749,7 +8271,7 @@
           "id": "u6-conformance:treeView",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:treeView",
@@ -7774,6 +8296,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:treeView",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:treeView",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/tree-view.mmd",
+          "sha256": "6616d5e14f92e112b776c96b7f02a65c607d47566d3d97ae0752809f2a25b0bb"
+        },
+        {
+          "id": "u9-metrics:treeView",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -7967,13 +8507,13 @@
       "publicId": "treemap",
       "rootNode": "treemap_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:treemap",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:treemap",
@@ -8009,7 +8549,7 @@
           "id": "u6-conformance:treemap",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:treemap",
@@ -8034,6 +8574,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:treemap",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:treemap",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/treemap.mmd",
+          "sha256": "e864bd4b31724e80a3afafc71789c82d82cf23e7e44039fa70ec0f5548cccf4b"
+        },
+        {
+          "id": "u9-metrics:treemap",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -8225,13 +8783,13 @@
       "publicId": "venn",
       "rootNode": "venn_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:venn",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u6-corpus:venn",
@@ -8267,7 +8825,7 @@
           "id": "u6-conformance:venn",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:venn",
@@ -8292,6 +8850,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:venn",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:venn",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/venn.mmd",
+          "sha256": "cda52d6cfe3158ee1bb793199479bf732f8fbc41e66a8c12b0bbc1e1a15983a4"
+        },
+        {
+          "id": "u9-metrics:venn",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -8491,13 +9067,13 @@
       "publicId": "wardley",
       "rootNode": "wardley_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:wardley",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u3-corpus:wardley",
@@ -8533,7 +9109,7 @@
           "id": "u3-conformance:wardley",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:wardley",
@@ -8558,6 +9134,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:wardley",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:wardley",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/wardley.mmd",
+          "sha256": "b13fe7deb1bfb4fd9bae30923680d80ee47392e331472b4301346dfa8cf2713d"
+        },
+        {
+          "id": "u9-metrics:wardley",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -8757,13 +9351,13 @@
       "publicId": "xychart",
       "rootNode": "xy_chart_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:xychart",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u4-corpus:xychart",
@@ -8799,7 +9393,7 @@
           "id": "u4-conformance:xychart",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:xychart",
@@ -8824,6 +9418,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:xychart",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:xychart",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/xychart.mmd",
+          "sha256": "2c8d5417bc7486ee622770e5c3cd48a06f8647a0aba78c531bc4420f86c97b6b"
+        },
+        {
+          "id": "u9-metrics:xychart",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {
@@ -9021,13 +9633,13 @@
       "publicId": "zenuml",
       "rootNode": "zenuml_diagram",
       "lifecycle": "active",
-      "supportTier": "query-complete",
+      "supportTier": "conformant",
       "evidence": [
         {
           "id": "u2-header-dispatch:zenuml",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "58a49c5642f529d9cc6a1fc116bbbcffd8d8600cda8cc197d02c37337a537009"
+          "sha256": "166b71848189a5c5c5e322fe3d7c770b2767351e4a8c02fb3a1c0a9a06abdcab"
         },
         {
           "id": "u7-corpus:zenuml",
@@ -9063,7 +9675,7 @@
           "id": "u7-conformance:zenuml",
           "kind": "conformance",
           "path": "test/conformance/admission.json",
-          "sha256": "2f58125c10df9d04d43aee80422c1a5bc1b5c587d3c1ad3869efbecd483f61fc"
+          "sha256": "ccf856f7951b9c7104b91a23023e1dccd49966c0587e1f5d1c172e3b78539a50"
         },
         {
           "id": "u8-query-profile:portable:zenuml",
@@ -9088,6 +9700,24 @@
           "kind": "query",
           "path": "test/queries/zed/applicability.json",
           "sha256": "a91f9ecefbee22e00e63f0490102fb40e78769d61c0469fd9d667fbed947eb09"
+        },
+        {
+          "id": "u9-binding:zenuml",
+          "kind": "binding",
+          "path": "metadata/artifact-receipt.json",
+          "sha256": "e15033fe1daaffaddc54dadfda3541318a9fb039a00b1bc916f3f64e251d3d2c"
+        },
+        {
+          "id": "u9-fuzz:zenuml",
+          "kind": "fuzz",
+          "path": "fuzz/corpus/all-families/zenuml.mmd",
+          "sha256": "8c0ddc6a0a8db3034f0a6009695664cdec56b14c1c4104edcf07f69b0c13b1c7"
+        },
+        {
+          "id": "u9-metrics:zenuml",
+          "kind": "metrics",
+          "path": "metadata/metrics/u2-mechanics.json",
+          "sha256": "2ce995abd6828f0e34e72a3bae7d2e7ea11b5d7db031c3dbf9d06c99ab43e565"
         }
       ],
       "queryApplicability": {

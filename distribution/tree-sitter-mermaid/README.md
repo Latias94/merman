@@ -4,15 +4,14 @@ This directory owns Merman's independently versioned tolerant Tree-sitter langua
 Mermaid source. It is intentionally adjacent to, and not part of, Merman's semantic parser stack.
 
 The current `0.1.0` package is a dry-run-only development surface. All 35 public families are at
-the `structured` support tier. Structured support requires pinned, runtime-replayed header
-dispatch plus family-local corpus, recovery, incremental, node-schema, query, and conformance
-evidence recorded in `metadata/support.json`.
+the `conformant` support tier. Conformant support requires pinned, runtime-replayed header
+dispatch plus family-local corpus, recovery, incremental, node-schema, query, conformance,
+binding, fuzz, and metrics evidence recorded in `metadata/support.json`.
 
-The package includes a receipt-bound portable highlight profile at
-`queries/portable/highlights.scm`. C, Rust, Node, and language-WASM consumers compile the same
-profile, while Node and language-WASM replay the U3-U7 capture goldens. This proves the portable
-highlight delivery contract for all structured families; complete family-by-surface editor
-coverage remains gated by the later `query-complete` support tier.
+The package includes receipt-bound portable, Neovim, Helix, and Zed query profiles. C, Rust, Node,
+and language-WASM consumers validate the portable profile bundle, while fixed downstream harnesses
+exercise each editor's declared surfaces. The complete profile applicability matrices and exact
+captures are recorded under `test/queries/`.
 
 Run the boundary and contract gate from the repository root:
 

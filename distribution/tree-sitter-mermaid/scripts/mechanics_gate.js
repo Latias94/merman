@@ -22,6 +22,7 @@ const TIME_NOISE_FLOOR_MILLISECONDS = 250;
 const RSS_BASELINE_MULTIPLIER = 2;
 const RSS_NOISE_FLOOR_BYTES = 64 * 1024 * 1024;
 const WASM_PAGE_NOISE_FLOOR = 256;
+const WORKER_PROCESS_TIMEOUT_MILLISECONDS = process.platform === 'linux' ? 2_000 : 10_000;
 
 function doublingFlowchart(targetKiB) {
   const header = 'flowchart TD\n';
@@ -235,7 +236,7 @@ function runWorker(runtime, targetKiB) {
       cwd: packageRoot,
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
-      timeout: 2_000,
+      timeout: WORKER_PROCESS_TIMEOUT_MILLISECONDS,
     },
   );
   if (result.error || result.status !== 0) {

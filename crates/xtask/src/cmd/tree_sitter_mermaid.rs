@@ -2139,7 +2139,7 @@ fn validate_metrics(
     receipt: &ArtifactReceipt,
 ) -> Result<(), String> {
     if metrics.schema_version != 1
-        || metrics.checkpoint != "u8-query-complete"
+        || metrics.checkpoint != "u9-conformant"
         || metrics.artifact_receipt_id != receipt.receipt_id
     {
         return Err("mechanics metrics identity drifted".to_string());
@@ -3224,6 +3224,10 @@ fn render_contract(root: &Path) -> Result<String, String> {
 pub(crate) fn verify_tree_sitter_mermaid(args: Vec<String>) -> Result<(), XtaskError> {
     let write = match args.as_slice() {
         [] => false,
+        // The default verifier already executes the complete admitted fixture oracle in
+        // `build_contract`. Keep this explicit release-gate spelling so callers cannot mistake a
+        // metadata-only check for full conformance validation.
+        [arg] if arg == "--all-fixtures" => false,
         [arg] if arg == "--write" => true,
         _ => return Err(XtaskError::Usage),
     };
@@ -3310,17 +3314,20 @@ mod tests {
     }
 
     #[test]
-    fn support_metadata_matches_the_u8_all_query_complete_tier() {
+    fn support_metadata_matches_the_u9_all_conformant_tier() {
         let (support, core) = repository_inputs();
-        let expected_query_complete = core
+        let expected_conformant = core
             .iter()
             .map(|family| family.public_id.as_str())
             .collect::<BTreeSet<_>>();
-        let expected_query_complete_evidence = [
+        let expected_conformant_evidence = [
+            "binding",
             "conformance",
             "corpus",
+            "fuzz",
             "header",
             "incremental",
+            "metrics",
             "node-schema",
             "query",
             "recovery",
@@ -3330,13 +3337,13 @@ mod tests {
 
         validate_repository_support(&support, &core).expect("valid support metadata");
         assert_eq!(support.families.len(), PUBLIC_FAMILY_COUNT);
-        let actual_query_complete = support
+        let actual_conformant = support
             .families
             .iter()
-            .filter(|family| family.support_tier.as_deref() == Some("query-complete"))
+            .filter(|family| family.support_tier.as_deref() == Some("conformant"))
             .map(|family| family.public_id.as_str())
             .collect::<BTreeSet<_>>();
-        assert_eq!(actual_query_complete, expected_query_complete);
+        assert_eq!(actual_conformant, expected_conformant);
 
         for family in &support.families {
             assert_eq!(family.lifecycle, "active");
@@ -3346,7 +3353,7 @@ mod tests {
                 .map(|item| item.kind.as_str())
                 .collect::<BTreeSet<_>>();
             assert_eq!(
-                evidence, expected_query_complete_evidence,
+                evidence, expected_conformant_evidence,
                 "{}",
                 family.public_id
             );

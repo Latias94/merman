@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "checkpoint": "u8-query-complete",
-  "artifactReceiptId": "ab71ded522199295a4081927691a61167bd276da66f25691005dc33a3d32049a",
+  "checkpoint": "u9-conformant",
+  "artifactReceiptId": "5bea8f9c977e0232960e787cb3166de4f40b11e0c751b6d1aca476a1bc8d321a",
   "attribution": {
     "previousCheckpoint": "u3-low-state-complexity",
     "previousArtifactReceiptId": "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f",

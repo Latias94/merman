@@ -19,6 +19,7 @@ on:
           - tree_sitter_mermaid_parse
           - tree_sitter_mermaid_edits
           - tree_sitter_mermaid_scanner
+          - tree_sitter_mermaid_query
       preset:
         description: Bounded fuzzing budget
         required: true
@@ -72,7 +73,7 @@ jobs:
               ;;
             workflow_dispatch)
               case "$DISPATCH_TARGET" in
-                all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|tree_sitter_mermaid_parse|tree_sitter_mermaid_edits|tree_sitter_mermaid_scanner)
+                all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|tree_sitter_mermaid_parse|tree_sitter_mermaid_edits|tree_sitter_mermaid_scanner|tree_sitter_mermaid_query)
                   selected_targets="$DISPATCH_TARGET"
                   ;;
                 *)
@@ -97,8 +98,8 @@ jobs:
           esac
 
           case "$selected_targets" in
-            all) targets='parse_mermaid render_mermaid svg_pipeline ffi_api tree_sitter_mermaid_parse tree_sitter_mermaid_edits tree_sitter_mermaid_scanner' ;;
-            parse_mermaid|render_mermaid|svg_pipeline|ffi_api|tree_sitter_mermaid_parse|tree_sitter_mermaid_edits|tree_sitter_mermaid_scanner) targets="$selected_targets" ;;
+            all) targets='parse_mermaid render_mermaid svg_pipeline ffi_api tree_sitter_mermaid_parse tree_sitter_mermaid_edits tree_sitter_mermaid_scanner tree_sitter_mermaid_query' ;;
+            parse_mermaid|render_mermaid|svg_pipeline|ffi_api|tree_sitter_mermaid_parse|tree_sitter_mermaid_edits|tree_sitter_mermaid_scanner|tree_sitter_mermaid_query) targets="$selected_targets" ;;
             *)
               echo "unsupported resolved fuzz target" >&2
               exit 1
@@ -122,13 +123,16 @@ jobs:
                 entry='{"target":"ffi_api","seed":"fuzz/seeds/ffi","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
                 ;;
               tree_sitter_mermaid_parse)
-                entry='{"target":"tree_sitter_mermaid_parse","seed":"fuzz/seeds/mermaid","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
+                entry='{"target":"tree_sitter_mermaid_parse","seed":"distribution/tree-sitter-mermaid/fuzz/corpus/all-families","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
                 ;;
               tree_sitter_mermaid_edits)
                 entry='{"target":"tree_sitter_mermaid_edits","seed":"fuzz/seeds/tree-sitter-edits","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
                 ;;
               tree_sitter_mermaid_scanner)
                 entry='{"target":"tree_sitter_mermaid_scanner","seed":"fuzz/seeds/tree-sitter-scanner","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
+                ;;
+              tree_sitter_mermaid_query)
+                entry='{"target":"tree_sitter_mermaid_query","seed":"distribution/tree-sitter-mermaid/fuzz/corpus/all-families","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":65536}'
                 ;;
               *)
                 echo "unsupported resolved matrix target" >&2
@@ -192,7 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$FUZZ_MAX_LEN" in
-            16384|32768|262144) ;;
+            16384|32768|65536|262144) ;;
             *)
               echo "unsupported matrix max_len" >&2
               exit 1
@@ -236,7 +240,7 @@ jobs:
         run: |
           mkdir -p fuzz/logs "fuzz/corpus/${{ matrix.target }}"
           case "$FUZZ_MAX_LEN" in
-            16384|32768|262144) ;;
+            16384|32768|65536|262144) ;;
             *)
               echo "unsupported matrix max_len" >&2
               exit 1

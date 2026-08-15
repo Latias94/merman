@@ -183,6 +183,13 @@ Implement each admitted delta through the family-owned path appropriate to its k
   resource enforcement, reference CLI and Playground integration, and source-backed layout parity.
 - **Removed or changed syntax**: parser recovery, diagnostics, editor lexemes, semantic tokens,
   completions, hover, symbols, rename/reference behavior, fixtures, and migration documentation.
+- **Independent Tree-sitter package**: keep `distribution/tree-sitter-mermaid` outside Merman's
+  semantic parser and production dependency closure. A repository Mermaid/ZenUML move records
+  `repositoryAlignment` drift without rewriting the package's selected baseline or historical
+  tiers. A deliberate package-baseline move demotes each affected family to the highest still-
+  proven tier, then re-earns `conformant` only after exact detector/header, grammar/recovery,
+  admitted-fixture, incremental, schema, query, binding, fuzz, metrics, generated-artifact, and
+  companion evidence has been replayed against the new identities.
 
 When a changed syntax path uses a checked-in LALRPOP grammar, treat the `.lalrpop` source and its
 generated Rust parser as one atomic projection. Run `cargo run -p xtask -- gen-lalrpop-parsers`;
@@ -231,6 +238,7 @@ cargo run -p xtask -- verify-playground-example-catalog
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- check-alignment
 cargo run -p xtask -- verify-lalrpop-parsers
+cargo run --locked -p xtask -- verify-tree-sitter-mermaid --all-fixtures
 cargo run -p xtask -- verify --strict
 cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo fmt --all -- --check
@@ -242,7 +250,9 @@ contract/build/smoke/prepack, Playground unit/lint/build/browser, and VS Code pa
 reference CLI, LSP, platform, and extension-host matrices whenever those surfaces changed. Run the
 WASM size matrix and target build matrix whenever dependency or feature ownership changed. Use
 `npm ls --all` in the Playground and reference CLI to prove that materialized companion graphs match
-the descriptor. Use `cargo nextest` for Rust tests.
+the descriptor. For a Tree-sitter package baseline change, also run its header oracle/evidence,
+generated-artifact, query, mechanics, fixed-fuzz configuration, package conformance, incremental,
+and adversarial gates. Use `cargo nextest` for Rust tests.
 
 Update the upgrade playbook, relevant ADRs and family/editor records, package surfaces, Playground
 design, generated status, and provenance. Report selected versus rejected companions, workflow

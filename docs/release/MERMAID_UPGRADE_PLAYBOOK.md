@@ -184,6 +184,46 @@ editor behavior rather than leaving a transport-specific grammar behind.
 Port observable behavior required by headless Merman. Do not port incidental JavaScript containers,
 framework state, or caches unless they change observable behavior.
 
+### Keep The Tree-sitter Package On Its Own Baseline
+
+`distribution/tree-sitter-mermaid` is an independently versioned tolerant syntax package. It is not
+Merman's semantic parser and its selected Mermaid/ZenUML baselines do not move implicitly with the
+repository reference graph.
+
+- If the repository Mermaid or ZenUML baseline changes while the Tree-sitter package stays pinned,
+  set the corresponding `repositoryAlignment` value in
+  `distribution/tree-sitter-mermaid/metadata/support.json` to `mermaid_drifted`, `zenuml_drifted`,
+  or both. Do not rewrite `selectedBaselines` or historical family tiers merely to make the two
+  graphs appear aligned.
+- If maintainers deliberately select a new Tree-sitter package baseline, update
+  `selectedBaselines` only from exact source and companion identities. Demote each affected family
+  to the highest tier whose existing evidence is still valid; never carry `conformant` across a
+  baseline change by default.
+- Re-earn `conformant` family by family after detector/header dispatch, grammar and recovery,
+  admitted fixtures, incremental traces, node schema, query applicability and captures, native and
+  WASM bindings, fixed fuzz seeds, and resource metrics all bind the new baseline and generated
+  receipt. Merman remains a one-way strict-valid fixture oracle; Tree-sitter CST results never feed
+  semantic facts back into Merman.
+
+Run the package-owned gates before restoring an aligned claim:
+
+```bash
+npm run check:header-oracle --prefix distribution/tree-sitter-mermaid
+npm run check:header-evidence --prefix distribution/tree-sitter-mermaid
+npm run check:generated --prefix distribution/tree-sitter-mermaid
+npm run test:queries --prefix distribution/tree-sitter-mermaid
+npm run test:mechanics --prefix distribution/tree-sitter-mermaid
+python3 -m unittest scripts.test_fuzz_config
+cargo nextest run --locked -p tree-sitter-mermaid --test conformance \
+  --test incremental --test queries --test adversarial --no-fail-fast
+cargo run --locked -p xtask -- verify-tree-sitter-mermaid --all-fixtures
+```
+
+Fixed fuzz regressions are blocking. Randomized sanitizer discovery may run in its scheduled owner,
+but a missing scheduled result cannot be represented as a local pass. Regenerate support metadata,
+the composed contract, artifact/header receipts, and metrics only through their owning commands;
+an edited version string or self-reported tier is not alignment evidence.
+
 ## 6. Decide Feature Ownership With Measurements
 
 Diagram count is not a feature boundary. Prefer an existing semantic feature or a typed browser

@@ -33,16 +33,31 @@ fn new_parser() -> Parser {
 }
 
 fn snapshot(node: tree_sitter::Node<'_>, field: Option<&str>) -> Snapshot {
+    snapshot_with_recovery(node, field, false)
+}
+
+fn recovery_normalized_snapshot(node: tree_sitter::Node<'_>, field: Option<&str>) -> Snapshot {
+    snapshot_with_recovery(node, field, true)
+}
+
+fn snapshot_with_recovery(
+    node: tree_sitter::Node<'_>,
+    field: Option<&str>,
+    collapse_error_children: bool,
+) -> Snapshot {
     let mut cursor = node.walk();
-    let children = node
-        .children(&mut cursor)
-        .enumerate()
-        .filter(|(_, child)| child.is_named())
-        .map(|(index, child)| {
-            let field_name = node.field_name_for_child(index as u32);
-            snapshot(child, field_name)
-        })
-        .collect();
+    let children = if collapse_error_children && node.is_error() {
+        Vec::new()
+    } else {
+        node.children(&mut cursor)
+            .enumerate()
+            .filter(|(_, child)| child.is_named())
+            .map(|(index, child)| {
+                let field_name = node.field_name_for_child(index as u32);
+                snapshot_with_recovery(child, field_name, collapse_error_children)
+            })
+            .collect()
+    };
     Snapshot {
         kind: node.kind().to_owned(),
         named: node.is_named(),
@@ -464,6 +479,50 @@ fn invalid_utf8_is_bounded_and_reparseable() {
         snapshot(first.root_node(), None),
         snapshot(second.root_node(), None)
     );
+}
+
+#[test]
+fn arbitrary_byte_header_edits_remain_fresh_equivalent() {
+    const OPERATIONS: [(usize, usize, &[u8]); 4] = [
+        (0, 0, b" "),
+        (5, 1, b""),
+        (2, 0, &[0xe7, 0xbb, 0x88]),
+        (255, 2, &[0xe2, 0x94, 0x82]),
+    ];
+
+    let mut source = b"m ishikawa".to_vec();
+    let mut parser = new_parser();
+    let mut old_tree = parser.parse(&source, None).expect("initial parse");
+
+    for (index, (position_seed, delete, replacement)) in OPERATIONS.into_iter().enumerate() {
+        let start = position_seed % (source.len() + 1);
+        let end = start + delete.min(source.len() - start);
+        let start_position = point_at(&source, start);
+        let old_end_position = point_at(&source, end);
+        source.splice(start..end, replacement.iter().copied());
+        old_tree.edit(&InputEdit {
+            start_byte: start,
+            old_end_byte: end,
+            new_end_byte: start + replacement.len(),
+            start_position,
+            old_end_position,
+            new_end_position: point_at(&source, start + replacement.len()),
+        });
+
+        let incremental = parser
+            .parse(&source, Some(&old_tree))
+            .expect("incremental parse");
+        let mut fresh_parser = new_parser();
+        let fresh = fresh_parser.parse(&source, None).expect("fresh parse");
+        assert_eq!(
+            recovery_normalized_snapshot(incremental.root_node(), None),
+            recovery_normalized_snapshot(fresh.root_node(), None),
+            "operation {} diverged for source {:?}",
+            index + 1,
+            source
+        );
+        old_tree = incremental;
+    }
 }
 
 #[test]
