@@ -105,14 +105,15 @@ would expose partially admitted row state or create pass-through modules. A futu
 algorithm must be extracted behind a replayable plan or paint descriptor instead of being added
 as another branch in either root.
 
-`relation_graph.rs` is retained as the transaction-scoped component coordinator. Family semantics
-remain in Class and ER adapters; document encoding, horizontal routing, layered placement and
-routing, self loops, stacking, summaries, and the shared model are already separate owners. The
-root keeps component dispatch, fallback classification, route-batch validation, and final deferred
-document commit together because they share one resource context, one deferred-text registry, and
-the rule that semantic fallback preserves speculative layout work while resource failure rolls
-back the transaction. Moving only one of those decisions would expose invalid intermediate plans
-or duplicate fallback and resource policy. New geometry belongs in the corresponding routing
+`relation_graph.rs` is retained as the component and document coordinator. Family semantics remain
+in Class and ER adapters; document planning, horizontal routing, layered placement and single-route
+geometry, self loops, stacking, summaries, and the shared model are separate owners. Layered batch
+planning now has its own deep module: it owns scene admission, the resource transaction, route and
+overlay materialization, collision validation, and pairwise work accounting. Its interface returns
+only a paint plan or a typed summary reason, while preserving the rule that semantic fallback keeps
+speculative layout work and resource failure rolls back the transaction. The root now selects
+component strategies, maps that outcome to a region or family-owned summary, aggregates regions,
+and performs the final deferred document commit. New geometry belongs in the corresponding layered
 module, new encoding belongs in the document/canvas path, and any new fallback policy with an
 independent lifecycle must first be extracted behind a typed outcome.
 
