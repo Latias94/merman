@@ -77,6 +77,13 @@ Editor-language descriptors are shared inputs to the browser editor and VS Code 
 under `contracts/editor-language/` therefore select both owners. Other shared authorities and
 unknown paths fail broad instead of guessing a narrow consumer set.
 
+Rust crates, fixtures, and repository scripts use an explicit path-prefix owner table. Ordinary
+renderer and fixture changes select the Linux workspace owner plus hygiene; binding, package, and
+platform crates add only their owning smoke workflows. Top-level Cargo authorities, capability and
+ABI schemas, workflow/classifier code, legal policy, unclassified crates, and unknown paths still
+select every owner. The table is intentionally static and reviewable rather than a partial Cargo or
+Rust dependency analyzer.
+
 The pull-request feature matrix validates the complete declared feature graph but compiles a curated
 set of representative products and transports. It deliberately does not compile every bounded
 pairwise combination and artifact recipe.

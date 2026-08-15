@@ -33,6 +33,106 @@ OWNER_NAMES = (
 )
 
 _ALL_OWNERS = frozenset(OWNER_NAMES)
+_CORE_OWNERS = frozenset({"core", "hygiene"})
+_CRATE_OWNER_RULES = (
+    ("crates/merman-android-jni/", {"core", "hygiene", "platform"}),
+    (
+        "crates/merman-ascii-test-contracts/",
+        {"core", "hygiene", "node", "npm", "platform", "python", "web"},
+    ),
+    (
+        "crates/merman-bindings-core/",
+        {"core", "hygiene", "node", "npm", "platform", "python", "web"},
+    ),
+    ("crates/merman-cli/", {"cli", "core", "hygiene"}),
+    ("crates/merman-export/", {"cli", "core", "hygiene"}),
+    ("crates/merman-ffi/", {"core", "hygiene", "platform"}),
+    ("crates/merman-node/", {"core", "hygiene", "node", "npm", "security"}),
+    ("crates/merman-typst-plugin/", {"core", "hygiene", "typst"}),
+    ("crates/merman-uniffi/", {"core", "hygiene", "platform", "python"}),
+    ("crates/merman-wasm/", {"core", "hygiene", "npm", "web"}),
+    (
+        "crates/merman-analysis/",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    (
+        "crates/merman-editor-core/",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    ("crates/merman-lsp/", {"core", "hygiene", "npm", "vscode", "web"}),
+    ("crates/merman/", {"core", "hygiene"}),
+    ("crates/dugong/", _CORE_OWNERS),
+    ("crates/dugong-graphlib/", _CORE_OWNERS),
+    ("crates/manatee/", _CORE_OWNERS),
+    ("crates/merman-ascii/", _CORE_OWNERS),
+    ("crates/merman-core/", {"core", "fuzz", "hygiene"}),
+    ("crates/merman-elk-layered/", _CORE_OWNERS),
+    ("crates/merman-fixture-render-context/", _CORE_OWNERS),
+    ("crates/merman-layout-elk/", _CORE_OWNERS),
+    ("crates/merman-render/", _CORE_OWNERS),
+    ("crates/merman-rustdoc/", _CORE_OWNERS),
+    ("crates/roughr/", _CORE_OWNERS),
+    ("crates/xtask/", _CORE_OWNERS),
+)
+_SCRIPT_OWNER_RULES = (
+    ("scripts/build-python-", {"hygiene", "python"}),
+    ("scripts/python_", {"hygiene", "python"}),
+    ("scripts/test_python_", {"hygiene", "python"}),
+    ("scripts/build-apple-", {"hygiene", "platform"}),
+    ("scripts/flutter_", {"hygiene", "platform"}),
+    ("scripts/native_symbol_", {"hygiene", "platform"}),
+    ("scripts/test_build_android", {"hygiene", "platform"}),
+    ("scripts/test_flutter_", {"hygiene", "platform"}),
+    ("scripts/test_native_symbol_", {"hygiene", "platform"}),
+    ("scripts/test_verify_platform_", {"hygiene", "platform"}),
+    ("scripts/test_verify_flutter_", {"hygiene", "platform"}),
+    ("scripts/node_", {"hygiene", "node", "npm"}),
+    ("scripts/test_node_", {"hygiene", "node", "npm"}),
+    ("scripts/npm_", {"hygiene", "npm"}),
+    ("scripts/test_web_", {"hygiene", "npm", "web"}),
+    ("scripts/web_", {"hygiene", "npm", "web"}),
+    ("scripts/check-svg-", {"hygiene", "npm", "vscode", "web"}),
+    ("scripts/generate-svg-", {"hygiene", "npm", "vscode", "web"}),
+    ("scripts/svg-", {"hygiene", "npm", "vscode", "web"}),
+    ("scripts/cli_", {"cli", "hygiene"}),
+    ("scripts/generate_cli_", {"cli", "hygiene"}),
+    ("scripts/test_cli_", {"cli", "hygiene"}),
+    ("scripts/test_generate_cli_", {"cli", "hygiene"}),
+    ("scripts/test_nix_", {"cli", "hygiene"}),
+    ("scripts/test_verify_cli_", {"cli", "hygiene"}),
+    ("scripts/test_verify_homebrew_", {"cli", "hygiene"}),
+    ("scripts/audit_plan.py", {"hygiene", "npm", "security"}),
+    ("scripts/test_audit_plan.py", {"hygiene", "npm", "security"}),
+    ("scripts/verify_rustsec_", {"hygiene", "security"}),
+    ("scripts/test_verify_rustsec_", {"hygiene", "security"}),
+)
+_HYGIENE_SCRIPT_PREFIXES = (
+    "scripts/adr_",
+    "scripts/artifact_",
+    "scripts/capability_",
+    "scripts/crates_io_",
+    "scripts/generate-npm-license-",
+    "scripts/generate-rust-license-",
+    "scripts/release-",
+    "scripts/release_",
+    "scripts/strict_json.py",
+    "scripts/sync-release-",
+    "scripts/test_adr_",
+    "scripts/test_artifact_",
+    "scripts/test_crates_io_",
+    "scripts/test_generate_rust_license_",
+    "scripts/test_publish.py",
+    "scripts/test_release_",
+    "scripts/test_sync_",
+    "scripts/test_verify_artifact_",
+    "scripts/test_verify_crate_",
+    "scripts/test_verify_independent_",
+    "scripts/test_verify_third_",
+    "scripts/verify-independent-",
+    "scripts/verify_artifact_",
+    "scripts/verify_crate_",
+    "scripts/verify-third-",
+)
 _STATUS_PATH_COUNTS = {
     "A": 1,
     "B": 1,
@@ -295,10 +395,37 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path in {"Cargo.lock", "Cargo.toml", "rust-toolchain.toml", "dist-workspace.toml"}:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
-    if path.startswith(("capabilities/", "crates/", "fixtures/", "tools/upstreams/")):
-        return _ALL_OWNERS, f"shared runtime authority changed: {path}", True
+    if path.startswith("capabilities/"):
+        return _ALL_OWNERS, f"shared capability schema changed: {path}", True
+    if path.startswith("crates/"):
+        for prefix, selected in _CRATE_OWNER_RULES:
+            if path.startswith(prefix):
+                owners = set(selected)
+                if "/benches/" in path:
+                    owners.add("performance")
+                return frozenset(owners), f"Rust crate owner changed: {path}", False
+        return _ALL_OWNERS, f"unclassified Rust crate changed: {path}", True
+    if path.startswith("fixtures/bindings/"):
+        return (
+            frozenset({"core", "hygiene", "node", "npm", "platform", "python", "web"}),
+            f"binding fixture owner changed: {path}",
+            False,
+        )
+    if path.startswith("fixtures/"):
+        return _CORE_OWNERS, f"renderer fixture owner changed: {path}", False
+    if path.startswith("tools/upstreams/"):
+        return (
+            frozenset({"core", "hygiene", "npm", "web"}),
+            f"upstream runtime authority changed: {path}",
+            False,
+        )
     if path.startswith("scripts/"):
-        return _ALL_OWNERS, f"shared repository owner changed: {path}", True
+        for prefix, selected in _SCRIPT_OWNER_RULES:
+            if path.startswith(prefix):
+                return frozenset(selected), f"owner script changed: {path}", False
+        if path.startswith(_HYGIENE_SCRIPT_PREFIXES):
+            return frozenset({"hygiene"}), f"repository hygiene script changed: {path}", False
+        return _ALL_OWNERS, f"unclassified repository script changed: {path}", True
 
     if path.startswith(
         "playground/editor-artifact-receipt-v"

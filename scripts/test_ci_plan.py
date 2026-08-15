@@ -81,16 +81,81 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["owners"]["platform"])
         self.assertFalse(plan["owners"]["web"])
 
-    def test_renderer_change_selects_core_and_downstream_runtime_owners(self) -> None:
+    def test_renderer_change_selects_core_without_unrelated_lifecycle_owners(self) -> None:
         plan = plan_changes(
             parse_name_status_z(b"M\0crates/merman-render/src/lib.rs\0"),
             base="a" * 40,
             head="b" * 40,
         )
 
-        for owner in ("core", "fuzz", "platform", "python", "typst", "vscode", "web"):
-            with self.subTest(owner=owner):
-                self.assertTrue(plan["owners"][owner])
+        self.assertFalse(plan["fallback"])
+        self.assertEqual(
+            {name for name, enabled in plan["owners"].items() if enabled},
+            {"core", "hygiene"},
+        )
+
+    def test_crate_changes_use_explicit_owner_boundaries(self) -> None:
+        fixtures = {
+            "crates/merman-ascii/src/lib.rs": {"core", "hygiene"},
+            "crates/merman-cli/src/main.rs": {"cli", "core", "hygiene"},
+            "crates/merman-wasm/src/lib.rs": {"core", "hygiene", "npm", "web"},
+            "crates/merman-uniffi/src/lib.rs": {
+                "core",
+                "hygiene",
+                "platform",
+                "python",
+            },
+            "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman/benches/ascii_pipeline.rs": {
+                "core",
+                "hygiene",
+                "performance",
+            },
+        }
+
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {name for name, enabled in plan["owners"].items() if enabled}
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(selected, expected)
+
+    def test_fixture_upstream_and_script_changes_use_narrow_explicit_owners(self) -> None:
+        fixtures = {
+            "fixtures/flowchart/basic.mmd": {"core", "hygiene"},
+            "fixtures/bindings/errors.json": {
+                "core",
+                "hygiene",
+                "node",
+                "npm",
+                "platform",
+                "python",
+                "web",
+            },
+            "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": {
+                "core",
+                "hygiene",
+                "npm",
+                "web",
+            },
+            "scripts/build-python-uniffi-wheel.py": {"hygiene", "python"},
+            "scripts/release_projection.py": {"hygiene"},
+        }
+
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {name for name, enabled in plan["owners"].items() if enabled}
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(selected, expected)
 
     def test_owner_local_changes_select_their_narrow_jobs(self) -> None:
         fixtures = {
@@ -159,9 +224,12 @@ class PlannerTests(unittest.TestCase):
     def test_workflow_classifier_and_unknown_paths_fail_broad(self) -> None:
         for path in (
             ".github/workflows/ci.yml",
+            "capabilities/feature-surface-v1.json",
             "contracts/abi/merman-v3.json",
             "distribution/typst/merman/lib.typ",
             "scripts/ci_plan.py",
+            "scripts/new_unclassified_owner.py",
+            "crates/new-unclassified-crate/src/lib.rs",
             "unowned/new-surface.txt",
         ):
             with self.subTest(path=path):
