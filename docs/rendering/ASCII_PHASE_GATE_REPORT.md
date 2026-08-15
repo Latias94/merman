@@ -132,10 +132,11 @@ typical, and dense source fixtures, the spatial fact a reader should recover, th
 over a field-complete StructuredText baseline, and the narrow/dense failure policy. Views at 80,
 100, and 120 columns must exist and remain scannable.
 
-The executable evaluator in `crates/merman-ascii/tests/candidate_admission/evaluator.rs` consumes the
-real typed models for the 12 fixtures below. It creates bounded 7-bit prototypes solely for this
-gate; it is not linked from the production dispatcher. Width is an explicit evaluator input, so
-the 80/100/120 results do not infer terminal behavior from `UnsupportedDiagram`.
+The R34 admission experiment consumed the real typed models for the 12 fixtures below and created
+bounded 7-bit prototypes solely for the one-time decision gate. The prototype implementation was
+never linked from the production dispatcher and was removed at closeout after all four candidates
+were rejected. The retained matrices are the decision record; they are not a standing renderer or
+an executable compatibility surface.
 
 The comparison is deliberately fact-based:
 
@@ -443,7 +444,7 @@ capability metadata with `semantic_coverage = null`, `primary_projection = none`
 The typed dispatch returns `UnsupportedDiagram`; there is no dispatcher stub, summary-only shortcut,
 binding/Web advertisement, or fixture-output artifact to mistake for admission.
 
-The tests `crates/merman-ascii/tests/candidate_admission.rs` and its private evaluator module bind
-this report to the runtime capability state, representative tracked fixtures, actual typed-model
-prototype measurements, the explicit unsupported dispatch, and the four 80/100/120 rejection
-matrices.
+The test `crates/merman-ascii/tests/candidate_admission.rs` binds the current runtime capability,
+catalog, representative tracked fixtures, and explicit unsupported dispatch. The historical
+80/100/120 prototype measurements above remain an auditable decision record, but are intentionally
+not re-executed as part of the standing test suite.
