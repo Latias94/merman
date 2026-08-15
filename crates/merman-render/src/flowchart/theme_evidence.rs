@@ -255,6 +255,7 @@ pub(crate) struct FlowchartNodeThemeEmission {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartEdgeThemeEmission {
     pub(crate) stroke: FlowchartThemeFacetEmission,
+    pub(crate) stroke_width: FlowchartThemeFacetEmission,
     pub(crate) stroke_dasharray: FlowchartThemeFacetEmission,
 }
 
@@ -299,6 +300,7 @@ struct FlowchartLabelThemeStyle {
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartEdgeThemeStyle {
     stroke: Option<FlowchartPaintOutcome>,
+    stroke_width: Option<FlowchartScalarOutcome>,
     stroke_dasharray: Option<FlowchartDasharrayOutcome>,
     matched_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
@@ -334,6 +336,10 @@ impl FlowchartEdgeThemeStyle {
                         FamilyThemeRuleFacet::stroke,
                     );
                 }
+                ResolvedStyleProperty::StrokeWidth => {
+                    resolved.stroke_width =
+                        resolve_stroke_width(theme, rule_index, style.stroke_width_resolution());
+                }
                 ResolvedStyleProperty::StrokeDasharray => {
                     resolved.stroke_dasharray = resolve_stroke_dasharray(
                         theme,
@@ -362,8 +368,7 @@ impl FlowchartEdgeThemeStyle {
                     rule_index,
                     FamilyThemeRuleFacet::Effect,
                 ),
-                ResolvedStyleProperty::StrokeWidth
-                | ResolvedStyleProperty::StrokeLinecap
+                ResolvedStyleProperty::StrokeLinecap
                 | ResolvedStyleProperty::StrokeLinejoin
                 | ResolvedStyleProperty::Opacity
                 | ResolvedStyleProperty::FillOpacity
@@ -404,6 +409,20 @@ impl FlowchartEdgeThemeStyle {
                 self.stroke_dasharray
                     .as_ref()
                     .and_then(FlowchartDasharrayOutcome::value)
+            })
+            .flatten()
+    }
+
+    pub(crate) fn stroke_width_value(
+        &self,
+        precedence: FlowchartFacetPrecedence,
+        writer_supports_stroke_width: bool,
+    ) -> Option<f32> {
+        (!precedence.overrides_theme() && writer_supports_stroke_width)
+            .then(|| {
+                self.stroke_width
+                    .as_ref()
+                    .and_then(FlowchartScalarOutcome::value)
             })
             .flatten()
     }
@@ -1426,6 +1445,13 @@ impl FlowchartThemeEvidenceRecorder {
             emission.stroke.precedence,
             emission.stroke.verified,
         );
+        record_scalar_outcome(
+            &mut state.edge,
+            style.stroke_width.as_ref(),
+            emission.stroke_width.precedence,
+            emission.stroke_width.verified,
+            ThemeCapability::BorderStyling,
+        );
         record_dasharray_outcome(
             &mut state.edge,
             style.stroke_dasharray.as_ref(),
@@ -1943,12 +1969,32 @@ mod tests {
             .resolve(DiagramFamilyId::FLOWCHART)
     }
 
+    fn resolved_edge_stroke_width_theme() -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default()
+                                .with_stroke_width(2.5)
+                                .expect("valid Flowchart Edge stroke width"),
+                        )
+                        .for_family(DiagramFamilyId::FLOWCHART),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart Edge stroke-width theme")
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
     fn edge_emission(
         precedence: FlowchartFacetPrecedence,
         verified: bool,
     ) -> FlowchartEdgeThemeEmission {
         FlowchartEdgeThemeEmission {
             stroke: FlowchartThemeFacetEmission::new(precedence, verified),
+            stroke_width: FlowchartThemeFacetEmission::absent(),
             stroke_dasharray: FlowchartThemeFacetEmission::absent(),
         }
     }
@@ -1959,7 +2005,19 @@ mod tests {
     ) -> FlowchartEdgeThemeEmission {
         FlowchartEdgeThemeEmission {
             stroke: FlowchartThemeFacetEmission::absent(),
+            stroke_width: FlowchartThemeFacetEmission::absent(),
             stroke_dasharray: FlowchartThemeFacetEmission::new(precedence, verified),
+        }
+    }
+
+    fn edge_stroke_width_emission(
+        precedence: FlowchartFacetPrecedence,
+        verified: bool,
+    ) -> FlowchartEdgeThemeEmission {
+        FlowchartEdgeThemeEmission {
+            stroke: FlowchartThemeFacetEmission::absent(),
+            stroke_width: FlowchartThemeFacetEmission::new(precedence, verified),
+            stroke_dasharray: FlowchartThemeFacetEmission::absent(),
         }
     }
 
@@ -3131,6 +3189,37 @@ mod tests {
         assert_eq!(
             evidence.applied_capabilities(),
             BTreeSet::from([ThemeCapability::DashStyling])
+        );
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn verified_edge_stroke_width_is_applied_with_border_styling_capability() {
+        let theme = resolved_edge_stroke_width_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge stroke width");
+        let precedence = no_override();
+
+        assert_eq!(style.stroke_width_value(precedence, true), Some(2.5));
+
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        recorder.record_edge_emission(&style, edge_stroke_width_emission(precedence, true), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert_eq!(
+            evidence.applied(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::BorderStyling])
         );
         assert!(evidence.residuals().is_empty());
     }

@@ -6,8 +6,9 @@ use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, ThemePortabilityRequirement,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, Specified,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch, ThemeStylePatch,
+    ThemeTarget,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
@@ -84,18 +85,59 @@ fn edge_label_padding_theme(padding: InsetsPx) -> DiagramTheme {
         .expect("compile edge-label padding theme")
 }
 
+fn edge_stroke_width_theme(width: f32) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default()
+                        .with_stroke_width(width)
+                        .expect("valid edge stroke width"),
+                )),
+            ),
+        )
+        .expect("compile edge stroke-width theme")
+}
+
 fn prepare_flowchart_family_with_theme(
     source: &str,
     theme: &DiagramTheme,
 ) -> family::FamilyRenderArtifact {
+    prepare_flowchart_family_with_theme_and_portability(
+        source,
+        theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn prepare_flowchart_family_with_theme_and_portability(
+    source: &str,
+    theme: &DiagramTheme,
+    portability: ThemePortabilityRequirement,
+) -> family::FamilyRenderArtifact {
+    prepare_flowchart_family_with_theme_engine_and_portability(
+        source,
+        theme,
+        Engine::new(),
+        portability,
+    )
+}
+
+fn prepare_flowchart_family_with_theme_engine_and_portability(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> family::FamilyRenderArtifact {
     let parsed = block_on(
-        merman_render::__private::install_parse_compatibility(theme, Engine::new())
+        merman_render::__private::install_parse_compatibility(theme, engine)
             .parse_diagram_for_render_model(source, ParseOptions::default()),
     )
     .expect("parse themed Flowchart family")
     .expect("detect themed Flowchart family");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Flowchart session");
     family::prepare(parsed, &LayoutOptions::default(), session)
@@ -1582,6 +1624,165 @@ flowchart TB
         ),
         "expected the visible Flowchart edge path to carry the themed edge-thickness-normal class: {svg}"
     );
+}
+
+#[test]
+fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths() {
+    let theme = edge_stroke_width_theme(2.5);
+    for (case, source) in [
+        ("Flowchart classic", "flowchart LR\nA --> B\n"),
+        (
+            "Flowchart Neo",
+            "%%{init: {\"look\": \"neo\"}}%%\nflowchart LR\nA --> B\n",
+        ),
+        ("Swimlane classic", "swimlane-beta LR\nA --> B\n"),
+    ] {
+        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render {case} typed edge stroke width: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("valid {case} SVG: {error}"));
+        let edge = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .unwrap_or_else(|| panic!("{case} terminal edge path: {}", rendered.svg()));
+        let style = edge
+            .attribute("style")
+            .unwrap_or_else(|| panic!("{case} terminal edge style"));
+        assert!(
+            style.contains("stroke-width:2.5px !important"),
+            "{case}: {style}"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn flowchart_source_and_explicit_config_stroke_width_override_the_typed_edge_value() {
+    let theme = edge_stroke_width_theme(2.5);
+    for (case, engine, source, expected_path_style, expected_svg) in [
+        (
+            "linkStyle inline",
+            Engine::new(),
+            "flowchart LR\nA edge@--> B\nlinkStyle 0 stroke-width:7px\n",
+            Some("stroke-width:7px"),
+            None,
+        ),
+        (
+            "assigned classDef",
+            Engine::new(),
+            "flowchart LR\nA edge@--> B\nclassDef wide stroke-width:8px\nclass edge wide\n",
+            Some("stroke-width:8px"),
+            None,
+        ),
+        (
+            "explicit Mermaid config",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "theme": "base",
+                "themeVariables": {"strokeWidth": 9}
+            }))),
+            "flowchart LR\nA --> B\n",
+            None,
+            Some(".edge-thickness-normal{stroke-width:9px;}"),
+        ),
+    ] {
+        let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+            source,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap_or_else(|error| panic!("render {case} edge stroke-width precedence: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("valid {case} SVG: {error}"));
+        let edge = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .unwrap_or_else(|| panic!("{case} terminal edge path: {}", rendered.svg()));
+        let style = edge.attribute("style").unwrap_or_default();
+        if let Some(expected_path_style) = expected_path_style {
+            assert!(style.contains(expected_path_style), "{case}: {style}");
+        }
+        if let Some(expected_svg) = expected_svg {
+            assert!(
+                rendered.svg().contains(expected_svg),
+                "{case}: {}",
+                rendered.svg()
+            );
+        }
+        assert!(
+            !style.contains("stroke-width:2.5px !important"),
+            "{case}: {style}"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn flowchart_cleared_edge_stroke_width_remains_an_explicit_geometry_residual() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch {
+                    stroke: ThemeStrokePatch {
+                        width: Specified::Clear,
+                        ..ThemeStrokePatch::default()
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            ))),
+        )
+        .expect("compile cleared edge stroke-width theme");
+    let rendered = prepare_flowchart_family_with_theme_and_portability(
+        "flowchart LR\nA --> B\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("best-effort cleared edge stroke width");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn flowchart_hand_drawn_edge_stroke_width_is_a_fail_closed_residual() {
+    let theme = edge_stroke_width_theme(2.5);
+    let rendered = prepare_flowchart_family_with_theme_and_portability(
+        "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nA --> B\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("best-effort hand-drawn edge stroke width");
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid hand-drawn Flowchart SVG");
+    let style = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .and_then(|node| node.attribute("style"))
+        .expect("hand-drawn terminal edge style");
+    assert!(!style.contains("stroke-width:2.5px !important"), "{style}");
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
 }
 
 #[test]

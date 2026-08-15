@@ -7,6 +7,7 @@ use std::sync::Arc;
 struct FlowchartEdgeStyleArtifact {
     emission: FlowchartCompiledStyles,
     projected_source_style_bytes: usize,
+    source_stroke_width_status: crate::flowchart::FlowchartSourceFacetStatus,
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +22,7 @@ pub(crate) struct FlowchartEdgeStylePlan {
     #[cfg(test)]
     edges: FxHashMap<String, PreparedEdgeStyles>,
     edge_occurrences: Vec<PreparedEdgeStyles>,
+    edge_stroke_width_config_override: bool,
     #[cfg(test)]
     parsed_class_declaration_count: usize,
 }
@@ -36,14 +38,20 @@ impl FlowchartEdgeStylePlan {
             .edge_defaults
             .as_ref()
             .map_or(&[][..], |defaults| defaults.style.as_slice());
-        Self::prepare(
+        let mut plan = Self::prepare(
             &model.class_defs,
             &model.edges,
             default_edge_style,
             flowchart_config_diagram_look(effective_config).is_hand_drawn(),
             swimlane,
             work_meter,
-        )
+        )?;
+        plan.edge_stroke_width_config_override =
+            merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.strokeWidth",
+            );
+        Ok(plan)
     }
 
     fn prepare(
@@ -110,6 +118,11 @@ impl FlowchartEdgeStylePlan {
                     unreachable!("overflowing edge source-style projection must be rejected")
                 };
                 let artifact = Arc::new(FlowchartEdgeStyleArtifact {
+                    source_stroke_width_status: if hand_drawn {
+                        crate::flowchart::FlowchartSourceFacetStatus::Absent
+                    } else {
+                        emission.source_stroke_width_status()
+                    },
                     emission: emission.into_edge_artifact(hand_drawn),
                     projected_source_style_bytes,
                 });
@@ -153,6 +166,7 @@ impl FlowchartEdgeStylePlan {
             #[cfg(test)]
             edges: prepared_edges,
             edge_occurrences: prepared_edge_occurrences,
+            edge_stroke_width_config_override: false,
             #[cfg(test)]
             parsed_class_declaration_count,
         })
@@ -190,6 +204,19 @@ impl FlowchartEdgeStylePlan {
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> crate::Result<&FlowchartCompiledStyles> {
         Ok(&self.occurrence(key)?.artifact.emission)
+    }
+
+    pub(in crate::svg::parity::flowchart) fn edge_source_stroke_width_status_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<crate::flowchart::FlowchartSourceFacetStatus> {
+        Ok(self.occurrence(key)?.artifact.source_stroke_width_status)
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn edge_stroke_width_config_override(
+        &self,
+    ) -> bool {
+        self.edge_stroke_width_config_override
     }
 
     #[cfg(test)]

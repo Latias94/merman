@@ -666,7 +666,10 @@ fn classify_rule_facet(
                 variant: None | Some(ThemeVariant::Default)
             }
         )
-        && facet == FamilyThemeRuleFacet::StrokeDasharray
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::StrokeWidth | FamilyThemeRuleFacet::StrokeDasharray
+        )
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1135,7 +1138,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_own_only_static_default_edge_dasharray() {
+    fn flowchart_and_swimlane_own_static_default_edge_width_and_dasharray() {
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             for variant in [None, Some(ThemeVariant::Default)] {
                 let mut edge_geometry_rule = ThemeRule::new(
@@ -1158,7 +1161,7 @@ mod tests {
                             facet: FamilyThemeRuleFacet::StrokeWidth,
                             ..
                         }
-                    ) && route.disposition() == FamilyThemeDisposition::Unsupported
+                    ) && route.disposition() == FamilyThemeDisposition::TypedAdapter
                 }));
                 assert!(routes.iter().any(|route| {
                     matches!(
@@ -1175,6 +1178,8 @@ mod tests {
                 ThemeRule::new(
                     ThemeTarget::Edge,
                     ThemeStylePatch::default()
+                        .with_stroke_width(2.5)
+                        .expect("valid active edge width")
                         .with_stroke_dasharray([4.0, 2.0])
                         .expect("valid active edge dasharray"),
                 )
@@ -1182,6 +1187,8 @@ mod tests {
                 ThemeRule::new(
                     ThemeTarget::Edge,
                     ThemeStylePatch::default()
+                        .with_stroke_width(2.5)
+                        .expect("valid ordinal edge width")
                         .with_stroke_dasharray([4.0, 2.0])
                         .expect("valid ordinal edge dasharray"),
                 )

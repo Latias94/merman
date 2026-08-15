@@ -31,6 +31,16 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.edge_stroke_config_override,
     );
     let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);
+    let stroke_width_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+        ctx.edge_style_plan
+            .edge_source_stroke_width_status_for(key)?,
+        ctx.edge_style_plan.edge_stroke_width_config_override(),
+    );
+    let edge_writer_supports_typed_stroke_width = !hand_drawn;
+    let typed_stroke_width = ctx.edge_theme.stroke_width_value(
+        stroke_width_precedence,
+        edge_writer_supports_typed_stroke_width,
+    );
     let stroke_dasharray_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
         emitted_styles.emitted_edge_source_stroke_dasharray_status(hand_drawn),
         false,
@@ -77,6 +87,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                     crate::flowchart::FlowchartEdgeThemeEmission {
                         stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                             stroke_precedence,
+                            false,
+                        ),
+                        stroke_width: crate::flowchart::FlowchartThemeFacetEmission::new(
+                            stroke_width_precedence,
                             false,
                         ),
                         stroke_dasharray: crate::flowchart::FlowchartThemeFacetEmission::new(
@@ -131,7 +145,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.work_meter,
     )?;
     let source_style_svg_bytes = ctx.edge_style_plan.edge_source_style_svg_bytes_for(key)?;
-    FlowchartEdgeSvgEmission {
+    let edge_receipt = FlowchartEdgeSvgEmission {
         diagram_id: ctx.diagram_id,
         edge,
         d,
@@ -140,6 +154,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         hand_drawn,
         emitted_styles,
         typed_stroke,
+        typed_stroke_width,
         typed_stroke_dasharray,
         class_attr: &scratch.edge_class_attr,
         marker_attrs: &scratch.edge_marker_attrs,
@@ -156,11 +171,15 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             crate::flowchart::FlowchartEdgeThemeEmission {
                 stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                     stroke_precedence,
-                    typed_stroke.is_some(),
+                    edge_receipt.typed_stroke_verified(),
+                ),
+                stroke_width: crate::flowchart::FlowchartThemeFacetEmission::new(
+                    stroke_width_precedence,
+                    edge_receipt.typed_stroke_width_verified(),
                 ),
                 stroke_dasharray: crate::flowchart::FlowchartThemeFacetEmission::new(
                     stroke_dasharray_precedence,
-                    typed_stroke_dasharray.is_some(),
+                    edge_receipt.typed_stroke_dasharray_verified(),
                 ),
             },
             &source_residuals,
@@ -185,11 +204,33 @@ struct FlowchartEdgeSvgEmission<'a> {
     hand_drawn: bool,
     emitted_styles: &'a FlowchartCompiledStyles,
     typed_stroke: Option<&'a str>,
+    typed_stroke_width: Option<f32>,
     typed_stroke_dasharray: Option<&'a str>,
     class_attr: &'a str,
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
     neo_edge_mask: Option<FlowchartNeoEdgeMaskPlan>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlowchartEdgePathEmissionReceipt {
+    typed_stroke: bool,
+    typed_stroke_width: bool,
+    typed_stroke_dasharray: bool,
+}
+
+impl FlowchartEdgePathEmissionReceipt {
+    const fn typed_stroke_verified(self) -> bool {
+        self.typed_stroke
+    }
+
+    const fn typed_stroke_width_verified(self) -> bool {
+        self.typed_stroke_width
+    }
+
+    const fn typed_stroke_dasharray_verified(self) -> bool {
+        self.typed_stroke_dasharray
+    }
 }
 
 impl FlowchartEdgeSvgEmission<'_> {
@@ -198,7 +239,7 @@ impl FlowchartEdgeSvgEmission<'_> {
         out: &mut impl crate::svg::parity::SvgOutput,
         source_style_svg_bytes: usize,
         work_meter: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<FlowchartEdgePathEmissionReceipt> {
         let neo_mask_svg_bytes = self
             .neo_edge_mask
             .map_or(0, FlowchartNeoEdgeMaskPlan::serialized_bytes);
@@ -213,13 +254,20 @@ impl FlowchartEdgeSvgEmission<'_> {
         let neo_mask_work = self
             .neo_edge_mask
             .map_or(0, FlowchartNeoEdgeMaskPlan::work_units);
+        let edge_work = neo_mask_work
+            .checked_add(usize::from(self.typed_stroke_width.is_some()))
+            .ok_or_else(|| {
+                crate::resources::OperationWorkError::ResourceLimitExceeded(
+                    work_meter.arithmetic_overflow(),
+                )
+            })?;
 
         // This is the only whole-edge boundary. Every byte from `<path` through `/>` is counted
         // against the current document before any part of the edge reaches the output buffer.
         work_meter.check_svg_append(out.len(), serialized_bytes)?;
-        work_meter.preflight(neo_mask_work)?;
+        work_meter.preflight(edge_work)?;
         work_meter.charge_svg_bytes(projected_contribution)?;
-        work_meter.charge(neo_mask_work)?;
+        work_meter.charge(edge_work)?;
 
         let before = out.len();
         if self.write_to(out).is_err() {
@@ -233,7 +281,11 @@ impl FlowchartEdgeSvgEmission<'_> {
         }
         out.checkpoint()?;
         debug_assert_eq!(out.len() - before, serialized_bytes);
-        Ok(())
+        Ok(FlowchartEdgePathEmissionReceipt {
+            typed_stroke: self.typed_stroke.is_some(),
+            typed_stroke_width: self.typed_stroke_width.is_some(),
+            typed_stroke_dasharray: self.typed_stroke_dasharray.is_some(),
+        })
     }
 
     fn serialized_bytes(
@@ -275,6 +327,9 @@ impl FlowchartEdgeSvgEmission<'_> {
             out.write_str(";stroke:")?;
             write!(out, "{}", escape_xml_display(stroke))?;
             out.write_str(" !important")?;
+        }
+        if let Some(stroke_width) = self.typed_stroke_width {
+            write!(out, ";stroke-width:{stroke_width}px !important")?;
         }
         if let Some(stroke_dasharray) = self.typed_stroke_dasharray {
             out.write_str(";stroke-dasharray:")?;
@@ -598,13 +653,14 @@ mod tests {
             hand_drawn: false,
             emitted_styles: &emitted_styles,
             typed_stroke: Some("#0f172a"),
+            typed_stroke_width: Some(2.5),
             typed_stroke_dasharray: Some("7 3"),
             class_attr: "edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link",
             marker_attrs: r#" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)""#,
             default_edge_style: &default_edge_style,
             neo_edge_mask: Some(neo_edge_mask),
         };
-        let expected_edge = r##"<path d="M0,0L16,0" id="diagram&lt;&amp;-edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444;stroke:#0f172a !important;stroke-dasharray:7 3 !important" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
+        let expected_edge = r##"<path d="M0,0L16,0" id="diagram&lt;&amp;-edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444;stroke:#0f172a !important;stroke-width:2.5px !important;stroke-dasharray:7 3 !important" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
         let probe_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -619,19 +675,22 @@ mod tests {
             expected_edge.len()
         );
 
-        let exact_meter = meter_with_limits(initial.len() + expected_edge.len(), 4);
+        let exact_meter = meter_with_limits(initial.len() + expected_edge.len(), 5);
         let mut exact = initial.to_string();
-        emission
+        let receipt = emission
             .append_to(&mut exact, source_style_svg_bytes, &exact_meter)
             .expect("exact whole-edge budgets must pass");
         assert_eq!(exact, format!("{initial}{expected_edge}"));
-        assert_eq!(exact_meter.used(), 4);
+        assert!(receipt.typed_stroke_verified());
+        assert!(receipt.typed_stroke_width_verified());
+        assert!(receipt.typed_stroke_dasharray_verified());
+        assert_eq!(exact_meter.used(), 5);
         assert_eq!(
             exact_meter.projected_svg_bytes(),
             source_style_svg_bytes + neo_edge_mask.serialized_bytes()
         );
 
-        let short_svg_meter = meter_with_limits(initial.len() + expected_edge.len() - 1, 4);
+        let short_svg_meter = meter_with_limits(initial.len() + expected_edge.len() - 1, 5);
         let mut short_svg = initial.to_string();
         let error = emission
             .append_to(&mut short_svg, source_style_svg_bytes, &short_svg_meter)
@@ -645,7 +704,7 @@ mod tests {
         assert_eq!(short_svg_meter.used(), 0);
         assert_eq!(short_svg_meter.projected_svg_bytes(), 0);
 
-        let short_work_meter = meter_with_limits(initial.len() + expected_edge.len(), 3);
+        let short_work_meter = meter_with_limits(initial.len() + expected_edge.len(), 4);
         let mut short_work = initial.to_string();
         let error = emission
             .append_to(&mut short_work, source_style_svg_bytes, &short_work_meter)
