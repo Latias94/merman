@@ -1,10 +1,10 @@
 use crate::model::Bounds;
 
-use super::super::{root_svg, svg_emitted_bounds_from_svg};
+use super::super::{SvgOutput, root_svg, svg_emitted_bounds_from_svg};
 
-pub(super) struct ArchitectureRootViewportContext<'a, 'id> {
-    pub(super) out: String,
-    pub(super) root_viewport: &'a root_svg::RootViewportContext<'id>,
+pub(super) struct ArchitectureRootViewportContext<'out, 'root, 'id, O: SvgOutput> {
+    pub(super) out: &'out mut O,
+    pub(super) root_viewport: &'root root_svg::RootViewportContext<'id>,
     pub(super) root_document: root_svg::RootDocument,
     pub(super) content_bounds: Option<Bounds>,
     pub(super) padding_px: f64,
@@ -47,11 +47,11 @@ fn architecture_root_bbox_from_svg(
     bounds
 }
 
-pub(super) fn finalize_architecture_root_viewport(
-    ctx: ArchitectureRootViewportContext<'_, '_>,
-) -> crate::Result<root_svg::RootedSvg> {
+pub(super) fn finalize_architecture_root_viewport<O: SvgOutput>(
+    ctx: ArchitectureRootViewportContext<'_, '_, '_, O>,
+) -> crate::Result<root_svg::RootDocument> {
     let ArchitectureRootViewportContext {
-        mut out,
+        out,
         root_viewport,
         root_document,
         content_bounds,
@@ -62,12 +62,13 @@ pub(super) fn finalize_architecture_root_viewport(
         is_empty,
         trust_content_bounds,
     } = ctx;
+    out.checkpoint()?;
 
     let root_bounds = if is_empty {
         root_svg::DiagramBounds::from_view_box(-half_icon, -half_icon, icon_size_px, icon_size_px)
     } else {
         let bounds = architecture_root_bbox_from_svg(
-            &out,
+            out.as_str(),
             content_bounds,
             icon_size_px,
             trust_content_bounds,
@@ -81,8 +82,7 @@ pub(super) fn finalize_architecture_root_viewport(
         )
     };
     let root_spec = root_svg::RootViewportSpec::mermaid_or_intrinsic(root_bounds, use_max_width);
-    let root_document = root_viewport.finish_document(&mut out, root_document, root_spec)?;
-    root_document.complete(out)
+    root_viewport.finish_document(out, root_document, root_spec)
 }
 
 #[cfg(test)]
@@ -158,8 +158,8 @@ mod tests {
         );
         let padding = 40.0;
 
-        let svg = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
-            out,
+        let root_document = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+            out: &mut out,
             root_viewport: &root_viewport,
             root_document,
             content_bounds: Some(content.clone()),
@@ -170,9 +170,12 @@ mod tests {
             is_empty: false,
             trust_content_bounds: true,
         })
-        .unwrap()
-        .into_string_for(crate::DiagramFamilyId::ARCHITECTURE)
         .unwrap();
+        let svg = root_document
+            .complete(out)
+            .unwrap()
+            .into_string_for(crate::DiagramFamilyId::ARCHITECTURE)
+            .unwrap();
         let view_box = svg
             .split_once("viewBox=\"")
             .unwrap()

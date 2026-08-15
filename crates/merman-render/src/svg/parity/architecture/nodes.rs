@@ -1,9 +1,7 @@
-use std::fmt::Write as _;
-
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
-use super::super::{escape_xml_into, fmt};
+use super::super::{SvgOutput, escape_xml_into, fmt};
 use super::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
 };
@@ -18,8 +16,8 @@ use super::labels::{
 use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
 
-pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> {
-    pub(super) out: &'a mut String,
+pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, O: SvgOutput> {
+    pub(super) out: &'a mut O,
     pub(super) diagram_id: &'a str,
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
@@ -31,20 +29,20 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) content_bounds: &'a mut Option<Bounds>,
 }
 
-fn write_diagram_service_id(out: &mut String, diagram_id: &str, service_id: &str) {
+fn write_diagram_service_id(out: &mut impl SvgOutput, diagram_id: &str, service_id: &str) {
     escape_xml_into(out, diagram_id);
     out.push_str("-service-");
     escape_xml_into(out, service_id);
 }
 
-fn write_diagram_node_id(out: &mut String, diagram_id: &str, node_id: &str) {
+fn write_diagram_node_id(out: &mut impl SvgOutput, diagram_id: &str, node_id: &str) {
     escape_xml_into(out, diagram_id);
     out.push_str("-node-");
     escape_xml_into(out, node_id);
 }
 
-pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAccess>(
-    ctx: &mut ArchitectureNodeRenderContext<'_, M>,
+pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAccess, O: SvgOutput>(
+    ctx: &mut ArchitectureNodeRenderContext<'_, M, O>,
 ) -> crate::Result<()> {
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
@@ -143,6 +141,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             out.push_str("</g>");
 
             out.push_str("</g>");
+            out.checkpoint()?;
         }
 
         for junction in model.junctions() {
@@ -160,14 +159,16 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 r#"" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
                 s = fmt(settings.icon_size_px)
             );
+            out.checkpoint()?;
         }
         out.push_str("</g>");
     }
+    out.checkpoint()?;
     Ok(())
 }
 
-pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
-    ctx: &mut ArchitectureNodeRenderContext<'a, M>,
+pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOutput>(
+    ctx: &mut ArchitectureNodeRenderContext<'a, M, O>,
     group_rects: &[GroupRect<'a>],
 ) -> crate::Result<()> {
     let out = &mut *ctx.out;
@@ -268,9 +269,11 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             }
 
             out.push_str("</g>");
+            out.checkpoint()?;
         }
 
         out.push_str("</g>");
     }
+    out.checkpoint()?;
     Ok(())
 }

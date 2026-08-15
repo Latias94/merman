@@ -1,5 +1,3 @@
-use std::fmt::Write as _;
-
 use crate::architecture_metrics::{
     ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
     architecture_create_text_middle_bbox_y_range_px,
@@ -7,7 +5,7 @@ use crate::architecture_metrics::{
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
-use super::super::{escape_xml_into, fmt, fmt_into, fmt_string};
+use super::super::{SvgOutput, escape_xml_into, fmt, fmt_into, fmt_string};
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
     svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
@@ -17,8 +15,8 @@ use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
 use crate::model::ArchitectureDiagramLayout;
 
-pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> {
-    pub(super) out: &'a mut String,
+pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess, O: SvgOutput> {
+    pub(super) out: &'a mut O,
     pub(super) diagram_id: &'a str,
     pub(super) layout: &'a ArchitectureDiagramLayout,
     pub(super) model: &'a M,
@@ -98,7 +96,7 @@ struct ArchitectureArrowGeometry<'a> {
 }
 
 fn write_architecture_edge_id_attr(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     prefix: &str,
     from: &str,
@@ -117,7 +115,7 @@ fn write_architecture_edge_id_attr(
 }
 
 fn write_architecture_edge_path(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     edge: super::model::ArchitectureEdgeRef<'_>,
     points: ArchitectureEdgePoints,
@@ -139,7 +137,10 @@ fn write_architecture_edge_path(
     out.push_str(r#""/>"#);
 }
 
-fn write_architecture_arrow_transform(out: &mut String, transform: ArchitectureArrowTransform) {
+fn write_architecture_arrow_transform(
+    out: &mut impl SvgOutput,
+    transform: ArchitectureArrowTransform,
+) {
     match transform {
         ArchitectureArrowTransform::Translate { x, y } => {
             out.push_str("translate(");
@@ -170,7 +171,10 @@ fn write_architecture_arrow_transform(out: &mut String, transform: ArchitectureA
     }
 }
 
-fn write_architecture_arrow_polygon(out: &mut String, arrow: &ArchitectureArrowGeometry<'_>) {
+fn write_architecture_arrow_polygon(
+    out: &mut impl SvgOutput,
+    arrow: &ArchitectureArrowGeometry<'_>,
+) {
     out.push_str(r#"<polygon points=""#);
     out.push_str(arrow.points);
     out.push_str(r#"" transform=""#);
@@ -404,9 +408,9 @@ fn architecture_edge_label_plan(
     })
 }
 
-pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
-    ctx: &mut ArchitectureEdgeRenderContext<'_, M>,
-) {
+pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
+    ctx: &mut ArchitectureEdgeRenderContext<'_, M, O>,
+) -> crate::Result<()> {
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -622,6 +626,153 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
             }
 
             out.push_str("</g>");
+            out.checkpoint()?;
         }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{ArchitectureDiagramLayout, LayoutEdge, LayoutPoint};
+    use crate::text::DeterministicTextMeasurer;
+    use merman_core::diagrams::architecture::{
+        ArchitectureDiagramRenderModel, ArchitectureRenderEdge,
+    };
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAtFirstCheckpoint {
+        checkpoint_attempts: usize,
+        retained: String,
+    }
+
+    impl fmt::Write for RejectAtFirstCheckpoint {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl SvgOutput for RejectAtFirstCheckpoint {
+        fn push_str(&mut self, value: &str) {
+            self.retained.push_str(value);
+        }
+
+        fn push(&mut self, value: char) {
+            self.retained.push(value);
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            self.checkpoint_attempts += 1;
+            Err(crate::Error::InvalidModel {
+                message: "test SVG sink rejected the first Architecture edge".to_string(),
+            })
+        }
+    }
+
+    fn layout_edge(id: &str) -> LayoutEdge {
+        LayoutEdge {
+            id: id.to_string(),
+            from: "api".to_string(),
+            to: "db".to_string(),
+            from_cluster: None,
+            to_cluster: None,
+            points: vec![
+                LayoutPoint { x: 0.0, y: 0.0 },
+                LayoutPoint { x: 40.0, y: 0.0 },
+                LayoutPoint { x: 80.0, y: 0.0 },
+            ],
+            label: None,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        }
+    }
+
+    fn render_edge(title: &str) -> ArchitectureRenderEdge {
+        ArchitectureRenderEdge {
+            lhs_id: "api".to_string(),
+            lhs_dir: 'R',
+            lhs_into: None,
+            lhs_group: None,
+            rhs_id: "db".to_string(),
+            rhs_dir: 'L',
+            rhs_into: None,
+            rhs_group: None,
+            title: Some(title.to_string()),
+        }
+    }
+
+    #[test]
+    fn architecture_edges_stop_after_the_first_svg_sink_failure() {
+        let model = ArchitectureDiagramRenderModel {
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            nodes: Vec::new(),
+            groups: Vec::new(),
+            edges: vec![render_edge("first"), render_edge("second")],
+            layout_hints: Vec::new(),
+        };
+        let layout = ArchitectureDiagramLayout {
+            nodes: Vec::new(),
+            edges: vec![layout_edge("edge-0"), layout_edge("edge-1")],
+            cytoscape_service_bounds: Vec::new(),
+            fcose_compound_bounds: Vec::new(),
+            bounds: None,
+        };
+        let settings =
+            ArchitectureRenderSettings::from_config("architecture", &serde_json::json!({}));
+        let mut node_xy = rustc_hash::FxHashMap::default();
+        node_xy.insert("api", (0.0, 0.0));
+        node_xy.insert("db", (80.0, 0.0));
+        let junction_bounds = rustc_hash::FxHashMap::default();
+        let measurer = DeterministicTextMeasurer::default();
+        let mut content_bounds = None;
+        let mut out = RejectAtFirstCheckpoint::default();
+        let mut ctx = ArchitectureEdgeRenderContext {
+            out: &mut out,
+            diagram_id: "architecture",
+            layout: &layout,
+            model: &model,
+            node_xy: &node_xy,
+            settings: &settings,
+            text_measurer: &measurer,
+            content_bounds: &mut content_bounds,
+            junction_bounds: &junction_bounds,
+        };
+
+        let error = push_architecture_edges(&mut ctx)
+            .expect_err("the rejecting sink must stop Architecture edge emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(out.checkpoint_attempts, 1);
+        assert_eq!(
+            out.retained.matches(r#"class="edge""#).count(),
+            1,
+            "Architecture must not emit a second edge after the first sink failure"
+        );
+        assert!(out.retained.contains("first"));
+        assert!(!out.retained.contains("second"));
     }
 }

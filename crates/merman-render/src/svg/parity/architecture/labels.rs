@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
-use std::fmt::Write as _;
 
 use crate::architecture_metrics::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
 
-use super::super::{decode_mermaid_entities_for_render_text, escape_xml_into, fmt};
+use super::super::{SvgOutput, decode_mermaid_entities_for_render_text, escape_xml_into, fmt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SvgWordType {
@@ -367,7 +366,7 @@ pub(super) fn wrap_svg_words_to_lines(
     }
 }
 
-pub(super) fn write_svg_text_lines(out: &mut String, lines: &[SvgLine]) {
+pub(super) fn write_svg_text_lines(out: &mut impl SvgOutput, lines: &[SvgLine]) {
     out.push_str(r#"<text y="-10.1" style="">"#);
     if lines.is_empty() || (lines.len() == 1 && lines[0].is_empty()) {
         out.push_str(r#"<tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/>"#);
@@ -414,7 +413,7 @@ pub(super) fn write_svg_text_lines(out: &mut String, lines: &[SvgLine]) {
 }
 
 pub(super) fn write_architecture_service_title(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     title: &str,
     icon_size_px: f64,
     title_width_px: f64,

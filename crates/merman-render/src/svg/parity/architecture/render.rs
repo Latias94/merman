@@ -41,24 +41,6 @@ fn architecture_cached_service_child_bounds<'a>(
     Some(cached)
 }
 
-fn architecture_svg_output_capacity<M: ArchitectureModelAccess>(
-    model: &M,
-    css_len: usize,
-    a11y_len: usize,
-) -> usize {
-    let service_count = model.services().count();
-    let junction_count = model.junctions().count();
-    let group_count = model.groups_len();
-    let edge_count = model.edges_len();
-    1024usize
-        .saturating_add(css_len)
-        .saturating_add(a11y_len)
-        .saturating_add(service_count.saturating_mul(900))
-        .saturating_add(junction_count.saturating_mul(180))
-        .saturating_add(group_count.saturating_mul(700))
-        .saturating_add(edge_count.saturating_mul(650))
-}
-
 struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     layout: &'a ArchitectureDiagramLayout,
     model: &'a M,
@@ -285,13 +267,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         && model.groups_len() == 0
         && model.edges_len() == 0;
 
-    let mut out = String::with_capacity(architecture_svg_output_capacity(
-        model,
-        settings.css.len(),
-        a11y.nodes.len(),
-    ));
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_viewport =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id)
+            .with_resource_policy(options.resource_policy());
     let root_document = begin_architecture_document(
         &mut out,
         &root_viewport,
@@ -313,9 +292,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
         };
-        push_architecture_edges(&mut edge_render_ctx);
+        push_architecture_edges(&mut edge_render_ctx)?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     {
         let mut node_render_ctx = ArchitectureNodeRenderContext {
@@ -335,9 +315,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     }
 
     out.push_str("</svg>\n");
+    out.checkpoint()?;
 
-    let rooted_svg = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
-        out,
+    let root_document = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+        out: &mut out,
         root_viewport: &root_viewport,
         root_document,
         content_bounds,
@@ -348,6 +329,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         is_empty,
         trust_content_bounds: options.icon_registry().is_none(),
     })?;
+    let rooted_svg = root_document.complete(out.finish()?)?;
 
     drop(_g_render_svg);
 

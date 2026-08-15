@@ -10,6 +10,9 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::TextMetrics;
 use regex::Regex;
@@ -122,6 +125,29 @@ fn prepare_architecture_text_with_engine(
     family::prepare(parsed, &layout_options, session).expect("layout ok")
 }
 
+fn try_render_architecture_svg_with_resource_policy(
+    source: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Architecture resource-bound session");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Architecture resource-bound fixture")
+        .expect("detect Architecture resource-bound fixture");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-bounded".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok(rendered.svg().to_owned())
+}
+
 fn render_architecture_fixture(fixture_name: &str) -> String {
     render_architecture_fixture_with_options(
         fixture_name,
@@ -130,6 +156,52 @@ fn render_architecture_fixture(fixture_name: &str) -> String {
             ..Default::default()
         },
     )
+}
+
+#[test]
+fn architecture_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = r#"%%{init: {"architecture": {"numIter": 1, "randomize": false}}}%%
+architecture-beta
+  service api(server)[API]
+  service db(database)[Database]
+  api:R --> L:db
+"#;
+    let baseline = try_render_architecture_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Architecture baseline");
+    let exact_bytes = baseline.len();
+    assert!(
+        exact_bytes > 1,
+        "Architecture fixture must emit a non-empty SVG"
+    );
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Architecture SVG byte ceiling");
+    let exact = try_render_architecture_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact Architecture family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Architecture SVG byte ceiling");
+    let error = try_render_architecture_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the Architecture family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Architecture MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 #[test]
