@@ -252,7 +252,6 @@ fn write_stages(
             write_line(out, divider, None, "#000", Some(1.0), Some("5 5"))?;
             let insert_at = out.len() - 2;
             out.replace_range(insert_at..insert_at, r#" opacity="0.8""#)?;
-            out.checkpoint()?;
         }
         write_text(
             out,
@@ -385,7 +384,6 @@ fn write_links(
             );
         }
         out.replace_range(insert_at..insert_at, &marker_attrs)?;
-        out.checkpoint()?;
     }
     for link in &layout.links {
         if let Some(label) = &link.label {
@@ -423,7 +421,6 @@ fn write_trends(
         let insert_at = out.len() - 2;
         let marker_attr = format!(r#" marker-end="{}""#, escape_attr_display(&marker));
         out.replace_range(insert_at..insert_at, &marker_attr)?;
-        out.checkpoint()?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -785,4 +782,81 @@ pub(crate) fn render_wardley_diagram_svg_model(
     write_defs(&mut out, diagram_id, &theme)?;
     out.push_str("</svg>");
     root_document.complete(out.finish()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
+    use crate::text::DeterministicTextMeasurer;
+
+    fn render_wardley_with_policy(
+        policy: RenderResourcePolicy,
+    ) -> crate::Result<root_svg::RootedSvg> {
+        let model = WardleyDiagramRenderModel::default();
+        let effective_config = serde_json::json!({});
+        let layout = crate::wardley::layout_wardley_diagram_typed(
+            &model,
+            None,
+            &effective_config,
+            &DeterministicTextMeasurer::default(),
+        )?;
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("render session");
+        let request = SvgRenderOptions {
+            diagram_id: Some("wardley-bounded".to_string()),
+            ..Default::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::WARDLEY,
+        )
+        .expect("SVG execution");
+
+        render_wardley_diagram_svg_model(&layout, &model, &effective_config, None, &execution)
+    }
+
+    #[test]
+    fn wardley_svg_sink_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+        let baseline =
+            render_wardley_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+                .expect("render unbounded Wardley SVG");
+        let exact_bytes = baseline.len();
+        assert!(exact_bytes > 1);
+
+        let exact = render_wardley_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+                .expect("valid exact Wardley SVG ceiling"),
+        )
+        .expect("exact Wardley SVG sink ceiling must succeed");
+        assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+        let below_exact = exact_bytes - 1;
+        let error = render_wardley_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+                .expect("valid below-exact Wardley SVG ceiling"),
+        )
+        .expect_err("one byte below the Wardley SVG sink size must fail");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Wardley MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, below_exact);
+        assert!(limit.actual > limit.max);
+        assert!(limit.explicit_overrides.iter().any(|resource_override| {
+            resource_override.id == ResourceLimitId::MaxSvgBytes
+                && resource_override.value == below_exact
+        }));
+    }
 }

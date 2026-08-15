@@ -42,6 +42,31 @@ accelerator "Cloud Native" [0.20, 0.85]
 deaccelerator "Legacy Data" [0.45, 0.35]
 "#;
 
+fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("Wardley parse succeeds")
+        .expect("Wardley diagram is detected");
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("Wardley render session starts");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("Wardley family prepares");
+    assert_eq!(artifact.family_id(), DiagramFamilyId::WARDLEY);
+
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("Wardley SVG renders");
+    rendered.svg().to_owned()
+}
+
 fn try_render_wardley_with_resource_policy(
     source: &str,
     site_config: Value,
@@ -68,16 +93,6 @@ fn try_render_wardley_with_resource_policy(
         &SvgDebugOptions::default(),
     )?;
     Ok(rendered.svg().to_owned())
-}
-
-fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
-    try_render_wardley_with_resource_policy(
-        source,
-        site_config,
-        diagram_id,
-        RenderResourcePolicy::unbounded_for_trusted_input(),
-    )
-    .expect("Wardley SVG renders")
 }
 
 fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
