@@ -24,7 +24,7 @@ use merman_theme_fixtures::{
 
 use crate::observation::{
     C6CellReceipt, C6ExecutionReport, C6ObservedMechanismDisposition, C6ReceiptBook,
-    C6RenderGroupKey, C6RenderGroupReceipt, C6RenderLane, C6RuntimeError, C6TargetProof,
+    C6RenderGroupKey, C6RenderGroupReceipt, C6RuntimeError, C6TargetProof,
     RouteCutoverRuntimeError, seal_cell_from_evidence,
 };
 
@@ -378,7 +378,7 @@ fn run_catalog(
     let mut group_receipts = Vec::with_capacity(plan.groups.len());
     let mut cell_receipts = Vec::with_capacity(expected_keys.len());
     for group in plan.groups {
-        let completed = execute_render_group(theme_catalog, group)?;
+        let completed = execute_render_group(theme_catalog, acceptance, group)?;
         group_receipts.push(completed.receipt);
         cell_receipts.extend(completed.cells);
     }
@@ -386,15 +386,17 @@ fn run_catalog(
         .evaluate(acceptance, theme_catalog)
 }
 
-type C6RenderGroupExecutor =
-    fn(&ThemeFixtureCatalog, C6RenderGroupWork) -> Result<C6CompletedRenderGroup, C6RuntimeError>;
+type C6RenderGroupExecutor = fn(
+    &ThemeFixtureCatalog,
+    &C6AcceptanceCatalog,
+    C6RenderGroupWork,
+) -> Result<C6CompletedRenderGroup, C6RuntimeError>;
 
 #[derive(Clone, Copy, Debug)]
 struct C6RenderGroupAdapter {
     theme: C6ProofTheme,
     family: C6ProofFamily,
     source_fixture_id: &'static str,
-    lane: C6RenderLane,
     supported_targets: &'static [ExpectedOutputTarget],
     execute: C6RenderGroupExecutor,
 }
@@ -408,7 +410,6 @@ impl C6RenderGroupAdapter {
         self.theme == key.theme()
             && self.family == key.family()
             && self.source_fixture_id == key.source_fixture_id()
-            && self.lane == key.lane()
     }
 }
 
@@ -416,12 +417,9 @@ const BRUTALIST_STATE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
     theme: C6ProofTheme::Brutalist,
     family: C6ProofFamily::State,
     source_fixture_id: BRUTALIST_STATE_FIXTURE_ID,
-    lane: C6RenderLane::Native,
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,
-        ExpectedOutputTarget::Jpeg,
-        ExpectedOutputTarget::Pdf,
     ],
     execute: execute_brutalist_state_group,
 };
@@ -500,13 +498,15 @@ struct C6CompletedRenderGroup {
 
 fn execute_render_group(
     theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
     group: C6RenderGroupPlan,
 ) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
-    (group.adapter.execute)(theme_catalog, group.work)
+    (group.adapter.execute)(theme_catalog, acceptance, group.work)
 }
 
 fn execute_brutalist_state_group(
     theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
     group: C6RenderGroupWork,
 ) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
     let fixture = theme_catalog
@@ -526,19 +526,12 @@ fn execute_brutalist_state_group(
         &group.key,
         prove_brutalist_state_rendered_document(theme_catalog, input, &source),
     )?;
-    let mut png_dependents = group
+    let png_dependents = group
         .cells
         .iter()
         .map(|cell| cell.key().target())
-        .filter(|target| {
-            matches!(
-                target,
-                ExpectedOutputTarget::Png | ExpectedOutputTarget::Jpeg
-            )
-        })
+        .filter(|target| *target == ExpectedOutputTarget::Png)
         .collect::<Vec<_>>();
-    png_dependents.sort();
-    png_dependents.dedup();
     let png_support = (!png_dependents.is_empty())
         .then(|| {
             observe_brutalist_state_png(
@@ -551,35 +544,10 @@ fn execute_brutalist_state_group(
         })
         .transpose()?;
 
-    let jpeg_observation = group
-        .cells
-        .iter()
-        .any(|cell| cell.key().target() == ExpectedOutputTarget::Jpeg)
-        .then(|| {
-            observe_brutalist_state_jpeg(
-                &group.key,
-                &rendered.document,
-                &rendered.identity,
-                &png_support
-                    .as_ref()
-                    .ok_or_else(|| render_group_error(&group.key, "jpeg-png-control-plan"))?
-                    .1,
-            )
-        })
-        .transpose()?;
-    let pdf_observation = group
-        .cells
-        .iter()
-        .any(|cell| cell.key().target() == ExpectedOutputTarget::Pdf)
-        .then(|| observe_brutalist_state_pdf(&group.key, &rendered.document, &rendered.identity))
-        .transpose()?;
-
     prove_shared_document_identity(
         &group.key,
         rendered.document.standalone_svg_admission(),
         png_support.as_ref().map(|support| &support.0),
-        jpeg_observation.as_ref(),
-        pdf_observation.as_ref(),
     )?;
     let group_receipt = C6RenderGroupReceipt::seal(
         group.key.clone(),
@@ -590,13 +558,7 @@ fn execute_brutalist_state_group(
     let svg_observation = C6TargetObservation::from_target_receipt(
         rendered.identity.clone(),
         rendered.document.standalone_svg_admission(),
-        C6TargetProof::brutalist_state_standalone_svg(
-            rendered
-                .document
-                .standalone_svg_admission()
-                .artifact_digest(),
-            rendered.mechanisms.clone(),
-        ),
+        C6TargetProof::brutalist_state_standalone_svg(rendered.mechanisms.clone()),
     );
 
     let mut cells = Vec::with_capacity(group.cells.len());
@@ -608,21 +570,15 @@ fn execute_brutalist_state_group(
                 .ok_or_else(|| render_group_error(&group.key, "png-support-plan"))?
                 .0
                 .clone(),
-            ExpectedOutputTarget::Jpeg => jpeg_observation
-                .as_ref()
-                .ok_or_else(|| render_group_error(&group.key, "jpeg-support-plan"))?
-                .clone(),
-            ExpectedOutputTarget::Pdf => pdf_observation
-                .as_ref()
-                .ok_or_else(|| render_group_error(&group.key, "pdf-support-plan"))?
-                .clone(),
-            ExpectedOutputTarget::BrowserSvg => {
+            ExpectedOutputTarget::BrowserSvg
+            | ExpectedOutputTarget::Jpeg
+            | ExpectedOutputTarget::Pdf => {
                 return Err(C6RuntimeError::UnsupportedEnforcedCell {
                     key: enforced.key(),
                 });
             }
         };
-        cells.push(observation.seal(enforced, &group_receipt)?);
+        cells.push(observation.seal(acceptance, enforced, &group_receipt)?);
     }
 
     Ok(C6CompletedRenderGroup {
@@ -693,10 +649,19 @@ impl C6TargetObservation {
 
     fn seal(
         self,
+        acceptance: &C6AcceptanceCatalog,
         enforced: &C6EnforcedCell,
         group: &C6RenderGroupReceipt,
     ) -> Result<C6CellReceipt, C6RuntimeError> {
+        let expectation = acceptance
+            .cell(enforced.key())
+            .ok_or(C6RuntimeError::EvidenceMismatch {
+                key: enforced.key(),
+                field: "cell-expectation",
+            })?
+            .expectation();
         seal_cell_from_evidence(
+            expectation,
             enforced,
             group,
             self.identity,
@@ -711,12 +676,10 @@ fn prove_shared_document_identity(
     key: &C6RenderGroupKey,
     standalone: &TargetAdmissionReceipt,
     png: Option<&C6TargetObservation>,
-    jpeg: Option<&C6TargetObservation>,
-    pdf: Option<&C6TargetObservation>,
 ) -> Result<(), C6RuntimeError> {
     let standalone_resource = *standalone.resource_fingerprint().as_bytes();
     let standalone_fonts = *standalone.font_catalog_fingerprint().as_bytes();
-    let mismatched = [png, jpeg, pdf].into_iter().flatten().any(|observation| {
+    let mismatched = [png].into_iter().flatten().any(|observation| {
         let receipt = &observation.target_receipt;
         receipt.document_digest() != standalone.document_digest()
             || *receipt.resource_fingerprint().as_bytes() != standalone_resource
@@ -1084,9 +1047,7 @@ fn observe_brutalist_state_png(
         required_by,
         prove_brutalist_state_png_projection(contract, document),
     )?;
-    let target_proof = projection
-        .artifact_proof
-        .target_proof(projection.target_receipt.artifact_digest());
+    let target_proof = projection.artifact_proof.target_proof();
     Ok((
         C6TargetObservation::from_target_receipt(
             identity.clone(),
@@ -1094,53 +1055,6 @@ fn observe_brutalist_state_png(
             target_proof,
         ),
         projection.artifact_proof,
-    ))
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn observe_brutalist_state_jpeg(
-    key: &C6RenderGroupKey,
-    document: &RenderedDocument,
-    identity: &crate::observation::C6RenderIdentity,
-    png_proof: &PngArtifactProof,
-) -> Result<C6TargetObservation, C6RuntimeError> {
-    const REQUIRED_BY: [ExpectedOutputTarget; 1] = [ExpectedOutputTarget::Jpeg];
-    let projection = prove_target(
-        key,
-        ExpectedOutputTarget::Jpeg,
-        &REQUIRED_BY,
-        prove_brutalist_state_jpeg_projection(document, png_proof),
-    )?;
-    Ok(C6TargetObservation::from_target_receipt(
-        identity.clone(),
-        &projection.target_receipt,
-        C6TargetProof::brutalist_state_jpeg(
-            projection.target_receipt.artifact_digest(),
-            brutalist_state_applied_mechanisms(),
-        ),
-    ))
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn observe_brutalist_state_pdf(
-    key: &C6RenderGroupKey,
-    document: &RenderedDocument,
-    identity: &crate::observation::C6RenderIdentity,
-) -> Result<C6TargetObservation, C6RuntimeError> {
-    const REQUIRED_BY: [ExpectedOutputTarget; 1] = [ExpectedOutputTarget::Pdf];
-    let projection = prove_target(
-        key,
-        ExpectedOutputTarget::Pdf,
-        &REQUIRED_BY,
-        prove_brutalist_state_pdf_projection(document),
-    )?;
-    Ok(C6TargetObservation::from_target_receipt(
-        identity.clone(),
-        &projection.target_receipt,
-        C6TargetProof::brutalist_state_pdf(
-            projection.target_receipt.artifact_digest(),
-            brutalist_state_applied_mechanisms(),
-        ),
     ))
 }
 
@@ -1661,7 +1575,6 @@ fn required_positive_number_attribute(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_theme_fixtures::C6_ACCEPTANCE_RELATIVE_PATH;
     use serde_json::{Value, json};
     use sha2::{Digest, Sha256};
     use std::fs;
@@ -1703,40 +1616,13 @@ mod tests {
     }
 
     fn acceptance_value(theme_catalog: &ThemeFixtureCatalog) -> Value {
-        let json = fs::read_to_string(theme_catalog.root().join(C6_ACCEPTANCE_RELATIVE_PATH))
-            .expect("read C6 acceptance catalog");
+        let json = fs::read_to_string(
+            theme_catalog
+                .root()
+                .join(merman_theme_fixtures::C6_ACCEPTANCE_RELATIVE_PATH),
+        )
+        .expect("read C6 acceptance catalog");
         serde_json::from_str(&json).expect("parse C6 acceptance catalog")
-    }
-
-    fn retain_only_brutalist_state_target(value: &mut Value, selected: ExpectedOutputTarget) {
-        for cell in value["cells"].as_array_mut().expect("C6 cells") {
-            if cell["theme"] == "brutalist" && cell["family"] == "state" {
-                let target = match cell["target"].as_str().expect("target id") {
-                    "browser-svg" => ExpectedOutputTarget::BrowserSvg,
-                    "standalone-svg" => ExpectedOutputTarget::StandaloneSvg,
-                    "png" => ExpectedOutputTarget::Png,
-                    "jpeg" => ExpectedOutputTarget::Jpeg,
-                    "pdf" => ExpectedOutputTarget::Pdf,
-                    other => panic!("unexpected target {other}"),
-                };
-                cell["enforcement"] = if target == selected {
-                    json!({
-                        "kind": "enforced",
-                        "sourceFixtureId": BRUTALIST_STATE_FIXTURE_ID
-                    })
-                } else {
-                    json!({
-                        "kind": "deferred",
-                        "blocker": "runtime-runner-missing"
-                    })
-                };
-            } else if cell["enforcement"]["kind"] == "enforced" {
-                cell["enforcement"] = json!({
-                    "kind": "deferred",
-                    "blocker": "family-adapter-incomplete"
-                });
-            }
-        }
     }
 
     fn enforced_brutalist_state_native_key(acceptance: &C6AcceptanceCatalog) -> C6RenderGroupKey {
@@ -1806,13 +1692,11 @@ mod tests {
                 group.work.key.theme() == C6ProofTheme::Brutalist
                     && group.work.key.family() == C6ProofFamily::State
                     && group.work.key.source_fixture_id() == BRUTALIST_STATE_FIXTURE_ID
-                    && group.work.key.lane() == C6RenderLane::Native
             })
             .expect("registered Brutalist State native group");
         assert_eq!(group.adapter.theme, C6ProofTheme::Brutalist);
         assert_eq!(group.adapter.family, C6ProofFamily::State);
         assert_eq!(group.adapter.source_fixture_id, BRUTALIST_STATE_FIXTURE_ID);
-        assert_eq!(group.adapter.lane, C6RenderLane::Native);
         assert_eq!(
             group
                 .work
@@ -1823,8 +1707,6 @@ mod tests {
             BTreeSet::from([
                 ExpectedOutputTarget::StandaloneSvg,
                 ExpectedOutputTarget::Png,
-                ExpectedOutputTarget::Jpeg,
-                ExpectedOutputTarget::Pdf,
             ])
         );
         assert!(
@@ -1839,6 +1721,39 @@ mod tests {
                 .adapter
                 .supports_target(ExpectedOutputTarget::BrowserSvg)
         );
+    }
+
+    #[test]
+    fn runner_rejects_a_manifest_semantic_assertion_that_the_scenario_did_not_produce() {
+        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
+        let mut value = acceptance_value(&theme_catalog);
+        let cell = value["cells"]
+            .as_array_mut()
+            .expect("C6 cells")
+            .iter_mut()
+            .find(|cell| {
+                cell["theme"] == "brutalist" && cell["family"] == "state" && cell["target"] == "png"
+            })
+            .expect("Brutalist State PNG cell");
+        cell["expectation"]["semanticAssertionId"] = json!("brutalist-state-png-v2");
+        let acceptance = C6AcceptanceCatalog::from_json(
+            &serde_json::to_string(&value).expect("serialize mutated C6 acceptance catalog"),
+            &theme_catalog,
+        )
+        .expect("mutated semantic assertion remains structurally valid");
+
+        let error = run_catalog(&theme_catalog, &acceptance)
+            .expect_err("runner must bind the scenario assertion to the manifest");
+
+        assert!(matches!(
+            error,
+            C6RuntimeError::EvidenceMismatch {
+                key,
+                field: "semantic-assertion-id",
+            } if key.theme() == C6ProofTheme::Brutalist
+                && key.family() == C6ProofFamily::State
+                && key.target() == ExpectedOutputTarget::Png
+        ));
     }
 
     #[test]
@@ -1864,7 +1779,7 @@ mod tests {
         let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
         let acceptance = C6AcceptanceCatalog::load(&theme_catalog).expect("load C6 acceptance");
         let key = enforced_brutalist_state_native_key(&acceptance);
-        let required_by = [ExpectedOutputTarget::Jpeg];
+        let required_by = [ExpectedOutputTarget::Png];
 
         let error = prove_target::<()>(
             &key,
@@ -1872,7 +1787,7 @@ mod tests {
             &required_by,
             Err(C6ProofError::new(
                 "png-decode",
-                "failed to decode the JPEG control PNG",
+                "failed to decode the C6 PNG artifact",
             )),
         )
         .expect_err("invalid artifacts must fail with structured runtime evidence");
@@ -1886,8 +1801,8 @@ mod tests {
                 stage: "png-decode",
                 detail,
             } if group == key.label()
-                && required_by == [ExpectedOutputTarget::Jpeg]
-                && detail.contains("JPEG control PNG")
+                && required_by == [ExpectedOutputTarget::Png]
+                && detail.contains("C6 PNG artifact")
         ));
     }
 
@@ -2045,13 +1960,6 @@ mod tests {
                     ..BRUTALIST_STATE_ADAPTER
                 },
             ),
-            (
-                "lane",
-                C6RenderGroupAdapter {
-                    lane: C6RenderLane::Browser,
-                    ..BRUTALIST_STATE_ADAPTER
-                },
-            ),
         ];
 
         for (dimension, adapter) in mismatched_adapters {
@@ -2062,47 +1970,6 @@ mod tests {
                 "{dimension} mismatch must not select the adapter"
             );
         }
-    }
-
-    #[test]
-    fn enforced_browser_cell_without_registered_adapter_fails_closed() {
-        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
-        let mut value = acceptance_value(&theme_catalog);
-        retain_only_brutalist_state_target(&mut value, ExpectedOutputTarget::BrowserSvg);
-        let acceptance = C6AcceptanceCatalog::from_json(
-            &serde_json::to_string(&value).expect("serialize C6 acceptance catalog"),
-            &theme_catalog,
-        )
-        .expect("load browser-only C6 acceptance catalog");
-
-        let error = C6ExecutionPlan::from_catalog(&acceptance)
-            .expect_err("browser cell must not be silently omitted");
-
-        assert!(matches!(
-            error,
-            C6RuntimeError::UnsupportedEnforcedCell { key }
-                if key.theme() == C6ProofTheme::Brutalist
-                    && key.family() == C6ProofFamily::State
-                    && key.target() == ExpectedOutputTarget::BrowserSvg
-        ));
-    }
-
-    #[test]
-    fn jpeg_only_tranche_uses_an_internal_png_control_without_requiring_a_png_cell() {
-        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
-        let mut value = acceptance_value(&theme_catalog);
-        retain_only_brutalist_state_target(&mut value, ExpectedOutputTarget::Jpeg);
-        let acceptance = C6AcceptanceCatalog::from_json(
-            &serde_json::to_string(&value).expect("serialize C6 acceptance catalog"),
-            &theme_catalog,
-        )
-        .expect("load JPEG-only C6 acceptance catalog");
-
-        let report = run_catalog(&theme_catalog, &acceptance).expect("prove JPEG-only tranche");
-
-        assert_eq!(report.verified_cell_count(), 1);
-        assert_eq!(report.render_group_count(), 1);
-        assert_ne!(report.execution_digest(), &[0; 32]);
     }
 
     #[test]

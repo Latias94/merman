@@ -1,6 +1,5 @@
 use crate::acceptance::{
-    C6ArtifactAssertion, C6ExpectedFontSource, C6ExpectedMechanismDisposition, C6ProofFamily,
-    C6ProofTheme, C6ReadinessBlocker, C6RequiredAdmission,
+    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofTheme, C6ReadinessBlocker,
 };
 use crate::{ExpectedOutputTarget, ReferenceThemeMechanism};
 use serde::Deserialize;
@@ -29,9 +28,7 @@ pub(crate) struct C6CellExpectationWire {
     pub(crate) mechanism_requirements:
         BTreeMap<ReferenceThemeMechanism, C6ExpectedMechanismDisposition>,
     pub(crate) expected_residual_ids: BTreeSet<String>,
-    pub(crate) required_font_source: C6ExpectedFontSource,
-    pub(crate) required_admission: C6RequiredAdmission,
-    pub(crate) required_artifact_assertion: C6ArtifactAssertion,
+    pub(crate) semantic_assertion_id: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -52,7 +52,8 @@ representative Flowchart/State/Sequence by Standalone SVG/PNG positive-output le
 The current private cutover manifest contains 20 route-level authorization witnesses: six
 Flowchart, six Swimlane, four Sequence Actor, and four Sequence Note routes. These witnesses prove
 only that the named bridge projections may be retired; they do not increase C6a's 18-cell count.
-The active representative ledger remains C6a `2/18` (Standalone SVG and PNG for Brutalist State).
+The active `acceptance/c6-v3.json` representative ledger remains C6a `2/18` (Standalone SVG and
+PNG for Brutalist State).
 Four historical cross-target observations exist for the same render group, but C6b equal-depth
 certification is paused and has no active completion percentage. Browser SVG remains unstarted.
 

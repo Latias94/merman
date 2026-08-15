@@ -3,16 +3,22 @@ use crate::acceptance_wire::{
 };
 use crate::io::validate_id;
 use crate::{
-    CatalogError, EXPECTED_OUTPUT_TARGETS, ExpectedOutputTarget, ExpectedPortabilityGrade,
-    ReferenceDiagramFamily, ReferenceThemeMechanism, ThemeFixtureCatalog,
+    CatalogError, ExpectedOutputTarget, ExpectedPortabilityGrade, ReferenceDiagramFamily,
+    ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
-pub const C6_ACCEPTANCE_RELATIVE_PATH: &str = "acceptance/c6-v2.json";
-pub const C6_ACCEPTANCE_SCHEMA_VERSION: u32 = 2;
-pub const C6_ACCEPTANCE_CELL_COUNT: usize = 45;
+pub const C6_ACCEPTANCE_RELATIVE_PATH: &str = "acceptance/c6-v3.json";
+pub const C6_ACCEPTANCE_SCHEMA_VERSION: u32 = 3;
+pub const C6_ACCEPTANCE_CELL_COUNT: usize = 18;
+
+pub const C6_NATIVE_OUTPUT_TARGETS: [ExpectedOutputTarget; 2] = [
+    ExpectedOutputTarget::StandaloneSvg,
+    ExpectedOutputTarget::Png,
+];
 
 pub const C6_PROOF_THEMES: [C6ProofTheme; 3] = [
     C6ProofTheme::Brutalist,
@@ -79,49 +85,10 @@ pub enum C6ExpectedMechanismDisposition {
     NotApplicable,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "kebab-case")]
-pub enum C6ExpectedFontSource {
-    Embedded,
-    None,
-    System,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum C6RequiredAdmission {
-    HostDependent,
-    Portable,
-    Rejected,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum C6ArtifactAssertion {
-    BrowserSvgDom,
-    JpegImage,
-    PdfDocument,
-    PngImage,
-    StandaloneSvgDocument,
-}
-
-impl C6ArtifactAssertion {
-    const fn target(self) -> ExpectedOutputTarget {
-        match self {
-            Self::BrowserSvgDom => ExpectedOutputTarget::BrowserSvg,
-            Self::JpegImage => ExpectedOutputTarget::Jpeg,
-            Self::PdfDocument => ExpectedOutputTarget::Pdf,
-            Self::PngImage => ExpectedOutputTarget::Png,
-            Self::StandaloneSvgDocument => ExpectedOutputTarget::StandaloneSvg,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum C6ReadinessBlocker {
     FamilyAdapterIncomplete,
-    RuntimeRunnerMissing,
     ThemeSliceIncomplete,
 }
 
@@ -171,9 +138,7 @@ impl C6CellKey {
 pub struct C6CellExpectation {
     mechanism_requirements: BTreeMap<ReferenceThemeMechanism, C6ExpectedMechanismDisposition>,
     expected_residual_ids: BTreeSet<String>,
-    required_font_source: C6ExpectedFontSource,
-    required_admission: C6RequiredAdmission,
-    required_artifact_assertion: C6ArtifactAssertion,
+    semantic_assertion_id: String,
 }
 
 impl C6CellExpectation {
@@ -187,16 +152,8 @@ impl C6CellExpectation {
         &self.expected_residual_ids
     }
 
-    pub const fn required_font_source(&self) -> C6ExpectedFontSource {
-        self.required_font_source
-    }
-
-    pub const fn required_admission(&self) -> C6RequiredAdmission {
-        self.required_admission
-    }
-
-    pub const fn required_artifact_assertion(&self) -> C6ArtifactAssertion {
-        self.required_artifact_assertion
+    pub fn semantic_assertion_id(&self) -> &str {
+        &self.semantic_assertion_id
     }
 }
 
@@ -277,6 +234,8 @@ impl C6EnforcedTranche {
 
 #[derive(Clone, Debug)]
 pub struct C6AcceptanceCatalog {
+    schema_version: u32,
+    manifest_digest: [u8; 32],
     specification: C6AcceptanceSpec,
     enforced_tranche: C6EnforcedTranche,
 }
@@ -311,6 +270,7 @@ impl C6AcceptanceCatalog {
         let mut enforced_cells = Vec::new();
         let mut deferred = BTreeMap::new();
         let mut cell_index = BTreeMap::new();
+        let mut semantic_assertion_ids = BTreeSet::new();
 
         for wire_cell in wire.cells {
             let key = C6CellKey::new(wire_cell.theme, wire_cell.family, wire_cell.target);
@@ -319,6 +279,9 @@ impl C6AcceptanceCatalog {
             }
 
             let expectation = convert_expectation(key, wire_cell.expectation)?;
+            if !semantic_assertion_ids.insert(expectation.semantic_assertion_id.clone()) {
+                return invalid_cell(key, "semantic assertion id is duplicated");
+            }
             cell_index.insert(key, specification_cells.len());
             specification_cells.push(C6AcceptanceCell { key, expectation });
             match wire_cell.enforcement {
@@ -352,20 +315,27 @@ impl C6AcceptanceCatalog {
             });
         }
 
+        let specification = C6AcceptanceSpec {
+            cells: specification_cells,
+            cell_index: cell_index.clone(),
+        };
+        let enforced_tranche = C6EnforcedTranche {
+            cell_index: enforced_cells
+                .iter()
+                .enumerate()
+                .map(|(index, cell)| (cell.key, index))
+                .collect(),
+            cells: enforced_cells,
+            deferred,
+        };
+        let manifest_digest =
+            canonical_manifest_digest(wire.schema_version, &specification, &enforced_tranche);
+
         Ok(Self {
-            specification: C6AcceptanceSpec {
-                cells: specification_cells,
-                cell_index: cell_index.clone(),
-            },
-            enforced_tranche: C6EnforcedTranche {
-                cell_index: enforced_cells
-                    .iter()
-                    .enumerate()
-                    .map(|(index, cell)| (cell.key, index))
-                    .collect(),
-                cells: enforced_cells,
-                deferred,
-            },
+            schema_version: wire.schema_version,
+            manifest_digest,
+            specification,
+            enforced_tranche,
         })
     }
 
@@ -381,6 +351,14 @@ impl C6AcceptanceCatalog {
 
     pub const fn specification(&self) -> &C6AcceptanceSpec {
         &self.specification
+    }
+
+    pub const fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
+    pub const fn manifest_digest(&self) -> &[u8; 32] {
+        &self.manifest_digest
     }
 
     pub const fn enforced_tranche(&self) -> &C6EnforcedTranche {
@@ -401,7 +379,7 @@ fn expected_cell_keys() -> BTreeSet<C6CellKey> {
         .into_iter()
         .flat_map(|theme| {
             C6_PROOF_FAMILIES.into_iter().flat_map(move |family| {
-                EXPECTED_OUTPUT_TARGETS
+                C6_NATIVE_OUTPUT_TARGETS
                     .into_iter()
                     .map(move |target| C6CellKey::new(theme, family, target))
             })
@@ -417,16 +395,12 @@ fn convert_expectation(
         key,
         &wire.mechanism_requirements,
         &wire.expected_residual_ids,
-        wire.required_font_source,
-        wire.required_admission,
-        wire.required_artifact_assertion,
+        &wire.semantic_assertion_id,
     )?;
     Ok(C6CellExpectation {
         mechanism_requirements: wire.mechanism_requirements,
         expected_residual_ids: wire.expected_residual_ids,
-        required_font_source: wire.required_font_source,
-        required_admission: wire.required_admission,
-        required_artifact_assertion: wire.required_artifact_assertion,
+        semantic_assertion_id: wire.semantic_assertion_id,
     })
 }
 
@@ -434,9 +408,7 @@ fn validate_expectation_shape(
     key: C6CellKey,
     mechanism_requirements: &BTreeMap<ReferenceThemeMechanism, C6ExpectedMechanismDisposition>,
     expected_residual_ids: &BTreeSet<String>,
-    required_font_source: C6ExpectedFontSource,
-    required_admission: C6RequiredAdmission,
-    required_artifact_assertion: C6ArtifactAssertion,
+    semantic_assertion_id: &str,
 ) -> Result<(), CatalogError> {
     if mechanism_requirements.is_empty() {
         return invalid_cell(key, "a C6 expectation requires at least one mechanism");
@@ -446,8 +418,8 @@ fn validate_expectation_shape(
             return invalid_cell(key, error.to_string());
         }
     }
-    if required_artifact_assertion.target() != key.target {
-        return invalid_cell(key, "artifact assertion does not match the output target");
+    if let Err(error) = validate_id(semantic_assertion_id) {
+        return invalid_cell(key, error.to_string());
     }
 
     let has_residual_mechanism = mechanism_requirements
@@ -460,46 +432,19 @@ fn validate_expectation_shape(
         );
     }
 
-    match required_admission {
-        C6RequiredAdmission::Portable => {
-            if !expected_residual_ids.is_empty()
-                || mechanism_requirements.values().any(|disposition| {
-                    matches!(
-                        disposition,
-                        C6ExpectedMechanismDisposition::MustRemainResidual
-                            | C6ExpectedMechanismDisposition::MustReject
-                    )
-                })
-            {
-                return invalid_cell(
-                    key,
-                    "portable admission cannot require residual or rejected mechanisms",
-                );
-            }
-            if required_font_source != C6ExpectedFontSource::Embedded {
-                return invalid_cell(key, "portable admission requires an embedded font source");
-            }
-        }
-        C6RequiredAdmission::HostDependent => {
-            if required_font_source == C6ExpectedFontSource::None {
-                return invalid_cell(
-                    key,
-                    "host-dependent admission requires a concrete font source",
-                );
-            }
-        }
-        C6RequiredAdmission::Rejected => {
-            if required_font_source != C6ExpectedFontSource::None
-                || !mechanism_requirements
-                    .values()
-                    .any(|disposition| *disposition == C6ExpectedMechanismDisposition::MustReject)
-            {
-                return invalid_cell(
-                    key,
-                    "rejected admission requires no font source and at least one rejected mechanism",
-                );
-            }
-        }
+    if !expected_residual_ids.is_empty()
+        || mechanism_requirements.values().any(|disposition| {
+            matches!(
+                disposition,
+                C6ExpectedMechanismDisposition::MustRemainResidual
+                    | C6ExpectedMechanismDisposition::MustReject
+            )
+        })
+    {
+        return invalid_cell(
+            key,
+            "the native C6a ledger accepts only portable, residual-free cells",
+        );
     }
     Ok(())
 }
@@ -523,10 +468,10 @@ fn validate_expectation_against_source(
         .keys()
         .copied()
         .collect::<BTreeSet<_>>();
-    if actual_mechanisms != *theme.source_mechanisms() {
+    if !actual_mechanisms.is_subset(theme.source_mechanisms()) {
         return invalid_cell(
             key,
-            "mechanism requirements do not exactly cover the reference theme",
+            "mechanism requirements include a mechanism absent from the reference theme",
         );
     }
 
@@ -536,6 +481,12 @@ fn validate_expectation_against_source(
             key: key.label(),
             reason: "reference theme lacks the requested target".to_string(),
         })?;
+    if target.grade() != ExpectedPortabilityGrade::Portable {
+        return invalid_cell(
+            key,
+            "the native C6a ledger requires a portable reference target contract",
+        );
+    }
     let reference_residual_ids = target
         .residuals()
         .iter()
@@ -548,13 +499,6 @@ fn validate_expectation_against_source(
         );
     }
 
-    let required_admission = required_admission_for_source_grade(target.grade());
-    if expectation.required_admission != required_admission {
-        return invalid_cell(
-            key,
-            "required admission contradicts the reference target portability contract",
-        );
-    }
     Ok(())
 }
 
@@ -620,15 +564,103 @@ fn validate_enforced_source_fixture(
     Ok(())
 }
 
-const fn required_admission_for_source_grade(
-    grade: ExpectedPortabilityGrade,
-) -> C6RequiredAdmission {
-    match grade {
-        ExpectedPortabilityGrade::Portable => C6RequiredAdmission::Portable,
-        ExpectedPortabilityGrade::HostDependent => C6RequiredAdmission::HostDependent,
-        ExpectedPortabilityGrade::SvgOnly | ExpectedPortabilityGrade::Unverified => {
-            C6RequiredAdmission::Rejected
+fn canonical_manifest_digest(
+    schema_version: u32,
+    specification: &C6AcceptanceSpec,
+    enforced_tranche: &C6EnforcedTranche,
+) -> [u8; 32] {
+    let mut value = b"merman.c6a-acceptance-manifest.v3\0".to_vec();
+    value.extend_from_slice(&schema_version.to_be_bytes());
+    value.extend_from_slice(&(specification.cells.len() as u64).to_be_bytes());
+
+    for key in specification.cell_index.keys().copied() {
+        append_cell_key(&mut value, key);
+        let expectation = specification
+            .cell(key)
+            .expect("indexed C6 acceptance cell")
+            .expectation();
+        value.extend_from_slice(&(expectation.mechanism_requirements.len() as u64).to_be_bytes());
+        for (mechanism, disposition) in &expectation.mechanism_requirements {
+            append_len_prefixed(&mut value, mechanism_id(*mechanism).as_bytes());
+            append_len_prefixed(&mut value, disposition_id(*disposition).as_bytes());
         }
+        value.extend_from_slice(&(expectation.expected_residual_ids.len() as u64).to_be_bytes());
+        for residual_id in &expectation.expected_residual_ids {
+            append_len_prefixed(&mut value, residual_id.as_bytes());
+        }
+        append_len_prefixed(&mut value, expectation.semantic_assertion_id.as_bytes());
+
+        if let Some(enforced) = enforced_tranche.cell(key) {
+            append_len_prefixed(&mut value, b"enforced");
+            append_len_prefixed(&mut value, enforced.source_fixture_id().as_bytes());
+        } else if let Some(blocker) = enforced_tranche.readiness_blocker(key) {
+            append_len_prefixed(&mut value, b"deferred");
+            append_len_prefixed(&mut value, readiness_blocker_id(blocker).as_bytes());
+        } else {
+            unreachable!("validated C6 acceptance cell lacks enforcement state");
+        }
+    }
+
+    Sha256::digest(value).into()
+}
+
+fn append_cell_key(value: &mut Vec<u8>, key: C6CellKey) {
+    append_len_prefixed(value, key.theme().reference_name().as_bytes());
+    append_len_prefixed(value, key.family().as_str().as_bytes());
+    append_len_prefixed(value, target_id(key.target()).as_bytes());
+}
+
+fn append_len_prefixed(value: &mut Vec<u8>, bytes: &[u8]) {
+    value.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
+    value.extend_from_slice(bytes);
+}
+
+fn target_id(target: ExpectedOutputTarget) -> &'static str {
+    match target {
+        ExpectedOutputTarget::BrowserSvg => "browser-svg",
+        ExpectedOutputTarget::Jpeg => "jpeg",
+        ExpectedOutputTarget::Pdf => "pdf",
+        ExpectedOutputTarget::Png => "png",
+        ExpectedOutputTarget::StandaloneSvg => "standalone-svg",
+    }
+}
+
+fn disposition_id(disposition: C6ExpectedMechanismDisposition) -> &'static str {
+    match disposition {
+        C6ExpectedMechanismDisposition::MustApply => "must-apply",
+        C6ExpectedMechanismDisposition::MustRemainResidual => "must-remain-residual",
+        C6ExpectedMechanismDisposition::MustReject => "must-reject",
+        C6ExpectedMechanismDisposition::NotApplicable => "not-applicable",
+    }
+}
+
+fn readiness_blocker_id(blocker: C6ReadinessBlocker) -> &'static str {
+    match blocker {
+        C6ReadinessBlocker::FamilyAdapterIncomplete => "family-adapter-incomplete",
+        C6ReadinessBlocker::ThemeSliceIncomplete => "theme-slice-incomplete",
+    }
+}
+
+fn mechanism_id(mechanism: ReferenceThemeMechanism) -> &'static str {
+    match mechanism {
+        ReferenceThemeMechanism::BackdropFilter => "backdrop-filter",
+        ReferenceThemeMechanism::CanvasBlend => "canvas-blend",
+        ReferenceThemeMechanism::CanvasGradient => "canvas-gradient",
+        ReferenceThemeMechanism::CanvasLayering => "canvas-layering",
+        ReferenceThemeMechanism::CanvasPattern => "canvas-pattern",
+        ReferenceThemeMechanism::CanvasSolid => "canvas-solid",
+        ReferenceThemeMechanism::CssFilter => "css-filter",
+        ReferenceThemeMechanism::CssLetterSpacing => "css-letter-spacing",
+        ReferenceThemeMechanism::CssTextTransform => "css-text-transform",
+        ReferenceThemeMechanism::DashArray => "dash-array",
+        ReferenceThemeMechanism::ExternalSvgFilterReference => "external-svg-filter-reference",
+        ReferenceThemeMechanism::FontStack => "font-stack",
+        ReferenceThemeMechanism::HasSelector => "has-selector",
+        ReferenceThemeMechanism::NotSelector => "not-selector",
+        ReferenceThemeMechanism::NthChildSelector => "nth-child-selector",
+        ReferenceThemeMechanism::RoundedCorners => "rounded-corners",
+        ReferenceThemeMechanism::StrokeStyling => "stroke-styling",
+        ReferenceThemeMechanism::ThemeVariables => "theme-variables",
     }
 }
 
@@ -642,26 +674,6 @@ fn invalid_cell<T>(key: C6CellKey, reason: impl Into<String>) -> Result<T, Catal
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn source_grade_mapping_is_total_and_fail_closed() {
-        assert_eq!(
-            required_admission_for_source_grade(ExpectedPortabilityGrade::Portable),
-            C6RequiredAdmission::Portable
-        );
-        assert_eq!(
-            required_admission_for_source_grade(ExpectedPortabilityGrade::HostDependent),
-            C6RequiredAdmission::HostDependent
-        );
-        assert_eq!(
-            required_admission_for_source_grade(ExpectedPortabilityGrade::SvgOnly),
-            C6RequiredAdmission::Rejected
-        );
-        assert_eq!(
-            required_admission_for_source_grade(ExpectedPortabilityGrade::Unverified),
-            C6RequiredAdmission::Rejected
-        );
-    }
 
     #[test]
     fn proof_family_mapping_is_total() {

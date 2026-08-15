@@ -24,11 +24,8 @@ pub(crate) struct PngArtifactProof {
 }
 
 impl PngArtifactProof {
-    pub(crate) fn target_proof(&self, artifact_digest: [u8; 32]) -> super::C6TargetProof {
-        super::C6TargetProof::brutalist_state_png(
-            artifact_digest,
-            super::brutalist_state_applied_mechanisms(),
-        )
+    pub(crate) fn target_proof(&self) -> super::C6TargetProof {
+        super::C6TargetProof::brutalist_state_png(super::brutalist_state_applied_mechanisms())
     }
 }
 

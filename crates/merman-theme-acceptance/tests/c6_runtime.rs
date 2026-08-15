@@ -18,5 +18,6 @@ fn enforced_c6_cells_are_proved_by_runtime_artifacts() {
         acceptance.enforced_tranche().cells().len()
     );
     assert!(report.render_group_count() > 0);
+    assert_eq!(report.manifest_digest(), acceptance.manifest_digest());
     assert_ne!(report.execution_digest(), &[0; 32]);
 }

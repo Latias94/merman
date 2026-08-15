@@ -1,12 +1,11 @@
 use merman_theme_fixtures::{
-    C6_ACCEPTANCE_CELL_COUNT, C6_ACCEPTANCE_RELATIVE_PATH, C6_PROOF_FAMILIES, C6_PROOF_THEMES,
-    C6AcceptanceCatalog, C6ArtifactAssertion, C6CellKey, C6ExpectedFontSource,
-    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofTheme, C6ReadinessBlocker,
-    C6RequiredAdmission, CatalogError, EXPECTED_OUTPUT_TARGETS, ExpectedOutputTarget,
-    ThemeFixtureCatalog,
+    C6_ACCEPTANCE_CELL_COUNT, C6_ACCEPTANCE_RELATIVE_PATH, C6_ACCEPTANCE_SCHEMA_VERSION,
+    C6_NATIVE_OUTPUT_TARGETS, C6_PROOF_FAMILIES, C6_PROOF_THEMES, C6AcceptanceCatalog, C6CellKey,
+    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofTheme, C6ReadinessBlocker, CatalogError,
+    ExpectedOutputTarget, ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -50,8 +49,77 @@ fn cell_mut<'a>(value: &'a mut Value, theme: &str, family: &str, target: &str) -
         .expect("requested acceptance cell")
 }
 
+fn expected_mechanisms(
+    theme: C6ProofTheme,
+    family: C6ProofFamily,
+) -> BTreeSet<ReferenceThemeMechanism> {
+    use ReferenceThemeMechanism as Mechanism;
+
+    let mechanisms: &[Mechanism] = match (theme, family) {
+        (C6ProofTheme::Brutalist, C6ProofFamily::Flowchart) => &[
+            Mechanism::NthChildSelector,
+            Mechanism::RoundedCorners,
+            Mechanism::StrokeStyling,
+        ],
+        (C6ProofTheme::Brutalist, C6ProofFamily::State) => &[
+            Mechanism::CanvasSolid,
+            Mechanism::CssFilter,
+            Mechanism::FontStack,
+            Mechanism::NthChildSelector,
+            Mechanism::RoundedCorners,
+            Mechanism::StrokeStyling,
+            Mechanism::ThemeVariables,
+        ],
+        (C6ProofTheme::Brutalist, C6ProofFamily::Sequence) => {
+            &[Mechanism::StrokeStyling, Mechanism::ThemeVariables]
+        }
+        (C6ProofTheme::Spotless, C6ProofFamily::Flowchart) => &[
+            Mechanism::CanvasGradient,
+            Mechanism::CanvasPattern,
+            Mechanism::DashArray,
+            Mechanism::FontStack,
+            Mechanism::RoundedCorners,
+            Mechanism::StrokeStyling,
+        ],
+        (C6ProofTheme::Spotless, C6ProofFamily::State) => &[
+            Mechanism::CanvasLayering,
+            Mechanism::CanvasSolid,
+            Mechanism::CssLetterSpacing,
+            Mechanism::CssTextTransform,
+            Mechanism::FontStack,
+            Mechanism::ThemeVariables,
+        ],
+        (C6ProofTheme::Spotless, C6ProofFamily::Sequence) => &[
+            Mechanism::FontStack,
+            Mechanism::StrokeStyling,
+            Mechanism::ThemeVariables,
+        ],
+        (C6ProofTheme::Cyberpunk, C6ProofFamily::Flowchart) => &[
+            Mechanism::CanvasBlend,
+            Mechanism::CanvasGradient,
+            Mechanism::CanvasLayering,
+            Mechanism::CanvasPattern,
+            Mechanism::StrokeStyling,
+        ],
+        (C6ProofTheme::Cyberpunk, C6ProofFamily::State) => &[
+            Mechanism::CssFilter,
+            Mechanism::FontStack,
+            Mechanism::RoundedCorners,
+            Mechanism::StrokeStyling,
+            Mechanism::ThemeVariables,
+        ],
+        (C6ProofTheme::Cyberpunk, C6ProofFamily::Sequence) => &[
+            Mechanism::CanvasSolid,
+            Mechanism::FontStack,
+            Mechanism::StrokeStyling,
+            Mechanism::ThemeVariables,
+        ],
+    };
+    mechanisms.iter().copied().collect()
+}
+
 #[test]
-fn committed_catalog_separates_complete_spec_from_current_tranche() {
+fn committed_catalog_is_the_exact_native_c6a_ledger() {
     let source_catalog = source_catalog();
     let catalog = C6AcceptanceCatalog::load(&source_catalog)
         .expect("load and validate C6 acceptance catalog");
@@ -59,7 +127,7 @@ fn committed_catalog_separates_complete_spec_from_current_tranche() {
         .into_iter()
         .flat_map(|theme| {
             C6_PROOF_FAMILIES.into_iter().flat_map(move |family| {
-                EXPECTED_OUTPUT_TARGETS
+                C6_NATIVE_OUTPUT_TARGETS
                     .into_iter()
                     .map(move |target| C6CellKey::new(theme, family, target))
             })
@@ -71,126 +139,81 @@ fn committed_catalog_separates_complete_spec_from_current_tranche() {
         .map(|cell| cell.key())
         .collect::<BTreeSet<_>>();
 
+    assert_eq!(C6_ACCEPTANCE_RELATIVE_PATH, "acceptance/c6-v3.json");
+    assert_eq!(catalog.schema_version(), C6_ACCEPTANCE_SCHEMA_VERSION);
+    assert_eq!(C6_ACCEPTANCE_SCHEMA_VERSION, 3);
     assert_eq!(
         catalog.specification().cells().len(),
         C6_ACCEPTANCE_CELL_COUNT
     );
-    assert_eq!(catalog.enforced_tranche().cells().len(), 4);
+    assert_eq!(C6_ACCEPTANCE_CELL_COUNT, 18);
+    assert_eq!(catalog.enforced_tranche().cells().len(), 2);
+    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 16);
     assert_eq!(actual_keys, expected_keys);
+    assert_ne!(catalog.manifest_digest(), &[0; 32]);
 
+    let mut semantic_assertion_ids = BTreeSet::new();
     for cell in catalog.specification().cells() {
         let expectation = cell.expectation();
-        assert!(!expectation.mechanism_requirements().is_empty());
+        assert_eq!(
+            expectation
+                .mechanism_requirements()
+                .keys()
+                .copied()
+                .collect::<BTreeSet<_>>(),
+            expected_mechanisms(cell.key().theme(), cell.key().family())
+        );
         assert!(expectation.expected_residual_ids().is_empty());
-        assert_eq!(
-            expectation.required_font_source(),
-            C6ExpectedFontSource::Embedded
-        );
-        assert_eq!(
-            expectation.required_admission(),
-            C6RequiredAdmission::Portable
-        );
         assert!(
             expectation
                 .mechanism_requirements()
                 .values()
                 .all(|disposition| { *disposition == C6ExpectedMechanismDisposition::MustApply })
         );
+        assert!(semantic_assertion_ids.insert(expectation.semantic_assertion_id()));
     }
 
-    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 41);
-
-    for theme in C6_PROOF_THEMES {
-        for target in EXPECTED_OUTPUT_TARGETS {
-            let sequence = catalog
-                .specification()
-                .cell(C6CellKey::new(theme, C6ProofFamily::Sequence, target))
-                .expect("Sequence final expectation");
-            assert!(!sequence.expectation().mechanism_requirements().is_empty());
-            let expected_blocker = if theme == C6ProofTheme::Brutalist {
-                C6ReadinessBlocker::FamilyAdapterIncomplete
-            } else {
-                C6ReadinessBlocker::ThemeSliceIncomplete
-            };
-            assert_eq!(
-                catalog.enforced_tranche().readiness_blocker(sequence.key()),
-                Some(expected_blocker)
-            );
-        }
-    }
-
-    for target in EXPECTED_OUTPUT_TARGETS {
+    for target in C6_NATIVE_OUTPUT_TARGETS {
         let key = C6CellKey::new(C6ProofTheme::Brutalist, C6ProofFamily::State, target);
-        if target == ExpectedOutputTarget::BrowserSvg {
-            assert_eq!(
-                catalog.enforced_tranche().readiness_blocker(key),
-                Some(C6ReadinessBlocker::RuntimeRunnerMissing)
-            );
-        } else {
-            assert_eq!(
-                catalog
-                    .enforced_tranche()
-                    .cell(key)
-                    .map(|cell| cell.source_fixture_id()),
-                Some("fixture-c6-brutalist-state")
-            );
+        assert_eq!(
+            catalog
+                .enforced_tranche()
+                .cell(key)
+                .map(|cell| cell.source_fixture_id()),
+            Some("fixture-c6-brutalist-state")
+        );
+    }
+    for theme in C6_PROOF_THEMES {
+        for family in C6_PROOF_FAMILIES {
+            if theme == C6ProofTheme::Brutalist && family == C6ProofFamily::State {
+                continue;
+            }
+            for target in C6_NATIVE_OUTPUT_TARGETS {
+                let key = C6CellKey::new(theme, family, target);
+                let expected = if theme == C6ProofTheme::Brutalist {
+                    C6ReadinessBlocker::FamilyAdapterIncomplete
+                } else {
+                    C6ReadinessBlocker::ThemeSliceIncomplete
+                };
+                assert_eq!(
+                    catalog.enforced_tranche().readiness_blocker(key),
+                    Some(expected)
+                );
+            }
         }
     }
-
-    let browser = catalog
-        .specification()
-        .cell(C6CellKey::new(
-            C6ProofTheme::Brutalist,
-            C6ProofFamily::State,
-            ExpectedOutputTarget::BrowserSvg,
-        ))
-        .expect("Browser SVG expectation");
-    let standalone = catalog
-        .specification()
-        .cell(C6CellKey::new(
-            C6ProofTheme::Brutalist,
-            C6ProofFamily::State,
-            ExpectedOutputTarget::StandaloneSvg,
-        ))
-        .expect("standalone SVG expectation");
-    assert_eq!(
-        browser.expectation().required_artifact_assertion(),
-        C6ArtifactAssertion::BrowserSvgDom
-    );
-    assert_eq!(
-        standalone.expectation().required_artifact_assertion(),
-        C6ArtifactAssertion::StandaloneSvgDocument
-    );
 }
 
 #[test]
-fn parser_accepts_a_valid_tranche_expansion_without_target_whitelists() {
+fn schema_and_exact_cell_set_fail_closed() {
     let source_catalog = source_catalog();
-    let mut value = committed_acceptance_value();
-    cell_mut(&mut value, "brutalist", "state", "browser-svg")["enforcement"] = json!({
-        "kind": "enforced",
-        "sourceFixtureId": "fixture-c6-brutalist-state"
-    });
 
-    let catalog = parse_value(&value, &source_catalog).expect("expanded tranche is data-driven");
-    let key = C6CellKey::new(
-        C6ProofTheme::Brutalist,
-        C6ProofFamily::State,
-        ExpectedOutputTarget::BrowserSvg,
-    );
-    assert_eq!(
-        catalog
-            .enforced_tranche()
-            .cell(key)
-            .map(|cell| cell.source_fixture_id()),
-        Some("fixture-c6-brutalist-state")
-    );
-    assert_eq!(catalog.enforced_tranche().cells().len(), 5);
-}
-
-#[test]
-fn duplicate_and_missing_cells_fail_closed() {
-    let source_catalog = source_catalog();
+    let mut old_schema = committed_acceptance_value();
+    old_schema["schemaVersion"] = json!(2);
+    assert!(matches!(
+        parse_value(&old_schema, &source_catalog),
+        Err(CatalogError::UnsupportedC6AcceptanceSchemaVersion(2))
+    ));
 
     let mut duplicate = committed_acceptance_value();
     let duplicate_cell = duplicate["cells"][0].clone();
@@ -209,10 +232,79 @@ fn duplicate_and_missing_cells_fail_closed() {
         parse_value(&missing, &source_catalog),
         Err(CatalogError::C6AcceptanceCellSetMismatch { .. })
     ));
+
+    let mut browser = committed_acceptance_value();
+    browser["cells"][0]["target"] = json!("browser-svg");
+    assert!(matches!(
+        parse_value(&browser, &source_catalog),
+        Err(CatalogError::C6AcceptanceCellSetMismatch { .. })
+    ));
 }
 
 #[test]
-fn unknown_closed_values_fail_during_wire_parsing() {
+fn mechanism_subsets_are_allowed_but_empty_or_foreign_mechanisms_are_rejected() {
+    let source_catalog = source_catalog();
+    parse_value(&committed_acceptance_value(), &source_catalog)
+        .expect("family-scoped mechanism subsets are valid");
+
+    let mut empty = committed_acceptance_value();
+    cell_mut(&mut empty, "brutalist", "flowchart", "standalone-svg")["expectation"]["mechanismRequirements"] =
+        json!({});
+    assert!(matches!(
+        parse_value(&empty, &source_catalog),
+        Err(CatalogError::InvalidC6AcceptanceCell { .. })
+    ));
+
+    let mut foreign = committed_acceptance_value();
+    cell_mut(&mut foreign, "brutalist", "flowchart", "standalone-svg")["expectation"]["mechanismRequirements"]
+        ["canvas-blend"] = json!("must-apply");
+    match parse_value(&foreign, &source_catalog) {
+        Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {
+            assert!(reason.contains("absent from the reference theme"));
+        }
+        other => panic!("foreign mechanism was accepted: {other:?}"),
+    }
+}
+
+#[test]
+fn semantic_assertion_ids_are_closed_unique_manifest_identity() {
+    let source_catalog = source_catalog();
+    let original = parse_value(&committed_acceptance_value(), &source_catalog)
+        .expect("parse committed catalog");
+
+    let mut reordered = committed_acceptance_value();
+    reordered["cells"]
+        .as_array_mut()
+        .expect("cells array")
+        .reverse();
+    let reordered = parse_value(&reordered, &source_catalog).expect("parse reordered catalog");
+    assert_eq!(original.manifest_digest(), reordered.manifest_digest());
+
+    let mut changed = committed_acceptance_value();
+    cell_mut(&mut changed, "brutalist", "state", "png")["expectation"]["semanticAssertionId"] =
+        json!("brutalist-state-png-v2");
+    let changed = parse_value(&changed, &source_catalog).expect("parse changed semantic contract");
+    assert_ne!(original.manifest_digest(), changed.manifest_digest());
+
+    let mut duplicate = committed_acceptance_value();
+    cell_mut(&mut duplicate, "brutalist", "state", "png")["expectation"]["semanticAssertionId"] =
+        json!("brutalist-state-standalone-svg-v1");
+    assert!(matches!(
+        parse_value(&duplicate, &source_catalog),
+        Err(CatalogError::InvalidC6AcceptanceCell { .. })
+    ));
+
+    let mut invalid = committed_acceptance_value();
+    cell_mut(&mut invalid, "brutalist", "state", "png")["expectation"]["semanticAssertionId"] =
+        json!("Brutalist State PNG");
+    assert!(matches!(
+        parse_value(&invalid, &source_catalog),
+        Err(CatalogError::InvalidC6AcceptanceCell { .. })
+    ));
+}
+
+#[test]
+fn unknown_and_runtime_observation_fields_fail_during_wire_parsing() {
     let source_catalog = source_catalog();
 
     for (field, unknown) in [
@@ -222,80 +314,66 @@ fn unknown_closed_values_fail_during_wire_parsing() {
     ] {
         let mut value = committed_acceptance_value();
         value["cells"][0][field] = json!(unknown);
-        assert!(
-            matches!(
-                parse_value(&value, &source_catalog),
-                Err(CatalogError::InvalidC6AcceptanceJson(_))
-            ),
-            "{field} accepted an unknown closed value"
-        );
+        assert!(matches!(
+            parse_value(&value, &source_catalog),
+            Err(CatalogError::InvalidC6AcceptanceJson(_))
+        ));
     }
-}
-
-#[test]
-fn committed_catalog_rejects_runtime_observation_fields() {
-    let source_catalog = source_catalog();
 
     for field in ["status", "verified", "observed", "outcome"] {
-        let mut expectation = committed_acceptance_value();
-        expectation["cells"][0]["expectation"][field] = json!("must-not-be-committed");
+        let mut value = committed_acceptance_value();
+        value["cells"][0]["expectation"][field] = json!("must-not-be-committed");
         assert!(matches!(
-            parse_value(&expectation, &source_catalog),
+            parse_value(&value, &source_catalog),
             Err(CatalogError::InvalidC6AcceptanceJson(_))
         ));
 
-        let mut enforcement = committed_acceptance_value();
-        enforcement["cells"][0]["enforcement"][field] = json!("must-not-be-committed");
+        let mut value = committed_acceptance_value();
+        value["cells"][0]["enforcement"][field] = json!("must-not-be-committed");
         assert!(matches!(
-            parse_value(&enforcement, &source_catalog),
+            parse_value(&value, &source_catalog),
             Err(CatalogError::InvalidC6AcceptanceJson(_))
         ));
 
-        let mut root = committed_acceptance_value();
-        root[field] = json!("must-not-be-committed");
+        let mut value = committed_acceptance_value();
+        value[field] = json!("must-not-be-committed");
         assert!(matches!(
-            parse_value(&root, &source_catalog),
+            parse_value(&value, &source_catalog),
             Err(CatalogError::InvalidC6AcceptanceJson(_))
         ));
     }
+
+    for field in [
+        "requiredAdmission",
+        "requiredFontSource",
+        "requiredArtifactAssertion",
+    ] {
+        let mut value = committed_acceptance_value();
+        value["cells"][0]["expectation"][field] = json!("removed-v2-field");
+        assert!(matches!(
+            parse_value(&value, &source_catalog),
+            Err(CatalogError::InvalidC6AcceptanceJson(_))
+        ));
+    }
+
+    let mut removed_blocker = committed_acceptance_value();
+    removed_blocker["cells"][0]["enforcement"]["blocker"] = json!("runtime-runner-missing");
+    assert!(matches!(
+        parse_value(&removed_blocker, &source_catalog),
+        Err(CatalogError::InvalidC6AcceptanceJson(_))
+    ));
 }
 
 #[test]
-fn expectation_and_enforcement_invariants_fail_closed() {
+fn enforcement_and_portable_expectation_invariants_fail_closed() {
     let source_catalog = source_catalog();
 
-    let mut aliased_svg_target = committed_acceptance_value();
-    cell_mut(&mut aliased_svg_target, "brutalist", "state", "browser-svg")["expectation"]["requiredArtifactAssertion"] =
-        json!("standalone-svg-document");
+    let mut residual = committed_acceptance_value();
+    let expectation = &mut cell_mut(&mut residual, "brutalist", "state", "png")["expectation"];
+    expectation["mechanismRequirements"]["css-filter"] = json!("must-remain-residual");
+    expectation["expectedResidualIds"] = json!(["residual-filter"]);
     assert!(matches!(
-        parse_value(&aliased_svg_target, &source_catalog),
-        Err(CatalogError::InvalidC6AcceptanceCell { .. })
-    ));
-
-    let mut system_font_portable = committed_acceptance_value();
-    cell_mut(
-        &mut system_font_portable,
-        "brutalist",
-        "state",
-        "browser-svg",
-    )["expectation"]["requiredFontSource"] = json!("system");
-    assert!(matches!(
-        parse_value(&system_font_portable, &source_catalog),
-        Err(CatalogError::InvalidC6AcceptanceCell { .. })
-    ));
-
-    let mut incomplete_mechanisms = committed_acceptance_value();
-    cell_mut(
-        &mut incomplete_mechanisms,
-        "cyberpunk",
-        "sequence",
-        "pdf",
-    )["expectation"]["mechanismRequirements"]
-        .as_object_mut()
-        .expect("mechanism map")
-        .remove("canvas-blend");
-    assert!(matches!(
-        parse_value(&incomplete_mechanisms, &source_catalog),
+        parse_value(&residual, &source_catalog),
         Err(CatalogError::InvalidC6AcceptanceCell { .. })
     ));
 
@@ -309,43 +387,21 @@ fn expectation_and_enforcement_invariants_fail_closed() {
         Err(CatalogError::InvalidC6AcceptanceCell { .. })
     ));
 
-    let mut sequence_with_wrong_family = committed_acceptance_value();
-    cell_mut(
-        &mut sequence_with_wrong_family,
-        "brutalist",
-        "sequence",
-        "standalone-svg",
-    )["enforcement"] = json!({
+    let mut wrong_family = committed_acceptance_value();
+    cell_mut(&mut wrong_family, "brutalist", "sequence", "standalone-svg")["enforcement"] = json!({
         "kind": "enforced",
         "sourceFixtureId": "fixture-token-baseline"
     });
-    match parse_value(&sequence_with_wrong_family, &source_catalog) {
+    match parse_value(&wrong_family, &source_catalog) {
         Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {
             assert!(reason.contains("does not match the proof family"));
         }
-        other => panic!("Sequence enforcement accepted a Flowchart fixture: {other:?}"),
+        other => panic!("wrong-family fixture was accepted: {other:?}"),
     }
 
-    let mut fixture_from_another_theme = committed_acceptance_value();
+    let mut incomplete_input = committed_acceptance_value();
     cell_mut(
-        &mut fixture_from_another_theme,
-        "brutalist",
-        "state",
-        "browser-svg",
-    )["enforcement"] = json!({
-        "kind": "enforced",
-        "sourceFixtureId": "fixture-semantic-style-capabilities"
-    });
-    match parse_value(&fixture_from_another_theme, &source_catalog) {
-        Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {
-            assert!(reason.contains("does not belong to reference theme `brutalist`"));
-        }
-        other => panic!("Brutalist enforcement accepted another theme's fixture: {other:?}"),
-    }
-
-    let mut incomplete_theme_input = committed_acceptance_value();
-    cell_mut(
-        &mut incomplete_theme_input,
+        &mut incomplete_input,
         "brutalist",
         "flowchart",
         "standalone-svg",
@@ -353,14 +409,53 @@ fn expectation_and_enforcement_invariants_fail_closed() {
         "kind": "enforced",
         "sourceFixtureId": "fixture-token-baseline"
     });
-    match parse_value(&incomplete_theme_input, &source_catalog) {
+    match parse_value(&incomplete_input, &source_catalog) {
         Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {
-            assert!(
-                reason.contains(
-                    "typed theme input mechanisms do not exactly match the reference theme"
-                )
-            );
+            assert!(reason.contains("do not exactly match the reference theme"));
         }
-        other => panic!("C6 enforcement accepted an incomplete theme input: {other:?}"),
+        other => panic!("incomplete theme input was accepted: {other:?}"),
     }
+}
+
+#[test]
+fn mechanism_requirements_remain_target_specific_data() {
+    let source_catalog = source_catalog();
+    let mut value = committed_acceptance_value();
+    cell_mut(&mut value, "brutalist", "state", "png")["expectation"]["mechanismRequirements"] = json!({
+        "stroke-styling": "must-apply",
+        "theme-variables": "must-apply"
+    });
+
+    let catalog = parse_value(&value, &source_catalog).expect("target-local subset remains valid");
+    let svg = catalog
+        .cell(C6CellKey::new(
+            C6ProofTheme::Brutalist,
+            C6ProofFamily::State,
+            ExpectedOutputTarget::StandaloneSvg,
+        ))
+        .expect("SVG cell");
+    let png = catalog
+        .cell(C6CellKey::new(
+            C6ProofTheme::Brutalist,
+            C6ProofFamily::State,
+            ExpectedOutputTarget::Png,
+        ))
+        .expect("PNG cell");
+    assert_ne!(
+        svg.expectation().mechanism_requirements(),
+        png.expectation().mechanism_requirements()
+    );
+    assert_eq!(
+        png.expectation().mechanism_requirements(),
+        &BTreeMap::from([
+            (
+                ReferenceThemeMechanism::StrokeStyling,
+                C6ExpectedMechanismDisposition::MustApply,
+            ),
+            (
+                ReferenceThemeMechanism::ThemeVariables,
+                C6ExpectedMechanismDisposition::MustApply,
+            ),
+        ])
+    );
 }
