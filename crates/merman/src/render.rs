@@ -441,6 +441,7 @@ impl DocumentPortabilityReport {
 ///     document_digest: [0; 32],
 ///     target_evidence_digest: [0; 32],
 ///     artifact_digest: [0; 32],
+///     receipt_digest: [0; 32],
 /// };
 /// ```
 #[cfg(feature = "svg")]
@@ -455,10 +456,49 @@ pub struct TargetAdmissionReceipt {
     document_digest: [u8; 32],
     target_evidence_digest: [u8; 32],
     artifact_digest: [u8; 32],
+    receipt_digest: [u8; 32],
 }
 
 #[cfg(feature = "svg")]
 impl TargetAdmissionReceipt {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn seal(
+        artifact_kind: RenderArtifactKind,
+        status: TargetAdmissionStatus,
+        reasons: Vec<TargetAdmissionReason>,
+        font_source: TargetFontSource,
+        resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
+        font_catalog_fingerprint: merman_render::diagram_theme::FontCatalogFingerprint,
+        document_digest: [u8; 32],
+        target_evidence_digest: [u8; 32],
+        artifact_digest: [u8; 32],
+    ) -> Self {
+        let reasons = reasons.into_boxed_slice();
+        let receipt_digest = target_admission_receipt_digest(
+            artifact_kind,
+            status,
+            &reasons,
+            font_source,
+            resource_fingerprint.as_bytes(),
+            font_catalog_fingerprint.as_bytes(),
+            document_digest,
+            target_evidence_digest,
+            artifact_digest,
+        );
+        Self {
+            artifact_kind,
+            status,
+            reasons,
+            font_source,
+            resource_fingerprint,
+            font_catalog_fingerprint,
+            document_digest,
+            target_evidence_digest,
+            artifact_digest,
+            receipt_digest,
+        }
+    }
+
     pub const fn artifact_kind(&self) -> RenderArtifactKind {
         self.artifact_kind
     }
@@ -499,6 +539,15 @@ impl TargetAdmissionReceipt {
 
     pub const fn artifact_digest(&self) -> [u8; 32] {
         self.artifact_digest
+    }
+
+    /// Returns the revision-scoped canonical digest of this sealed target receipt.
+    ///
+    /// The digest binds artifact kind, status, ordered reasons, font source, resource and font
+    /// catalog fingerprints, document identity, target evidence, and artifact identity. Its
+    /// encoding remains experimental and may change between Merman API revisions.
+    pub const fn receipt_digest(&self) -> [u8; 32] {
+        self.receipt_digest
     }
 }
 
@@ -1746,6 +1795,33 @@ fn update_target_admission_digest(
 }
 
 #[cfg(feature = "svg")]
+#[allow(clippy::too_many_arguments)]
+fn target_admission_receipt_digest(
+    artifact_kind: RenderArtifactKind,
+    status: TargetAdmissionStatus,
+    reasons: &[TargetAdmissionReason],
+    font_source: TargetFontSource,
+    resource_fingerprint: &[u8; 32],
+    font_catalog_fingerprint: &[u8; 32],
+    document_digest: [u8; 32],
+    target_evidence_digest: [u8; 32],
+    artifact_digest: [u8; 32],
+) -> [u8; 32] {
+    render_digest(
+        b"merman-target-admission-receipt-experimental-v1",
+        |hasher| {
+            update_target_admission_digest(hasher, artifact_kind, status, reasons);
+            update_digest_field(hasher, font_source.id().as_bytes());
+            update_digest_field(hasher, resource_fingerprint);
+            update_digest_field(hasher, font_catalog_fingerprint);
+            update_digest_field(hasher, &document_digest);
+            update_digest_field(hasher, &target_evidence_digest);
+            update_digest_field(hasher, &artifact_digest);
+        },
+    )
+}
+
+#[cfg(feature = "svg")]
 fn standalone_target_evidence_digest(
     svg: &merman_render::svg::ResvgCompatibleSvg,
     evidence: &RenderEvidence,
@@ -2051,17 +2127,17 @@ fn standalone_svg_admission(
     let font_source = prepared_text_font_source(evidence);
     let target_evidence_digest =
         standalone_target_evidence_digest(svg, evidence, status, &reasons, font_source);
-    TargetAdmissionReceipt {
-        artifact_kind: RenderArtifactKind::Svg,
+    TargetAdmissionReceipt::seal(
+        RenderArtifactKind::Svg,
         status,
-        reasons: reasons.into_boxed_slice(),
+        reasons,
         font_source,
-        resource_fingerprint: svg.resource_fingerprint(),
-        font_catalog_fingerprint: evidence.font_catalog_fingerprint(),
+        svg.resource_fingerprint(),
+        evidence.font_catalog_fingerprint(),
         document_digest,
         target_evidence_digest,
         artifact_digest,
-    }
+    )
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2144,17 +2220,17 @@ fn native_raster_admission(
         status,
         &reasons,
     );
-    TargetAdmissionReceipt {
+    TargetAdmissionReceipt::seal(
         artifact_kind,
         status,
-        reasons: reasons.into_boxed_slice(),
-        font_source: export_font_source(report.fonts()),
-        resource_fingerprint: report.resource_fingerprint(),
-        font_catalog_fingerprint: report.fonts().catalog_fingerprint(),
+        reasons,
+        export_font_source(report.fonts()),
+        report.resource_fingerprint(),
+        report.fonts().catalog_fingerprint(),
         document_digest,
         target_evidence_digest,
-        artifact_digest: artifact_digest(bytes),
-    }
+        artifact_digest(bytes),
+    )
 }
 
 #[cfg(feature = "pdf")]
@@ -2192,17 +2268,17 @@ fn native_pdf_admission(
     let status = classify_target_admission(rejected, host_dependent);
     let target_evidence_digest =
         pdf_target_evidence_digest(report, expected_native_filter, status, &reasons);
-    TargetAdmissionReceipt {
-        artifact_kind: RenderArtifactKind::Pdf,
+    TargetAdmissionReceipt::seal(
+        RenderArtifactKind::Pdf,
         status,
-        reasons: reasons.into_boxed_slice(),
-        font_source: export_font_source(report.fonts()),
-        resource_fingerprint: report.resource_fingerprint(),
-        font_catalog_fingerprint: report.fonts().catalog_fingerprint(),
+        reasons,
+        export_font_source(report.fonts()),
+        report.resource_fingerprint(),
+        report.fonts().catalog_fingerprint(),
         document_digest,
         target_evidence_digest,
-        artifact_digest: artifact_digest(bytes),
-    }
+        artifact_digest(bytes),
+    )
 }
 
 #[cfg(feature = "svg")]
@@ -2840,10 +2916,11 @@ fn render_pdf_target(
 #[cfg(all(test, feature = "svg"))]
 mod tests {
     use super::{
-        RenderError, RenderOutput, RenderRequest, Renderer, ResourceLimitCause,
-        TargetAdmissionReason, TargetFontSource, ThemeEvidenceScopeProjection, ThemeEvidenceStatus,
-        ThemeEvidenceSummary, render_digest, standalone_target_evidence_digest,
-        summarize_theme_evidence, update_digest_field, update_digest_sequence,
+        RenderArtifactKind, RenderError, RenderOutput, RenderRequest, Renderer, ResourceLimitCause,
+        TargetAdmissionReason, TargetAdmissionStatus, TargetFontSource,
+        ThemeEvidenceScopeProjection, ThemeEvidenceStatus, ThemeEvidenceSummary, render_digest,
+        standalone_target_evidence_digest, summarize_theme_evidence,
+        target_admission_receipt_digest, update_digest_field, update_digest_sequence,
     };
     use merman_core::OperationControl;
 
@@ -2970,6 +3047,126 @@ mod tests {
             digest(TargetFontSource::None),
             digest(TargetFontSource::Embedded)
         );
+        assert_eq!(
+            receipt.receipt_digest(),
+            target_admission_receipt_digest(
+                receipt.artifact_kind(),
+                receipt.status(),
+                receipt.reasons(),
+                receipt.font_source(),
+                receipt.resource_fingerprint().as_bytes(),
+                receipt.font_catalog_fingerprint().as_bytes(),
+                receipt.document_digest(),
+                receipt.target_evidence_digest(),
+                receipt.artifact_digest(),
+            )
+        );
+    }
+
+    #[test]
+    fn target_admission_receipt_digest_binds_every_canonical_field() {
+        #[derive(Clone)]
+        struct DigestInputs {
+            artifact_kind: RenderArtifactKind,
+            status: TargetAdmissionStatus,
+            reasons: Vec<TargetAdmissionReason>,
+            font_source: TargetFontSource,
+            resource_fingerprint: [u8; 32],
+            font_catalog_fingerprint: [u8; 32],
+            document_digest: [u8; 32],
+            target_evidence_digest: [u8; 32],
+            artifact_digest: [u8; 32],
+        }
+
+        impl DigestInputs {
+            fn digest(&self) -> [u8; 32] {
+                target_admission_receipt_digest(
+                    self.artifact_kind,
+                    self.status,
+                    &self.reasons,
+                    self.font_source,
+                    &self.resource_fingerprint,
+                    &self.font_catalog_fingerprint,
+                    self.document_digest,
+                    self.target_evidence_digest,
+                    self.artifact_digest,
+                )
+            }
+        }
+
+        fn assert_field_is_bound(
+            baseline: &DigestInputs,
+            baseline_digest: [u8; 32],
+            field: &str,
+            mutate: impl FnOnce(&mut DigestInputs),
+        ) {
+            let mut changed = baseline.clone();
+            mutate(&mut changed);
+            assert_ne!(
+                baseline_digest,
+                changed.digest(),
+                "receipt digest must bind {field}"
+            );
+        }
+
+        let baseline = DigestInputs {
+            artifact_kind: RenderArtifactKind::Svg,
+            status: TargetAdmissionStatus::Portable,
+            reasons: vec![
+                TargetAdmissionReason::ThemeEvidenceIncomplete,
+                TargetAdmissionReason::PreparedTextLayoutFailed,
+            ],
+            font_source: TargetFontSource::None,
+            resource_fingerprint: [1; 32],
+            font_catalog_fingerprint: [2; 32],
+            document_digest: [3; 32],
+            target_evidence_digest: [4; 32],
+            artifact_digest: [5; 32],
+        };
+        let baseline_digest = baseline.digest();
+
+        assert_field_is_bound(&baseline, baseline_digest, "artifact kind", |inputs| {
+            inputs.artifact_kind = RenderArtifactKind::Png;
+        });
+        assert_field_is_bound(&baseline, baseline_digest, "status", |inputs| {
+            inputs.status = TargetAdmissionStatus::HostDependent;
+        });
+        assert_field_is_bound(&baseline, baseline_digest, "ordered reasons", |inputs| {
+            inputs.reasons.reverse();
+        });
+        assert_field_is_bound(&baseline, baseline_digest, "font source", |inputs| {
+            inputs.font_source = TargetFontSource::Embedded;
+        });
+        assert_field_is_bound(
+            &baseline,
+            baseline_digest,
+            "resource fingerprint",
+            |inputs| {
+                inputs.resource_fingerprint[0] ^= 1;
+            },
+        );
+        assert_field_is_bound(
+            &baseline,
+            baseline_digest,
+            "font catalog fingerprint",
+            |inputs| {
+                inputs.font_catalog_fingerprint[0] ^= 1;
+            },
+        );
+        assert_field_is_bound(&baseline, baseline_digest, "document digest", |inputs| {
+            inputs.document_digest[0] ^= 1;
+        });
+        assert_field_is_bound(
+            &baseline,
+            baseline_digest,
+            "target evidence digest",
+            |inputs| {
+                inputs.target_evidence_digest[0] ^= 1;
+            },
+        );
+        assert_field_is_bound(&baseline, baseline_digest, "artifact digest", |inputs| {
+            inputs.artifact_digest[0] ^= 1;
+        });
     }
 
     #[test]

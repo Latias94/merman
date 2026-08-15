@@ -493,6 +493,10 @@ fn rendered_document_digests_are_deterministic_for_one_operation_identity() {
         second.standalone_svg_admission().target_evidence_digest()
     );
     assert_eq!(
+        first.standalone_svg_admission().receipt_digest(),
+        second.standalone_svg_admission().receipt_digest()
+    );
+    assert_eq!(
         first.standalone_svg_admission().artifact_digest(),
         second.standalone_svg_admission().artifact_digest()
     );
@@ -842,6 +846,26 @@ fn one_rendered_document_projects_all_native_targets_with_atomic_receipts() {
             merman::TargetAdmissionStatus::Rejected,
             "a successfully projected built-in target must not silently reject its own artifact"
         );
+    }
+
+    let receipts = [
+        document.standalone_svg_admission(),
+        png.admission(),
+        jpeg.admission(),
+        pdf.admission(),
+    ];
+    for receipt in &receipts {
+        assert_eq!(receipt.document_digest(), document.document_digest());
+        assert_ne!(receipt.receipt_digest(), [0; 32]);
+    }
+    for (index, receipt) in receipts.iter().enumerate() {
+        for other in &receipts[index + 1..] {
+            assert_ne!(
+                receipt.receipt_digest(),
+                other.receipt_digest(),
+                "one document's target receipts must retain distinct canonical identities"
+            );
+        }
     }
 }
 
