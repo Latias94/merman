@@ -2,6 +2,97 @@
 
 use super::*;
 
+#[inline]
+fn starts_with_ascii_case_insensitive(input: &str, prefix: &[u8]) -> bool {
+    input
+        .as_bytes()
+        .get(..prefix.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+}
+
+#[inline]
+fn find_ascii_case_insensitive(input: &str, needle: &[u8]) -> Option<usize> {
+    debug_assert!(!needle.is_empty());
+    input
+        .as_bytes()
+        .windows(needle.len())
+        .position(|candidate| candidate.eq_ignore_ascii_case(needle))
+}
+
+fn extract_flowchart_img_src(tag: &str) -> Option<&str> {
+    let idx = find_ascii_case_insensitive(tag, b"src=")?;
+    let rest = tag.get(idx + 4..)?.trim_start();
+    let quote = *rest.as_bytes().first()?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+
+    let value = rest.get(1..)?;
+    let end = value
+        .as_bytes()
+        .iter()
+        .position(|candidate| *candidate == quote)
+        .unwrap_or(value.len());
+    let value = value.get(..end)?.trim();
+    (!value.is_empty()).then_some(value)
+}
+
+fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
+    // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
+    // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
+    if find_ascii_case_insensitive(input, b"<img").is_none() {
+        return input.to_string();
+    }
+
+    let style = if fixed_width {
+        "display: flex; flex-direction: column; min-width: 80px; max-width: 80px;"
+    } else {
+        "display: flex; flex-direction: column; width: 100%;"
+    };
+
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'<' && starts_with_ascii_case_insensitive(&input[i..], b"<img") {
+            let rest = &input[i..];
+            let Some(rel_end) = rest.find('>') else {
+                out.push_str(rest);
+                break;
+            };
+            let tag = &rest[..=rel_end];
+            let src = extract_flowchart_img_src(tag);
+            out.push_str("<img");
+            if let Some(src) = src {
+                let _ = write!(out, r#" src="{}""#, escape_attr(src));
+            }
+            out.push_str(r#" style=""#);
+            out.push_str(style);
+            out.push('"');
+            out.push('>');
+            i += rel_end + 1;
+            continue;
+        }
+        let Some(ch) = input[i..].chars().next() else {
+            break;
+        };
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn is_single_img_label(label: &str) -> bool {
+    let label = crate::flowchart::flowchart_trim_html_collapsible_whitespace(label);
+    if !starts_with_ascii_case_insensitive(label, b"<img") {
+        return false;
+    }
+    let Some(end) = label.find('>') else {
+        return false;
+    };
+    crate::flowchart::flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
+}
+
 pub(in crate::svg::parity) fn flowchart_label_html(
     label: &str,
     label_type: &str,
@@ -19,88 +110,6 @@ fn flowchart_label_html_impl(
 ) -> String {
     if crate::flowchart::flowchart_label_text_is_empty_for_mode(label, true) {
         return String::new();
-    }
-
-    fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
-        // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
-        // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
-        if !input.to_ascii_lowercase().contains("<img") {
-            return input.to_string();
-        }
-
-        let style = if fixed_width {
-            "display: flex; flex-direction: column; min-width: 80px; max-width: 80px;"
-        } else {
-            "display: flex; flex-direction: column; width: 100%;"
-        };
-
-        fn extract_img_src(tag: &str) -> Option<String> {
-            let lower = tag.to_ascii_lowercase();
-            let idx = lower.find("src=")?;
-            let rest = &tag[idx + 4..];
-            let rest = rest.trim_start();
-            let quote = rest.chars().next()?;
-            if quote != '"' && quote != '\'' {
-                return None;
-            }
-            let mut val = String::new();
-            let mut it = rest.chars();
-            let _ = it.next(); // consume quote
-            for ch in it {
-                if ch == quote {
-                    break;
-                }
-                val.push(ch);
-            }
-            let val = val.trim().to_string();
-            if val.is_empty() { None } else { Some(val) }
-        }
-
-        let mut out = String::with_capacity(input.len());
-        let bytes = input.as_bytes();
-        let mut i = 0usize;
-        while i < bytes.len() {
-            if bytes[i] == b'<' && i + 3 < bytes.len() {
-                let rest = &input[i..];
-                let rest_lower = rest.to_ascii_lowercase();
-                if rest_lower.starts_with("<img") {
-                    let Some(rel_end) = rest.find('>') else {
-                        out.push_str(rest);
-                        break;
-                    };
-                    let tag = &rest[..=rel_end];
-                    let src = extract_img_src(tag);
-                    out.push_str("<img");
-                    if let Some(src) = src {
-                        let _ = write!(out, r#" src="{}""#, escape_attr(&src));
-                    }
-                    out.push_str(r#" style=""#);
-                    out.push_str(style);
-                    out.push('"');
-                    out.push('>');
-                    i += rel_end + 1;
-                    continue;
-                }
-            }
-            let Some(ch) = input[i..].chars().next() else {
-                break;
-            };
-            out.push(ch);
-            i += ch.len_utf8();
-        }
-        out
-    }
-
-    fn is_single_img_label(label: &str) -> bool {
-        let t = crate::flowchart::flowchart_trim_html_collapsible_whitespace(label);
-        let lower = t.to_ascii_lowercase();
-        if !lower.starts_with("<img") {
-            return false;
-        }
-        let Some(end) = t.find('>') else {
-            return false;
-        };
-        crate::flowchart::flowchart_trim_html_collapsible_whitespace(&t[end + 1..]).is_empty()
     }
 
     fn trim_markdown_trailing_newlines(
@@ -545,9 +554,43 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
 #[cfg(test)]
 mod tests {
     use super::{
-        flowchart_label_html_impl, wrap_flowchart_svg_source_word_lines,
-        write_flowchart_svg_source_word_lines,
+        flowchart_label_html_impl, is_single_img_label, normalize_flowchart_img_tags,
+        wrap_flowchart_svg_source_word_lines, write_flowchart_svg_source_word_lines,
     };
+
+    #[test]
+    fn flowchart_img_normalization_matches_ascii_case_without_touching_non_img_tags() {
+        assert_eq!(
+            normalize_flowchart_img_tags(r#"<IMG SRC='diagram.svg'>"#, true),
+            concat!(
+                r#"<img src="diagram.svg" style="display: flex; flex-direction: column; "#,
+                r#"min-width: 80px; max-width: 80px;">"#,
+            ),
+        );
+        assert!(is_single_img_label(" \n<IMG SRC='diagram.svg'>\t"));
+        assert!(!is_single_img_label("<IMG SRC='diagram.svg'><br>"));
+
+        let without_img = r#"<br><im src='x'><div data-kind='IMG'>body</div>"#;
+        assert_eq!(
+            normalize_flowchart_img_tags(without_img, false),
+            without_img,
+        );
+    }
+
+    #[test]
+    fn flowchart_img_normalization_scans_many_prior_tags_once() {
+        const BREAK_COUNT: usize = 8_192;
+
+        let mut input = "<br>".repeat(BREAK_COUNT);
+        input.push_str(r#"<ImG SrC='tail.svg'>"#);
+
+        let output = normalize_flowchart_img_tags(&input, false);
+        assert_eq!(output.matches("<br>").count(), BREAK_COUNT);
+        assert!(output.ends_with(concat!(
+            r#"<img src="tail.svg" style="display: flex; flex-direction: column; "#,
+            r#"width: 100%;">"#,
+        )));
+    }
 
     #[test]
     fn html_label_output_preserves_entity_and_direct_nbsp_boundaries() {
