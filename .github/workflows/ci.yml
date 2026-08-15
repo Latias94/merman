@@ -467,6 +467,8 @@ jobs:
           cargo nextest run --locked -p merman-ffi \
             --test header_smoke --test c_consumer_smoke --cargo-quiet
           cargo nextest run --locked -p merman-cli --test markdown_cli --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features rustdoc \
+            --test rustdoc_cli --cargo-quiet
 
       - name: Check committed Rustdoc fragments before documentation
         if: matrix.parity

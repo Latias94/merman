@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const MANPAGE_DATE: &str = "2026-07-29";
+const MANPAGE_DATE: &str = "2026-08-15";
 
 fn asset_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("assets")
@@ -152,6 +152,82 @@ fn generated_manpages_have_deterministic_metadata_and_descriptions() {
                 index + 1
             );
         }
+    }
+}
+
+#[test]
+fn complete_profile_assets_expose_the_full_rustdoc_command_hierarchy() {
+    for (asset, required) in [
+        (
+            "completions/merman-cli.bash",
+            [
+                "merman__cli,rustdoc)",
+                "merman__cli__subcmd__rustdoc,build)",
+                "merman__cli__subcmd__rustdoc,check)",
+            ],
+        ),
+        (
+            "completions/_merman-cli",
+            [
+                "_merman-cli__subcmd__rustdoc_commands",
+                "_merman-cli__subcmd__rustdoc__subcmd__build_commands",
+                "_merman-cli__subcmd__rustdoc__subcmd__check_commands",
+            ],
+        ),
+        (
+            "completions/merman-cli.fish",
+            [
+                "-a \"rustdoc\"",
+                "__fish_seen_subcommand_from build",
+                "__fish_seen_subcommand_from check",
+            ],
+        ),
+        (
+            "completions/merman-cli.elv",
+            [
+                "&'merman-cli;rustdoc'=",
+                "&'merman-cli;rustdoc;build'=",
+                "&'merman-cli;rustdoc;check'=",
+            ],
+        ),
+        (
+            "completions/merman-cli.ps1",
+            [
+                "'merman-cli;rustdoc'",
+                "'merman-cli;rustdoc;build'",
+                "'merman-cli;rustdoc;check'",
+            ],
+        ),
+    ] {
+        let text = read_asset(asset);
+        for token in required {
+            assert!(text.contains(token), "{asset} omits {token:?}");
+        }
+    }
+
+    for (asset, required) in [
+        ("man/merman-cli.1", "merman\\-cli\\-rustdoc(1)"),
+        (
+            "man/merman-cli-rustdoc.1",
+            "merman\\-cli\\-rustdoc\\-build(1)",
+        ),
+        (
+            "man/merman-cli-rustdoc.1",
+            "merman\\-cli\\-rustdoc\\-check(1)",
+        ),
+        (
+            "man/merman-cli-rustdoc-build.1",
+            "merman\\-cli rustdoc build",
+        ),
+        (
+            "man/merman-cli-rustdoc-check.1",
+            "merman\\-cli rustdoc check",
+        ),
+    ] {
+        assert!(
+            read_asset(asset).contains(required),
+            "{asset} omits {required:?}"
+        );
     }
 }
 

@@ -8,7 +8,7 @@
 | Hidden compatibility alias | Root-level `mmdc` options; permanently supported and not advertised |
 | Native format transition | `render` / `batch -e` through `0.8.x`; use `-f/--format`; removed in `v0.9.0` |
 | Reference source | `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js` |
-| Last updated | 2026-07-29 |
+| Last updated | 2026-08-15 |
 
 Merman provides a browserless compatibility command for scripts that use the official Mermaid CLI. Compatibility is explicit and release-pinned: `merman-cli mmdc` owns the supported `mmdc@11.16.0` argument names, browser-independent defaults, file naming, Markdown detection, warnings, and fence scanner. The repository does not install an `mmdc` executable alias.
 
@@ -162,7 +162,7 @@ Coverage is maintained by:
 - strict/native scanner snapshots and Markdown transaction recovery tests;
 - output-specific SVG, PNG, JPEG, and PDF smokes;
 - network authorization and redaction tests;
-- a 22-row exact Cargo feature process matrix;
+- a 24-row exact Cargo feature process matrix;
 - generated help, completion, man page, and capability contracts;
 - release-archive structural checks plus host-native runtime smoke before publishing.
 

@@ -35,6 +35,7 @@ EXPECTED_SELECTIONS = (
     ("cytoscape-layout", ("layout-cytoscape",), "exact"),
     ("elk-layout", ("layout-elk",), "exact"),
     ("math", ("math",), "exact"),
+    ("rustdoc", ("rustdoc",), "exact"),
     ("completions", ("shell-completions",), "exact"),
     ("svg-completions", ("shell-completions", "svg"), "exact"),
     ("system-clock", ("system-clock",), "exact"),

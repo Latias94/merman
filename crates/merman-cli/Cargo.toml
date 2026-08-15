@@ -208,6 +208,7 @@ required-features = [
     "markdown",
     "network-icons",
     "parallel-markdown",
+    "rustdoc",
     "shell-completions",
     "system-clock",
     "system-timezone",

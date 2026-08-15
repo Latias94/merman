@@ -114,6 +114,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     support_assets_since=SUPPORT_ASSETS_SINCE,
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     runner=fixture.run,
                 )
             )
@@ -130,6 +131,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 package_version="0.8.0",
                 prefix=fixture.prefix,
                 binary=fixture.binary,
+                contract_root=fixture.contract_root,
                 completion_layout="nix",
                 runner=fixture.run,
             )
@@ -148,6 +150,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     package_version="0.8.0",
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     completion_layout="homebrew",
                     runner=fixture.run,
                 )
@@ -168,6 +171,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     package_version="0.8.0",
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     completion_layout="nix",
                     runner=fixture.run,
                 )
@@ -181,6 +185,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 package_version="0.8.0",
                 prefix=fixture.prefix,
                 binary=fixture.binary,
+                contract_root=fixture.contract_root,
                 completion_layout="custom",  # type: ignore[arg-type]
                 runner=fixture.run,
             )
@@ -196,6 +201,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     support_assets_since=SUPPORT_ASSETS_SINCE,
                     prefix=opt_prefix,
                     binary=opt_prefix / "bin/merman-cli",
+                    contract_root=fixture.contract_root,
                     runner=fixture.run,
                 )
             )
@@ -212,6 +218,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     support_assets_since=SUPPORT_ASSETS_SINCE,
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     runner=fixture.run,
                 )
 
@@ -227,6 +234,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     support_assets_since=SUPPORT_ASSETS_SINCE,
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     runner=fixture.run,
                 )
 
@@ -242,6 +250,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     support_assets_since=SUPPORT_ASSETS_SINCE,
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     runner=fixture.run,
                 )
 
@@ -257,6 +266,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     support_assets_since=SUPPORT_ASSETS_SINCE,
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     runner=fixture.run,
                 )
 
@@ -288,6 +298,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                             support_assets_since=SUPPORT_ASSETS_SINCE,
                             prefix=fixture.prefix,
                             binary=fixture.binary,
+                            contract_root=fixture.contract_root,
                             runner=fixture.run,
                         )
 
@@ -303,6 +314,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     support_assets_since=SUPPORT_ASSETS_SINCE,
                     prefix=fixture.prefix,
                     binary=fixture.binary,
+                    contract_root=fixture.contract_root,
                     runner=fixture.run,
                 )
 
@@ -324,6 +336,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                             support_assets_since=SUPPORT_ASSETS_SINCE,
                             prefix=fixture.prefix,
                             binary=fixture.binary,
+                            contract_root=fixture.contract_root,
                             runner=fixture.run,
                         )
 
@@ -346,8 +359,27 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                             support_assets_since=SUPPORT_ASSETS_SINCE,
                             prefix=fixture.prefix,
                             binary=fixture.binary,
+                            contract_root=fixture.contract_root,
                             runner=fixture.run,
                         )
+
+    def test_installed_manpage_body_must_match_the_release_source_asset(self) -> None:
+        with self.installation_fixture() as fixture:
+            path = fixture.prefix / "share/man/man1/merman-cli-rustdoc-build.1"
+            path.write_bytes(path.read_bytes() + b".SH STALE\nstale body\n")
+
+            with self.assertRaisesRegex(
+                verifier.HomebrewVerificationError,
+                "differs from release source asset",
+            ):
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=fixture.run,
+                )
 
     def test_checked_manpage_inventory_matches_the_source_assets(self) -> None:
         observed = {
@@ -362,6 +394,12 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
 class InstallationFixture:
     def __init__(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
+        self.contract_root = Path(self.temporary.name) / "release-source"
+        descriptor = self.contract_root / installation_verifier.PROFILE_DESCRIPTOR
+        descriptor.parent.mkdir(parents=True)
+        descriptor.write_bytes(
+            (ROOT / installation_verifier.PROFILE_DESCRIPTOR).read_bytes()
+        )
         self.prefix = Path(self.temporary.name) / "Cellar/merman-cli/0.8.0"
         self.binary = self.prefix / "bin/merman-cli"
         self.binary.parent.mkdir(parents=True)
@@ -372,10 +410,14 @@ class InstallationFixture:
             path.write_bytes(self.completion(shell))
         man_root = self.prefix / "share/man/man1"
         man_root.mkdir(parents=True)
+        source_man_root = self.contract_root / "crates/merman-cli/assets/man"
+        source_man_root.mkdir(parents=True)
         for name in verifier.MANPAGE_NAMES:
-            self.write_manpage(name)
+            contents = self.manpage_contents(name)
+            (man_root / name).write_text(contents, encoding="utf-8")
+            (source_man_root / name).write_text(contents, encoding="utf-8")
 
-        profile, authority = verifier._read_release_contract(ROOT)
+        profile, authority = verifier._read_release_contract(self.contract_root)
         self.capabilities = {
             "schema_version": verifier.CAPABILITIES_SCHEMA_VERSION,
             "cli_contract_version": verifier.CLI_CONTRACT_VERSION,
@@ -413,17 +455,29 @@ class InstallationFixture:
         version: str = "0.8.0",
         published: str = "2026-07-29",
     ) -> None:
+        contents = self.manpage_contents(
+            name,
+            title=title,
+            version=version,
+            published=published,
+        )
+        (self.prefix / "share/man/man1" / name).write_text(contents, encoding="utf-8")
+
+    @staticmethod
+    def manpage_contents(
+        name: str,
+        *,
+        title: str | None = None,
+        version: str = "0.8.0",
+        published: str = "2026-07-29",
+    ) -> str:
         title = title or name.removesuffix(".1").upper()
-        contents = (
+        return (
             ".ie \\n(.g .ds Aq \\(aq\n"
             ".el .ds Aq '\n"
             f'.TH {title} 1 {published} "Merman {version}" "Merman CLI Manual"\n'
             ".SH NAME\n"
             f"{name.removesuffix('.1')} - test\n"
-        )
-        (self.prefix / "share/man/man1" / name).write_text(
-            contents,
-            encoding="utf-8",
         )
 
     def gzip_manpages(self) -> None:

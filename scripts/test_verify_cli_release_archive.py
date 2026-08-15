@@ -1266,15 +1266,28 @@ class RuntimeContractTests(unittest.TestCase):
             elif command[-2:] == ["capabilities", "--json"]:
                 stdout = json.dumps(valid_capabilities_payload()).encode()
             elif command[-2:] == ["completion", "bash"]:
-                cwd = kwargs["cwd"]
-                self.assertIsInstance(cwd, Path)
-                stdout = (cwd / "completions/merman-cli.bash").read_bytes()
+                stdout = required_files(LINUX_TARGET)[
+                    "completions/merman-cli.bash"
+                ]
             elif "png" in command:
                 stdout = VALID_PNG
             elif "jpg" in command:
                 stdout = VALID_JPEG
             elif "pdf" in command:
                 stdout = VALID_PDF
+            elif command[1:3] == ["rustdoc", "build"]:
+                cwd = kwargs["cwd"]
+                self.assertIsInstance(cwd, Path)
+                fragment = cwd / verifier.RUSTDOC_SMOKE_FRAGMENT
+                receipt = cwd / verifier.RUSTDOC_SMOKE_RECEIPT
+                fragment.parent.mkdir(parents=True)
+                fragment.write_bytes(
+                    b'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
+                )
+                receipt.write_bytes(b"{}\n")
+                stdout = b""
+            elif command[1:3] == ["rustdoc", "check"]:
+                stdout = b""
             else:
                 stdout = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
             return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=b"")
@@ -1292,7 +1305,7 @@ class RuntimeContractTests(unittest.TestCase):
                 host_target_checker=lambda _target: True,
             )
 
-        self.assertEqual(len(calls), 7)
+        self.assertEqual(len(calls), 9)
         self.assertEqual(
             [command[1:] for command, _stdin in calls],
             [
@@ -1303,10 +1316,68 @@ class RuntimeContractTests(unittest.TestCase):
                 ["render", "--format", "png", "-"],
                 ["render", "--format", "jpg", "-"],
                 ["render", "--format", "pdf", "-"],
+                [
+                    "rustdoc",
+                    "build",
+                    "--config",
+                    calls[7][0][4],
+                    "--quiet",
+                ],
+                [
+                    "rustdoc",
+                    "check",
+                    "--config",
+                    calls[8][0][4],
+                    "--quiet",
+                ],
             ],
         )
         self.assertEqual(calls[3][1], verifier.SVG_SMOKE_SOURCE)
-        self.assertTrue(all(stdin == verifier.SVG_SMOKE_SOURCE for _, stdin in calls[3:]))
+        self.assertTrue(all(stdin == verifier.SVG_SMOKE_SOURCE for _, stdin in calls[3:7]))
+        self.assertEqual(calls[7][1], b"")
+        self.assertEqual(calls[8][1], b"")
+        self.assertEqual(calls[7][0][4], calls[8][0][4])
+
+    def test_runtime_rejects_rustdoc_build_without_managed_outputs(self) -> None:
+        def runner(
+            command: list[str],
+            **kwargs: object,
+        ) -> subprocess.CompletedProcess[bytes]:
+            if command[-1] == "--version":
+                stdout = f"merman-cli {VERSION}\n".encode()
+            elif command[-2:] == ["capabilities", "--json"]:
+                stdout = json.dumps(valid_capabilities_payload()).encode()
+            elif command[-2:] == ["completion", "bash"]:
+                stdout = required_files(LINUX_TARGET)[
+                    "completions/merman-cli.bash"
+                ]
+            elif "png" in command:
+                stdout = VALID_PNG
+            elif "jpg" in command:
+                stdout = VALID_JPEG
+            elif "pdf" in command:
+                stdout = VALID_PDF
+            elif command[1:3] == ["rustdoc", "build"]:
+                stdout = b""
+            else:
+                stdout = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
+            return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=b"")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            write_repo_assets(repo_root, required_files(LINUX_TARGET))
+            with self.assertRaisesRegex(
+                verifier.ArchiveVerificationError,
+                "Rustdoc smoke fragment",
+            ):
+                verifier.verify_runtime_contract(
+                    Path("/synthetic/merman-cli"),
+                    target=LINUX_TARGET,
+                    version=VERSION,
+                    repo_root=repo_root,
+                    runner=runner,
+                    host_target_checker=lambda _target: True,
+                )
 
     def test_runtime_rejects_version_schema_and_invalid_outputs(self) -> None:
         binary = Path("/synthetic/merman-cli")

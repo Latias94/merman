@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ElementTree
 
 
@@ -87,6 +88,18 @@ PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
 CLI_CONTRACT_VERSION = 4
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
+RUSTDOC_SMOKE_SOURCE = (
+    b"# Release archive Rustdoc smoke test\n\n"
+    b"```mermaid\nflowchart LR\nA --> B\n```\n"
+)
+RUSTDOC_SMOKE_CONFIG = (
+    b"schema = 1\n\n"
+    b"[[fragments]]\n"
+    b'id = "release-smoke"\n'
+    b'source = "docs/rustdoc-src/release-smoke.md"\n'
+)
+RUSTDOC_SMOKE_FRAGMENT = "docs/generated/merman-rustdoc/release-smoke.md"
+RUSTDOC_SMOKE_RECEIPT = "docs/generated/merman-rustdoc/receipt.json"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_START = b"\xff\xd8"
 JPEG_END = b"\xff\xd9"
@@ -664,6 +677,54 @@ def _require_quiet_success(
     return result.stdout
 
 
+def _require_silent_success(
+    result: subprocess.CompletedProcess[bytes],
+    *,
+    label: str,
+) -> None:
+    if result.stdout or result.stderr:
+        raise ArchiveVerificationError(f"{label} emitted unexpected output")
+
+
+def _verify_rustdoc_runtime(
+    command: str,
+    *,
+    runner: CommandRunner,
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="merman-cli-rustdoc-smoke-") as temp_dir:
+        root = Path(temp_dir)
+        source = root / "docs/rustdoc-src/release-smoke.md"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(RUSTDOC_SMOKE_SOURCE)
+        config = root / "merman-rustdoc.toml"
+        config.write_bytes(RUSTDOC_SMOKE_CONFIG)
+
+        build_result = run_checked(
+            [command, "rustdoc", "build", "--config", str(config), "--quiet"],
+            stdin=b"",
+            cwd=root,
+            runner=runner,
+        )
+        _require_silent_success(build_result, label="Rustdoc build")
+
+        for relative, label in (
+            (RUSTDOC_SMOKE_FRAGMENT, "Rustdoc smoke fragment"),
+            (RUSTDOC_SMOKE_RECEIPT, "Rustdoc smoke receipt"),
+        ):
+            path = root / relative
+            require_regular_input(path, label)
+            if path.stat().st_size == 0:
+                raise ArchiveVerificationError(f"{label} is empty: {path}")
+
+        check_result = run_checked(
+            [command, "rustdoc", "check", "--config", str(config), "--quiet"],
+            stdin=b"",
+            cwd=root,
+            runner=runner,
+        )
+        _require_silent_success(check_result, label="Rustdoc check")
+
+
 def _validate_png(payload: bytes) -> None:
     if (
         len(payload) < 45
@@ -783,6 +844,8 @@ def verify_runtime_contract(
             label=f"minimal {output_format.upper()} render",
         )
         validator(payload)
+
+    _verify_rustdoc_runtime(command, runner=runner)
 
 
 def verify_release_archive(

@@ -141,29 +141,29 @@ def _run(
     return completed.stdout
 
 
-def _require_regular_path(path: Path, label: str) -> None:
+def _require_regular_path(path: Path, description: str) -> None:
     if path.is_symlink() or not path.is_file():
-        raise CliInstallationError(f"missing installed {label}: {path}")
+        raise CliInstallationError(f"missing {description}: {path}")
 
 
-def _read_regular_file(path: Path, label: str) -> bytes:
-    _require_regular_path(path, label)
+def _read_regular_file(path: Path, description: str) -> bytes:
+    _require_regular_path(path, description)
     try:
         with path.open("rb") as handle:
             contents = handle.read(SUPPORT_ASSET_MAX_BYTES + 1)
     except OSError as error:
-        raise CliInstallationError(f"cannot read installed {label}: {error}") from error
+        raise CliInstallationError(f"cannot read {description}: {error}") from error
     if not contents:
-        raise CliInstallationError(f"installed {label} is empty: {path}")
+        raise CliInstallationError(f"{description} is empty: {path}")
     if len(contents) > SUPPORT_ASSET_MAX_BYTES:
         raise CliInstallationError(
-            f"installed {label} exceeds {SUPPORT_ASSET_MAX_BYTES} bytes: {path}"
+            f"{description} exceeds {SUPPORT_ASSET_MAX_BYTES} bytes: {path}"
         )
     return contents
 
 
 def _read_manpage(path: Path, name: str) -> bytes:
-    contents = _read_regular_file(path, f"man page {name}")
+    contents = _read_regular_file(path, f"installed man page {name}")
     if path.suffix != ".gz":
         return contents
     try:
@@ -308,7 +308,10 @@ def _verify_completion_paths(
     runner: CommandRunner,
 ) -> None:
     for shell, relative in completion_paths.items():
-        installed = _read_regular_file(prefix / relative, f"{shell} completion")
+        installed = _read_regular_file(
+            prefix / relative,
+            f"installed {shell} completion",
+        )
         generated = _run(binary, ["completion", shell], runner=runner)
         if installed != generated:
             raise CliInstallationError(
@@ -340,7 +343,7 @@ def verify_cli_installation(
         ) from error
     if not installed_prefix.is_dir():
         raise CliInstallationError(f"invalid CLI installation prefix: {prefix}")
-    _require_regular_path(binary, "merman-cli binary")
+    _require_regular_path(binary, "installed merman-cli binary")
 
     profile, authority = read_release_contract(contract_root)
     capabilities = _run(binary, ["capabilities", "--json"], runner=runner)
@@ -376,6 +379,14 @@ def verify_cli_installation(
     for name in MANPAGE_NAMES:
         contents = _read_manpage(installed_manpages[name], name)
         _verify_manpage(contents, name=name, package_version=package_version)
+        source = _read_regular_file(
+            contract_root / "crates/merman-cli/assets/man" / name,
+            f"release source man page {name}",
+        )
+        if contents != source:
+            raise CliInstallationError(
+                f"installed man page differs from release source asset: {name}"
+            )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
