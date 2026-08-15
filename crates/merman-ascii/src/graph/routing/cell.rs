@@ -136,8 +136,8 @@ pub(super) fn edge_line_stroke_char(stroke: GraphEdgeStroke, ch: char, unicode: 
         return ch;
     }
 
-    // EdgeLine 位于已有的细节点/组边框上。保留边框粗细，只增强路由拥有的分支；普通
-    // RouteCell junction 完全由 stroke 拥有，继续走 `stroke_route_char`。
+    // EdgeLine sits on an existing thin node or group border. Preserve the border weight and
+    // strengthen only route-owned branches; a RouteCell junction remains fully stroke-owned.
     match ch {
         '├' => '┝',
         '┤' => '┥',

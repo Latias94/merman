@@ -12,7 +12,6 @@ pub struct AsciiResourceBoundary {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AsciiResourceBoundaryProfiles {
-    pub headless_ascii: u64,
     pub binding_interactive: u64,
     pub wasm_interactive: u64,
     pub uniffi_interactive: u64,
@@ -30,7 +29,7 @@ pub fn ascii_resource_boundaries() -> Vec<AsciiResourceBoundary> {
         serde_json::from_str(include_str!("ascii_resource_boundaries.json"))
             .expect("ASCII resource boundary contract must be valid JSON");
     assert_eq!(
-        contract.schema_version, 1,
+        contract.schema_version, 2,
         "unsupported ASCII resource boundary contract schema"
     );
 

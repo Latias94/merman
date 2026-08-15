@@ -1,9 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "purpose": "Pinned exact and N-1 accounting boundaries for public ASCII transports.",
   "update_policy": "Do not derive these values at test runtime. Change a value only with an intentional accounting or canonical-output change and review the exact/N-1 delta.",
   "configurations": {
-    "headless_ascii": "HeadlessAsciiRenderer with AsciiRenderOptions::ascii() and the interactive resource profile.",
     "binding_interactive": "Binding core with its default Unicode ASCII options and the interactive resource profile.",
     "wasm_interactive": "WASM operation forwarding the binding-core default Unicode ASCII options and interactive profile.",
     "uniffi_interactive": "UniFFI operation forwarding the binding-core default Unicode ASCII options and interactive profile.",
@@ -15,7 +14,6 @@
       "phase": "ascii_layout",
       "source": "flowchart TD\nA[Hello] --> B[World]",
       "expected": {
-        "headless_ascii": 135,
         "binding_interactive": 135,
         "wasm_interactive": 135,
         "uniffi_interactive": 135,
@@ -27,7 +25,6 @@
       "phase": "ascii_layout_work",
       "source": "flowchart TD\nA[Hello] --> B[World]",
       "expected": {
-        "headless_ascii": 2868,
         "binding_interactive": 2905,
         "wasm_interactive": 2905,
         "uniffi_interactive": 2905,
@@ -39,7 +36,6 @@
       "phase": "ascii_document",
       "source": "gitGraph\n  commit id: \"A\"",
       "expected": {
-        "headless_ascii": 161,
         "binding_interactive": 161,
         "wasm_interactive": 161,
         "uniffi_interactive": 161,
@@ -51,7 +47,6 @@
       "phase": "ascii_output",
       "source": "flowchart TD\nA[Hello] --> B[World]",
       "expected": {
-        "headless_ascii": 150,
         "binding_interactive": 256,
         "wasm_interactive": 256,
         "uniffi_interactive": 256,
@@ -63,7 +58,6 @@
       "phase": "ascii_grapheme",
       "source": "flowchart TD\nA[👨‍👩‍👧‍👦]",
       "expected": {
-        "headless_ascii": 25,
         "binding_interactive": 25,
         "wasm_interactive": 25,
         "uniffi_interactive": 25,
@@ -75,7 +69,6 @@
       "phase": "ascii_nesting",
       "source": "mindmap\n  Root\n    Child",
       "expected": {
-        "headless_ascii": 2,
         "binding_interactive": 2,
         "wasm_interactive": 2,
         "uniffi_interactive": 2,

@@ -160,8 +160,26 @@ fn render_model_with_execution(
         RenderSemanticModel::Timeline(model) => render_timeline_model(model, options, &execution),
         RenderSemanticModel::XyChart(model) => render_xychart_model(model, options, &execution),
         RenderSemanticModel::TreeView(model) => render_tree_view_model(model, options, &execution),
-        other => Err(AsciiError::UnsupportedDiagram {
-            diagram_type: other.kind().to_string(),
+        RenderSemanticModel::Error(_)
+        | RenderSemanticModel::CustomJson(_)
+        | RenderSemanticModel::Zenuml(_)
+        | RenderSemanticModel::Architecture(_)
+        | RenderSemanticModel::C4(_)
+        | RenderSemanticModel::Cynefin(_)
+        | RenderSemanticModel::Railroad(_)
+        | RenderSemanticModel::Pie(_)
+        | RenderSemanticModel::Requirement(_)
+        | RenderSemanticModel::Sankey(_)
+        | RenderSemanticModel::Radar(_)
+        | RenderSemanticModel::Info(_)
+        | RenderSemanticModel::Treemap(_)
+        | RenderSemanticModel::Block(_)
+        | RenderSemanticModel::QuadrantChart(_)
+        | RenderSemanticModel::Ishikawa(_)
+        | RenderSemanticModel::EventModeling(_)
+        | RenderSemanticModel::Venn(_)
+        | RenderSemanticModel::Wardley(_) => Err(AsciiError::UnsupportedDiagram {
+            diagram_type: model.kind().to_string(),
         }),
     }?;
     execution.checkpoint(merman_core::OperationPhase::Emit)?;

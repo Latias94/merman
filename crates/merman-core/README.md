@@ -99,7 +99,11 @@ fn main() -> Result<(), merman_core::Error> {
         .parse_diagram_for_render_model_sync("flowchart TD; A --> B", ParseOptions::strict())?
         .expect("diagram detected");
 
-    println!("{} -> {}", parsed.meta.diagram_type, parsed.model.kind());
+    println!(
+        "{} -> {}",
+        parsed.metadata().diagram_type,
+        parsed.model().kind()
+    );
     Ok(())
 }
 ```
