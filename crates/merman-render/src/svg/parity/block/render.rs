@@ -4,6 +4,21 @@ use crate::model::LayoutPoint;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
+fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
+    let _ = write!(out, "{key}:{}!important;", escape_xml_display(value));
+    out.checkpoint()
+}
+
+fn write_important_declarations<'a>(
+    out: &mut impl SvgOutput,
+    declarations: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Result<()> {
+    for (key, value) in declarations {
+        write_important_declaration(out, key, value)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn render_block_diagram_svg_model(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
@@ -209,26 +224,6 @@ pub(crate) fn render_block_diagram_svg_model(
         styles.iter().filter_map(|style| parse_style_decl(style))
     }
 
-    fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
-        if write!(out, "{key}:").is_err() {
-            return out.checkpoint();
-        }
-        escape_xml_into(out, value);
-        out.checkpoint()?;
-        out.push_str("!important;");
-        out.checkpoint()
-    }
-
-    fn write_important_declarations<'a>(
-        out: &mut impl SvgOutput,
-        declarations: impl IntoIterator<Item = (&'a str, &'a str)>,
-    ) -> Result<()> {
-        for (key, value) in declarations {
-            write_important_declaration(out, key, value)?;
-        }
-        Ok(())
-    }
-
     fn write_block_class_css(
         out: &mut impl SvgOutput,
         diagram_id: &str,
@@ -242,24 +237,27 @@ pub(crate) fn render_block_diagram_svg_model(
             let class = escape_xml(&class_def.id);
             let mut shape_declarations = important_declarations(&class_def.styles);
             if let Some((key, value)) = shape_declarations.next() {
-                if write!(out, r#"#{} .{}&gt;*{{"#, id.as_str(), class.as_str(),).is_err() {
-                    return out.checkpoint();
-                }
+                let _ = write!(out, r#"#{} .{}&gt;*{{"#, id.as_str(), class.as_str(),);
+                out.checkpoint()?;
+
+                let mut parsed_shape_declarations = vec![(key, value)];
                 write_important_declaration(out, key, value)?;
-                write_important_declarations(out, shape_declarations)?;
-                if write!(out, r#"}}#{} .{} span{{"#, id.as_str(), class.as_str(),).is_err() {
-                    return out.checkpoint();
+                for (key, value) in shape_declarations {
+                    write_important_declaration(out, key, value)?;
+                    parsed_shape_declarations.push((key, value));
                 }
-                write_important_declarations(out, important_declarations(&class_def.styles))?;
+
+                let _ = write!(out, r#"}}#{} .{} span{{"#, id.as_str(), class.as_str(),);
+                out.checkpoint()?;
+                write_important_declarations(out, parsed_shape_declarations)?;
                 out.push('}');
                 out.checkpoint()?;
             }
 
             let mut text_declarations = important_declarations(&class_def.text_styles);
             if let Some((key, value)) = text_declarations.next() {
-                if write!(out, r#"#{} .{} tspan{{"#, id.as_str(), class.as_str(),).is_err() {
-                    return out.checkpoint();
-                }
+                let _ = write!(out, r#"#{} .{} tspan{{"#, id.as_str(), class.as_str(),);
+                out.checkpoint()?;
                 write_important_declaration(out, key, value)?;
                 write_important_declarations(out, text_declarations)?;
                 out.push('}');
@@ -759,6 +757,9 @@ mod tests {
     };
     use crate::text::DeterministicTextMeasurer;
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use std::cell::Cell;
+    use std::fmt;
+    use std::ops::Range;
 
     const BOUNDED_BLOCK_SOURCE: &str = r#"block
   A["Alpha"] --> B["Beta"]
@@ -797,6 +798,87 @@ mod tests {
         .expect("SVG execution");
 
         render_block_diagram_svg_model(&layout, model, effective_config, &execution)
+    }
+
+    #[derive(Default)]
+    struct RejectEscapedAmpersand {
+        rejected: bool,
+        writes_after_rejection: usize,
+        retained: String,
+    }
+
+    impl RejectEscapedAmpersand {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            if self.rejected {
+                self.writes_after_rejection += 1;
+                return Err(fmt::Error);
+            }
+            if value == "&amp;" {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectEscapedAmpersand {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectEscapedAmpersand {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the escaped ampersand".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn block_important_declarations_stop_at_first_svg_sink_failure() {
+        let polls = Cell::new(0);
+        let mut out = RejectEscapedAmpersand::default();
+        let declarations = [("fill", "alpha&beta<gamma"), ("stroke", "red")]
+            .into_iter()
+            .inspect(|_| polls.set(polls.get() + 1));
+
+        let error = write_important_declarations(&mut out, declarations)
+            .expect_err("the rejecting sink must stop Block class declaration emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(polls.get(), 1, "remaining declarations must not be parsed");
+        assert_eq!(
+            out.writes_after_rejection, 0,
+            "escaped output must stop at the first failed sink write"
+        );
     }
 
     #[test]
