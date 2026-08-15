@@ -29,14 +29,29 @@ impl NormalizedTrimmedTextPlan<'_> {
     }
 
     /// Materializes the exact normalized range after its caller has admitted the aggregate work.
+    #[cfg(test)]
     pub(crate) fn materialize_after_admission(self) -> Result<String> {
+        self.materialize_after_admission_with_checkpoint(|_| Ok(()))
+    }
+
+    /// Materializes the admitted range while allowing long replays to observe cancellation.
+    pub(crate) fn materialize_after_admission_with_checkpoint(
+        self,
+        mut checkpoint: impl FnMut(usize) -> Result<()>,
+    ) -> Result<String> {
+        checkpoint(0)?;
         let mut output = String::new();
         output
             .try_reserve_exact(self.metrics.materialized_bytes)
             .map_err(|_| layout_allocation_failed())?;
 
         let mut offset = 0usize;
+        let mut segment_index = 1usize;
         visit_normalized_segments(self.source, |segment| {
+            checkpoint(segment_index)?;
+            segment_index = segment_index
+                .checked_add(1)
+                .ok_or_else(layout_allocation_failed)?;
             let mut buffer = [0u8; 10];
             let text = segment.text(&mut buffer);
             let segment_end = offset
@@ -230,6 +245,7 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::text::normalize_optional_text;
     use merman_core::resources::ResourceProfile;
+    use merman_core::{OperationControl, OperationPhase};
     use std::cell::Cell;
 
     #[test]
@@ -283,6 +299,36 @@ mod tests {
                 document_cells: 7,
             }
         );
+    }
+
+    #[test]
+    fn normalized_trimmed_materialization_observes_mid_replay_cancellation() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(policy);
+        let raw = "a".repeat(128);
+        let plan =
+            try_plan_normalized_trimmed_text(&raw, TerminalWidthProfile::Unicode, &resources)
+                .expect("long normalized text should be measurable")
+                .expect("long normalized text should remain non-empty");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        let error = plan
+            .materialize_after_admission_with_checkpoint(|iteration| {
+                if iteration.is_multiple_of(64) {
+                    control
+                        .checkpoint_at(OperationPhase::Semantic)
+                        .map_err(AsciiError::Cancelled)?;
+                }
+                Ok(())
+            })
+            .expect_err("the second bounded checkpoint should cancel replay");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Semantic
+        ));
     }
 
     #[test]

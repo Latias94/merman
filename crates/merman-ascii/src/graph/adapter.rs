@@ -152,7 +152,11 @@ fn from_flowchart_model_transactional(
                     .label
                     .as_ref()
                     .zip(*label_plan)
-                    .map(|(_, plan)| plan.materialize_after_admission())
+                    .map(|(_, plan)| {
+                        plan.materialize_after_admission_with_checkpoint(|iteration| {
+                            checkpoint_projection(execution, iteration)
+                        })
+                    })
                     .transpose()?,
                 stroke: parse_flow_edge_stroke(edge.stroke_kind, edge.visibility),
                 start_marker: parse_flow_edge_marker(edge.start_marker),
@@ -197,6 +201,19 @@ fn checkpoint_projection(execution: Option<AsciiExecution<'_>>, iteration: usize
         execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)?;
     }
     Ok(())
+}
+
+fn projection_scratch_resources(
+    resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> ResourceContext {
+    let scratch = ResourceContext::new(resources.policy());
+    match execution {
+        Some(execution) => {
+            execution.resource_context(&scratch, merman_core::OperationPhase::Semantic)
+        }
+        None => scratch,
+    }
 }
 
 fn parse_flow_edge_marker(marker: CoreFlowEdgeMarker) -> GraphEdgeMarker {
@@ -556,7 +573,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
             work_units = resources.checked_work_add(work_units, edge.to.len())?;
             work_units = resources.checked_work_add(work_units, edge.id.len())?;
             if let Some(label) = edge.label.as_deref() {
-                let scratch = ResourceContext::new(resources.policy());
+                let scratch = projection_scratch_resources(resources, execution);
                 let label_plan = try_plan_normalized_trimmed_text(label, width_profile, &scratch)?;
                 work_units = resources.checked_work_add(
                     work_units,
@@ -605,7 +622,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
             checkpoint_projection(execution, index)?;
             let label_plan = match edge.label.as_deref() {
                 Some(label) => {
-                    let scratch = ResourceContext::new(resources.policy());
+                    let scratch = projection_scratch_resources(resources, execution);
                     try_plan_normalized_trimmed_text(label, width_profile, &scratch)?
                 }
                 None => None,
@@ -721,6 +738,7 @@ mod tests {
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
     };
     use merman_core::resources::ResourceProfile;
+    use merman_core::{OperationControl, OperationPhase};
     use std::cell::Cell;
 
     fn flow_node(id: &str) -> FlowNode {
@@ -915,6 +933,33 @@ mod tests {
                         && details.actual == exact
             ));
         }
+    }
+
+    #[test]
+    fn flowchart_label_scratch_prefers_semantic_cancellation_to_resource_rejection() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("minimum layout-work limit should be valid");
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+        let execution = AsciiExecution::new(&control, &policy);
+        let scratch = projection_scratch_resources(&resources, Some(execution));
+
+        let error = try_plan_normalized_trimmed_text(
+            "long edge label",
+            TerminalWidthProfile::Unicode,
+            &scratch,
+        )
+        .expect_err("cancelled label planning must not report the competing work limit");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Semantic
+        ));
+        assert_eq!(scratch.layout_work_used(), 0);
+        assert_eq!(scratch.document_cells_used(), 0);
     }
 
     #[test]
