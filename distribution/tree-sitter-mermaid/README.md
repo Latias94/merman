@@ -35,3 +35,6 @@ rewriting this package's selected source identity.
 The package pins Tree-sitter CLI/Rust/web runtime `0.26.12`, source-built Node runtime `0.25.1`,
 and generated ABI 14. The Merman parsers, IR, analysis, editor core, and LSP remain authoritative
 for validity, semantic construction, diagnostics, navigation identity, and safe refactoring.
+
+Development workflow and release dry-run checklists live in
+`docs/development/TREE_SITTER_MERMAID.md` and `docs/release/TREE_SITTER_MERMAID.md`.

@@ -8,5 +8,5 @@ repository = "https://github.com/Latias94/merman"
 
 [grammars.mermaid]
 repository = "https://github.com/Latias94/merman"
-rev = "62c90d064345a131936dd1c608825e09e7a4aa38"
+rev = "203c61851e2418f0d89bba3be3a0292633cb6413"
 path = "distribution/tree-sitter-mermaid"

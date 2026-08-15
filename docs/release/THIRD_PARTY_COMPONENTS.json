@@ -939,12 +939,12 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "00cff08433da1579f4a26c203c0151ba858bb229114378bb266530d940ea3de3"
+          "sha256": "f223ff2ffe7b062a2d01ed4e2783afecba5da106166584d3ef8525326081bdf4"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "b4ccca9b89c194cd0d98a9feac6e6ace31a49b7adaff54adb499b377b9d1677e"
+          "sha256": "cd553fa6914e80765e4f1c98230e952d04e01c7c6624d56e8649643ee631d7ae"
         },
         {
           "type": "pinned-file",
@@ -980,12 +980,12 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "00cff08433da1579f4a26c203c0151ba858bb229114378bb266530d940ea3de3"
+          "sha256": "f223ff2ffe7b062a2d01ed4e2783afecba5da106166584d3ef8525326081bdf4"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "b4ccca9b89c194cd0d98a9feac6e6ace31a49b7adaff54adb499b377b9d1677e"
+          "sha256": "cd553fa6914e80765e4f1c98230e952d04e01c7c6624d56e8649643ee631d7ae"
         },
         {
           "type": "pinned-file",
@@ -1049,7 +1049,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "b4ccca9b89c194cd0d98a9feac6e6ace31a49b7adaff54adb499b377b9d1677e"
+          "sha256": "cd553fa6914e80765e4f1c98230e952d04e01c7c6624d56e8649643ee631d7ae"
         }
       ],
       "notice": "The language package modifies selected grammar helpers and Flowchart/Mindmap seeds; metadata/derivations.json records each local path and source range."

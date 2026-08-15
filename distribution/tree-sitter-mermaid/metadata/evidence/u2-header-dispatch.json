@@ -5,7 +5,7 @@
     "version": 5,
     "command": "node scripts/header_receipt.js"
   },
-  "artifactReceiptId": "5bea8f9c977e0232960e787cb3166de4f40b11e0c751b6d1aca476a1bc8d321a",
+  "artifactReceiptId": "986b9c773948cc36b6077189ccbfb16d317a629b9c1fe1cab2419ae646bc25e2",
   "strictOracleReceipt": {
     "path": "metadata/evidence/u2-mermaid-header-oracle.json",
     "sha256": "4bc145b3384ee66bffa0de122c3ec5a17e4db6257258e40e2a21625487c6513e",
