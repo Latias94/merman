@@ -63,6 +63,11 @@ fn vertical_label_font_size(
     font_size_after_unit_decrements(initial, maximum_that_fits)
 }
 
+fn write_xychart_temporary_group(out: &mut impl SvgOutput) -> Result<()> {
+    out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
+    out.checkpoint()
+}
+
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
@@ -101,25 +106,29 @@ pub(crate) fn render_xychart_diagram_svg(
         id
     }
 
-    fn render_node(out: &mut String, arena: &[Node], id: usize) {
+    fn render_node(out: &mut impl SvgOutput, arena: &[Node], id: usize) -> Result<()> {
         let n = &arena[id];
-        out.push('<');
-        out.push_str(n.tag);
+        let _ = write!(out, "<{}", n.tag);
+        out.checkpoint()?;
         for (k, v) in &n.attrs {
             let _ = write!(out, r#" {k}="{v}""#);
+            out.checkpoint()?;
         }
         if n.children.is_empty() && n.text.as_deref().unwrap_or("").is_empty() {
             out.push_str("/>");
-            return;
+            return out.checkpoint();
         }
         out.push('>');
+        out.checkpoint()?;
         if let Some(t) = n.text.as_deref() {
             out.push_str(t);
+            out.checkpoint()?;
         }
         for c in &n.children {
-            render_node(out, arena, *c);
+            render_node(out, arena, *c)?;
         }
         let _ = write!(out, "</{}>", n.tag);
+        out.checkpoint()
     }
 
     fn text_anchor(horizontal_pos: &str) -> &'static str {
@@ -204,7 +213,7 @@ pub(crate) fn render_xychart_diagram_svg(
         None
     };
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
     let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "xychart");
@@ -215,6 +224,7 @@ pub(crate) fn render_xychart_diagram_svg(
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::XY_CHART, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    out.checkpoint()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -222,6 +232,7 @@ pub(crate) fn render_xychart_diagram_svg(
             r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
             escape_xml(title)
         );
+        out.checkpoint()?;
     }
     if let Some(description) = acc_descr {
         let _ = write!(
@@ -229,14 +240,22 @@ pub(crate) fn render_xychart_diagram_svg(
             r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
             escape_xml(description)
         );
+        out.checkpoint()?;
     }
 
     out.push_str("<style>");
-    push_xychart_css(&mut out, diagram_id);
+    out.checkpoint()?;
+    let mut css = String::new();
+    push_xychart_css(&mut css, diagram_id);
+    out.push_str(&css);
+    drop(css);
+    out.checkpoint()?;
     out.push_str("</style>");
+    out.checkpoint()?;
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);
+    out.checkpoint()?;
 
     // Build the `.main` group as an ordered DOM tree, matching Mermaid's D3 `getGroup()` behavior.
     let mut arena: Vec<Node> = Vec::with_capacity(layout.drawables.len().saturating_mul(4) + 2);
@@ -434,15 +453,90 @@ pub(crate) fn render_xychart_diagram_svg(
         }
     }
 
-    render_node(&mut out, &arena, 0);
-    out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
+    render_node(&mut out, &arena, 0)?;
+    write_xychart_temporary_group(&mut out)?;
     out.push_str("</svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn xychart_temporary_group_stops_after_the_first_svg_sink_failure() {
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = write_xychart_temporary_group(&mut out)
+            .expect_err("the rejecting sink must stop XYChart temporary-group emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "XYChart temporary-group emission must stop at the first failed sink checkpoint"
+        );
+    }
 
     fn upstream_decrement(initial: f64, maximum_that_fits: f64) -> f64 {
         let mut font_size = initial;

@@ -161,11 +161,11 @@ fn rough_intersection_fill_path(
 }
 
 fn write_area_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     area: &crate::model::VennAreaLayout,
     font_size: f64,
     text_color: &str,
-) {
+) -> Result<()> {
     let _ = write!(
         out,
         r#"<text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text>"#,
@@ -175,10 +175,11 @@ fn write_area_label(
         text_fill = escape_css_attr(text_color),
         label = escape_xml(render_label(area)),
     );
+    out.checkpoint()
 }
 
 fn root_open(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     layout: &VennDiagramLayout,
     aria_labelledby: Option<&str>,
@@ -246,7 +247,7 @@ pub(crate) fn render_venn_diagram_svg_model(
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = root_open(
         &mut out,
         diagram_id,
@@ -254,6 +255,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         aria_labelledby.as_deref(),
         aria_describedby.as_deref(),
     )?;
+    out.checkpoint()?;
 
     if has_acc_title {
         let _ = write!(
@@ -262,6 +264,7 @@ pub(crate) fn render_venn_diagram_svg_model(
             id = diagram_id_esc,
             text = escape_xml(model.acc_title.as_deref().unwrap_or_default())
         );
+        out.checkpoint()?;
     }
     if has_acc_descr {
         let _ = write!(
@@ -270,12 +273,16 @@ pub(crate) fn render_venn_diagram_svg_model(
             id = diagram_id_esc,
             text = escape_xml(model.acc_descr.as_deref().unwrap_or_default())
         );
+        out.checkpoint()?;
     }
 
     let theme = MermaidThemeAdapter::new(effective_config).venn()?;
     let css = venn_css(diagram_id, &theme);
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
+    drop(css);
+    out.checkpoint()?;
     out.push_str("<g/>");
+    out.checkpoint()?;
 
     if let Some(title) = title {
         let _ = write!(
@@ -286,6 +293,7 @@ pub(crate) fn render_venn_diagram_svg_model(
             fill = escape_xml(&theme.title_color),
             text = escape_xml(title)
         );
+        out.checkpoint()?;
     }
 
     let _ = write!(
@@ -293,6 +301,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         r#"<g transform="translate(0, {title_height})">"#,
         title_height = fmt(layout.title_height)
     );
+    out.checkpoint()?;
 
     let style_by_key = build_style_by_key(model);
     let is_hand_drawn = config_diagram_look(effective_config).as_str() == "handDrawn";
@@ -333,6 +342,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                 set_class = circle_index % 8,
                 sets = escape_attr(&data_sets_attr(&area.sets)),
             );
+            out.checkpoint()?;
             if is_hand_drawn {
                 let circle = area.circles.first().ok_or_else(|| Error::InvalidModel {
                     message: format!(
@@ -363,6 +373,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                     stroke = escape_attr(stroke_color),
                     stroke_width = fmt(stroke_width_value as f64),
                 );
+                out.checkpoint()?;
             } else {
                 let _ = write!(
                     &mut out,
@@ -373,9 +384,11 @@ pub(crate) fn render_venn_diagram_svg_model(
                     stroke = escape_css_attr(stroke_color),
                     stroke_width = escape_css_attr(&stroke_width),
                 );
+                out.checkpoint()?;
             }
-            write_area_label(&mut out, area, 48.0 * layout.scale, text_color.as_str());
+            write_area_label(&mut out, area, 48.0 * layout.scale, text_color.as_str())?;
             out.push_str("</g>");
+            out.checkpoint()?;
             circle_index += 1;
         } else {
             let custom_fill = style_value(styles, "fill");
@@ -385,6 +398,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                 r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}">"#,
                 sets = escape_attr(&data_sets_attr(&area.sets)),
             );
+            out.checkpoint()?;
             if is_hand_drawn {
                 if let Some(fill) = custom_fill {
                     let fill_path =
@@ -396,12 +410,14 @@ pub(crate) fn render_venn_diagram_svg_model(
                         fill_path = escape_attr(&fill_path),
                         fill_stroke = escape_attr(&fill_stroke),
                     );
+                    out.checkpoint()?;
                 } else {
                     let _ = write!(
                         &mut out,
                         r#"<path d="{path}" style="fill-opacity: 0;"/>"#,
                         path = escape_attr(&area.path),
                     );
+                    out.checkpoint()?;
                 }
             } else {
                 let fill = custom_fill.unwrap_or("transparent");
@@ -413,9 +429,11 @@ pub(crate) fn render_venn_diagram_svg_model(
                     fill_opacity = fill_opacity,
                     fill = escape_css_attr(fill),
                 );
+                out.checkpoint()?;
             }
-            write_area_label(&mut out, area, 48.0 * layout.scale, text_color);
+            write_area_label(&mut out, area, 48.0 * layout.scale, text_color)?;
             out.push_str("</g>");
+            out.checkpoint()?;
         }
     }
 
@@ -430,6 +448,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         }
 
         out.push_str(r#"<g class="venn-text-nodes">"#);
+        out.checkpoint()?;
         for text_area in &layout.text_areas {
             let key = stable_sets_key(&text_area.sets);
             let nodes = nodes_by_key.get(&key).map(Vec::as_slice).unwrap_or(&[]);
@@ -438,6 +457,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                 r#"<g class="venn-text-area" font-size="{font_size}px">"#,
                 font_size = fmt(text_area.font_size)
             );
+            out.checkpoint()?;
             if layout.use_debug_layout {
                 let _ = write!(
                     &mut out,
@@ -449,6 +469,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                     dash = fmt(6.0 * layout.scale),
                     gap = fmt(4.0 * layout.scale)
                 );
+                out.checkpoint()?;
                 for cell in &text_area.debug_cells {
                     let _ = write!(
                         &mut out,
@@ -461,6 +482,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                         dash = fmt(4.0 * layout.scale),
                         gap = fmt(3.0 * layout.scale)
                     );
+                    out.checkpoint()?;
                 }
             }
 
@@ -485,12 +507,105 @@ pub(crate) fn render_venn_diagram_svg_model(
                     style = escape_attr(&span_style),
                     label = escape_xml(label)
                 );
+                out.checkpoint()?;
             }
             out.push_str("</g>");
+            out.checkpoint()?;
         }
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn venn_area_label_stops_after_the_first_svg_sink_failure() {
+        let mut out = RejectAfterFirstWrite::default();
+        let area = crate::model::VennAreaLayout {
+            sets: vec!["A".to_string()],
+            size: 1.0,
+            label: Some("Alpha".to_string()),
+            text_x: 10.0,
+            text_y: 20.0,
+            text_disjoint: false,
+            circles: Vec::new(),
+            path: String::new(),
+        };
+
+        let error = write_area_label(&mut out, &area, 24.0, "#111111")
+            .expect_err("the rejecting sink must stop Venn label emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Venn label emission must stop at the first failed sink checkpoint"
+        );
+    }
 }

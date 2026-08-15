@@ -106,6 +106,42 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     out
 }
 
+fn write_radar_axes(
+    out: &mut impl SvgOutput,
+    axes: &[crate::model::RadarAxisLayout],
+) -> Result<()> {
+    for axis in axes {
+        let cos_a = axis.angle.cos();
+        let sin_a = axis.angle.sin();
+        let text_anchor = if cos_a > 0.01 {
+            "start"
+        } else if cos_a < -0.01 {
+            "end"
+        } else {
+            "middle"
+        };
+        let dominant_baseline = if sin_a > 0.01 {
+            "hanging"
+        } else if sin_a < -0.01 {
+            "auto"
+        } else {
+            "central"
+        };
+        let label_padding = 4.0;
+        let _ = write!(
+            out,
+            r#"<line x1="0" y1="0" x2="{x2}" y2="{y2}" class="radarAxisLine"/><text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="{dominant_baseline}" class="radarAxisLabel">{label}</text>"#,
+            x2 = fmt_display(axis.line_x2),
+            y2 = fmt_display(axis.line_y2),
+            x = fmt_display(axis.label_x + label_padding * cos_a),
+            y = fmt_display(axis.label_y + label_padding * sin_a),
+            label = escape_xml(&axis.label)
+        );
+        out.checkpoint()?;
+    }
+    Ok(())
+}
+
 pub(crate) fn render_radar_diagram_svg_model(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,
@@ -131,7 +167,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let root_extra_attrs: [(&str, &str); 1] = [("overflow", "visible")];
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "radar");
     root_chrome.extra_attrs = &root_extra_attrs;
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -163,6 +199,7 @@ pub(crate) fn render_radar_diagram_svg_model(
             id = diagram_id_esc,
             text = escape_xml(model.acc_title.as_deref().unwrap_or_default())
         );
+        out.checkpoint()?;
     }
     if has_acc_descr {
         let _ = write!(
@@ -171,12 +208,18 @@ pub(crate) fn render_radar_diagram_svg_model(
             id = diagram_id_esc,
             text = escape_xml(model.acc_descr.as_deref().unwrap_or_default())
         );
+        out.checkpoint()?;
     }
 
     let theme = MermaidThemeAdapter::new(effective_config).radar();
+    out.push_str("<style>");
+    out.checkpoint()?;
     let css = radar_css(diagram_id, &theme);
-    let _ = write!(&mut out, "<style>{}</style>", css);
-    out.push_str("<g/>");
+    out.push_str(&css);
+    drop(css);
+    out.checkpoint()?;
+    out.push_str("</style><g/>");
+    out.checkpoint()?;
 
     let _ = write!(
         &mut out,
@@ -184,82 +227,53 @@ pub(crate) fn render_radar_diagram_svg_model(
         x = fmt_display(layout.center_x),
         y = fmt_display(layout.center_y)
     );
+    out.checkpoint()?;
 
-    for g in &layout.graticules {
-        if g.kind == "polygon" {
-            if g.points.is_empty() {
+    for graticule in &layout.graticules {
+        if graticule.kind == "polygon" {
+            if graticule.points.is_empty() {
                 out.push_str(r#"<polygon points="" class="radarGraticule"/>"#);
             } else {
-                let points = fmt_points(&g.points);
+                let points = fmt_points(&graticule.points);
                 let _ = write!(
                     &mut out,
                     r#"<polygon points="{points}" class="radarGraticule"/>"#,
                     points = escape_xml(&points)
                 );
             }
-        } else if let Some(r) = g.r {
+        } else if let Some(r) = graticule.r {
             let _ = write!(
                 &mut out,
                 r#"<circle r="{r}" class="radarGraticule"/>"#,
                 r = fmt_display(r)
             );
         }
+        out.checkpoint()?;
     }
-
-    for a in &layout.axes {
-        let cos_a = a.angle.cos();
-        let sin_a = a.angle.sin();
-        let text_anchor = if cos_a > 0.01 {
-            "start"
-        } else if cos_a < -0.01 {
-            "end"
-        } else {
-            "middle"
-        };
-        let dominant_baseline = if sin_a > 0.01 {
-            "hanging"
-        } else if sin_a < -0.01 {
-            "auto"
-        } else {
-            "central"
-        };
-        let label_padding = 4.0;
-        let _ = write!(
-            &mut out,
-            r#"<line x1="0" y1="0" x2="{x2}" y2="{y2}" class="radarAxisLine"/>"#,
-            x2 = fmt_display(a.line_x2),
-            y2 = fmt_display(a.line_y2)
-        );
-        let _ = write!(
-            &mut out,
-            r#"<text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="{dominant_baseline}" class="radarAxisLabel">{label}</text>"#,
-            x = fmt_display(a.label_x + label_padding * cos_a),
-            y = fmt_display(a.label_y + label_padding * sin_a),
-            label = escape_xml(&a.label)
-        );
-    }
+    write_radar_axes(&mut out, &layout.axes)?;
 
     let polygon_curves = layout
         .graticules
         .first()
         .is_some_and(|g| g.kind.trim() == "polygon");
-    for c in &layout.curves {
-        if polygon_curves && !c.points.is_empty() {
-            let points = fmt_points(&c.points);
+    for curve in &layout.curves {
+        if polygon_curves && !curve.points.is_empty() {
+            let points = fmt_points(&curve.points);
             let _ = write!(
                 &mut out,
                 r#"<polygon points="{points}" class="radarCurve-{idx}"/>"#,
                 points = escape_xml(&points),
-                idx = c.class_index
+                idx = curve.class_index
             );
         } else {
             let _ = write!(
                 &mut out,
                 r#"<path d="{d}" class="radarCurve-{idx}"/>"#,
-                d = escape_xml(&c.path_d),
-                idx = c.class_index
+                d = escape_xml(&curve.path_d),
+                idx = curve.class_index
             );
         }
+        out.checkpoint()?;
     }
 
     for item in &layout.legend_items {
@@ -269,16 +283,18 @@ pub(crate) fn render_radar_diagram_svg_model(
             x = fmt_display(item.x),
             y = fmt_display(item.y)
         );
+        out.checkpoint()?;
         let _ = write!(
             &mut out,
             r#"<rect width="{size}" height="{size}" class="radarLegendBox-{idx}"/>"#,
             size = fmt_display(12.0),
             idx = item.class_index
         );
+        out.checkpoint()?;
         let label = model
             .curves
             .get(item.class_index as usize)
-            .map(|c| c.label.as_str())
+            .map(|curve| curve.label.as_str())
             .unwrap_or("");
         let _ = write!(
             &mut out,
@@ -287,7 +303,9 @@ pub(crate) fn render_radar_diagram_svg_model(
             y = fmt_display(0.0),
             text = escape_xml(label)
         );
+        out.checkpoint()?;
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     let title = model
@@ -308,6 +326,7 @@ pub(crate) fn render_radar_diagram_svg_model(
                 y = fmt(layout.title_y),
                 text = escape_xml(t)
             );
+            out.checkpoint()?;
         }
         None => {
             let _ = write!(
@@ -315,11 +334,12 @@ pub(crate) fn render_radar_diagram_svg_model(
                 r#"<text class="radarTitle" x="0" y="{y}"/>"#,
                 y = fmt(layout.title_y)
             );
+            out.checkpoint()?;
         }
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -327,6 +347,91 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::model::RadarAxisLayout;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn radar_axes_stop_after_the_first_svg_sink_failure() {
+        let axes = (0..4)
+            .map(|index| RadarAxisLayout {
+                label: format!("axis-{index}"),
+                angle: index as f64,
+                line_x2: index as f64,
+                line_y2: index as f64,
+                label_x: index as f64,
+                label_y: index as f64,
+            })
+            .collect::<Vec<_>>();
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = write_radar_axes(&mut out, &axes)
+            .expect_err("the rejecting sink must stop Radar axis emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Radar axis emission must stop at the first failed sink checkpoint"
+        );
+    }
 
     #[test]
     fn radar_css_honors_top_level_style_overrides() {

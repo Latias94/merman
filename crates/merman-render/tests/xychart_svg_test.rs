@@ -6,6 +6,9 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::{XyChartDiagramLayout, XyChartDrawableElem};
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
@@ -26,7 +29,20 @@ fn render_xychart_svg_from_text(text: &str) -> String {
 }
 
 fn try_render_xychart_svg_from_text(text: &str) -> Result<String, merman_render::Error> {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    try_render_xychart_svg_with_resource_policy(
+        text,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+}
+
+fn try_render_xychart_svg_with_resource_policy(
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> Result<String, merman_render::Error> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin XYChart resource-bound session");
     let engine = legacy_init_theme_compat_engine();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -38,6 +54,44 @@ fn try_render_xychart_svg_from_text(text: &str) -> Result<String, merman_render:
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
         .svg()
         .to_owned())
+}
+
+#[test]
+fn xychart_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = "xychart\n  x-axis [A, B]\n  y-axis 0 --> 10\n  bar [4, 7]\n";
+    let baseline = try_render_xychart_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded XYChart baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "XYChart fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact XYChart SVG byte ceiling");
+    let exact = try_render_xychart_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact XYChart family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact XYChart SVG byte ceiling");
+    let error = try_render_xychart_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the XYChart family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected XYChart MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {

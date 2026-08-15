@@ -3,6 +3,9 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::VennDiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
@@ -31,6 +34,67 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
         .to_owned();
 
     (layout, svg)
+}
+
+fn try_render_venn_svg_with_resource_policy(
+    input: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Venn resource-bound session");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("parse Venn resource-bound fixture")
+        .expect("detect Venn resource-bound fixture");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("venn-bounded".to_string()),
+            ..Default::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn venn_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = "venn-beta\nset A[\"Alpha\"]:20\nset B[\"Beta\"]:12\nunion A,B[\"Shared\"]:3\n";
+    let baseline = try_render_venn_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Venn baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "Venn fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Venn SVG byte ceiling");
+    let exact = try_render_venn_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact Venn family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Venn SVG byte ceiling");
+    let error = try_render_venn_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the Venn family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Venn MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 fn find_venn_area<'a, 'input>(

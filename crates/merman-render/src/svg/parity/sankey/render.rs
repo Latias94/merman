@@ -1,5 +1,41 @@
 use super::super::*;
 
+fn write_sankey_nodes(
+    out: &mut impl SvgOutput,
+    nodes: &[crate::model::SankeyNodeLayout],
+    node_uid_by_id: &std::collections::HashMap<String, String>,
+    scope_generated_ids: bool,
+    diagram_id: &str,
+    color_for: &mut impl FnMut(&str) -> String,
+) -> Result<()> {
+    for node in nodes {
+        let node_uid = node_uid_by_id.get(&node.id).cloned().unwrap_or_else(|| {
+            if scope_generated_ids {
+                scoped_svg_id(diagram_id, "node-0")
+            } else {
+                "node-0".to_string()
+            }
+        });
+        let x = node.x0;
+        let y = node.y0;
+        let w = node.x1 - node.x0;
+        let h = node.y1 - node.y0;
+        let fill = color_for(&node.id);
+        let _ = write!(
+            out,
+            r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"/></g>"#,
+            id = escape_xml(&node_uid),
+            x = fmt(x),
+            y = fmt(y),
+            h = fmt(h),
+            w = fmt(w),
+            fill = escape_attr(&fill),
+        );
+        out.checkpoint()?;
+    }
+    Ok(())
+}
+
 pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
     effective_config: &serde_json::Value,
@@ -66,7 +102,7 @@ pub(crate) fn render_sankey_diagram_svg(
     )
     .with_max_width(root_svg::RootMaxWidth::SvgNumber(vb_w));
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::SANKEY, diagram_id).write_open(
             &mut out,
@@ -81,12 +117,14 @@ pub(crate) fn render_sankey_diagram_svg(
                 ..root_svg::RootChrome::new(diagram_id, "sankey")
             },
         )?;
-    let _ = write!(
-        &mut out,
-        "<style>{}</style>",
-        sankey_css(diagram_id, effective_config)
-    );
-    out.push_str("<g/>");
+    out.push_str("<style>");
+    out.checkpoint()?;
+    let css = sankey_css(diagram_id, effective_config);
+    out.push_str(&css);
+    drop(css);
+    out.checkpoint()?;
+    out.push_str("</style><g/>");
+    out.checkpoint()?;
 
     let scheme_tableau10: [&str; 10] = [
         "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",
@@ -129,37 +167,24 @@ pub(crate) fn render_sankey_diagram_svg(
     }
 
     out.push_str(r#"<g class="nodes">"#);
-    for n in &layout.nodes {
-        let node_uid = node_uid_by_id.get(&n.id).cloned().unwrap_or_else(|| {
-            if scope_generated_ids {
-                scoped_svg_id(diagram_id, "node-0")
-            } else {
-                "node-0".to_string()
-            }
-        });
-        let x = n.x0;
-        let y = n.y0;
-        let w = n.x1 - n.x0;
-        let h = n.y1 - n.y0;
-        let fill = color_for(&n.id);
-        let _ = write!(
-            &mut out,
-            r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"/></g>"#,
-            id = escape_xml(&node_uid),
-            x = fmt(x),
-            y = fmt(y),
-            h = fmt(h),
-            w = fmt(w),
-            fill = escape_attr(&fill),
-        );
-    }
+    out.checkpoint()?;
+    write_sankey_nodes(
+        &mut out,
+        &layout.nodes,
+        &node_uid_by_id,
+        scope_generated_ids,
+        diagram_id,
+        &mut color_for,
+    )?;
     out.push_str("</g>");
+    out.checkpoint()?;
 
     let _ = write!(
         &mut out,
         r#"<g class="node-labels" font-size="{font_size}">"#,
         font_size = fmt(label_font_size)
     );
+    out.checkpoint()?;
     let mut max_value = 0.0;
     let mut central_node_layer = 0usize;
     for n in &layout.nodes {
@@ -169,7 +194,7 @@ pub(crate) fn render_sankey_diagram_svg(
         }
     }
 
-    let append_labels = |out: &mut String, class_name: Option<&str>| {
+    let append_labels = |out: &mut BoundedSvgOutput<'_>, class_name: Option<&str>| -> Result<()> {
         for n in &layout.nodes {
             let y = (n.y0 + n.y1) / 2.0;
             let (x, anchor) = if outlined_labels {
@@ -207,17 +232,21 @@ pub(crate) fn render_sankey_diagram_svg(
                 anchor = anchor,
                 text = escape_xml(&text),
             );
+            out.checkpoint()?;
         }
+        Ok(())
     };
     if outlined_labels {
-        append_labels(&mut out, Some("sankey-label-bg"));
-        append_labels(&mut out, Some("sankey-label-fg"));
+        append_labels(&mut out, Some("sankey-label-bg"))?;
+        append_labels(&mut out, Some("sankey-label-fg"))?;
     } else {
-        append_labels(&mut out, None);
+        append_labels(&mut out, None)?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);
+    out.checkpoint()?;
 
     for l in &layout.links {
         let source = layout
@@ -248,6 +277,7 @@ pub(crate) fn render_sankey_diagram_svg(
         );
 
         out.push_str(r#"<g class="link" style="mix-blend-mode: multiply;">"#);
+        out.checkpoint()?;
 
         let stroke = match link_color.as_str() {
             "source" => color_for(&source.id),
@@ -265,6 +295,7 @@ pub(crate) fn render_sankey_diagram_svg(
                     c1 = escape_attr(&source_color),
                     c2 = escape_attr(&target_color),
                 );
+                out.checkpoint()?;
                 format!("url(#{})", gradient_id)
             }
             other => other.to_string(),
@@ -278,9 +309,114 @@ pub(crate) fn render_sankey_diagram_svg(
             stroke = escape_attr(&stroke),
             sw = fmt(stroke_width),
         );
+        out.checkpoint()?;
     }
 
     out.push_str("</g>");
+    out.checkpoint()?;
     out.push_str("</svg>");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn sankey_nodes_stop_after_the_first_svg_sink_failure() {
+        let nodes = (0..4)
+            .map(|index| crate::model::SankeyNodeLayout {
+                id: format!("node-{index}"),
+                index,
+                depth: index,
+                height: 0,
+                layer: index,
+                value: 1.0,
+                x0: index as f64,
+                x1: index as f64 + 10.0,
+                y0: 0.0,
+                y1: 20.0,
+            })
+            .collect::<Vec<_>>();
+        let node_uid_by_id = std::collections::HashMap::new();
+        let mut color_for = |_id: &str| "#4e79a7".to_string();
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = write_sankey_nodes(
+            &mut out,
+            &nodes,
+            &node_uid_by_id,
+            false,
+            "sankey",
+            &mut color_for,
+        )
+        .expect_err("the rejecting sink must stop Sankey node emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Sankey node emission must stop at the first failed sink checkpoint"
+        );
+    }
 }
