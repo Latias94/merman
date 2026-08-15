@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::flowchart::{
-    FlowchartLabelMetricsRequest, flowchart_label_is_empty_for_render,
-    flowchart_label_metrics_for_layout,
+    FlowchartLabelMetricsRequest, FlowchartShapeFacetEmissionReceipt,
+    flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
 };
 use crate::model::{SwimlaneDirection, SwimlaneLaneLayout};
 
@@ -35,7 +35,7 @@ fn parse_css_px_f32(value: Option<&String>, fallback: f32) -> f32 {
 
 #[allow(clippy::too_many_arguments)]
 fn write_swimlane_rect(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     compiled: &FlowchartCompiledStyles,
     class_name: &str,
@@ -46,7 +46,7 @@ fn write_swimlane_rect(
     height: f64,
     fill: Option<&str>,
     stroke: &str,
-) -> bool {
+) -> FlowchartShapeFacetEmissionReceipt {
     if flowchart_config_look(ctx.config) == "handDrawn" {
         let stroke_width = parse_css_px_f32(compiled.stroke_width.as_ref(), 1.3);
         let stroke_dasharray = compiled.stroke_dasharray.as_deref().unwrap_or("0 0").trim();
@@ -93,7 +93,13 @@ fn write_swimlane_rect(
                 escape_xml_display(stroke_dasharray),
                 OptionalStyleXmlAttr(&border_style),
             );
-            return false;
+            return FlowchartShapeFacetEmissionReceipt {
+                fill: fill.is_some(),
+                stroke: true,
+                stroke_width: true,
+                stroke_dasharray: true,
+                remaining_shape_style: false,
+            };
         }
     }
 
@@ -109,7 +115,7 @@ fn write_swimlane_rect(
         escape_xml_display(fill.unwrap_or("none")),
         escape_xml_display(stroke),
     );
-    true
+    FlowchartShapeFacetEmissionReceipt::all()
 }
 
 fn lane_label_metrics(
@@ -150,7 +156,7 @@ fn lane_label_metrics(
 }
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     cluster: &LayoutCluster,
     lane: &SwimlaneLaneLayout,
@@ -215,12 +221,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     }
     out.push('>');
 
-    let mut shape_source_verified = true;
+    let mut shape_source_receipt = FlowchartShapeFacetEmissionReceipt::none();
     let (label_x, label_y, label_transform) = if is_lr {
         let title_width = desired_title_size.max(label_height + 2.0 * title_padding_y);
         let body_x = lane_left + title_width;
         let body_width = (width - title_width).max(0.0);
-        shape_source_verified &= write_swimlane_rect(
+        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -232,8 +238,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             height,
             None,
             &theme.cluster_border,
-        );
-        shape_source_verified &= write_swimlane_rect(
+        ));
+        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -245,7 +251,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             height,
             Some(&theme.cluster_bkg),
             &theme.cluster_border,
-        );
+        ));
         let center_x = lane_left + title_width / 2.0;
         let center_y = lane.y + ctx.ty - origin_y;
         (
@@ -264,7 +270,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let title_height = desired_title_size.min(header_max_height);
         let body_y = lane_top + title_height;
         let body_height = (lane_bottom - body_y).max(0.0);
-        shape_source_verified &= write_swimlane_rect(
+        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -276,8 +282,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             body_height,
             None,
             &theme.cluster_border,
-        );
-        shape_source_verified &= write_swimlane_rect(
+        ));
+        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -289,7 +295,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             title_height,
             Some(&theme.cluster_bkg),
             &theme.cluster_border,
-        );
+        ));
         (
             lane.x - label_width / 2.0 + ctx.tx - origin_x,
             lane_top + (title_height - label_height) / 2.0,
@@ -297,7 +303,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         )
     };
     ctx.theme_evidence.record_source_residuals(
-        &compiled.emitted_shape_source_residuals(lane.id.as_str(), shape_source_verified),
+        &compiled
+            .emitted_shape_source_residuals_with_receipt(lane.id.as_str(), shape_source_receipt),
     );
 
     if ctx.swimlane_title_html_labels {

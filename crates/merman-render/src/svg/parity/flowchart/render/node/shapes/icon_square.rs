@@ -38,7 +38,7 @@ fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon_square(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
@@ -48,7 +48,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_square(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon_rounded(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
@@ -58,7 +58,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_rounded(
 }
 
 fn render_icon_rect_frame(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,

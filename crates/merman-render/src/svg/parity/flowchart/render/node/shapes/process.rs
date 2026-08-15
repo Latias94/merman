@@ -1,7 +1,5 @@
 //! Flowchart process rectangle.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -10,7 +8,7 @@ const HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
 const HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {

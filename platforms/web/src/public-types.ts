@@ -354,7 +354,6 @@ export type ThemeEffectEntry = ThemeEffectGraph | ThemeEffectBinding;
 export interface ThemeEffectGraph {
   kind: "graph";
   id: string;
-  region: { x: number; y: number; width: number; height: number };
   primitives: ThemeEffectPrimitive[];
 }
 

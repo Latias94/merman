@@ -317,6 +317,13 @@ fn resvg_safe_pipeline_removes_loose_html_label_foreign_object() {
 fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
     let source = "flowchart TD\n    A[Start] --> B[Done]";
     let renderer = TypedSvgRenderer::new()
+        .with_environment(SvgEnvironment::deterministic().with_theme_admission_policy(
+            merman::svg::ThemeAdmissionPolicy::permissive().with_trusted_lanes(
+                merman::svg::TrustedThemeLanes::from_allowed([
+                    merman::svg::TrustedThemeLane::RawThemeCss,
+                ]),
+            ),
+        ))
         .with_site_config(MermaidConfig::from_value(serde_json::json!({
             "themeCSS": ".node rect { animation: pulse 1s infinite; } @keyframes pulse { to { opacity: 0.5; } } :root { --bad: 1; }"
         })))

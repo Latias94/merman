@@ -7,7 +7,6 @@ use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
 use merman_core::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
 };
-use std::fmt::Write as _;
 
 pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     ctx: &FlowchartRenderCtx<'_>,
@@ -49,7 +48,7 @@ fn is_self_loop_label_node_id(id: &str) -> bool {
 }
 
 pub(super) fn try_render_self_loop_label_placeholder(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     node_id: &str,
     x: f64,
     y: f64,
@@ -100,7 +99,7 @@ impl<'a> NodeWrapperClasses<'a> {
             .any(|class| class.trim() == expected)
     }
 
-    fn write(self, out: &mut String) {
+    fn write(self, out: &mut impl crate::svg::parity::SvgOutput) {
         escape_xml_into(out, self.base);
         for c in self.assigned {
             let t = c.trim();
@@ -113,7 +112,7 @@ impl<'a> NodeWrapperClasses<'a> {
     }
 }
 
-fn write_class_attr(out: &mut String, classes: NodeWrapperClasses<'_>) {
+fn write_class_attr(out: &mut impl crate::svg::parity::SvgOutput, classes: NodeWrapperClasses<'_>) {
     classes.write(out);
 }
 
@@ -132,7 +131,10 @@ pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) look: &'a str,
 }
 
-pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
+pub(super) fn open_node_wrapper(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    attrs: NodeWrapperAttrs<'_>,
+) {
     let NodeWrapperAttrs {
         diagram_id,
         node_id,

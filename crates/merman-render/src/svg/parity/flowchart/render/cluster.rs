@@ -1,6 +1,7 @@
 //! Flowchart cluster renderer.
 
 use super::super::*;
+use crate::flowchart::FlowchartShapeFacetEmissionReceipt;
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 use std::borrow::Cow;
 
@@ -73,7 +74,7 @@ fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
 
 #[allow(clippy::too_many_arguments)]
 fn write_flowchart_cluster_shape(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     compiled_styles: &FlowchartCompiledStyles,
     rect_style: &str,
@@ -81,7 +82,7 @@ fn write_flowchart_cluster_shape(
     top: f64,
     rect_w: f64,
     rect_h: f64,
-) -> bool {
+) -> FlowchartShapeFacetEmissionReceipt {
     if flowchart_config_look(ctx.config) == "handDrawn" {
         let theme = MermaidThemeAdapter::new(ctx.config.as_value()).node_diagram();
         let fill = theme.cluster_bkg.as_str();
@@ -120,7 +121,13 @@ fn write_flowchart_cluster_shape(
                 escape_xml_display(stroke_dasharray),
                 OptionalStyleXmlAttr(&border_style),
             );
-            return false;
+            return FlowchartShapeFacetEmissionReceipt {
+                fill: true,
+                stroke: true,
+                stroke_width: true,
+                stroke_dasharray: true,
+                remaining_shape_style: false,
+            };
         }
     }
 
@@ -133,11 +140,11 @@ fn write_flowchart_cluster_shape(
         fmt_display(rect_w),
         fmt_display(rect_h)
     );
-    true
+    FlowchartShapeFacetEmissionReceipt::all()
 }
 
 pub(in crate::svg::parity) fn render_flowchart_cluster(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     cluster: &LayoutCluster,
     origin_x: f64,
@@ -210,7 +217,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             escape_xml_display(&cluster_dom_id),
             escape_xml_display(data_look),
         );
-        let shape_source_verified = write_flowchart_cluster_shape(
+        let shape_source_receipt = write_flowchart_cluster_shape(
             out,
             ctx,
             &compiled_styles,
@@ -221,8 +228,10 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             rect_h,
         );
         ctx.theme_evidence.record_source_residuals(
-            &compiled_styles
-                .emitted_shape_source_residuals(cluster.id.as_str(), shape_source_verified),
+            &compiled_styles.emitted_shape_source_residuals_with_receipt(
+                cluster.id.as_str(),
+                shape_source_receipt,
+            ),
         );
         let _ = write!(
             out,
@@ -289,7 +298,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         escape_xml_display(&cluster_dom_id),
         escape_xml_display(data_look),
     );
-    let shape_source_verified = write_flowchart_cluster_shape(
+    let shape_source_receipt = write_flowchart_cluster_shape(
         out,
         ctx,
         &compiled_styles,
@@ -300,7 +309,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         rect_h,
     );
     ctx.theme_evidence.record_source_residuals(
-        &compiled_styles.emitted_shape_source_residuals(cluster.id.as_str(), shape_source_verified),
+        &compiled_styles
+            .emitted_shape_source_residuals_with_receipt(cluster.id.as_str(), shape_source_receipt),
     );
     let _ = write!(
         out,

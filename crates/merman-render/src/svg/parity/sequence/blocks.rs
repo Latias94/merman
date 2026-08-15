@@ -49,7 +49,7 @@ impl<'a> SequenceBlockRenderContext<'a> {
     }
 }
 
-fn write_control_structure_group_open(out: &mut String, control_id: &str) {
+fn write_control_structure_group_open(out: &mut impl SvgOutput, control_id: &str) {
     let _ = write!(
         out,
         r#"<g data-et="control-structure" data-id="i{id}">"#,
@@ -58,7 +58,7 @@ fn write_control_structure_group_open(out: &mut String, control_id: &str) {
 }
 
 pub(super) fn write_block_frame(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     frame_x1: f64,
     frame_x2: f64,
     frame_y1: f64,
@@ -95,7 +95,7 @@ pub(super) fn write_block_frame(
 }
 
 pub(super) fn write_block_label_box(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     frame_x1: f64,
     frame_y1: f64,
     label_box_width: f64,
@@ -129,7 +129,7 @@ pub(super) fn write_block_label_box(
 }
 
 pub(super) fn render_simple_sequence_block(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     block: SimpleSequenceBlock<'_>,
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
@@ -196,7 +196,7 @@ fn section_separator_ys(sections: &[AltSection<'_>]) -> Option<Vec<f64>> {
 }
 
 pub(super) fn render_sectioned_sequence_block(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     control_id: &str,
     block_label: &str,
     sections: &[AltSection<'_>],
@@ -294,7 +294,7 @@ pub(super) fn render_sectioned_sequence_block(
 }
 
 pub(super) fn render_critical_sequence_block(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     control_id: &str,
     sections: &[AltSection<'_>],
     layout: Option<&SequenceBlockLayout>,

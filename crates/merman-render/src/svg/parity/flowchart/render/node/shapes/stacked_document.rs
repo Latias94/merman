@@ -1,7 +1,5 @@
 //! Flowchart v2 stacked document shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
 use super::super::geom::{generate_full_sine_wave_points, path_from_points};
@@ -9,7 +7,7 @@ use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,

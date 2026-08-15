@@ -1,12 +1,10 @@
 //! Flowchart v2 datastore shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_datastore(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
 ) {
     let w = common.layout_node.width.max(1.0);

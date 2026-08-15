@@ -20,7 +20,7 @@ use merman_export::ExportError;
 #[cfg(feature = "svg")]
 use merman_render::{
     LayoutOptions, RenderCapabilityPolicy, ResourceLimitExceeded as SvgResourceLimitExceeded,
-    diagram_theme::DiagramTheme,
+    diagram_theme::{DiagramTheme, ThemeResourcePolicy},
     environment::{RenderEnvironment as BackendRenderEnvironment, TextMeasurementPolicy},
     math::MathRenderer,
     resources::RenderResourcePolicy,
@@ -92,6 +92,15 @@ impl SvgEnvironment {
         self
     }
 
+    /// Sets the host-owned ceiling for resources used while materializing a compiled theme.
+    ///
+    /// Session creation intersects this ceiling with the restriction captured by the theme
+    /// compiler. Neither side can widen the other.
+    pub fn with_theme_resource_ceiling(mut self, ceiling: ThemeResourcePolicy) -> Self {
+        self.backend = self.backend.with_theme_resource_ceiling(ceiling);
+        self
+    }
+
     pub fn with_theme_admission_policy(
         mut self,
         policy: merman_render::diagram_theme::ThemeAdmissionPolicy,
@@ -123,8 +132,11 @@ impl SvgEnvironment {
             Some(theme) => self
                 .backend
                 .begin_session_with_theme_in_context(theme, context, control)
-                .map_err(RenderError::SvgEnvironment),
-            None => Ok(self.backend.begin_session_in_context(context, control)),
+                .map_err(RenderError::from),
+            None => self
+                .backend
+                .begin_session_in_context(context, control)
+                .map_err(RenderError::from),
         }
     }
 }
@@ -210,6 +222,8 @@ pub(crate) struct ThemeEvidenceScopeProjection {
     pub(crate) status: ThemeEvidenceStatus,
     pub(crate) required_count: usize,
     pub(crate) accounted_count: usize,
+    pub(crate) applied_count: usize,
+    pub(crate) not_applicable_count: usize,
     pub(crate) residual_count: usize,
     pub(crate) output_mutated: bool,
 }
@@ -218,13 +232,6 @@ pub(crate) struct ThemeEvidenceScopeProjection {
 impl ThemeEvidenceScopeProjection {
     pub(crate) const fn incomplete_count(self) -> usize {
         self.required_count.saturating_sub(self.accounted_count)
-    }
-
-    pub(crate) const fn is_verified(self) -> bool {
-        matches!(self.status, ThemeEvidenceStatus::Verified)
-            && self.incomplete_count() == 0
-            && self.residual_count == 0
-            && !self.output_mutated
     }
 
     pub(crate) const fn is_satisfied(self) -> bool {
@@ -256,10 +263,12 @@ pub(crate) struct ThemeAcceptanceEvidenceProjection<'a> {
     pub(crate) compatibility_residual_count: usize,
     pub(crate) mermaid_compatibility_residual_count: usize,
     pub(crate) recipe_report: Option<&'a merman_render::diagram_theme::ThemeRecipeReport>,
-    pub(crate) portability_requirement:
-        Option<merman_render::diagram_theme::ThemePortabilityRequirement>,
+    pub(crate) host_admission_report:
+        Option<&'a merman_render::diagram_theme::ThemeHostAdmissionReport>,
     pub(crate) prepared_text_layout: Option<&'a merman_render::text::PreparedTextLayoutReport>,
     pub(crate) text_layout_failure: Option<merman_render::text::TextLayoutFailure>,
+    pub(crate) effective_theme_resource_policy:
+        &'a merman_render::diagram_theme::ThemeResourcePolicy,
 }
 
 /// Immutable evidence captured by a completed SVG operation.
@@ -373,12 +382,11 @@ impl RenderEvidence {
                 .theme_acceptance
                 .mermaid_compatibility_residual_count,
             recipe_report: self.session.theme_recipe_report(),
-            portability_requirement: self
-                .session
-                .theme_host_admission_report()
-                .map(|report| report.portability_requirement()),
+            host_admission_report: self.session.theme_host_admission_report(),
             prepared_text_layout: self.session.prepared_text_layout(),
             text_layout_failure: self.session.text_layout_failure(),
+            effective_theme_resource_policy:
+                merman_render::__private::effective_theme_resource_policy(&self.session),
         }
     }
 
@@ -398,8 +406,8 @@ fn theme_evidence_scopes(
     ThemeEvidenceScopeProjection,
     merman_render::__private::FamilyEvidenceSummary,
 ) {
-    let root = report.root_theme_report();
-    let root_status = match root.verification() {
+    let root = merman_render::__private::root_evidence(report);
+    let root_status = match root.status() {
         merman_render::diagram_theme::RootThemeVerification::NotApplicable => {
             ThemeEvidenceStatus::NotApplicable
         }
@@ -414,15 +422,6 @@ fn theme_evidence_scopes(
         }
         _ => ThemeEvidenceStatus::Incomplete,
     };
-    let root_required_count = root.required_mechanisms().len();
-    let root_residual_count = root.residuals().len();
-    let root_accounted_count = root
-        .applied_mechanisms()
-        .len()
-        .saturating_add(root_residual_count);
-    let root_output_mutated = root.residuals().iter().any(|residual| {
-        residual.reason() == merman_render::diagram_theme::RootThemeResidualReason::OutputMutation
-    });
 
     let family = merman_render::__private::family_evidence(report);
     let family_status = match family.status() {
@@ -440,15 +439,19 @@ fn theme_evidence_scopes(
     (
         ThemeEvidenceScopeProjection {
             status: root_status,
-            required_count: root_required_count,
-            accounted_count: root_accounted_count,
-            residual_count: root_residual_count,
-            output_mutated: root_output_mutated,
+            required_count: root.required_count(),
+            accounted_count: root.accounted_count(),
+            applied_count: root.applied_count(),
+            not_applicable_count: 0,
+            residual_count: root.residual_count(),
+            output_mutated: root.output_mutated(),
         },
         ThemeEvidenceScopeProjection {
             status: family_status,
             required_count: family.required_count(),
             accounted_count: family.accounted_count(),
+            applied_count: family.applied_count(),
+            not_applicable_count: family.not_applicable_count(),
             residual_count: family.theme_residual_count(),
             output_mutated: family.output_mutated(),
         },
@@ -629,10 +632,10 @@ pub enum RenderError {
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[cfg(feature = "svg")]
     #[error(transparent)]
-    Svg(#[from] merman_render::Error),
+    Svg(merman_render::Error),
     #[cfg(feature = "svg")]
     #[error(transparent)]
-    SvgEnvironment(#[from] merman_render::environment::RenderEnvironmentError),
+    SvgEnvironment(merman_render::environment::RenderEnvironmentError),
     #[cfg(feature = "ascii")]
     #[error(transparent)]
     Ascii(#[from] AsciiError),
@@ -727,6 +730,17 @@ impl ResourceLimitExceeded {
         }
     }
 
+    #[cfg(feature = "svg")]
+    fn from_theme(error: merman_render::diagram_theme::ThemeResourceLimitExceeded) -> Self {
+        Self {
+            id: error.limit,
+            phase: error.phase.as_str(),
+            actual: u64::try_from(error.actual).unwrap_or(u64::MAX),
+            maximum: u64::try_from(error.max).unwrap_or(u64::MAX),
+            cause: ResourceLimitCause::Ceiling,
+        }
+    }
+
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn from_export(details: merman_export::ExportResourceLimitDetails) -> Self {
         Self {
@@ -746,7 +760,35 @@ fn map_svg_error(error: merman_render::Error) -> RenderError {
         merman_render::Error::ResourceLimitExceeded(resource) => {
             RenderError::from(ResourceLimitExceeded::from_svg(resource))
         }
+        merman_render::Error::ThemeResourceLimitExceeded(resource) => {
+            RenderError::from(ResourceLimitExceeded::from_theme(resource))
+        }
         other => RenderError::Svg(other),
+    }
+}
+
+#[cfg(feature = "svg")]
+impl From<merman_render::Error> for RenderError {
+    fn from(error: merman_render::Error) -> Self {
+        map_svg_error(error)
+    }
+}
+
+#[cfg(feature = "svg")]
+impl From<merman_render::environment::RenderEnvironmentError> for RenderError {
+    fn from(error: merman_render::environment::RenderEnvironmentError) -> Self {
+        match error {
+            merman_render::environment::RenderEnvironmentError::Cancelled(cancelled) => {
+                Self::Cancelled(cancelled)
+            }
+            merman_render::environment::RenderEnvironmentError::Runtime(runtime) => {
+                Self::RuntimePolicy(runtime)
+            }
+            merman_render::environment::RenderEnvironmentError::ThemeResource(resource) => {
+                Self::ResourceLimitExceeded(ResourceLimitExceeded::from_theme(resource))
+            }
+            other => Self::SvgEnvironment(other),
+        }
     }
 }
 
@@ -1389,9 +1431,69 @@ fn render_pdf_target(
 #[cfg(all(test, feature = "svg"))]
 mod tests {
     use super::{
-        ThemeEvidenceScopeProjection, ThemeEvidenceStatus, ThemeEvidenceSummary,
-        summarize_theme_evidence,
+        RenderError, ResourceLimitCause, ThemeEvidenceScopeProjection, ThemeEvidenceStatus,
+        ThemeEvidenceSummary, summarize_theme_evidence,
     };
+
+    #[test]
+    fn theme_resource_environment_error_maps_to_resource_limit_exceeded() {
+        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
+        let maximum = policy
+            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained theme input ceiling");
+        let resource = policy
+            .check_theme_encoded_bytes(maximum + 1)
+            .expect_err("fixture must exceed the constrained theme input ceiling");
+
+        let error = RenderError::from(
+            merman_render::environment::RenderEnvironmentError::ThemeResource(resource),
+        );
+        let RenderError::ResourceLimitExceeded(resource) = error else {
+            panic!("theme resource environment errors must use the common resource variant");
+        };
+        assert_eq!(resource.id, "max_theme_encoded_bytes");
+        assert_eq!(resource.phase, "theme_input");
+        assert_eq!(resource.actual, (maximum + 1) as u64);
+        assert_eq!(resource.maximum, maximum as u64);
+        assert_eq!(resource.cause, ResourceLimitCause::Ceiling);
+    }
+
+    #[test]
+    fn render_environment_cancellation_maps_to_the_common_cancelled_variant() {
+        let cancelled = merman_core::OperationCancelled {
+            phase: merman_core::OperationPhase::Layout,
+            reason: merman_core::CancelReason::Requested,
+        };
+
+        let error = RenderError::from(
+            merman_render::environment::RenderEnvironmentError::Cancelled(cancelled),
+        );
+        let RenderError::Cancelled(mapped) = error else {
+            panic!("render-environment cancellation must use the common cancelled variant");
+        };
+        assert_eq!(mapped, cancelled);
+    }
+
+    #[test]
+    fn terminal_theme_resource_render_error_maps_to_resource_limit_exceeded() {
+        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
+        let maximum = policy
+            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained theme input ceiling");
+        let resource = policy
+            .check_theme_encoded_bytes(maximum + 1)
+            .expect_err("fixture must exceed the constrained theme input ceiling");
+
+        let error = RenderError::from(merman_render::Error::ThemeResourceLimitExceeded(resource));
+        let RenderError::ResourceLimitExceeded(resource) = error else {
+            panic!("terminal theme resource errors must use the common resource variant");
+        };
+        assert_eq!(resource.id, "max_theme_encoded_bytes");
+        assert_eq!(resource.phase, "theme_input");
+        assert_eq!(resource.actual, (maximum + 1) as u64);
+        assert_eq!(resource.maximum, maximum as u64);
+        assert_eq!(resource.cause, ResourceLimitCause::Ceiling);
+    }
 
     #[test]
     fn theme_evidence_status_exposes_the_complete_coarse_catalog() {
@@ -1428,6 +1530,8 @@ mod tests {
             status: ThemeEvidenceStatus::Incomplete,
             required_count: 2,
             accounted_count: 1,
+            applied_count: 0,
+            not_applicable_count: 0,
             residual_count: 1,
             output_mutated: false,
         };
@@ -1435,6 +1539,8 @@ mod tests {
             status: ThemeEvidenceStatus::Residual,
             required_count: 1,
             accounted_count: 1,
+            applied_count: 0,
+            not_applicable_count: 0,
             residual_count: 1,
             output_mutated: false,
         };

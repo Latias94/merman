@@ -421,11 +421,11 @@ fn compile_sequence_family(
         )],
     );
     contributions.add_theme_variables(
-        "note.fill",
+        ThemeRouteCutoverProjection::NoteFill.contribution_id(),
         [("noteBkgColor", reader.fill(ThemeTarget::Note))],
     );
     contributions.add_theme_variables(
-        "note.stroke",
+        ThemeRouteCutoverProjection::NoteStroke.contribution_id(),
         [("noteBorderColor", reader.stroke(ThemeTarget::Note))],
     );
     contributions.add_theme_variables(

@@ -8,13 +8,15 @@ pub(super) fn flowchart_compute_edge_path_geom(
 ) -> Option<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
+        key,
         edge,
         origin_x,
         origin_y,
         trace_enabled,
+        collapse_degenerate_subgraph_route,
     } = request;
 
-    let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    let le = ctx.layout_edges_by_key.get(&key)?;
     if le.points.len() < 2 {
         return None;
     }
@@ -199,7 +201,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
     // and the D3 curve generator operate on the separate `lineData` copy below.
     let label_path_points = if ctx
         .model
-        .edge_label_for_render(edge)
+        .edge_label_for_render(key.semantic_index(), edge)
         .is_some_and(|label| !label.is_empty())
     {
         points_for_render.clone()
@@ -275,8 +277,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
         line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
     };
     maybe_collapse_degenerate_subgraph_edge_route(
-        ctx,
-        edge,
+        collapse_degenerate_subgraph_route,
         points_for_data_points,
         &mut line_data,
     );

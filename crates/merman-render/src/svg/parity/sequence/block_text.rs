@@ -86,7 +86,7 @@ pub(super) fn wrap_svg_text_lines(
 }
 
 pub(super) fn write_loop_text_lines(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &LoopTextRenderContext<'_>,
     placement: LoopTextPlacement,
     text: &str,
@@ -124,7 +124,7 @@ pub(super) fn write_loop_text_lines(
 }
 
 pub(super) fn write_section_title_lines(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &LoopTextRenderContext<'_>,
     x: f64,
     y0: f64,

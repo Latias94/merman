@@ -11,7 +11,9 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::FlowchartLayout;
-use merman_render::resources::RenderResourcePolicy;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -94,6 +96,88 @@ fn render_flowchart_svg_from_text_with_engine_and_policy(
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+fn try_render_flowchart_svg_with_resource_policy(
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Flowchart resource-bound session");
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()))
+            .expect("parse Flowchart resource-bound fixture")
+            .expect("detect Flowchart resource-bound fixture");
+    render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions::default(),
+    )
+}
+
+#[test]
+fn flowchart_families_accept_exact_max_svg_bytes_and_reject_one_byte_less() {
+    for (family, source) in [
+        (
+            "Flowchart",
+            "flowchart TD\nA[Alpha] -->|advance| B[Beta]\nB --> C[Gamma]\n",
+        ),
+        (
+            "Swimlane",
+            "swimlane-beta LR\nA[Alpha] -->|advance| B[Beta]\nB --> C[Gamma]\n",
+        ),
+    ] {
+        let baseline = try_render_flowchart_svg_with_resource_policy(
+            source,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap_or_else(|error| panic!("render the unbounded {family} baseline: {error}"));
+        let exact_bytes = baseline.len();
+        assert!(
+            exact_bytes > 1,
+            "{family} fixture must emit a non-empty SVG"
+        );
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+            .unwrap_or_else(|error| panic!("valid exact {family} SVG byte ceiling: {error}"));
+        let exact = try_render_flowchart_svg_with_resource_policy(source, exact_policy)
+            .unwrap_or_else(|error| {
+                panic!("exact {family} SVG byte ceiling must succeed: {error}")
+            });
+        assert_eq!(exact.as_bytes(), baseline.as_bytes(), "{family}");
+
+        let below_exact = exact_bytes - 1;
+        let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+            .unwrap_or_else(|error| panic!("valid below-exact {family} SVG ceiling: {error}"));
+        let error = match try_render_flowchart_svg_with_resource_policy(source, below_policy) {
+            Ok(_) => panic!("one byte below the {family} SVG size must fail"),
+            Err(error) => error,
+        };
+        let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected {family} MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling, "{family}");
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput, "{family}");
+        assert_eq!(
+            limit.limit,
+            ResourceLimitId::MaxSvgBytes.as_str(),
+            "{family}"
+        );
+        assert_eq!(limit.max, below_exact, "{family}");
+        assert!(limit.actual > limit.max, "{family}");
+        assert!(
+            limit.explicit_overrides.iter().any(|resource_override| {
+                resource_override.id == ResourceLimitId::MaxSvgBytes
+                    && resource_override.value == below_exact
+            }),
+            "{family}"
+        );
+    }
 }
 
 #[test]
@@ -588,6 +672,189 @@ fn flowchart_svg_renders_one_logical_self_loop_edge() {
     assert!(
         !svg.contains("cyclic-special"),
         "Dagre self-loop segments must not leak into the rendered SVG: {svg}"
+    );
+}
+
+#[test]
+fn duplicate_flowchart_edge_ids_keep_occurrence_bound_geometry_styles_labels_and_markers() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+X L_A_B_0@-->|first &amp; owner| Y
+A -->|second &lt; owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("L_A_B_0")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "both semantic occurrences must render: {svg}"
+    );
+    assert_ne!(
+        paths[0].attribute("d"),
+        paths[1].attribute("d"),
+        "duplicate raw ids must not alias routed geometry"
+    );
+    let styles = paths
+        .iter()
+        .filter_map(|path| path.attribute("style"))
+        .collect::<Vec<_>>();
+    assert!(styles.iter().any(|style| style.contains("stroke:#ef4444")));
+    assert!(styles.iter().any(|style| style.contains("stroke:#2563eb")));
+    let marker_ends = paths
+        .iter()
+        .filter_map(|path| path.attribute("marker-end"))
+        .collect::<Vec<_>>();
+    assert!(marker_ends.iter().any(|marker| marker.contains("__ef4444")));
+    assert!(marker_ends.iter().any(|marker| marker.contains("__2563eb")));
+
+    let labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class") == Some("label")
+                && node.attribute("data-id") == Some("L_A_B_0")
+        })
+        .map(|label| {
+            label
+                .descendants()
+                .filter_map(|node| node.text().filter(|_| node.is_text()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        labels.iter().any(|label| label == "first & owner"),
+        "{labels:?}"
+    );
+    assert!(
+        labels.iter().any(|label| label == "second < owner"),
+        "{labels:?}"
+    );
+}
+
+#[test]
+fn duplicate_flowchart_edge_ids_on_the_same_graphlib_key_keep_the_last_semantic_owner() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+A L_A_B_2@-->|first owner| B
+A -->|second owner| B
+A -->|third owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+linkStyle 2 stroke:#16a34a
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "Graphlib must retain one L_A_B_2 owner: {svg}"
+    );
+    let collided = paths
+        .iter()
+        .find(|path| path.attribute("data-id") == Some("L_A_B_2"))
+        .expect("surviving collided edge");
+    let style = collided.attribute("style").unwrap_or_default();
+    assert!(style.contains("stroke:#2563eb"), "{style}");
+    assert!(!style.contains("stroke:#ef4444"), "{style}");
+    assert!(svg.contains("second owner"), "{svg}");
+    assert!(!svg.contains("first owner"), "{svg}");
+}
+
+#[test]
+fn duplicate_flowchart_self_loop_ids_merge_each_semantic_occurrence_independently() {
+    let svg = render_flowchart_svg_from_text(
+        "flowchart LR\nX L_A_A_0@-->|first loop| X\nA -->|second loop| A\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("L_A_A_0")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "both compact self-loops must survive: {svg}"
+    );
+    assert_ne!(paths[0].attribute("d"), paths[1].attribute("d"));
+    assert!(
+        !svg.contains("cyclic-special"),
+        "helper segments leaked: {svg}"
+    );
+    assert!(svg.contains("first loop"), "{svg}");
+    assert!(svg.contains("second loop"), "{svg}");
+}
+
+#[test]
+fn swimlane_duplicate_raw_edge_ids_fail_closed() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "swimlane-beta LR\nX L_A_B_0@--> Y\nA --> B\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse Swimlane")
+        .expect("detect Swimlane");
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin session");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("Swimlane duplicate raw edge ids must fail closed"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("Swimlane does not support duplicate Flowchart edge id `L_A_B_0`"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_duplicate_raw_edge_ids_fail_closed() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            r#"---
+config:
+  layout: elk
+---
+flowchart LR
+X L_A_B_0@--> Y
+A --> B
+"#,
+            ParseOptions::strict(),
+        )
+        .expect("parse ELK Flowchart")
+        .expect("detect ELK Flowchart");
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin session");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("ELK duplicate raw edge ids must fail closed"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("Flowchart ELK does not support duplicate Flowchart edge id `L_A_B_0`"),
+        "{error}"
     );
 }
 
@@ -1285,6 +1552,11 @@ flowchart TB
 fn flowchart_colored_marker_whitespace_follows_security_level() {
     fn marker_path_colors(svg: &str) -> (String, String) {
         let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+        let marker_ids = document
+            .descendants()
+            .filter(|node| node.is_element() && node.tag_name().name() == "marker")
+            .filter_map(|node| node.attribute("id"))
+            .collect::<Vec<_>>();
         let marker = document
             .descendants()
             .find(|node| {
@@ -1294,7 +1566,7 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
                         .attribute("id")
                         .is_some_and(|id| id.ends_with("-pointEnd__orange"))
             })
-            .expect("orange point-end marker");
+            .unwrap_or_else(|| panic!("orange point-end marker; emitted ids: {marker_ids:?}"));
         let path = marker
             .children()
             .find(|node| node.is_element() && node.tag_name().name() == "path")
@@ -1333,6 +1605,207 @@ fn flowchart_colored_marker_whitespace_follows_security_level() {
     assert_eq!(
         marker_path_colors(&loose),
         (" orange".to_string(), " orange".to_string())
+    );
+}
+
+#[test]
+fn flowchart_colored_bidirectional_markers_define_every_referenced_variant() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+    A o--o B
+    B <--> C
+    C x--x D
+    linkStyle 0 stroke:#ef4444
+    linkStyle 1 stroke:#22c55e
+    linkStyle 2 stroke:#2563eb
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let marker_ids = document
+        .descendants()
+        .filter(|node| node.has_tag_name("marker"))
+        .filter_map(|node| node.attribute("id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let references = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .flat_map(|node| [node.attribute("marker-start"), node.attribute("marker-end")])
+        .flatten()
+        .map(|reference| {
+            reference
+                .strip_prefix("url(#")
+                .and_then(|value| value.strip_suffix(')'))
+                .expect("local Flowchart marker reference")
+        })
+        .collect::<Vec<_>>();
+
+    for reference in &references {
+        assert!(
+            marker_ids.contains(reference),
+            "missing marker definition for {reference}: {marker_ids:?}"
+        );
+    }
+    for suffix in [
+        "circleStart__ef4444",
+        "circleEnd__ef4444",
+        "pointStart__22c55e",
+        "pointEnd__22c55e",
+        "crossStart__2563eb",
+        "crossEnd__2563eb",
+    ] {
+        assert!(
+            references
+                .iter()
+                .any(|reference| reference.ends_with(suffix)),
+            "missing colored marker reference {suffix}: {references:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_neo_markers_use_margin_geometry_only_for_non_animated_edges() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "neo"}}%%
+flowchart LR
+    A o--o B
+    B animated@==> C
+    C explicit-speed@==> D
+    animated@{ animate: true }
+    explicit-speed@{ animate: false, animation: fast }
+    linkStyle 0 stroke:#ef4444
+    linkStyle 1 stroke:#2563eb
+    linkStyle 2 stroke:#16a34a
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let edge_paths = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    assert_eq!(edge_paths.len(), 3, "expected three rendered edges: {svg}");
+
+    let static_edge = edge_paths
+        .iter()
+        .find(|node| node.attribute("data-id") == Some("L_A_B_0"))
+        .expect("static circle edge");
+    assert!(
+        static_edge
+            .attribute("marker-start")
+            .is_some_and(|value| value.ends_with("-circleStart-margin__ef4444)")),
+        "non-animated Neo start marker must use margin geometry: {static_edge:?}"
+    );
+    assert!(
+        static_edge
+            .attribute("marker-end")
+            .is_some_and(|value| value.ends_with("-circleEnd-margin__ef4444)")),
+        "non-animated Neo end marker must use margin geometry: {static_edge:?}"
+    );
+    assert!(
+        static_edge
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "non-animated Neo edge must retain the marker mask: {static_edge:?}"
+    );
+
+    let animated_edge = edge_paths
+        .iter()
+        .find(|node| node.attribute("data-id") == Some("animated"))
+        .expect("animated point edge");
+    assert!(
+        animated_edge
+            .attribute("marker-end")
+            .is_some_and(|value| value.ends_with("-pointEnd__2563eb)")),
+        "animated Neo marker must retain non-margin geometry: {animated_edge:?}"
+    );
+    assert!(
+        !animated_edge
+            .attribute("marker-end")
+            .is_some_and(|value| value.contains("-margin")),
+        "animated Neo marker must not reference a margin variant: {animated_edge:?}"
+    );
+    assert!(
+        !animated_edge
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "animated Neo edge must not receive the non-animated marker mask: {animated_edge:?}"
+    );
+
+    let explicit_speed = edge_paths
+        .iter()
+        .find(|node| node.attribute("data-id") == Some("explicit-speed"))
+        .expect("explicit-speed edge");
+    assert!(
+        explicit_speed.attribute("class").is_some_and(|value| value
+            .split_ascii_whitespace()
+            .any(|class| { class == "edge-animation-fast" })),
+        "explicit animation speed must override animate:false: {explicit_speed:?}"
+    );
+    assert!(
+        explicit_speed
+            .attribute("marker-end")
+            .is_some_and(|value| value.ends_with("-pointEnd__16a34a)")),
+        "explicit animation speed must retain non-margin marker geometry: {explicit_speed:?}"
+    );
+    assert!(
+        !explicit_speed
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "explicit animation speed must suppress the non-animated Neo mask: {explicit_speed:?}"
+    );
+
+    for reference in edge_paths
+        .iter()
+        .flat_map(|node| [node.attribute("marker-start"), node.attribute("marker-end")])
+        .flatten()
+    {
+        let id = reference
+            .strip_prefix("url(#")
+            .and_then(|value| value.strip_suffix(')'))
+            .expect("local marker reference");
+        assert!(
+            document
+                .descendants()
+                .any(|node| { node.has_tag_name("marker") && node.attribute("id") == Some(id) }),
+            "missing Neo marker definition for {id}: {svg}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_colored_marker_id_collisions_follow_actual_root_emission_order() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart LR
+    subgraph Nested
+        A --> B
+    end
+    C --> D
+    linkStyle 0 stroke:hsl(-30 100% 50%)
+    linkStyle 1 stroke:hsl(+30 100% 50%)
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let colored_markers = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("marker")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-pointEnd_hsl__30_100__50__"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        colored_markers.len(),
+        1,
+        "sanitized marker IDs must be deduplicated: {svg}"
+    );
+    let path = colored_markers[0]
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .expect("colored point marker path");
+    assert_eq!(
+        path.attribute("stroke"),
+        Some("hsl(+30 100% 50%)"),
+        "the root edge is emitted before the nested root and must own the colliding marker ID"
     );
 }
 
@@ -1502,6 +1975,64 @@ flowchart TD
         ),
         "expected Mermaid redux primaryColor override to derive visible secondary edge-label color: {svg}"
     );
+}
+
+#[test]
+fn flowchart_neo_source_animation_uses_the_parsed_final_css_winner() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "neo"}}%%
+flowchart LR
+    A inline-active@==> B
+    B class-disabled@==> C
+    C custom-token@==> D
+    classDef disabled animation:none
+    classDef token --animation-token:dash
+    class class-disabled disabled
+    class custom-token token
+    linkStyle 0 animation:dash 2s linear
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let edge = |id| {
+        document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("data-edge") == Some("true")
+                    && node.attribute("data-id") == Some(id)
+            })
+            .unwrap_or_else(|| panic!("missing edge {id}: {svg}"))
+    };
+
+    let inline_active = edge("inline-active");
+    assert!(
+        inline_active
+            .attribute("marker-end")
+            .is_some_and(|value| !value.contains("-margin")),
+        "inline animation must use animated marker geometry: {inline_active:?}"
+    );
+    assert!(
+        !inline_active
+            .attribute("style")
+            .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+        "inline animation must suppress the non-animated Neo mask: {inline_active:?}"
+    );
+
+    for inactive_id in ["class-disabled", "custom-token"] {
+        let inactive = edge(inactive_id);
+        assert!(
+            inactive
+                .attribute("marker-end")
+                .is_some_and(|value| value.contains("-pointEnd-margin")),
+            "inactive edge must use margin marker geometry: {inactive:?}"
+        );
+        assert!(
+            inactive
+                .attribute("style")
+                .is_some_and(|value| value.starts_with("stroke-dasharray: 0 ")),
+            "inactive edge must retain the Neo marker mask: {inactive:?}"
+        );
+    }
 }
 
 #[test]

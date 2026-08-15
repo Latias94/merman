@@ -2,7 +2,8 @@ use super::super::*;
 use super::geometry::node_left_top;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
-    SequenceMathHeightMode, sequence_note_final_wrapped_lines, sequence_text_line_step_px,
+    SequenceMathHeightMode, SequenceNoteThemeReceipt, sequence_note_final_wrapped_lines,
+    sequence_text_line_step_px,
 };
 use merman_core::diagrams::sequence::SequenceMessage;
 use rustc_hash::FxHashMap;
@@ -18,9 +19,10 @@ pub(super) struct SequenceNoteRenderContext<'a> {
 }
 
 pub(super) fn render_sequence_note(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     msg: &SequenceMessage,
     ctx: &SequenceNoteRenderContext<'_>,
+    theme_receipt: &mut SequenceNoteThemeReceipt,
 ) {
     if msg.message_type != 2 {
         return;
@@ -45,6 +47,7 @@ pub(super) fn render_sequence_note(
         w = fmt(n.width),
         h = fmt(n.height)
     );
+    theme_receipt.record_rect_emission();
     if let Some(katex) = sequence_katex_label(
         raw,
         ctx.measurer,
@@ -94,7 +97,7 @@ pub(super) fn render_sequence_note(
 }
 
 fn render_sequence_note_lines<'a>(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     lines: impl IntoIterator<Item = &'a str>,
     cx: f64,
     text_y: f64,

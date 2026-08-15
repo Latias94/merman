@@ -573,6 +573,12 @@ pub struct QuadrantChartDiagramLayout {
 pub struct FlowchartLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    /// Semantic Flowchart edge index for each entry in `edges`.
+    ///
+    /// This render-only sidecar keeps duplicate Mermaid edge ids occurrence-safe without changing
+    /// the public layout JSON or SVG ids.
+    #[serde(skip)]
+    pub edge_owner_indices: Vec<usize>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).

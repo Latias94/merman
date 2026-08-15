@@ -1,140 +1,671 @@
 //! Flowchart SVG defs and marker emission.
 
-use std::fmt::Write as _;
+use std::fmt;
+
+use indexmap::IndexMap;
+use rustc_hash::FxHashMap;
 
 use super::super::util::{escape_xml, escape_xml_display};
-use super::{FlowchartRenderCtx, flowchart_config_look};
+use super::{
+    FlowchartHierarchyPlan, FlowchartMarkerBase, FlowchartRenderCtx, flowchart_config_diagram_look,
+    flowchart_edge_marker_end_base, flowchart_edge_marker_start_base,
+};
+
+const FLOWCHART_BASE_MARKER_COUNT: usize = FLOWCHART_MARKER_SHAPE_SPECS.len();
+
+#[derive(Debug, Clone, Copy)]
+enum FlowchartMarkerPaint {
+    None,
+    Stroke,
+    StrokeAndFill,
+}
+
+impl FlowchartMarkerPaint {
+    fn color_scan_count(self, hand_drawn: bool) -> usize {
+        if hand_drawn {
+            return 1;
+        }
+        match self {
+            Self::None | Self::Stroke => 1,
+            Self::StrokeAndFill => 2,
+        }
+    }
+
+    fn push(self, out: &mut impl fmt::Write, color: &str) {
+        match self {
+            Self::None => {}
+            Self::Stroke => {
+                let _ = write!(out, r#" stroke="{}""#, escape_xml_display(color));
+            }
+            Self::StrokeAndFill => {
+                let color = escape_xml_display(color);
+                let _ = write!(out, r#" stroke="{color}" fill="{color}""#);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlowchartMarkerShapeSpec {
+    base: FlowchartMarkerBase,
+    margin: bool,
+    marker_class: &'static str,
+    shape: &'static str,
+    paint: FlowchartMarkerPaint,
+}
+
+const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::PointEnd,
+        margin: false,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::StrokeAndFill,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::PointStart,
+        margin: false,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::StrokeAndFill,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::PointEnd,
+        margin: true,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::StrokeAndFill,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::PointStart,
+        margin: true,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::None,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CircleEnd,
+        margin: false,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CircleStart,
+        margin: false,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CircleEnd,
+        margin: true,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CircleStart,
+        margin: true,
+        marker_class: "marker",
+        shape: r#" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CrossEnd,
+        margin: false,
+        marker_class: "marker cross",
+        shape: r#" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CrossStart,
+        margin: false,
+        marker_class: "marker cross",
+        shape: r#" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CrossEnd,
+        margin: true,
+        marker_class: "marker cross",
+        shape: r#" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::CrossStart,
+        margin: true,
+        marker_class: "marker cross",
+        shape: r#" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+    },
+];
+
+fn flowchart_marker_shape_spec(
+    base: FlowchartMarkerBase,
+    margin: bool,
+) -> &'static FlowchartMarkerShapeSpec {
+    FLOWCHART_MARKER_SHAPE_SPECS
+        .iter()
+        .find(|spec| spec.base == base && spec.margin == margin)
+        .expect("Flowchart marker shape descriptor")
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlowchartMarkerReference {
+    base: FlowchartMarkerBase,
+    margin: bool,
+    variant_index: Option<usize>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct FlowchartEdgeMarkerReferences {
+    start: Option<FlowchartMarkerReference>,
+    end: Option<FlowchartMarkerReference>,
+    serialized_bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct FlowchartMarkerVariantKey {
+    base: FlowchartMarkerBase,
+    margin: bool,
+    color_id: String,
+}
+
+#[derive(Debug)]
+struct PreparedFlowchartMarkerColor<'a> {
+    raw: &'a str,
+    id: String,
+}
+
+impl<'a> PreparedFlowchartMarkerColor<'a> {
+    fn new(raw: &'a str) -> Self {
+        Self {
+            raw,
+            id: marker_color_id(raw),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(in crate::svg::parity::flowchart) struct FlowchartMarkerEmissionPlan {
+    #[cfg(test)]
+    edges: FxHashMap<String, Vec<FlowchartEdgeMarkerReferences>>,
+    edge_occurrences: FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgeMarkerReferences>,
+    variants: IndexMap<FlowchartMarkerVariantKey, String>,
+    hand_drawn: bool,
+    base_marker_bytes: usize,
+    extra_marker_bytes: usize,
+    edge_marker_attribute_bytes: usize,
+    serialization_input_work: usize,
+}
+
+impl FlowchartMarkerEmissionPlan {
+    fn new(hand_drawn: bool) -> Self {
+        Self {
+            #[cfg(test)]
+            edges: FxHashMap::default(),
+            edge_occurrences: FxHashMap::default(),
+            variants: IndexMap::new(),
+            hand_drawn,
+            base_marker_bytes: 0,
+            extra_marker_bytes: 0,
+            edge_marker_attribute_bytes: 0,
+            serialization_input_work: 0,
+        }
+    }
+
+    pub(in crate::svg::parity::flowchart) fn prepare(
+        ctx: &FlowchartRenderCtx<'_>,
+        hierarchy_plan: &FlowchartHierarchyPlan<'_>,
+    ) -> crate::Result<Self> {
+        let look = flowchart_config_diagram_look(ctx.config);
+        let hand_drawn = look.is_hand_drawn();
+        let neo = look.is_neo();
+        let mut plan = Self::new(hand_drawn);
+        for &edge in hierarchy_plan.ordered_edges() {
+            let edge_styles = ctx.edge_style_plan.edge_for(edge.key)?;
+            let marker_color = edge_styles.edge_marker_color(hand_drawn);
+            let margin = neo && !ctx.edge_style_plan.animation_for(edge.key)?.is_active();
+            plan.register_edge_with_identity(
+                edge.key,
+                edge.edge,
+                marker_color,
+                margin,
+                ctx.diagram_id,
+                ctx.diagram_type,
+                ctx.work_meter,
+            )?;
+        }
+        plan.finalize_svg_budget(
+            ctx.diagram_id,
+            ctx.diagram_type,
+            ctx.security_level_loose,
+            ctx.work_meter,
+        )?;
+        Ok(plan)
+    }
+
+    fn variant(&self, index: usize) -> (&FlowchartMarkerVariantKey, &str) {
+        let (key, raw_color) = self
+            .variants
+            .get_index(index)
+            .expect("prepared Flowchart marker variant index");
+        (key, raw_color.as_str())
+    }
+
+    fn register_edge_with_identity(
+        &mut self,
+        key: crate::flowchart::FlowchartEdgeKey,
+        edge: &crate::flowchart::FlowEdge,
+        marker_color: Option<&str>,
+        margin: bool,
+        diagram_id: &str,
+        diagram_type: &str,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<()> {
+        work_meter.charge(1)?;
+        let start_base = flowchart_edge_marker_start_base(edge);
+        let end_base = flowchart_edge_marker_end_base(edge);
+        let prepared_color = if start_base.is_some() || end_base.is_some() {
+            marker_color.map(PreparedFlowchartMarkerColor::new)
+        } else {
+            None
+        };
+        let start = start_base
+            .map(|base| self.register_reference(base, prepared_color.as_ref(), margin, work_meter))
+            .transpose()?;
+        let end = end_base
+            .map(|base| self.register_reference(base, prepared_color.as_ref(), margin, work_meter))
+            .transpose()?;
+        let mut references = FlowchartEdgeMarkerReferences {
+            start,
+            end,
+            serialized_bytes: 0,
+        };
+        let marker_id_input_bytes = [references.start, references.end]
+            .into_iter()
+            .flatten()
+            .try_fold(0usize, |bytes, reference| {
+                let color_id_len = reference
+                    .variant_index
+                    .map(|index| self.variant(index).0.color_id.len())
+                    .unwrap_or_default();
+                bytes
+                    .checked_add(diagram_id.len())
+                    .and_then(|bytes| bytes.checked_add(diagram_type.len()))
+                    .and_then(|bytes| bytes.checked_add(reference.base.id_suffix().len()))
+                    .and_then(|bytes| bytes.checked_add(color_id_len))
+                    .ok_or_else(|| work_meter.arithmetic_overflow())
+            })?;
+        self.preflight_serialization_input(marker_id_input_bytes.div_ceil(64), work_meter)?;
+        let mut counter = SvgByteCounter::default();
+        self.push_prepared_edge_marker_attributes(
+            &mut counter,
+            diagram_id,
+            diagram_type,
+            &references,
+        );
+        references.serialized_bytes = counter.finish(work_meter)?;
+        self.edge_marker_attribute_bytes = self
+            .edge_marker_attribute_bytes
+            .checked_add(references.serialized_bytes)
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        #[cfg(test)]
+        self.edges
+            .entry(edge.id.clone())
+            .or_default()
+            .push(references.clone());
+        if self.edge_occurrences.insert(key, references).is_some() {
+            return Err(crate::Error::InvalidModel {
+                message: format!(
+                    "duplicate prepared Flowchart marker occurrence {}",
+                    key.semantic_index()
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn register_edge(
+        &mut self,
+        edge: &crate::flowchart::FlowEdge,
+        marker_color: Option<&str>,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<()> {
+        let key = crate::flowchart::FlowchartEdgeKey::new(self.edge_occurrences.len());
+        self.register_edge_with_identity(
+            key,
+            edge,
+            marker_color,
+            false,
+            "diagram",
+            "flowchart-v2",
+            work_meter,
+        )
+    }
+
+    fn register_reference(
+        &mut self,
+        base: FlowchartMarkerBase,
+        marker_color: Option<&PreparedFlowchartMarkerColor<'_>>,
+        margin: bool,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<FlowchartMarkerReference> {
+        work_meter.charge(1)?;
+        let Some(marker_color) = marker_color else {
+            return Ok(FlowchartMarkerReference {
+                base,
+                margin,
+                variant_index: None,
+            });
+        };
+        work_meter.charge(marker_color.raw.len().div_ceil(64))?;
+        if marker_color.id.is_empty() {
+            return Ok(FlowchartMarkerReference {
+                base,
+                margin,
+                variant_index: None,
+            });
+        }
+
+        let key = FlowchartMarkerVariantKey {
+            base,
+            margin,
+            color_id: marker_color.id.clone(),
+        };
+        let variant_index = if let Some(index) = self.variants.get_index_of(&key) {
+            index
+        } else {
+            work_meter.charge(1)?;
+            let index = self.variants.len();
+            let replaced = self.variants.insert(key, marker_color.raw.to_string());
+            debug_assert!(replaced.is_none());
+            index
+        };
+        Ok(FlowchartMarkerReference {
+            base,
+            margin,
+            variant_index: Some(variant_index),
+        })
+    }
+
+    fn finalize_svg_budget(
+        &mut self,
+        diagram_id: &str,
+        diagram_type: &str,
+        security_level_loose: bool,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<()> {
+        let base_marker_input_bytes = diagram_id
+            .len()
+            .checked_add(
+                diagram_type
+                    .len()
+                    .checked_mul(2)
+                    .ok_or_else(|| work_meter.arithmetic_overflow())?,
+            )
+            .and_then(|bytes| bytes.checked_mul(FLOWCHART_BASE_MARKER_COUNT))
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        self.preflight_serialization_input(base_marker_input_bytes.div_ceil(64), work_meter)?;
+        let mut base_counter = SvgByteCounter::default();
+        push_base_markers(&mut base_counter, diagram_id, diagram_type);
+        let base_marker_bytes = base_counter.finish(work_meter)?;
+
+        let extra_marker_input_bytes = self.variants.iter().try_fold(
+            0usize,
+            |bytes, (key, raw_color)| -> crate::Result<usize> {
+                let diagram_type_bytes = diagram_type
+                    .len()
+                    .checked_mul(2)
+                    .ok_or_else(|| work_meter.arithmetic_overflow())?;
+                let color_scan_count = flowchart_marker_shape_spec(key.base, key.margin)
+                    .paint
+                    .color_scan_count(self.hand_drawn);
+                let raw_color_bytes = raw_color
+                    .len()
+                    .checked_mul(color_scan_count)
+                    .ok_or_else(|| work_meter.arithmetic_overflow())?;
+                bytes
+                    .checked_add(diagram_id.len())
+                    .and_then(|bytes| bytes.checked_add(diagram_type_bytes))
+                    .and_then(|bytes| bytes.checked_add(key.base.id_suffix().len()))
+                    .and_then(|bytes| bytes.checked_add(key.color_id.len()))
+                    .and_then(|bytes| bytes.checked_add(raw_color_bytes))
+                    .ok_or_else(|| work_meter.arithmetic_overflow().into())
+            },
+        )?;
+        self.preflight_serialization_input(extra_marker_input_bytes.div_ceil(64), work_meter)?;
+        let mut extra_counter = SvgByteCounter::default();
+        self.push_extra_markers(
+            &mut extra_counter,
+            diagram_id,
+            diagram_type,
+            security_level_loose,
+        );
+        let extra_marker_bytes = extra_counter.finish(work_meter)?;
+        let projected_svg_bytes = match base_marker_bytes
+            .checked_add(extra_marker_bytes)
+            .and_then(|bytes| bytes.checked_add(self.edge_marker_attribute_bytes))
+        {
+            Some(projected) => projected,
+            None => {
+                work_meter.check_svg_append(usize::MAX, 1)?;
+                unreachable!("overflowing marker projection must be rejected")
+            }
+        };
+        let serialization_work = self
+            .serialization_input_work
+            .checked_add(projected_svg_bytes.div_ceil(256))
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+
+        work_meter.charge(serialization_work)?;
+        work_meter.charge_svg_bytes(projected_svg_bytes)?;
+        self.base_marker_bytes = base_marker_bytes;
+        self.extra_marker_bytes = extra_marker_bytes;
+        Ok(())
+    }
+
+    fn preflight_serialization_input(
+        &mut self,
+        additional: usize,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<()> {
+        let pending = self
+            .serialization_input_work
+            .checked_add(additional)
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        work_meter.preflight(pending)?;
+        self.serialization_input_work = pending;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(in crate::svg::parity::flowchart) fn push_edge_marker_attributes(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+        diagram_id: &str,
+        diagram_type: &str,
+        edge_id: &str,
+        occurrence: usize,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<()> {
+        let references = self
+            .edges
+            .get(edge_id)
+            .and_then(|references| references.get(occurrence))
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "missing prepared Flowchart marker references for `{edge_id}` occurrence {occurrence}"
+                ),
+            })?;
+        work_meter.check_svg_append(out.len(), references.serialized_bytes)?;
+        let before = out.len();
+        self.push_prepared_edge_marker_attributes(out, diagram_id, diagram_type, references);
+        debug_assert_eq!(out.len() - before, references.serialized_bytes);
+        out.checkpoint()
+    }
+
+    pub(in crate::svg::parity::flowchart) fn push_edge_marker_attributes_for(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+        diagram_id: &str,
+        diagram_type: &str,
+        key: crate::flowchart::FlowchartEdgeKey,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<()> {
+        let references =
+            self.edge_occurrences
+                .get(&key)
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: format!(
+                        "missing prepared Flowchart marker occurrence {}",
+                        key.semantic_index()
+                    ),
+                })?;
+        work_meter.check_svg_append(out.len(), references.serialized_bytes)?;
+        let before = out.len();
+        self.push_prepared_edge_marker_attributes(out, diagram_id, diagram_type, references);
+        debug_assert_eq!(out.len() - before, references.serialized_bytes);
+        out.checkpoint()
+    }
+
+    fn push_prepared_edge_marker_attributes(
+        &self,
+        out: &mut impl fmt::Write,
+        diagram_id: &str,
+        diagram_type: &str,
+        references: &FlowchartEdgeMarkerReferences,
+    ) {
+        if let Some(reference) = references.start {
+            self.push_marker_attribute(out, "start", diagram_id, diagram_type, reference);
+        }
+        if let Some(reference) = references.end {
+            self.push_marker_attribute(out, "end", diagram_id, diagram_type, reference);
+        }
+    }
+
+    fn push_marker_attribute(
+        &self,
+        out: &mut impl fmt::Write,
+        position: &str,
+        diagram_id: &str,
+        diagram_type: &str,
+        reference: FlowchartMarkerReference,
+    ) {
+        let color_id = reference
+            .variant_index
+            .map(|index| self.variant(index).0.color_id.as_str());
+        let _ = write!(out, r#" marker-{position}="url(#"#);
+        write_flowchart_marker_id_xml(
+            out,
+            diagram_id,
+            diagram_type,
+            reference.base,
+            reference.margin,
+            color_id,
+        );
+        let _ = out.write_str(r#")""#);
+    }
+
+    fn push_extra_markers(
+        &self,
+        out: &mut impl fmt::Write,
+        diagram_id: &str,
+        diagram_type: &str,
+        security_level_loose: bool,
+    ) {
+        for (key, raw_color) in &self.variants {
+            push_extra_marker(
+                out,
+                diagram_id,
+                diagram_type,
+                key,
+                raw_color,
+                self.hand_drawn,
+                security_level_loose,
+            );
+        }
+    }
+}
 
 pub(in crate::svg::parity::flowchart) struct FlowchartDefs<'a> {
     diagram_id: &'a str,
     diagram_type: &'a str,
-    extra_marker_colors: Vec<String>,
-    hand_drawn: bool,
+    marker_plan: &'a FlowchartMarkerEmissionPlan,
     security_level_loose: bool,
+    work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_defs<'a>(
     diagram_id: &'a str,
     diagram_type: &'a str,
-    ctx: &FlowchartRenderCtx<'_>,
+    ctx: &'a FlowchartRenderCtx<'_>,
+    marker_plan: &'a FlowchartMarkerEmissionPlan,
 ) -> FlowchartDefs<'a> {
     FlowchartDefs {
         diagram_id,
         diagram_type,
-        extra_marker_colors: collect_edge_marker_colors(ctx),
-        hand_drawn: flowchart_config_look(ctx.config) == "handDrawn",
+        marker_plan,
         security_level_loose: ctx.security_level_loose,
+        work_meter: ctx.work_meter,
     }
 }
 
 impl FlowchartDefs<'_> {
-    pub(in crate::svg::parity::flowchart) fn push_base_markers(&self, out: &mut String) {
+    pub(in crate::svg::parity::flowchart) fn push_base_markers(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+    ) -> crate::Result<()> {
+        self.work_meter
+            .check_svg_append(out.len(), self.marker_plan.base_marker_bytes)?;
+        let before = out.len();
         push_base_markers(out, self.diagram_id, self.diagram_type);
+        debug_assert_eq!(out.len() - before, self.marker_plan.base_marker_bytes);
+        out.checkpoint()
     }
 
-    pub(in crate::svg::parity::flowchart) fn push_extra_markers(&self, out: &mut String) {
-        push_extra_markers(
+    pub(in crate::svg::parity::flowchart) fn push_extra_markers(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+    ) -> crate::Result<()> {
+        self.work_meter
+            .check_svg_append(out.len(), self.marker_plan.extra_marker_bytes)?;
+        let before = out.len();
+        self.marker_plan.push_extra_markers(
             out,
             self.diagram_id,
             self.diagram_type,
-            &self.extra_marker_colors,
-            self.hand_drawn,
             self.security_level_loose,
         );
+        debug_assert_eq!(out.len() - before, self.marker_plan.extra_marker_bytes);
+        out.checkpoint()
     }
 }
 
-fn push_base_markers(out: &mut String, diagram_id: &str, diagram_type: &str) {
+fn push_base_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: &str) {
     let id = escape_xml(diagram_id);
     let ty = escape_xml(diagram_type);
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-pointEnd" class="marker {}" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-pointStart" class="marker {}" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-pointEnd-margin" class="marker {}" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-pointStart-margin" class="marker {}" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-circleEnd" class="marker {}" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-circleStart" class="marker {}" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-circleEnd-margin" class="marker {}" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-circleStart-margin" class="marker {}" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-crossEnd" class="marker cross {}" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-crossStart" class="marker cross {}" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-crossEnd-margin" class="marker cross {}" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
-    let _ = write!(
-        out,
-        r#"<marker id="{}_{}-crossStart-margin" class="marker cross {}" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker>"#,
-        id.as_str(),
-        ty.as_str(),
-        ty.as_str()
-    );
+    for spec in FLOWCHART_MARKER_SHAPE_SPECS {
+        let _ = write!(
+            out,
+            r#"<marker id="{}_{}-{}"#,
+            id.as_str(),
+            ty.as_str(),
+            spec.base.id_suffix()
+        );
+        if spec.margin {
+            let _ = out.write_str("-margin");
+        }
+        let _ = write!(out, r#"" class="{} {}""#, spec.marker_class, ty.as_str());
+        let _ = out.write_str(spec.shape);
+        let _ = out.write_str("/></marker>");
+    }
 }
 
 fn marker_color_id(color: &str) -> String {
-    // Mermaid's DOM marker id coloring logic (Mermaid@11.12.2) uses:
+    // Mermaid's DOM marker id coloring logic (Mermaid@11.16.1) uses:
     // `strokeColor.replace(/[^\dA-Za-z]/g, '_')`
     //
     // Important: this does not trim whitespace. As a result, values like `" orange"` (leading
@@ -145,9 +676,9 @@ fn marker_color_id(color: &str) -> String {
         return String::new();
     }
     let mut out = String::with_capacity(raw.len());
-    for ch in raw.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch);
+    for code_unit in raw.encode_utf16() {
+        if code_unit <= 0x7f && (code_unit as u8).is_ascii_alphanumeric() {
+            out.push(char::from(code_unit as u8));
         } else {
             out.push('_');
         }
@@ -156,97 +687,661 @@ fn marker_color_id(color: &str) -> String {
 }
 
 #[inline]
-pub(in crate::svg::parity::flowchart) fn write_flowchart_marker_id_xml(
-    out: &mut String,
+fn write_flowchart_marker_id_xml(
+    out: &mut impl fmt::Write,
     diagram_id: &str,
     diagram_type: &str,
-    base: &str,
-    color: Option<&str>,
+    base: FlowchartMarkerBase,
+    margin: bool,
+    color_id: Option<&str>,
 ) {
     let _ = write!(out, "{}", escape_xml_display(diagram_id));
-    out.push('_');
+    let _ = out.write_char('_');
     let _ = write!(out, "{}", escape_xml_display(diagram_type));
-    out.push('-');
-    out.push_str(base);
+    let _ = out.write_char('-');
+    let _ = out.write_str(base.id_suffix());
+    if margin {
+        let _ = out.write_str("-margin");
+    }
 
-    let Some(color) = color else {
+    let Some(color_id) = color_id else {
         return;
     };
-    let raw = color.trim_end_matches(';');
-    if raw.trim().is_empty() {
-        return;
-    }
-    out.push('_');
-    for ch in raw.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch);
-        } else {
-            out.push('_');
-        }
-    }
+    let _ = out.write_char('_');
+    let _ = out.write_str(color_id);
 }
 
-fn push_extra_markers(
-    out: &mut String,
+fn push_extra_marker(
+    out: &mut impl fmt::Write,
     diagram_id: &str,
     diagram_type: &str,
-    colors: &[String],
+    key: &FlowchartMarkerVariantKey,
+    raw_color: &str,
     hand_drawn: bool,
     security_level_loose: bool,
 ) {
-    for c in colors {
-        let cid = marker_color_id(c);
-        if cid.is_empty() {
-            continue;
-        }
-        let color = c.trim_end_matches(';');
-        let color = if security_level_loose {
-            color
-        } else {
-            // Mermaid writes the regex capture verbatim, then DOMPurify trims ordinary SVG
-            // attribute values for strict and sandbox output.
-            color.trim()
-        };
+    let raw_color = raw_color.trim_end_matches(';');
+    let color = if security_level_loose {
+        raw_color
+    } else {
+        // Mermaid writes the regex capture verbatim, then DOMPurify trims ordinary SVG attribute
+        // values for strict and sandbox output.
+        raw_color.trim()
+    };
+    let spec = flowchart_marker_shape_spec(key.base, key.margin);
 
-        if hand_drawn {
-            let _ = write!(
-                out,
-                r#"<marker id="{}_{}-pointEnd_{}" class="marker {}" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-                escape_xml(diagram_id),
-                escape_xml(diagram_type),
-                escape_xml(&cid),
-                escape_xml(diagram_type)
-            );
-        } else {
-            let _ = write!(
-                out,
-                r#"<marker id="{}_{}-pointEnd_{}" class="marker {}" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
-                escape_xml(diagram_id),
-                escape_xml(diagram_type),
-                escape_xml(&cid),
-                escape_xml(diagram_type),
-                escape_xml_display(color),
-                escape_xml_display(color)
-            );
+    let _ = out.write_str(r#"<marker id=""#);
+    write_flowchart_marker_id_xml(
+        out,
+        diagram_id,
+        diagram_type,
+        key.base,
+        key.margin,
+        Some(key.color_id.as_str()),
+    );
+    let _ = write!(
+        out,
+        r#"" class="{} {}""#,
+        spec.marker_class,
+        escape_xml_display(diagram_type)
+    );
+    let _ = out.write_str(spec.shape);
+    if !hand_drawn {
+        spec.paint.push(out, color);
+    }
+    let _ = out.write_str("/></marker>");
+}
+
+#[derive(Debug, Default)]
+struct SvgByteCounter {
+    bytes: usize,
+    overflowed: bool,
+}
+
+impl fmt::Write for SvgByteCounter {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        match self.bytes.checked_add(text.len()) {
+            Some(bytes) => self.bytes = bytes,
+            None => {
+                self.bytes = usize::MAX;
+                self.overflowed = true;
+            }
         }
+        Ok(())
     }
 }
 
-fn collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>) -> Vec<String> {
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut out: Vec<String> = Vec::new();
-    let hand_drawn = flowchart_config_look(ctx.config) == "handDrawn";
+impl SvgByteCounter {
+    fn finish(self, work_meter: &crate::resources::OperationWorkMeter) -> crate::Result<usize> {
+        if self.overflowed {
+            work_meter.check_svg_append(usize::MAX, 1)?;
+            unreachable!("overflowing SVG count must be rejected")
+        }
+        Ok(self.bytes)
+    }
+}
 
-    for e in ctx.edges_by_id.values() {
-        let Some(marker_color) = ctx.edge_style_plan.marker_color(e.id.as_str(), hand_drawn) else {
-            continue;
-        };
-        let cid = marker_color_id(marker_color);
-        if !cid.is_empty() && seen.insert(cid) {
-            out.push(marker_color.to_string());
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    fn meter() -> crate::resources::OperationWorkMeter {
+        crate::resources::OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+    }
+
+    fn meter_with_limits(
+        svg_bytes: usize,
+        work_units: usize,
+    ) -> crate::resources::OperationWorkMeter {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, svg_bytes)
+            .unwrap()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work_units)
+            .unwrap();
+        crate::resources::OperationWorkMeter::new(policy)
+    }
+
+    fn edge(id: &str, edge_type: &str) -> crate::flowchart::FlowEdge {
+        crate::flowchart::FlowEdge {
+            id: id.to_string(),
+            from: "A".to_string(),
+            to: "B".to_string(),
+            label: None,
+            label_type: None,
+            edge_type: Some(edge_type.to_string()),
+            arrow: String::new(),
+            is_user_defined_id: true,
+            stroke: None,
+            interpolate: None,
+            classes: Vec::new(),
+            style: Vec::new(),
+            animate: None,
+            animation: None,
+            length: 1,
         }
     }
 
-    out.sort();
-    out
+    fn marker_chunk<'a>(svg: &'a str, marker_id: &str) -> &'a str {
+        let needle = format!(r#"id="{marker_id}""#);
+        let start = svg.find(&needle).expect("marker id");
+        let end = svg[start..].find("</marker>").expect("marker end") + start + 9;
+        &svg[start..end]
+    }
+
+    #[test]
+    fn base_marker_defs_match_mermaid_11_16_1_bytes() {
+        let mut defs = String::new();
+        push_base_markers(&mut defs, "diagram", "flowchart-v2");
+
+        assert_eq!(
+            defs,
+            concat!(
+                r#"<marker id="diagram_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker>"#,
+                r#"<marker id="diagram_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker>"#,
+            )
+        );
+    }
+
+    #[test]
+    fn colored_marker_shapes_only_add_color_identity_and_paint_to_base_bytes() {
+        let cases = [
+            (FlowchartMarkerBase::PointEnd, false, true, true),
+            (FlowchartMarkerBase::PointStart, false, true, true),
+            (FlowchartMarkerBase::PointEnd, true, true, true),
+            (FlowchartMarkerBase::PointStart, true, false, false),
+            (FlowchartMarkerBase::CircleEnd, false, true, false),
+            (FlowchartMarkerBase::CircleStart, false, true, false),
+            (FlowchartMarkerBase::CircleEnd, true, true, false),
+            (FlowchartMarkerBase::CircleStart, true, true, false),
+            (FlowchartMarkerBase::CrossEnd, false, true, false),
+            (FlowchartMarkerBase::CrossStart, false, true, false),
+            (FlowchartMarkerBase::CrossEnd, true, true, false),
+            (FlowchartMarkerBase::CrossStart, true, true, false),
+        ];
+        let mut base_defs = String::new();
+        push_base_markers(&mut base_defs, "diagram", "flowchart-v2");
+
+        for hand_drawn in [false, true] {
+            for (base, margin, paints_surface, paints_fill) in cases {
+                let base_id = format!(
+                    "diagram_flowchart-v2-{}{}",
+                    base.id_suffix(),
+                    if margin { "-margin" } else { "" }
+                );
+                let colored_id = format!("{base_id}__2468ac");
+                let mut expected = marker_chunk(&base_defs, &base_id).replacen(
+                    &format!(r#"id="{base_id}""#),
+                    &format!(r#"id="{colored_id}""#),
+                    1,
+                );
+                if !hand_drawn && paints_surface {
+                    let paint = if paints_fill {
+                        r##" stroke="#2468ac" fill="#2468ac""##
+                    } else {
+                        r##" stroke="#2468ac""##
+                    };
+                    expected = expected.replacen("/></marker>", &format!("{paint}/></marker>"), 1);
+                }
+
+                let key = FlowchartMarkerVariantKey {
+                    base,
+                    margin,
+                    color_id: "_2468ac".to_string(),
+                };
+                let mut actual = String::new();
+                push_extra_marker(
+                    &mut actual,
+                    "diagram",
+                    "flowchart-v2",
+                    &key,
+                    "#2468ac",
+                    hand_drawn,
+                    false,
+                );
+
+                assert_eq!(
+                    marker_chunk(&actual, &colored_id),
+                    expected,
+                    "base={base:?}, margin={margin}, hand_drawn={hand_drawn}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn colored_marker_plan_defines_every_referenced_base_in_first_use_order() {
+        let circle = edge("circle", "double_arrow_circle");
+        let cross = edge("cross", "double_arrow_cross");
+        let point = edge("point", "double_arrow_point");
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let meter = meter();
+        plan.register_edge(&circle, Some("#ef4444"), &meter)
+            .unwrap();
+        plan.register_edge(&cross, Some("#22c55e"), &meter).unwrap();
+        plan.register_edge(&point, Some("#2563eb"), &meter).unwrap();
+
+        assert_eq!(
+            plan.variants
+                .iter()
+                .map(|(key, _)| key.base)
+                .collect::<Vec<_>>(),
+            vec![
+                FlowchartMarkerBase::CircleStart,
+                FlowchartMarkerBase::CircleEnd,
+                FlowchartMarkerBase::CrossStart,
+                FlowchartMarkerBase::CrossEnd,
+                FlowchartMarkerBase::PointStart,
+                FlowchartMarkerBase::PointEnd,
+            ]
+        );
+
+        let mut attributes = String::new();
+        for edge_id in ["circle", "cross", "point"] {
+            plan.push_edge_marker_attributes(
+                &mut attributes,
+                "diagram",
+                "flowchart-v2",
+                edge_id,
+                0,
+                &meter,
+            )
+            .expect("prepared marker references");
+        }
+        for suffix in [
+            "circleStart__ef4444",
+            "circleEnd__ef4444",
+            "crossStart__22c55e",
+            "crossEnd__22c55e",
+            "pointStart__2563eb",
+            "pointEnd__2563eb",
+        ] {
+            assert!(
+                attributes.contains(&format!("url(#diagram_flowchart-v2-{suffix})")),
+                "missing reference {suffix}: {attributes}"
+            );
+        }
+
+        let mut defs = String::new();
+        plan.push_extra_markers(&mut defs, "diagram", "flowchart-v2", false);
+        for suffix in [
+            "circleStart__ef4444",
+            "circleEnd__ef4444",
+            "crossStart__22c55e",
+            "crossEnd__22c55e",
+            "pointStart__2563eb",
+            "pointEnd__2563eb",
+        ] {
+            assert_eq!(
+                defs.matches(&format!(r#"id="diagram_flowchart-v2-{suffix}""#))
+                    .count(),
+                1,
+                "definition {suffix}: {defs}"
+            );
+        }
+
+        for suffix in ["pointStart__2563eb", "pointEnd__2563eb"] {
+            let marker = marker_chunk(&defs, &format!("diagram_flowchart-v2-{suffix}"));
+            assert!(marker.contains(r##" stroke="#2563eb" fill="#2563eb""##));
+        }
+        for (suffix, color) in [
+            ("circleStart__ef4444", "#ef4444"),
+            ("circleEnd__ef4444", "#ef4444"),
+            ("crossStart__22c55e", "#22c55e"),
+            ("crossEnd__22c55e", "#22c55e"),
+        ] {
+            let marker = marker_chunk(&defs, &format!("diagram_flowchart-v2-{suffix}"));
+            assert!(marker.contains(&format!(r#" stroke="{color}""#)));
+            assert!(!marker.contains(" fill="), "stroke-only marker: {marker}");
+        }
+    }
+
+    #[test]
+    fn duplicate_mermaid_edge_ids_keep_occurrence_scoped_marker_references() {
+        let first = edge("duplicate", "double_arrow_circle");
+        let second = edge("duplicate", "double_arrow_cross");
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let meter = meter();
+        plan.register_edge(&first, Some("#ef4444"), &meter).unwrap();
+        plan.register_edge(&second, Some("#22c55e"), &meter)
+            .unwrap();
+
+        let mut first_attributes = String::new();
+        plan.push_edge_marker_attributes_for(
+            &mut first_attributes,
+            "diagram",
+            "flowchart-v2",
+            crate::flowchart::FlowchartEdgeKey::new(0),
+            &meter,
+        )
+        .unwrap();
+        assert!(first_attributes.contains("circleStart__ef4444"));
+        assert!(first_attributes.contains("circleEnd__ef4444"));
+
+        let mut second_attributes = String::new();
+        plan.push_edge_marker_attributes_for(
+            &mut second_attributes,
+            "diagram",
+            "flowchart-v2",
+            crate::flowchart::FlowchartEdgeKey::new(1),
+            &meter,
+        )
+        .unwrap();
+        assert!(second_attributes.contains("crossStart__22c55e"));
+        assert!(second_attributes.contains("crossEnd__22c55e"));
+    }
+
+    #[test]
+    fn colored_marker_plan_deduplicates_by_base_and_color_id_with_first_raw_color() {
+        let first = edge("first", "arrow_point");
+        let second = edge("second", "arrow_point");
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let meter = meter();
+        plan.register_edge(&first, Some("#abc"), &meter).unwrap();
+        plan.register_edge(&second, Some("$abc"), &meter).unwrap();
+
+        assert_eq!(marker_color_id("#abc"), marker_color_id("$abc"));
+        assert_eq!(plan.variants.len(), 1);
+        assert_eq!(
+            plan.variants
+                .get_index(0)
+                .map(|(_, raw_color)| raw_color.as_str()),
+            Some("#abc")
+        );
+
+        let mut attributes = String::new();
+        plan.push_edge_marker_attributes(
+            &mut attributes,
+            "diagram",
+            "flowchart-v2",
+            "first",
+            0,
+            &meter,
+        )
+        .expect("first marker");
+        plan.push_edge_marker_attributes(
+            &mut attributes,
+            "diagram",
+            "flowchart-v2",
+            "second",
+            0,
+            &meter,
+        )
+        .expect("second marker");
+        assert_eq!(
+            attributes
+                .matches("url(#diagram_flowchart-v2-pointEnd__abc)")
+                .count(),
+            2
+        );
+
+        let mut defs = String::new();
+        plan.push_extra_markers(&mut defs, "diagram", "flowchart-v2", false);
+        assert_eq!(
+            defs.matches(r#"id="diagram_flowchart-v2-pointEnd__abc""#)
+                .count(),
+            1
+        );
+        assert!(defs.contains(r##" stroke="#abc" fill="#abc""##));
+        assert!(!defs.contains(r#" stroke="$abc""#));
+    }
+
+    #[test]
+    fn marker_color_id_matches_javascript_utf16_replacement_semantics() {
+        assert_eq!(marker_color_id("var(--é)"), "var_____");
+        assert_eq!(marker_color_id("var(--😀)"), "var______");
+        assert_ne!(marker_color_id("var(--é)"), marker_color_id("var(--😀)"));
+    }
+
+    #[test]
+    fn same_colored_bidirectional_base_is_deduplicated_without_merging_start_and_end() {
+        let first = edge("first", "double_arrow_point");
+        let second = edge("second", "double_arrow_point");
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let meter = meter();
+        plan.register_edge(&first, Some("#ef4444"), &meter).unwrap();
+        assert_eq!(meter.used(), 7);
+        plan.register_edge(&second, Some("#ef4444"), &meter)
+            .unwrap();
+        assert_eq!(meter.used(), 12);
+
+        assert_eq!(plan.variants.len(), 2);
+        assert_eq!(
+            plan.variants.get_index(0).map(|(key, _)| key.base),
+            Some(FlowchartMarkerBase::PointStart)
+        );
+        assert_eq!(
+            plan.variants.get_index(1).map(|(key, _)| key.base),
+            Some(FlowchartMarkerBase::PointEnd)
+        );
+        assert!(plan.variants.keys().all(|key| key.color_id == "_ef4444"));
+
+        let mut attributes = String::new();
+        plan.push_edge_marker_attributes(
+            &mut attributes,
+            "diagram",
+            "flowchart-v2",
+            "first",
+            0,
+            &meter,
+        )
+        .unwrap();
+        assert_eq!(
+            attributes,
+            concat!(
+                r#" marker-start="url(#diagram_flowchart-v2-pointStart__ef4444)""#,
+                r#" marker-end="url(#diagram_flowchart-v2-pointEnd__ef4444)""#,
+            )
+        );
+    }
+
+    #[test]
+    fn uncolored_edges_keep_base_marker_references_and_emit_no_extra_defs() {
+        let edge = edge("edge", "arrow_point");
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let meter = meter();
+        plan.register_edge(&edge, None, &meter).unwrap();
+
+        let mut attributes = String::new();
+        plan.push_edge_marker_attributes(
+            &mut attributes,
+            "diagram",
+            "flowchart-v2",
+            "edge",
+            0,
+            &meter,
+        )
+        .expect("base marker reference");
+        assert_eq!(
+            attributes,
+            r#" marker-end="url(#diagram_flowchart-v2-pointEnd)""#
+        );
+
+        let mut defs = String::new();
+        plan.push_extra_markers(&mut defs, "diagram", "flowchart-v2", false);
+        assert!(defs.is_empty());
+    }
+
+    #[test]
+    fn marker_plan_precharges_exact_serialized_bytes_and_work() {
+        let edge = edge("edge", "double_arrow_circle");
+        let probe_meter = meter();
+        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        probe
+            .register_edge(&edge, Some("#ef4444"), &probe_meter)
+            .unwrap();
+        probe
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &probe_meter)
+            .unwrap();
+        let projected =
+            probe.base_marker_bytes + probe.extra_marker_bytes + probe.edge_marker_attribute_bytes;
+        let work = probe_meter.used();
+        assert!(projected > 0);
+        assert!(work > 0);
+        assert_eq!(probe_meter.projected_svg_bytes(), projected);
+
+        let exact_meter = meter_with_limits(projected, work);
+        let mut exact = FlowchartMarkerEmissionPlan::new(false);
+        exact
+            .register_edge(&edge, Some("#ef4444"), &exact_meter)
+            .unwrap();
+        exact
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &exact_meter)
+            .unwrap();
+        assert_eq!(exact_meter.used(), work);
+        assert_eq!(exact_meter.projected_svg_bytes(), projected);
+
+        let short_svg_meter = meter_with_limits(projected - 1, usize::MAX);
+        let mut short_svg = FlowchartMarkerEmissionPlan::new(false);
+        short_svg
+            .register_edge(&edge, Some("#ef4444"), &short_svg_meter)
+            .unwrap();
+        let error = short_svg
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &short_svg_meter)
+            .expect_err("marker bytes above the ceiling must fail before emission");
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert_eq!(short_svg_meter.projected_svg_bytes(), 0);
+
+        let short_work_meter = meter_with_limits(usize::MAX, work - 1);
+        let mut short_work = FlowchartMarkerEmissionPlan::new(false);
+        let result = short_work
+            .register_edge(&edge, Some("#ef4444"), &short_work_meter)
+            .and_then(|_| {
+                short_work.finalize_svg_budget("diagram", "flowchart-v2", false, &short_work_meter)
+            });
+        assert!(matches!(
+            result.expect_err("marker work above the ceiling must fail"),
+            crate::Error::ResourceLimitExceeded(_)
+        ));
+        assert_eq!(short_work_meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn marker_defs_check_the_whole_svg_ceiling_before_each_append() {
+        let edge = edge("edge", "double_arrow_cross");
+        let probe_meter = meter();
+        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        probe
+            .register_edge(&edge, Some("#22c55e"), &probe_meter)
+            .unwrap();
+        probe
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &probe_meter)
+            .unwrap();
+        let projected = probe.base_marker_bytes + probe.extra_marker_bytes;
+        let prefix = "x".repeat(probe.edge_marker_attribute_bytes + 1);
+
+        let exact_meter = meter_with_limits(prefix.len() + projected, usize::MAX);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        exact_plan
+            .register_edge(&edge, Some("#22c55e"), &exact_meter)
+            .unwrap();
+        exact_plan
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &exact_meter)
+            .unwrap();
+        let exact_defs = FlowchartDefs {
+            diagram_id: "diagram",
+            diagram_type: "flowchart-v2",
+            marker_plan: &exact_plan,
+            security_level_loose: false,
+            work_meter: &exact_meter,
+        };
+        let mut exact_out = prefix.clone();
+        exact_defs.push_base_markers(&mut exact_out).unwrap();
+        exact_defs.push_extra_markers(&mut exact_out).unwrap();
+        assert_eq!(exact_out.len(), prefix.len() + projected);
+
+        let short_meter = meter_with_limits(prefix.len() + projected - 1, usize::MAX);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        short_plan
+            .register_edge(&edge, Some("#22c55e"), &short_meter)
+            .unwrap();
+        short_plan
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &short_meter)
+            .unwrap();
+        let short_defs = FlowchartDefs {
+            diagram_id: "diagram",
+            diagram_type: "flowchart-v2",
+            marker_plan: &short_plan,
+            security_level_loose: false,
+            work_meter: &short_meter,
+        };
+        let mut short_out = prefix;
+        short_defs.push_base_markers(&mut short_out).unwrap();
+        let before_extra = short_out.clone();
+        assert!(short_defs.push_extra_markers(&mut short_out).is_err());
+        assert_eq!(short_out, before_extra);
+    }
+
+    #[test]
+    fn marker_attributes_check_the_whole_svg_ceiling_before_append() {
+        let edge = edge("edge", "double_arrow_point");
+        let probe_meter = meter();
+        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        probe
+            .register_edge(&edge, Some("#2563eb"), &probe_meter)
+            .unwrap();
+        probe
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &probe_meter)
+            .unwrap();
+        let definitions = probe.base_marker_bytes + probe.extra_marker_bytes;
+        let attributes = probe.edge_marker_attribute_bytes;
+        let prefix = "x".repeat(definitions + 1);
+
+        let exact_meter = meter_with_limits(prefix.len() + attributes, usize::MAX);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        exact_plan
+            .register_edge(&edge, Some("#2563eb"), &exact_meter)
+            .unwrap();
+        exact_plan
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &exact_meter)
+            .unwrap();
+        let mut exact_out = prefix.clone();
+        exact_plan
+            .push_edge_marker_attributes(
+                &mut exact_out,
+                "diagram",
+                "flowchart-v2",
+                "edge",
+                0,
+                &exact_meter,
+            )
+            .unwrap();
+        assert_eq!(exact_out.len(), prefix.len() + attributes);
+
+        let short_meter = meter_with_limits(prefix.len() + attributes - 1, usize::MAX);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        short_plan
+            .register_edge(&edge, Some("#2563eb"), &short_meter)
+            .unwrap();
+        short_plan
+            .finalize_svg_budget("diagram", "flowchart-v2", false, &short_meter)
+            .unwrap();
+        let mut short_out = prefix;
+        let before = short_out.clone();
+        assert!(
+            short_plan
+                .push_edge_marker_attributes(
+                    &mut short_out,
+                    "diagram",
+                    "flowchart-v2",
+                    "edge",
+                    0,
+                    &short_meter,
+                )
+                .is_err()
+        );
+        assert_eq!(short_out, before);
+    }
 }

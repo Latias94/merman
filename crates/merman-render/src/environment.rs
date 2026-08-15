@@ -4,7 +4,8 @@ use crate::diagram_theme::{
     DiagramTheme, FontCatalog, FontCatalogFingerprint, FontSourcePolicy, HostMeasurementFallback,
     HostMeasurementFallbackPolicy, ResolvedThemeAdmission, ThemeAdmissionError,
     ThemeAdmissionPolicy, ThemeHostAdmissionReport, ThemePortabilityRequirement,
-    ThemeRecipeFingerprint, ThemeRecipeReport, TrustedThemeLane, TrustedThemeLanes,
+    ThemeRecipeFingerprint, ThemeRecipeReport, ThemeResourceLimitExceeded, ThemeResourcePolicy,
+    TrustedThemeLane, TrustedThemeLanes,
 };
 use crate::math::MathRenderer;
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
@@ -29,9 +30,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[non_exhaustive]
 pub enum RenderEnvironmentError {
     #[error(transparent)]
+    Cancelled(#[from] merman_core::OperationCancelled),
+    #[error(transparent)]
     Runtime(#[from] RuntimePolicyError),
     #[error(transparent)]
     ThemeAdmission(#[from] ThemeAdmissionError),
+    #[error(transparent)]
+    ThemeResource(#[from] ThemeResourceLimitExceeded),
 }
 
 /// A render phase that may select a distinct complete text-measurement profile.
@@ -1522,6 +1527,7 @@ pub struct RenderEnvironment {
     font_catalog: FontCatalog,
     font_source_policy: FontSourcePolicy,
     theme_admission_policy: ThemeAdmissionPolicy,
+    theme_resource_ceiling: Arc<ThemeResourcePolicy>,
     theme_measurement_fallbacks: HostMeasurementFallbackPolicy,
     theme_portability: ThemePortabilityRequirement,
 }
@@ -1589,6 +1595,7 @@ impl fmt::Debug for RenderEnvironment {
             .field("font_catalog", &self.font_catalog.fingerprint())
             .field("font_source_policy", &self.font_source_policy)
             .field("theme_admission_policy", &self.theme_admission_policy)
+            .field("theme_resource_ceiling", &self.theme_resource_ceiling)
             .field(
                 "theme_measurement_fallbacks",
                 &self.theme_measurement_fallbacks,
@@ -1618,6 +1625,7 @@ impl RenderEnvironment {
             font_catalog: FontCatalog::default_parity(),
             font_source_policy: FontSourcePolicy::default(),
             theme_admission_policy: ThemeAdmissionPolicy::default(),
+            theme_resource_ceiling: Arc::new(ThemeResourcePolicy::interactive()),
             theme_measurement_fallbacks: default_theme_measurement_fallbacks(),
             theme_portability: ThemePortabilityRequirement::BestEffort,
         }
@@ -1722,6 +1730,19 @@ impl RenderEnvironment {
         &self.theme_admission_policy
     }
 
+    /// Sets the host-owned ceiling for compiled theme resources admitted by every new session.
+    ///
+    /// A compiled theme contributes only a prior restriction. Session creation takes the
+    /// pointwise minimum, so a theme can never widen this host authority.
+    pub fn with_theme_resource_ceiling(mut self, ceiling: ThemeResourcePolicy) -> Self {
+        self.theme_resource_ceiling = Arc::new(ceiling);
+        self
+    }
+
+    pub fn theme_resource_ceiling(&self) -> &ThemeResourcePolicy {
+        &self.theme_resource_ceiling
+    }
+
     pub fn with_theme_measurement_fallbacks(
         mut self,
         policy: HostMeasurementFallbackPolicy,
@@ -1747,7 +1768,7 @@ impl RenderEnvironment {
     }
 
     /// Captures time, timezone rules, random seed, and provenance exactly once.
-    pub fn begin_session(&self) -> Result<RenderSession, RuntimePolicyError> {
+    pub fn begin_session(&self) -> Result<RenderSession, RenderEnvironmentError> {
         self.begin_session_with_control(OperationControl::new())
     }
 
@@ -1755,16 +1776,15 @@ impl RenderEnvironment {
     pub fn begin_session_with_control(
         &self,
         control: OperationControl,
-    ) -> Result<RenderSession, RuntimePolicyError> {
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
         let operation_context = self.runtime_policy.begin_operation()?;
-        Ok(self.begin_session_with_theme_resources_in_context(
-            SessionThemeResources::Environment {
-                font_catalog: self.font_catalog.clone(),
-                font_source_policy: self.font_source_policy.clone(),
-            },
+        let resolved_resources = self.resolve_environment_session_resources()?;
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
             operation_context,
             control,
-        ))
+        )
     }
 
     /// Captures one operation while atomically binding the selected compiled theme.
@@ -1775,21 +1795,14 @@ impl RenderEnvironment {
         &self,
         theme: &DiagramTheme,
     ) -> Result<RenderSession, RenderEnvironmentError> {
-        let admission = theme.resolve_runtime_admission(
-            &self.theme_admission_policy,
-            &self.font_source_policy,
-            &self.theme_measurement_fallbacks,
-            self.theme_portability,
-        )?;
+        let control = OperationControl::new();
+        let resolved_resources = self.resolve_themed_session_resources(theme)?;
         let operation_context = self.runtime_policy.begin_operation()?;
-        Ok(self.begin_session_with_theme_resources_in_context(
-            SessionThemeResources::Theme {
-                theme: theme.clone(),
-                admission,
-            },
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
             operation_context,
-            OperationControl::new(),
-        ))
+            control,
+        )
     }
 
     /// Begins one unthemed render session from caller-captured operation state.
@@ -1801,12 +1814,11 @@ impl RenderEnvironment {
         &self,
         operation_context: OperationContext,
         control: OperationControl,
-    ) -> RenderSession {
-        self.begin_session_with_theme_resources_in_context(
-            SessionThemeResources::Environment {
-                font_catalog: self.font_catalog.clone(),
-                font_source_policy: self.font_source_policy.clone(),
-            },
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
+        let resolved_resources = self.resolve_environment_session_resources()?;
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
             operation_context,
             control,
         )
@@ -1822,38 +1834,76 @@ impl RenderEnvironment {
         operation_context: OperationContext,
         control: OperationControl,
     ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
+        let resolved_resources = self.resolve_themed_session_resources(theme)?;
+        self.begin_session_with_resolved_theme_resources_in_context(
+            resolved_resources,
+            operation_context,
+            control,
+        )
+    }
+
+    fn resolve_environment_session_resources(
+        &self,
+    ) -> Result<ResolvedSessionThemeResources, RenderEnvironmentError> {
+        self.font_catalog
+            .validate_retained_resources(&self.theme_resource_ceiling)?;
+        Ok(ResolvedSessionThemeResources::new(
+            SessionThemeResources::Environment {
+                font_catalog: self.font_catalog.clone(),
+                font_source_policy: self.font_source_policy.clone(),
+            },
+            Arc::clone(&self.theme_resource_ceiling),
+        ))
+    }
+
+    fn resolve_themed_session_resources(
+        &self,
+        theme: &DiagramTheme,
+    ) -> Result<ResolvedSessionThemeResources, RenderEnvironmentError> {
         let admission = theme.resolve_runtime_admission(
             &self.theme_admission_policy,
             &self.font_source_policy,
             &self.theme_measurement_fallbacks,
             self.theme_portability,
         )?;
-        Ok(self.begin_session_with_theme_resources_in_context(
+        let effective_theme_resource_policy =
+            if self.theme_resource_ceiling.as_ref() == theme.resource_restriction() {
+                Arc::clone(&self.theme_resource_ceiling)
+            } else {
+                Arc::new(
+                    self.theme_resource_ceiling
+                        .meet(theme.resource_restriction()),
+                )
+            };
+        theme.validate_retained_resources(&effective_theme_resource_policy)?;
+        Ok(ResolvedSessionThemeResources::new(
             SessionThemeResources::Theme {
                 theme: theme.clone(),
                 admission,
             },
-            operation_context,
-            control,
+            effective_theme_resource_policy,
         ))
     }
 
-    fn begin_session_with_theme_resources_in_context(
+    fn begin_session_with_resolved_theme_resources_in_context(
         &self,
-        theme_resources: SessionThemeResources,
+        resolved_resources: ResolvedSessionThemeResources,
         operation_context: OperationContext,
         control: OperationControl,
-    ) -> RenderSession {
-        let theme_compatibility_recipe = theme_resources
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        control.checkpoint_at(OperationPhase::Layout)?;
+        let theme_compatibility_recipe = resolved_resources
             .theme()
             .map(|theme| theme.parse_compatibility().recipe().clone());
-        let (prepared_text_layout, text_layout_error) = self.prepare_text_layout(&theme_resources);
-        let trusted_theme_lanes = theme_resources
+        let (prepared_text_layout, text_layout_error) =
+            self.prepare_text_layout(&resolved_resources);
+        let trusted_theme_lanes = resolved_resources
             .admission()
             .map(ResolvedThemeAdmission::trusted_lanes)
             .unwrap_or_else(|| self.theme_admission_policy.trusted_lanes())
             .clone();
-        RenderSession {
+        Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
             prepared_text_layout,
             text_layout_error,
@@ -1870,28 +1920,28 @@ impl RenderEnvironment {
             trusted_theme_lanes,
             trusted_theme_lane_usage: AtomicU64::new(0),
             theme_compatibility_recipe,
-            theme_resources,
-        }
+            resolved_theme_resources: resolved_resources,
+        })
     }
 
     fn prepare_text_layout(
         &self,
-        theme_resources: &SessionThemeResources,
+        resolved_resources: &ResolvedSessionThemeResources,
     ) -> (Option<PreparedTextLayout>, Option<TextLayoutError>) {
-        let catalog = theme_resources.font_catalog();
+        let catalog = resolved_resources.font_catalog();
         if catalog.assets().is_empty() {
             return (None, None);
         }
 
         let request = PrepareCatalogRequest::new(
             catalog.clone(),
-            theme_resources.font_source_policy().clone(),
+            resolved_resources.font_source_policy().clone(),
         );
-        let fallback_policy = theme_resources
+        let fallback_policy = resolved_resources
             .measurement_fallback_policy()
             .unwrap_or(&self.theme_measurement_fallbacks)
             .eligible_for(catalog.kind());
-        let portability = theme_resources
+        let portability = resolved_resources
             .portability_requirement()
             .unwrap_or(self.theme_portability);
         let mut builder = PreparedTextLayoutBuilder::new(request.clone());
@@ -2062,6 +2112,60 @@ impl SessionThemeResources {
     }
 }
 
+/// Session-owned theme resources and the exact policy that admitted them.
+///
+/// Keeping these values together prevents a retained catalog or compiled theme from being paired
+/// with a different host/theme policy intersection after admission.
+struct ResolvedSessionThemeResources {
+    resources: SessionThemeResources,
+    effective_policy: Arc<ThemeResourcePolicy>,
+}
+
+impl ResolvedSessionThemeResources {
+    fn new(resources: SessionThemeResources, effective_policy: Arc<ThemeResourcePolicy>) -> Self {
+        Self {
+            resources,
+            effective_policy,
+        }
+    }
+
+    fn effective_policy(&self) -> &Arc<ThemeResourcePolicy> {
+        &self.effective_policy
+    }
+
+    fn theme(&self) -> Option<&DiagramTheme> {
+        self.resources.theme()
+    }
+
+    fn font_catalog(&self) -> &FontCatalog {
+        self.resources.font_catalog()
+    }
+
+    fn font_source_policy(&self) -> &FontSourcePolicy {
+        self.resources.font_source_policy()
+    }
+
+    fn admission(&self) -> Option<&ResolvedThemeAdmission> {
+        self.resources.admission()
+    }
+
+    fn measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
+        self.resources.measurement_fallback_policy()
+    }
+
+    fn portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
+        self.resources.portability_requirement()
+    }
+
+    fn theme_recipe_report(&self) -> Option<&ThemeRecipeReport> {
+        self.resources.theme_recipe_report()
+    }
+
+    fn theme_host_admission_report(&self) -> Option<ThemeHostAdmissionReport> {
+        self.resources.theme_host_admission_report()
+    }
+}
+
 /// Opaque operation session. Family code receives only the narrow projection it needs.
 pub struct RenderSession {
     text_measurement: TextMeasurementPolicy,
@@ -2078,7 +2182,7 @@ pub struct RenderSession {
     trusted_theme_lanes: TrustedThemeLanes,
     trusted_theme_lane_usage: AtomicU64,
     theme_compatibility_recipe: Option<ThemeCompatibilityRecipe>,
-    theme_resources: SessionThemeResources,
+    resolved_theme_resources: ResolvedSessionThemeResources,
 }
 
 impl RenderSession {
@@ -2136,8 +2240,13 @@ impl RenderSession {
         self.resource_policy
     }
 
+    /// Returns the immutable host/theme resource intersection captured for this operation.
+    pub(crate) fn effective_theme_resource_policy(&self) -> Arc<ThemeResourcePolicy> {
+        Arc::clone(self.resolved_theme_resources.effective_policy())
+    }
+
     pub fn theme(&self) -> Option<&DiagramTheme> {
-        self.theme_resources.theme()
+        self.resolved_theme_resources.theme()
     }
 
     pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
@@ -2149,27 +2258,27 @@ impl RenderSession {
     }
 
     pub fn theme_recipe_report(&self) -> Option<&ThemeRecipeReport> {
-        self.theme_resources.theme_recipe_report()
+        self.resolved_theme_resources.theme_recipe_report()
     }
 
     pub fn theme_host_admission_report(&self) -> Option<ThemeHostAdmissionReport> {
-        self.theme_resources.theme_host_admission_report()
+        self.resolved_theme_resources.theme_host_admission_report()
     }
 
     pub fn font_catalog(&self) -> &FontCatalog {
-        self.theme_resources.font_catalog()
+        self.resolved_theme_resources.font_catalog()
     }
 
     pub fn font_source_policy(&self) -> &FontSourcePolicy {
-        self.theme_resources.font_source_policy()
+        self.resolved_theme_resources.font_source_policy()
     }
 
     pub fn theme_measurement_fallback_policy(&self) -> Option<&HostMeasurementFallbackPolicy> {
-        self.theme_resources.measurement_fallback_policy()
+        self.resolved_theme_resources.measurement_fallback_policy()
     }
 
     pub fn theme_portability_requirement(&self) -> Option<ThemePortabilityRequirement> {
-        self.theme_resources.portability_requirement()
+        self.resolved_theme_resources.portability_requirement()
     }
 
     pub fn trusted_theme_lanes(&self) -> &TrustedThemeLanes {
@@ -2243,6 +2352,9 @@ impl RenderSession {
                 .provenance()
                 .clone(),
             resource_policy: self.resource_policy,
+            effective_theme_resource_policy: Arc::clone(
+                self.resolved_theme_resources.effective_policy(),
+            ),
             layout_work_units: self.work_meter.used(),
             prepared_text_retained_bytes_peak: self.work_meter.prepared_text_retained_bytes_peak(),
             theme_recipe_report: self.theme_recipe_report().cloned(),
@@ -2268,6 +2380,7 @@ pub struct RenderSessionReport {
     operation_context: OperationContext,
     local_time_zone: LocalTimeZoneProvenance,
     resource_policy: RenderResourcePolicy,
+    effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
     layout_work_units: usize,
     prepared_text_retained_bytes_peak: usize,
     theme_recipe_report: Option<ThemeRecipeReport>,
@@ -2311,6 +2424,10 @@ impl RenderSessionReport {
 
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
         self.resource_policy
+    }
+
+    pub(crate) fn effective_theme_resource_policy(&self) -> &ThemeResourcePolicy {
+        &self.effective_theme_resource_policy
     }
 
     pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
@@ -2466,7 +2583,8 @@ mod tests {
             .expect("caller operation context");
         let control = OperationControl::new();
         let session = RenderEnvironment::deterministic()
-            .begin_session_in_context(operation_context.clone(), control.clone());
+            .begin_session_in_context(operation_context.clone(), control.clone())
+            .expect("caller-captured render session");
 
         assert_eq!(session.operation_context(), &operation_context);
 
@@ -3665,6 +3783,97 @@ mod tests {
             .expect("embedded font theme should compile")
     }
 
+    fn resource_rich_theme() -> DiagramTheme {
+        let bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let catalog =
+            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
+                "excalifont",
+                bytes,
+            )])
+            .with_alias("Sketch", "Excalifont")
+            .with_generic_family(
+                crate::diagram_theme::GenericFontFamily::Cursive,
+                "Excalifont",
+            );
+        let graph = crate::diagram_theme::EffectGraph::new(
+            "resource-check",
+            [
+                crate::diagram_theme::EffectPrimitive::DropShadow {
+                    input: crate::diagram_theme::EffectInput::SourceGraphic,
+                    offset_x: 6.0,
+                    offset_y: -5.0,
+                    blur_radius: 4.0,
+                    spread: 2.0,
+                    color: crate::diagram_theme::ThemeColorValue::parse("#00000080")
+                        .expect("valid shadow color"),
+                },
+                crate::diagram_theme::EffectPrimitive::GaussianBlur {
+                    input: crate::diagram_theme::EffectInput::SourceGraphic,
+                    std_deviation: 7.0,
+                },
+                crate::diagram_theme::EffectPrimitive::Turbulence {
+                    input: crate::diagram_theme::EffectInput::SourceGraphic,
+                    base_frequency_x: 0.02,
+                    base_frequency_y: 0.03,
+                    octaves: 3,
+                    seed: 7,
+                },
+                crate::diagram_theme::EffectPrimitive::Displacement {
+                    input: crate::diagram_theme::EffectInput::SourceGraphic,
+                    map_input: crate::diagram_theme::EffectInput::SourceGraphic,
+                    scale: 9.0,
+                },
+            ],
+        )
+        .expect("valid resource-check effect graph");
+        let effects = crate::diagram_theme::DiagramEffectSet::default()
+            .with_graph(graph)
+            .expect("unique effect graph")
+            .with_binding(
+                crate::diagram_theme::EffectBinding::new(
+                    crate::diagram_theme::ThemeTarget::Node,
+                    "resource-check",
+                )
+                .expect("valid effect binding"),
+            )
+            .expect("unique effect binding");
+        let spec = crate::diagram_theme::DiagramThemeSpec::new()
+            .with_assets(crate::diagram_theme::ThemeAssets::default().with_font_catalog(catalog))
+            .with_effects(effects);
+
+        crate::diagram_theme::DiagramThemeCompiler::new()
+            .with_resource_policy(
+                crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .compile(spec)
+            .expect("resource-rich font theme should compile under the wide policy")
+    }
+
+    #[derive(Default)]
+    struct PrepareMustNotRunBackend {
+        native: crate::text::NativeTextLayoutBackend,
+    }
+
+    impl crate::text::TextLayoutBackend for PrepareMustNotRunBackend {
+        fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
+            self.native.identity()
+        }
+
+        fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
+            self.native.capabilities()
+        }
+
+        fn prepare_catalog(
+            &self,
+            _request: &crate::text::PrepareCatalogRequest,
+        ) -> Result<crate::text::PreparedTextLayoutResponse, crate::text::TextLayoutError> {
+            panic!("retained resources must be rejected before text preparation")
+        }
+    }
+
     struct CachedPreparedBackend {
         identity: crate::text::TextLayoutBackendIdentity,
         capabilities: crate::text::TextLayoutCapabilities,
@@ -3911,6 +4120,298 @@ mod tests {
             catalog.fingerprint()
         );
         assert!(report.text_layout_failure().is_none());
+    }
+
+    #[test]
+    fn unthemed_session_revalidates_custom_font_catalog_before_text_preparation() {
+        let catalog = embedded_font_theme().font_catalog().clone();
+        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets, 0)
+            .expect("valid zero-font-asset ceiling");
+        let environment = RenderEnvironment::deterministic()
+            .with_font_catalog(catalog)
+            .with_theme_resource_ceiling(ceiling)
+            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
+
+        let resource = match environment.begin_session() {
+            Err(RenderEnvironmentError::ThemeResource(resource)) => resource,
+            Ok(_) => panic!("the host ceiling must reject the retained custom font catalog"),
+            Err(error) => panic!("unexpected environment error: {error:?}"),
+        };
+        assert_eq!(
+            resource.phase,
+            crate::diagram_theme::ThemeResourceLimitPhase::FontCatalog
+        );
+        assert_eq!(resource.limit, "max_font_assets");
+        assert_eq!(resource.actual, 1);
+        assert_eq!(resource.max, 0);
+    }
+
+    #[test]
+    fn cancelled_control_preempts_retained_resource_validation_and_text_preparation() {
+        let catalog = embedded_font_theme().font_catalog().clone();
+        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets, 0)
+            .expect("valid zero-font-asset ceiling");
+        let environment = RenderEnvironment::deterministic()
+            .with_font_catalog(catalog)
+            .with_theme_resource_ceiling(ceiling)
+            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
+        let control = OperationControl::new();
+        control.cancel();
+
+        let error = match environment.begin_session_with_control(control) {
+            Err(error) => error,
+            Ok(_) => panic!("cancelled control must preempt session preparation"),
+        };
+
+        let RenderEnvironmentError::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation, got {error:?}");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
+    }
+
+    #[test]
+    fn expired_deadline_preempts_themed_resource_validation_and_text_preparation() {
+        let theme = resource_rich_theme();
+        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets, 0)
+            .expect("valid zero-font-asset ceiling");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_resource_ceiling(ceiling)
+            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
+        let operation_context = RuntimePolicy::deterministic()
+            .begin_operation()
+            .expect("deterministic operation context");
+        let control = OperationControl::new().with_deadline(std::time::Duration::ZERO);
+
+        let error = match environment.begin_session_with_theme_in_context(
+            &theme,
+            operation_context,
+            control,
+        ) {
+            Err(error) => error,
+            Ok(_) => panic!("expired deadline must preempt themed session preparation"),
+        };
+
+        let RenderEnvironmentError::Cancelled(cancelled) = error else {
+            panic!("expected structured deadline cancellation, got {error:?}");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(
+            cancelled.reason,
+            merman_core::CancelReason::DeadlineExceeded
+        );
+    }
+
+    #[test]
+    fn session_theme_resources_meet_the_host_ceiling_and_compiled_restriction() {
+        let limit = crate::diagram_theme::ThemeResourceLimitId::MaxEffectFilterRegionMagnitude;
+        let policy_with_limit = |value| {
+            crate::diagram_theme::ThemeResourcePolicy::interactive()
+                .with_limit(limit, value)
+                .expect("valid effect filter-region limit")
+        };
+        let compile_theme = |restriction| {
+            crate::diagram_theme::DiagramThemeCompiler::new()
+                .with_resource_policy(restriction)
+                .compile(crate::diagram_theme::DiagramThemeSpec::new())
+                .expect("compile empty theme with resource restriction")
+        };
+
+        let host_stricter = policy_with_limit(8);
+        let theme = compile_theme(policy_with_limit(12));
+        let environment =
+            RenderEnvironment::deterministic().with_theme_resource_ceiling(host_stricter.clone());
+        let session = environment
+            .begin_session_with_theme(&theme)
+            .expect("host-stricter themed session");
+        assert_eq!(
+            session.effective_theme_resource_policy().value(limit),
+            Some(8),
+            "a compiled theme must not widen the host-owned ceiling"
+        );
+        assert_eq!(
+            environment
+                .begin_session()
+                .expect("unthemed host session")
+                .effective_theme_resource_policy()
+                .as_ref(),
+            &host_stricter,
+            "an unthemed session must freeze the host ceiling unchanged"
+        );
+
+        let theme_stricter = policy_with_limit(8);
+        let theme = compile_theme(theme_stricter.clone());
+        let session = RenderEnvironment::deterministic()
+            .with_theme_resource_ceiling(policy_with_limit(12))
+            .begin_session_with_theme(&theme)
+            .expect("theme-stricter session");
+        assert_eq!(
+            session.effective_theme_resource_policy().as_ref(),
+            &theme_stricter,
+            "the compiler-time prior restriction must survive a looser host ceiling"
+        );
+
+        assert_eq!(
+            RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("default session")
+                .effective_theme_resource_policy()
+                .as_ref(),
+            &crate::diagram_theme::ThemeResourcePolicy::interactive(),
+            "the default host theme-resource ceiling must remain interactive"
+        );
+    }
+
+    #[test]
+    fn themed_session_revalidates_retained_font_resources_before_text_preparation() {
+        let theme = resource_rich_theme();
+        let catalog = theme.font_catalog();
+        let asset = &catalog.assets()[0];
+        let compressed_bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ))
+        .len();
+        let table_count = catalog
+            .faces()
+            .iter()
+            .map(crate::diagram_theme::FontFaceMetadata::table_count)
+            .sum::<usize>();
+        let cases = [
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontAssetCompressedBytes,
+                compressed_bytes.saturating_sub(1),
+                Some(compressed_bytes),
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontAssetDecodedBytes,
+                asset.canonical_bytes().len().saturating_sub(1),
+                Some(asset.canonical_bytes().len()),
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontCatalogDecodedBytes,
+                asset.canonical_bytes().len().saturating_sub(1),
+                Some(asset.canonical_bytes().len()),
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontAssets,
+                0,
+                Some(1),
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontFaces,
+                0,
+                Some(catalog.faces().len()),
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontTables,
+                table_count.saturating_sub(1),
+                Some(table_count),
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontAliases,
+                1,
+                Some(2),
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxFontDecodedExpansionRatio,
+                1,
+                None,
+            ),
+        ];
+
+        for (limit, maximum, expected_actual) in cases {
+            assert_theme_resource_rejected_before_text_preparation(
+                &theme,
+                limit,
+                maximum,
+                expected_actual,
+            );
+        }
+    }
+
+    #[test]
+    fn themed_session_revalidates_retained_effect_resources_before_text_preparation() {
+        let theme = resource_rich_theme();
+        let cases = [
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxEffectGraphs,
+                0,
+                1,
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxEffectPrimitivesPerGraph,
+                3,
+                4,
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxEffectBindings,
+                0,
+                1,
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxEffectOffsetMagnitude,
+                5,
+                6,
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxEffectBlurMagnitude,
+                6,
+                7,
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxEffectDisplacementScale,
+                8,
+                9,
+            ),
+            (
+                crate::diagram_theme::ThemeResourceLimitId::MaxEffectTurbulenceOctaves,
+                2,
+                3,
+            ),
+        ];
+
+        for (limit, maximum, expected_actual) in cases {
+            assert_theme_resource_rejected_before_text_preparation(
+                &theme,
+                limit,
+                maximum,
+                Some(expected_actual),
+            );
+        }
+    }
+
+    fn assert_theme_resource_rejected_before_text_preparation(
+        theme: &DiagramTheme,
+        limit: crate::diagram_theme::ThemeResourceLimitId,
+        maximum: usize,
+        expected_actual: Option<usize>,
+    ) {
+        let ceiling = crate::diagram_theme::ThemeResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(limit, maximum)
+            .expect("valid narrow retained-resource ceiling");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_resource_ceiling(ceiling)
+            .with_text_layout_backend(Arc::new(PrepareMustNotRunBackend::default()));
+
+        let resource = match environment.begin_session_with_theme(theme) {
+            Err(RenderEnvironmentError::ThemeResource(resource)) => resource,
+            Ok(_) => panic!(
+                "the narrow host must reject retained resource {}",
+                limit.as_str()
+            ),
+            Err(error) => panic!("unexpected error for {}: {error:?}", limit.as_str()),
+        };
+        assert_eq!(resource.limit, limit.as_str());
+        assert_eq!(resource.max, maximum);
+        if let Some(expected_actual) = expected_actual {
+            assert_eq!(resource.actual, expected_actual);
+        } else {
+            assert!(resource.actual > maximum);
+        }
     }
 
     fn mismatched_catalog_backend() -> (FontCatalog, CachedPreparedBackend) {

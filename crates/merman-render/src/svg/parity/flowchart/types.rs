@@ -5,6 +5,7 @@
 
 use super::super::*;
 use super::FlowchartEdgeStylePlan;
+use super::render_input::FlowchartRenderEdgeRef;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
@@ -54,11 +55,9 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) trace_collector:
         Option<&'a crate::svg::FlowchartEdgeTraceCollector>,
     pub(in crate::svg::parity::flowchart) subgraph_order: Vec<&'a str>,
-    pub(in crate::svg::parity::flowchart) edge_order: Vec<&'a str>,
+    pub(in crate::svg::parity::flowchart) edge_order: Vec<FlowchartRenderEdgeRef<'a>>,
     pub(in crate::svg::parity::flowchart) nodes_by_id:
         FxHashMap<&'a str, &'a crate::flowchart::FlowNode>,
-    pub(in crate::svg::parity::flowchart) edges_by_id:
-        FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) subgraphs_by_id:
         FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
     pub(in crate::svg::parity::flowchart) subgraph_index_by_id: FxHashMap<&'a str, usize>,
@@ -67,8 +66,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) recursive_clusters: FxHashSet<&'a str>,
     pub(in crate::svg::parity::flowchart) parent: FxHashMap<&'a str, &'a str>,
     pub(in crate::svg::parity::flowchart) layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
-    pub(in crate::svg::parity::flowchart) layout_edges_by_id:
-        FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
+    pub(in crate::svg::parity::flowchart) layout_edges_by_key:
+        FxHashMap<crate::flowchart::FlowchartEdgeKey, &'a crate::model::LayoutEdge>,
     pub(in crate::svg::parity::flowchart) layout_clusters_by_id:
         FxHashMap<&'a str, &'a LayoutCluster>,
     pub(in crate::svg::parity::flowchart) swimlane_direction:
@@ -76,7 +75,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) swimlane_lanes_by_id:
         FxHashMap<&'a str, &'a crate::model::SwimlaneLaneLayout>,
     pub(in crate::svg::parity::flowchart) swimlane_edge_label_edges_by_node_id:
-        FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
+        FxHashMap<&'a str, FlowchartRenderEdgeRef<'a>>,
     pub(in crate::svg::parity::flowchart) dom_node_order_by_root:
         &'a std::collections::HashMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_dom_index: FxHashMap<&'a str, usize>,
@@ -112,7 +111,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
     pub(in crate::svg::parity::flowchart) node_label_html: std::time::Duration,
     pub(in crate::svg::parity::flowchart) node_label_html_calls: u32,
     pub(in crate::svg::parity::flowchart) nested_roots: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_lca: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_root_lookup: std::time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_offsets: std::time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom: std::time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_bbox_union: std::time::Duration,
@@ -123,7 +122,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
 #[derive(Default)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg::parity::flowchart) json: String,
-    pub(in crate::svg::parity::flowchart) style_escaped: String,
+    pub(in crate::svg::parity::flowchart) edge_class_attr: String,
+    pub(in crate::svg::parity::flowchart) edge_marker_attrs: String,
     pub(in crate::svg::parity::flowchart) ryu: ryu_js::Buffer,
     pub(in crate::svg::parity::flowchart) local_points: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_a: Vec<crate::model::LayoutPoint>,

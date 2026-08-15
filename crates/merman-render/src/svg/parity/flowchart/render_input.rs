@@ -5,26 +5,65 @@ use std::collections::BTreeSet;
 
 use rustc_hash::FxHashSet;
 
+#[derive(Debug)]
+pub(in crate::svg::parity::flowchart) struct FlowchartRenderEdge<'a> {
+    pub(in crate::svg::parity::flowchart) key: crate::flowchart::FlowchartEdgeKey,
+    pub(in crate::svg::parity::flowchart) edge: Cow<'a, crate::flowchart::FlowEdge>,
+}
+
+impl FlowchartRenderEdge<'_> {
+    pub(in crate::svg::parity::flowchart) fn as_ref(&self) -> FlowchartRenderEdgeRef<'_> {
+        FlowchartRenderEdgeRef {
+            key: self.key,
+            edge: self.edge.as_ref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(in crate::svg::parity) struct FlowchartRenderEdgeRef<'a> {
+    pub(in crate::svg::parity::flowchart) key: crate::flowchart::FlowchartEdgeKey,
+    pub(in crate::svg::parity::flowchart) edge: &'a crate::flowchart::FlowEdge,
+}
+
+impl std::ops::Deref for FlowchartRenderEdgeRef<'_> {
+    type Target = crate::flowchart::FlowEdge;
+
+    fn deref(&self) -> &Self::Target {
+        self.edge
+    }
+}
+
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
-    pub render_edges: Vec<Cow<'a, crate::flowchart::FlowEdge>>,
+    pub render_edges: Vec<FlowchartRenderEdge<'a>>,
     pub extra_nodes: Vec<crate::flowchart::FlowNode>,
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
+    layout_edge_owner_indices: &[usize],
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
+    let renderable_edges: FxHashSet<usize> = layout_edge_owner_indices.iter().copied().collect();
+    let semantic_edges = model
+        .edges
+        .iter()
+        .enumerate()
+        .filter(|(semantic_index, _)| renderable_edges.contains(semantic_index))
+        .map(|(semantic_index, edge)| FlowchartRenderEdge {
+            key: crate::flowchart::FlowchartEdgeKey::new(semantic_index),
+            edge: Cow::Borrowed(edge),
+        });
     if uses_elk_adapter_dom {
         return FlowchartRenderInputs {
-            render_edges: model.edges.iter().map(Cow::Borrowed).collect(),
+            render_edges: semantic_edges.collect(),
             extra_nodes: Vec::new(),
         };
     }
 
     // Mermaid 11.16 keeps the helper nodes used by Dagre, but merges their three layout segments
     // back into the original logical self-loop before rendering.
-    let mut render_edges: Vec<Cow<'a, crate::flowchart::FlowEdge>> =
-        model.edges.iter().map(Cow::Borrowed).collect();
+    let mut render_edges: Vec<FlowchartRenderEdge<'a>> = semantic_edges.collect();
     let mut self_loop_label_node_ids: BTreeSet<String> = BTreeSet::new();
     for edge in model.edges.iter().filter(|edge| edge.from == edge.to) {
         self_loop_label_node_ids.insert(format!("{}---{}---1", edge.from, edge.from));
@@ -42,11 +81,10 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         .map(|sg| sg.id.as_str())
         .collect();
     if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {
-        let mut normal: Vec<Cow<'a, crate::flowchart::FlowEdge>> =
-            Vec::with_capacity(render_edges.len());
-        let mut cluster: Vec<Cow<'a, crate::flowchart::FlowEdge>> = Vec::new();
+        let mut normal: Vec<FlowchartRenderEdge<'a>> = Vec::with_capacity(render_edges.len());
+        let mut cluster: Vec<FlowchartRenderEdge<'a>> = Vec::new();
         for e in render_edges {
-            let edge = e.as_ref();
+            let edge = e.edge.as_ref();
             if cluster_ids_with_children.contains(edge.from.as_str())
                 || cluster_ids_with_children.contains(edge.to.as_str())
             {
@@ -65,7 +103,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         let mut regular = Vec::with_capacity(render_edges.len());
         let mut self_loops = Vec::new();
         for edge in render_edges {
-            if edge.from == edge.to {
+            if edge.edge.from == edge.edge.to {
                 self_loops.push(edge);
             } else {
                 regular.push(edge);

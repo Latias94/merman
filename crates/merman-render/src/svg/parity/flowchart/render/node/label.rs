@@ -81,7 +81,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn write_special_html_label(
         &self,
-        out: &mut String,
+        out: &mut impl crate::svg::parity::SvgOutput,
         ctx: &FlowchartRenderCtx<'_>,
         common: &super::FlowchartNodeRenderCommon<'_>,
         label: &super::FlowchartNodeLabelState<'_>,
@@ -156,7 +156,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     common: &super::FlowchartNodeRenderCommon<'_>,
     label: &super::FlowchartNodeLabelState<'_>,

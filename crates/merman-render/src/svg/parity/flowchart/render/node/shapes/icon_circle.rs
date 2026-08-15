@@ -1,7 +1,5 @@
 //! Flowchart v2 icon circle shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::{escape_attr, flowchart_label_plain_text};
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -9,7 +7,7 @@ const FRAME_PADDING: f64 = 20.0;
 const HAND_DRAWN_FILL_WEIGHT: f64 = 4.0;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,

@@ -224,6 +224,7 @@ fn compile_for_test(
         runtime_policy,
         RenderCapabilityPolicy::unrestricted(),
         theme,
+        compiler.resource_policy().clone(),
     )
 }
 
@@ -233,12 +234,15 @@ impl RenderOperationConfig {
         runtime_policy: merman::runtime::RuntimePolicy,
         capability_policy: RenderCapabilityPolicy,
         theme: Option<merman::svg::DiagramTheme>,
+        theme_resources: merman::svg::ThemeResourcePolicy,
     ) -> Result<Self, BindingError> {
         let render_resources = binding_resource_policy(options.analysis.resources.as_ref())?;
         let input_resources = *render_resources.input_policy();
         let mut environment =
             SvgEnvironment::deterministic().with_capability_policy(capability_policy);
-        environment = environment.with_resource_policy(render_resources);
+        environment = environment
+            .with_resource_policy(render_resources)
+            .with_theme_resource_ceiling(theme_resources);
         if let Some(environment_json) = options.environment.as_ref() {
             if let Some(kind) = environment_json.text_measurement.as_deref() {
                 environment = environment.with_text_measurement_policy(
@@ -773,6 +777,27 @@ mod tests {
         assert_eq!(details.actual, 5);
         assert_eq!(details.max, 4);
         assert_eq!(details.profile, "constrained");
+    }
+
+    #[test]
+    fn terminal_theme_resource_failures_keep_stable_structured_metadata() {
+        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
+        let maximum = policy
+            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained theme input ceiling");
+        let resource = policy
+            .check_theme_encoded_bytes(maximum + 1)
+            .expect_err("fixture must exceed the constrained theme input ceiling");
+        let error = classify_render_error(
+            merman::RenderError::from(merman_render::Error::ThemeResourceLimitExceeded(resource)),
+            merman::resources::ResourceProfile::Interactive,
+        );
+        let details = error.resource_details().expect("theme resource details");
+        assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(details.phase, "theme_input");
+        assert_eq!(details.actual, (maximum + 1) as u64);
+        assert_eq!(details.max, maximum as u64);
+        assert_eq!(details.profile, "interactive");
     }
 
     #[test]

@@ -34,7 +34,7 @@ fn actor_man_participant_data_attrs(ctx: &ActorManGlyphContext<'_>) -> String {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_actor_man_top_glyph(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     actor_type: &str,
     actor_id: &str,
     label: &str,
@@ -133,7 +133,7 @@ pub(super) fn write_actor_man_top_glyph(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_actor_man_bottom_glyph(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     actor_type: &str,
     actor_id: &str,
     label: &str,
@@ -232,7 +232,7 @@ pub(super) fn write_actor_man_bottom_glyph(
     }
 }
 
-fn write_stick_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
+fn write_stick_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
     let r = 15.0;
     let torso_top = ctx.cy + r;
     let torso_bottom = torso_top + 20.0;
@@ -264,7 +264,7 @@ fn write_stick_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     );
 }
 
-fn write_boundary_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
+fn write_boundary_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
     let radius = 22.0;
     let x_left = ctx.cx - radius * 2.5;
     let data_attrs = actor_man_participant_data_attrs(ctx);
@@ -287,7 +287,7 @@ fn write_boundary_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) 
     );
 }
 
-fn write_control_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
+fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
     let r = 22.0;
     let marker_id = scoped_svg_id(ctx.diagram_id, "filled-head-control");
     let marker_url = scoped_svg_url(ctx.diagram_id, "filled-head-control");
@@ -308,7 +308,7 @@ fn write_control_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     );
 }
 
-fn write_entity_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
+fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
     let r = 22.0;
     let transform_y = if ctx.placement_class == "actor-bottom" {
         22.0

@@ -377,7 +377,7 @@ pub(in crate::svg::parity) fn flowchart_label_plain_text(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     text: &str,
     include_style: bool,
 ) {
@@ -389,7 +389,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     include_style: bool,
 ) {
     crate::svg::parity::label::write_svg_text_source_word_lines(
@@ -401,7 +401,7 @@ pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
     include_style: bool,
 ) {
@@ -409,7 +409,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_with_style(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     lines: &[Vec<String>],
     style: &str,
 ) {
@@ -417,7 +417,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_wit
 }
 
 pub(crate) fn write_flowchart_svg_label_plan(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
     include_style: bool,
 ) {
@@ -453,7 +453,7 @@ pub(crate) fn write_flowchart_svg_label_plan(
 }
 
 pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
     style: &str,
 ) {
@@ -495,7 +495,7 @@ pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     include_style: bool,
 ) {
@@ -507,7 +507,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     include_style: bool,
     measurer: &dyn crate::text::TextMeasurer,
@@ -525,7 +525,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     include_style: bool,
     measurer: &dyn crate::text::TextMeasurer,

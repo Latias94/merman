@@ -13,7 +13,7 @@ use super::typography::{
 };
 use super::{FontCatalog, FontStack, FontStyle};
 
-const RECIPE_FINGERPRINT_DOMAIN: &[u8] = b"merman-theme-recipe-v2";
+const RECIPE_FINGERPRINT_DOMAIN: &[u8] = b"merman-theme-recipe-v3";
 
 pub(crate) fn recipe_fingerprint(
     spec: &DiagramThemeSpec,
@@ -397,13 +397,6 @@ fn encode_effects(encoder: &mut CanonicalEncoder, effects: &DiagramEffectSet) {
         for graph in graphs {
             encoder.field("graph", |encoder| {
                 encoder.field("id", |encoder| encoder.string(graph.id()));
-                encoder.field("region", |encoder| {
-                    let region = graph.region();
-                    encoder.field("x", |encoder| encoder.f32(region.x));
-                    encoder.field("y", |encoder| encoder.f32(region.y));
-                    encoder.field("width", |encoder| encoder.f32(region.width));
-                    encoder.field("height", |encoder| encoder.f32(region.height));
-                });
                 encoder.field("primitives", |encoder| {
                     encoder.sequence_len(graph.primitives().len());
                     for primitive in graph.primitives() {
@@ -667,10 +660,10 @@ mod tests {
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         BlendMode, CanvasLayer, DiagramEffectSet, DiagramThemeCompiler, EffectBinding, EffectGraph,
-        FilterRegion, FontAssetSpec, FontCatalogSpec, GradientStop, LinearGradient,
-        MermaidThemeCompatibility, OrdinalPalette, PatternSpec, RadialGradient, StrokeLineCap,
-        StrokeLineJoin, ThemeAssets, ThemeCapability, ThemeCompileValidationError, ThemeRule,
-        ThemeRuleSet, ThemeTarget, ThemeTokens, ThemeVariant, TypographySpec,
+        FontAssetSpec, FontCatalogSpec, GradientStop, LinearGradient, MermaidThemeCompatibility,
+        OrdinalPalette, PatternSpec, RadialGradient, StrokeLineCap, StrokeLineJoin, ThemeAssets,
+        ThemeCapability, ThemeCompileValidationError, ThemeRule, ThemeRuleSet, ThemeTarget,
+        ThemeTokens, ThemeVariant, TypographySpec,
     };
 
     fn compile(spec: DiagramThemeSpec) -> super::super::ThemeRecipeFingerprint {
@@ -687,7 +680,6 @@ mod tests {
     fn blur_graph(id: &str, deviation: f32) -> EffectGraph {
         EffectGraph::new(
             id,
-            FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
             [EffectPrimitive::GaussianBlur {
                 input: EffectInput::SourceGraphic,
                 std_deviation: deviation,
@@ -770,10 +762,9 @@ mod tests {
 
     fn effect_graph(
         id: &str,
-        region: FilterRegion,
         primitives: impl IntoIterator<Item = EffectPrimitive>,
     ) -> EffectGraph {
-        EffectGraph::new(id, region, primitives).expect("valid canonical effect fixture")
+        EffectGraph::new(id, primitives).expect("valid canonical effect fixture")
     }
 
     fn with_effect_graph(graph: EffectGraph) -> DiagramThemeSpec {
@@ -782,10 +773,6 @@ mod tests {
                 .with_graph(graph)
                 .expect("unique effect graph"),
         )
-    }
-
-    fn default_filter_region() -> FilterRegion {
-        FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4)
     }
 
     #[test]
@@ -1799,44 +1786,15 @@ mod tests {
             input: EffectInput::SourceGraphic,
             std_deviation: deviation,
         };
-        let graph_spec = |id: &str, region, primitives: Vec<EffectPrimitive>| {
-            with_effect_graph(effect_graph(id, region, primitives))
+        let graph_spec = |id: &str, primitives: Vec<EffectPrimitive>| {
+            with_effect_graph(effect_graph(id, primitives))
         };
 
         assert_recipe_field_changes(
             "effects.graph.id",
-            graph_spec("soft-a", default_filter_region(), vec![blur(1.0)]),
-            graph_spec("soft-b", default_filter_region(), vec![blur(1.0)]),
+            graph_spec("soft-a", vec![blur(1.0)]),
+            graph_spec("soft-b", vec![blur(1.0)]),
         );
-
-        for (field, left, right) in [
-            (
-                "effects.region.x",
-                FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
-                FilterRegion::bounded(-0.3, -0.2, 1.4, 1.4),
-            ),
-            (
-                "effects.region.y",
-                FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
-                FilterRegion::bounded(-0.2, -0.3, 1.4, 1.4),
-            ),
-            (
-                "effects.region.width",
-                FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
-                FilterRegion::bounded(-0.2, -0.2, 1.5, 1.4),
-            ),
-            (
-                "effects.region.height",
-                FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
-                FilterRegion::bounded(-0.2, -0.2, 1.4, 1.5),
-            ),
-        ] {
-            assert_recipe_field_changes(
-                field,
-                graph_spec("soft", left, vec![blur(1.0)]),
-                graph_spec("soft", right, vec![blur(1.0)]),
-            );
-        }
 
         let shadow = |input, offset_x, offset_y, blur_radius, spread, color_value: &str| {
             EffectPrimitive::DropShadow {
@@ -1848,8 +1806,7 @@ mod tests {
                 color: color(color_value),
             }
         };
-        let shadow_graph =
-            |shadow| graph_spec("shadow", default_filter_region(), vec![blur(1.0), shadow]);
+        let shadow_graph = |shadow| graph_spec("shadow", vec![blur(1.0), shadow]);
         assert_recipe_field_changes(
             "effects.drop_shadow.input",
             shadow_graph(shadow(
@@ -1912,10 +1869,9 @@ mod tests {
 
         assert_recipe_field_changes(
             "effects.gaussian_blur.input",
-            graph_spec("blur", default_filter_region(), vec![blur(1.0), blur(2.0)]),
+            graph_spec("blur", vec![blur(1.0), blur(2.0)]),
             graph_spec(
                 "blur",
-                default_filter_region(),
                 vec![
                     blur(1.0),
                     EffectPrimitive::GaussianBlur {
@@ -1927,8 +1883,8 @@ mod tests {
         );
         assert_recipe_field_changes(
             "effects.gaussian_blur.std_deviation",
-            graph_spec("blur", default_filter_region(), vec![blur(1.0)]),
-            graph_spec("blur", default_filter_region(), vec![blur(2.0)]),
+            graph_spec("blur", vec![blur(1.0)]),
+            graph_spec("blur", vec![blur(2.0)]),
         );
 
         let mut matrix_a = [0.0; 20];
@@ -1940,27 +1896,17 @@ mod tests {
             "effects.color_matrix.input",
             graph_spec(
                 "matrix",
-                default_filter_region(),
                 vec![blur(1.0), matrix(EffectInput::SourceGraphic, matrix_a)],
             ),
             graph_spec(
                 "matrix",
-                default_filter_region(),
                 vec![blur(1.0), matrix(EffectInput::Previous, matrix_a)],
             ),
         );
         assert_recipe_field_changes(
             "effects.color_matrix.values",
-            graph_spec(
-                "matrix",
-                default_filter_region(),
-                vec![matrix(EffectInput::SourceGraphic, matrix_a)],
-            ),
-            graph_spec(
-                "matrix",
-                default_filter_region(),
-                vec![matrix(EffectInput::SourceGraphic, matrix_b)],
-            ),
+            graph_spec("matrix", vec![matrix(EffectInput::SourceGraphic, matrix_a)]),
+            graph_spec("matrix", vec![matrix(EffectInput::SourceGraphic, matrix_b)]),
         );
 
         let turbulence = |input, x, y, octaves, seed| EffectPrimitive::Turbulence {
@@ -1974,7 +1920,6 @@ mod tests {
             "effects.turbulence.input",
             graph_spec(
                 "noise",
-                default_filter_region(),
                 vec![
                     blur(1.0),
                     turbulence(EffectInput::SourceGraphic, 0.1, 0.2, 2, 7),
@@ -1982,7 +1927,6 @@ mod tests {
             ),
             graph_spec(
                 "noise",
-                default_filter_region(),
                 vec![blur(1.0), turbulence(EffectInput::Previous, 0.1, 0.2, 2, 7)],
             ),
         );
@@ -2012,7 +1956,6 @@ mod tests {
                 field,
                 graph_spec(
                     "noise",
-                    default_filter_region(),
                     vec![turbulence(
                         EffectInput::SourceGraphic,
                         left.0,
@@ -2023,7 +1966,6 @@ mod tests {
                 ),
                 graph_spec(
                     "noise",
-                    default_filter_region(),
                     vec![turbulence(
                         EffectInput::SourceGraphic,
                         right.0,
@@ -2044,7 +1986,6 @@ mod tests {
             "effects.displacement.input",
             graph_spec(
                 "rough",
-                default_filter_region(),
                 vec![
                     blur(1.0),
                     displacement(EffectInput::SourceGraphic, EffectInput::SourceGraphic, 4.0),
@@ -2052,7 +1993,6 @@ mod tests {
             ),
             graph_spec(
                 "rough",
-                default_filter_region(),
                 vec![
                     blur(1.0),
                     displacement(EffectInput::Previous, EffectInput::SourceGraphic, 4.0),
@@ -2063,7 +2003,6 @@ mod tests {
             "effects.displacement.map_input",
             graph_spec(
                 "rough",
-                default_filter_region(),
                 vec![
                     blur(1.0),
                     displacement(EffectInput::SourceGraphic, EffectInput::SourceGraphic, 4.0),
@@ -2071,7 +2010,6 @@ mod tests {
             ),
             graph_spec(
                 "rough",
-                default_filter_region(),
                 vec![
                     blur(1.0),
                     displacement(EffectInput::SourceGraphic, EffectInput::Previous, 4.0),
@@ -2082,7 +2020,6 @@ mod tests {
             "effects.displacement.scale",
             graph_spec(
                 "rough",
-                default_filter_region(),
                 vec![displacement(
                     EffectInput::SourceGraphic,
                     EffectInput::SourceGraphic,
@@ -2091,7 +2028,6 @@ mod tests {
             ),
             graph_spec(
                 "rough",
-                default_filter_region(),
                 vec![displacement(
                     EffectInput::SourceGraphic,
                     EffectInput::SourceGraphic,

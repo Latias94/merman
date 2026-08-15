@@ -1,13 +1,11 @@
 //! Flowchart v2 window pane shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::{escape_attr, fmt};
 
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,

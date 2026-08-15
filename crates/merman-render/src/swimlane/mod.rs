@@ -89,6 +89,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         source_edges,
     ))?;
     work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
+    crate::flowchart::reject_duplicate_edge_ids_for_adapter(model, "Swimlane")?;
     let config = config::SwimlaneConfig::from_config(effective_config);
     let mut working = prepare::prepare(
         model,
@@ -213,13 +214,15 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
 }
 
 fn swimlane_core_layout_work_units(nodes: usize, edges: usize) -> usize {
-    let baseline = nodes.saturating_add(edges).saturating_mul(4);
+    let baseline = nodes
+        .saturating_mul(4)
+        .saturating_add(edges.saturating_mul(5));
 
     // This is the stable, family-accounted cost for prepare, Sugiyama, and routing. The linear
-    // baseline covers their source-item passes. Routing adds edges incrementally and can compare
-    // each new route with every earlier route, so charge one conservative unit per unordered
-    // source-edge pair. Direction post-processing and SVG line hops charge the shared meter
-    // independently and must not be included here.
+    // baseline covers their source-item passes plus duplicate edge-id admission. Routing adds edges
+    // incrementally and can compare each new route with every earlier route, so charge one
+    // conservative unit per unordered source-edge pair. Direction post-processing and SVG line
+    // hops charge the shared meter independently and must not be included here.
     baseline.saturating_add(work_budget::unordered_pair_count(edges))
 }
 
@@ -259,9 +262,9 @@ mod tests {
 
     #[test]
     fn core_layout_cost_accounts_routing_pairs_once() {
-        // Four nodes plus three edges consume 28 linear units; routing can inspect three
-        // unordered edge pairs.
-        assert_eq!(swimlane_core_layout_work_units(4, 3), 31);
+        // Four nodes plus three edges consume 31 linear units, including duplicate-id admission;
+        // routing can inspect three unordered edge pairs.
+        assert_eq!(swimlane_core_layout_work_units(4, 3), 34);
     }
 
     #[test]
@@ -269,8 +272,8 @@ mod tests {
         let core = swimlane_core_layout_work_units(4, 3);
         let preflight = swimlane_layout_preflight_work_units(4, 3);
 
-        assert_eq!(core, 31);
-        assert_eq!(preflight, 34);
+        assert_eq!(core, 34);
+        assert_eq!(preflight, 37);
     }
 
     #[test]

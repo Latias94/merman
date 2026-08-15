@@ -34,10 +34,12 @@ pub(super) use trace::{FlowchartEdgeTraceInput, record_flowchart_edge_trace};
 
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
     pub(super) ctx: &'a FlowchartRenderCtx<'a>,
+    pub(super) key: crate::flowchart::FlowchartEdgeKey,
     pub(super) edge: &'a crate::flowchart::FlowEdge,
     pub(super) origin_x: f64,
     pub(super) origin_y: f64,
     pub(super) trace_enabled: bool,
+    pub(super) collapse_degenerate_subgraph_route: bool,
 }
 
 pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(

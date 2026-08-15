@@ -12,6 +12,9 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, WrapMode};
 use std::collections::HashMap;
@@ -161,6 +164,67 @@ fn render_sequence_with_environment(
         svg,
         report: family_report.session_report().measurement().clone(),
     }
+}
+
+fn try_render_sequence_svg_with_resource_policy(
+    source: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Sequence resource-bound session");
+    let parsed = parse_sequence_for_render(&Engine::new(), source);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered =
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn sequence_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = r#"sequenceDiagram
+participant A as Alice
+participant B as Bob
+Note over A,B: bounded family-level note
+A->>B: hello
+"#;
+    let baseline = try_render_sequence_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Sequence baseline");
+    let exact_bytes = baseline.len();
+    assert!(
+        exact_bytes > 1,
+        "Sequence fixture must emit a non-empty SVG"
+    );
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Sequence SVG byte ceiling");
+    let exact = try_render_sequence_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact Sequence family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Sequence SVG byte ceiling");
+    let error = try_render_sequence_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the Sequence family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Sequence MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 fn render_sequence_with_host_environment(

@@ -284,6 +284,7 @@ pub struct FontAsset {
     canonical_container: FontContainer,
     canonical_bytes: Arc<[u8]>,
     fingerprint: FontAssetFingerprint,
+    admission_receipt: FontAssetAdmissionReceipt,
 }
 
 impl FontAsset {
@@ -323,6 +324,32 @@ impl fmt::Debug for FontAsset {
             .field("fingerprint", &self.fingerprint)
             .finish()
     }
+}
+
+/// Compile-time facts that cannot be recovered from the retained canonical font bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FontAssetAdmissionReceipt {
+    compressed_bytes: Option<usize>,
+    expansion_source_bytes: usize,
+}
+
+impl FontAssetAdmissionReceipt {
+    fn validate(
+        self,
+        canonical_bytes: &[u8],
+        resources: &ThemeResourcePolicy,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        if let Some(compressed_bytes) = self.compressed_bytes {
+            resources.check_font_asset_compressed_bytes(compressed_bytes)?;
+        }
+        resources.check_font_asset_decoded_bytes(canonical_bytes.len())?;
+        resources.check_font_decoded_expansion(self.expansion_source_bytes, canonical_bytes.len())
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct FontCatalogAdmissionReceipt {
+    deduplicated_decoded_bytes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -414,6 +441,7 @@ struct FontCatalogInner {
     available_sources: BTreeSet<FontSource>,
     embedding: FontEmbeddingRequirement,
     fingerprint: FontCatalogFingerprint,
+    admission_receipt: FontCatalogAdmissionReceipt,
 }
 
 #[derive(Debug, Clone)]
@@ -435,6 +463,7 @@ impl FontCatalog {
             available_sources: [FontSource::System].into_iter().collect(),
             embedding: FontEmbeddingRequirement::NoEmbedding,
             fingerprint: FontCatalogFingerprint(hasher.finalize().into()),
+            admission_receipt: FontCatalogAdmissionReceipt::default(),
         }))
     }
 
@@ -470,6 +499,25 @@ impl FontCatalog {
         self.0.kind
     }
 
+    pub(crate) fn validate_retained_resources(
+        &self,
+        resources: &ThemeResourcePolicy,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        resources.check_font_asset_count(self.0.assets.len())?;
+        for asset in &self.0.assets {
+            asset
+                .admission_receipt
+                .validate(&asset.canonical_bytes, resources)?;
+        }
+        resources.check_font_catalog_decoded_bytes(
+            self.0.admission_receipt.deduplicated_decoded_bytes,
+        )?;
+        resources.check_font_face_count(self.0.faces.len())?;
+        resources
+            .check_font_table_count(self.0.faces.iter().map(FontFaceMetadata::table_count).sum())?;
+        resources.check_font_alias_count(self.0.aliases.len() + self.0.generic_families.len())
+    }
+
     pub(crate) fn canonical_family_name(&self, requested: &str) -> Option<&str> {
         self.0
             .resolved_family_names
@@ -498,6 +546,13 @@ impl FontCatalog {
         }
         FontStack::new(admitted).ok()
     }
+}
+
+struct CanonicalizedFontAsset {
+    input_container: FontContainer,
+    canonical_container: FontContainer,
+    canonical_bytes: Vec<u8>,
+    admission_receipt: FontAssetAdmissionReceipt,
 }
 
 fn compile_font_catalog(
@@ -553,8 +608,12 @@ fn compile_font_catalog(
     let mut total_decoded_bytes = 0usize;
     let mut total_tables = 0usize;
     for (asset_index, asset) in indexed_assets {
-        let (input_container, canonical_container, canonical_bytes) =
-            canonicalize_font_asset(asset_index, &asset.bytes, resources)?;
+        let CanonicalizedFontAsset {
+            input_container,
+            canonical_container,
+            canonical_bytes,
+            admission_receipt,
+        } = canonicalize_font_asset(asset_index, &asset.bytes, resources)?;
         let fingerprint = hash_font_asset(canonical_container, &canonical_bytes);
         let canonical_bytes = if let Some(retained) = canonical_assets.get(&fingerprint) {
             Arc::clone(retained)
@@ -589,6 +648,7 @@ fn compile_font_catalog(
             canonical_container,
             canonical_bytes,
             fingerprint,
+            admission_receipt,
         });
         faces.extend(asset_faces);
     }
@@ -615,7 +675,6 @@ fn compile_font_catalog(
         &spec.available_sources,
         spec.embedding,
     );
-
     Ok(FontCatalog(Arc::new(FontCatalogInner {
         kind: FontCatalogKind::Custom,
         assets,
@@ -627,6 +686,9 @@ fn compile_font_catalog(
         available_sources: spec.available_sources,
         embedding: spec.embedding,
         fingerprint,
+        admission_receipt: FontCatalogAdmissionReceipt {
+            deduplicated_decoded_bytes: total_decoded_bytes,
+        },
     })))
 }
 
@@ -678,7 +740,7 @@ fn canonicalize_font_asset(
     asset_index: usize,
     bytes: &[u8],
     resources: &ThemeResourcePolicy,
-) -> Result<(FontContainer, FontContainer, Vec<u8>), FontCatalogError> {
+) -> Result<CanonicalizedFontAsset, FontCatalogError> {
     let input_container = detect_font_container(bytes)
         .ok_or(FontCatalogError::UnsupportedFontContainer { asset_index })?;
     let mut compressed_block_size = None;
@@ -745,7 +807,15 @@ fn canonicalize_font_asset(
     let canonical_container = detect_font_container(&canonical_bytes)
         .filter(|container| *container != FontContainer::Woff2)
         .ok_or(FontCatalogError::MalformedSfnt { asset_index })?;
-    Ok((input_container, canonical_container, canonical_bytes))
+    Ok(CanonicalizedFontAsset {
+        input_container,
+        canonical_container,
+        admission_receipt: FontAssetAdmissionReceipt {
+            compressed_bytes: (input_container == FontContainer::Woff2).then_some(bytes.len()),
+            expansion_source_bytes: compressed_block_size.unwrap_or(bytes.len()),
+        },
+        canonical_bytes,
+    })
 }
 
 fn parse_font_faces(

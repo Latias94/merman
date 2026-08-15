@@ -31,15 +31,25 @@ pub enum ThemeResourceLimitPhase {
     FontDecode,
     FontCatalog,
     EffectCompile,
+    EffectMaterialize,
 }
 
 impl ThemeResourceLimitPhase {
+    pub const ALL: &'static [Self] = &[
+        Self::ThemeInput,
+        Self::FontDecode,
+        Self::FontCatalog,
+        Self::EffectCompile,
+        Self::EffectMaterialize,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ThemeInput => "theme_input",
             Self::FontDecode => "font_decode",
             Self::FontCatalog => "font_catalog",
             Self::EffectCompile => "effect_compile",
+            Self::EffectMaterialize => "effect_materialize",
         }
     }
 }
@@ -385,8 +395,8 @@ pub static THEME_RESOURCE_LIMIT_DESCRIPTORS: [ThemeResourceLimitDescriptor;
     ThemeResourceLimitDescriptor {
         id: ThemeResourceLimitId::MaxEffectFilterRegionMagnitude,
         stable_id: "max_effect_filter_region_magnitude",
-        phase: ThemeResourceLimitPhase::EffectCompile,
-        description: "Maximum absolute filter-region coordinate or extent in a compiled effect graph",
+        phase: ThemeResourceLimitPhase::EffectMaterialize,
+        description: "Maximum absolute coordinate or extent in a materialized terminal filter region",
         overridable: true,
         hard_cap: false,
         minimum_value: 0,
@@ -457,8 +467,8 @@ pub static THEME_RESOURCE_LIMIT_DESCRIPTORS: [ThemeResourceLimitDescriptor;
     ThemeResourceLimitDescriptor {
         id: ThemeResourceLimitId::EffectFilterRegionMagnitudeHardCap,
         stable_id: "effect_filter_region_magnitude_hard_cap",
-        phase: ThemeResourceLimitPhase::EffectCompile,
-        description: "Non-overridable implementation cap for filter-region coordinates and extents",
+        phase: ThemeResourceLimitPhase::EffectMaterialize,
+        description: "Non-overridable implementation cap for materialized terminal filter regions",
         overridable: false,
         hard_cap: true,
         minimum_value: 1,
@@ -1095,7 +1105,7 @@ impl ThemeResourcePolicy {
         )
     }
 
-    pub(crate) fn check_effect_filter_region_magnitude(
+    pub(crate) fn check_materialized_filter_region_magnitude(
         &self,
         actual: f32,
     ) -> Result<(), ThemeResourceLimitExceeded> {
@@ -1433,7 +1443,7 @@ mod tests {
                 .check_effect_offset_magnitude((MAX_EFFECT_OFFSET_MAGNITUDE_HARD_CAP + 1) as f32)
                 .unwrap_err(),
             policy
-                .check_effect_filter_region_magnitude(
+                .check_materialized_filter_region_magnitude(
                     (MAX_EFFECT_FILTER_REGION_MAGNITUDE_HARD_CAP + 1) as f32,
                 )
                 .unwrap_err(),

@@ -29,7 +29,7 @@ impl<'a> ActorLabelContext<'a> {
         }
     }
 
-    fn write_actor(&self, out: &mut String, cx: f64, cy: f64, actor: &SequenceActor) {
+    fn write_actor(&self, out: &mut impl SvgOutput, cx: f64, cy: f64, actor: &SequenceActor) {
         write_actor_label(out, cx, cy, &actor.description, actor.wrap, self);
     }
 }
@@ -88,7 +88,7 @@ pub(super) fn actor_stroke_coverage(actor: &SequenceActor) -> ActorStrokeCoverag
 }
 
 pub(super) fn write_actor_man_lifeline(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     idx: usize,
     cx: f64,
     y1: f64,
@@ -108,7 +108,7 @@ pub(super) fn write_actor_man_lifeline(
 }
 
 pub(super) fn write_lifeline_root_open(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     idx: usize,
     cx: f64,
     y1: f64,
@@ -137,7 +137,7 @@ pub(super) fn write_lifeline_root_open(
 }
 
 pub(super) fn write_collection_actor_shape(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     n: &LayoutNode,
     actor_id: &str,
     actor: &SequenceActor,
@@ -173,7 +173,7 @@ pub(super) fn write_collection_actor_shape(
 }
 
 pub(super) fn write_queue_actor_shape(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     n: &LayoutNode,
     actor: &SequenceActor,
     _placement_class: &str,
@@ -211,7 +211,7 @@ pub(super) fn write_queue_actor_shape(
 }
 
 pub(super) fn write_database_top_actor_shape(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     n: &LayoutNode,
     actor: &SequenceActor,
     actor_height: f64,
@@ -241,7 +241,7 @@ pub(super) fn write_database_top_actor_shape(
 }
 
 pub(super) fn write_database_bottom_actor_shape(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     n: &LayoutNode,
     actor: &SequenceActor,
     label_box_height: f64,
@@ -274,7 +274,7 @@ pub(super) fn write_database_bottom_actor_shape(
 }
 
 pub(super) fn write_rect_actor_shape(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     n: &LayoutNode,
     actor_id: &str,
     actor: &SequenceActor,
@@ -315,7 +315,7 @@ fn actor_custom_class(actor: &SequenceActor) -> Option<&str> {
 }
 
 fn write_actor_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     cx: f64,
     cy: f64,
     label: &str,
@@ -380,7 +380,7 @@ fn write_actor_label(
 }
 
 fn write_actor_label_lines<'a>(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     cx: f64,
     cy: f64,
     raw_lines: impl IntoIterator<Item = &'a str>,

@@ -13,7 +13,7 @@ const FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
 const FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 fn render_polygon_shape(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
     pts: &[(f64, f64)],
@@ -73,7 +73,7 @@ fn render_polygon_shape(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_lean_right(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -87,7 +87,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lean_right(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_lean_left(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -101,7 +101,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lean_left(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_trapezoid(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -115,7 +115,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_trapezoid(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_inv_trapezoid(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {

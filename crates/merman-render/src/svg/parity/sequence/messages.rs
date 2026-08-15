@@ -155,7 +155,7 @@ fn sequence_number_marker_x(
 }
 
 fn write_central_connection_circles(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &SequenceMessageRenderContext<'_>,
     msg: &merman_core::diagrams::sequence::SequenceMessage,
     from: &str,
@@ -232,7 +232,10 @@ fn write_central_connection_circles(
     out.push_str("</g>");
 }
 
-pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRenderContext<'_>) {
+pub(super) fn render_sequence_messages(
+    out: &mut impl SvgOutput,
+    ctx: &SequenceMessageRenderContext<'_>,
+) -> crate::Result<()> {
     let mut sequence_number_visible = false;
     let mut sequence_number = 1.0;
     let mut sequence_number_step = 1.0;
@@ -245,9 +248,11 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
         )
     }) {
         out.push_str("<g/>");
+        out.checkpoint()?;
     }
 
     for msg in &ctx.model.messages {
+        out.checkpoint()?;
         match msg.message_type {
             LINETYPE_AUTONUMBER => {
                 if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
@@ -340,7 +345,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     label_anchor,
                     line_step,
                     ctx.actor_label_font_size,
-                );
+                )?;
             } else {
                 render_sequence_message_text_lines(
                     out,
@@ -350,7 +355,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     label_anchor,
                     line_step,
                     ctx.actor_label_font_size,
-                );
+                )?;
             }
         }
 
@@ -488,7 +493,10 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
         }
 
         let _ = (from, to);
+        out.checkpoint()?;
     }
+
+    Ok(())
 }
 
 fn round_sequence_number(value: f64) -> f64 {
@@ -504,14 +512,14 @@ fn format_sequence_number(value: f64) -> String {
 }
 
 fn render_sequence_message_text_lines<'a>(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     raw_lines: impl IntoIterator<Item = &'a str>,
     label_y: f64,
     label_x: f64,
     label_anchor: &str,
     line_step: f64,
     actor_label_font_size: f64,
-) {
+) -> crate::Result<()> {
     for (i, raw) in raw_lines.into_iter().enumerate() {
         let y = label_y + (i as f64) * line_step;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
@@ -528,6 +536,136 @@ fn render_sequence_message_text_lines<'a>(
             anchor = label_anchor,
             fs = fmt(actor_label_font_size),
             text = escape_xml(line)
+        );
+        out.checkpoint()?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn sequence_messages_stop_after_the_first_svg_sink_failure() {
+        let messages = (0..4)
+            .map(|index| merman_core::diagrams::sequence::SequenceMessage {
+                id: index.to_string(),
+                from: None,
+                to: None,
+                message_type: LINETYPE_CENTRAL_CONNECTION,
+                message: SequenceSvgMessagePayload::Text(String::new()),
+                wrap: false,
+                activate: false,
+                placement: None,
+                central_connection: 0,
+            })
+            .collect();
+        let model = SequenceSvgModel {
+            acc_title: None,
+            acc_descr: None,
+            title: None,
+            actor_order: Vec::new(),
+            actors: BTreeMap::new(),
+            boxes: Vec::new(),
+            messages,
+            notes: Vec::new(),
+            created_actors: BTreeMap::new(),
+            destroyed_actors: BTreeMap::new(),
+        };
+        let nodes_by_id = FxHashMap::default();
+        let edges_by_id = FxHashMap::default();
+        let sanitize_config = merman_core::MermaidConfig::default();
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let loop_text_style = TextStyle::default();
+        let ctx = SequenceMessageRenderContext {
+            model: &model,
+            nodes_by_id: &nodes_by_id,
+            edges_by_id: &edges_by_id,
+            sanitize_config: &sanitize_config,
+            math_renderer: None,
+            measurer: &measurer,
+            message_align: "center",
+            diagram_id: "sequence-sink-failure",
+            actor_height: 65.0,
+            actor_label_font_size: 16.0,
+            sequence_width: 150.0,
+            activation_width: 10.0,
+            wrap_padding: 10.0,
+            right_angles: false,
+            loop_text_style: &loop_text_style,
+        };
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = render_sequence_messages(&mut out, &ctx)
+            .expect_err("the rejecting sink must stop message rendering");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "message rendering must stop at the first failed sink checkpoint"
         );
     }
 }

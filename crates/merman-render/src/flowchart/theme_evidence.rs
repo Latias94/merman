@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemeRoute, FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedProperty,
-    ResolvedStyleProperty, SourceStyleResidual, Specified, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty,
+    SourceStyleResidual, Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty,
+    ThemeVariant,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -168,6 +168,58 @@ impl FlowchartThemeFacetEmission {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FlowchartShapeFacetEmissionReceipt {
+    pub(crate) fill: bool,
+    pub(crate) stroke: bool,
+    pub(crate) stroke_width: bool,
+    pub(crate) stroke_dasharray: bool,
+    pub(crate) remaining_shape_style: bool,
+}
+
+impl FlowchartShapeFacetEmissionReceipt {
+    pub(crate) const fn none() -> Self {
+        Self {
+            fill: false,
+            stroke: false,
+            stroke_width: false,
+            stroke_dasharray: false,
+            remaining_shape_style: false,
+        }
+    }
+
+    pub(crate) const fn all() -> Self {
+        Self {
+            fill: true,
+            stroke: true,
+            stroke_width: true,
+            stroke_dasharray: true,
+            remaining_shape_style: true,
+        }
+    }
+
+    pub(crate) const fn merge(self, other: Self) -> Self {
+        Self {
+            fill: self.fill || other.fill,
+            stroke: self.stroke || other.stroke,
+            stroke_width: self.stroke_width || other.stroke_width,
+            stroke_dasharray: self.stroke_dasharray || other.stroke_dasharray,
+            remaining_shape_style: self.remaining_shape_style || other.remaining_shape_style,
+        }
+    }
+
+    pub(crate) fn verifies(self, property: &str) -> bool {
+        match property {
+            "fill" => self.fill,
+            "stroke" | "stroke-linecap" | "stroke-linejoin" | "stroke-opacity" => self.stroke,
+            "stroke-width" => self.stroke_width,
+            "stroke-dasharray" => self.stroke_dasharray,
+            "rx" | "ry" | "opacity" | "fill-opacity" => self.remaining_shape_style,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartNodeThemeEmission {
     pub(crate) fill: FlowchartThemeFacetEmission,
@@ -182,6 +234,12 @@ pub(crate) struct FlowchartNodeThemeEmission {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartEdgeThemeEmission {
     pub(crate) stroke: FlowchartThemeFacetEmission,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FlowchartEdgeLabelThemeEmission {
+    pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
+    pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
 }
 
 impl FlowchartNodeThemeEmission {
@@ -200,7 +258,7 @@ impl FlowchartNodeThemeEmission {
 }
 
 #[derive(Debug, Default)]
-struct FlowchartNodeLabelThemeStyle {
+struct FlowchartLabelThemeStyle {
     font_stack: Option<FlowchartTypographyOutcome>,
     font_size: Option<FlowchartTypographyOutcome>,
     matched_rules: BTreeSet<usize>,
@@ -214,6 +272,7 @@ pub(crate) struct FlowchartEdgeThemeStyle {
     matched_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
+    label: FlowchartLabelThemeStyle,
 }
 
 impl FlowchartEdgeThemeStyle {
@@ -282,6 +341,9 @@ impl FlowchartEdgeThemeStyle {
             }
         }
 
+        resolved.label =
+            resolve_label_theme_style(theme, ThemeTarget::EdgeLabel, None, work_meter)?;
+
         Ok(resolved)
     }
 
@@ -293,6 +355,22 @@ impl FlowchartEdgeThemeStyle {
         (!precedence.overrides_theme() && path_emitted)
             .then(|| self.stroke.as_ref().and_then(FlowchartPaintOutcome::value))
             .flatten()
+    }
+
+    pub(crate) fn font_stack_selected(&self, precedence: FlowchartFacetPrecedence) -> bool {
+        !precedence.overrides_theme()
+            && matches!(
+                self.label.font_stack,
+                Some(FlowchartTypographyOutcome::Candidate { .. })
+            )
+    }
+
+    pub(crate) fn font_size_selected(&self, precedence: FlowchartFacetPrecedence) -> bool {
+        !precedence.overrides_theme()
+            && matches!(
+                self.label.font_size,
+                Some(FlowchartTypographyOutcome::Candidate { .. })
+            )
     }
 }
 
@@ -307,7 +385,7 @@ pub(crate) struct FlowchartNodeThemeStyle {
     matched_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
-    label: FlowchartNodeLabelThemeStyle,
+    label: FlowchartLabelThemeStyle,
 }
 
 impl FlowchartNodeThemeStyle {
@@ -389,77 +467,8 @@ impl FlowchartNodeThemeStyle {
             }
         }
 
-        let label_style = theme.style_with_work_meter(
-            ThemeTarget::NodeLabel,
-            ThemeVariant::Default,
-            ordinal,
-            work_meter,
-        )?;
-        resolved
-            .label
-            .matched_rules
-            .extend(label_style.matched_rule_indices());
-        for (property, origin) in label_style.winner_rule_properties() {
-            let rule_index = origin.rule_index();
-            match property {
-                ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontStack) => {
-                    resolved.label.font_stack = resolve_typography(
-                        theme,
-                        rule_index,
-                        &label_style.typography_resolution().patch().font_stack,
-                        ThemeTypographyProperty::FontStack,
-                    );
-                }
-                ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontSize) => {
-                    resolved.label.font_size = resolve_typography(
-                        theme,
-                        rule_index,
-                        &label_style.typography_resolution().patch().font_size_px,
-                        ThemeTypographyProperty::FontSize,
-                    );
-                }
-                ResolvedStyleProperty::Typography(property) => record_incomplete_label_facet(
-                    theme,
-                    &mut resolved.label,
-                    rule_index,
-                    FamilyThemeRuleFacet::Typography(property),
-                ),
-                ResolvedStyleProperty::Fill => record_incomplete_label_facet(
-                    theme,
-                    &mut resolved.label,
-                    rule_index,
-                    FamilyThemeRuleFacet::fill(label_style.fill_resolution().specified())
-                        .expect("winning NodeLabel fill has a concrete facet"),
-                ),
-                ResolvedStyleProperty::Stroke => record_incomplete_label_facet(
-                    theme,
-                    &mut resolved.label,
-                    rule_index,
-                    FamilyThemeRuleFacet::stroke(label_style.stroke_resolution().specified())
-                        .expect("winning NodeLabel stroke has a concrete facet"),
-                ),
-                ResolvedStyleProperty::Effect => record_incomplete_label_facet(
-                    theme,
-                    &mut resolved.label,
-                    rule_index,
-                    FamilyThemeRuleFacet::Effect,
-                ),
-                ResolvedStyleProperty::StrokeWidth
-                | ResolvedStyleProperty::StrokeDasharray
-                | ResolvedStyleProperty::StrokeLinecap
-                | ResolvedStyleProperty::StrokeLinejoin
-                | ResolvedStyleProperty::Opacity
-                | ResolvedStyleProperty::FillOpacity
-                | ResolvedStyleProperty::StrokeOpacity
-                | ResolvedStyleProperty::Radius
-                | ResolvedStyleProperty::Padding => record_incomplete_label_facet(
-                    theme,
-                    &mut resolved.label,
-                    rule_index,
-                    non_paint_facet(property),
-                ),
-            }
-        }
+        resolved.label =
+            resolve_label_theme_style(theme, ThemeTarget::NodeLabel, ordinal, work_meter)?;
 
         if !fill_rule_present
             && theme.ordinal_palette_disposition(ThemeTarget::Node)
@@ -595,6 +604,79 @@ impl FlowchartNodeThemeStyle {
             push_inline_declaration(out, "stroke-dasharray", stroke_dasharray);
         }
     }
+}
+
+fn resolve_label_theme_style(
+    theme: &ResolvedDiagramTheme,
+    target: ThemeTarget,
+    ordinal: Option<usize>,
+    work_meter: &OperationWorkMeter,
+) -> Result<FlowchartLabelThemeStyle, OperationWorkError> {
+    let style = theme.style_with_work_meter(target, ThemeVariant::Default, ordinal, work_meter)?;
+    let mut resolved = FlowchartLabelThemeStyle::default();
+    resolved.matched_rules.extend(style.matched_rule_indices());
+    for (property, origin) in style.winner_rule_properties() {
+        let rule_index = origin.rule_index();
+        match property {
+            ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontStack) => {
+                resolved.font_stack = resolve_typography(
+                    theme,
+                    rule_index,
+                    &style.typography_resolution().patch().font_stack,
+                    ThemeTypographyProperty::FontStack,
+                );
+            }
+            ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontSize) => {
+                resolved.font_size = resolve_typography(
+                    theme,
+                    rule_index,
+                    &style.typography_resolution().patch().font_size_px,
+                    ThemeTypographyProperty::FontSize,
+                );
+            }
+            ResolvedStyleProperty::Typography(property) => record_incomplete_label_facet(
+                theme,
+                &mut resolved,
+                rule_index,
+                FamilyThemeRuleFacet::Typography(property),
+            ),
+            ResolvedStyleProperty::Fill => record_incomplete_label_facet(
+                theme,
+                &mut resolved,
+                rule_index,
+                FamilyThemeRuleFacet::fill(style.fill_resolution().specified())
+                    .unwrap_or_else(|| panic!("winning {target:?} fill has a concrete facet")),
+            ),
+            ResolvedStyleProperty::Stroke => record_incomplete_label_facet(
+                theme,
+                &mut resolved,
+                rule_index,
+                FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())
+                    .unwrap_or_else(|| panic!("winning {target:?} stroke has a concrete facet")),
+            ),
+            ResolvedStyleProperty::Effect => record_incomplete_label_facet(
+                theme,
+                &mut resolved,
+                rule_index,
+                FamilyThemeRuleFacet::Effect,
+            ),
+            ResolvedStyleProperty::StrokeWidth
+            | ResolvedStyleProperty::StrokeDasharray
+            | ResolvedStyleProperty::StrokeLinecap
+            | ResolvedStyleProperty::StrokeLinejoin
+            | ResolvedStyleProperty::Opacity
+            | ResolvedStyleProperty::FillOpacity
+            | ResolvedStyleProperty::StrokeOpacity
+            | ResolvedStyleProperty::Radius
+            | ResolvedStyleProperty::Padding => record_incomplete_label_facet(
+                theme,
+                &mut resolved,
+                rule_index,
+                non_paint_facet(property),
+            ),
+        }
+    }
+    Ok(resolved)
 }
 
 fn resolve_paint(
@@ -790,7 +872,7 @@ fn record_incomplete_facet(
 
 fn record_incomplete_label_facet(
     theme: &ResolvedDiagramTheme,
-    resolved: &mut FlowchartNodeLabelThemeStyle,
+    resolved: &mut FlowchartLabelThemeStyle,
     rule_index: usize,
     facet: FamilyThemeRuleFacet,
 ) {
@@ -870,6 +952,7 @@ struct FlowchartThemeEvidenceState {
     node: FlowchartRuleEvidenceState,
     node_label: FlowchartRuleEvidenceState,
     edge: FlowchartRuleEvidenceState,
+    edge_label: FlowchartRuleEvidenceState,
     node_ordinal_palette: FlowchartMechanismObservation,
     source_residuals: BTreeMap<FlowchartSourceResidualKey, SourceStyleResidual>,
 }
@@ -1079,6 +1162,53 @@ impl FlowchartThemeEvidenceRecorder {
         insert_source_residuals(&mut state, source_residuals);
     }
 
+    pub(crate) fn record_edge_label_emission(
+        &self,
+        style: &FlowchartEdgeThemeStyle,
+        emission: FlowchartEdgeLabelThemeEmission,
+        source_residuals: &[SourceStyleResidual],
+    ) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if emission.font_stack.is_some() || emission.font_size.is_some() {
+            state.edge_label.emitted = true;
+            state
+                .edge_label
+                .matched_rules
+                .extend(style.label.matched_rules.iter().copied());
+            for (rule_index, reason) in &style.label.residual_rules {
+                state
+                    .edge_label
+                    .residual_rules
+                    .entry(*rule_index)
+                    .or_insert(*reason);
+            }
+            if let Some(font_stack_emission) = emission.font_stack {
+                record_typography_outcome(
+                    &mut state.edge_label,
+                    style.label.font_stack.as_ref(),
+                    font_stack_emission.precedence,
+                    font_stack_emission.verified,
+                );
+            }
+            if let Some(font_size_emission) = emission.font_size {
+                record_typography_outcome(
+                    &mut state.edge_label,
+                    style.label.font_size.as_ref(),
+                    font_size_emission.precedence,
+                    font_size_emission.verified,
+                );
+            }
+            state
+                .edge_label
+                .incomplete_rules
+                .extend(style.label.incomplete_rules.iter().copied());
+        }
+        insert_source_residuals(&mut state, source_residuals);
+    }
+
     pub(crate) fn finish(
         &self,
         theme: Option<&ResolvedDiagramTheme>,
@@ -1093,15 +1223,14 @@ impl FlowchartThemeEvidenceRecorder {
             return (evidence, source_residuals);
         };
 
-        let mut rule_routes = BTreeMap::<(usize, ThemeTarget), Vec<FamilyThemeRoute>>::new();
+        let mut rule_routes = BTreeSet::<(usize, ThemeTarget)>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index, target, ..
-                } => rule_routes
-                    .entry((rule_index, target))
-                    .or_default()
-                    .push(route),
+                } => {
+                    rule_routes.insert((rule_index, target));
+                }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Node,
                 } => {
@@ -1160,11 +1289,12 @@ impl FlowchartThemeEvidenceRecorder {
             }
         }
 
-        for ((rule_index, target), _routes) in rule_routes {
+        for (rule_index, target) in rule_routes {
             let target_state = match target {
                 ThemeTarget::Node => &state.node,
                 ThemeTarget::NodeLabel => &state.node_label,
                 ThemeTarget::Edge => &state.edge,
+                ThemeTarget::EdgeLabel => &state.edge_label,
                 _ => continue,
             };
             let key = FamilyThemeMechanismKey::Rule {
@@ -1507,7 +1637,7 @@ mod tests {
             matched_rules: BTreeSet::from([0]),
             residual_rules: BTreeMap::new(),
             incomplete_rules: BTreeSet::new(),
-            label: FlowchartNodeLabelThemeStyle::default(),
+            label: FlowchartLabelThemeStyle::default(),
         };
         let mut inline = "opacity:0.5".to_string();
 
@@ -1638,6 +1768,46 @@ mod tests {
             .resolve(DiagramFamilyId::FLOWCHART)
     }
 
+    fn resolved_edge_label_typography_theme() -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::EdgeLabel,
+                                ThemeStylePatch {
+                                    typography: TextStylePatch {
+                                        font_stack: Specified::Value(
+                                            FontStack::single("Excalifont")
+                                                .expect("valid fixture font stack"),
+                                        ),
+                                        ..TextStylePatch::default()
+                                    },
+                                    ..ThemeStylePatch::default()
+                                },
+                            )
+                            .for_family(DiagramFamilyId::FLOWCHART),
+                        )
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::EdgeLabel,
+                                ThemeStylePatch {
+                                    typography: TextStylePatch {
+                                        font_size_px: Specified::Value(26.0),
+                                        ..TextStylePatch::default()
+                                    },
+                                    ..ThemeStylePatch::default()
+                                },
+                            )
+                            .for_family(DiagramFamilyId::FLOWCHART),
+                        ),
+                ),
+            )
+            .expect("compile Flowchart EdgeLabel typography theme")
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
     fn font_stack_emission(
         precedence: FlowchartFacetPrecedence,
         verified: bool,
@@ -1654,6 +1824,200 @@ mod tests {
         let mut emission = FlowchartNodeThemeEmission::none();
         emission.font_size = Some(FlowchartThemeFacetEmission::new(precedence, verified));
         emission
+    }
+
+    fn edge_label_emission(
+        font_stack: Option<(FlowchartFacetPrecedence, bool)>,
+        font_size: Option<(FlowchartFacetPrecedence, bool)>,
+    ) -> FlowchartEdgeLabelThemeEmission {
+        FlowchartEdgeLabelThemeEmission {
+            font_stack: font_stack.map(|(precedence, verified)| {
+                FlowchartThemeFacetEmission::new(precedence, verified)
+            }),
+            font_size: font_size.map(|(precedence, verified)| {
+                FlowchartThemeFacetEmission::new(precedence, verified)
+            }),
+        }
+    }
+
+    #[test]
+    fn verified_edge_label_typography_is_applied_per_rule() {
+        let theme = resolved_edge_label_typography_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart EdgeLabel typography");
+        let precedence = no_override();
+
+        assert!(style.font_stack_selected(precedence));
+        assert!(style.font_size_selected(precedence));
+
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        recorder.record_edge_label_emission(
+            &style,
+            edge_label_emission(Some((precedence, true)), Some((precedence, true))),
+            &[],
+        );
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert_eq!(
+            evidence.applied(),
+            &[
+                FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::EdgeLabel,
+                },
+                FamilyThemeMechanismKey::Rule {
+                    index: 1,
+                    target: ThemeTarget::EdgeLabel,
+                },
+            ]
+        );
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::Typography])
+        );
+        assert!(evidence.not_applicable_mechanisms().is_empty());
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn edge_label_source_and_config_shadow_only_their_own_typography_facets() {
+        let theme = resolved_edge_label_typography_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart EdgeLabel typography");
+
+        for (font_stack, font_size, applied_index, shadowed_index) in [
+            (
+                (no_override(), true),
+                (
+                    FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false),
+                    false,
+                ),
+                0,
+                1,
+            ),
+            (
+                (
+                    FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Absent, true),
+                    false,
+                ),
+                (no_override(), true),
+                1,
+                0,
+            ),
+        ] {
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            recorder.record_edge_label_emission(
+                &style,
+                edge_label_emission(Some(font_stack), Some(font_size)),
+                &[],
+            );
+            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+            assert!(source_residuals.is_empty());
+            assert_eq!(
+                evidence.applied(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: applied_index,
+                    target: ThemeTarget::EdgeLabel,
+                }]
+            );
+            assert_eq!(
+                evidence.not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: shadowed_index,
+                    target: ThemeTarget::EdgeLabel,
+                }]
+            );
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn one_unverified_edge_label_cannot_be_hidden_by_an_applied_label() {
+        let theme = resolved_edge_label_typography_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart EdgeLabel typography");
+        let font_size_shadow =
+            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false);
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+
+        recorder.record_edge_label_emission(
+            &style,
+            edge_label_emission(Some((no_override(), true)), Some((font_size_shadow, false))),
+            &[],
+        );
+        recorder.record_edge_label_emission(
+            &style,
+            edge_label_emission(
+                Some((no_override(), false)),
+                Some((font_size_shadow, false)),
+            ),
+            &[],
+        );
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert!(evidence.applied().is_empty());
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 1,
+                target: ThemeTarget::EdgeLabel,
+            }]
+        );
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::EdgeLabel,
+            }
+        );
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedTypography
+        );
+    }
+
+    #[test]
+    fn edge_label_typography_without_an_applicable_label_is_not_applicable() {
+        let theme = resolved_edge_label_typography_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart EdgeLabel typography");
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+
+        recorder.record_edge_label_emission(&style, edge_label_emission(None, None), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert!(evidence.applied().is_empty());
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[
+                FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::EdgeLabel,
+                },
+                FamilyThemeMechanismKey::Rule {
+                    index: 1,
+                    target: ThemeTarget::EdgeLabel,
+                },
+            ]
+        );
+        assert!(evidence.residuals().is_empty());
     }
 
     #[test]
@@ -2173,7 +2537,7 @@ mod tests {
             matched_rules: BTreeSet::from([0]),
             residual_rules: BTreeMap::new(),
             incomplete_rules: BTreeSet::new(),
-            label: FlowchartNodeLabelThemeStyle::default(),
+            label: FlowchartLabelThemeStyle::default(),
         };
         let recorder = FlowchartThemeEvidenceRecorder::default();
 

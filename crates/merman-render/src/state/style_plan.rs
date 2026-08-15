@@ -11,8 +11,9 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty, ResolvedThemeEffect,
     ResolvedThemeStyle, SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin,
     SourceStyleProvenance, SourceStyleResidual, SourceStyleResidualReason, Specified,
-    TextStylePatch, ThemeCapability, ThemeRule, ThemeTarget, ThemeTextStyle,
-    ThemeTypographyProperty, ThemeVariant, collect_effect_graph_capabilities, paint_capability,
+    TextStylePatch, ThemeCapability, ThemeColorValue, ThemeResourcePolicy, ThemeRule, ThemeTarget,
+    ThemeTextStyle, ThemeTypographyProperty, ThemeVariant, collect_effect_graph_capabilities,
+    paint_capability,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::mermaid_style::{
@@ -23,7 +24,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter, RenderResourcePol
 use crate::text::TextStyle;
 use crate::theme::MermaidThemeAdapter;
 
-use super::{StateEffectOutsets, StateEffectPlan, StateNodeEffectPlan, StateSvgEffect};
+use super::{StateEffectPlan, StateNodeEffectPlan};
 
 /// One immutable typography decision shared by State layout, prepared-text measurement and SVG
 /// emission.
@@ -162,6 +163,20 @@ pub(crate) struct StateCompatibilityStyle {
     pub(crate) drop_shadow: String,
 }
 
+impl StateCompatibilityStyle {
+    fn classic_stroke_width_value(&self) -> f64 {
+        self.stroke_width_px
+            .trim()
+            .strip_suffix("px")
+            .unwrap_or(self.stroke_width_px.trim())
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .unwrap_or(1.0)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct StateClassStylePlan {
     id: String,
@@ -199,6 +214,7 @@ pub(crate) struct StateNodeStylePlan {
     fill_override: Option<String>,
     stroke_override: Option<String>,
     stroke_width_override: Option<f64>,
+    classic_stroke_paint_width: Option<f64>,
     radius_override: Option<f64>,
     padding_override: Option<f64>,
     effect: Option<StateNodeEffectPlan>,
@@ -364,6 +380,10 @@ impl StateNodeStylePlan {
 
     pub(crate) const fn stroke_width_override(&self) -> Option<f64> {
         self.stroke_width_override
+    }
+
+    pub(crate) const fn classic_stroke_paint_width(&self) -> Option<f64> {
+        self.classic_stroke_paint_width
     }
 
     pub(crate) const fn radius_override(&self) -> Option<f64> {
@@ -636,22 +656,32 @@ impl StateStylePlan {
     /// Resolves the compatibility-only plan used by parity helpers that do not install a theme.
     ///
     /// The themed production path must use [`Self::resolve_with_evidence`] so dynamic selector
-    /// work is charged to the render operation's cumulative meter.
+    /// work is charged to the render operation's cumulative meter and terminal effect lowering
+    /// reads the session-owned resource intersection.
     pub(crate) fn resolve_unthemed(
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,
     ) -> Self {
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        Self::resolve_internal(model, effective_config, None, None, false, &work_meter)
-            .expect("an unthemed State style plan cannot exhaust theme selector work")
-            .0
+        Self::resolve_internal(
+            model,
+            effective_config,
+            None,
+            Arc::new(ThemeResourcePolicy::interactive()),
+            None,
+            false,
+            &work_meter,
+        )
+        .expect("an unthemed State style plan cannot exhaust theme selector work")
+        .0
     }
 
     pub(crate) fn resolve_with_evidence(
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,
         resolved_theme: Option<&ResolvedDiagramTheme>,
+        effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
         prepared_text_available: bool,
         work_meter: &OperationWorkMeter,
@@ -660,6 +690,7 @@ impl StateStylePlan {
             model,
             effective_config,
             resolved_theme,
+            effective_theme_resource_policy,
             title,
             prepared_text_available,
             work_meter,
@@ -670,6 +701,7 @@ impl StateStylePlan {
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,
         resolved_theme: Option<&ResolvedDiagramTheme>,
+        effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
         prepared_text_available: bool,
         work_meter: &OperationWorkMeter,
@@ -702,7 +734,7 @@ impl StateStylePlan {
             theme_evidence.observe_text(ThemeTarget::Title);
         }
         let classes = prepare_classes(model, &mut residuals);
-        let mut effects = StateEffectPlan::default();
+        let mut effects = StateEffectPlan::with_resource_policy(effective_theme_resource_policy);
 
         let semantic_transition_text = resolve_theme_text_style(
             resolved_theme,
@@ -838,6 +870,7 @@ impl StateStylePlan {
                 node,
                 &classes,
                 &base_text_style,
+                &compatibility,
                 resolved_theme,
                 target,
                 label_target,
@@ -973,16 +1006,8 @@ impl StateStylePlan {
         self.edges.values()
     }
 
-    pub(crate) fn effects(&self) -> impl ExactSizeIterator<Item = &StateSvgEffect> {
-        self.effects.effects()
-    }
-
-    pub(crate) fn effect(&self, id: &str) -> Option<&StateSvgEffect> {
-        self.effects.effect(id)
-    }
-
-    pub(crate) const fn effect_outsets(&self) -> StateEffectOutsets {
-        self.effects.outsets()
+    pub(crate) const fn effect_plan(&self) -> &StateEffectPlan {
+        &self.effects
     }
 
     pub(crate) fn expected_native_filter_application_count(&self) -> usize {
@@ -1886,6 +1911,7 @@ fn prepare_node(
     node: &StateDiagramRenderNode,
     classes: &IndexMap<String, StateClassStylePlan>,
     base_text_style: &TextStyle,
+    compatibility: &StateCompatibilityStyle,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     target: ThemeTarget,
     label_target: ThemeTarget,
@@ -2258,6 +2284,15 @@ fn prepare_node(
         theme_evidence.record_series_color_emission(label_target);
     }
 
+    let classic_stroke_paint_width = effect.as_ref().map(|_| {
+        classic_stroke_paint_width(
+            compatibility,
+            &shape_emission,
+            stroke_override.as_deref(),
+            stroke_width_override,
+        )
+    });
+
     Ok(StateNodeStylePlan {
         #[cfg(test)]
         binding: StateNodeThemeBinding {
@@ -2281,12 +2316,61 @@ fn prepare_node(
         fill_override,
         stroke_override,
         stroke_width_override,
+        classic_stroke_paint_width,
         radius_override,
         padding_override,
         effect,
         cluster_label_typography,
         label_typography,
     })
+}
+
+fn classic_stroke_paint_width(
+    compatibility: &StateCompatibilityStyle,
+    shape_emission: &IndexMap<String, EmittedDeclaration>,
+    stroke_override: Option<&str>,
+    stroke_width_override: Option<f64>,
+) -> f64 {
+    let stroke_width = stroke_width_override
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or_else(|| compatibility.classic_stroke_width_value());
+    let stroke = stroke_override.unwrap_or(compatibility.state_border.as_str());
+    if stroke_width == 0.0
+        || css_paint_is_transparent(stroke)
+        || final_opacity_is_zero(shape_emission, "opacity")
+        || final_opacity_is_zero(shape_emission, "stroke-opacity")
+    {
+        0.0
+    } else {
+        stroke_width
+    }
+}
+
+fn css_paint_is_transparent(value: &str) -> bool {
+    value.trim().eq_ignore_ascii_case("none")
+        || ThemeColorValue::parse(value).is_ok_and(|color| color.is_transparent())
+}
+
+fn final_opacity_is_zero(
+    shape_emission: &IndexMap<String, EmittedDeclaration>,
+    property: &str,
+) -> bool {
+    shape_emission
+        .get(property)
+        .is_some_and(|declaration| css_opacity_is_valid_zero(&declaration.value))
+}
+
+fn css_opacity_is_valid_zero(value: &str) -> bool {
+    let value = value.trim();
+    if let Some(percent) = value.strip_suffix('%') {
+        return percent
+            .trim()
+            .parse::<f64>()
+            .is_ok_and(|value| value.is_finite() && value <= 0.0);
+    }
+    value
+        .parse::<f64>()
+        .is_ok_and(|value| value.is_finite() && value <= 0.0)
 }
 
 fn prepare_edge(
@@ -2998,9 +3082,9 @@ mod tests {
     use super::*;
     use crate::diagram_theme::{
         DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
-        EffectInput, EffectPrimitive, FilterRegion, GradientStop, InsetsPx, LinearGradient,
-        OrdinalPalette, OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeEffectPatch,
-        ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
+        EffectInput, EffectPrimitive, GradientStop, InsetsPx, LinearGradient, OrdinalPalette,
+        OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
+        ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
     };
     use merman_core::diagrams::state::{
         StateDiagramRenderEdge, StateDiagramRenderNode, StateDiagramRenderStyleClass,
@@ -3029,6 +3113,7 @@ mod tests {
             model,
             config,
             Some(theme),
+            Arc::new(ThemeResourcePolicy::interactive()),
             title,
             true,
             &test_work_meter(),
@@ -3078,7 +3163,6 @@ mod tests {
     fn hard_shadow_graph(id: &str, blur_radius: f32) -> EffectGraph {
         EffectGraph::new(
             id,
-            FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
             [EffectPrimitive::DropShadow {
                 input: EffectInput::SourceGraphic,
                 offset_x: 5.0,
@@ -3643,6 +3727,7 @@ mod tests {
             &model,
             &json!({}),
             Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
             None,
             true,
             &work_meter,
@@ -3739,6 +3824,7 @@ mod tests {
             &model,
             &json!({}),
             Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
             None,
             true,
             &work_meter,

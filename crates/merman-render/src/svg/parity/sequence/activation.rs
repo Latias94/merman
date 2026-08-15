@@ -129,7 +129,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
 }
 
 pub(super) fn render_sequence_activation_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     plan: &SequenceActivationPlan,
     message_id: &str,
 ) {

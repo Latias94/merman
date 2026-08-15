@@ -288,20 +288,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
-    // Mermaid derives the final root viewport via `svg.getBBox()` (after rendering). We don't
-    // have a browser DOM, so approximate that by parsing the SVG we just emitted and unioning
-    // bboxes for the SVG elements we generate (`rect`/`path`/`circle`/`foreignObject`, etc).
-    const TITLE_PLACEHOLDER_COMMENT: &str = "<!--__MERMAID_TITLE__-->";
-
-    // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    let css = state_css(diagram_id, effective_config, style_plan);
-
-    let estimated_svg_bytes = 2048usize
-        + css.len()
-        + layout.nodes.len().saturating_mul(512)
-        + layout.edges.len().saturating_mul(384)
-        + layout.clusters.len().saturating_mul(256);
-    let mut out = String::with_capacity(estimated_svg_bytes);
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let root_context =
@@ -340,8 +327,15 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         );
         out.push_str("</desc>");
     }
+    out.checkpoint()?;
 
-    let _ = write!(&mut out, "<style>{}</style>", css);
+    // Mermaid emits a single `<style>` element with diagram-scoped CSS. Stream it directly into
+    // the bounded document so a large public diagram id or class catalog cannot allocate an
+    // unbounded temporary stylesheet before `MaxSvgBytes` admission.
+    out.push_str("<style>");
+    write_state_css(&mut out, diagram_id, effective_config, style_plan)?;
+    out.push_str("</style>");
+    out.checkpoint()?;
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -352,6 +346,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // in our SVG bounds approximation.
     let bounds_scan_start = out.len();
     let mut detail = StateRenderDetails::default();
+    let mut effect_outsets = crate::state::StateEffectOutsets::default();
     render_state_root(
         &mut out,
         &ctx,
@@ -360,39 +355,40 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         origin_y,
         timing,
         &mut detail,
-    );
+        &mut effect_outsets,
+    )?;
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
     state_root_defs(&mut out, diagram_id, effective_config, style_plan);
-    out.push_str(TITLE_PLACEHOLDER_COMMENT);
-    out.push_str("</svg>\n");
+    out.checkpoint()?;
 
     drop(_g_render_svg);
 
     let mut viewbox_svg_scan = std::time::Duration::ZERO;
     let _g_viewbox = timing.section(&mut timings.viewbox);
     let _g_scan = timing.section(&mut viewbox_svg_scan);
-    let mut content_bounds = svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
-        .or_else(|| state_viewport_bounds_from_layout(layout))
-        .unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 100.0,
-            max_y: 100.0,
-        });
-    let effect_outsets = style_plan.effect_outsets();
-    content_bounds.min_x -= effect_outsets.left;
-    content_bounds.max_x += effect_outsets.right;
-    content_bounds.min_y -= effect_outsets.top;
-    content_bounds.max_y += effect_outsets.bottom;
+    let geometry_bounds =
+        svg_emitted_bounds_from_svg(&out.as_str()[bounds_scan_start..bounds_scan_end])
+            .or_else(|| state_viewport_bounds_from_layout(layout))
+            .unwrap_or(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 100.0,
+                max_y: 100.0,
+            });
+    let mut paint_bounds = geometry_bounds.clone();
+    paint_bounds.min_x -= effect_outsets.left;
+    paint_bounds.max_x += effect_outsets.right;
+    paint_bounds.min_y -= effect_outsets.top;
+    paint_bounds.max_y += effect_outsets.bottom;
     drop(_g_scan);
 
-    let mut title_svg = String::new();
-    if let Some(title) = diagram_title.as_deref() {
-        // Mermaid centers the title using the pre-title content bbox:
+    let title_emission = if let Some(title) = diagram_title.as_deref() {
+        // Mermaid centers the title using the pre-title geometry bbox. Paint-only effect outsets
+        // expand the viewport, but they do not move diagram geometry or its title anchor:
         // `x = bbox.x + bbox.width/2`, `y = -titleTopMargin`.
-        let title_x = (content_bounds.min_x + content_bounds.max_x) / 2.0;
+        let title_x = (geometry_bounds.min_x + geometry_bounds.max_x) / 2.0;
         let title_y = -title_top_margin;
 
         let title_style = style_plan.title_text_style();
@@ -400,32 +396,21 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
         let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
 
-        content_bounds.min_x = content_bounds.min_x.min(title_x - title_left);
-        content_bounds.max_x = content_bounds.max_x.max(title_x + title_right);
-        content_bounds.min_y = content_bounds.min_y.min(title_y - ascent);
-        content_bounds.max_y = content_bounds.max_y.max(title_y + descent);
+        paint_bounds.min_x = paint_bounds.min_x.min(title_x - title_left);
+        paint_bounds.max_x = paint_bounds.max_x.max(title_x + title_right);
+        paint_bounds.min_y = paint_bounds.min_y.min(title_y - ascent);
+        paint_bounds.max_y = paint_bounds.max_y.max(title_y + descent);
 
-        title_svg = String::with_capacity(title.len() + 128);
-        let title_style_attr = if style_plan.title_style_attr().is_empty() {
-            String::new()
-        } else {
-            format!(r#" style="{}""#, escape_attr(style_plan.title_style_attr()))
-        };
-        let _ = write!(
-            &mut title_svg,
-            r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText"{}>{}</text>"#,
-            fmt(title_x),
-            fmt(title_y),
-            title_style_attr,
-            escape_xml_display(title)
-        );
-    }
+        Some((title, title_x, title_y))
+    } else {
+        None
+    };
 
     let root_bounds = root_svg::DiagramBounds::from_extents(
-        content_bounds.min_x,
-        content_bounds.min_y,
-        content_bounds.max_x,
-        content_bounds.max_y,
+        paint_bounds.min_x,
+        paint_bounds.min_y,
+        paint_bounds.max_x,
+        paint_bounds.max_y,
         viewport_padding,
     );
 
@@ -439,7 +424,25 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     drop(_g_viewbox);
     let _g_finalize = timing.section(&mut timings.finalize_svg);
 
-    out = out.replacen(TITLE_PLACEHOLDER_COMMENT, title_svg.as_str(), 1);
+    if let Some((title, title_x, title_y)) = title_emission {
+        let _ = write!(
+            &mut out,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText""#,
+            fmt(title_x),
+            fmt(title_y),
+        );
+        if !style_plan.title_style_attr().is_empty() {
+            let _ = write!(
+                &mut out,
+                r#" style="{}""#,
+                escape_attr_display(style_plan.title_style_attr())
+            );
+        }
+        let _ = write!(&mut out, ">{}</text>", escape_xml_display(title));
+        out.checkpoint()?;
+    }
+    out.push_str("</svg>\n");
+    let out = out.finish()?;
 
     drop(_g_finalize);
     timings.total = total_timer
@@ -483,14 +486,15 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 }
 
 fn render_state_root(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     root: Option<&str>,
     parent_origin_x: f64,
     parent_origin_y: f64,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-) {
+    effect_outsets: &mut crate::state::StateEffectOutsets,
+) -> Result<()> {
     details.root_calls += 1;
 
     // Mermaid's dagre-wrapper uses a fixed graph margin (`marginx/marginy=8`). For nested state
@@ -533,6 +537,7 @@ fn render_state_root(
     out.push_str(r#"<g class="clusters">"#);
     if let Some(root_id) = root {
         render_state_cluster(out, ctx, root_id, origin_x, origin_y);
+        out.checkpoint()?;
     }
 
     for &cluster_id in &ctx.node_order {
@@ -558,6 +563,7 @@ fn render_state_root(
             continue;
         }
         render_state_cluster(out, ctx, cluster_id, origin_x, origin_y);
+        out.checkpoint()?;
     }
 
     for &cluster_id in &ctx.node_order {
@@ -609,6 +615,7 @@ fn render_state_root(
             fmt_display(cluster.width.max(1.0)),
             fmt_display(cluster.height.max(1.0))
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
     drop(_g_clusters);
@@ -631,6 +638,7 @@ fn render_state_root(
                 continue;
             }
             render_state_edge_path(out, ctx, edge, origin_x, origin_y);
+            out.checkpoint()?;
         }
     }
     out.push_str("</g>");
@@ -654,6 +662,7 @@ fn render_state_root(
                 continue;
             }
             render_state_edge_label(out, ctx, edge, origin_x, origin_y);
+            out.checkpoint()?;
         }
     }
     out.push_str("</g>");
@@ -693,7 +702,17 @@ fn render_state_root(
             if state_leaf_context(ctx, id) != root {
                 continue;
             }
-            render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details);
+            render_state_node_svg(
+                out,
+                ctx,
+                id,
+                origin_x,
+                origin_y,
+                timing,
+                details,
+                effect_outsets,
+            )?;
+            out.checkpoint()?;
         }
         if let Some(s) = leaf_start {
             details.leaf_nodes += s.elapsed();
@@ -710,7 +729,9 @@ fn render_state_root(
             origin_y,
             timing,
             details,
-        );
+            effect_outsets,
+        )?;
+        out.checkpoint()?;
         if let Some(s) = nested_start {
             details.nested_roots += s.elapsed();
         }
@@ -767,6 +788,7 @@ fn render_state_root(
                         fmt_display(cy),
                     );
                 }
+                out.checkpoint()?;
             }
         }
         drop(_g_placeholders);
@@ -774,10 +796,11 @@ fn render_state_root(
 
     out.push_str("</g>");
     out.push_str("</g>");
+    out.checkpoint()
 }
 
 fn render_state_cluster(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     cluster_id: &str,
     origin_x: f64,

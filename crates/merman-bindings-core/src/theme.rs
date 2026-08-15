@@ -4,14 +4,14 @@ use base64::Engine as _;
 use merman::svg::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
     DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput,
-    EffectPrimitive, FilterRegion, FontAssetSpec, FontCatalogSpec, FontContainer,
-    FontEmbeddingRequirement, FontSource, FontStack, FontStyle, GenericFontFamily, GradientStop,
-    InsetsPx, LineHeight, LinearGradient, MermaidThemeCompatibility, MermaidThemeValue,
-    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified,
-    StrokeLineCap, StrokeLineJoin, TextAlign, TextDecoration, TextLayoutCapability, TextStylePatch,
-    TextTransform, ThemeAssets, ThemeCapability, ThemeColorValue, ThemeLength, ThemeRequirements,
-    ThemeResourcePolicy, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
-    ThemeVariant, ThemeWrapMode, TypographySpec, WhiteSpace,
+    EffectPrimitive, FontAssetSpec, FontCatalogSpec, FontContainer, FontEmbeddingRequirement,
+    FontSource, FontStack, FontStyle, GenericFontFamily, GradientStop, InsetsPx, LineHeight,
+    LinearGradient, MermaidThemeCompatibility, MermaidThemeValue, OrdinalPalette, OrdinalSelector,
+    PatternKind, PatternSpec, RadialGradient, Specified, StrokeLineCap, StrokeLineJoin, TextAlign,
+    TextDecoration, TextLayoutCapability, TextStylePatch, TextTransform, ThemeAssets,
+    ThemeCapability, ThemeColorValue, ThemeLength, ThemeRequirements, ThemeResourcePolicy,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
+    ThemeWrapMode, TypographySpec, WhiteSpace,
 };
 use merman::{DiagramFamilyId, MermaidThemeId};
 use serde::{Deserialize, Deserializer};
@@ -984,7 +984,6 @@ impl BindingCanvasLayerJson {
 enum BindingEffectEntryJson {
     Graph {
         id: String,
-        region: BindingFilterRegionJson,
         primitives: Vec<BindingEffectPrimitiveJson>,
     },
     Binding {
@@ -997,16 +996,12 @@ fn binding_effects(entries: &[BindingEffectEntryJson]) -> Result<DiagramEffectSe
     let mut effects = DiagramEffectSet::default();
     for entry in entries {
         match entry {
-            BindingEffectEntryJson::Graph {
-                id,
-                region,
-                primitives,
-            } => {
+            BindingEffectEntryJson::Graph { id, primitives } => {
                 let primitives = primitives
                     .iter()
                     .map(BindingEffectPrimitiveJson::to_primitive)
                     .collect::<Result<Vec<_>, _>>()?;
-                let graph = EffectGraph::new(id, region.to_region(), primitives)
+                let graph = EffectGraph::new(id, primitives)
                     .map_err(|error| theme_value_error("theme.spec.effects.graph", error))?;
                 effects = effects
                     .with_graph(graph)
@@ -1026,21 +1021,6 @@ fn binding_effects(entries: &[BindingEffectEntryJson]) -> Result<DiagramEffectSe
         }
     }
     Ok(effects)
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct BindingFilterRegionJson {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-}
-
-impl BindingFilterRegionJson {
-    const fn to_region(&self) -> FilterRegion {
-        FilterRegion::bounded(self.x, self.y, self.width, self.height)
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1740,6 +1720,68 @@ mod tests {
                 .report()
                 .requires_capability(ThemeCapability::RoundedGeometry)
         );
+    }
+
+    #[test]
+    fn effect_graph_wire_leaves_filter_region_to_terminal_geometry() {
+        let spec: BindingThemeOptionsJson = serde_json::from_value(serde_json::json!({
+            "spec": {
+                "effects": [
+                    {
+                        "kind": "graph",
+                        "id": "state-shadow",
+                        "primitives": [{
+                            "kind": "drop-shadow",
+                            "offset_x": 5.0,
+                            "offset_y": 6.0,
+                            "blur_radius": 0.0,
+                            "spread": 0.0,
+                            "color": "#111827"
+                        }]
+                    },
+                    {
+                        "kind": "binding",
+                        "target": "state",
+                        "effect_id": "state-shadow"
+                    }
+                ]
+            }
+        }))
+        .expect("effect graph without an authored filter region");
+
+        let theme = compile_theme_with(&DiagramThemeCompiler::new(), Some(&spec))
+            .expect("compile terminal-owned effect graph")
+            .expect("compiled theme");
+        assert!(theme.report().requires_capability(ThemeCapability::Shadow));
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::SvgFilter)
+        );
+    }
+
+    #[test]
+    fn effect_graph_wire_rejects_removed_authored_filter_region() {
+        let error = serde_json::from_value::<BindingThemeOptionsJson>(serde_json::json!({
+            "spec": {
+                "effects": [{
+                    "kind": "graph",
+                    "id": "state-shadow",
+                    "region": { "x": -0.2, "y": -0.2, "width": 1.4, "height": 1.4 },
+                    "primitives": [{
+                        "kind": "drop-shadow",
+                        "offset_x": 5.0,
+                        "offset_y": 6.0,
+                        "blur_radius": 0.0,
+                        "spread": 0.0,
+                        "color": "#111827"
+                    }]
+                }]
+            }
+        }))
+        .expect_err("removed authored filter region must fail closed");
+
+        assert!(error.to_string().contains("unknown field `region`"));
     }
 
     #[test]

@@ -1,7 +1,5 @@
 //! Flowchart v2 manual input/file shapes.
 
-use std::fmt::Write as _;
-
 use crate::flowchart::flowchart_effective_text_style_for_node_classes;
 use crate::svg::parity::{escape_xml_display, fmt, fmt_display};
 
@@ -10,7 +8,7 @@ use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -86,7 +84,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,

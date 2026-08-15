@@ -11,21 +11,12 @@
 //! Removal criteria: delete this helper when generic edge path normalization can derive the same
 //! single-point route without special casing subgraph-to-strict-descendant edges.
 
-use super::*;
-
 pub(in crate::svg::parity::flowchart) fn maybe_collapse_degenerate_subgraph_edge_route(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
+    collapse_route: bool,
     data_points: &[crate::model::LayoutPoint],
     line_data: &mut Vec<crate::model::LayoutPoint>,
 ) {
-    let edge_is_between_subgraph_and_descendant = (ctx
-        .subgraphs_by_id
-        .contains_key(edge.from.as_str())
-        && flowchart_is_strict_descendant(&ctx.parent, edge.to.as_str(), edge.from.as_str()))
-        || (ctx.subgraphs_by_id.contains_key(edge.to.as_str())
-            && flowchart_is_strict_descendant(&ctx.parent, edge.from.as_str(), edge.to.as_str()));
-    if !edge_is_between_subgraph_and_descendant {
+    if !collapse_route {
         return;
     }
 

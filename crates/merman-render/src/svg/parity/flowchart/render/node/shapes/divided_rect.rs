@@ -1,13 +1,11 @@
 //! Flowchart v2 divided rectangle (Divided process).
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 
 use super::super::roughjs::roughjs_paths_for_polygon;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_divided_rect(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,

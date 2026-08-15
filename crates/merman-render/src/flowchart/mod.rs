@@ -15,6 +15,42 @@ pub(crate) use merman_core::diagrams::flowchart::{
 };
 use std::ops::Deref;
 
+/// Operation-local identity for one semantic Flowchart edge occurrence.
+///
+/// Mermaid permits distinct semantic edges to share the same public `edge.id`. Internal layout,
+/// style, and SVG caches must therefore use the stable semantic model index instead of the raw
+/// DOM id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct FlowchartEdgeKey(usize);
+
+impl FlowchartEdgeKey {
+    pub(crate) const fn new(semantic_index: usize) -> Self {
+        Self(semantic_index)
+    }
+
+    pub(crate) const fn semantic_index(self) -> usize {
+        self.0
+    }
+}
+
+pub(crate) fn reject_duplicate_edge_ids_for_adapter(
+    model: &FlowchartModel,
+    adapter: &str,
+) -> crate::Result<()> {
+    let mut seen = std::collections::HashSet::with_capacity(model.edges.len());
+    for edge in &model.edges {
+        if !seen.insert(edge.id.as_str()) {
+            return Err(crate::Error::InvalidModel {
+                message: format!(
+                    "{adapter} does not support duplicate Flowchart edge id `{}`",
+                    edge.id
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartRenderModelRef<'a> {
     semantic: &'a FlowchartModel,
@@ -36,8 +72,13 @@ impl<'a> FlowchartRenderModelRef<'a> {
         self.label_sources.node_label_for_render(node)
     }
 
-    pub(crate) fn edge_label_for_render<'b>(&'b self, edge: &'b FlowEdge) -> Option<&'b str> {
-        self.label_sources.edge_label_for_render(edge)
+    pub(crate) fn edge_label_for_render<'b>(
+        &'b self,
+        semantic_index: usize,
+        edge: &'b FlowEdge,
+    ) -> Option<&'b str> {
+        self.label_sources
+            .edge_label_for_render(semantic_index, edge)
     }
 
     pub(crate) fn subgraph_title_for_render<'b>(
@@ -56,7 +97,8 @@ impl<'a> FlowchartRenderModelRef<'a> {
             .chain(
                 self.edges
                     .iter()
-                    .filter_map(|edge| self.edge_label_for_render(edge)),
+                    .enumerate()
+                    .filter_map(|(index, edge)| self.edge_label_for_render(index, edge)),
             )
             .chain(
                 self.subgraphs
@@ -118,7 +160,8 @@ pub(crate) use svg_label_artifact::{
     measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };
 pub(crate) use theme_evidence::{
-    FlowchartEdgeThemeEmission, FlowchartEdgeThemeStyle, FlowchartFacetPrecedence,
-    FlowchartNodeThemeEmission, FlowchartNodeThemeStyle, FlowchartSourceFacetStatus,
-    FlowchartThemeEvidenceRecorder, FlowchartThemeFacetEmission,
+    FlowchartEdgeLabelThemeEmission, FlowchartEdgeThemeEmission, FlowchartEdgeThemeStyle,
+    FlowchartFacetPrecedence, FlowchartNodeThemeEmission, FlowchartNodeThemeStyle,
+    FlowchartShapeFacetEmissionReceipt, FlowchartSourceFacetStatus, FlowchartThemeEvidenceRecorder,
+    FlowchartThemeFacetEmission,
 };

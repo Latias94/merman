@@ -1336,6 +1336,8 @@ fn state_layout_adapter_work(
     model: &StateDiagramModel,
     work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
+    // This node tranche already reserves the linear parent-index and traversal work below.
+    // Keep cycle validation inside this reservation so the public W/W-1 boundary stays stable.
     let node_work = work_control.checked_mul(model.nodes.len(), 12)?;
     let edge_work = work_control.checked_mul(model.edges.len(), 8)?;
     let state_work = work_control.checked_mul(model.states.len(), 4)?;
@@ -1761,6 +1763,7 @@ fn layout_state_diagram_inner(
     label_sidecar: Option<&super::StateLabelSidecarBuilder>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<StateDiagramLayout> {
+    // Parent validation is covered by the adapter reservation charged before entering this call.
     validate_state_parent_cycles(model)?;
     let StateDagreInput {
         graph,
@@ -2408,26 +2411,77 @@ fn layout_state_diagram_inner(
     })
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StateParentVisitState {
+    Unvisited,
+    Visiting,
+    Complete,
+}
+
 fn validate_state_parent_cycles(model: &StateDiagramModel) -> Result<()> {
-    let parent_by_id: HashMap<&str, &str> = model
+    validate_state_parent_cycles_with_step(model, || {})
+}
+
+fn validate_state_parent_cycles_with_step(
+    model: &StateDiagramModel,
+    mut before_step: impl FnMut(),
+) -> Result<()> {
+    use StateParentVisitState::{Complete, Unvisited, Visiting};
+
+    // The last node with a duplicate id owns its parent, matching the previous HashMap collect.
+    let index_by_id = model
         .nodes
         .iter()
-        .filter_map(|node| {
-            node.parent_id
-                .as_deref()
-                .map(|parent| (node.id.as_str(), parent))
-        })
-        .collect();
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let mut state = vec![Unvisited; model.nodes.len()];
+    let mut path = Vec::new();
+
+    // Every input row is checked once. A canonical node follows its parent only while Unvisited,
+    // then becomes Complete with the rest of its path, so successful parent hops are also O(N).
     for node in &model.nodes {
-        let mut current = Some(node.id.as_str());
-        let mut seen: HashSet<&str> = HashSet::new();
-        while let Some(id) = current {
-            if !seen.insert(id) {
-                return Err(Error::InvalidModel {
-                    message: format!("state parent cycle involving {id}"),
-                });
+        // `state_layout_adapter_work` reserves the corresponding node work before this function.
+        before_step();
+        let Some(&start) = index_by_id.get(node.id.as_str()) else {
+            unreachable!("the State parent index contains every model node")
+        };
+        if state[start] == Complete {
+            continue;
+        }
+
+        path.clear();
+        let mut current = start;
+        loop {
+            match state[current] {
+                Unvisited => {
+                    state[current] = Visiting;
+                    path.push(current);
+                }
+                Visiting => {
+                    return Err(Error::InvalidModel {
+                        message: format!(
+                            "state parent cycle involving {}",
+                            model.nodes[current].id
+                        ),
+                    });
+                }
+                Complete => break,
             }
-            current = parent_by_id.get(id).copied();
+
+            let Some(parent_id) = model.nodes[current].parent_id.as_deref() else {
+                break;
+            };
+            // The test hook runs before following every user-controlled parent link.
+            before_step();
+            let Some(&parent) = index_by_id.get(parent_id) else {
+                break;
+            };
+            current = parent;
+        }
+
+        while let Some(index) = path.pop() {
+            state[index] = Complete;
         }
     }
     Ok(())
@@ -2454,6 +2508,7 @@ pub fn debug_build_state_diagram_dagre_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::text::{TextMetrics, VendoredFontMetricsTextMeasurer};
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
@@ -2470,6 +2525,119 @@ mod tests {
                 line_count: 1,
             }
         }
+    }
+
+    fn state_parent_node(id: impl Into<String>, parent_id: Option<String>) -> StateNode {
+        StateNode {
+            id: id.into(),
+            label_style: String::new(),
+            label: None,
+            description: None,
+            dom_id: String::new(),
+            is_group: false,
+            node_type: None,
+            parent_id,
+            css_classes: String::new(),
+            css_compiled_styles: Vec::new(),
+            css_styles: Vec::new(),
+            dir: None,
+            explicit_dir: None,
+            padding: None,
+            rx: None,
+            ry: None,
+            shape: "rect".to_string(),
+            position: None,
+        }
+    }
+
+    fn state_parent_chain(node_count: usize) -> StateDiagramModel {
+        StateDiagramModel {
+            nodes: (0..node_count)
+                .map(|index| {
+                    state_parent_node(
+                        format!("node-{index}"),
+                        (index + 1 < node_count).then(|| format!("node-{}", index + 1)),
+                    )
+                })
+                .collect(),
+            ..StateDiagramModel::default()
+        }
+    }
+
+    #[test]
+    fn state_parent_cycle_validation_visits_a_long_chain_linearly() {
+        const NODE_COUNT: usize = 4_096;
+        let model = state_parent_chain(NODE_COUNT);
+        let mut traversal_steps = 0usize;
+
+        validate_state_parent_cycles_with_step(&model, || traversal_steps += 1)
+            .expect("acyclic State parent chain");
+
+        assert_eq!(traversal_steps, NODE_COUNT + (NODE_COUNT - 1));
+    }
+
+    #[test]
+    fn state_parent_cycle_validation_preserves_cycle_id_and_linear_steps() {
+        let model = StateDiagramModel {
+            nodes: vec![
+                state_parent_node("entry", Some("cycle-a".to_string())),
+                state_parent_node("cycle-a", Some("cycle-b".to_string())),
+                state_parent_node("cycle-b", Some("cycle-a".to_string())),
+            ],
+            ..StateDiagramModel::default()
+        };
+        let mut traversal_steps = 0usize;
+
+        let error = validate_state_parent_cycles_with_step(&model, || traversal_steps += 1)
+            .expect_err("State parent cycle must be rejected");
+
+        let Error::InvalidModel { message } = error else {
+            panic!("expected InvalidModel");
+        };
+        assert_eq!(message, "state parent cycle involving cycle-a");
+        assert_eq!(traversal_steps, 4);
+    }
+
+    #[test]
+    fn state_parent_cycle_validation_keeps_the_existing_work_reservation_boundary() {
+        let model = state_parent_chain(32);
+        let sizing_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let sizing_control = OperationLayoutWorkControl::new(sizing_meter);
+        let reserved_work = state_layout_adapter_work(&model, &sizing_control)
+            .expect("State adapter work reservation");
+
+        let exact_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, reserved_work)
+                .expect("exact State work limit"),
+        ));
+        let mut exact_control = OperationLayoutWorkControl::new(Arc::clone(&exact_meter));
+        exact_control
+            .charge_adapter(reserved_work)
+            .expect("exact State work reservation");
+        validate_state_parent_cycles(&model).expect("reserved validation work");
+        assert_eq!(exact_meter.used(), reserved_work);
+
+        let below_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    crate::ResourceLimitId::MaxLayoutWorkUnits,
+                    reserved_work - 1,
+                )
+                .expect("below-boundary State work limit"),
+        ));
+        let mut below_control = OperationLayoutWorkControl::new(Arc::clone(&below_meter));
+        let error = below_control
+            .charge_adapter(reserved_work)
+            .expect_err("State work reservation must reject at W - 1");
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected ResourceLimitExceeded");
+        };
+        assert_eq!(limit.actual, reserved_work);
+        assert_eq!(limit.max, reserved_work - 1);
+        assert_eq!(below_meter.used(), 0);
     }
 
     #[test]

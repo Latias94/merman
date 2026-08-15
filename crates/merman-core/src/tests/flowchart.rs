@@ -1257,6 +1257,49 @@ A1 e1@--> C1 & D1
 }
 
 #[test]
+fn parse_diagram_flowchart_auto_edge_id_preserves_mermaid_pair_count_collision() {
+    let engine = Engine::new();
+
+    let text = r#"flowchart TD
+A L_A_B_2@--> B
+A --> B
+A --> B
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let edges = res.model["edges"].as_array().unwrap();
+
+    assert_eq!(edges.len(), 3);
+    assert_eq!(edges[0]["id"], json!("L_A_B_2"));
+    assert_eq!(edges[0]["isUserDefinedId"], json!(true));
+    assert_eq!(edges[1]["id"], json!("L_A_B_2"));
+    assert_eq!(edges[1]["isUserDefinedId"], json!(false));
+    assert_eq!(edges[2]["id"], json!("L_A_B_3"));
+    assert_eq!(edges[2]["isUserDefinedId"], json!(false));
+}
+
+#[test]
+fn parse_diagram_flowchart_auto_edge_id_ignores_explicit_collision_from_another_pair() {
+    let engine = Engine::new();
+
+    let text = r#"flowchart TD
+X L_A_B_0@--> Y
+A --> B
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let edges = res.model["edges"].as_array().unwrap();
+
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0]["id"], json!("L_A_B_0"));
+    assert_eq!(edges[0]["isUserDefinedId"], json!(true));
+    assert_eq!(edges[1]["id"], json!("L_A_B_0"));
+    assert_eq!(edges[1]["isUserDefinedId"], json!(false));
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_overrides_edge_animate() {
     let engine = Engine::new();
 

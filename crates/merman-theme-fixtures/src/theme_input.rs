@@ -649,9 +649,9 @@ fn collect_flowchart_visible_text(
             .unwrap_or(&node.id);
         insert_visible_text(visible, label);
     }
-    for edge in &model.edges {
+    for (semantic_index, edge) in model.edges.iter().enumerate() {
         if let Some(label) = sources
-            .and_then(|sources| sources.edge_label_for_render(edge))
+            .and_then(|sources| sources.edge_label_for_render(semantic_index, edge))
             .or(edge.label.as_deref())
         {
             insert_visible_text(visible, label);

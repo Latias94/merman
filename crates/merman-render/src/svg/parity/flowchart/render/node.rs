@@ -83,7 +83,7 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeLabelState<'a>
 }
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,
     origin_x: f64,

@@ -1,7 +1,5 @@
 //! Flowchart v2 node shapes that do not emit a label group.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 
@@ -11,7 +9,7 @@ use super::super::roughjs::{
 };
 
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_label(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,

@@ -1,7 +1,5 @@
 //! Flowchart v2 image square shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::flowchart_label_plain_text;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::{escape_xml_display, fmt_display};
@@ -9,7 +7,7 @@ use crate::svg::parity::{escape_xml_display, fmt_display};
 use super::super::roughjs::roughjs_stroke_path_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,

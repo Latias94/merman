@@ -185,6 +185,7 @@ impl BindingEngine {
             runtime_policy.clone(),
             &artifact_contract,
             base_theme.clone(),
+            base_options.theme_resource_policy().clone(),
         )?;
         #[cfg(not(feature = "svg"))]
         let configs =
@@ -249,7 +250,7 @@ impl BindingEngine {
                     common::BindingThemeOverlay::Clear => None,
                     common::BindingThemeOverlay::Replace => {
                         let compiler = merman::svg::DiagramThemeCompiler::new()
-                            .with_resource_policy(theme_resources);
+                            .with_resource_policy(theme_resources.clone());
                         crate::theme::compile_theme_with(&compiler, options.theme.as_ref())?
                     }
                 };
@@ -259,6 +260,7 @@ impl BindingEngine {
                     self.runtime_policy.clone(),
                     &self.artifact_contract,
                     theme,
+                    theme_resources,
                 )?;
                 #[cfg(not(feature = "svg"))]
                 let configs = BindingOperationConfigs::compile(
@@ -937,6 +939,7 @@ impl BindingOperationConfigs {
         runtime_policy: merman::runtime::RuntimePolicy,
         artifact_contract: &ValidatedArtifactContract,
         #[cfg(feature = "svg")] theme: Option<merman::svg::DiagramTheme>,
+        #[cfg(feature = "svg")] theme_resources: merman::svg::ThemeResourcePolicy,
     ) -> Result<Self, BindingError> {
         let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
         let semantic = SemanticOperationConfig::compile(options, runtime_policy.clone())?;
@@ -949,6 +952,7 @@ impl BindingOperationConfigs {
             runtime_policy.clone(),
             artifact_contract.render_capability_policy(),
             theme,
+            theme_resources,
         )?;
         #[cfg(not(feature = "svg"))]
         let _ = artifact_contract;
@@ -1318,30 +1322,30 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
+    fn effect_heavy_theme_options(profile: &str) -> Vec<u8> {
+        let effects = (0..9)
+            .map(|index| {
+                json!({
+                    "kind": "graph",
+                    "id": format!("blur-{index}"),
+                    "primitives": [{ "kind": "gaussian-blur", "std_deviation": 1.0 }]
+                })
+            })
+            .collect::<Vec<_>>();
+        serde_json::to_vec(&json!({
+            "resources": { "profile": profile },
+            "theme": { "spec": { "effects": effects } }
+        }))
+        .expect("theme options JSON")
+    }
+
+    #[cfg(feature = "svg")]
     #[test]
     fn theme_profiles_bound_base_and_request_effect_compilation() {
-        let theme_options = |profile: &str| {
-            let effects = (0..9)
-                .map(|index| {
-                    json!({
-                        "kind": "graph",
-                        "id": format!("blur-{index}"),
-                        "region": { "x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0 },
-                        "primitives": [{ "kind": "gaussian-blur", "std_deviation": 1.0 }]
-                    })
-                })
-                .collect::<Vec<_>>();
-            serde_json::to_vec(&json!({
-                "resources": { "profile": profile },
-                "theme": { "spec": { "effects": effects } }
-            }))
-            .expect("theme options JSON")
-        };
-
-        BindingEngine::new(&theme_options("interactive"))
+        BindingEngine::new(&effect_heavy_theme_options("interactive"))
             .expect("interactive theme compilation admits nine effect graphs");
 
-        let base_error = match BindingEngine::new(&theme_options("constrained")) {
+        let base_error = match BindingEngine::new(&effect_heavy_theme_options("constrained")) {
             Ok(_) => panic!("constrained base themes admit at most eight effect graphs"),
             Err(error) => error,
         };
@@ -1358,7 +1362,7 @@ mod tests {
         let request_error = engine
             .execute(
                 crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
-                    .with_options_json(&theme_options("constrained")),
+                    .with_options_json(&effect_heavy_theme_options("constrained")),
             )
             .expect_err("a constrained request must retain its effect-compile ceiling");
         let request_details = request_error
@@ -1366,6 +1370,31 @@ mod tests {
             .expect("request limit details");
         assert_eq!(request_details.limit_id, "max_effect_graphs");
         assert_eq!(request_details.profile, "constrained");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn constrained_request_revalidates_an_inherited_interactive_theme() {
+        let engine = BindingEngine::new(&effect_heavy_theme_options("interactive"))
+            .expect("interactive base theme admits nine effect graphs");
+
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(br#"{"resources":{"profile":"constrained"}}"#),
+            )
+            .expect_err("the constrained request must reject the inherited interactive theme");
+
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("inherited theme rejection must remain structured");
+        assert_eq!(details.limit_id, "max_effect_graphs");
+        assert_eq!(details.phase, "effect_compile");
+        assert_eq!(details.actual, 9);
+        assert_eq!(details.max, 8);
+        assert_eq!(details.profile, "constrained");
+        assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
     }
 
     #[cfg(feature = "svg")]

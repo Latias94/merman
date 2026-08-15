@@ -249,6 +249,12 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_STROKE)
         }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_NOTE_FILL)
+        }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_NOTE_STROKE)
+        }
         _ => None,
     }
 }
@@ -576,7 +582,7 @@ fn classify_rule_facet(
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-    ) && target == ThemeTarget::NodeLabel
+    ) && matches!(target, ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -593,7 +599,7 @@ fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::SEQUENCE
-        && target == ThemeTarget::Actor
+        && matches!(target, ThemeTarget::Actor | ThemeTarget::Note)
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
@@ -1149,7 +1155,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_own_static_default_node_label_font_stack_and_size_only() {
+    fn flowchart_and_swimlane_own_static_default_node_and_edge_label_font_stack_and_size_only() {
         let font_stack = super::super::FontStack::single("Excalifont").expect("valid font stack");
         let style = ThemeStylePatch {
             typography: TextStylePatch {
@@ -1160,34 +1166,54 @@ mod tests {
             ..ThemeStylePatch::default()
         };
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
-            let unqualified_rule = ThemeRule::new(ThemeTarget::NodeLabel, style.clone());
-            assert!(
-                compile_rule_routes(family, 0, &unqualified_rule)
-                    .iter()
-                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
-            );
-
-            let default_rule = ThemeRule::new(ThemeTarget::NodeLabel, style.clone())
-                .with_variant(ThemeVariant::Default);
-            assert!(
-                compile_rule_routes(family, 0, &default_rule)
-                    .iter()
-                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
-            );
-
-            for rule in [
-                ThemeRule::new(ThemeTarget::NodeLabel, style.clone())
-                    .with_variant(ThemeVariant::Active),
-                ThemeRule::new(ThemeTarget::NodeLabel, style.clone())
-                    .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
-                ThemeRule::new(ThemeTarget::EdgeLabel, style.clone()),
-            ] {
+            for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+                let unqualified_rule = ThemeRule::new(target, style.clone());
                 assert!(
-                    compile_rule_routes(family, 0, &rule)
+                    compile_rule_routes(family, 0, &unqualified_rule)
+                        .iter()
+                        .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+                );
+
+                let default_rule =
+                    ThemeRule::new(target, style.clone()).with_variant(ThemeVariant::Default);
+                assert!(
+                    compile_rule_routes(family, 0, &default_rule)
+                        .iter()
+                        .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+                );
+
+                for rule in [
+                    ThemeRule::new(target, style.clone()).with_variant(ThemeVariant::Active),
+                    ThemeRule::new(target, style.clone())
+                        .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+                ] {
+                    assert!(compile_rule_routes(family, 0, &rule).iter().all(|route| {
+                        route.disposition() == FamilyThemeDisposition::Unsupported
+                    }));
+                }
+
+                let font_weight_rule = ThemeRule::new(
+                    target,
+                    ThemeStylePatch {
+                        typography: TextStylePatch {
+                            font_weight: Specified::Value(700),
+                            ..TextStylePatch::default()
+                        },
+                        ..ThemeStylePatch::default()
+                    },
+                );
+                assert!(
+                    compile_rule_routes(family, 0, &font_weight_rule)
                         .iter()
                         .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
                 );
             }
+
+            assert!(
+                compile_rule_routes(family, 0, &ThemeRule::new(ThemeTarget::Edge, style.clone()))
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
         }
     }
 
@@ -1271,7 +1297,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_actor_direct_route_only_accepts_static_scalar_paints() {
+    fn sequence_actor_and_note_direct_routes_only_accept_static_scalar_paints() {
         let gradient = super::super::canvas::LinearGradient::new(
             90.0,
             [
@@ -1288,40 +1314,42 @@ mod tests {
             ],
         )
         .expect("valid gradient");
-        let solid = ThemeRule::new(
-            ThemeTarget::Actor,
-            ThemeStylePatch::default()
-                .with_fill(CanvasPaint::solid("#abcdef").expect("valid fill"))
-                .with_stroke(CanvasPaint::solid("#123456").expect("valid stroke")),
-        );
-        let gradient_rule = ThemeRule::new(
-            ThemeTarget::Actor,
-            ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
-        );
+        for target in [ThemeTarget::Actor, ThemeTarget::Note] {
+            let solid = ThemeRule::new(
+                target,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#abcdef").expect("valid fill"))
+                    .with_stroke(CanvasPaint::solid("#123456").expect("valid stroke")),
+            );
+            let gradient_rule = ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient.clone())),
+            );
 
-        let solid_routes = compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &solid);
-        assert_eq!(solid_routes.len(), 2);
-        assert!(
-            solid_routes
-                .iter()
-                .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
-        );
-        let explicit_default = ThemeRule::new(
-            ThemeTarget::Actor,
-            ThemeStylePatch::default()
-                .with_fill(CanvasPaint::solid("#abcdef").expect("valid fill"))
-                .with_stroke(CanvasPaint::solid("#123456").expect("valid stroke")),
-        )
-        .with_variant(ThemeVariant::Default);
-        assert!(
-            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)
-                .iter()
-                .all(|route| route.disposition() == FamilyThemeDisposition::LegacyCompatibility)
-        );
-        assert_eq!(
-            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &gradient_rule)[0].disposition(),
-            FamilyThemeDisposition::Unsupported
-        );
+            let solid_routes = compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &solid);
+            assert_eq!(solid_routes.len(), 2);
+            assert!(
+                solid_routes
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+            let explicit_default = ThemeRule::new(
+                target,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#abcdef").expect("valid fill"))
+                    .with_stroke(CanvasPaint::solid("#123456").expect("valid stroke")),
+            )
+            .with_variant(ThemeVariant::Default);
+            assert!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::LegacyCompatibility)
+            );
+            assert_eq!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &gradient_rule)[0].disposition(),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
     }
 
     #[test]
@@ -1416,6 +1444,34 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["actor.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Note,
+                Fill,
+                Transparent,
+                vec!["note.fill"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Note,
+                Fill,
+                Solid,
+                vec!["note.fill"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Note,
+                Stroke,
+                Transparent,
+                vec!["note.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Note,
+                Stroke,
+                Solid,
+                vec!["note.stroke"],
             ),
             (
                 DiagramFamilyId::SWIMLANE,

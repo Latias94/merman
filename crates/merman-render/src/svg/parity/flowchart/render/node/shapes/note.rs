@@ -1,7 +1,5 @@
 //! Flowchart v2 note shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 use crate::svg::parity::{fmt, fmt_display};
@@ -9,7 +7,7 @@ use crate::svg::parity::{fmt, fmt_display};
 use super::super::roughjs::{RoughRectSpec, roughjs_paths_for_rect};
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_note(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,

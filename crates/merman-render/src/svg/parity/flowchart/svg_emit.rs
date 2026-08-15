@@ -1,4 +1,4 @@
-use super::defs::prepare_flowchart_defs;
+use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::render_config::{FlowchartRenderConfig, prepare_flowchart_render_config};
 use super::render_input::{FlowchartRenderInputs, prepare_flowchart_render_inputs};
@@ -70,6 +70,33 @@ pub(super) fn render_flowchart_svg_model(
             message: "No such shape: ellipse. Please check your syntax.".to_string(),
         });
     }
+    if layout.edge_owner_indices.len() != layout.edges.len() {
+        return Err(crate::Error::InvalidModel {
+            message: format!(
+                "Flowchart layout edge-owner count {} does not match edge count {}",
+                layout.edge_owner_indices.len(),
+                layout.edges.len()
+            ),
+        });
+    }
+    for (layout_edge, owner_index) in layout.edges.iter().zip(&layout.edge_owner_indices) {
+        let Some(semantic_edge) = model.edges.get(*owner_index) else {
+            return Err(crate::Error::InvalidModel {
+                message: format!(
+                    "Flowchart layout edge `{}` references missing semantic owner {}",
+                    layout_edge.id, owner_index
+                ),
+            });
+        };
+        if layout_edge.id != semantic_edge.id {
+            return Err(crate::Error::InvalidModel {
+                message: format!(
+                    "Flowchart layout edge `{}` is not bound to semantic owner {} (`{}`)",
+                    layout_edge.id, owner_index, semantic_edge.id
+                ),
+            });
+        }
+    }
 
     let render_timing = options.timing();
     let measurer = options.text_measurer();
@@ -91,7 +118,11 @@ pub(super) fn render_flowchart_svg_model(
     let FlowchartRenderInputs {
         mut render_edges,
         extra_nodes,
-    } = prepare_flowchart_render_inputs(model, layout.uses_elk_adapter_dom);
+    } = prepare_flowchart_render_inputs(
+        model,
+        &layout.edge_owner_indices,
+        layout.uses_elk_adapter_dom,
+    );
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
     }
@@ -142,15 +173,13 @@ pub(super) fn render_flowchart_svg_model(
 
     // Source-ported ELK should preserve Mermaid's edge emission order, not the layout engine's
     // internal reordering. `render_edges` already reflects the source-backed ordering rules.
-    let edge_order: Vec<&str> = render_edges
-        .iter()
-        .map(|e| e.as_ref().id.as_str())
-        .collect();
-    let mut edges_by_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
+    let edge_order: Vec<super::render_input::FlowchartRenderEdgeRef<'_>> =
+        render_edges.iter().map(|edge| edge.as_ref()).collect();
+    let mut edges_by_id: FxHashMap<&str, super::render_input::FlowchartRenderEdgeRef<'_>> =
         FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {
         let edge = e.as_ref();
-        edges_by_id.insert(edge.id.as_str(), edge);
+        edges_by_id.insert(edge.edge.id.as_str(), edge);
     }
 
     let swimlane_direction = swimlane_layout.map(|layout| layout.direction);
@@ -159,16 +188,18 @@ pub(super) fn render_flowchart_svg_model(
         .flat_map(|layout| layout.lanes.iter())
         .map(|lane| (lane.id.as_str(), lane))
         .collect();
-    let swimlane_edge_label_edges_by_node_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
-        swimlane_layout
-            .into_iter()
-            .flat_map(|layout| layout.edges.iter())
-            .filter_map(|layout_edge| {
-                let label_node_id = layout_edge.label_node_id.as_deref()?;
-                let edge = edges_by_id.get(layout_edge.id.as_str()).copied()?;
-                Some((label_node_id, edge))
-            })
-            .collect();
+    let swimlane_edge_label_edges_by_node_id: FxHashMap<
+        &str,
+        super::render_input::FlowchartRenderEdgeRef<'_>,
+    > = swimlane_layout
+        .into_iter()
+        .flat_map(|layout| layout.edges.iter())
+        .filter_map(|layout_edge| {
+            let label_node_id = layout_edge.label_node_id.as_deref()?;
+            let edge = edges_by_id.get(layout_edge.id.as_str()).copied()?;
+            Some((label_node_id, edge))
+        })
+        .collect();
     let mut subgraph_order: Vec<&str> = Vec::with_capacity(model.subgraphs.len());
     let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
         FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
@@ -220,10 +251,19 @@ pub(super) fn render_flowchart_svg_model(
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
-        FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
-    for e in &layout.edges {
-        layout_edges_by_id.insert(e.id.as_str(), e);
+    let mut layout_edges_by_key: FxHashMap<
+        crate::flowchart::FlowchartEdgeKey,
+        &crate::model::LayoutEdge,
+    > = FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
+    for (owner_index, edge) in layout.edge_owner_indices.iter().copied().zip(&layout.edges) {
+        let key = crate::flowchart::FlowchartEdgeKey::new(owner_index);
+        if layout_edges_by_key.insert(key, edge).is_some() {
+            return Err(crate::Error::InvalidModel {
+                message: format!(
+                    "Flowchart layout contains multiple edges for semantic owner {owner_index}"
+                ),
+            });
+        }
     }
 
     let mut layout_clusters_by_id: FxHashMap<&str, &LayoutCluster> =
@@ -289,7 +329,6 @@ pub(super) fn render_flowchart_svg_model(
         subgraph_order,
         edge_order,
         nodes_by_id,
-        edges_by_id,
         subgraphs_by_id,
         subgraph_index_by_id,
         subgraph_ids_with_children,
@@ -297,7 +336,7 @@ pub(super) fn render_flowchart_svg_model(
         recursive_clusters,
         parent,
         layout_nodes_by_id,
-        layout_edges_by_id,
+        layout_edges_by_key,
         layout_clusters_by_id,
         swimlane_direction,
         swimlane_lanes_by_id,
@@ -313,28 +352,16 @@ pub(super) fn render_flowchart_svg_model(
         html_label_text_style,
     };
 
-    let mut edge_path_cache: FxHashMap<&str, FlowchartEdgePathCacheEntry> =
-        FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
+    let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx)?;
+    let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
+
+    let mut edge_path_cache: FxHashMap<
+        crate::flowchart::FlowchartEdgeKey,
+        FlowchartEdgePathCacheEntry,
+    > = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
 
     let subgraph_title_y_shift = crate::flowchart::FlowchartConfigView::new(effective_config_value)
         .render_subgraph_title_y_shift();
-
-    fn self_loop_label_base_node_id(id: &str) -> Option<&str> {
-        let mut parts = id.split("---");
-        let a = parts.next()?;
-        let b = parts.next()?;
-        let n = parts.next()?;
-        if parts.next().is_some() {
-            return None;
-        }
-        if a != b {
-            return None;
-        }
-        if n != "1" && n != "2" {
-            return None;
-        }
-        Some(a)
-    }
 
     drop(_g_build_ctx);
 
@@ -342,31 +369,14 @@ pub(super) fn render_flowchart_svg_model(
     let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
     let _g_viewbox = render_timing.section(&mut timings.viewbox);
 
-    let effective_parent_for_id = |id: &str| -> Option<&str> {
-        let mut cur = ctx.parent.get(id).copied();
-        if cur.is_none()
-            && let Some(base) = self_loop_label_base_node_id(id)
-        {
-            cur = ctx.parent.get(base).copied();
-        }
-        while let Some(p) = cur {
-            if ctx.subgraphs_by_id.contains_key(p) && !ctx.recursive_clusters.contains(p) {
-                cur = ctx.parent.get(p).copied();
-                continue;
-            }
-            return Some(p);
-        }
-        None
-    };
-
     let bounds = prepare_flowchart_rendered_bounds(
         FlowchartRenderedBoundsRequest {
             ctx: &ctx,
             layout,
             subgraph_title_y_shift,
         },
-        &effective_parent_for_id,
-    );
+        &hierarchy_plan,
+    )?;
     let FlowchartViewboxBounds {
         diagram_title,
         title_anchor_x,
@@ -387,7 +397,7 @@ pub(super) fn render_flowchart_svg_model(
             detail: &mut detail,
             edge_path_cache: &mut edge_path_cache,
         },
-        &effective_parent_for_id,
+        &hierarchy_plan,
     )?;
 
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
@@ -410,7 +420,14 @@ pub(super) fn render_flowchart_svg_model(
     drop(_g_viewbox);
     let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
-    let mut css = flowchart_css(
+    let mut out = BoundedSvgOutput::new(options.work_meter());
+
+    let root_document = document.push_root_open(&mut out)?;
+    document.push_accessibility_metadata(&mut out);
+    out.push_str("<style>");
+    out.checkpoint()?;
+    write_flowchart_css(
+        &mut out,
         diagram_id,
         effective_config_value,
         &font_family,
@@ -418,53 +435,42 @@ pub(super) fn render_flowchart_svg_model(
         &model.class_defs,
     )?;
     if swimlane_layout.is_some() {
-        css.push_str(&super::swimlane::swimlane_css(diagram_id, effective_config));
+        super::swimlane::write_swimlane_css(&mut out, diagram_id, effective_config);
     }
-
-    let estimated_svg_bytes = 2048usize
-        + css.len()
-        + layout.nodes.len().saturating_mul(256)
-        + render_edges.len().saturating_mul(256)
-        + layout.clusters.len().saturating_mul(128);
-    let initial_svg_capacity = options
-        .work_meter()
-        .policy()
-        .value(crate::resources::ResourceLimitId::MaxSvgBytes)
-        .map_or(estimated_svg_bytes, |maximum| {
-            estimated_svg_bytes.min(maximum)
-        });
-    let mut out = String::with_capacity(initial_svg_capacity);
-
-    let root_document = document.push_root_open(&mut out)?;
-    document.push_accessibility_metadata(&mut out);
-    out.push_str("<style>");
-    out.push_str(&css);
     out.push_str("</style>");
+    out.checkpoint()?;
 
-    let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx);
+    let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx, &marker_plan);
 
     let mut root_session = FlowchartRootRenderSession {
         timing: render_timing,
         details: &mut detail,
         edge_cache: &mut edge_path_cache,
+        hierarchy_plan: &hierarchy_plan,
+        marker_plan: &marker_plan,
     };
     if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
-        defs.push_base_markers(&mut out);
-        defs.push_extra_markers(&mut out);
+        defs.push_base_markers(&mut out)?;
+        defs.push_extra_markers(&mut out)?;
         out.push_str("</g>");
+        out.checkpoint()?;
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        out.checkpoint()?;
         render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session)?;
     } else {
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        out.checkpoint()?;
         out.push_str("<g>");
-        defs.push_base_markers(&mut out);
+        defs.push_base_markers(&mut out)?;
         render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session)?;
 
-        defs.push_extra_markers(&mut out);
+        defs.push_extra_markers(&mut out)?;
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     push_flowchart_gradient(&mut out, diagram_id, effective_config_value);
+    out.checkpoint()?;
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;
         let title_y = -title_top_margin;
@@ -473,10 +479,11 @@ pub(super) fn render_flowchart_svg_model(
             r#"<text text-anchor="middle" x="{}" y="{}" class="flowchartTitleText">{}</text>"#,
             fmt(title_x),
             fmt(title_y),
-            escape_xml(title)
+            escape_xml_display(title)
         );
     }
     out.push_str("</svg>\n");
+    out.checkpoint()?;
 
     drop(_g_render_svg);
     timings.total = total_timer
@@ -484,13 +491,13 @@ pub(super) fn render_flowchart_svg_model(
         .unwrap_or_default();
     if render_timing.is_enabled() {
         eprintln!(
-            "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} viewbox_edge_curve_lca={:?} viewbox_edge_curve_offsets={:?} viewbox_edge_curve_geom={:?} viewbox_edge_curve_bbox_union={:?} viewbox_edge_curve_geom_calls={} viewbox_edge_curve_geom_skipped_bounds={} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
+            "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} viewbox_edge_root_lookup={:?} viewbox_edge_curve_offsets={:?} viewbox_edge_curve_geom={:?} viewbox_edge_curve_bbox_union={:?} viewbox_edge_curve_geom_calls={} viewbox_edge_curve_geom_skipped_bounds={} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
             timings.total,
             timings.deserialize_model,
             timings.build_ctx,
             timings.viewbox,
             viewbox_edge_curve_bounds,
-            detail.viewbox_edge_curve_lca,
+            detail.viewbox_edge_root_lookup,
             detail.viewbox_edge_curve_offsets,
             detail.viewbox_edge_curve_geom,
             detail.viewbox_edge_curve_bbox_union,
@@ -513,7 +520,7 @@ pub(super) fn render_flowchart_svg_model(
             detail.nested_roots,
         );
     }
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 fn flowchart_node_theme_ordinals<'a>(
@@ -617,7 +624,7 @@ mod tests {
 }
 
 fn push_flowchart_shadow_defs(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: &str,
     effective_config_value: &serde_json::Value,
 ) {
@@ -639,7 +646,7 @@ fn push_flowchart_shadow_defs(
 }
 
 fn push_flowchart_gradient(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: &str,
     effective_config_value: &serde_json::Value,
 ) {

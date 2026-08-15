@@ -964,11 +964,46 @@ impl OperationWorkMeter {
         debug_assert!(previous >= released_bytes);
     }
 
-    /// Reserves the projected serialized bytes contributed by external icon expansion.
+    /// Checks whether one exact append fits the whole-document SVG ceiling without charging it.
+    ///
+    /// Producer-owned contribution accounting remains separate because `current_svg_bytes`
+    /// already includes earlier emitted contributions. Callers that also precharge a disjoint
+    /// contribution must do so exactly once after this append check succeeds.
+    pub(crate) fn check_svg_append(
+        &self,
+        current_svg_bytes: usize,
+        additional_svg_bytes: usize,
+    ) -> Result<(), OperationWorkError> {
+        self.checkpoint(OperationPhase::Emit)?;
+        let projected_svg_bytes = current_svg_bytes
+            .checked_add(additional_svg_bytes)
+            .ok_or_else(|| {
+                OperationWorkError::ResourceLimitExceeded(accumulation_overflow(
+                    self.policy,
+                    ResourceLimitPhase::SvgOutput,
+                    RenderResourceLimitId::MaxSvgBytes,
+                ))
+            })?;
+        self.policy
+            .check_svg_byte_count(projected_svg_bytes, ResourceLimitPhase::SvgOutput)
+            .map_err(OperationWorkError::ResourceLimitExceeded)
+    }
+
+    /// Returns the whole-document SVG ceiling used to cap backing-buffer growth.
+    ///
+    /// This is intentionally independent of the producer-owned projected-byte ledger: the
+    /// bounded document sink validates its retained bytes directly and must not subtract or charge
+    /// separately owned contributions.
+    pub(crate) fn max_svg_bytes(&self) -> Option<usize> {
+        self.policy.value(ResourceLimitId::MaxSvgBytes)
+    }
+
+    /// Charges one producer-owned, disjoint projected contribution to the SVG byte ledger.
     ///
     /// The final whole-document SVG check remains authoritative. This earlier cumulative charge
-    /// prevents repeated maximum-size icons from allocating their complete expanded strings before
-    /// the operation-level output policy can reject them.
+    /// prevents independently prepared expansions, such as icons or repeated source-style payloads,
+    /// from allocating their complete strings before the operation-level output policy can reject
+    /// them. Callers must not charge bytes already owned by another contribution.
     pub(crate) fn charge_svg_bytes(&self, additional: usize) -> Result<(), OperationWorkError> {
         self.checkpoint(OperationPhase::Emit)?;
         let mut used = self
@@ -1575,6 +1610,48 @@ mod tests {
         assert_eq!(error.actual, 11);
         assert_eq!(error.max, 10);
         assert_eq!(meter.projected_svg_bytes(), 10);
+    }
+
+    #[test]
+    fn operation_svg_append_check_accepts_exact_and_does_not_charge() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 10)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        meter.charge_svg_bytes(2).unwrap();
+
+        meter.check_svg_append(7, 3).unwrap();
+        assert_eq!(meter.projected_svg_bytes(), 2);
+
+        let OperationWorkError::ResourceLimitExceeded(error) =
+            meter.check_svg_append(7, 4).unwrap_err()
+        else {
+            panic!("expected a resource rejection");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(error.limit, "max_svg_bytes");
+        assert_eq!(error.actual, 11);
+        assert_eq!(error.max, 10);
+        assert_eq!(meter.projected_svg_bytes(), 2);
+    }
+
+    #[test]
+    fn operation_svg_append_overflow_is_structured_and_does_not_charge() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        meter.charge_svg_bytes(2).unwrap();
+
+        let OperationWorkError::ResourceLimitExceeded(error) =
+            meter.check_svg_append(usize::MAX, 1).unwrap_err()
+        else {
+            panic!("expected a resource rejection");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert_eq!(error.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(error.limit, "max_svg_bytes");
+        assert_eq!(error.actual, usize::MAX);
+        assert_eq!(error.max, usize::MAX);
+        assert_eq!(meter.projected_svg_bytes(), 2);
     }
 
     #[test]

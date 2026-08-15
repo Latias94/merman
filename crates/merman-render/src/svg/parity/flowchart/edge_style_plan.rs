@@ -1,17 +1,26 @@
 //! Operation-local Flowchart edge source-style plan.
 
 use super::*;
+use std::sync::Arc;
 
 #[derive(Debug)]
-struct PreparedEdgeStyles {
+struct FlowchartEdgeStyleArtifact {
     emission: FlowchartCompiledStyles,
-    swimlane_label: Option<FlowchartCompiledStyles>,
     projected_source_style_bytes: usize,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedEdgeStyles {
+    artifact: Arc<FlowchartEdgeStyleArtifact>,
+    animation: FlowchartEdgeAnimationResolution,
+    swimlane_label: Option<Arc<FlowchartCompiledStyles>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct FlowchartEdgeStylePlan {
+    #[cfg(test)]
     edges: FxHashMap<String, PreparedEdgeStyles>,
+    edge_occurrences: Vec<PreparedEdgeStyles>,
     #[cfg(test)]
     parsed_class_declaration_count: usize,
 }
@@ -31,7 +40,7 @@ impl FlowchartEdgeStylePlan {
             &model.class_defs,
             &model.edges,
             default_edge_style,
-            flowchart_config_look(effective_config) == "handDrawn",
+            flowchart_config_diagram_look(effective_config).is_hand_drawn(),
             swimlane,
             work_meter,
         )
@@ -54,8 +63,14 @@ impl FlowchartEdgeStylePlan {
         )?;
         #[cfg(test)]
         let parsed_class_declaration_count = class_styles.parsed_declaration_count();
+        #[cfg(test)]
         let mut prepared_edges =
             FxHashMap::with_capacity_and_hasher(edges.len(), Default::default());
+        let mut prepared_edge_occurrences = Vec::with_capacity(edges.len());
+        let mut shared_edge_artifacts: FxHashMap<
+            (&[String], &[String]),
+            Arc<FlowchartEdgeStyleArtifact>,
+        > = FxHashMap::default();
 
         let empty_class_styles = FlowchartPreparedClassStyles::default();
         let shared_swimlane_label = swimlane
@@ -70,80 +85,147 @@ impl FlowchartEdgeStylePlan {
                     Some(work_meter),
                 )
             })
-            .transpose()?;
+            .transpose()?
+            .map(FlowchartCompiledStyles::into_swimlane_edge_label_artifact)
+            .map(Arc::new);
+        let mut shared_swimlane_labels: FxHashMap<&str, Arc<FlowchartCompiledStyles>> =
+            FxHashMap::default();
 
         for edge in edges {
-            let emission = flowchart_compile_prepared_styles(
-                &class_styles,
-                &edge.classes,
-                default_edge_style,
-                &edge.style,
-                Some(work_meter),
-            )?;
-            let projected_source_style_bytes = emission.projected_edge_source_style_bytes(
-                default_edge_style,
-                &edge.style,
-                hand_drawn,
-            );
+            let cache_key = (edge.classes.as_slice(), edge.style.as_slice());
+            let artifact = if let Some(artifact) = shared_edge_artifacts.get(&cache_key) {
+                Arc::clone(artifact)
+            } else {
+                let emission = flowchart_compile_prepared_styles(
+                    &class_styles,
+                    &edge.classes,
+                    default_edge_style,
+                    &edge.style,
+                    Some(work_meter),
+                )?;
+                let Some(projected_source_style_bytes) = emission
+                    .projected_edge_source_style_bytes(default_edge_style, &edge.style, hand_drawn)
+                else {
+                    work_meter.check_svg_append(usize::MAX, 1)?;
+                    unreachable!("overflowing edge source-style projection must be rejected")
+                };
+                let artifact = Arc::new(FlowchartEdgeStyleArtifact {
+                    emission: emission.into_edge_artifact(hand_drawn),
+                    projected_source_style_bytes,
+                });
+                shared_edge_artifacts.insert(cache_key, Arc::clone(&artifact));
+                artifact
+            };
             let swimlane_label = if !swimlane {
                 None
             } else if let Some(shared) = &shared_swimlane_label {
-                Some(shared.clone())
+                Some(Arc::clone(shared))
+            } else if let Some(style) = edge.style.first() {
+                if let Some(shared) = shared_swimlane_labels.get(style.as_str()) {
+                    Some(Arc::clone(shared))
+                } else {
+                    let compiled = flowchart_compile_prepared_styles(
+                        &empty_class_styles,
+                        &[],
+                        std::slice::from_ref(style),
+                        &[],
+                        Some(work_meter),
+                    )?
+                    .into_swimlane_edge_label_artifact();
+                    let compiled = Arc::new(compiled);
+                    shared_swimlane_labels.insert(style.as_str(), Arc::clone(&compiled));
+                    Some(compiled)
+                }
             } else {
-                edge.style
-                    .first()
-                    .map(|style| {
-                        flowchart_compile_prepared_styles(
-                            &empty_class_styles,
-                            &[],
-                            std::slice::from_ref(style),
-                            &[],
-                            Some(work_meter),
-                        )
-                    })
-                    .transpose()?
+                None
             };
-            prepared_edges.insert(
-                edge.id.clone(),
-                PreparedEdgeStyles {
-                    emission,
-                    swimlane_label,
-                    projected_source_style_bytes,
-                },
-            );
+            let prepared = PreparedEdgeStyles {
+                animation: FlowchartEdgeAnimationResolution::resolve(edge, &artifact.emission),
+                artifact,
+                swimlane_label,
+            };
+            #[cfg(test)]
+            prepared_edges.insert(edge.id.clone(), prepared.clone());
+            prepared_edge_occurrences.push(prepared);
         }
 
         Ok(Self {
+            #[cfg(test)]
             edges: prepared_edges,
+            edge_occurrences: prepared_edge_occurrences,
             #[cfg(test)]
             parsed_class_declaration_count,
         })
     }
 
+    #[cfg(test)]
     pub(in crate::svg::parity::flowchart) fn edge(
         &self,
         edge_id: &str,
     ) -> crate::Result<&FlowchartCompiledStyles> {
         self.edges
             .get(edge_id)
-            .map(|styles| &styles.emission)
+            .map(|styles| &styles.artifact.emission)
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!("missing prepared Flowchart edge style for `{edge_id}`"),
             })
     }
 
+    fn occurrence(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<&PreparedEdgeStyles> {
+        self.edge_occurrences
+            .get(key.semantic_index())
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "missing prepared Flowchart edge occurrence {}",
+                    key.semantic_index()
+                ),
+            })
+    }
+
+    pub(in crate::svg::parity::flowchart) fn edge_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<&FlowchartCompiledStyles> {
+        Ok(&self.occurrence(key)?.artifact.emission)
+    }
+
+    #[cfg(test)]
     pub(in crate::svg::parity::flowchart) fn swimlane_label(
         &self,
         edge_id: &str,
     ) -> crate::Result<Option<&FlowchartCompiledStyles>> {
         self.edges
             .get(edge_id)
-            .map(|styles| styles.swimlane_label.as_ref())
+            .map(|styles| styles.swimlane_label.as_deref())
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!("missing prepared Swimlane edge label style for `{edge_id}`"),
             })
     }
 
+    #[cfg(test)]
+    pub(in crate::svg::parity::flowchart) fn animation(
+        &self,
+        edge_id: &str,
+    ) -> crate::Result<FlowchartEdgeAnimationResolution> {
+        self.edges
+            .get(edge_id)
+            .map(|styles| styles.animation)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Flowchart edge animation for `{edge_id}`"),
+            })
+    }
+
+    pub(in crate::svg::parity::flowchart) fn animation_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<FlowchartEdgeAnimationResolution> {
+        Ok(self.occurrence(key)?.animation)
+    }
+
+    #[cfg(test)]
     pub(crate) fn edge_label_text_style<'a>(
         &self,
         edge_id: &str,
@@ -154,6 +236,17 @@ impl FlowchartEdgeStylePlan {
             .effective_edge_label_text_style_with_provenance(base))
     }
 
+    pub(crate) fn edge_label_text_style_for<'a>(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+        base: &'a crate::text::TextStyle,
+    ) -> crate::Result<crate::flowchart::FlowchartTextStyleResolution<'a>> {
+        Ok(self
+            .edge_for(key)?
+            .effective_edge_label_text_style_with_provenance(base))
+    }
+
+    #[cfg(test)]
     pub(crate) fn swimlane_edge_label_text_style<'a>(
         &self,
         edge_id: &str,
@@ -167,35 +260,44 @@ impl FlowchartEdgeStylePlan {
         Ok(styles.effective_edge_label_text_style_with_provenance(base))
     }
 
-    pub(in crate::svg::parity::flowchart) fn marker_color(
+    pub(crate) fn swimlane_edge_label_text_style_for<'a>(
         &self,
-        edge_id: &str,
-        hand_drawn: bool,
-    ) -> Option<&str> {
-        self.edges
-            .get(edge_id)
-            .and_then(|styles| styles.emission.edge_marker_color(hand_drawn))
+        key: crate::flowchart::FlowchartEdgeKey,
+        base: &'a crate::text::TextStyle,
+    ) -> crate::Result<crate::flowchart::FlowchartTextStyleResolution<'a>> {
+        let Some(styles) = self.occurrence(key)?.swimlane_label.as_deref() else {
+            return Ok(crate::flowchart::FlowchartTextStyleResolution::borrowed(
+                base,
+            ));
+        };
+        Ok(styles.effective_edge_label_text_style_with_provenance(base))
     }
 
-    pub(in crate::svg::parity::flowchart) fn admit_edge_source_style_svg_bytes(
+    #[cfg(test)]
+    pub(in crate::svg::parity::flowchart) fn edge_source_style_svg_bytes(
         &self,
         edge_id: &str,
-        current_svg_bytes: usize,
-        work_meter: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<()> {
-        let projected = self
-            .edges
+    ) -> crate::Result<usize> {
+        self.edges
             .get(edge_id)
-            .map(|styles| styles.projected_source_style_bytes)
+            .map(|styles| styles.artifact.projected_source_style_bytes)
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!("missing prepared Flowchart edge style for `{edge_id}`"),
-            })?;
-        work_meter.policy().check_svg_byte_count(
-            current_svg_bytes.saturating_add(projected),
-            crate::resources::ResourceLimitPhase::SvgOutput,
-        )?;
-        work_meter.charge_svg_bytes(projected)?;
-        Ok(())
+            })
+    }
+
+    pub(in crate::svg::parity::flowchart) fn edge_source_style_svg_bytes_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<usize> {
+        Ok(self.occurrence(key)?.artifact.projected_source_style_bytes)
+    }
+
+    pub(in crate::svg::parity::flowchart) fn swimlane_label_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+    ) -> crate::Result<Option<&FlowchartCompiledStyles>> {
+        Ok(self.occurrence(key)?.swimlane_label.as_deref())
     }
 
     #[cfg(test)]
@@ -244,8 +346,55 @@ mod tests {
             .expect("prepare edge styles");
 
         assert_eq!(plan.parsed_class_declaration_count(), 3);
-        assert_eq!(plan.marker_color("e1", false), Some("#ef4444"));
-        assert_eq!(plan.marker_color("e2", false), Some("#ef4444"));
+        assert_eq!(
+            plan.edge("e1")
+                .expect("prepared edge")
+                .edge_marker_color(false),
+            Some("#ef4444")
+        );
+        assert_eq!(
+            plan.edge("e2")
+                .expect("prepared edge")
+                .edge_marker_color(false),
+            Some("#ef4444")
+        );
+        assert!(std::sync::Arc::ptr_eq(
+            &plan.edges.get("e1").expect("first edge").artifact,
+            &plan.edges.get("e2").expect("second edge").artifact,
+        ));
+    }
+
+    #[test]
+    fn duplicate_raw_edge_ids_keep_occurrence_scoped_styles() {
+        let edges = vec![
+            edge("duplicate", &[], &["stroke:#ef4444"]),
+            edge("duplicate", &[], &["stroke:#2563eb"]),
+        ];
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan =
+            FlowchartEdgeStylePlan::prepare(&IndexMap::new(), &edges, &[], false, false, &meter)
+                .expect("prepare duplicate-id edge styles");
+
+        assert_eq!(
+            plan.edge_for(crate::flowchart::FlowchartEdgeKey::new(0))
+                .expect("first occurrence")
+                .edge_marker_color(false),
+            Some("#ef4444")
+        );
+        assert_eq!(
+            plan.edge_for(crate::flowchart::FlowchartEdgeKey::new(1))
+                .expect("second occurrence")
+                .edge_marker_color(false),
+            Some("#2563eb")
+        );
+        assert_eq!(
+            plan.edge("duplicate")
+                .expect("legacy raw-id projection")
+                .edge_marker_color(false),
+            Some("#2563eb")
+        );
     }
 
     #[test]
@@ -261,10 +410,163 @@ mod tests {
         let plan = FlowchartEdgeStylePlan::prepare(&class_defs, &edges, &[], false, false, &meter)
             .expect("prepare edge styles");
 
-        assert_eq!(plan.marker_color("e1", false), Some("#ef4444"));
         assert_eq!(
-            plan.edge("e1").expect("prepared edge").stroke.as_deref(),
+            plan.edge("e1")
+                .expect("prepared edge")
+                .edge_marker_color(false),
             Some("#ef4444")
+        );
+        assert_eq!(
+            plan.edge("e1")
+                .expect("prepared edge")
+                .emitted_edge_source_stroke_status(false),
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted
+        );
+    }
+
+    #[test]
+    fn animation_resolution_uses_parsed_properties_instead_of_raw_substrings() {
+        let class_defs = IndexMap::from([
+            ("disabled".to_string(), vec!["animation:none".to_string()]),
+            (
+                "custom-token".to_string(),
+                vec!["--animation-token:dash 2s linear".to_string()],
+            ),
+        ]);
+        let mut explicit_speed = edge("explicit-speed", &[], &[]);
+        explicit_speed.animate = Some(false);
+        explicit_speed.animation = Some("fast".to_string());
+        let mut generated_but_disabled = edge("generated-but-disabled", &[], &["animation:none"]);
+        generated_but_disabled.animate = Some(true);
+        let inline_animated = edge("inline-animated", &[], &["animation:dash 2s linear"]);
+        let class_disabled = edge("class-disabled", &["disabled"], &[]);
+        let custom_token = edge("custom-token", &["custom-token"], &[]);
+        let shorthand_then_longhand = edge(
+            "shorthand-then-longhand",
+            &[],
+            &["animation:dash 2s linear", "animation-name:none"],
+        );
+        let longhand_then_shorthand = edge(
+            "longhand-then-shorthand",
+            &[],
+            &["animation-name:none", "animation:dash 2s linear"],
+        );
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+
+        let plan = FlowchartEdgeStylePlan::prepare(
+            &class_defs,
+            &[
+                explicit_speed,
+                generated_but_disabled,
+                inline_animated,
+                class_disabled,
+                custom_token,
+                shorthand_then_longhand,
+                longhand_then_shorthand,
+            ],
+            &[],
+            false,
+            false,
+            &meter,
+        )
+        .expect("prepare edge animations");
+
+        let explicit_speed = plan.animation("explicit-speed").expect("explicit speed");
+        assert_eq!(explicit_speed.class(), Some("edge-animation-fast"));
+        assert!(explicit_speed.is_active());
+
+        let generated_but_disabled = plan
+            .animation("generated-but-disabled")
+            .expect("source animation:none overrides generated class");
+        assert_eq!(generated_but_disabled.class(), Some("edge-animation-fast"));
+        assert!(!generated_but_disabled.is_active());
+
+        let inline_animated = plan.animation("inline-animated").expect("inline animation");
+        assert_eq!(inline_animated.class(), None);
+        assert!(inline_animated.is_active());
+
+        let class_disabled = plan
+            .animation("class-disabled")
+            .expect("disabled class animation");
+        assert_eq!(class_disabled.class(), None);
+        assert!(!class_disabled.is_active());
+
+        let custom_token = plan
+            .animation("custom-token")
+            .expect("custom property is not animation");
+        assert_eq!(custom_token.class(), None);
+        assert!(!custom_token.is_active());
+
+        assert!(
+            !plan
+                .animation("shorthand-then-longhand")
+                .expect("later animation-name")
+                .is_active()
+        );
+        assert!(
+            plan.animation("longhand-then-shorthand")
+                .expect("later animation shorthand")
+                .is_active()
+        );
+    }
+
+    #[test]
+    fn animation_resolution_obeys_default_inline_order_and_important_priority() {
+        let class_defs = IndexMap::from([(
+            "important-disabled".to_string(),
+            vec!["animation:none !important".to_string()],
+        )]);
+        let edges = [
+            edge("default-active", &[], &[]),
+            edge("inline-disabled", &[], &["animation:none"]),
+            edge(
+                "important-disabled",
+                &["important-disabled"],
+                &["animation:dash 2s linear"],
+            ),
+            edge(
+                "important-reactivated",
+                &["important-disabled"],
+                &["animation-name:dash !important"],
+            ),
+        ];
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+
+        let plan = FlowchartEdgeStylePlan::prepare(
+            &class_defs,
+            &edges,
+            &["animation:default-edge 2s linear".to_string()],
+            false,
+            false,
+            &meter,
+        )
+        .expect("prepare edge animation cascade");
+
+        assert!(
+            plan.animation("default-active")
+                .expect("default animation")
+                .is_active()
+        );
+        assert!(
+            !plan
+                .animation("inline-disabled")
+                .expect("inline animation:none")
+                .is_active()
+        );
+        assert!(
+            !plan
+                .animation("important-disabled")
+                .expect("important class animation:none")
+                .is_active()
+        );
+        assert!(
+            plan.animation("important-reactivated")
+                .expect("later important animation-name")
+                .is_active()
         );
     }
 
@@ -278,7 +580,12 @@ mod tests {
             FlowchartEdgeStylePlan::prepare(&IndexMap::new(), &edges, &[], false, false, &meter)
                 .expect("prepare edge styles");
 
-        assert_eq!(plan.marker_color("e1", false), Some("#111827"));
+        assert_eq!(
+            plan.edge("e1")
+                .expect("prepared edge")
+                .edge_marker_color(false),
+            Some("#111827")
+        );
         let residuals = plan
             .edge("e1")
             .expect("prepared edge")
@@ -338,61 +645,55 @@ mod tests {
     }
 
     #[test]
-    fn edge_source_style_svg_budget_is_charged_before_emission() {
+    fn edge_and_swimlane_artifacts_share_identical_compiled_payloads() {
         let class_defs = IndexMap::from([(
             "shared".to_string(),
             vec!["stroke:#ef4444,stroke-width:3px".to_string()],
         )]);
-        let edges = vec![edge("e1", &["shared"], &["opacity:0.5"])];
+        let edges = vec![
+            edge("e1", &["shared"], &["opacity:0.5"]),
+            edge("e2", &["shared"], &["opacity:0.5"]),
+            edge("e3", &["shared"], &["opacity:0.75"]),
+        ];
         let preparation_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
         let plan = FlowchartEdgeStylePlan::prepare(
             &class_defs,
             &edges,
-            &[],
+            &["color:#111827".to_string()],
             false,
-            false,
+            true,
             &preparation_meter,
         )
         .expect("prepare edge styles");
+
+        let first = plan.edges.get("e1").expect("first edge");
+        let second = plan.edges.get("e2").expect("second edge");
+        let third = plan.edges.get("e3").expect("third edge");
+        assert!(Arc::ptr_eq(&first.artifact, &second.artifact));
+        assert!(!Arc::ptr_eq(&first.artifact, &third.artifact));
+        assert!(Arc::ptr_eq(
+            first.swimlane_label.as_ref().expect("first Swimlane label"),
+            second
+                .swimlane_label
+                .as_ref()
+                .expect("second Swimlane label"),
+        ));
+        assert!(Arc::ptr_eq(
+            first.swimlane_label.as_ref().expect("first Swimlane label"),
+            third.swimlane_label.as_ref().expect("third Swimlane label"),
+        ));
+
         let projected = plan
-            .edges
-            .get("e1")
-            .expect("prepared edge")
-            .projected_source_style_bytes;
+            .edge_source_style_svg_bytes("e1")
+            .expect("projected source style bytes");
         assert!(projected > 0);
-
-        let exact_meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(
-                    crate::resources::ResourceLimitId::MaxSvgBytes,
-                    37 + projected,
-                )
-                .expect("exact SVG limit"),
+        assert_eq!(
+            projected,
+            plan.edge_source_style_svg_bytes("e2")
+                .expect("shared source style projection")
         );
-        plan.admit_edge_source_style_svg_bytes("e1", 37, &exact_meter)
-            .expect("exact SVG style budget must succeed");
-        assert_eq!(exact_meter.projected_svg_bytes(), projected);
-
-        let short_meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(
-                    crate::resources::ResourceLimitId::MaxSvgBytes,
-                    37 + projected - 1,
-                )
-                .expect("short SVG limit"),
-        );
-        let error = plan
-            .admit_edge_source_style_svg_bytes("e1", 37, &short_meter)
-            .expect_err("short SVG style budget must fail before emission");
-        let crate::Error::ResourceLimitExceeded(error) = error else {
-            panic!("expected structured SVG resource rejection");
-        };
-        assert_eq!(error.limit, "max_svg_bytes");
-        assert_eq!(error.actual, 37 + projected);
-        assert_eq!(error.max, 37 + projected - 1);
-        assert_eq!(short_meter.projected_svg_bytes(), 0);
     }
 
     #[test]

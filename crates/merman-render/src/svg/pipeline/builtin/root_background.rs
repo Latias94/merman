@@ -1,8 +1,37 @@
 use crate::Result;
 use std::borrow::Cow;
+use std::ops::Range;
 
 use super::util::{escape_xml_attr, find_quoted_attr_value_span, find_tag_end};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RootBackgroundEdit {
+    range: Range<usize>,
+    replacement: String,
+}
+
+impl RootBackgroundEdit {
+    fn new(range: Range<usize>, replacement: String) -> Self {
+        Self { range, replacement }
+    }
+
+    pub(crate) fn additional_len(&self) -> usize {
+        self.replacement.len().saturating_sub(self.range.len())
+    }
+
+    pub(crate) fn adjusted_end(&self, end: usize) -> Option<usize> {
+        if self.range.end > end {
+            return None;
+        }
+        end.checked_sub(self.range.len())?
+            .checked_add(self.replacement.len())
+    }
+
+    pub(crate) fn apply(self, svg: &mut String) {
+        svg.replace_range(self.range, &self.replacement);
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootBackgroundPostprocessor {
@@ -36,20 +65,21 @@ impl SvgPostprocessor for RootBackgroundPostprocessor {
             return Ok(svg);
         }
 
-        Ok(Cow::Owned(set_root_background_color(
-            svg.as_ref(),
-            background_color,
-        )))
+        let Some(edit) = set_root_background_color(svg.as_ref(), background_color) else {
+            return Ok(svg);
+        };
+        let mut out = svg.into_owned();
+        edit.apply(&mut out);
+        Ok(Cow::Owned(out))
     }
 }
 
-pub(crate) fn set_root_background_color(svg: &str, background_color: &str) -> String {
-    let Some(svg_start) = svg.find("<svg") else {
-        return svg.to_string();
-    };
-    let Some(svg_end) = find_tag_end(svg, svg_start) else {
-        return svg.to_string();
-    };
+pub(crate) fn set_root_background_color(
+    svg: &str,
+    background_color: &str,
+) -> Option<RootBackgroundEdit> {
+    let svg_start = svg.find("<svg")?;
+    let svg_end = find_tag_end(svg, svg_start)?;
 
     let tag = &svg[svg_start..=svg_end];
     let escaped_color = escape_xml_attr(background_color.trim());
@@ -60,12 +90,10 @@ pub(crate) fn set_root_background_color(svg: &str, background_color: &str) -> St
         let absolute_value_start = svg_start + style_value_start;
         let absolute_value_end = svg_start + style_value_end;
 
-        let mut out =
-            String::with_capacity(svg.len() + rewritten.len().saturating_sub(style.len()));
-        out.push_str(&svg[..absolute_value_start]);
-        out.push_str(&rewritten);
-        out.push_str(&svg[absolute_value_end..]);
-        return out;
+        return Some(RootBackgroundEdit::new(
+            absolute_value_start..absolute_value_end,
+            rewritten,
+        ));
     }
 
     let insert_at = if svg.as_bytes().get(svg_end.saturating_sub(1)) == Some(&b'/') {
@@ -74,13 +102,10 @@ pub(crate) fn set_root_background_color(svg: &str, background_color: &str) -> St
         svg_end
     };
 
-    let mut out = String::with_capacity(svg.len() + escaped_color.len() + 34);
-    out.push_str(&svg[..insert_at]);
-    out.push_str(r#" style="background-color: "#);
-    out.push_str(&escaped_color);
-    out.push_str(r#";""#);
-    out.push_str(&svg[insert_at..]);
-    out
+    Some(RootBackgroundEdit::new(
+        insert_at..insert_at,
+        format!(r#" style="background-color: {escaped_color};""#),
+    ))
 }
 
 fn set_background_in_style_attr(style: &str, background_color: &str) -> String {
@@ -119,6 +144,14 @@ fn set_background_in_style_attr(style: &str, background_color: &str) -> String {
 mod tests {
     use super::*;
     use crate::svg::pipeline::SvgPipeline;
+
+    fn apply_root_background_edit(svg: &str, background_color: &str) -> String {
+        let mut out = svg.to_string();
+        set_root_background_color(&out, background_color)
+            .expect("valid SVG root background edit")
+            .apply(&mut out);
+        out
+    }
 
     fn render_session() -> crate::environment::RenderSession {
         crate::environment::RenderEnvironment::deterministic()
@@ -163,7 +196,7 @@ mod tests {
     fn root_background_escapes_xml_attribute_value() {
         let svg = r#"<svg id="diagram" style="max-width: 400px;"><g/></svg>"#;
 
-        let out = set_root_background_color(svg, "rgb(1, 2, 3)&");
+        let out = apply_root_background_edit(svg, "rgb(1, 2, 3)&");
 
         assert!(out.contains("background-color: rgb(1, 2, 3)&amp;;"));
     }
@@ -173,11 +206,22 @@ mod tests {
         let svg =
             r#"<svg id="diagram" style='max-width: 400px; background-color: white;'><g/></svg>"#;
 
-        let out = set_root_background_color(svg, "#111827");
+        let out = apply_root_background_edit(svg, "#111827");
 
         assert_eq!(
             out,
             r##"<svg id="diagram" style='max-width: 400px; background-color: #111827;'><g/></svg>"##
         );
+    }
+
+    #[test]
+    fn root_background_edit_describes_only_the_root_attribute_replacement() {
+        let svg = r#"<svg id="diagram" style="background-color: white;"><g/></svg>"#;
+        let edit =
+            set_root_background_color(svg, "transparent").expect("valid SVG root background edit");
+
+        assert_eq!(&svg[edit.range.clone()], "background-color: white;");
+        assert_eq!(edit.replacement, "background-color: transparent;");
+        assert_eq!(edit.additional_len(), "transparent".len() - "white".len());
     }
 }

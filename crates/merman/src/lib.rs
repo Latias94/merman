@@ -140,6 +140,14 @@ pub mod __theme_acceptance {
             self.projection.accounted_count
         }
 
+        pub const fn applied_count(&self) -> usize {
+            self.projection.applied_count
+        }
+
+        pub const fn not_applicable_count(&self) -> usize {
+            self.projection.not_applicable_count
+        }
+
         pub const fn incomplete_count(&self) -> usize {
             self.projection.incomplete_count()
         }
@@ -153,7 +161,8 @@ pub mod __theme_acceptance {
         }
 
         pub const fn is_verified(&self) -> bool {
-            self.projection.is_verified()
+            matches!(self.projection.status, crate::ThemeEvidenceStatus::Verified)
+                && self.projection.is_satisfied()
         }
 
         pub const fn is_satisfied(&self) -> bool {
@@ -196,10 +205,19 @@ pub mod __theme_acceptance {
             self.projection.recipe_report
         }
 
+        pub const fn host_admission_report(
+            &self,
+        ) -> Option<&'a merman_render::diagram_theme::ThemeHostAdmissionReport> {
+            self.projection.host_admission_report
+        }
+
         pub const fn portability_requirement(
             &self,
         ) -> Option<merman_render::diagram_theme::ThemePortabilityRequirement> {
-            self.projection.portability_requirement
+            match self.projection.host_admission_report {
+                Some(report) => Some(report.portability_requirement()),
+                None => None,
+            }
         }
 
         pub const fn prepared_text_layout(
@@ -210,6 +228,12 @@ pub mod __theme_acceptance {
 
         pub const fn text_layout_failure(&self) -> Option<merman_render::text::TextLayoutFailure> {
             self.projection.text_layout_failure
+        }
+
+        pub const fn effective_theme_resource_policy(
+            &self,
+        ) -> &'a merman_render::diagram_theme::ThemeResourcePolicy {
+            self.projection.effective_theme_resource_policy
         }
     }
 

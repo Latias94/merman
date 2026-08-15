@@ -93,17 +93,21 @@ pub enum ThemeRouteCutoverProjection {
     MarkerPaintFromEdge = 3,
     ActorFill = 4,
     ActorStroke = 5,
+    NoteFill = 6,
+    NoteStroke = 7,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 8] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
         Self::MarkerPaintFromEdge,
         Self::ActorFill,
         Self::ActorStroke,
+        Self::NoteFill,
+        Self::NoteStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -114,6 +118,8 @@ impl ThemeRouteCutoverProjection {
             Self::MarkerPaintFromEdge => "marker.paint-from-edge",
             Self::ActorFill => "actor.fill",
             Self::ActorStroke => "actor.stroke",
+            Self::NoteFill => "note.fill",
+            Self::NoteStroke => "note.stroke",
         }
     }
 
@@ -125,7 +131,9 @@ impl ThemeRouteCutoverProjection {
             | Self::NodeStroke
             | Self::EdgeStroke
             | Self::ActorFill
-            | Self::ActorStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::ActorStroke
+            | Self::NoteFill
+            | Self::NoteStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -166,6 +174,8 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_ACTOR_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::ActorFill);
     pub const REPLACE_ACTOR_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::ActorStroke);
+    pub const REPLACE_NOTE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::NoteFill);
+    pub const REPLACE_NOTE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::NoteStroke);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())

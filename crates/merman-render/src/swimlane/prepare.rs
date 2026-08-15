@@ -135,6 +135,7 @@ fn measure_content_node(
 
 fn measure_edge_label(
     edge: &FlowEdge,
+    key: crate::flowchart::FlowchartEdgeKey,
     render_label: &str,
     label_node_id: String,
     parent_id: Option<String>,
@@ -154,7 +155,7 @@ fn measure_edge_label(
     };
     let style = ctx
         .edge_style_plan
-        .swimlane_edge_label_text_style(edge.id.as_str(), base_style)?;
+        .swimlane_edge_label_text_style_for(key, base_style)?;
     let label = render_label;
     let semantic_label = edge.label.as_deref().unwrap_or_default();
     let label_type = "text";
@@ -440,7 +441,7 @@ pub(super) fn prepare(
     let mut graph_edges = Vec::with_capacity(model.edges.len() * 2);
     for (edge_index, edge) in model.edges.iter().enumerate() {
         let mut original = working_edge(edge);
-        let render_label = model.edge_label_for_render(edge);
+        let render_label = model.edge_label_for_render(edge_index, edge);
         let has_label = render_label.is_some_and(|label| !label.is_empty());
         if has_label && nodes.contains_key(&edge.from) && nodes.contains_key(&edge.to) {
             let label_node_id = format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id);
@@ -455,6 +456,7 @@ pub(super) fn prepare(
             };
             let label_node = measure_edge_label(
                 edge,
+                crate::flowchart::FlowchartEdgeKey::new(edge_index),
                 render_label.unwrap_or_default(),
                 label_node_id.clone(),
                 label_parent,

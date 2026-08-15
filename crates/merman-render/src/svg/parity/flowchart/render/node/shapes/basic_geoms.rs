@@ -1,7 +1,5 @@
 //! Flowchart v2 basic geometry shapes.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -13,7 +11,7 @@ const FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
 const FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -84,7 +82,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
 ) {
     let w = common.layout_node.width.max(1.0);
@@ -99,7 +97,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
 ) {
     let w = common.layout_node.width.max(1.0);

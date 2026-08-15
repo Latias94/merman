@@ -1665,7 +1665,7 @@ impl FlowchartSemanticSource {
             match flow_edge_to_model(edge, meta) {
                 Ok((edge, render_label_source)) => {
                     if let Some(source) = render_label_source {
-                        render_label_sources.insert_edge(edge.id.clone(), source);
+                        render_label_sources.insert_edge(index, source);
                     }
                     render_edges.push(edge);
                 }
@@ -1974,12 +1974,13 @@ F -- "&nbsp;" --> G
                 .as_deref()
         };
         let edge_render_label = |from: &str| {
-            let edge = model
+            let (semantic_index, edge) = model
                 .edges
                 .iter()
-                .find(|edge| edge.from == from)
+                .enumerate()
+                .find(|(_, edge)| edge.from == from)
                 .unwrap_or_else(|| panic!("missing edge from {from}"));
-            render_label_sources.edge_label_for_render(edge)
+            render_label_sources.edge_label_for_render(semantic_index, edge)
         };
 
         assert_eq!(node_label("Direct"), "Direct");
@@ -2015,6 +2016,25 @@ F -- "&nbsp;" --> G
         assert_eq!(edge_render_label("D"), Some("&nbsp;MixedEdge&nbsp;"));
         assert_eq!(edge_render_label("E"), Some(""));
         assert_eq!(edge_render_label("F"), Some("&nbsp;"));
+
+        let duplicate_edge_source = r#"flowchart LR
+X L_A_B_0@-->|first &amp; owner| Y
+A -->|second &lt; owner| B
+"#;
+        let (duplicate_edge_model, duplicate_edge_sources) =
+            parse_flowchart_model_with_render_context(duplicate_edge_source, &meta)
+                .expect("duplicate-id edge model");
+        assert_eq!(duplicate_edge_model.edges.len(), 2);
+        assert_eq!(duplicate_edge_model.edges[0].id, "L_A_B_0");
+        assert_eq!(duplicate_edge_model.edges[1].id, "L_A_B_0");
+        assert_eq!(
+            duplicate_edge_sources.edge_label_for_render(0, &duplicate_edge_model.edges[0]),
+            Some("first &amp; owner")
+        );
+        assert_eq!(
+            duplicate_edge_sources.edge_label_for_render(1, &duplicate_edge_model.edges[1]),
+            Some("second &lt; owner")
+        );
 
         let subgraph_source =
             format!("flowchart LR\nsubgraph SG[\"{nbsp}&nbsp;Group&nbsp;{nbsp}\"]\n  H\nend\n");

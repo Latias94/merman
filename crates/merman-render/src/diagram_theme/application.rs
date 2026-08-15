@@ -9,44 +9,15 @@ use super::{CanvasSpec, DiagramTheme, DiagramThemeSpec, Specified, ThemeTarget};
 /// Evaluation state for mechanisms that apply outside a selected diagram family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum RootThemeEvaluation {
+pub(crate) enum RootThemeEvaluation {
     NotApplicable,
     Evaluated,
 }
 
-/// Root-level mechanism category whose output is independent of family-local semantic targets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum RootThemeMechanism {
-    CanvasBase,
-    CanvasLayer,
-    CanvasGeometry,
-    CanvasStyle,
-    EffectGraph,
-}
-
-impl RootThemeMechanism {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::CanvasBase => "canvas-base",
-            Self::CanvasLayer => "canvas-layer",
-            Self::CanvasGeometry => "canvas-geometry",
-            Self::CanvasStyle => "canvas-style",
-            Self::EffectGraph => "effect-graph",
-        }
-    }
-}
-
-impl std::fmt::Display for RootThemeMechanism {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.id())
-    }
-}
-
-/// Stable recipe-local identity of one applicable root mechanism.
+/// Recipe-local identity of one applicable root mechanism.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
-pub enum RootThemeMechanismKey {
+pub(crate) enum RootThemeMechanismKey {
     CanvasBase,
     CanvasLayer {
         index: usize,
@@ -98,18 +69,6 @@ impl std::fmt::Display for FamilyThemeMechanismKey {
     }
 }
 
-impl RootThemeMechanismKey {
-    pub const fn mechanism(&self) -> RootThemeMechanism {
-        match self {
-            Self::CanvasBase => RootThemeMechanism::CanvasBase,
-            Self::CanvasLayer { .. } => RootThemeMechanism::CanvasLayer,
-            Self::CanvasGeometry => RootThemeMechanism::CanvasGeometry,
-            Self::CanvasRule { .. } | Self::CanvasOrdinalPalette => RootThemeMechanism::CanvasStyle,
-            Self::EffectBinding { .. } => RootThemeMechanism::EffectGraph,
-        }
-    }
-}
-
 impl std::fmt::Display for RootThemeMechanismKey {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -128,7 +87,7 @@ impl std::fmt::Display for RootThemeMechanismKey {
 /// Why a root-level mechanism remains outside the renderer's proof boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
-pub enum RootThemeResidualReason {
+pub(crate) enum RootThemeResidualReason {
     NoConsumer,
     OutputMutation,
 }
@@ -150,7 +109,7 @@ impl std::fmt::Display for RootThemeResidualReason {
 
 /// Immutable evidence for one unapplied root-level theme mechanism.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RootThemeResidual {
+pub(crate) struct RootThemeResidual {
     key: RootThemeMechanismKey,
     capabilities: BTreeSet<ThemeCapability>,
     reason: RootThemeResidualReason,
@@ -159,10 +118,6 @@ pub struct RootThemeResidual {
 impl RootThemeResidual {
     pub const fn key(&self) -> &RootThemeMechanismKey {
         &self.key
-    }
-
-    pub const fn mechanism(&self) -> RootThemeMechanism {
-        self.key.mechanism()
     }
 
     pub fn capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
@@ -193,7 +148,7 @@ impl std::fmt::Display for RootThemeResidual {
 
 /// Capability-level evidence for one root mechanism.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RootThemeMechanismEvidence {
+pub(crate) struct RootThemeMechanismEvidence {
     key: RootThemeMechanismKey,
     required_capabilities: BTreeSet<ThemeCapability>,
     applied_capabilities: BTreeSet<ThemeCapability>,
@@ -241,7 +196,7 @@ impl RootThemeMechanismEvidence {
 /// Frozen root-level theme evidence. Positive verification requires explicit per-mechanism
 /// coverage; an empty residual list alone can never manufacture success.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RootThemeReport {
+pub(crate) struct RootThemeReport {
     evaluation: RootThemeEvaluation,
     mechanisms: Vec<RootThemeMechanismEvidence>,
     required_mechanisms: Vec<RootThemeMechanismKey>,
@@ -488,6 +443,15 @@ pub enum RootThemeVerification {
     Verified,
     Unverified,
     Incomplete,
+}
+
+impl RootThemeVerification {
+    pub const ALL: &'static [Self] = &[
+        Self::NotApplicable,
+        Self::Verified,
+        Self::Unverified,
+        Self::Incomplete,
+    ];
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

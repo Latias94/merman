@@ -163,7 +163,7 @@ fn is_css_generic_family(value: &str) -> bool {
     )
 }
 
-fn is_css_wide_keyword(value: &str) -> bool {
+pub(crate) fn is_css_wide_keyword(value: &str) -> bool {
     matches!(
         value.to_ascii_lowercase().as_str(),
         "inherit" | "initial" | "revert" | "revert-layer" | "unset"

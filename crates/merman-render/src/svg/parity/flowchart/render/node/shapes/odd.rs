@@ -1,7 +1,5 @@
 //! Flowchart v2 odd shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -9,7 +7,7 @@ use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,

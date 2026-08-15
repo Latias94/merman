@@ -478,7 +478,7 @@ fn state_edge_prepare_geometry(
 
 #[allow(clippy::too_many_arguments)]
 fn write_state_edge_path(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     edge_id: &str,
@@ -520,7 +520,7 @@ fn write_state_edge_path(
 }
 
 pub(super) fn render_state_edge_path(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     edge: &StateSvgEdge,
     origin_x: f64,
@@ -568,7 +568,7 @@ pub(super) fn render_state_edge_path(
 }
 
 pub(super) fn render_state_edge_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
     edge: &StateSvgEdge,
     origin_x: f64,
@@ -596,7 +596,12 @@ pub(super) fn render_state_edge_label(
         }
     }
 
-    fn write_empty_edge_label(out: &mut String, id: &str, html_labels: bool, html_style: &str) {
+    fn write_empty_edge_label(
+        out: &mut impl SvgOutput,
+        id: &str,
+        html_labels: bool,
+        html_style: &str,
+    ) {
         if html_labels {
             let _ = write!(
                 out,
@@ -614,7 +619,7 @@ pub(super) fn render_state_edge_label(
     }
 
     fn write_visible_edge_label(
-        out: &mut String,
+        out: &mut impl SvgOutput,
         id: &str,
         label_text: &str,
         prepared: Option<&crate::state::PreparedStateLabel>,

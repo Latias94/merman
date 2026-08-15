@@ -9,7 +9,7 @@ use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_hourglass_collate(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -46,7 +46,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hourglass_collate(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_notched_rectangle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
 ) {
     let w = common.layout_node.width.max(1.0);

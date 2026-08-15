@@ -4,6 +4,8 @@
 
 use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor, rgba};
 
+use super::SvgOutput;
+
 pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
 
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
@@ -200,8 +202,6 @@ pub(super) fn scoped_svg_url(diagram_id: &str, local_id: &str) -> String {
     format!("url(#{})", scoped_svg_id(diagram_id, local_id))
 }
 
-use std::fmt::Write as _;
-
 pub(super) fn fmt_string(v: f64) -> String {
     let mut out = String::new();
     fmt_into(&mut out, v);
@@ -218,7 +218,7 @@ pub(super) fn fmt_points(points: &[crate::model::LayoutPoint]) -> String {
     out
 }
 
-pub(super) fn push_points_attr(out: &mut String, points: &[crate::model::LayoutPoint]) {
+pub(super) fn push_points_attr(out: &mut impl SvgOutput, points: &[crate::model::LayoutPoint]) {
     for (idx, point) in points.iter().enumerate() {
         if idx > 0 {
             out.push(' ');
@@ -227,7 +227,7 @@ pub(super) fn push_points_attr(out: &mut String, points: &[crate::model::LayoutP
     }
 }
 
-pub(super) fn push_point_pair(out: &mut String, x: f64, y: f64) {
+pub(super) fn push_point_pair(out: &mut impl SvgOutput, x: f64, y: f64) {
     let _ = write!(out, "{},{}", fmt_display(x), fmt_display(y));
 }
 
@@ -269,7 +269,7 @@ impl std::fmt::Display for FmtDisplay {
     }
 }
 
-pub(super) fn fmt_into(out: &mut String, v: f64) {
+pub(super) fn fmt_into(out: &mut impl SvgOutput, v: f64) {
     // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
     // use a round-trippable decimal form (similar to JS `Number#toString()`),
     // but avoid `-0` and tiny float noise from our own calculations.
@@ -300,7 +300,7 @@ pub(super) fn fmt_path(v: f64) -> String {
     out
 }
 
-pub(super) fn fmt_path_into(out: &mut String, v: f64) {
+pub(super) fn fmt_path_into(out: &mut impl SvgOutput, v: f64) {
     // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
     // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
     // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).
@@ -322,7 +322,7 @@ pub(super) fn fmt_path_into(out: &mut String, v: f64) {
     append_fixed_3dp_trimmed(out, k);
 }
 
-fn append_fixed_3dp_trimmed(out: &mut String, k: i64) {
+fn append_fixed_3dp_trimmed(out: &mut impl SvgOutput, k: i64) {
     if k == 0 {
         out.push('0');
         return;
@@ -337,7 +337,6 @@ fn append_fixed_3dp_trimmed(out: &mut String, k: i64) {
         out.push('-');
     }
 
-    use std::fmt::Write as _;
     let _ = write!(out, "{int_part}");
 
     if frac == 0 {
@@ -458,7 +457,7 @@ fn xml_attr_replacement(ch: char) -> Option<&'static str> {
     }
 }
 
-pub(super) fn escape_xml_into(out: &mut String, text: &str) {
+pub(super) fn escape_xml_into(out: &mut impl SvgOutput, text: &str) {
     if xml_text_is_plain_ascii(text) {
         out.push_str(text);
         return;
@@ -468,7 +467,7 @@ pub(super) fn escape_xml_into(out: &mut String, text: &str) {
     escape_xml_raw_into(out, decoded.as_ref());
 }
 
-pub(super) fn escape_xml_raw_into(out: &mut String, text: &str) {
+pub(super) fn escape_xml_raw_into(out: &mut impl SvgOutput, text: &str) {
     if xml_raw_text_is_plain_ascii(text) {
         out.push_str(text);
         return;
@@ -561,7 +560,7 @@ pub(super) fn escape_attr(text: &str) -> String {
     out
 }
 
-pub(super) fn escape_attr_into(out: &mut String, text: &str) {
+pub(super) fn escape_attr_into(out: &mut impl SvgOutput, text: &str) {
     let mut start = 0usize;
     for (i, ch) in text.char_indices() {
         let Some(replacement) = xml_attr_replacement(ch) else {

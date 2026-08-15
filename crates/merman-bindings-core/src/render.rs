@@ -87,6 +87,7 @@ impl RenderOperationConfig {
         runtime_policy: merman::runtime::RuntimePolicy,
         capability_policy: merman::svg::RenderCapabilityPolicy,
         theme: Option<merman::svg::DiagramTheme>,
+        theme_resources: merman::svg::ThemeResourcePolicy,
     ) -> Result<Self, BindingError> {
         Ok(Self {
             plan: request::RenderOperationConfig::compile(
@@ -94,6 +95,7 @@ impl RenderOperationConfig {
                 runtime_policy,
                 capability_policy,
                 theme,
+                theme_resources,
             )?,
         })
     }

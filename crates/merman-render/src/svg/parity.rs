@@ -43,6 +43,7 @@ mod kanban;
 mod label;
 mod layout_debug;
 mod mindmap;
+mod output;
 mod packet;
 mod path_bounds;
 mod pie;
@@ -70,6 +71,7 @@ use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_theme_font_size_only,
     info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
 };
+use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
@@ -496,7 +498,7 @@ pub(crate) fn render_builtin_family_artifact(
     let execution = SvgExecution::new(options, debug, family_execution)?;
     let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution)?;
     let (rooted_svg, root_theme) =
-        rooted_svg.apply_root_theme(family_execution.root_theme_plan())?;
+        rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
     let (svg, theme_css_applied) = apply_theme_css(
         svg,
@@ -537,7 +539,7 @@ pub(crate) fn render_architecture_family_artifact(
         &execution,
     )?;
     let (rooted_svg, root_theme) =
-        rooted_svg.apply_root_theme(family_execution.root_theme_plan())?;
+        rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
     let (svg, theme_css_applied) =
         apply_theme_css(svg, effective_config.as_value(), family_execution.session())?;

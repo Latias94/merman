@@ -1,6 +1,7 @@
 //! Flowchart style compilation helpers.
 
 use super::*;
+use cssparser::{BasicParseErrorKind, Parser, ParserInput, Token};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use std::sync::Arc;
@@ -8,6 +9,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     edge_class_declarations: Vec<Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>>,
+    edge_animation_active: Option<bool>,
     edge_class_shape_sources: Vec<PendingSourceDeclaration>,
     pub(super) node_style: String,
     pub(super) label_style: String,
@@ -315,6 +317,10 @@ impl FlowchartCompiledStyles {
         &self.edge_class_declarations
     }
 
+    pub(super) const fn edge_animation_active(&self) -> Option<bool> {
+        self.edge_animation_active
+    }
+
     pub(super) fn edge_marker_color(&self, hand_drawn: bool) -> Option<&str> {
         let source = if hand_drawn {
             self.inline_stroke_source.as_ref()?
@@ -324,7 +330,7 @@ impl FlowchartCompiledStyles {
         Some(if hand_drawn {
             source.prepared.raw()
         } else {
-            source.prepared.value()
+            marker_source_value(&source.prepared)
         })
     }
 
@@ -333,36 +339,81 @@ impl FlowchartCompiledStyles {
         default_edge_style: &[String],
         edge_style: &[String],
         hand_drawn: bool,
-    ) -> usize {
-        let joined_inline = projected_joined_style_bytes(default_edge_style, edge_style);
+    ) -> Option<usize> {
+        let joined_inline = projected_joined_style_bytes(default_edge_style, edge_style)?;
         if hand_drawn {
-            return joined_inline;
+            return Some(joined_inline);
         }
 
-        let class_bytes = self
-            .edge_class_declarations
-            .iter()
-            .enumerate()
-            .map(|(index, declaration)| {
-                usize::from(index != 0)
-                    .saturating_add(super::super::util::escaped_xml_len(
+        let class_bytes = self.edge_class_declarations.iter().enumerate().try_fold(
+            0usize,
+            |bytes, (index, declaration)| {
+                let declaration_bytes = usize::from(index != 0)
+                    .checked_add(super::super::util::escaped_xml_len(
                         declaration.property_css(),
-                    ))
-                    .saturating_add(1)
-                    .saturating_add(super::super::util::escaped_xml_len(
+                    ))?
+                    .checked_add(1)?
+                    .checked_add(super::super::util::escaped_xml_len(
                         declaration.source_value(),
-                    ))
-            })
-            .fold(0usize, usize::saturating_add);
+                    ))?;
+                bytes.checked_add(declaration_bytes)
+            },
+        )?;
         let class_separator = usize::from(!self.edge_class_declarations.is_empty());
         let inline_bytes = if default_edge_style.is_empty() && edge_style.is_empty() {
             1
         } else {
-            joined_inline.saturating_mul(2).saturating_add(3)
+            joined_inline.checked_mul(2)?.checked_add(3)?
         };
         class_bytes
-            .saturating_add(class_separator)
-            .saturating_add(inline_bytes)
+            .checked_add(class_separator)?
+            .checked_add(inline_bytes)
+    }
+
+    /// Drops node-only compiled payload while preserving every path, marker, label, and evidence
+    /// input consumed by Flowchart edge rendering.
+    pub(in crate::svg::parity::flowchart) fn into_edge_artifact(
+        mut self,
+        hand_drawn: bool,
+    ) -> Self {
+        self.node_style = String::new();
+        self.fill = None;
+        self.fill_source = None;
+        self.stroke = None;
+        self.stroke_width = None;
+        self.stroke_width_source = None;
+        self.radius_sources = Vec::new();
+        self.stroke_dasharray = None;
+        self.stroke_dasharray_source = None;
+        self.generated_shape_sources = Vec::new();
+
+        if hand_drawn {
+            // Hand-drawn edges emit inline shape declarations directly and report assigned-class
+            // declarations as unsupported. The semantic winner list supplies the latter evidence.
+            self.edge_class_shape_sources = Vec::new();
+        }
+        self
+    }
+
+    /// Swimlane edge-label nodes consume label typography plus shape residuals, but never edge
+    /// path declarations or node shape facets.
+    pub(in crate::svg::parity::flowchart) fn into_swimlane_edge_label_artifact(mut self) -> Self {
+        self.edge_class_declarations = Vec::new();
+        self.edge_class_shape_sources = Vec::new();
+        self.node_style = String::new();
+        self.fill = None;
+        self.fill_source = None;
+        self.stroke = None;
+        self.stroke_source = None;
+        self.inline_stroke_source = None;
+        self.stroke_width = None;
+        self.stroke_width_source = None;
+        self.radius_sources = Vec::new();
+        self.stroke_dasharray = None;
+        self.stroke_dasharray_source = None;
+        self.inline_shape_sources = Vec::new();
+        self.generated_shape_sources = Vec::new();
+        self
     }
 
     pub(super) fn effective_edge_label_text_style<'a>(
@@ -620,6 +671,19 @@ impl FlowchartCompiledStyles {
         owner_id: &str,
         source_style_verified: bool,
     ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
+        let receipt = if source_style_verified {
+            crate::flowchart::FlowchartShapeFacetEmissionReceipt::all()
+        } else {
+            crate::flowchart::FlowchartShapeFacetEmissionReceipt::none()
+        };
+        self.emitted_shape_source_residuals_with_receipt(owner_id, receipt)
+    }
+
+    pub(super) fn emitted_shape_source_residuals_with_receipt(
+        &self,
+        owner_id: &str,
+        receipt: crate::flowchart::FlowchartShapeFacetEmissionReceipt,
+    ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
         let mut residuals = self
             .invalid_source_residuals(owner_id, crate::diagram_theme::SourceStyleChannel::Shape);
         residuals.extend(
@@ -632,6 +696,7 @@ impl FlowchartCompiledStyles {
                         crate::diagram_theme::SourceStyleChannel::Shape,
                         false,
                     );
+                    let source_style_verified = receipt.verifies(source.prepared.property());
                     emitted_shape_source_residual_reason(&declaration, source_style_verified).map(
                         |reason| {
                             crate::diagram_theme::SourceStyleResidual::from_declaration(
@@ -750,14 +815,218 @@ impl FlowchartCompiledStyles {
     }
 }
 
-fn projected_joined_style_bytes(a: &[String], b: &[String]) -> usize {
+fn marker_source_value(declaration: &crate::diagram_theme::PreparedSourceStyleDeclaration) -> &str {
+    let Some((_, source_value)) = declaration.raw().split_once(':') else {
+        return declaration.value();
+    };
+    let source_value = source_value.trim_end_matches(';');
+    if !declaration.important() {
+        return source_value;
+    }
+
+    let value = declaration.value();
+    source_value
+        .find(value)
+        .map(|offset| &source_value[..offset + value.len()])
+        .unwrap_or(value)
+}
+
+fn flowchart_edge_animation_declaration_active(
+    declaration: &crate::diagram_theme::PreparedSourceStyleDeclaration,
+) -> Option<bool> {
+    match declaration.property() {
+        "animation" => parse_flowchart_animation_shorthand(declaration.value()),
+        "animation-name" => parse_flowchart_animation_name(declaration.value()),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlowchartAnimationNameComponent {
+    Active,
+    Inactive,
+    CssWide,
+}
+
+const FLOWCHART_DYNAMIC_ANIMATION_FUNCTIONS: &[&str] = &["var", "env"];
+const FLOWCHART_ANIMATION_FUNCTIONS: &[&str] = &[
+    "linear",
+    "cubic-bezier",
+    "steps",
+    "calc",
+    "min",
+    "max",
+    "clamp",
+    "scroll",
+    "view",
+];
+const FLOWCHART_ANIMATION_SHORTHAND_KEYWORDS: &[&str] = &[
+    "none",
+    "ease",
+    "ease-in",
+    "ease-out",
+    "ease-in-out",
+    "linear",
+    "step-start",
+    "step-end",
+    "infinite",
+    "normal",
+    "reverse",
+    "alternate",
+    "alternate-reverse",
+    "forwards",
+    "backwards",
+    "both",
+    "running",
+    "paused",
+    "auto",
+];
+
+fn flowchart_animation_identifier_matches(value: &str, candidates: &[&str]) -> bool {
+    candidates
+        .iter()
+        .any(|candidate| value.eq_ignore_ascii_case(candidate))
+}
+
+fn parse_flowchart_animation_name(value: &str) -> Option<bool> {
+    let mut input = ParserInput::new(value);
+    let mut parser = Parser::new(&mut input);
+    let names = parser
+        .parse_comma_separated(parse_flowchart_animation_name_component)
+        .ok()?;
+    if names.len() != 1
+        && names
+            .iter()
+            .any(|name| *name == FlowchartAnimationNameComponent::CssWide)
+    {
+        return None;
+    }
+    Some(
+        names
+            .iter()
+            .any(|name| *name == FlowchartAnimationNameComponent::Active),
+    )
+}
+
+fn parse_flowchart_animation_name_component<'i, 't>(
+    parser: &mut Parser<'i, 't>,
+) -> std::result::Result<FlowchartAnimationNameComponent, cssparser::ParseError<'i, ()>> {
+    let token = parser.next()?.clone();
+    let component = match token {
+        Token::Ident(name) if name.eq_ignore_ascii_case("none") => {
+            FlowchartAnimationNameComponent::Inactive
+        }
+        Token::Ident(name) if crate::diagram_theme::is_css_wide_keyword(name.as_ref()) => {
+            FlowchartAnimationNameComponent::CssWide
+        }
+        Token::Ident(_) | Token::QuotedString(_) => FlowchartAnimationNameComponent::Active,
+        Token::Function(name)
+            if flowchart_animation_identifier_matches(
+                name.as_ref(),
+                FLOWCHART_DYNAMIC_ANIMATION_FUNCTIONS,
+            ) =>
+        {
+            consume_flowchart_animation_function(parser)?;
+            FlowchartAnimationNameComponent::Active
+        }
+        _ => return Err(parser.new_custom_error(())),
+    };
+    parser.expect_exhausted()?;
+    Ok(component)
+}
+
+fn parse_flowchart_animation_shorthand(value: &str) -> Option<bool> {
+    let mut input = ParserInput::new(value);
+    let mut parser = Parser::new(&mut input);
+    parser
+        .parse_comma_separated(parse_flowchart_single_animation)
+        .ok()
+        .map(|animations| animations.into_iter().any(std::convert::identity))
+}
+
+fn parse_flowchart_single_animation<'i, 't>(
+    parser: &mut Parser<'i, 't>,
+) -> std::result::Result<bool, cssparser::ParseError<'i, ()>> {
+    let mut active_name = false;
+    let mut name_seen = false;
+    let mut component_count = 0usize;
+    let mut css_wide = false;
+
+    loop {
+        let token = match parser.next_including_whitespace() {
+            Ok(token) => token.clone(),
+            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => break,
+            Err(error) => return Err(error.into()),
+        };
+        if matches!(token, Token::WhiteSpace(_)) {
+            continue;
+        }
+        component_count = component_count.saturating_add(1);
+        match token {
+            Token::Ident(name) if crate::diagram_theme::is_css_wide_keyword(name.as_ref()) => {
+                css_wide = true;
+            }
+            Token::Ident(name) if flowchart_animation_shorthand_keyword(name.as_ref()) => {}
+            Token::Ident(_) | Token::QuotedString(_) => {
+                if name_seen {
+                    return Err(parser.new_custom_error(()));
+                }
+                name_seen = true;
+                active_name = true;
+            }
+            Token::Dimension { unit, .. }
+                if unit.eq_ignore_ascii_case("s") || unit.eq_ignore_ascii_case("ms") => {}
+            Token::Number { value, .. } if value.is_finite() && value >= 0.0 => {}
+            Token::Function(name) => {
+                let dynamic = flowchart_animation_identifier_matches(
+                    name.as_ref(),
+                    FLOWCHART_DYNAMIC_ANIMATION_FUNCTIONS,
+                );
+                let known = dynamic
+                    || flowchart_animation_identifier_matches(
+                        name.as_ref(),
+                        FLOWCHART_ANIMATION_FUNCTIONS,
+                    );
+                if !known {
+                    return Err(parser.new_custom_error(()));
+                }
+                consume_flowchart_animation_function(parser)?;
+                if dynamic {
+                    active_name = true;
+                }
+            }
+            _ => return Err(parser.new_custom_error(())),
+        }
+    }
+
+    if component_count == 0 || (css_wide && component_count != 1) {
+        return Err(parser.new_custom_error(()));
+    }
+    Ok(active_name)
+}
+
+fn consume_flowchart_animation_function<'i, 't>(
+    parser: &mut Parser<'i, 't>,
+) -> std::result::Result<(), cssparser::ParseError<'i, ()>> {
+    parser.parse_nested_block(|nested| {
+        while nested.next_including_whitespace().is_ok() {}
+        Ok(())
+    })
+}
+
+fn flowchart_animation_shorthand_keyword(value: &str) -> bool {
+    flowchart_animation_identifier_matches(value, FLOWCHART_ANIMATION_SHORTHAND_KEYWORDS)
+}
+
+fn projected_joined_style_bytes(a: &[String], b: &[String]) -> Option<usize> {
     a.iter()
         .chain(b)
         .enumerate()
-        .map(|(index, part)| {
-            usize::from(index != 0).saturating_add(super::super::util::escaped_xml_len(part))
+        .try_fold(0usize, |bytes, (index, part)| {
+            bytes.checked_add(
+                usize::from(index != 0).checked_add(super::super::util::escaped_xml_len(part))?,
+            )
         })
-        .fold(0usize, usize::saturating_add)
 }
 
 fn sanitized_xhtml_source_residuals(
@@ -1478,10 +1747,44 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         }
     }
 
+    #[derive(Default)]
+    struct AnimationNameCascade {
+        winner: Option<(bool, bool)>,
+    }
+
+    impl AnimationNameCascade {
+        fn observe(
+            &mut self,
+            prepared: &crate::diagram_theme::PreparedSourceStyleDeclaration,
+            work_meter: Option<&crate::resources::OperationWorkMeter>,
+        ) -> std::result::Result<(), crate::resources::OperationWorkError> {
+            if !matches!(prepared.property(), "animation" | "animation-name") {
+                return Ok(());
+            }
+            charge_style_scan(work_meter, prepared.value().len())?;
+            let Some(active) = flowchart_edge_animation_declaration_active(prepared) else {
+                return Ok(());
+            };
+            if self
+                .winner
+                .is_some_and(|(_, important)| important && !prepared.important())
+            {
+                return Ok(());
+            }
+            self.winner = Some((active, prepared.important()));
+            Ok(())
+        }
+
+        fn active(&self) -> Option<bool> {
+            self.winner.map(|(active, _)| active)
+        }
+    }
+
     let mut semantic = SemanticMap::default();
     let mut inline_semantic = SemanticMap::default();
     let mut inline_declarations = Vec::new();
     let mut emission = EmissionMap::default();
+    let mut animation_name = AnimationNameCascade::default();
     let mut edge_class_declarations = Vec::new();
     let mut edge_class_shape_sources = Vec::new();
     let mut invalid_sources = Vec::new();
@@ -1520,6 +1823,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
                     provenance: provenance.clone(),
                 });
             }
+            animation_name.observe(&prepared, work_meter)?;
             emission.set(Arc::clone(&prepared));
             semantic.set(prepared, provenance);
         }
@@ -1549,6 +1853,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
                 prepared: Arc::clone(&prepared),
                 provenance: provenance.clone(),
             });
+            animation_name.observe(&prepared, work_meter)?;
             emission.set(Arc::clone(&prepared));
             inline_semantic.set(Arc::clone(&prepared), provenance.clone());
             semantic.set(prepared, provenance);
@@ -1735,6 +2040,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
     }));
     Ok(FlowchartCompiledStyles {
         edge_class_declarations,
+        edge_animation_active: animation_name.active(),
         edge_class_shape_sources,
         node_style,
         label_style,
@@ -1845,6 +2151,7 @@ mod tests {
     fn color_style(value: &str) -> FlowchartCompiledStyles {
         FlowchartCompiledStyles {
             edge_class_declarations: Vec::new(),
+            edge_animation_active: None,
             edge_class_shape_sources: Vec::new(),
             node_style: String::new(),
             label_style: String::new(),
@@ -1883,6 +2190,81 @@ mod tests {
             flowchart_label_div_style_prefix(&color_style("var(--LabelColor)"), true),
             "color: var(--LabelColor) !important; "
         );
+    }
+
+    #[test]
+    fn animation_keyword_and_function_tables_are_ascii_case_insensitive() {
+        assert!(flowchart_animation_shorthand_keyword("EaSe-In"));
+        assert_eq!(
+            parse_flowchart_animation_shorthand("2s LiNeAr(0, 1) BoTh"),
+            Some(false)
+        );
+        assert_eq!(
+            parse_flowchart_animation_shorthand("VaR(--animation-name) 2s EaSe-In"),
+            Some(true)
+        );
+        assert_eq!(
+            parse_flowchart_animation_name("EnV(--animation-name)"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn edge_artifacts_drop_node_only_payload_without_losing_edge_evidence() {
+        let class_defs = IndexMap::from([(
+            "edge-source".to_string(),
+            vec![
+                "fill:#f8fafc,stroke:#2563eb,stroke-width:3px,rx:4px".to_string(),
+                "color:#111827,font-size:18px,filter:url(#shadow)".to_string(),
+            ],
+        )]);
+        let compiled = flowchart_compile_styles(
+            &class_defs,
+            &["edge-source".to_string()],
+            &["stroke:#16a34a,stroke-dasharray:4 2".to_string()],
+            &["invalid-source".to_string()],
+        );
+
+        assert!(!compiled.node_style.is_empty());
+        assert!(compiled.fill_source.is_some());
+        assert!(compiled.stroke_width_source.is_some());
+        assert!(!compiled.radius_sources.is_empty());
+        assert!(!compiled.generated_shape_sources.is_empty());
+
+        let ordinary = compiled.clone().into_edge_artifact(false);
+        assert!(ordinary.node_style.is_empty());
+        assert!(ordinary.fill.is_none());
+        assert!(ordinary.fill_source.is_none());
+        assert!(ordinary.stroke.is_none());
+        assert!(ordinary.stroke_width.is_none());
+        assert!(ordinary.stroke_width_source.is_none());
+        assert!(ordinary.radius_sources.is_empty());
+        assert!(ordinary.stroke_dasharray.is_none());
+        assert!(ordinary.stroke_dasharray_source.is_none());
+        assert!(ordinary.generated_shape_sources.is_empty());
+        assert!(!ordinary.shape_sources.is_empty());
+        assert!(!ordinary.edge_class_declarations.is_empty());
+        assert!(!ordinary.edge_class_shape_sources.is_empty());
+        assert!(!ordinary.inline_shape_sources.is_empty());
+        assert!(ordinary.stroke_source.is_some());
+        assert!(ordinary.inline_stroke_source.is_some());
+        assert!(!ordinary.label_sources.is_empty());
+        assert!(!ordinary.invalid_sources.is_empty());
+
+        let hand_drawn = compiled.clone().into_edge_artifact(true);
+        assert!(hand_drawn.edge_class_shape_sources.is_empty());
+        assert!(!hand_drawn.shape_sources.is_empty());
+        assert!(!hand_drawn.inline_shape_sources.is_empty());
+        assert!(hand_drawn.inline_stroke_source.is_some());
+
+        let swimlane_label = compiled.into_swimlane_edge_label_artifact();
+        assert!(swimlane_label.edge_class_declarations.is_empty());
+        assert!(swimlane_label.edge_class_shape_sources.is_empty());
+        assert!(swimlane_label.node_style.is_empty());
+        assert!(swimlane_label.stroke_source.is_none());
+        assert!(swimlane_label.inline_shape_sources.is_empty());
+        assert!(!swimlane_label.shape_sources.is_empty());
+        assert!(!swimlane_label.label_sources.is_empty());
     }
 
     #[test]

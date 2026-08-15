@@ -4,12 +4,15 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
-    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion, Specified,
-    TextStylePatch, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeVariant,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, Specified, TextStylePatch,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn state_edge_data_points(svg: &str, edge_id: &str) -> Vec<merman_render::model::LayoutPoint> {
@@ -66,6 +69,130 @@ fn svg_view_box(svg: &str) -> [f64; 4] {
     values.try_into().expect("four-component viewBox")
 }
 
+fn state_diagram_title_x(svg: &str) -> f64 {
+    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text") && node.attribute("class") == Some("statediagramTitleText")
+        })
+        .and_then(|node| node.attribute("x"))
+        .expect("State diagram title x")
+        .parse()
+        .expect("numeric State diagram title x")
+}
+
+fn state_effect_filter_regions(svg: &str) -> Vec<(f64, f64, [f64; 4])> {
+    let document = roxmltree::Document::parse(svg).expect("valid themed State SVG XML");
+    let mut regions = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class") == Some("basic label-container")
+                && node.attribute("filter").is_some()
+        })
+        .map(|rect| {
+            let filter_id = rect
+                .attribute("filter")
+                .and_then(|value| value.strip_prefix("url(#"))
+                .and_then(|value| value.strip_suffix(')'))
+                .expect("State rect typed filter reference");
+            let filter = document
+                .descendants()
+                .find(|node| node.has_tag_name("filter") && node.attribute("id") == Some(filter_id))
+                .expect("referenced State filter definition");
+            let parse = |node: roxmltree::Node<'_, '_>, name: &str| {
+                node.attribute(name)
+                    .unwrap_or_else(|| panic!("missing {name} on {}", node.tag_name().name()))
+                    .parse::<f64>()
+                    .unwrap_or_else(|_| panic!("numeric {name} on {}", node.tag_name().name()))
+            };
+            (
+                parse(rect, "width"),
+                parse(rect, "height"),
+                [
+                    parse(filter, "x"),
+                    parse(filter, "y"),
+                    parse(filter, "width"),
+                    parse(filter, "height"),
+                ],
+            )
+        })
+        .collect::<Vec<_>>();
+    regions.sort_by(|left, right| left.0.total_cmp(&right.0));
+    regions
+}
+
+fn state_hard_shadow_theme(offset_x: f32, offset_y: f32, stroke_width: f32) -> DiagramTheme {
+    state_hard_shadow_theme_with(
+        DiagramThemeCompiler::new(),
+        offset_x,
+        offset_y,
+        Some(
+            ThemeStylePatch::default()
+                .with_stroke_width(stroke_width)
+                .expect("valid State stroke width"),
+        ),
+    )
+}
+
+fn state_hard_shadow_theme_with(
+    compiler: DiagramThemeCompiler,
+    offset_x: f32,
+    offset_y: f32,
+    style: Option<ThemeStylePatch>,
+) -> DiagramTheme {
+    let graph = EffectGraph::new(
+        "state-hard-shadow",
+        [EffectPrimitive::DropShadow {
+            input: EffectInput::SourceGraphic,
+            offset_x,
+            offset_y,
+            blur_radius: 0.0,
+            spread: 0.0,
+            color: ThemeColorValue::parse("#111827").expect("valid shadow color"),
+        }],
+    )
+    .expect("valid bounded hard-shadow graph");
+    let effects = DiagramEffectSet::default()
+        .with_graph(graph)
+        .expect("unique effect graph")
+        .with_binding(
+            EffectBinding::new(ThemeTarget::State, "state-hard-shadow")
+                .expect("valid State effect binding"),
+        )
+        .expect("unique State effect binding");
+    let mut spec = DiagramThemeSpec::new().with_effects(effects);
+    if let Some(style) = style {
+        spec = spec.with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::State, style)),
+        );
+    }
+    compiler
+        .compile(spec)
+        .expect("compile State hard-shadow theme")
+}
+
+fn assert_filter_region_matches_outsets(
+    width: f64,
+    height: f64,
+    region: [f64; 4],
+    expected: [f64; 4],
+) {
+    let actual = [
+        -region[1] * height,
+        (region[0] + region[2] - 1.0) * width,
+        (region[1] + region[3] - 1.0) * height,
+        -region[0] * width,
+    ];
+    for (actual, expected) in actual.into_iter().zip(expected) {
+        assert!(
+            actual >= expected - 1.0e-5 && actual <= expected + 1.0e-3,
+            "expected outset {expected}, got {actual} from region {region:?}"
+        );
+    }
+}
+
 fn render_state_svg_from_text(text: &str) -> String {
     render_state_svg_from_text_with_engine(Engine::new(), text)
 }
@@ -86,10 +213,76 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         .to_string()
 }
 
-fn render_state_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
+fn try_render_state_svg_with_resource_policy(
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
     let session = RenderEnvironment::deterministic()
-        .begin_session_with_theme(theme)
-        .unwrap();
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin State resource-bound session");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse State resource-bound fixture")
+        .expect("detect State resource-bound fixture");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered =
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn state_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = "stateDiagram-v2\n[*] --> Ready\nReady --> Done: advance\nDone --> [*]\n";
+    let baseline = try_render_state_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded State baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "State fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact State SVG byte ceiling");
+    let exact = try_render_state_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact State family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact State SVG byte ceiling");
+    let error = try_render_state_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the State family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected State MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
+}
+
+fn render_state_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
+    render_state_svg_from_text_with_theme_in_environment(
+        text,
+        theme,
+        &RenderEnvironment::deterministic(),
+    )
+}
+
+fn render_state_svg_from_text_with_theme_in_environment(
+    text: &str,
+    theme: &DiagramTheme,
+    environment: &RenderEnvironment,
+) -> String {
+    let session = environment.begin_session_with_theme(theme).unwrap();
     let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -105,33 +298,9 @@ fn render_state_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> St
 }
 
 #[test]
-fn state_svg_emits_bounded_typed_drop_shadow_on_classic_state_nodes() {
-    let graph = EffectGraph::new(
-        "state-hard-shadow",
-        FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
-        [EffectPrimitive::DropShadow {
-            input: EffectInput::SourceGraphic,
-            offset_x: 5.0,
-            offset_y: 6.0,
-            blur_radius: 0.0,
-            spread: 0.0,
-            color: ThemeColorValue::parse("#111827").expect("valid shadow color"),
-        }],
-    )
-    .expect("valid bounded hard-shadow graph");
-    let effects = DiagramEffectSet::default()
-        .with_graph(graph)
-        .expect("unique effect graph")
-        .with_binding(
-            EffectBinding::new(ThemeTarget::State, "state-hard-shadow")
-                .expect("valid State effect binding"),
-        )
-        .expect("unique State effect binding");
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_effects(effects))
-        .expect("compile State hard-shadow theme");
-
-    let source = "stateDiagram-v2\n[*] --> Ready\nReady --> Done\nDone --> [*]\n";
+fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
+    let theme = state_hard_shadow_theme(5.0, 6.0, 4.0);
+    let source = "stateDiagram-v2\n[*] --> Ready\nReady --> ExtraordinarilyWideStateName\nExtraordinarilyWideStateName --> [*]\n";
     let svg = render_state_svg_from_text_with_theme(source, &theme);
     let document = roxmltree::Document::parse(&svg).expect("valid themed State SVG XML");
     let filters = document
@@ -147,10 +316,6 @@ fn state_svg_emits_bounded_typed_drop_shadow_on_classic_state_nodes() {
     let filter_ids = filters
         .iter()
         .map(|filter| {
-            assert_eq!(filter.attribute("x"), Some("-0.2"));
-            assert_eq!(filter.attribute("y"), Some("-0.2"));
-            assert_eq!(filter.attribute("width"), Some("1.4"));
-            assert_eq!(filter.attribute("height"), Some("1.4"));
             let primitives = filter
                 .children()
                 .filter(|node| node.is_element())
@@ -181,16 +346,46 @@ fn state_svg_emits_bounded_typed_drop_shadow_on_classic_state_nodes() {
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(referenced_filter_ids, filter_ids);
 
+    let regions = state_effect_filter_regions(&svg);
+    assert_eq!(regions.len(), 2);
+    assert!(regions[0].0 < regions[1].0, "node widths must differ");
+    for (width, height, region) in &regions {
+        let expected_x = -2.0 / width;
+        let expected_y = -2.0 / height;
+        let expected_max_x = 1.0 + 7.0 / width;
+        let expected_max_y = 1.0 + 8.0 / height;
+        assert!(region[0] <= expected_x + 1.0e-6, "{region:?}");
+        assert!(region[1] <= expected_y + 1.0e-6, "{region:?}");
+        assert!(
+            region[0] + region[2] >= expected_max_x - 1.0e-6,
+            "{region:?}"
+        );
+        assert!(
+            region[1] + region[3] >= expected_max_y - 1.0e-6,
+            "{region:?}"
+        );
+    }
+    assert_ne!(regions[0].2, regions[1].2);
+
     let baseline_theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .expect("compile empty comparison theme");
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::State,
+                    ThemeStylePatch::default()
+                        .with_stroke_width(4.0)
+                        .expect("valid comparison stroke width"),
+                )),
+            ),
+        )
+        .expect("compile comparison theme");
     let baseline_view_box = svg_view_box(&render_state_svg_from_text_with_theme(
         source,
         &baseline_theme,
     ));
     let effect_view_box = svg_view_box(&svg);
-    assert!(effect_view_box[2] >= baseline_view_box[2] + 5.0);
-    assert!(effect_view_box[3] >= baseline_view_box[3] + 6.0);
+    assert!(effect_view_box[2] >= baseline_view_box[2] + 9.0 - 1.0e-6);
+    assert!(effect_view_box[3] >= baseline_view_box[3] + 10.0 - 1.0e-6);
 
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
@@ -222,6 +417,169 @@ fn state_svg_emits_bounded_typed_drop_shadow_on_classic_state_nodes() {
         .render_svg(&SvgRenderOptions::default(), &debug)
         .expect("hidden edges must not invalidate emitted State node effects");
     assert!(rendered.svg().contains("theme-effect-state-hard-shadow"));
+}
+
+#[test]
+fn state_svg_shadow_expands_paint_bounds_without_shifting_the_diagram_title() {
+    let source = r#"---
+title: State
+---
+stateDiagram-v2
+[*] --> Ready
+Ready --> [*]
+"#;
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::State,
+                    ThemeStylePatch::default()
+                        .with_stroke_width(2.0)
+                        .expect("valid comparison stroke width"),
+                )),
+            ),
+        )
+        .expect("compile State comparison theme");
+    let shadow_theme = state_hard_shadow_theme(48.0, 0.0, 2.0);
+
+    let baseline_svg = render_state_svg_from_text_with_theme(source, &baseline_theme);
+    let shadow_svg = render_state_svg_from_text_with_theme(source, &shadow_theme);
+    assert_eq!(
+        state_diagram_title_x(&shadow_svg),
+        state_diagram_title_x(&baseline_svg),
+        "paint-only shadow outsets must not move the geometry-centered diagram title"
+    );
+
+    let baseline_view_box = svg_view_box(&baseline_svg);
+    let shadow_view_box = svg_view_box(&shadow_svg);
+    assert!(
+        shadow_view_box[2] > baseline_view_box[2] + 40.0,
+        "the positive-x shadow must expand the root paint viewport: baseline={baseline_view_box:?}, shadow={shadow_view_box:?}"
+    );
+    assert!(
+        shadow_view_box[0] + shadow_view_box[2]
+            > baseline_view_box[0] + baseline_view_box[2] + 40.0,
+        "the positive-x shadow must expand the painted right edge: baseline={baseline_view_box:?}, shadow={shadow_view_box:?}"
+    );
+}
+
+#[test]
+fn state_svg_derives_safe_regions_for_negative_hard_shadow_offsets() {
+    let theme = state_hard_shadow_theme(-5.0, -6.0, 2.0);
+    let source = "stateDiagram-v2\n[*] --> Compact\nCompact --> ASignificantlyWiderState\nASignificantlyWiderState --> [*]\n";
+    let svg = render_state_svg_from_text_with_theme(source, &theme);
+    let regions = state_effect_filter_regions(&svg);
+    assert_eq!(regions.len(), 2);
+    assert!(regions[0].0 < regions[1].0, "node widths must differ");
+    for (width, height, region) in regions {
+        let expected_x = -6.0 / width;
+        let expected_y = -7.0 / height;
+        let expected_max_x = 1.0 + 1.0 / width;
+        let expected_max_y = 1.0 + 1.0 / height;
+        assert!(region[0] <= expected_x + 1.0e-6, "{region:?}");
+        assert!(region[1] <= expected_y + 1.0e-6, "{region:?}");
+        assert!(
+            region[0] + region[2] >= expected_max_x - 1.0e-6,
+            "{region:?}"
+        );
+        assert!(
+            region[1] + region[3] >= expected_max_y - 1.0e-6,
+            "{region:?}"
+        );
+    }
+}
+
+#[test]
+fn state_svg_uses_the_classic_default_one_pixel_stroke_for_effect_bounds() {
+    let theme = state_hard_shadow_theme_with(DiagramThemeCompiler::new(), 5.0, 6.0, None);
+    let svg = render_state_svg_from_text_with_theme(
+        "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
+        &theme,
+    );
+    let regions = state_effect_filter_regions(&svg);
+    let [(width, height, region)] = regions.as_slice() else {
+        panic!("expected one materialized State hard-shadow region");
+    };
+
+    assert_filter_region_matches_outsets(*width, *height, *region, [0.5, 5.5, 6.5, 0.5]);
+}
+
+#[test]
+fn state_svg_excludes_non_painting_strokes_from_effect_bounds() {
+    let theme = state_hard_shadow_theme_with(DiagramThemeCompiler::new(), 5.0, 6.0, None);
+    for source_style in [
+        "stroke:none,stroke-width:100px",
+        "stroke:transparent,stroke-width:100px",
+        "stroke:#111827,stroke-width:100px,stroke-opacity:0",
+        "stroke:#111827,stroke-width:100px,stroke-opacity:-1",
+        "stroke:#111827,stroke-width:100px,opacity:0%",
+        "stroke:#111827,stroke-width:100px,opacity:-1%",
+    ] {
+        let source =
+            format!("stateDiagram-v2\n[*] --> Ready\nReady --> [*]\nstyle Ready {source_style}\n");
+        let svg = render_state_svg_from_text_with_theme(&source, &theme);
+        let regions = state_effect_filter_regions(&svg);
+        let [(width, height, region)] = regions.as_slice() else {
+            panic!("expected one materialized State hard-shadow region for {source_style}");
+        };
+        assert_filter_region_matches_outsets(*width, *height, *region, [0.0, 5.0, 6.0, 0.0]);
+    }
+}
+
+#[test]
+fn state_svg_terminal_effect_region_uses_the_session_resource_intersection() {
+    let theme = state_hard_shadow_theme_with(
+        DiagramThemeCompiler::new()
+            .with_resource_policy(ThemeResourcePolicy::unbounded_for_trusted_input()),
+        4096.0,
+        0.0,
+        None,
+    );
+    let source = "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n";
+    let host_ceiling = ThemeResourcePolicy::interactive()
+        .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 2)
+        .expect("valid host terminal filter-region ceiling");
+    let environment = RenderEnvironment::deterministic().with_theme_resource_ceiling(host_ceiling);
+
+    for portability in [
+        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
+    ] {
+        let session = environment
+            .clone()
+            .with_theme_portability_requirement(portability)
+            .begin_session_with_theme(&theme)
+            .expect("begin State session");
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse State source")
+            .expect("State diagram detected");
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare State artifact");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("terminal effect materialization must preserve resource rejection"),
+                Err(error) => error,
+            };
+        let merman_render::Error::ThemeResourceLimitExceeded(resource) = error else {
+            panic!("terminal theme limits must not degrade into portability residuals: {error:?}");
+        };
+        assert_eq!(
+            resource.limit,
+            ThemeResourceLimitId::MaxEffectFilterRegionMagnitude.as_str()
+        );
+        assert_eq!(resource.phase.as_str(), "effect_materialize");
+        assert!(resource.actual > resource.max);
+        assert_eq!(resource.max, 2);
+        assert_eq!(
+            resource.profile,
+            Some(merman_core::resources::ResourceProfile::Interactive)
+        );
+        assert!(resource.explicit_overrides.iter().any(|resource_override| {
+            resource_override.id == ThemeResourceLimitId::MaxEffectFilterRegionMagnitude
+                && resource_override.value == 2
+        }));
+    }
 }
 
 fn state_edge_label_foreign_object_height(svg: &str, edge_id: &str) -> f64 {

@@ -237,6 +237,12 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         .iter()
         .map(|edge| (edge.id.as_str(), edge))
         .collect();
+    let source_edge_owner_by_id: HashMap<&str, usize> = graph
+        .edges
+        .iter()
+        .enumerate()
+        .map(|(semantic_index, edge)| (edge.id.as_str(), semantic_index))
+        .collect();
 
     charge_adapter_work(&mut work_control, layout.nodes.len())?;
     let mut out_nodes = Vec::with_capacity(layout.nodes.len());
@@ -329,10 +335,16 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     // Reject the complete user-sized projection tranche before reserving its output vector.
     charge_adapter_work(&mut work_control, edge_projection_work)?;
     let mut out_edges = Vec::with_capacity(layout.edges.len());
+    let mut edge_owner_indices = Vec::with_capacity(layout.edges.len());
     for edge in layout.edges {
         let Some(source) = source_edge_by_id.get(edge.id.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("ELK layout returned unknown edge {}", edge.id),
+            });
+        };
+        let Some(owner_index) = source_edge_owner_by_id.get(edge.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned unbound edge {}", edge.id),
             });
         };
         let points = edge
@@ -365,6 +377,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
             end_marker: None,
             stroke_dasharray: None,
         });
+        edge_owner_indices.push(owner_index);
     }
 
     let bounds_points = out_edges.iter().try_fold(
@@ -392,6 +405,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     Ok(FlowchartLayout {
         nodes: out_nodes,
         edges: out_edges,
+        edge_owner_indices,
         clusters,
         bounds,
         dom_node_order_by_root,
@@ -673,6 +687,8 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     mut work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<elk::Graph> {
+    charge_adapter_work(&mut work_control, model.edges.len())?;
+    super::reject_duplicate_edge_ids_for_adapter(model, "Flowchart ELK")?;
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
     // Shape validation only walks nodes. Charge that tranche before the validation scan; the
@@ -809,6 +825,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     for (edge_index, edge) in model.edges.iter().enumerate() {
         let label = edge_label(
             edge,
+            crate::flowchart::FlowchartEdgeKey::new(edge_index),
             FlowchartSvgLabelOwner::Edge(edge_index),
             EdgeMeasureContext {
                 model: render_model,
@@ -1718,10 +1735,14 @@ fn node_dimensions_and_label(
 
 fn edge_label(
     edge: &FlowEdge,
+    key: crate::flowchart::FlowchartEdgeKey,
     owner: FlowchartSvgLabelOwner,
     ctx: EdgeMeasureContext<'_>,
 ) -> Result<Option<elk::Label>> {
-    let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
+    let label_text = ctx
+        .model
+        .edge_label_for_render(key.semantic_index(), edge)
+        .unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
         return Ok(None);
@@ -1729,7 +1750,7 @@ fn edge_label(
 
     let edge_text_style = ctx
         .edge_style_plan
-        .edge_label_text_style(edge.id.as_str(), ctx.edge_label_base_style)?;
+        .edge_label_text_style_for(key, ctx.edge_label_base_style)?;
     let metrics = if label_type == "markdown" && ctx.edge_wrap_mode != WrapMode::HtmlLike {
         crate::text::measure_wrapped_markdown_with_inline_styles(
             ctx.measurer,

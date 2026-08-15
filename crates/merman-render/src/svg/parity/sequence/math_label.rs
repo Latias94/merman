@@ -31,7 +31,7 @@ pub(super) fn sequence_katex_label(
 }
 
 pub(super) fn write_sequence_katex_foreign_object(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     label: &SequenceKatexLabel,
     x: f64,
     y: f64,

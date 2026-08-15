@@ -5,7 +5,7 @@ use crate::sequence::sequence_text_dimensions_height_px;
 use rustc_hash::FxHashMap;
 
 pub(super) fn render_sequence_box_frames_and_rect_blocks(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_label_font_size: f64,

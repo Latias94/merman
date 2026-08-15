@@ -69,7 +69,10 @@ pub(super) fn prepare_flowchart_svg_document(
 }
 
 impl FlowchartSvgDocument<'_> {
-    pub(super) fn push_root_open(&self, out: &mut String) -> crate::Result<root_svg::RootDocument> {
+    pub(super) fn push_root_open(
+        &self,
+        out: &mut impl crate::svg::parity::SvgOutput,
+    ) -> crate::Result<root_svg::RootDocument> {
         let mut root_chrome = root_svg::RootChrome::new(self.diagram_id, self.diagram_type);
         root_chrome.class = Some("flowchart");
         root_chrome.aria_labelledby = self.aria_labelledby.as_deref();
@@ -87,7 +90,7 @@ impl FlowchartSvgDocument<'_> {
             .write_open(out, self.root_spec, root_chrome)
     }
 
-    pub(super) fn push_accessibility_metadata(&self, out: &mut String) {
+    pub(super) fn push_accessibility_metadata(&self, out: &mut impl crate::svg::parity::SvgOutput) {
         if let (Some(id), Some(title)) = (self.aria_labelledby.as_deref(), self.acc_title) {
             out.push_str(r#"<title id=""#);
             escape_attr_into(out, id);

@@ -1,12 +1,10 @@
 //! Flowchart v2 cylinder shapes.
 
-use std::fmt::Write as _;
-
 use crate::flowchart::flowchart_effective_text_style_for_node_classes;
 use crate::svg::parity::{escape_attr, fmt};
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -49,7 +47,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinder(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,

@@ -7,7 +7,7 @@ use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
 
 pub(super) fn render_sequence_actor_man_tops(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,
@@ -40,7 +40,7 @@ pub(super) fn render_sequence_actor_man_tops(
 }
 
 pub(super) fn render_sequence_actor_man_bottoms(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,

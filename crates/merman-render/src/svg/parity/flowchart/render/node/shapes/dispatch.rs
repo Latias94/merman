@@ -1,14 +1,12 @@
 //! Flowchart node shape dispatch.
 
-use std::fmt::Write as _;
-
 use crate::flowchart::FlowchartShape;
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt;
 use crate::{Error, Result};
 
 pub(in super::super) fn render_flowchart_shape(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,

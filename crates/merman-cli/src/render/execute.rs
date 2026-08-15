@@ -161,7 +161,7 @@ pub(crate) fn execute_graphical(
         PreparedGraphicalSource::RawSvg(environment) => {
             let session = environment
                 .begin_session_with_control(control.clone())
-                .map_err(|error| CliError::Render(merman::RenderError::RuntimePolicy(error)))?;
+                .map_err(|error| CliError::Render(merman::RenderError::from(error)))?;
             let svg = prepared
                 .pipeline
                 .process_resvg_compatible(source, &session)

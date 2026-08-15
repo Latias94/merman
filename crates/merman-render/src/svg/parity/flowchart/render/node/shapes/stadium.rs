@@ -1,7 +1,5 @@
 //! Flowchart v2 stadium shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::{escape_attr, fmt, fmt_display};
 
 use super::super::geom::path_from_points;
@@ -12,7 +10,7 @@ const FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
 const FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,

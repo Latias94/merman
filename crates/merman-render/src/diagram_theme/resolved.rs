@@ -909,8 +909,8 @@ mod tests {
     use super::*;
     use crate::diagram_theme::{
         CanvasSpec, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
-        EffectGraph, EffectInput, EffectPrimitive, FilterRegion, OrdinalPalette, OrdinalSelector,
-        ThemeRule, ThemeRuleSet,
+        EffectGraph, EffectInput, EffectPrimitive, OrdinalPalette, OrdinalSelector, ThemeRule,
+        ThemeRuleSet,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
@@ -995,7 +995,6 @@ mod tests {
         let state_fill = CanvasPaint::solid("#22c55e").expect("valid state fill");
         let graph = EffectGraph::new(
             "state-shadow",
-            FilterRegion::bounded(0.0, 0.0, 256.0, 256.0),
             [EffectPrimitive::DropShadow {
                 input: EffectInput::SourceGraphic,
                 offset_x: 1.0,

@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::diagram_theme::LineHeight;
+#[cfg(test)]
+use crate::diagram_theme::ThemeResourcePolicy;
 use crate::entities::decode_mermaid_entities_for_render_text;
 use crate::resources::{
     OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
@@ -687,6 +689,7 @@ mod tests {
             &model,
             &json!({}),
             Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
             None,
             true,
             work_meter.as_ref(),
@@ -731,6 +734,7 @@ mod tests {
             &model,
             &json!({}),
             Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
             None,
             true,
             work_meter.as_ref(),
@@ -784,6 +788,7 @@ mod tests {
             &model,
             &json!({}),
             Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
             None,
             true,
             work_meter.as_ref(),
@@ -839,6 +844,7 @@ mod tests {
             &model,
             &json!({}),
             Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
             None,
             true,
             &work_meter,

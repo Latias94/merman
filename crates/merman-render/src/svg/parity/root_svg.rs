@@ -4,11 +4,10 @@ use crate::diagram_theme::{
     BlendMode, CanvasPaint, RootThemeApplication, RootThemeMechanismKey, RootThemePlan,
     RootThemeReport, ThemeCapability,
 };
-use crate::resources::RenderResourcePolicy;
+use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use std::ops::Range;
 
-const VIEW_BOX_PLACEHOLDER: &str = "__MERMAN_ROOT_VIEW_BOX__";
-const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAN_ROOT_MAX_WIDTH__";
+const DEFERRED_ROOT_ATTRIBUTE_VALUE: &str = "";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct DiagramBounds {
@@ -364,7 +363,7 @@ impl<'a> RootViewportContext<'a> {
 
     pub(super) fn begin_document(
         &self,
-        out: &mut String,
+        out: &mut impl SvgOutput,
         spec: DeferredRootSpec,
         chrome: RootChrome<'_>,
     ) -> Result<RootDocument> {
@@ -422,7 +421,11 @@ impl<'a> RootViewportContext<'a> {
                 } else {
                     fixed_style.as_deref().map(SvgRootAttributeValue::plain)
                 },
-                viewbox_attr: Some(SvgRootAttributeValue::tracked("", VIEW_BOX_PLACEHOLDER, "")),
+                viewbox_attr: Some(SvgRootAttributeValue::tracked(
+                    "",
+                    DEFERRED_ROOT_ATTRIBUTE_VALUE,
+                    "",
+                )),
                 style_viewbox_order: chrome.dom.style_viewbox_order,
                 style_placement,
                 responsive_height_placement: chrome.dom.responsive_height_placement,
@@ -437,6 +440,7 @@ impl<'a> RootViewportContext<'a> {
                 aria_attr_order: chrome.dom.aria_attr_order,
             },
         );
+        out.checkpoint()?;
         let view_box_range = tracked_ranges.view_box.ok_or_else(|| Error::InvalidModel {
             message: "deferred SVG root is missing its viewBox placeholder".to_string(),
         })?;
@@ -461,7 +465,7 @@ impl<'a> RootViewportContext<'a> {
                 max_width_range,
                 responsive,
                 background: spec.background,
-                root_open_snapshot: out.clone(),
+                root_open_snapshot: out.as_str().to_string(),
                 root_open_end: out.len(),
             },
         })
@@ -469,7 +473,7 @@ impl<'a> RootViewportContext<'a> {
 
     pub(super) fn finish_document(
         &self,
-        out: &mut String,
+        out: &mut impl SvgOutput,
         document: RootDocument,
         spec: RootViewportSpec,
     ) -> Result<RootDocument> {
@@ -505,11 +509,11 @@ impl<'a> RootViewportContext<'a> {
         let view_box = plan.view_box.ok_or_else(|| Error::InvalidModel {
             message: "deferred root viewport did not resolve a viewBox".to_string(),
         })?;
-        if out.get(..root_open_end) != Some(root_open_snapshot.as_str())
-            || out.get(view_box_range.clone()) != Some(VIEW_BOX_PLACEHOLDER)
-            || max_width_range
-                .as_ref()
-                .is_some_and(|range| out.get(range.clone()) != Some(MAX_WIDTH_PLACEHOLDER))
+        if out.as_str().get(..root_open_end) != Some(root_open_snapshot.as_str())
+            || out.as_str().get(view_box_range.clone()) != Some(DEFERRED_ROOT_ATTRIBUTE_VALUE)
+            || max_width_range.as_ref().is_some_and(|range| {
+                out.as_str().get(range.clone()) != Some(DEFERRED_ROOT_ATTRIBUTE_VALUE)
+            })
         {
             return Err(Error::InvalidModel {
                 message: "deferred root document was mutated before viewport finalize".to_string(),
@@ -533,9 +537,10 @@ impl<'a> RootViewportContext<'a> {
                 .ok_or_else(|| Error::InvalidModel {
                     message: "deferred root attribute replacement overflowed".to_string(),
                 })?;
-            out.replace_range(range, replacement.as_str());
+            out.replace_range(range, replacement.as_str())?;
         }
         let root_open = out
+            .as_str()
             .get(..root_open_end)
             .ok_or_else(|| Error::InvalidModel {
                 message: "deferred root document was truncated before viewport finalize"
@@ -551,7 +556,7 @@ impl<'a> RootViewportContext<'a> {
 
     pub(super) fn write_open(
         &self,
-        out: &mut String,
+        out: &mut impl SvgOutput,
         spec: RootViewportSpec,
         chrome: RootChrome<'_>,
     ) -> Result<RootDocument> {
@@ -569,7 +574,7 @@ impl<'a> RootViewportContext<'a> {
 
     pub(super) fn write_plan(
         &self,
-        out: &mut String,
+        out: &mut impl SvgOutput,
         plan: &RootViewportPlan,
         chrome: RootChrome<'_>,
     ) -> Result<RootDocument> {
@@ -617,11 +622,12 @@ impl<'a> RootViewportContext<'a> {
                 aria_attr_order: chrome.dom.aria_attr_order,
             },
         );
+        out.checkpoint()?;
         Ok(RootDocument {
             family: self.family,
             diagram_id: self.diagram_id.to_string(),
             state: RootDocumentState::Ready {
-                root_open: out.clone(),
+                root_open: out.as_str().to_string(),
                 plan: plan.clone(),
             },
         })
@@ -657,8 +663,8 @@ impl<'a> RootViewportContext<'a> {
         })
     }
 
-    fn require_empty_document(&self, out: &str) -> Result<()> {
-        if out.is_empty() {
+    fn require_empty_document(&self, out: &impl SvgOutput) -> Result<()> {
+        if out.len() == 0 {
             return Ok(());
         }
         Err(Error::InvalidModel {
@@ -754,6 +760,7 @@ impl RootedSvg {
     pub(super) fn apply_root_theme(
         mut self,
         plan: Option<&RootThemePlan>,
+        work_meter: &OperationWorkMeter,
     ) -> Result<(Self, RootThemeReport)> {
         let Some(plan) = plan else {
             return Ok((
@@ -768,11 +775,23 @@ impl RootedSvg {
             && let Some(fill) = supported_canvas_paint(plan.canvas().base())
         {
             if matches!(plan.canvas().base(), CanvasPaint::Transparent) {
-                let rewritten =
-                    crate::svg::pipeline::set_root_background_color(&self.svg, "transparent");
+                let edit =
+                    crate::svg::pipeline::set_root_background_color(&self.svg, "transparent")
+                        .ok_or_else(|| Error::InvalidModel {
+                            message: "root background edit requires a complete SVG opening tag"
+                                .to_string(),
+                        })?;
+                let additional = edit.additional_len();
+                if additional != 0 {
+                    work_meter.check_svg_append(self.svg.len(), additional)?;
+                }
                 self.root_open_end =
-                    adjusted_root_open_end(self.root_open_end, self.svg.len(), rewritten.len())?;
-                self.svg = rewritten;
+                    edit.adjusted_end(self.root_open_end)
+                        .ok_or_else(|| Error::InvalidModel {
+                            message: "root background edit invalidated the SVG opening boundary"
+                                .to_string(),
+                        })?;
+                edit.apply(&mut self.svg);
             }
             push_canvas_base(&mut prelude, self.viewport.view_box(), &fill);
             mark_root_mechanism_applied(
@@ -817,6 +836,7 @@ impl RootedSvg {
         }
 
         if !prelude.is_empty() {
+            work_meter.check_svg_append(self.svg.len(), prelude.len())?;
             self.svg.insert_str(self.root_open_end, &prelude);
         }
         Ok((self, application.finish()))
@@ -833,25 +853,6 @@ impl RootedSvg {
         }
         Ok(self.svg)
     }
-}
-
-fn adjusted_root_open_end(
-    root_open_end: usize,
-    previous_svg_len: usize,
-    rewritten_svg_len: usize,
-) -> Result<usize> {
-    if rewritten_svg_len >= previous_svg_len {
-        return root_open_end
-            .checked_add(rewritten_svg_len - previous_svg_len)
-            .ok_or_else(|| Error::InvalidModel {
-                message: "root background rewrite overflowed the SVG opening boundary".to_string(),
-            });
-    }
-    root_open_end
-        .checked_sub(previous_svg_len - rewritten_svg_len)
-        .ok_or_else(|| Error::InvalidModel {
-            message: "root background rewrite invalidated the SVG opening boundary".to_string(),
-        })
 }
 
 fn supported_canvas_paint(paint: &CanvasPaint) -> Option<String> {
@@ -875,7 +876,7 @@ fn supported_canvas_capability(paint: &CanvasPaint) -> Option<ThemeCapability> {
     }
 }
 
-fn push_canvas_base(out: &mut String, view_box: Option<ViewBox>, fill: &str) {
+fn push_canvas_base(out: &mut impl SvgOutput, view_box: Option<ViewBox>, fill: &str) {
     out.push_str(
         r#"<rect class="merman-theme-canvas-base" data-merman-theme-canvas="base" aria-hidden="true" pointer-events="none""#,
     );
@@ -886,7 +887,7 @@ fn push_canvas_base(out: &mut String, view_box: Option<ViewBox>, fill: &str) {
 }
 
 fn push_canvas_layer(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     view_box: Option<ViewBox>,
     index: usize,
     fill: &str,
@@ -922,7 +923,7 @@ fn push_canvas_layer(
     out.push_str(r#""/></g>"#);
 }
 
-fn push_canvas_rect_geometry(out: &mut String, view_box: Option<ViewBox>) {
+fn push_canvas_rect_geometry(out: &mut impl SvgOutput, view_box: Option<ViewBox>) {
     match view_box {
         Some(view_box) => {
             let _ = write!(
@@ -1132,7 +1133,7 @@ impl<'a> SvgRootAttributeValue<'a> {
         }
     }
 
-    fn write_escaped(self, out: &mut String) -> Option<Range<usize>> {
+    fn write_escaped(self, out: &mut impl SvgOutput) -> Option<Range<usize>> {
         match self {
             Self::Plain(value) => {
                 escape_attr_into(out, value);
@@ -1159,7 +1160,7 @@ fn deferred_root_style(background: RootBackground) -> SvgRootAttributeValue<'sta
         RootBackground::None => "px;",
         RootBackground::White => "px; background-color: white;",
     };
-    SvgRootAttributeValue::tracked("max-width: ", MAX_WIDTH_PLACEHOLDER, suffix)
+    SvgRootAttributeValue::tracked("max-width: ", DEFERRED_ROOT_ATTRIBUTE_VALUE, suffix)
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -1190,7 +1191,7 @@ struct SvgRootAttrs<'a> {
 }
 
 fn push_svg_root_attribute(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     name: &str,
     value: SvgRootAttributeValue<'_>,
 ) -> Option<Range<usize>> {
@@ -1202,7 +1203,7 @@ fn push_svg_root_attribute(
     tracked_range
 }
 
-fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrackedRanges {
+fn push_svg_root_open(out: &mut impl SvgOutput, attrs: SvgRootAttrs<'_>) -> SvgRootTrackedRanges {
     let SvgRootAttrs {
         diagram_id,
         class,
@@ -1394,6 +1395,39 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrack
 mod tests {
     use super::*;
 
+    fn root_theme_meter(svg_limit: usize) -> crate::resources::OperationWorkMeter {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, svg_limit)
+            .unwrap();
+        crate::resources::OperationWorkMeter::new(policy)
+    }
+
+    fn rooted_svg_for_theme_test() -> RootedSvg {
+        let context = computed_context(DiagramFamilyId::INFO, "info");
+        let mut chrome = RootChrome::new("info", "info");
+        chrome.dom.trailing_newline = false;
+        let mut out = String::new();
+        let document = context
+            .write_open(
+                &mut out,
+                RootViewportSpec::responsive_without_view_box(400.0),
+                chrome,
+            )
+            .unwrap();
+        out.push_str("<g/></svg>");
+        document.complete(out).unwrap()
+    }
+
+    fn transparent_root_theme_plan() -> RootThemePlan {
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(
+                crate::diagram_theme::DiagramThemeSpec::new()
+                    .with_canvas(crate::diagram_theme::CanvasSpec::transparent()),
+            )
+            .unwrap();
+        RootThemePlan::from_theme(Some(&theme))
+    }
+
     fn computed_context(family: DiagramFamilyId, diagram_id: &str) -> RootViewportContext<'_> {
         RootViewportContext::new(family, diagram_id)
     }
@@ -1411,6 +1445,76 @@ mod tests {
             err.to_string().contains("viewBox min-y must be finite"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn root_theme_terminal_growth_admits_the_exact_svg_budget_without_charging_it() {
+        let plan = transparent_root_theme_plan();
+        let reference_meter = crate::resources::OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let (expected, _) = rooted_svg_for_theme_test()
+            .apply_root_theme(Some(&plan), &reference_meter)
+            .unwrap();
+        assert_eq!(reference_meter.projected_svg_bytes(), 0);
+
+        let exact_meter = root_theme_meter(expected.svg.len());
+        let (actual, report) = rooted_svg_for_theme_test()
+            .apply_root_theme(Some(&plan), &exact_meter)
+            .unwrap();
+
+        assert_eq!(actual.svg, expected.svg);
+        assert_eq!(
+            report.verification(),
+            crate::diagram_theme::RootThemeVerification::Verified
+        );
+        assert_eq!(exact_meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn root_theme_terminal_growth_rejects_short_background_and_prelude_budgets() {
+        let plan = transparent_root_theme_plan();
+        let rooted = rooted_svg_for_theme_test();
+        let edit = crate::svg::pipeline::set_root_background_color(&rooted.svg, "transparent")
+            .expect("transparent root background edit");
+        assert!(edit.additional_len() > 0);
+        let background_limit = rooted.svg.len() + edit.additional_len() - 1;
+        let background_meter = root_theme_meter(background_limit);
+        let error = rooted
+            .apply_root_theme(Some(&plan), &background_meter)
+            .unwrap_err();
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        assert_eq!(background_meter.projected_svg_bytes(), 0);
+
+        let reference_meter = crate::resources::OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let (expected, _) = rooted_svg_for_theme_test()
+            .apply_root_theme(Some(&plan), &reference_meter)
+            .unwrap();
+        assert!(expected.svg.len() > background_limit + 1);
+        let prelude_meter = root_theme_meter(expected.svg.len() - 1);
+        let error = rooted_svg_for_theme_test()
+            .apply_root_theme(Some(&plan), &prelude_meter)
+            .unwrap_err();
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        assert_eq!(prelude_meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn root_theme_without_a_plan_does_not_consume_terminal_svg_budget() {
+        let rooted = rooted_svg_for_theme_test();
+        let expected = rooted.svg.clone();
+        let meter = root_theme_meter(1);
+
+        let (actual, report) = rooted.apply_root_theme(None, &meter).unwrap();
+
+        assert_eq!(actual.svg, expected);
+        assert_eq!(
+            report.verification(),
+            crate::diagram_theme::RootThemeVerification::NotApplicable
+        );
+        assert_eq!(meter.projected_svg_bytes(), 0);
     }
 
     #[test]
@@ -1499,6 +1603,43 @@ mod tests {
         assert!(out.contains(r#"width="100%""#));
         assert!(out.contains(r#"style="max-width: 400px; background-color: white;""#));
         assert!(!out.contains("viewBox="));
+    }
+
+    #[test]
+    fn bounded_root_open_admits_the_exact_size_and_rejects_before_excess_retention() {
+        let context = computed_context(DiagramFamilyId::INFO, "info");
+        let spec = RootViewportSpec::responsive_without_view_box(400.0);
+        let mut expected = String::new();
+        context
+            .write_open(&mut expected, spec, RootChrome::new("info", "info"))
+            .unwrap();
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                crate::resources::ResourceLimitId::MaxSvgBytes,
+                expected.len(),
+            )
+            .unwrap();
+        let exact_meter = crate::resources::OperationWorkMeter::new(exact_policy);
+        let mut exact = BoundedSvgOutput::new(&exact_meter);
+        context
+            .write_open(&mut exact, spec, RootChrome::new("info", "info"))
+            .unwrap();
+        assert_eq!(exact.finish().unwrap(), expected);
+
+        let short_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                crate::resources::ResourceLimitId::MaxSvgBytes,
+                expected.len() - 1,
+            )
+            .unwrap();
+        let short_meter = crate::resources::OperationWorkMeter::new(short_policy);
+        let mut short = BoundedSvgOutput::new(&short_meter);
+        let error = context
+            .write_open(&mut short, spec, RootChrome::new("info", "info"))
+            .unwrap_err();
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        assert!(short.as_str().len() < expected.len());
     }
 
     #[test]
@@ -1639,8 +1780,80 @@ mod tests {
     }
 
     #[test]
+    fn bounded_deferred_root_admits_the_exact_final_size() {
+        let diagram_id = "state";
+        let context = RootViewportContext::new(DiagramFamilyId::STATE, diagram_id);
+        let final_spec =
+            RootViewportSpec::responsive(DiagramBounds::from_view_box(0.0, 0.0, 10.0, 10.0))
+                .with_max_width(RootMaxWidth::CssSixSignificant(10.0));
+
+        let mut expected = String::new();
+        let expected_document = context
+            .begin_document(
+                &mut expected,
+                DeferredRootSpec::responsive(),
+                RootChrome::new(diagram_id, "stateDiagram"),
+            )
+            .unwrap();
+        expected.push_str("<g/>");
+        let expected_document = context
+            .finish_document(&mut expected, expected_document, final_spec)
+            .unwrap();
+        expected.push_str("</svg>");
+        let expected = expected_document.complete(expected).unwrap().svg;
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                crate::resources::ResourceLimitId::MaxSvgBytes,
+                expected.len(),
+            )
+            .unwrap();
+        let exact_meter = crate::resources::OperationWorkMeter::new(exact_policy);
+        let mut exact = BoundedSvgOutput::new(&exact_meter);
+        let exact_document = context
+            .begin_document(
+                &mut exact,
+                DeferredRootSpec::responsive(),
+                RootChrome::new(diagram_id, "stateDiagram"),
+            )
+            .unwrap();
+        exact.push_str("<g/>");
+        let exact_document = context
+            .finish_document(&mut exact, exact_document, final_spec)
+            .unwrap();
+        exact.push_str("</svg>");
+        let exact = exact.finish().unwrap();
+        assert_eq!(exact_document.complete(exact).unwrap().svg, expected);
+
+        let short_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                crate::resources::ResourceLimitId::MaxSvgBytes,
+                expected.len() - 1,
+            )
+            .unwrap();
+        let short_meter = crate::resources::OperationWorkMeter::new(short_policy);
+        let mut short = BoundedSvgOutput::new(&short_meter);
+        let short_document = context
+            .begin_document(
+                &mut short,
+                DeferredRootSpec::responsive(),
+                RootChrome::new(diagram_id, "stateDiagram"),
+            )
+            .unwrap();
+        short.push_str("<g/>");
+        context
+            .finish_document(&mut short, short_document, final_spec)
+            .unwrap();
+        short.push_str("</svg>");
+        let error = short.finish().unwrap_err();
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        assert!(short_meter.projected_svg_bytes() == 0);
+    }
+
+    #[test]
     fn deferred_document_tracks_root_attributes_when_a_valid_id_matches_markers() {
-        let diagram_id = format!("valid_{VIEW_BOX_PLACEHOLDER}_{MAX_WIDTH_PLACEHOLDER}_diagram");
+        let diagram_id =
+            "valid___MERMAN_ROOT_VIEW_BOX_____MERMAN_ROOT_MAX_WIDTH___diagram".to_string();
         let context = RootViewportContext::new(DiagramFamilyId::STATE, &diagram_id);
         let mut chrome = RootChrome::new(&diagram_id, "stateDiagram");
         chrome.dom.trailing_newline = false;

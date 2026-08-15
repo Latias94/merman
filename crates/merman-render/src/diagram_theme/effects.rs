@@ -13,39 +13,6 @@ pub enum EffectInput {
     Previous,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FilterRegion {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
-
-impl FilterRegion {
-    pub const fn bounded(x: f32, y: f32, width: f32, height: f32) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-        }
-    }
-
-    pub(crate) fn validate(self) -> Result<(), ThemeCompileValidationError> {
-        if [self.x, self.y, self.width, self.height]
-            .into_iter()
-            .any(|value| !value.is_finite())
-            || self.width <= 0.0
-            || self.height <= 0.0
-        {
-            return Err(ThemeCompileValidationError::InvalidNumber {
-                field: "effects.filter_region",
-            });
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum EffectPrimitive {
@@ -130,19 +97,16 @@ impl EffectPrimitive {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectGraph {
     id: String,
-    region: FilterRegion,
     primitives: Vec<EffectPrimitive>,
 }
 
 impl EffectGraph {
     pub fn new(
         id: impl Into<String>,
-        region: FilterRegion,
         primitives: impl IntoIterator<Item = EffectPrimitive>,
     ) -> Result<Self, ThemeCompileValidationError> {
         let id = id.into();
         validate_effect_id(&id)?;
-        region.validate()?;
         let primitives = primitives.into_iter().collect::<Vec<_>>();
         if primitives.is_empty() || primitives.len() > MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP {
             return Err(ThemeCompileValidationError::InvalidCollection {
@@ -153,23 +117,62 @@ impl EffectGraph {
             primitive.validate()?;
         }
         validate_inputs(&primitives)?;
-        Ok(Self {
-            id,
-            region,
-            primitives,
-        })
+        Ok(Self { id, primitives })
     }
 
     pub fn id(&self) -> &str {
         &self.id
     }
 
-    pub const fn region(&self) -> FilterRegion {
-        self.region
-    }
-
     pub fn primitives(&self) -> &[EffectPrimitive] {
         &self.primitives
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct EffectGraphResourceReceipt {
+    primitive_count: usize,
+    offset_magnitude: f32,
+    blur_magnitude: f32,
+    displacement_scale: f32,
+    turbulence_octaves: usize,
+}
+
+impl EffectGraphResourceReceipt {
+    fn from_primitives(primitives: &[EffectPrimitive]) -> Self {
+        let mut receipt = Self {
+            primitive_count: primitives.len(),
+            ..Self::default()
+        };
+        for primitive in primitives {
+            match primitive {
+                EffectPrimitive::DropShadow {
+                    offset_x,
+                    offset_y,
+                    blur_radius,
+                    spread,
+                    ..
+                } => {
+                    receipt.offset_magnitude = receipt
+                        .offset_magnitude
+                        .max(offset_x.abs())
+                        .max(offset_y.abs());
+                    receipt.blur_magnitude = receipt.blur_magnitude.max(*blur_radius).max(*spread);
+                }
+                EffectPrimitive::GaussianBlur { std_deviation, .. } => {
+                    receipt.blur_magnitude = receipt.blur_magnitude.max(*std_deviation);
+                }
+                EffectPrimitive::Turbulence { octaves, .. } => {
+                    receipt.turbulence_octaves =
+                        receipt.turbulence_octaves.max(usize::from(*octaves));
+                }
+                EffectPrimitive::Displacement { scale, .. } => {
+                    receipt.displacement_scale = receipt.displacement_scale.max(*scale);
+                }
+                EffectPrimitive::ColorMatrix { .. } => {}
+            }
+        }
+        receipt
     }
 }
 
@@ -202,6 +205,7 @@ impl EffectBinding {
 pub struct DiagramEffectSet {
     graphs: Vec<EffectGraph>,
     bindings: Vec<EffectBinding>,
+    resource_receipt: EffectResourceReceipt,
 }
 
 impl DiagramEffectSet {
@@ -216,6 +220,10 @@ impl DiagramEffectSet {
                 field: "effects.graph.id",
             });
         }
+        self.resource_receipt
+            .push_graph(EffectGraphResourceReceipt::from_primitives(
+                &graph.primitives,
+            ));
         self.graphs.push(graph);
         Ok(self)
     }
@@ -239,6 +247,7 @@ impl DiagramEffectSet {
             });
         }
         self.bindings.push(binding);
+        self.resource_receipt.binding_count = self.bindings.len();
         Ok(self)
     }
 
@@ -299,57 +308,40 @@ impl DiagramEffectSet {
         &self,
         resources: &ThemeResourcePolicy,
     ) -> Result<(), ThemeResourceLimitExceeded> {
-        resources.check_effect_graph_count(self.graphs.len())?;
-        for graph in &self.graphs {
-            resources.check_effect_primitives_per_graph(graph.primitives.len())?;
+        self.resource_receipt.validate(resources)
+    }
+}
+
+/// Immutable effect-resource facts captured while the authored graph is constructed.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct EffectResourceReceipt {
+    primitives_per_graph: Vec<usize>,
+    binding_count: usize,
+    offset_magnitude: f32,
+    blur_magnitude: f32,
+    displacement_scale: f32,
+    turbulence_octaves: usize,
+}
+
+impl EffectResourceReceipt {
+    fn push_graph(&mut self, graph: EffectGraphResourceReceipt) {
+        self.primitives_per_graph.push(graph.primitive_count);
+        self.offset_magnitude = self.offset_magnitude.max(graph.offset_magnitude);
+        self.blur_magnitude = self.blur_magnitude.max(graph.blur_magnitude);
+        self.displacement_scale = self.displacement_scale.max(graph.displacement_scale);
+        self.turbulence_octaves = self.turbulence_octaves.max(graph.turbulence_octaves);
+    }
+
+    fn validate(&self, resources: &ThemeResourcePolicy) -> Result<(), ThemeResourceLimitExceeded> {
+        resources.check_effect_graph_count(self.primitives_per_graph.len())?;
+        for primitive_count in &self.primitives_per_graph {
+            resources.check_effect_primitives_per_graph(*primitive_count)?;
         }
-        resources.check_effect_binding_count(self.bindings.len())?;
-
-        let mut offset_magnitude = 0.0_f32;
-        let mut filter_region_magnitude = 0.0_f32;
-        let mut blur_magnitude = 0.0_f32;
-        let mut displacement_scale = 0.0_f32;
-        let mut turbulence_octaves = 0_usize;
-
-        for graph in &self.graphs {
-            let region = graph.region;
-            filter_region_magnitude = filter_region_magnitude
-                .max(region.x.abs())
-                .max(region.y.abs())
-                .max(region.width.abs())
-                .max(region.height.abs());
-
-            for primitive in &graph.primitives {
-                match primitive {
-                    EffectPrimitive::DropShadow {
-                        offset_x,
-                        offset_y,
-                        blur_radius,
-                        spread,
-                        ..
-                    } => {
-                        offset_magnitude = offset_magnitude.max(offset_x.abs()).max(offset_y.abs());
-                        blur_magnitude = blur_magnitude.max(*blur_radius).max(*spread);
-                    }
-                    EffectPrimitive::GaussianBlur { std_deviation, .. } => {
-                        blur_magnitude = blur_magnitude.max(*std_deviation);
-                    }
-                    EffectPrimitive::Turbulence { octaves, .. } => {
-                        turbulence_octaves = turbulence_octaves.max(usize::from(*octaves));
-                    }
-                    EffectPrimitive::Displacement { scale, .. } => {
-                        displacement_scale = displacement_scale.max(*scale);
-                    }
-                    EffectPrimitive::ColorMatrix { .. } => {}
-                }
-            }
-        }
-
-        resources.check_effect_offset_magnitude(offset_magnitude)?;
-        resources.check_effect_filter_region_magnitude(filter_region_magnitude)?;
-        resources.check_effect_blur_magnitude(blur_magnitude)?;
-        resources.check_effect_displacement_scale(displacement_scale)?;
-        resources.check_effect_turbulence_octaves(turbulence_octaves)
+        resources.check_effect_binding_count(self.binding_count)?;
+        resources.check_effect_offset_magnitude(self.offset_magnitude)?;
+        resources.check_effect_blur_magnitude(self.blur_magnitude)?;
+        resources.check_effect_displacement_scale(self.displacement_scale)?;
+        resources.check_effect_turbulence_octaves(self.turbulence_octaves)
     }
 }
 

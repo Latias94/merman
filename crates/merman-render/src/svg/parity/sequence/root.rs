@@ -7,7 +7,7 @@ pub(super) struct SequenceRootMetrics {
 }
 
 pub(super) fn write_sequence_svg_root_open(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     diagram_id: &str,

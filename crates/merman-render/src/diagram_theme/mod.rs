@@ -1,4 +1,11 @@
 //! Portable, validated diagram-theme inputs and host admission policy.
+//!
+//! Per-mechanism root evidence is renderer-owned and is intentionally not part of this public
+//! recipe surface:
+//!
+//! ```compile_fail
+//! use merman_render::diagram_theme::RootThemeReport;
+//! ```
 
 mod admission;
 mod application;
@@ -34,10 +41,12 @@ pub use admission::{
     ThemeCapability, ThemeHostAdmissionReport, ThemePortabilityRequirement, ThemeRequirements,
     TrustedThemeLane, TrustedThemeLanes,
 };
-pub(crate) use application::{FamilyThemeMechanismKey, RootThemeApplication, RootThemePlan};
-pub use application::{
-    RootThemeEvaluation, RootThemeMechanism, RootThemeMechanismEvidence, RootThemeMechanismKey,
-    RootThemeReport, RootThemeResidual, RootThemeResidualReason, RootThemeVerification,
+#[cfg(test)]
+pub(crate) use application::RootThemeEvaluation;
+pub use application::RootThemeVerification;
+pub(crate) use application::{
+    FamilyThemeMechanismKey, RootThemeApplication, RootThemeMechanismKey, RootThemePlan,
+    RootThemeReport, RootThemeResidualReason,
 };
 pub use assets::{
     FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec, FontCatalog,
@@ -49,14 +58,12 @@ pub use canvas::{
     PatternKind, PatternSpec, RadialGradient, ThemeColorValue, ThemeLength,
 };
 pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
-pub use effects::{
-    DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
-};
+pub use effects::{DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive};
 #[cfg(feature = "internal-theme-acceptance")]
 pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
+    FamilyThemeSelectorShape,
 };
 pub(crate) use mechanisms::{collect_effect_graph_capabilities, paint_capability};
 pub use presets::{
@@ -83,6 +90,7 @@ pub use semantic::{
 };
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
 pub use tokens::ThemeTokens;
+pub(crate) use typography::is_css_wide_keyword;
 pub use typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,
     TextStylePatch, TextTransform, TypographySpec, WhiteSpace, WrapMode as ThemeWrapMode,
@@ -184,6 +192,22 @@ impl DiagramTheme {
         self.0.spec.as_ref()
     }
 
+    pub(crate) fn resource_restriction(&self) -> &ThemeResourcePolicy {
+        &self.0.resource_restriction
+    }
+
+    /// Revalidates compiled, retained theme resources under one session's effective policy.
+    ///
+    /// Input decoding limits have already served their purpose; output-dependent effect regions
+    /// remain subject to family-local materialization checks.
+    pub(crate) fn validate_retained_resources(
+        &self,
+        resources: &ThemeResourcePolicy,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.0.catalog.validate_retained_resources(resources)?;
+        self.0.spec.effects().check_resources(resources)
+    }
+
     pub fn font_catalog(&self) -> &FontCatalog {
         &self.0.catalog
     }
@@ -241,6 +265,7 @@ impl DiagramTheme {
 pub(crate) struct CompiledDiagramTheme {
     spec: Arc<DiagramThemeSpec>,
     catalog: FontCatalog,
+    resource_restriction: ThemeResourcePolicy,
     requirements: ThemeRequirements,
     parse_compatibility: merman_core::__private::ThemeCompatibilityPlan,
     family_programs: Arc<family_program::FamilyThemeProgramCache>,

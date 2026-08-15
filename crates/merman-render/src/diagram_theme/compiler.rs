@@ -99,6 +99,7 @@ impl DiagramThemeCompiler {
         Ok(super::DiagramTheme(Arc::new(super::CompiledDiagramTheme {
             spec,
             catalog,
+            resource_restriction: self.resources.clone(),
             requirements: effective_requirements,
             parse_compatibility,
             family_programs,
@@ -189,7 +190,7 @@ fn compile_mermaid_config(spec: &DiagramThemeSpec) -> MermaidConfig {
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
         ThemeColorValue, ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy,
         ThemeTarget,
     };
@@ -197,7 +198,6 @@ mod tests {
     fn shadow_graph() -> EffectGraph {
         EffectGraph::new(
             "shadow",
-            FilterRegion::bounded(0.0, 0.0, 64.0, 64.0),
             [EffectPrimitive::DropShadow {
                 input: EffectInput::SourceGraphic,
                 offset_x: 1.0,
@@ -256,13 +256,11 @@ mod tests {
             DiagramEffectSet::default()
                 .with_graph(shadow_graph())
                 .expect("add graph"),
-            "max_effect_graphs",
             1,
         );
 
         let graph = EffectGraph::new(
             "two-primitives",
-            FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
             [
                 EffectPrimitive::GaussianBlur {
                     input: EffectInput::SourceGraphic,
@@ -281,7 +279,6 @@ mod tests {
             DiagramEffectSet::default()
                 .with_graph(graph)
                 .expect("add graph"),
-            "max_effect_primitives_per_graph",
             2,
         );
 
@@ -290,13 +287,7 @@ mod tests {
             .expect("add graph")
             .with_binding(EffectBinding::new(ThemeTarget::Node, "shadow").expect("valid binding"))
             .expect("add binding");
-        assert_effect_resource_limit(
-            ThemeResourceLimitId::MaxEffectBindings,
-            0,
-            effects,
-            "max_effect_bindings",
-            1,
-        );
+        assert_effect_resource_limit(ThemeResourceLimitId::MaxEffectBindings, 0, effects, 1);
     }
 
     #[test]
@@ -307,7 +298,6 @@ mod tests {
                 ThemeResourceLimitId::MaxEffectOffsetMagnitude,
                 EffectGraph::new(
                     "offset",
-                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
                     [EffectPrimitive::DropShadow {
                         input: EffectInput::SourceGraphic,
                         offset_x: -2.0,
@@ -318,39 +308,22 @@ mod tests {
                     }],
                 )
                 .expect("valid offset graph"),
-                "max_effect_offset_magnitude",
-            ),
-            (
-                ThemeResourceLimitId::MaxEffectFilterRegionMagnitude,
-                EffectGraph::new(
-                    "region",
-                    FilterRegion::bounded(-2.0, 0.0, 1.0, 1.0),
-                    [EffectPrimitive::GaussianBlur {
-                        input: EffectInput::SourceGraphic,
-                        std_deviation: 0.0,
-                    }],
-                )
-                .expect("valid region graph"),
-                "max_effect_filter_region_magnitude",
             ),
             (
                 ThemeResourceLimitId::MaxEffectBlurMagnitude,
                 EffectGraph::new(
                     "blur",
-                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
                     [EffectPrimitive::GaussianBlur {
                         input: EffectInput::SourceGraphic,
                         std_deviation: 2.0,
                     }],
                 )
                 .expect("valid blur graph"),
-                "max_effect_blur_magnitude",
             ),
             (
                 ThemeResourceLimitId::MaxEffectDisplacementScale,
                 EffectGraph::new(
                     "displacement",
-                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
                     [EffectPrimitive::Displacement {
                         input: EffectInput::SourceGraphic,
                         map_input: EffectInput::SourceGraphic,
@@ -358,13 +331,11 @@ mod tests {
                     }],
                 )
                 .expect("valid displacement graph"),
-                "max_effect_displacement_scale",
             ),
             (
                 ThemeResourceLimitId::MaxEffectTurbulenceOctaves,
                 EffectGraph::new(
                     "turbulence",
-                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
                     [EffectPrimitive::Turbulence {
                         input: EffectInput::SourceGraphic,
                         base_frequency_x: 0.1,
@@ -374,18 +345,16 @@ mod tests {
                     }],
                 )
                 .expect("valid turbulence graph"),
-                "max_effect_turbulence_octaves",
             ),
         ];
 
-        for (limit, graph, expected_id) in cases {
+        for (limit, graph) in cases {
             assert_effect_resource_limit(
                 limit,
                 1,
                 DiagramEffectSet::default()
                     .with_graph(graph)
                     .expect("add graph"),
-                expected_id,
                 2,
             );
         }
@@ -395,7 +364,6 @@ mod tests {
     fn drop_shadow_spread_is_charged_as_effect_blur_magnitude() {
         let graph = EffectGraph::new(
             "spread",
-            FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
             [EffectPrimitive::DropShadow {
                 input: EffectInput::SourceGraphic,
                 offset_x: 0.0,
@@ -413,7 +381,6 @@ mod tests {
             DiagramEffectSet::default()
                 .with_graph(graph)
                 .expect("add graph"),
-            "max_effect_blur_magnitude",
             2,
         );
     }
@@ -422,7 +389,6 @@ mod tests {
         limit: ThemeResourceLimitId,
         max: usize,
         effects: DiagramEffectSet,
-        expected_id: &'static str,
         expected_actual: usize,
     ) {
         let policy = ThemeResourcePolicy::interactive()
@@ -441,7 +407,7 @@ mod tests {
                 actual,
                 max: actual_max,
                 ..
-            }) if actual_id == expected_id && actual == expected_actual && actual_max == max
+            }) if actual_id == limit.as_str() && actual == expected_actual && actual_max == max
         ));
     }
 }

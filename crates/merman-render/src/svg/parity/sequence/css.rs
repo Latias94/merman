@@ -1,31 +1,61 @@
 use super::super::*;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct SequenceThemeCssAdapter<'a> {
+    pub(super) actor_fill: Option<&'a str>,
+    pub(super) actor_stroke: Option<&'a str>,
+    pub(super) note_fill: Option<&'a str>,
+    pub(super) note_stroke: Option<&'a str>,
+}
+
 #[cfg(test)]
 pub(super) fn sequence_css(
     diagram_id: &str,
     font_size_px: f64,
     effective_config: &serde_json::Value,
 ) -> String {
-    sequence_css_with_actor_theme(diagram_id, font_size_px, effective_config, None, None)
+    sequence_css_with_theme_adapter(
+        diagram_id,
+        font_size_px,
+        effective_config,
+        SequenceThemeCssAdapter::default(),
+    )
 }
 
-pub(super) fn sequence_css_with_actor_theme(
+#[cfg(test)]
+pub(super) fn sequence_css_with_theme_adapter(
     diagram_id: &str,
     font_size_px: f64,
     effective_config: &serde_json::Value,
-    typed_actor_fill: Option<&str>,
-    typed_actor_stroke: Option<&str>,
+    typed: SequenceThemeCssAdapter<'_>,
 ) -> String {
+    let mut out = String::new();
+    write_sequence_css_with_theme_adapter(
+        &mut out,
+        diagram_id,
+        font_size_px,
+        effective_config,
+        typed,
+    );
+    out
+}
+
+pub(super) fn write_sequence_css_with_theme_adapter(
+    mut out: &mut impl std::fmt::Write,
+    diagram_id: &str,
+    font_size_px: f64,
+    effective_config: &serde_json::Value,
+    typed: SequenceThemeCssAdapter<'_>,
+) {
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
-    let id = escape_xml(diagram_id);
+    let id = escape_xml_display(diagram_id);
     let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
     let font = theme.common.font_family_css.as_str();
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
     let line_color = theme.common.line_color.as_str();
-    let mut out = String::new();
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
@@ -34,7 +64,7 @@ pub(super) fn sequence_css_with_actor_theme(
         fmt(font_size_px),
         text_color
     );
-    out.push_str(
+    let _ = out.write_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
     let _ = write!(
@@ -204,18 +234,28 @@ pub(super) fn sequence_css_with_actor_theme(
         r#"#{} .actor-man circle,#{} line{{stroke:{};fill:{};stroke-width:2px;}}"#,
         id, id, actor_border, actor_fill
     );
-    if let Some(typed_actor_fill) = typed_actor_fill {
+    if let Some(typed_actor_fill) = typed.actor_fill {
         let _ = write!(
             &mut out,
             r#"#{} .actor{{fill:{};}}#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{fill:{};}}"#,
             id, typed_actor_fill, id, id, id, id, typed_actor_fill
         );
     }
-    if let Some(typed_actor_stroke) = typed_actor_stroke {
+    if let Some(typed_actor_stroke) = typed.actor_stroke {
         let _ = write!(
             &mut out,
             r#"#{} .actor{{stroke:{};}}#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{stroke:{};}}"#,
             id, typed_actor_stroke, id, id, id, id, typed_actor_stroke
+        );
+    }
+    if let Some(typed_note_fill) = typed.note_fill {
+        let _ = write!(&mut out, r#"#{} .note{{fill:{};}}"#, id, typed_note_fill);
+    }
+    if let Some(typed_note_stroke) = typed.note_stroke {
+        let _ = write!(
+            &mut out,
+            r#"#{} .note{{stroke:{};}}"#,
+            id, typed_note_stroke
         );
     }
     let _ = write!(
@@ -228,13 +268,52 @@ pub(super) fn sequence_css_with_actor_theme(
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
         id, font
     );
-    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use serde_json::json;
+
+    #[test]
+    fn sequence_css_streams_with_exact_svg_budget_and_rejects_one_byte_short() {
+        let config = json!({});
+        let expected = sequence_css("sequence-budget", 16.0, &config);
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, expected.len())
+            .expect("valid exact SVG limit");
+        let exact_meter = OperationWorkMeter::new(exact_policy);
+        let mut exact = BoundedSvgOutput::new(&exact_meter);
+        write_sequence_css_with_theme_adapter(
+            &mut exact,
+            "sequence-budget",
+            16.0,
+            &config,
+            SequenceThemeCssAdapter::default(),
+        );
+        exact.checkpoint().expect("exact Sequence CSS budget");
+        assert_eq!(exact.finish().expect("finish exact Sequence CSS"), expected);
+
+        let short_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, expected.len() - 1)
+            .expect("valid short SVG limit");
+        let short_meter = OperationWorkMeter::new(short_policy);
+        let mut short = BoundedSvgOutput::new(&short_meter);
+        write_sequence_css_with_theme_adapter(
+            &mut short,
+            "sequence-budget",
+            16.0,
+            &config,
+            SequenceThemeCssAdapter::default(),
+        );
+        assert!(matches!(
+            short.checkpoint(),
+            Err(crate::Error::ResourceLimitExceeded(_))
+        ));
+        assert!(short.as_str().len() <= expected.len() - 1);
+    }
 
     #[test]
     fn sequence_css_uses_configured_font_size() {
@@ -314,12 +393,14 @@ mod tests {
 
     #[test]
     fn sequence_actor_stroke_css_is_scoped_to_actor_owned_dom() {
-        let css = sequence_css_with_actor_theme(
+        let css = sequence_css_with_theme_adapter(
             "seq",
             16.0,
             &json!({"themeVariables": {"actorBorder": "#220000"}}),
-            None,
-            Some("#2563eb"),
+            SequenceThemeCssAdapter {
+                actor_stroke: Some("#2563eb"),
+                ..SequenceThemeCssAdapter::default()
+            },
         );
 
         assert!(css.contains(r#"#seq .actor-man circle,#seq line{stroke:#220000;"#));
@@ -334,12 +415,14 @@ mod tests {
 
     #[test]
     fn sequence_actor_fill_css_is_scoped_to_actor_owned_dom() {
-        let css = sequence_css_with_actor_theme(
+        let css = sequence_css_with_theme_adapter(
             "seq",
             16.0,
             &json!({"themeVariables": {"actorBkg": "#330000"}}),
-            Some("#dc2626"),
-            None,
+            SequenceThemeCssAdapter {
+                actor_fill: Some("#dc2626"),
+                ..SequenceThemeCssAdapter::default()
+            },
         );
 
         assert!(css.contains(r#"#seq .actor-man circle,#seq line{stroke:#9370DB;fill:#330000;"#));
@@ -350,5 +433,30 @@ mod tests {
         assert!(!css.contains(r#"#seq line{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageLine0{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq [id$="-sequencenumber"]{fill:#dc2626;"#));
+    }
+
+    #[test]
+    fn sequence_note_paint_css_is_scoped_to_note_rects() {
+        let css = sequence_css_with_theme_adapter(
+            "seq",
+            16.0,
+            &json!({
+                "themeVariables": {
+                    "noteBkgColor": "#dddddd",
+                    "noteBorderColor": "#cccccc"
+                }
+            }),
+            SequenceThemeCssAdapter {
+                note_fill: Some("#dc2626"),
+                note_stroke: Some("#2563eb"),
+                ..SequenceThemeCssAdapter::default()
+            },
+        );
+
+        assert!(css.contains(r#"#seq .note{stroke:#cccccc;fill:#dddddd;}"#));
+        assert!(css.contains(r#"#seq .note{fill:#dc2626;}#seq .note{stroke:#2563eb;}"#));
+        assert!(!css.contains(r#"#seq .noteText{fill:#dc2626;"#));
+        assert!(!css.contains(r#"#seq .messageText{stroke:#2563eb;"#));
+        assert!(!css.contains(r#"#seq .activation0{fill:#dc2626;"#));
     }
 }

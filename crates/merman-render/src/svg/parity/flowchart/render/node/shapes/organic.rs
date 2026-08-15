@@ -30,7 +30,7 @@ fn path_data(arcs: &[RelativeArc]) -> String {
 }
 
 fn render_organic_shape(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     geometry: &OrganicShapeGeometry,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -80,7 +80,7 @@ fn render_organic_shape(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_bang(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -96,7 +96,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bang(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_cloud(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,

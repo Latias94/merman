@@ -128,6 +128,8 @@ pub mod __private {
         status: FamilyEvidenceStatus,
         required_count: usize,
         accounted_count: usize,
+        applied_count: usize,
+        not_applicable_count: usize,
         theme_residual_count: usize,
         source_residual_count: usize,
         compatibility_residual_count: usize,
@@ -141,6 +143,8 @@ pub mod __private {
             status: FamilyEvidenceStatus,
             required_count: usize,
             accounted_count: usize,
+            applied_count: usize,
+            not_applicable_count: usize,
             theme_residual_count: usize,
             source_residual_count: usize,
             compatibility_residual_count: usize,
@@ -151,6 +155,8 @@ pub mod __private {
                 status,
                 required_count,
                 accounted_count,
+                applied_count,
+                not_applicable_count,
                 theme_residual_count,
                 source_residual_count,
                 compatibility_residual_count,
@@ -169,6 +175,14 @@ pub mod __private {
 
         pub const fn accounted_count(self) -> usize {
             self.accounted_count
+        }
+
+        pub const fn applied_count(self) -> usize {
+            self.applied_count
+        }
+
+        pub const fn not_applicable_count(self) -> usize {
+            self.not_applicable_count
         }
 
         pub const fn theme_residual_count(self) -> usize {
@@ -197,11 +211,75 @@ pub mod __private {
         report.evidence_summary()
     }
 
+    /// Bounded root-evidence projection used by the workspace facade.
+    ///
+    /// Mechanism keys, per-capability ledgers, and residual identities remain renderer-private.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct RootEvidenceSummary {
+        status: crate::diagram_theme::RootThemeVerification,
+        required_count: usize,
+        accounted_count: usize,
+        applied_count: usize,
+        residual_count: usize,
+        output_mutated: bool,
+    }
+
+    impl RootEvidenceSummary {
+        pub const fn status(self) -> crate::diagram_theme::RootThemeVerification {
+            self.status
+        }
+
+        pub const fn required_count(self) -> usize {
+            self.required_count
+        }
+
+        pub const fn accounted_count(self) -> usize {
+            self.accounted_count
+        }
+
+        pub const fn applied_count(self) -> usize {
+            self.applied_count
+        }
+
+        pub const fn residual_count(self) -> usize {
+            self.residual_count
+        }
+
+        pub const fn output_mutated(self) -> bool {
+            self.output_mutated
+        }
+    }
+
+    /// Projects renderer-private root evidence without exporting the mechanism ledger.
+    pub fn root_evidence(report: &FamilyRenderReport) -> RootEvidenceSummary {
+        let root = report.root_theme_report();
+        let required_count = root.required_mechanisms().len();
+        let applied_count = root.applied_mechanisms().len();
+        let residual_count = root.residuals().len();
+        RootEvidenceSummary {
+            status: root.verification(),
+            required_count,
+            accounted_count: applied_count.saturating_add(residual_count),
+            applied_count,
+            residual_count,
+            output_mutated: root.residuals().iter().any(|residual| {
+                residual.reason() == crate::diagram_theme::RootThemeResidualReason::OutputMutation
+            }),
+        }
+    }
+
     /// Returns the exact State hard-shadow receipt frozen after SVG emission.
     pub fn family_native_filter_receipt(
         report: &FamilyRenderReport,
     ) -> Option<NativeSvgFilterReceipt> {
         report.native_filter_receipt()
+    }
+
+    /// Returns the exact host/theme resource-policy intersection captured by the session.
+    pub fn effective_theme_resource_policy(
+        report: &crate::environment::RenderSessionReport,
+    ) -> &crate::diagram_theme::ThemeResourcePolicy {
+        report.effective_theme_resource_policy()
     }
 
     /// Returns the terminal SVG carrying renderer-owned prepared-label locators.
@@ -422,7 +500,6 @@ pub enum Error {
     RejectedRootTheme {
         verification: crate::diagram_theme::RootThemeVerification,
         residual_count: usize,
-        first_residual: Option<crate::diagram_theme::RootThemeResidual>,
     },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
@@ -448,6 +525,8 @@ pub enum Error {
     IconProcessing { message: String },
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
+    #[error(transparent)]
+    ThemeResourceLimitExceeded(#[from] crate::diagram_theme::ThemeResourceLimitExceeded),
     #[error(transparent)]
     Color(#[from] merman_core::theme_color::ColorError),
     #[error("semantic model JSON error: {0}")]
@@ -550,17 +629,12 @@ impl Error {
 
     pub const fn rejected_root_theme(
         &self,
-    ) -> Option<(
-        crate::diagram_theme::RootThemeVerification,
-        usize,
-        Option<&crate::diagram_theme::RootThemeResidual>,
-    )> {
+    ) -> Option<(crate::diagram_theme::RootThemeVerification, usize)> {
         match self {
             Self::RejectedRootTheme {
                 verification,
                 residual_count,
-                first_residual,
-            } => Some((*verification, *residual_count, first_residual.as_ref())),
+            } => Some((*verification, *residual_count)),
             _ => None,
         }
     }

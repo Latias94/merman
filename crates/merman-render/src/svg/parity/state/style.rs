@@ -1,7 +1,7 @@
 use super::*;
 
 fn state_shadow_defs(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     compatibility: &crate::state::StateCompatibilityStyle,
 ) {
@@ -21,7 +21,11 @@ fn state_shadow_defs(
     );
 }
 
-fn state_gradient_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
+fn state_gradient_defs(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) {
     if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
         return;
     }
@@ -51,11 +55,12 @@ fn state_gradient_defs(out: &mut String, diagram_id: &str, effective_config: &se
 }
 
 pub(super) fn write_state_theme_effect_application(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     scoped_filter_id: &str,
     effect: &crate::state::StateSvgEffect,
+    region: crate::state::StateSvgFilterRegion,
 ) -> String {
-    let region = effect.region();
+    let [x, y, width, height] = region.as_array();
     let id = escape_attr(scoped_filter_id);
     let color = escape_attr(&effect.color().as_css());
     // Keep the SVG filter default explicit. `sRGB` causes a large dark-color gamma shift in the
@@ -64,10 +69,10 @@ pub(super) fn write_state_theme_effect_application(
         out,
         r#"<defs><filter id="{}" filterUnits="objectBoundingBox" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="{}" dy="{}" stdDeviation="0" flood-color="{}"/></filter></defs>"#,
         id,
-        region.x,
-        region.y,
-        region.width,
-        region.height,
+        x,
+        y,
+        width,
+        height,
         effect.offset_x(),
         effect.offset_y(),
         color,
@@ -76,7 +81,7 @@ pub(super) fn write_state_theme_effect_application(
 }
 
 pub(super) fn state_markers(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     style_plan: &crate::state::StateStylePlan,
 ) {
@@ -132,7 +137,7 @@ pub(super) fn state_markers(
 }
 
 pub(super) fn state_root_defs(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
     style_plan: &crate::state::StateStylePlan,
@@ -141,16 +146,16 @@ pub(super) fn state_root_defs(
     state_gradient_defs(out, diagram_id, effective_config);
 }
 
-pub(super) fn state_css(
-    diagram_id: &str,
-    effective_config: &serde_json::Value,
-    style_plan: &crate::state::StateStylePlan,
-) -> String {
-    fn normalize_decl(
-        declaration: &crate::diagram_theme::PreparedSourceStyleDeclaration,
-    ) -> (String, String) {
+fn write_state_class_declarations(
+    out: &mut impl SvgOutput,
+    styles: &[(
+        usize,
+        std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
+    )],
+) -> crate::Result<()> {
+    for (_, declaration) in styles {
         let semantic_key = declaration.property();
-        let key = declaration.property_css().to_string();
+        let key = declaration.property_css();
         let value = declaration.value().trim();
         let value = if matches!(
             semantic_key,
@@ -162,26 +167,42 @@ pub(super) fn state_css(
                 | "outline-color"
                 | "stroke"
         ) {
-            super::super::util::cssom_color_value(value)
+            std::borrow::Cow::Owned(super::super::util::cssom_color_value(value))
         } else {
-            value.to_string()
+            std::borrow::Cow::Borrowed(value)
         };
-        (key, format!("{value}!important"))
-    }
-
-    fn class_decl_block(
-        styles: &[(
-            usize,
-            std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
-        )],
-    ) -> String {
-        let mut out = String::new();
-        for (_, declaration) in styles {
-            let (k, v) = normalize_decl(declaration);
-            let _ = write!(&mut out, "{}:{};", k, v);
+        if write!(out, "{key}:{value}!important;").is_err() {
+            return out.checkpoint();
         }
-        out
     }
+    Ok(())
+}
+
+fn write_state_class_rule(
+    out: &mut impl SvgOutput,
+    id: &str,
+    class_id: &str,
+    selector: std::fmt::Arguments<'_>,
+    styles: &[(
+        usize,
+        std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
+    )],
+) -> crate::Result<()> {
+    if write!(out, "#{id} .{class_id}{selector}{{").is_err() {
+        return out.checkpoint();
+    }
+    write_state_class_declarations(out, styles)?;
+    out.push('}');
+    out.checkpoint()
+}
+
+pub(super) fn write_state_css(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    style_plan: &crate::state::StateStylePlan,
+) -> crate::Result<()> {
+    out.checkpoint()?;
 
     let theme = style_plan.compatibility();
     let base_text_style = style_plan.base_text_style();
@@ -261,7 +282,7 @@ pub(super) fn state_css(
     );
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.
-    let mut css = String::new();
+    let mut css = out;
     let font_size_s = fmt(font_size);
     let _ = write!(
         &mut css,
@@ -644,46 +665,55 @@ pub(super) fn state_css(
         id, ff
     );
 
+    css.checkpoint()?;
+
     if style_plan.classes().next().is_some() {
         let html_labels = crate::state::StateConfigView::new(effective_config)
             .render_settings()
             .html_labels;
         for sc in style_plan.classes() {
-            let styles = class_decl_block(sc.styles());
-            if !styles.is_empty() {
+            if !sc.styles().is_empty() {
                 if html_labels {
-                    let _ = write!(
-                        &mut css,
-                        r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                        id,
+                    write_state_class_rule(
+                        &mut *css,
+                        id.as_str(),
                         sc.id(),
-                        styles,
-                        id,
+                        format_args!("&gt;*"),
+                        sc.styles(),
+                    )?;
+                    write_state_class_rule(
+                        &mut *css,
+                        id.as_str(),
                         sc.id(),
-                        styles
-                    );
+                        format_args!(" span"),
+                        sc.styles(),
+                    )?;
                 } else {
                     for element in ["rect", "polygon", "ellipse", "circle", "path"] {
-                        let _ = write!(
-                            &mut css,
-                            r#"#{} .{} {}{{{}}}"#,
-                            id,
+                        write_state_class_rule(
+                            &mut *css,
+                            id.as_str(),
                             sc.id(),
-                            element,
-                            styles
-                        );
+                            format_args!(" {element}"),
+                            sc.styles(),
+                        )?;
                     }
                 }
             }
 
-            let text_styles = class_decl_block(sc.text_styles());
-            if !text_styles.is_empty() {
-                let _ = write!(&mut css, r#"#{} .{} tspan{{{}}}"#, id, sc.id(), text_styles);
+            if !sc.text_styles().is_empty() {
+                write_state_class_rule(
+                    &mut *css,
+                    id.as_str(),
+                    sc.id(),
+                    format_args!(" tspan"),
+                    sc.text_styles(),
+                )?;
             }
         }
     }
 
-    css
+    css.checkpoint()
 }
 
 pub(super) fn state_value_to_label_text(v: &serde_json::Value) -> String {
@@ -976,12 +1006,22 @@ mod tests {
         crate::state::StateStylePlan::resolve_unthemed(model, config)
     }
 
+    fn rendered_state_css(
+        diagram_id: &str,
+        config: &serde_json::Value,
+        plan: &crate::state::StateStylePlan,
+    ) -> String {
+        let mut css = String::new();
+        write_state_css(&mut css, diagram_id, config, plan).expect("write State CSS");
+        css
+    }
+
     #[test]
     fn state_class_defs_keep_shape_and_text_styles_separate() {
         let model = model_with_hot_class();
         let config = json!({});
         let plan = style_plan(&model, &config);
-        let css = state_css("st", &config, &plan);
+        let css = rendered_state_css("st", &config, &plan);
 
         let declarations = "fill:rgb(255, 221, 221)!important;stroke:rgb(221, 51, 51)!important;stroke-width:2px!important;color:rgb(34, 34, 34)!important;";
         assert!(css.ends_with(&format!(
@@ -1051,7 +1091,7 @@ mod tests {
         let model = model_with_hot_class();
         let config = json!({ "htmlLabels": false });
         let plan = style_plan(&model, &config);
-        let css = state_css("st", &config, &plan);
+        let css = rendered_state_css("st", &config, &plan);
 
         for element in ["rect", "polygon", "ellipse", "circle", "path"] {
             assert!(css.contains(&format!("#st .hot {element}{{")));
@@ -1075,9 +1115,36 @@ mod tests {
 
         let config = json!({});
         let plan = style_plan(&model, &config);
-        let css = state_css("st", &config, &plan);
+        let css = rendered_state_css("st", &config, &plan);
         assert_eq!(css.matches("#st .emphasis&gt;*").count(), 1);
         assert_eq!(css.matches("#st .emphasis span{").count(), 1);
+    }
+
+    #[test]
+    fn state_css_stops_at_the_class_rule_svg_byte_boundary() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+        let config = json!({});
+        let baseline_model = StateSvgModel::default();
+        let baseline_plan = style_plan(&baseline_model, &config);
+        let baseline_css = rendered_state_css("st", &config, &baseline_plan);
+
+        let model = model_with_hot_class();
+        let plan = style_plan(&model, &config);
+        let max_svg_bytes = baseline_css.len() + 16;
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, max_svg_bytes)
+            .expect("valid State CSS byte ceiling");
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+
+        let error = write_state_css(&mut out, "st", &config, &plan)
+            .expect_err("the first class rule must cross the SVG byte ceiling");
+
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert!(out.len() <= max_svg_bytes);
+        assert!(out.as_str().starts_with(baseline_css.as_str()));
+        assert!(!out.as_str().contains("#st .hot span{"));
     }
 
     #[test]
@@ -1113,7 +1180,7 @@ mod tests {
 
         let model = StateSvgModel::default();
         let plan = style_plan(&model, &cfg);
-        let css = state_css("st", &cfg, &plan);
+        let css = rendered_state_css("st", &cfg, &plan);
 
         assert!(css.contains(r#"#st{font-family:Inter,Arial;font-size:16px;fill:#101010;}"#));
         assert!(css.contains(
@@ -1167,7 +1234,7 @@ mod tests {
 
         let model = StateSvgModel::default();
         let plan = style_plan(&model, &cfg);
-        let css = state_css("st", &cfg, &plan);
+        let css = rendered_state_css("st", &cfg, &plan);
 
         assert!(css.contains(
             r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#st-gradient);stroke-width:4;}"##

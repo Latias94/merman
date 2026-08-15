@@ -69,7 +69,7 @@ mod style_plan;
 pub(crate) use config::StateConfigView;
 pub(crate) use effect_evidence::StateSvgEffectEvidenceRecorder;
 pub(crate) use effect_plan::{
-    StateEffectOutsets, StateEffectPlan, StateNodeEffectPlan, StateSvgEffect,
+    StateEffectOutsets, StateEffectPlan, StateNodeEffectPlan, StateSvgEffect, StateSvgFilterRegion,
 };
 pub(crate) use style_plan::{
     ResolvedLabelTypography, StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan,

@@ -9,6 +9,7 @@ use super::blocks::{
 use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
 use super::settings::SequenceRenderSettings;
+use crate::sequence::SequenceNoteThemeReceipt;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {
@@ -24,8 +25,9 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
 }
 
 pub(super) fn render_sequence_interaction_overlays(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &SequenceInteractionRenderContext<'_>,
+    note_theme_receipt: &mut SequenceNoteThemeReceipt,
 ) {
     // Mermaid creates activation placeholders at ACTIVE_START and inserts the `<rect>` once the
     // corresponding ACTIVE_END is encountered. We store the final rect geometry during this
@@ -83,7 +85,7 @@ pub(super) fn render_sequence_interaction_overlays(
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         render_sequence_activation_group(out, &activation_plan, &msg.id);
-        render_sequence_note(out, msg, &note_ctx);
+        render_sequence_note(out, msg, &note_ctx, note_theme_receipt);
 
         let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {
             continue;

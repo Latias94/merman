@@ -23,7 +23,7 @@ pub(super) struct SequenceActorRenderContext<'a> {
 }
 
 pub(super) fn render_sequence_bottom_actors(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
 ) {
     let label_ctx = ActorLabelContext::new(
@@ -75,7 +75,7 @@ pub(super) fn render_sequence_bottom_actors(
 }
 
 pub(super) fn render_sequence_top_actors_and_lifelines(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
 ) {
     let label_ctx = ActorLabelContext::new(

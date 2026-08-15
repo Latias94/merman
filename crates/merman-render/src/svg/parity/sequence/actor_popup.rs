@@ -5,7 +5,7 @@ use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navig
 use rustc_hash::FxHashMap;
 
 pub(super) fn render_sequence_actor_popup_menus(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     sanitize_config: &merman_core::MermaidConfig,

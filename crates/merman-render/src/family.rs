@@ -625,7 +625,7 @@ impl FamilyRenderReport {
         &self.style
     }
 
-    pub const fn root_theme_report(&self) -> &RootThemeReport {
+    pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
         &self.root_theme
     }
 
@@ -643,6 +643,8 @@ impl FamilyRenderReport {
             crate::__private::FamilyEvidenceStatus::from_verification(self.style.verification()),
             self.style.theme_required.len(),
             accounted_count,
+            self.style.theme_applied.len(),
+            self.style.theme_not_applicable.len(),
             self.style.theme_residuals.len(),
             self.style.residuals.len(),
             self.style.compatibility_residual_count,
@@ -885,6 +887,7 @@ impl ResolvedFamilyStylePlan {
         effective_config: &serde_json::Value,
         title: Option<&str>,
         prepared_text_available: bool,
+        effective_theme_resource_policy: Arc<crate::diagram_theme::ThemeResourcePolicy>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<()> {
         debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
@@ -892,6 +895,7 @@ impl ResolvedFamilyStylePlan {
             model,
             effective_config,
             self.resolved_theme.as_deref(),
+            effective_theme_resource_policy,
             title,
             prepared_text_available,
             work_meter,
@@ -1135,11 +1139,13 @@ impl FamilyRenderContext {
         effective_config: &serde_json::Value,
         title: Option<&str>,
     ) -> Result<()> {
+        let effective_theme_resource_policy = self.session.effective_theme_resource_policy();
         self.style_plan.adapt_state(
             model,
             effective_config,
             title,
             self.session.prepared_text_layout().is_some(),
+            effective_theme_resource_policy,
             self.session.work_meter().as_ref(),
         )
     }
@@ -1837,7 +1843,7 @@ impl RenderedFamilySvg {
         &self.style_report
     }
 
-    pub const fn root_theme_report(&self) -> &RootThemeReport {
+    pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
         &self.root_theme
     }
 
@@ -1998,7 +2004,7 @@ impl RenderedResvgCompatibleSvg {
         &self.style_report
     }
 
-    pub const fn root_theme_report(&self) -> &RootThemeReport {
+    pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
         &self.root_theme
     }
 
@@ -2218,7 +2224,6 @@ fn ensure_root_theme_portable(
     Err(Error::RejectedRootTheme {
         verification,
         residual_count: report.residuals().len(),
-        first_residual: report.residuals().first().cloned(),
     })
 }
 
@@ -4224,15 +4229,11 @@ mod tests {
                 Ok(_) => panic!("strict portability must reject an unsupported root gradient"),
                 Err(error) => error,
             };
-        let (verification, residual_count, first_residual) = error
+        let (verification, residual_count) = error
             .rejected_root_theme()
             .expect("evaluated root theme rejection");
         assert_eq!(verification, RootThemeVerification::Unverified);
         assert_eq!(residual_count, 1);
-        assert_eq!(
-            first_residual.expect("gradient residual").key(),
-            &RootThemeMechanismKey::CanvasLayer { index: 0 }
-        );
     }
 
     #[test]
@@ -6996,6 +6997,80 @@ linkStyle 1 font-weight:banana
     }
 
     #[test]
+    fn require_portable_accepts_hand_drawn_cluster_emitted_shape_facets() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile empty strict theme");
+
+        for (family, source) in [
+            (
+                DiagramFamilyId::FLOWCHART,
+                r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart TD
+subgraph Group[Group]
+A
+end
+style Group fill:#f8fafc,stroke:#ef4444,stroke-width:2px,stroke-dasharray:4 2
+"#,
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                r#"---
+config:
+  layout: swimlane
+  look: handDrawn
+  handDrawnSeed: 7
+---
+flowchart TD
+subgraph Lane[Lane]
+A
+end
+style Lane fill:#f8fafc,stroke:#ef4444,stroke-width:2px,stroke-dasharray:4 2
+"#,
+            ),
+        ] {
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("hand-drawn cluster source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict hand-drawn cluster session"),
+            )
+            .expect("prepare hand-drawn cluster")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("emitted hand-drawn cluster facets should satisfy strict portability");
+
+            assert_eq!(rendered.family_id(), family);
+            assert!(rendered.svg().contains("<path "), "{}", rendered.svg());
+            for emitted_declaration in [
+                "stroke:#f8fafc !important",
+                "stroke:#ef4444 !important",
+                "stroke-width:2px !important",
+                "stroke-dasharray:4 2 !important",
+            ] {
+                assert!(
+                    rendered.svg().contains(emitted_declaration),
+                    "missing emitted {emitted_declaration} for {family}: {}",
+                    rendered.svg(),
+                );
+            }
+            assert!(
+                rendered.style_report().residuals().is_empty(),
+                "unexpected {family} residuals: {:#?}",
+                rendered.style_report().residuals(),
+            );
+        }
+    }
+
+    #[test]
     fn flowchart_cluster_sanitized_xhtml_and_empty_title_styles_are_source_residuals() {
         let theme = flowchart_node_theme(
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
@@ -8027,6 +8102,203 @@ style Empty font-weight:banana
                 index: 0,
                 target: ThemeTarget::Actor,
             }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
+        for (style, expected_css) in [
+            (
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#ef4444").expect("valid Note fill")),
+                "#merman .note{fill:#ef4444;}",
+            ),
+            (
+                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                "#merman .note{fill:transparent;}",
+            ),
+            (
+                ThemeStylePatch::default()
+                    .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Note stroke")),
+                "#merman .note{stroke:#2563eb;}",
+            ),
+            (
+                ThemeStylePatch::default().with_stroke(CanvasPaint::Transparent),
+                "#merman .note{stroke:transparent;}",
+            ),
+        ] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(ThemeTarget::Note, style)
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .expect("compile Sequence Note theme");
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nNote over Alice,Bob: Ready\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict portable Sequence Note session"),
+            )
+            .expect("Sequence Note theme should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("Sequence Note paint should be proven by the rect writer");
+
+            assert!(
+                rendered.svg().contains(expected_css),
+                "Sequence SVG should contain the typed Note paint: {}",
+                rendered.svg()
+            );
+            assert!(
+                rendered.svg().contains(r#"data-et="note" data-id="i"#),
+                "Sequence SVG should contain the terminal Note rect: {}",
+                rendered.svg()
+            );
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Note,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_note_rule_without_a_terminal_note_rect_is_not_applicable() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Note,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").expect("valid Note fill")),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Note theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Sequence Note session"),
+        )
+        .expect("Sequence Note rule without notes should prepare")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("Sequence Note rule without terminal rects should be not applicable");
+
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Note,
+            }]
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn sequence_explicit_note_paints_own_precedence_over_typed_note_paints() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Note,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").expect("valid Note fill"))
+                                .with_stroke(
+                                    CanvasPaint::solid("#2563eb").expect("valid Note stroke"),
+                                ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Note theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new().with_site_config(
+                MermaidConfig::from_value(json!({
+                    "themeVariables": {
+                        "noteBkgColor": "#22c55e",
+                        "noteBorderColor": "#a855f7"
+                    }
+                })),
+            ))
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nNote over Alice,Bob: Ready\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict configured Sequence Note session"),
+        )
+        .expect("explicit Mermaid Note paints should remain evaluable")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("explicit Mermaid Note paints should satisfy strict portability");
+
+        assert!(rendered.svg().contains("#22c55e"), "{}", rendered.svg());
+        assert!(rendered.svg().contains("#a855f7"), "{}", rendered.svg());
+        assert!(!rendered.svg().contains("#ef4444"), "{}", rendered.svg());
+        assert!(!rendered.svg().contains("#2563eb"), "{}", rendered.svg());
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Note,
+            }]
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
     }
@@ -9979,7 +10251,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
             let edge = model.edges.get(1).expect("self-loop edge");
             assert_eq!(edge.id, "self-loop-edge");
             let label = model
-                .edge_label_for_render(edge)
+                .edge_label_for_render(1, edge)
                 .expect("self-loop edge label");
             let owner = flowchart
                 .svg_label_sidecar()
@@ -10114,7 +10386,7 @@ linkStyle 0 font-size:12px,font-style:italic
             let edge = model.edges.first().expect("styled Swimlane edge");
             assert_eq!(edge.id, "styled");
             let label = model
-                .edge_label_for_render(edge)
+                .edge_label_for_render(0, edge)
                 .expect("Swimlane edge label");
             let owner = swimlane
                 .svg_label_sidecar()
