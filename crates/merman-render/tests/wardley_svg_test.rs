@@ -3,55 +3,13 @@ use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::Value;
 
-fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("Wardley parse succeeds")
-        .expect("Wardley diagram is detected");
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("Wardley layout succeeds");
-    assert_eq!(artifact.family_id(), DiagramFamilyId::WARDLEY);
-
-    artifact
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some(diagram_id.to_string()),
-                ..Default::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("Wardley SVG renders")
-        .svg()
-        .to_owned()
-}
-
-fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
-    node.attribute("class").is_some_and(|classes| {
-        classes
-            .split_whitespace()
-            .any(|candidate| candidate == class)
-    })
-}
-
-fn element_with_class<'a, 'input>(
-    document: &'a roxmltree::Document<'input>,
-    tag: &str,
-    class: &str,
-) -> roxmltree::Node<'a, 'input> {
-    document
-        .descendants()
-        .find(|node| node.has_tag_name(tag) && has_class(*node, class))
-        .unwrap_or_else(|| panic!("missing <{tag}>.{class}"))
-}
-
-#[test]
-fn wardley_svg_serializes_the_complete_1116_feature_surface() {
-    let source = r#"wardley-beta
+const WARDLEY_COMPLETE_FEATURE_SOURCE: &str = r#"wardley-beta
 title Platform Strategy
 accTitle: Platform map
 accDescr: Strategic platform evolution
@@ -83,8 +41,68 @@ annotation 1,[0.78, 0.82] "User touchpoints"
 accelerator "Cloud Native" [0.20, 0.85]
 deaccelerator "Legacy Data" [0.45, 0.35]
 "#;
-    let svg = render_wardley(
+
+fn try_render_wardley_with_resource_policy(
+    source: &str,
+    site_config: Value,
+    diagram_id: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("Wardley parse succeeds")
+        .expect("Wardley diagram is detected");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("Wardley render session starts");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    assert_eq!(artifact.family_id(), DiagramFamilyId::WARDLEY);
+
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..Default::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok(rendered.svg().to_owned())
+}
+
+fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
+    try_render_wardley_with_resource_policy(
         source,
+        site_config,
+        diagram_id,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("Wardley SVG renders")
+}
+
+fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
+    node.attribute("class").is_some_and(|classes| {
+        classes
+            .split_whitespace()
+            .any(|candidate| candidate == class)
+    })
+}
+
+fn element_with_class<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    tag: &str,
+    class: &str,
+) -> roxmltree::Node<'a, 'input> {
+    document
+        .descendants()
+        .find(|node| node.has_tag_name(tag) && has_class(*node, class))
+        .unwrap_or_else(|| panic!("missing <{tag}>.{class}"))
+}
+
+#[test]
+fn wardley_svg_serializes_the_complete_1116_feature_surface() {
+    let svg = render_wardley(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
         serde_json::json!({ "wardley-beta": { "showGrid": true } }),
         "wardley-feature-rich",
     );
@@ -139,6 +157,57 @@ deaccelerator "Legacy Data" [0.45, 0.35]
     assert!(svg.contains(">Legacy Data</text>"));
     assert!(svg.contains("link-arrow-end-wardley-feature-rich"));
     assert!(svg.contains("link-arrow-start-wardley-feature-rich"));
+}
+
+#[test]
+fn wardley_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let site_config = serde_json::json!({ "wardley-beta": { "showGrid": true } });
+    let diagram_id = "wardley-bounded";
+    let baseline = try_render_wardley_with_resource_policy(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        site_config.clone(),
+        diagram_id,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Wardley baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "Wardley fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Wardley SVG byte ceiling");
+    let exact = try_render_wardley_with_resource_policy(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        site_config.clone(),
+        diagram_id,
+        exact_policy,
+    )
+    .expect("the exact Wardley family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Wardley SVG byte ceiling");
+    let error = try_render_wardley_with_resource_policy(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        site_config,
+        diagram_id,
+        below_policy,
+    )
+    .expect_err("one byte below the Wardley family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Wardley MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 #[test]
