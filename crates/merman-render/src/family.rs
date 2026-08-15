@@ -8541,7 +8541,7 @@ style Empty font-weight:banana
             let parsed = theme
                 .install_parse_compatibility(Engine::new())
                 .parse_diagram_for_render_model_sync(
-                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Request\nactivate Bob\nBob-->>Alice: Response\ndeactivate Bob\n",
+                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Request\nactivate Bob\nBob-->>Alice: Response\ndeactivate Bob\nAlice->>Bob: Pending\nactivate Bob\n",
                     ParseOptions::strict(),
                 )
                 .unwrap()
@@ -8602,40 +8602,44 @@ style Empty font-weight:banana
                 ),
             )
             .expect("compile Sequence Activation theme");
-        let parsed = theme
-            .install_parse_compatibility(Engine::new())
-            .parse_diagram_for_render_model_sync(
-                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
-                ParseOptions::strict(),
+        for source in [
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Pending\nactivate Bob\n",
+        ] {
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict Sequence Activation session"),
             )
-            .unwrap()
-            .expect("Sequence source should produce a render model");
-        let rendered = prepare(
-            parsed,
-            &LayoutOptions::default(),
-            crate::environment::RenderEnvironment::deterministic()
-                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-                .begin_session_with_theme(&theme)
-                .expect("begin strict Sequence Activation session"),
-        )
-        .expect("Sequence Activation rule without activations should prepare")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("Sequence Activation rule without terminal rects should be not applicable");
+            .expect("Sequence Activation rule without terminal rectangles should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("Sequence Activation rule without terminal rectangles should be inapplicable");
 
-        assert_eq!(
-            rendered.style_report().theme_not_applicable_mechanisms(),
-            &[FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Activation,
-            }]
-        );
-        assert!(
-            rendered
-                .style_report()
-                .theme_applied_mechanisms()
-                .is_empty()
-        );
-        assert!(rendered.style_report().theme_residuals().is_empty());
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Activation,
+                }]
+            );
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .is_empty()
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
     }
 
     #[test]
