@@ -79,7 +79,8 @@ impl PreparedStateLabel {
     }
 
     pub(crate) fn merge_emission_font_style(&self, existing: Option<&str>) -> String {
-        self.admitted_typography.merge_emission_font_style(existing)
+        self.admitted_typography
+            .merge_materialized_emission_font_style(existing)
     }
 
     fn bind_label_id(&mut self, key: u32) -> bool {
@@ -575,8 +576,8 @@ mod tests {
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
         FontSourcePolicy, FontStack, OrdinalSelector, ResolvedDiagramTheme, Specified,
-        TextStylePatch, ThemeAssets, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle,
-        TypographySpec,
+        TextStylePatch, TextTransform, ThemeAssets, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+        ThemeTextStyle, TypographySpec,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{
@@ -590,14 +591,27 @@ mod tests {
         ResolvedDiagramTheme,
         StateDiagramRenderModel,
     ) {
+        prepared_state_fixture_with_transform(TextTransform::None)
+    }
+
+    fn prepared_state_fixture_with_transform(
+        transform: TextTransform,
+    ) -> (
+        PreparedTextLayout,
+        ResolvedDiagramTheme,
+        StateDiagramRenderModel,
+    ) {
         let bytes = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
         ));
         let catalog = FontCatalogSpec::new([FontAssetSpec::new("excalifont", bytes)]);
-        let typography = ThemeTextStyle::default().with_font_stack(
-            FontStack::new(["Arial", "Excalifont"]).expect("fixture font stack should be valid"),
-        );
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(
+                FontStack::new(["Arial", "Excalifont"])
+                    .expect("fixture font stack should be valid"),
+            )
+            .with_transform(transform);
         let ordinal = OrdinalSelector::exact(1).unwrap();
         let mut generic_text = TextStylePatch::default();
         generic_text.font_size_px = Specified::Value(19.0);
@@ -722,6 +736,75 @@ mod tests {
         assert!(!emission_style.contains("Arial"));
         assert!(emission_style.contains("font-size:23px !important"));
         assert!(work_meter.used() > 4);
+    }
+
+    #[test]
+    fn prepared_state_transform_drives_measurement_emission_and_evidence() {
+        let (prepared, resolved, mut model) =
+            prepared_state_fixture_with_transform(TextTransform::Uppercase);
+        model.nodes[0].label = Some(json!("Ready state"));
+        let work_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let (plan, evidence) = crate::state::StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({}),
+            Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
+            None,
+            true,
+            work_meter.as_ref(),
+        )
+        .expect("resolve transformed State style plan");
+        let node = plan.node("Ready").expect("prepared State node style");
+        let measurer = DeterministicTextMeasurer::default();
+        let builder =
+            StateLabelSidecarBuilder::new_with_work_meter(Some(&prepared), Arc::clone(&work_meter));
+
+        let measurement = builder.measure_for_layout(StateLabelMetricsRequest {
+            owner: StateLabelOwner::Node("Ready"),
+            text: "Ready state",
+            source_kind: StateLabelSourceKind::Markdown,
+            measurer: &measurer,
+            typography: node.resolved_label_typography(),
+            max_width_px: Some(180.0),
+            wrap_mode: WrapMode::SvgLike,
+            break_long_words: true,
+        });
+        let sidecar = builder.finish();
+        let prepared_label = sidecar.node("Ready").expect("prepared State label");
+
+        assert_eq!(prepared_label.prepared.visible_text(), "READY STATE");
+        assert_eq!(
+            prepared_label.wrapped_lines().collect::<Vec<_>>(),
+            vec!["READY STATE"]
+        );
+        assert_eq!(measurement.metrics.width, prepared_label.metrics().width);
+        assert_eq!(measurement.metrics.height, prepared_label.metrics().height);
+        assert_eq!(
+            measurement.metrics.line_count,
+            prepared_label.metrics().line_count
+        );
+        let emission_style = prepared_label.merge_emission_font_style(Some(
+            "fill:#111827 !important;text-transform:lowercase !important",
+        ));
+        assert!(emission_style.contains("fill:#111827 !important"));
+        assert!(!emission_style.contains("text-transform"));
+        assert!(
+            evidence
+                .applied()
+                .contains(&crate::diagram_theme::FamilyThemeMechanismKey::Typography)
+        );
+        assert!(evidence.residuals().is_empty());
+
+        prepared_label
+            .label_id_for_emission()
+            .expect("prepared State label id");
+        let ledger = sidecar
+            .prepared_text_label_ledger()
+            .next()
+            .expect("emitted State ledger entry");
+        assert_eq!(ledger.line_texts(), &[Arc::<str>::from("READY STATE")]);
     }
 
     #[test]

@@ -546,7 +546,9 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
                 | ThemeTypographyProperty::FontSize
                 | ThemeTypographyProperty::FontWeight
                 | ThemeTypographyProperty::FontStyle => self.base_typography_applied = true,
-                ThemeTypographyProperty::LetterSpacing | ThemeTypographyProperty::WordSpacing => {
+                ThemeTypographyProperty::LetterSpacing
+                | ThemeTypographyProperty::WordSpacing
+                | ThemeTypographyProperty::Transform => {
                     if self.prepared_text_available {
                         self.base_typography_applied = true;
                     } else {
@@ -554,7 +556,6 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
                     }
                 }
                 ThemeTypographyProperty::LineHeight
-                | ThemeTypographyProperty::Transform
                 | ThemeTypographyProperty::Decoration
                 | ThemeTypographyProperty::TextAlign
                 | ThemeTypographyProperty::WhiteSpace
@@ -1575,6 +1576,9 @@ impl StateThemeEvidenceBuilder<'_> {
         {
             self.reject_typography(use_id, style, ThemeTypographyProperty::WordSpacing);
         }
+        if !self.prepared_text_available && !patch.transform.is_unspecified() {
+            self.reject_typography(use_id, style, ThemeTypographyProperty::Transform);
+        }
     }
 
     fn reject_advanced_typography(&mut self, use_id: StateThemeUseId, style: &ResolvedThemeStyle) {
@@ -1583,10 +1587,6 @@ impl StateThemeEvidenceBuilder<'_> {
             (
                 ThemeTypographyProperty::LineHeight,
                 !patch.line_height.is_unspecified(),
-            ),
-            (
-                ThemeTypographyProperty::Transform,
-                !patch.transform.is_unspecified(),
             ),
             (
                 ThemeTypographyProperty::Decoration,
@@ -3079,8 +3079,8 @@ mod tests {
     use crate::diagram_theme::{
         DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
         EffectInput, EffectPrimitive, GradientStop, InsetsPx, LinearGradient, OrdinalPalette,
-        OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
-        ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
+        OrdinalSelector, TextStylePatch, TextTransform, ThemeColorValue, ThemeEffectPatch,
+        ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
     };
     use merman_core::diagrams::state::{
         StateDiagramRenderEdge, StateDiagramRenderNode, StateDiagramRenderStyleClass,
@@ -4452,6 +4452,53 @@ mod tests {
     }
 
     #[test]
+    fn base_transform_is_materialized_only_when_prepared_text_is_available() {
+        let typography = ThemeTextStyle::default().with_transform(TextTransform::Uppercase);
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography)),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+
+        let (plan, evidence) =
+            resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
+        let node = plan.node("Ready").expect("prepared node style");
+        let key = FamilyThemeMechanismKey::Typography;
+
+        assert_eq!(
+            node.resolved_label_typography()
+                .prepared_typography()
+                .expect("structured typography")
+                .transform(),
+            TextTransform::Uppercase
+        );
+        assert!(!node.label_style_attr().contains("text-transform"));
+        assert!(evidence.applied().contains(&key));
+        assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+
+        let (_, fallback_evidence) = StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({}),
+            Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
+            None,
+            false,
+            &test_work_meter(),
+        )
+        .expect("resolve State theme plan without prepared text");
+
+        assert!(!fallback_evidence.applied().contains(&key));
+        assert!(fallback_evidence.residuals().iter().any(|residual| {
+            residual.key() == &key
+                && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
+        }));
+    }
+
+    #[test]
     fn base_spacing_is_shared_by_measurement_emission_and_evidence() {
         let typography = ThemeTextStyle::default()
             .with_letter_spacing_px(1.5)
@@ -4537,6 +4584,64 @@ mod tests {
         );
         assert!(evidence.applied().contains(&key));
         assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn semantic_transform_is_materialized_only_when_prepared_text_is_available() {
+        let mut typography = TextStylePatch::default();
+        typography.transform = Specified::Value(TextTransform::Capitalize);
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch {
+                            typography,
+                            ..ThemeStylePatch::default()
+                        },
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("ready state", "rect"));
+
+        let (plan, evidence) =
+            resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
+        let node = plan.node("ready state").expect("prepared node style");
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::StateLabel,
+        };
+
+        assert_eq!(
+            node.resolved_label_typography()
+                .prepared_typography()
+                .expect("structured typography")
+                .transform(),
+            TextTransform::Capitalize
+        );
+        assert!(!node.label_style_attr().contains("text-transform"));
+        assert!(evidence.applied().contains(&key));
+        assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+
+        let (_, fallback_evidence) = StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({}),
+            Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
+            None,
+            false,
+            &test_work_meter(),
+        )
+        .expect("resolve State theme plan without prepared text");
+
+        assert!(!fallback_evidence.applied().contains(&key));
+        assert!(fallback_evidence.residuals().iter().any(|residual| {
+            residual.key() == &key
+                && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
+        }));
     }
 
     #[test]
