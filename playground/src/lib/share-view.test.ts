@@ -6,6 +6,7 @@ import {
   createIssueShareUrl,
   decodeShareView,
   hydrateStartupShareLocation,
+  removeShareViewFromCurrentUrl,
   SHARE_VIEW_DEFAULTS,
   SHARE_VIEW_LIMITS,
   type ShareViewDescriptor,
@@ -106,7 +107,19 @@ test("does not permit a Host lock when the shared workspace is canonical", () =>
         LOCKED_VIEW,
         { origin: "https://example.test", pathname: "/merman/" }
       ),
-    /Host workspace/u
+    /must match the workspace viewport mode/u
+  );
+});
+
+test("requires every Host issue link to carry a complete environment lock", () => {
+  assert.throws(
+    () =>
+      createIssueShareUrl(
+        HOST_WORKSPACE,
+        { ...LOCKED_VIEW, lockedEnvironment: null },
+        { origin: "https://example.test", pathname: "/merman/" }
+      ),
+    /must match the workspace viewport mode/u
   );
 });
 
@@ -146,6 +159,24 @@ test("issue copying writes only the selected canonical URL", async () => {
     createIssueShareUrl(HOST_WORKSPACE, LOCKED_VIEW, environment),
   ]);
   assert.equal(historyUpdates, 0);
+});
+
+test("returning to local view removes only share-view parameters once", () => {
+  const replacements: string[] = [];
+
+  removeShareViewFromCurrentUrl({
+    pathname: "/merman/",
+    search:
+      "?utm_source=issue&rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640&hostHeight=480&screenAvailableWidth=1512",
+    hash: encodeShareHash(HOST_WORKSPACE),
+    replaceUrl(value) {
+      replacements.push(value);
+    },
+  });
+
+  assert.deepEqual(replacements, [
+    `/merman/?utm_source=issue${encodeShareHash(HOST_WORKSPACE)}`,
+  ]);
 });
 
 test("hydrates workspace, view, and lock through one pre-mount apply call", () => {
@@ -189,6 +220,48 @@ test("keeps a valid workspace but defaults the complete invalid view layer", () 
       workspace: HOST_WORKSPACE,
       view: SHARE_VIEW_DEFAULTS,
       warning: result.warning,
+    },
+  ]);
+});
+
+test("rejects an explicit Host issue view without a lock", () => {
+  const applied: StartupShareHydration[] = [];
+  const result = hydrateStartupShareLocation(
+    {
+      hash: encodeShareHash(HOST_WORKSPACE),
+      search:
+        "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare",
+    },
+    (hydration) => applied.push(hydration)
+  );
+
+  assert.equal(result.status, "applied");
+  assert.equal(result.warning?.code, "share-view-not-restored");
+  assert.deepEqual(applied, [
+    {
+      workspace: HOST_WORKSPACE,
+      view: SHARE_VIEW_DEFAULTS,
+      warning: result.warning,
+    },
+  ]);
+});
+
+test("keeps an absent issue view as a portable live-Host workspace", () => {
+  const applied: StartupShareHydration[] = [];
+  const result = hydrateStartupShareLocation(
+    {
+      hash: encodeShareHash(HOST_WORKSPACE),
+      search: "?utm_source=workspace",
+    },
+    (hydration) => applied.push(hydration)
+  );
+
+  assert.deepEqual(result, { status: "applied", warning: null });
+  assert.deepEqual(applied, [
+    {
+      workspace: HOST_WORKSPACE,
+      view: SHARE_VIEW_DEFAULTS,
+      warning: null,
     },
   ]);
 });

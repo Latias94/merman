@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { createIssueShareUrl } from "../src/lib/share-view.ts";
 import { encodeShareHash } from "../src/lib/share.ts";
 
 import {
@@ -396,6 +397,7 @@ test("a current share hash is restored before the first visible publication", as
 }) => {
   const errors = monitorBrowserErrors(page);
   await page.addInitScript(() => {
+    if (window.top !== window) return;
     window.localStorage.setItem("merman-language", "en");
     const publications: string[] = [];
     const originalReplaceChildren = ShadowRoot.prototype.replaceChildren;
@@ -425,7 +427,7 @@ test("a current share hash is restored before the first visible publication", as
   const wasmResponse = page.waitForResponse((response) =>
     /\/assets\/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/u.test(response.url())
   );
-  await page.goto(`./#${hash}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
   await wasmResponse;
   await waitForPreviewSvg(page);
 
@@ -442,6 +444,140 @@ test("a current share hash is restored before the first visible publication", as
   expect(publications).not.toContainEqual(expect.stringContaining("Condition?"));
   expect(await previewSvgText(page)).toContain("SharedFirst");
   await expect(page.locator("footer")).toContainText(`${code.length} Chars`);
+  errors.assertNone();
+});
+
+test("an issue link restores the first locked publication and can return to live Host", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    window.localStorage.setItem("merman-language", "en");
+    const publications: Array<{ status: string | null; text: string }> = [];
+    const originalReplaceChildren = ShadowRoot.prototype.replaceChildren;
+    ShadowRoot.prototype.replaceChildren = function (...nodes) {
+      originalReplaceChildren.apply(this, nodes);
+      const text = this.querySelector("svg")?.textContent;
+      if (text) {
+        publications.push({
+          status: document
+            .querySelector('[data-testid="render-viewport-control"]')
+            ?.getAttribute("data-viewport-status") ?? null,
+          text,
+        });
+      }
+    };
+    (
+      window as typeof window & {
+        __MERMAN_SHARED_PUBLICATIONS__?: Array<{
+          status: string | null;
+          text: string;
+        }>;
+      }
+    ).__MERMAN_SHARED_PUBLICATIONS__ = publications;
+  });
+  const workspace = {
+    code: "flowchart TD\n  LockedFirst --> SharedEnvironment",
+    mermaidConfig: "{}",
+    diagramTheme: "forest" as const,
+    presentationThemePresetId: null,
+    presentationProfileId: null,
+    renderViewportMode: "host" as const,
+    svgPipeline: "parity" as const,
+    textMeasurementMode: "browser" as const,
+    diagramFont: "arial" as const,
+  };
+  const shared = new URL(
+    createIssueShareUrl(
+      workspace,
+      {
+        workspacePane: "preview",
+        editorMode: "config",
+        previewMode: "compare",
+        lockedEnvironment: {
+          width: 640,
+          height: 480,
+          screenAvailableWidth: 1512,
+        },
+      },
+      { origin: "https://example.test", pathname: "/" },
+    ),
+  );
+
+  await page.goto(`./${shared.search}${shared.hash}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await waitForPreviewSvg(page);
+
+  const control = page.getByTestId("render-viewport-control");
+  await expect(control).toHaveAttribute("data-viewport-status", "host-locked");
+  await expect(control).toHaveAttribute("data-viewport-width", "640");
+  await expect(control).toHaveAttribute("data-viewport-height", "480");
+  await expect(page.getByRole("tab", { name: "Config", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const publications = await page.evaluate(
+    () =>
+      (
+        window as typeof window & {
+          __MERMAN_SHARED_PUBLICATIONS__?: Array<{
+            status: string | null;
+            text: string;
+          }>;
+        }
+      ).__MERMAN_SHARED_PUBLICATIONS__ ?? [],
+  );
+  expect(publications[0]?.text).toContain("LockedFirst");
+  expect(publications[0]?.status).toBe("host-locked");
+
+  await page.getByRole("button", { name: "Use live Host size" }).click();
+  await expect(control).toHaveAttribute("data-viewport-status", "host");
+  await expect.poll(() => new URL(page.url()).searchParams.has("rv")).toBe(false);
+  expect(new URL(page.url()).hash).toBe(shared.hash);
+  errors.assertNone();
+});
+
+test("an invalid issue view keeps the workspace and exposes one accessible warning", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => {
+    window.localStorage.setItem("merman-language", "en");
+  });
+  const hash = encodeShareHash({
+    code: "flowchart TD\n  Workspace --> StillUsable",
+    mermaidConfig: "{}",
+    diagramTheme: "default",
+    presentationThemePresetId: null,
+    presentationProfileId: null,
+    renderViewportMode: "host",
+    svgPipeline: "parity",
+    textMeasurementMode: "browser",
+    diagramFont: "trebuchet",
+  });
+  await page.goto(
+    `./?rv=99&workspacePane=preview&editorMode=config&previewMode=compare${hash}`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await waitForPreviewSvg(page);
+
+  const warning = page.getByTestId("share-view-warning");
+  await expect(warning).toHaveCount(1);
+  await expect(warning).toHaveAttribute("role", "alert");
+  await expect(warning).toContainText(
+    "Issue reproduction context could not be restored",
+  );
+  expect(await previewSvgText(page)).toContain("StillUsable");
+  await expect(page.getByTestId("render-viewport-control")).not.toHaveAttribute(
+    "data-viewport-status",
+    "host-locked",
+  );
   errors.assertNone();
 });
 

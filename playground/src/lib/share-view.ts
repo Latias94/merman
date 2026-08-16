@@ -93,6 +93,11 @@ export type StartupShareHydrationResult =
       warning: Readonly<ShareViewWarning> | null;
     }>;
 
+export interface ShareViewHistoryEnvironment
+  extends Pick<Location, "pathname" | "search" | "hash"> {
+  replaceUrl(value: string): void;
+}
+
 export function decodeShareView(
   input: string | URLSearchParams | Pick<Location, "search">
 ): ShareViewDecodeResult {
@@ -173,11 +178,10 @@ export function createIssueShareUrl(
   location: ShareLocation = window.location
 ): string {
   const normalizedView = normalizeShareView(view);
-  if (
-    normalizedView.lockedEnvironment &&
-    workspace.renderViewportMode !== "host"
-  ) {
-    throw new RangeError("A locked environment requires a Host workspace.");
+  if (!issueViewMatchesWorkspace(workspace, normalizedView)) {
+    throw new RangeError(
+      "Issue view environment must match the workspace viewport mode."
+    );
   }
 
   const hash = encodeShareHash(workspace);
@@ -194,6 +198,17 @@ export async function copyIssueShareUrl(
   );
 }
 
+export function removeShareViewFromCurrentUrl(
+  environment: ShareViewHistoryEnvironment = browserShareViewHistoryEnvironment()
+): void {
+  const params = new URLSearchParams(environment.search);
+  for (const key of VIEW_PARAMETER_KEYS) params.delete(key);
+  const query = params.toString();
+  environment.replaceUrl(
+    `${environment.pathname}${query ? `?${query}` : ""}${environment.hash}`
+  );
+}
+
 export function hydrateStartupShareLocation(
   location: Pick<Location, "hash" | "search">,
   apply: (hydration: StartupShareHydration) => void
@@ -206,8 +221,7 @@ export function hydrateStartupShareLocation(
   let viewResult = decodeShareView(location.search);
   if (
     viewResult.status === "valid" &&
-    viewResult.view.lockedEnvironment &&
-    workspace.renderViewportMode !== "host"
+    !issueViewMatchesWorkspace(workspace, viewResult.view)
   ) {
     viewResult = invalidShareView();
   }
@@ -239,6 +253,15 @@ function normalizeShareView(
       ? validateLockedRenderEnvironment(view.lockedEnvironment)
       : null,
   });
+}
+
+function issueViewMatchesWorkspace(
+  workspace: Pick<WorkspaceSnapshot, "renderViewportMode">,
+  view: Pick<ShareViewDescriptor, "lockedEnvironment">
+): boolean {
+  return workspace.renderViewportMode === "host"
+    ? view.lockedEnvironment !== null
+    : view.lockedEnvironment === null;
 }
 
 function decodeLockedEnvironment(
@@ -314,5 +337,15 @@ function browserShareEnvironment(): ShareCommandEnvironment {
     origin: window.location.origin,
     pathname: window.location.pathname,
     writeClipboardText: (value) => navigator.clipboard.writeText(value),
+  };
+}
+
+function browserShareViewHistoryEnvironment(): ShareViewHistoryEnvironment {
+  return {
+    pathname: window.location.pathname,
+    search: window.location.search,
+    hash: window.location.hash,
+    replaceUrl: (value) =>
+      window.history.replaceState(window.history.state, "", value),
   };
 }

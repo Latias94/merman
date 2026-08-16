@@ -1,5 +1,8 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { createIssueShareUrl } from "../src/lib/share-view.ts";
+import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot.ts";
+
 import {
   expectNoDocumentOverflow,
   monitorBrowserErrors,
@@ -88,6 +91,65 @@ test("mid-width layouts retain every toolbar action through compact controls", a
     await expectNoDocumentOverflow(page);
   }
 
+  errors.assertNone();
+});
+
+test("landscape issue sharing keeps both link promises and live recovery reachable", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    window.localStorage.setItem("merman-language", "en");
+  });
+  const errors = monitorBrowserErrors(page);
+  const shared = new URL(
+    createIssueShareUrl(
+      {
+        ...DEFAULT_WORKSPACE_SNAPSHOT,
+        code: "flowchart TD\n  Mobile --> Shared",
+        renderViewportMode: "host",
+      },
+      {
+        workspacePane: "preview",
+        editorMode: "code",
+        previewMode: "compare",
+        lockedEnvironment: {
+          width: 640,
+          height: 360,
+          screenAvailableWidth: 1512,
+        },
+      },
+      { origin: "https://example.test", pathname: "/" },
+    ),
+  );
+  await page.goto(`./${shared.search}${shared.hash}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await waitForPreviewSvg(page);
+
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  await expectInsideViewport(page, share);
+  await share.tap();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy workspace link", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", {
+      name: "Copy issue reproduction link",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const useLive = page.getByRole("button", { name: "Use live Host size" });
+  await expectInsideViewport(page, useLive);
+  await useLive.tap();
+  await expect(page.getByTestId("render-viewport-control")).toHaveAttribute(
+    "data-viewport-status",
+    "host",
+  );
+  await expectNoDocumentOverflow(page);
   errors.assertNone();
 });
 
@@ -530,7 +592,7 @@ async function expectHeaderControlsInsideViewport(page: Page): Promise<void> {
     "Theme",
     "Render settings",
     "Export",
-    "Copy Link",
+    "Share",
   ]) {
     await expectInsideViewport(
       page,
@@ -553,6 +615,19 @@ async function exerciseCompactToolbarMenus(page: Page): Promise<void> {
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
   }
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  await share.tap();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy workspace link", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", {
+      name: "Copy issue reproduction link",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(share).toBeFocused();
 }
 
 async function visualViewportHeight(page: Page): Promise<number> {

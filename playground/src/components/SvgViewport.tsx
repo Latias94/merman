@@ -417,15 +417,21 @@ export function SvgViewport({
         availableSvgHeight / intrinsicSize.height
       );
       if (!isPositiveFinite(nextZoom)) return false;
-      shadowHost.style.width = `${Math.max(
-        1,
-        intrinsicSize.width * nextZoom
-      )}px`;
-      shadowHost.style.height = `${Math.max(
-        1,
-        intrinsicSize.height * nextZoom
-      )}px`;
-      scaleBaseZoom = nextZoom;
+      if (currentPreview.rootSizing === "responsive") {
+        shadowHost.style.width = `${Math.max(
+          1,
+          intrinsicSize.width * nextZoom
+        )}px`;
+        shadowHost.style.height = `${Math.max(
+          1,
+          intrinsicSize.height * nextZoom
+        )}px`;
+        scaleBaseZoom = nextZoom;
+      } else {
+        shadowHost.style.width = `${intrinsicSize.width}px`;
+        shadowHost.style.height = `${intrinsicSize.height}px`;
+        scaleBaseZoom = 1;
+      }
     } else {
       shadowHost.style.removeProperty("width");
       shadowHost.style.removeProperty("height");

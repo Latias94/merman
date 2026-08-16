@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -38,18 +38,31 @@ import {
   createMarkdownImageLink,
   createMermaidLiveEditorUrl,
 } from "@/src/lib/mermaid-live";
-import { copyShareUrl } from "@/src/lib/share";
+import { copyWorkspaceShareUrl } from "@/src/lib/share";
+import { copyIssueShareUrl } from "@/src/lib/share-view";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
+import {
+  validateLockedRenderEnvironment,
+  type LockedRenderEnvironment,
+} from "@/src/runtime/render-viewport";
 import {
   selectCompletedRenderBatch,
   selectCurrentDiagramType,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
-import { selectWorkspaceSnapshot, useAppStore } from "@/src/store";
+import {
+  selectWorkspaceSnapshot,
+  useAppStore,
+  type AppState,
+} from "@/src/store";
 
 export function useToolbarArtifactActions() {
   const { t } = useTranslation();
-  const { code, diagramTheme, mermaidConfig } = useAppStore(
+  const {
+    code,
+    diagramTheme,
+    mermaidConfig,
+  } = useAppStore(
     useShallow((state) => ({
       code: state.code,
       diagramTheme: state.diagramTheme,
@@ -132,14 +145,39 @@ export function useToolbarArtifactActions() {
     }
   }, [currentBatch, t]);
 
-  const handleShare = useCallback(async () => {
+  const handleCopyWorkspaceLink = useCallback(async () => {
     const snapshot = selectWorkspaceSnapshot(useAppStore.getState());
     if (!snapshot.code.trim()) {
       toast.error(t("share.copyFailed"));
       return;
     }
     try {
-      await copyShareUrl(snapshot);
+      await copyWorkspaceShareUrl(snapshot);
+      toast.success(t("share.copied"));
+    } catch {
+      toast.error(t("share.copyFailed"));
+    }
+  }, [t]);
+
+  const handleCopyIssueLink = useCallback(async () => {
+    const state = useAppStore.getState();
+    const snapshot = selectWorkspaceSnapshot(state);
+    if (!snapshot.code.trim()) {
+      toast.error(t("share.copyFailed"));
+      return;
+    }
+    const lockedEnvironment = captureIssueEnvironmentLock(state);
+    if (snapshot.renderViewportMode === "host" && !lockedEnvironment) {
+      toast.error(t("share.issueLinkUnavailable"));
+      return;
+    }
+    try {
+      await copyIssueShareUrl(snapshot, {
+        workspacePane: state.workspacePane,
+        editorMode: state.editorMode,
+        previewMode: state.previewMode,
+        lockedEnvironment,
+      });
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
@@ -163,13 +201,39 @@ export function useToolbarArtifactActions() {
     asciiExportDescription,
     asciiAvailable,
     handleCopyCode,
+    handleCopyIssueLink,
     handleCopyMarkdown,
     handleCopySVG,
+    handleCopyWorkspaceLink,
     handleExportASCII,
     handleOpenExport,
     handleOpenMermaidLive,
-    handleShare,
   };
+}
+
+function captureIssueEnvironmentLock(
+  state: Pick<
+    AppState,
+    | "renderViewportMode"
+    | "liveHostRenderViewport"
+    | "sharedRenderEnvironmentLock"
+  >,
+): Readonly<LockedRenderEnvironment> | null {
+  if (state.renderViewportMode !== "host") return null;
+  const candidate =
+    state.sharedRenderEnvironmentLock ??
+    (state.liveHostRenderViewport
+      ? {
+          ...state.liveHostRenderViewport,
+          screenAvailableWidth: Math.round(window.screen.availWidth),
+        }
+      : null);
+  if (!candidate) return null;
+  try {
+    return validateLockedRenderEnvironment(candidate);
+  } catch {
+    return null;
+  }
 }
 
 type ToolbarArtifactActionsOwner = ReturnType<
@@ -270,23 +334,118 @@ export function ToolbarArtifactActions({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="outline"
-            size={compact ? "icon-sm" : "sm"}
-            className={compact ? undefined : "w-8 px-0 sm:w-auto sm:px-2.5"}
-            onClick={owner.handleShare}
-            aria-label={t("share.copyLink")}
-          >
-            <Share2 className="size-4" />
-            {!compact && (
-              <span className="hidden sm:inline">{t("toolbar.share")}</span>
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("share.copyLink")}</TooltipContent>
-      </Tooltip>
+      <ShareMenu compact={compact} owner={owner} />
     </>
+  );
+}
+
+function ShareMenu({
+  compact,
+  owner,
+}: {
+  compact: boolean;
+  owner: ToolbarArtifactActionsOwner;
+}) {
+  const { t } = useTranslation();
+  const {
+    liveHostRenderViewport,
+    renderViewportMode,
+    sharedRenderEnvironmentLock,
+  } = useAppStore(
+    useShallow((state) => ({
+      liveHostRenderViewport: state.liveHostRenderViewport,
+      renderViewportMode: state.renderViewportMode,
+      sharedRenderEnvironmentLock: state.sharedRenderEnvironmentLock,
+    })),
+  );
+  const issueShareLock = captureIssueEnvironmentLock({
+    liveHostRenderViewport,
+    renderViewportMode,
+    sharedRenderEnvironmentLock,
+  });
+  const issueShareAvailable =
+    renderViewportMode === "canonical" || issueShareLock !== null;
+  const issueShareDescription =
+    renderViewportMode === "canonical"
+      ? t("share.issueLinkCanonicalDesc")
+      : issueShareLock
+        ? t("share.issueLinkHostDesc", {
+            width: issueShareLock.width,
+            height: issueShareLock.height,
+          })
+        : t("share.issueLinkMeasuringDesc");
+  const workspaceDescriptionId = useId();
+  const issueDescriptionId = useId();
+
+  return (
+    <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size={compact ? "icon-sm" : "sm"}
+                className={
+                  compact ? undefined : "w-8 px-0 sm:w-auto sm:px-2.5"
+                }
+                aria-label={t("toolbar.share")}
+              >
+                <Share2 className="size-4" />
+                {!compact && (
+                  <>
+                    <span className="hidden sm:inline">{t("toolbar.share")}</span>
+                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("toolbar.share")}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent
+          align="end"
+          className="w-80 max-w-[calc(100vw-2rem)]"
+        >
+          <DropdownMenuLabel>{t("share.title")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            aria-label={t("share.workspaceLink")}
+            aria-describedby={workspaceDescriptionId}
+            className="items-start py-2"
+            onClick={owner.handleCopyWorkspaceLink}
+          >
+            <Share2 className="mt-0.5 size-4" />
+            <span className="min-w-0">
+              <span className="block font-medium">
+                {t("share.workspaceLink")}
+              </span>
+              <span
+                id={workspaceDescriptionId}
+                className="mt-0.5 block text-xs leading-snug text-muted-foreground"
+              >
+                {t("share.workspaceLinkDesc")}
+              </span>
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            aria-label={t("share.issueLink")}
+            aria-describedby={issueDescriptionId}
+            className="items-start py-2"
+            disabled={!issueShareAvailable}
+            onClick={owner.handleCopyIssueLink}
+          >
+            <Copy className="mt-0.5 size-4" />
+            <span className="min-w-0">
+              <span className="block font-medium">{t("share.issueLink")}</span>
+              <span
+                id={issueDescriptionId}
+                className="mt-0.5 block text-xs leading-snug text-muted-foreground"
+              >
+                {issueShareDescription}
+              </span>
+            </span>
+          </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

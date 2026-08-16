@@ -1,8 +1,26 @@
 import { useTranslation } from "react-i18next";
+import { Radio } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { resolveRenderViewport } from "@/src/runtime/render-viewport";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { removeShareViewFromCurrentUrl } from "@/src/lib/share-view";
+import {
+  resolveRenderViewport,
+  type RenderViewportStatus,
+} from "@/src/runtime/render-viewport";
 import { useAppStore } from "@/src/store";
+
+const VIEWPORT_STATUS_TRANSLATION_KEYS = {
+  canonical: "preview.viewportCanonicalStatus",
+  host: "preview.viewportLiveStatus",
+  "host-locked": "preview.viewportLockedStatus",
+  "host-measuring": "preview.viewportMeasuring",
+} as const satisfies Record<RenderViewportStatus, string>;
 
 export function RenderViewportControl() {
   const { t } = useTranslation();
@@ -14,21 +32,28 @@ export function RenderViewportControl() {
     (state) => state.sharedRenderEnvironmentLock,
   );
   const setMode = useAppStore((state) => state.setRenderViewportMode);
+  const clearSharedRenderEnvironmentLock = useAppStore(
+    (state) => state.clearSharedRenderEnvironmentLock,
+  );
   const resolved = resolveRenderViewport(
     mode,
     liveHostViewport,
     sharedRenderEnvironmentLock,
   );
-  const status =
-    resolved.status === "host-measuring"
-      ? t("preview.viewportMeasuring", {
-          width: resolved.viewport.width,
-          height: resolved.viewport.height,
-        })
-      : t("preview.viewportSize", {
-          width: resolved.viewport.width,
-          height: resolved.viewport.height,
-        });
+  const dimensions = t("preview.viewportSize", {
+    width: resolved.viewport.width,
+    height: resolved.viewport.height,
+  });
+  const status = t(VIEWPORT_STATUS_TRANSLATION_KEYS[resolved.status], {
+    width: resolved.viewport.width,
+    height: resolved.viewport.height,
+  });
+  const canUseLiveHostSize = liveHostViewport !== null;
+  const useLiveHostSize = () => {
+    if (!canUseLiveHostSize) return;
+    removeShareViewFromCurrentUrl();
+    clearSharedRenderEnvironmentLock();
+  };
 
   return (
     <div
@@ -62,12 +87,36 @@ export function RenderViewportControl() {
         role="status"
         aria-live="polite"
         title={status}
-        className="min-w-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground"
+        className="min-w-0 max-w-24 truncate whitespace-nowrap text-[11px] tabular-nums text-muted-foreground sm:max-w-none"
       >
-        {resolved.status === "host-measuring"
-          ? t("preview.viewportMeasuringShort")
-          : status}
+        <span className="sm:hidden">
+          {resolved.status === "host-measuring"
+            ? t("preview.viewportMeasuringShort")
+            : dimensions}
+        </span>
+        <span className="hidden sm:inline">{status}</span>
       </span>
+      {resolved.status === "host-locked" && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-6 w-6 shrink-0 sm:w-auto sm:px-2"
+              aria-label={t("share.useLiveHostSize")}
+              disabled={!canUseLiveHostSize}
+              onClick={useLiveHostSize}
+            >
+              <Radio className="size-3.5" />
+              <span className="hidden sm:inline">
+                {t("share.useLiveHostSizeShort")}
+              </span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("share.useLiveHostSize")}</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 }

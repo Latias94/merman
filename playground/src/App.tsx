@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
+import { AlertTriangle } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -32,10 +33,17 @@ const ConfigEditor = lazy(() =>
 );
 export default function App() {
   const { t, i18n } = useTranslation();
-  const { editorMode, setEditorMode, workspacePane, setWorkspacePane } = useAppStore(
+  const {
+    editorMode,
+    setEditorMode,
+    shareViewWarning,
+    workspacePane,
+    setWorkspacePane,
+  } = useAppStore(
     useShallow((state) => ({
       editorMode: state.editorMode,
       setEditorMode: state.setEditorMode,
+      shareViewWarning: state.shareViewWarning,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
     }))
@@ -57,6 +65,17 @@ export default function App() {
         <RenderCoordinatorBridge />
         <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
           <Toolbar />
+
+          {shareViewWarning && (
+            <div
+              role="alert"
+              data-testid="share-view-warning"
+              className="flex shrink-0 items-start gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100 sm:px-4"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>{t("share.issueViewNotRestored")}</span>
+            </div>
+          )}
 
           <main className="relative min-h-0 flex-1 overflow-hidden">
             <div className="flex h-full min-h-0 flex-col overflow-hidden">

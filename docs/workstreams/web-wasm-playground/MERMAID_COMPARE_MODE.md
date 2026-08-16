@@ -35,16 +35,17 @@ top document
   |
   +-- Render Coordinator ---------> latest coherent batch
   |
-  +-- Compare realm controller ---> same-origin Mermaid iframe
+  +-- Compare realm controller ---> opaque-origin Mermaid iframe
                                       |
                                       +-- local Mermaid/ZenUML/ELK imports
                                       +-- operation queue
                                       +-- SVG safety validation
 ```
 
-The main document does not import, register, initialize, or render Mermaid. A same-origin iframe
-owns one Mermaid realm and receives a transferred `MessagePort` after exact origin/Window
-handshake. The channel validates an unpredictable token, protocol version, realm id, sequence,
+The main document does not import, register, initialize, or render Mermaid. A generated
+`sandbox="allow-scripts"` iframe with an opaque origin owns one Mermaid realm and receives a
+transferred `MessagePort` after the parent authenticates the exact child Window. The channel
+validates an unpredictable token, protocol version, realm id, sequence,
 message/source/config/result budgets, and request identity. The parent validates returned SVG again
 before DOM insertion.
 
@@ -77,6 +78,7 @@ The coordinator freezes:
 - theme and diagram font;
 - text-measurement mode and SVG pipeline;
 - selected Canonical/Host viewport mode and one resolved viewport;
+- controlled `screenAvailableWidth` for the frozen layout environment;
 - diagnostics/Compare flags;
 - exact Merman package version.
 
@@ -86,11 +88,24 @@ engine render failures remain request artifacts; they do not change the Merman r
 Benchmark pauses coordinator scheduling and resumes exactly the latest input after cleanup.
 
 Canonical mode sends `800x600` to both engines. Host mode measures the stable Preview allocation
-before the side-by-side split, then sends the same rounded dimensions to Merman and the Mermaid
-realm. Pane width, zoom, and pan remain presentation-only. A hidden panel cannot publish zero-sized
-geometry, and the Benchmark never inherits Host mode. Browser-dependent title or root-viewBox
-clipping visible in pinned Mermaid remains visible in both panes; the Playground does not hide it
-with a Merman-only bounds workaround.
+before the side-by-side split, then sends the same rounded dimensions and controlled
+`screenAvailableWidth` to Merman and the Mermaid realm. The realm installs `screen.availWidth`
+before Mermaid loads. An issue-reproduction lock wins effective operation capture while a separate
+live Host cache continues to follow ResizeObserver; returning to live Host adopts that cache in one
+new operation. Pane width, zoom, and pan remain presentation-only. A hidden panel cannot publish
+zero-sized geometry, and the Benchmark never inherits Host mode.
+
+The Share menu separates portable workspace links from issue-reproduction links. Workspace links
+carry render intent but never device pixels. Issue links additionally restore the workspace pane,
+editor tab, Preview mode, and the complete validated Host environment when Host is selected.
+Canonical issue links need no Host lock, and Host issue sharing remains disabled while the Preview
+size is still measuring. Neither copy action mutates the current URL or active operation.
+
+Preview presentation preserves each engine's valid SVG `viewBox` byte-for-byte and applies
+contain-style CSS around it. A missing-`viewBox` artifact may retain preview-local intrinsic
+dimensions, but browser bounds are never promoted into renderer geometry. Browser-dependent title
+or root-viewBox clipping visible in pinned Mermaid therefore remains visible in both panes; the
+Playground does not hide it with a Merman-only bounds workaround.
 
 Each Compare pane has one export launcher. The workbench keeps the engine identity visible and
 does not retarget when a newer render completes. Mermaid raster output uses the pane's validated
@@ -99,9 +114,9 @@ and download use the same encoded Blob.
 
 ## Security And Resource Lifecycle
 
-Mermaid, ZenUML, ELK, and all adapters are lockfile-pinned, production-bundled, and same-origin.
-There is no runtime CDN import. The realm is attached and sized for real layout measurement, but it
-is capability-isolated from application state.
+Mermaid, ZenUML, ELK, and all adapters are lockfile-pinned and production-bundled. There is no
+runtime CDN import. Their digest-bound engine artifact is transferred into the opaque realm, which
+is attached and sized for real layout measurement but capability-isolated from application state.
 
 Compare owns its iframe, port, handshake listeners, pending request, timeout, and operation queue.
 It disposes them on replacement, HMR, non-persisted exit, BFCache suspension, or protocol poison.

@@ -16,6 +16,10 @@ Use `test:browser:mobile:built` after a verified production build. The focused s
 It exercises touch activation, compact toolbar menus, workspace and preview tabs, dialog focus
 restoration, dialog scroll ownership, Host viewport measurement, full-screen export, raster
 preview/download reachability, viewport pan/zoom/fit, and page-level horizontal overflow.
+The same lane opens the Share menu in portrait and `844x390` safe-area landscape, distinguishes
+portable workspace links from locked issue-reproduction links, and verifies that returning a
+shared Host environment to live sizing remains reachable without page overflow. Informational
+tooltips must never intercept the following touch target.
 
 Playwright device emulation does not prove real mobile browser behavior. In particular, emulated
 safe-area values and viewport resizing cannot reproduce every keyboard, browser-chrome, or display
@@ -34,6 +38,9 @@ claim:
 - Open Export from the toolbar and each Compare pane. Exercise SVG, transparent/custom PNG, JPEG
   quality, width/height/fit sizing, and download in portrait and landscape. The preview may scroll,
   but the close and Download controls must remain reachable and the dialog must not move the page.
+- Open Share in Canonical and Host modes. Confirm the workspace-link description promises local
+  Host sizing, issue sharing waits for a positive Host measurement, a locked issue link restores
+  the selected page and Preview mode after rotation, and `Use live Host size` remains reachable.
 - Check portrait and landscape on a display with a cutout or rounded corners. No toolbar control,
   dialog action, or status content may enter a safe area.
 - Rotate while the editor, Preview, Examples, Bench, and Export are active. The selected workspace,
