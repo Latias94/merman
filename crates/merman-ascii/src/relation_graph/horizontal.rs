@@ -993,6 +993,11 @@ fn draw_horizontal_edge(
             .ok_or_else(|| work_overflow(resources))?,
     )?;
 
+    let mut paint = HorizontalPaintControl {
+        resources,
+        checkpoints,
+    };
+
     draw_vertical_span(
         canvas,
         left_stem_x,
@@ -1000,8 +1005,7 @@ fn draw_horizontal_edge(
         geometry.left_port_y,
         edge.style.vertical,
         edge.style.line_chars,
-        resources,
-        checkpoints,
+        &mut paint,
     )?;
     draw_vertical_span(
         canvas,
@@ -1010,25 +1014,26 @@ fn draw_horizontal_edge(
         geometry.right_port_y,
         edge.style.vertical,
         edge.style.line_chars,
-        resources,
-        checkpoints,
+        &mut paint,
     )?;
 
-    let content_start = resources.checked_grid_add(left_stem_x, 1)?;
+    let content_start = paint.resources.checked_grid_add(left_stem_x, 1)?;
     let content_end = right_stem_x
         .checked_sub(1)
-        .ok_or_else(|| grid_overflow(resources))?;
-    let left_marker_end =
-        resources.checked_grid_add(content_start, left_endpoint.marker_width())?;
-    let right_marker_start = resources
+        .ok_or_else(|| grid_overflow(paint.resources))?;
+    let left_marker_end = paint
+        .resources
+        .checked_grid_add(content_start, left_endpoint.marker_width())?;
+    let right_marker_start = paint
+        .resources
         .checked_grid_add(content_end, 1)?
         .checked_sub(right_endpoint.marker_width())
-        .ok_or_else(|| grid_overflow(resources))?;
+        .ok_or_else(|| grid_overflow(paint.resources))?;
     if left_marker_end >= right_marker_start {
-        return Err(grid_overflow(resources));
+        return Err(grid_overflow(paint.resources));
     }
     for x in left_marker_end..right_marker_start {
-        checkpoints.tick(resources)?;
+        paint.tick()?;
         put_relation_char(
             canvas,
             x,
@@ -1050,10 +1055,20 @@ fn draw_horizontal_edge(
         left_endpoint,
         right_endpoint,
         content_start,
-        resources.checked_grid_add(content_end, 1)?,
-        resources,
-        checkpoints,
+        paint.resources.checked_grid_add(content_end, 1)?,
+        &mut paint,
     )
+}
+
+struct HorizontalPaintControl<'a> {
+    resources: &'a ResourceContext,
+    checkpoints: &'a mut RelationResourceCheckpointCursor,
+}
+
+impl HorizontalPaintControl<'_> {
+    fn tick(&mut self) -> Result<()> {
+        self.checkpoints.tick(self.resources)
+    }
 }
 
 fn draw_horizontal_labels(
@@ -1063,60 +1078,44 @@ fn draw_horizontal_labels(
     right_endpoint: &HorizontalRelationEndpoint,
     content_start: usize,
     content_end: usize,
-    resources: &ResourceContext,
-    checkpoints: &mut RelationResourceCheckpointCursor,
+    paint: &mut HorizontalPaintControl<'_>,
 ) -> Result<()> {
     let left_width = left_endpoint.label_width();
     let relation_width = edge.style.label_width();
     let right_width = right_endpoint.label_width();
     let right_start = content_end
         .checked_sub(right_width)
-        .ok_or_else(|| grid_overflow(resources))?;
+        .ok_or_else(|| grid_overflow(paint.resources))?;
     let ideal_relation_start = content_start
         .checked_add(content_end)
         .and_then(|sum| sum.checked_sub(relation_width))
         .map(|remaining| remaining / 2)
-        .ok_or_else(|| grid_overflow(resources))?;
-    let minimum_relation_start = resources.checked_grid_add(
+        .ok_or_else(|| grid_overflow(paint.resources))?;
+    let minimum_relation_start = paint.resources.checked_grid_add(
         content_start,
-        resources.checked_grid_add(left_width, usize::from(left_width > 0) * 2)?,
+        paint
+            .resources
+            .checked_grid_add(left_width, usize::from(left_width > 0) * 2)?,
     )?;
     let maximum_relation_start = right_start
-        .checked_sub(resources.checked_grid_add(relation_width, usize::from(right_width > 0) * 2)?)
+        .checked_sub(
+            paint
+                .resources
+                .checked_grid_add(relation_width, usize::from(right_width > 0) * 2)?,
+        )
         .unwrap_or(minimum_relation_start);
     let relation_start = ideal_relation_start
         .max(minimum_relation_start)
         .min(maximum_relation_start.max(minimum_relation_start));
 
     if let Some(label) = left_endpoint.label.as_ref() {
-        draw_label_at(
-            canvas,
-            content_start,
-            edge.label_top,
-            label,
-            resources,
-            checkpoints,
-        )?;
+        draw_label_at(canvas, content_start, edge.label_top, label, paint)?;
     }
     if let Some(label) = edge.style.label.as_ref() {
-        draw_label_at(
-            canvas,
-            relation_start,
-            edge.label_top,
-            label,
-            resources,
-            checkpoints,
-        )?;
+        draw_label_at(canvas, relation_start, edge.label_top, label, paint)?;
     }
     if let Some(label) = right_endpoint.label.as_ref() {
-        draw_label_at(
-            canvas,
-            right_start,
-            edge.label_top,
-            label,
-            resources,
-            checkpoints,
-        )?;
+        draw_label_at(canvas, right_start, edge.label_top, label, paint)?;
     }
     Ok(())
 }
@@ -1126,12 +1125,11 @@ fn draw_label_at(
     x: usize,
     y: usize,
     label: &RelationGraphLabel,
-    resources: &ResourceContext,
-    checkpoints: &mut RelationResourceCheckpointCursor,
+    paint: &mut HorizontalPaintControl<'_>,
 ) -> Result<()> {
     for (offset, line) in label.lines().iter().enumerate() {
-        checkpoints.tick(resources)?;
-        let row = resources.checked_grid_add(y, offset)?;
+        paint.tick()?;
+        let row = paint.resources.checked_grid_add(y, offset)?;
         canvas.write_deferred_text_role(x, row, line, AsciiColorRole::EdgeLabel)?;
     }
     Ok(())
@@ -1144,11 +1142,10 @@ fn draw_vertical_span(
     end_y: usize,
     ch: char,
     chars: RelationLineChars,
-    resources: &ResourceContext,
-    checkpoints: &mut RelationResourceCheckpointCursor,
+    paint: &mut HorizontalPaintControl<'_>,
 ) -> Result<()> {
     for y in start_y.min(end_y)..=start_y.max(end_y) {
-        checkpoints.tick(resources)?;
+        paint.tick()?;
         put_relation_char(canvas, x, y, ch, chars)?;
     }
     Ok(())
