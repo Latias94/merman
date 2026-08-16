@@ -834,7 +834,7 @@ fn mechanism_digest(
     let mut value = b"merman.c6-mechanism-witness.v3\0".to_vec();
     value.extend_from_slice(&usize_to_u64(mechanisms.len()).to_be_bytes());
     for (mechanism, disposition) in mechanisms {
-        append_len_prefixed(&mut value, reference_mechanism_id(*mechanism).as_bytes());
+        append_len_prefixed(&mut value, mechanism.id().as_bytes());
         append_len_prefixed(
             &mut value,
             mechanism_disposition_id(*disposition).as_bytes(),
@@ -879,29 +879,6 @@ fn mechanism_disposition_id(disposition: C6ObservedMechanismDisposition) -> &'st
         C6ObservedMechanismDisposition::NotApplicable => "not-applicable",
         C6ObservedMechanismDisposition::Rejected => "rejected",
         C6ObservedMechanismDisposition::Residual => "residual",
-    }
-}
-
-fn reference_mechanism_id(mechanism: ReferenceThemeMechanism) -> &'static str {
-    match mechanism {
-        ReferenceThemeMechanism::BackdropFilter => "backdrop-filter",
-        ReferenceThemeMechanism::CanvasBlend => "canvas-blend",
-        ReferenceThemeMechanism::CanvasGradient => "canvas-gradient",
-        ReferenceThemeMechanism::CanvasLayering => "canvas-layering",
-        ReferenceThemeMechanism::CanvasPattern => "canvas-pattern",
-        ReferenceThemeMechanism::CanvasSolid => "canvas-solid",
-        ReferenceThemeMechanism::CssFilter => "css-filter",
-        ReferenceThemeMechanism::CssLetterSpacing => "css-letter-spacing",
-        ReferenceThemeMechanism::CssTextTransform => "css-text-transform",
-        ReferenceThemeMechanism::DashArray => "dash-array",
-        ReferenceThemeMechanism::ExternalSvgFilterReference => "external-svg-filter-reference",
-        ReferenceThemeMechanism::FontStack => "font-stack",
-        ReferenceThemeMechanism::HasSelector => "has-selector",
-        ReferenceThemeMechanism::NotSelector => "not-selector",
-        ReferenceThemeMechanism::NthChildSelector => "nth-child-selector",
-        ReferenceThemeMechanism::RoundedCorners => "rounded-corners",
-        ReferenceThemeMechanism::StrokeStyling => "stroke-styling",
-        ReferenceThemeMechanism::ThemeVariables => "theme-variables",
     }
 }
 

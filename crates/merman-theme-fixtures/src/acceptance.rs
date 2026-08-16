@@ -650,11 +650,11 @@ fn validate_critical_mechanisms(
         return Err(CatalogError::C6CriticalMechanismSetMismatch {
             missing: expected
                 .difference(required)
-                .map(|mechanism| mechanism_id(*mechanism).to_string())
+                .map(|mechanism| mechanism.id().to_string())
                 .collect(),
             unexpected: required
                 .difference(&expected)
-                .map(|mechanism| mechanism_id(*mechanism).to_string())
+                .map(|mechanism| mechanism.id().to_string())
                 .collect(),
         });
     }
@@ -672,7 +672,7 @@ fn validate_critical_mechanisms(
     Err(CatalogError::UncoveredC6CriticalMechanisms {
         mechanisms: uncovered
             .into_iter()
-            .map(|mechanism| mechanism_id(mechanism).to_string())
+            .map(|mechanism| mechanism.id().to_string())
             .collect(),
     })
 }
@@ -985,7 +985,7 @@ fn canonical_manifest_digest_v4(
     value.extend_from_slice(previous_manifest_digest);
     value.extend_from_slice(&(required_critical_mechanisms.len() as u64).to_be_bytes());
     for mechanism in required_critical_mechanisms {
-        append_len_prefixed(&mut value, mechanism_id(*mechanism).as_bytes());
+        append_len_prefixed(&mut value, mechanism.id().as_bytes());
     }
 
     let recipes = proof_recipes
@@ -1018,7 +1018,7 @@ fn append_cells_to_manifest_digest(
             .expectation();
         value.extend_from_slice(&(expectation.mechanism_requirements.len() as u64).to_be_bytes());
         for (mechanism, disposition) in &expectation.mechanism_requirements {
-            append_len_prefixed(value, mechanism_id(*mechanism).as_bytes());
+            append_len_prefixed(value, mechanism.id().as_bytes());
             append_len_prefixed(value, disposition_id(*disposition).as_bytes());
         }
         value.extend_from_slice(&(expectation.expected_residual_ids.len() as u64).to_be_bytes());
@@ -1106,29 +1106,6 @@ fn readiness_blocker_id(blocker: C6ReadinessBlocker) -> &'static str {
     match blocker {
         C6ReadinessBlocker::FamilyAdapterIncomplete => "family-adapter-incomplete",
         C6ReadinessBlocker::ThemeSliceIncomplete => "theme-slice-incomplete",
-    }
-}
-
-fn mechanism_id(mechanism: ReferenceThemeMechanism) -> &'static str {
-    match mechanism {
-        ReferenceThemeMechanism::BackdropFilter => "backdrop-filter",
-        ReferenceThemeMechanism::CanvasBlend => "canvas-blend",
-        ReferenceThemeMechanism::CanvasGradient => "canvas-gradient",
-        ReferenceThemeMechanism::CanvasLayering => "canvas-layering",
-        ReferenceThemeMechanism::CanvasPattern => "canvas-pattern",
-        ReferenceThemeMechanism::CanvasSolid => "canvas-solid",
-        ReferenceThemeMechanism::CssFilter => "css-filter",
-        ReferenceThemeMechanism::CssLetterSpacing => "css-letter-spacing",
-        ReferenceThemeMechanism::CssTextTransform => "css-text-transform",
-        ReferenceThemeMechanism::DashArray => "dash-array",
-        ReferenceThemeMechanism::ExternalSvgFilterReference => "external-svg-filter-reference",
-        ReferenceThemeMechanism::FontStack => "font-stack",
-        ReferenceThemeMechanism::HasSelector => "has-selector",
-        ReferenceThemeMechanism::NotSelector => "not-selector",
-        ReferenceThemeMechanism::NthChildSelector => "nth-child-selector",
-        ReferenceThemeMechanism::RoundedCorners => "rounded-corners",
-        ReferenceThemeMechanism::StrokeStyling => "stroke-styling",
-        ReferenceThemeMechanism::ThemeVariables => "theme-variables",
     }
 }
 

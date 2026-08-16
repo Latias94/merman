@@ -115,6 +115,31 @@ pub enum ReferenceThemeMechanism {
     ThemeVariables,
 }
 
+impl ReferenceThemeMechanism {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::BackdropFilter => "backdrop-filter",
+            Self::CanvasBlend => "canvas-blend",
+            Self::CanvasGradient => "canvas-gradient",
+            Self::CanvasLayering => "canvas-layering",
+            Self::CanvasPattern => "canvas-pattern",
+            Self::CanvasSolid => "canvas-solid",
+            Self::CssFilter => "css-filter",
+            Self::CssLetterSpacing => "css-letter-spacing",
+            Self::CssTextTransform => "css-text-transform",
+            Self::DashArray => "dash-array",
+            Self::ExternalSvgFilterReference => "external-svg-filter-reference",
+            Self::FontStack => "font-stack",
+            Self::HasSelector => "has-selector",
+            Self::NotSelector => "not-selector",
+            Self::NthChildSelector => "nth-child-selector",
+            Self::RoundedCorners => "rounded-corners",
+            Self::StrokeStyling => "stroke-styling",
+            Self::ThemeVariables => "theme-variables",
+        }
+    }
+}
+
 pub const REFERENCE_THEME_MECHANISMS: [ReferenceThemeMechanism; 18] = [
     ReferenceThemeMechanism::BackdropFilter,
     ReferenceThemeMechanism::CanvasBlend,

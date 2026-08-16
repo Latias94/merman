@@ -372,36 +372,13 @@ fn critical_mechanisms_digest(
     let mut value = b"merman.c6a-critical-mechanisms.v1\0".to_vec();
     value.extend_from_slice(&usize_to_u64(required.len()).to_be_bytes());
     for mechanism in required {
-        append_len_prefixed(&mut value, mechanism_id(*mechanism).as_bytes());
+        append_len_prefixed(&mut value, mechanism.id().as_bytes());
     }
     value.extend_from_slice(&usize_to_u64(observed.len()).to_be_bytes());
     for mechanism in observed {
-        append_len_prefixed(&mut value, mechanism_id(*mechanism).as_bytes());
+        append_len_prefixed(&mut value, mechanism.id().as_bytes());
     }
     sha256(value)
-}
-
-fn mechanism_id(mechanism: ReferenceThemeMechanism) -> &'static str {
-    match mechanism {
-        ReferenceThemeMechanism::BackdropFilter => "backdrop-filter",
-        ReferenceThemeMechanism::CanvasBlend => "canvas-blend",
-        ReferenceThemeMechanism::CanvasGradient => "canvas-gradient",
-        ReferenceThemeMechanism::CanvasLayering => "canvas-layering",
-        ReferenceThemeMechanism::CanvasPattern => "canvas-pattern",
-        ReferenceThemeMechanism::CanvasSolid => "canvas-solid",
-        ReferenceThemeMechanism::CssFilter => "css-filter",
-        ReferenceThemeMechanism::CssLetterSpacing => "css-letter-spacing",
-        ReferenceThemeMechanism::CssTextTransform => "css-text-transform",
-        ReferenceThemeMechanism::DashArray => "dash-array",
-        ReferenceThemeMechanism::ExternalSvgFilterReference => "external-svg-filter-reference",
-        ReferenceThemeMechanism::FontStack => "font-stack",
-        ReferenceThemeMechanism::HasSelector => "has-selector",
-        ReferenceThemeMechanism::NotSelector => "not-selector",
-        ReferenceThemeMechanism::NthChildSelector => "nth-child-selector",
-        ReferenceThemeMechanism::RoundedCorners => "rounded-corners",
-        ReferenceThemeMechanism::StrokeStyling => "stroke-styling",
-        ReferenceThemeMechanism::ThemeVariables => "theme-variables",
-    }
 }
 
 fn require_eligibility(field: &'static str, condition: bool) -> Result<(), C6RuntimeError> {
