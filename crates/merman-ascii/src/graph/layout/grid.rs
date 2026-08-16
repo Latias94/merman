@@ -26,7 +26,69 @@ const MINIMUM_GROUP_RANK_GAP: usize = 1;
 pub(super) type AxisSizes = HashMap<usize, usize>;
 type NodeIndexById<'a> = HashMap<&'a str, usize>;
 type LevelPositions = HashMap<usize, usize>;
-pub(super) type GridNodeLayoutParts = (Vec<NodeLayout>, AxisSizes, AxisSizes);
+pub(super) type GridNodeLayoutParts = (Vec<NodeLayout>, AxisProjection, AxisProjection);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct AxisProjection {
+    prefix_sizes: Vec<usize>,
+}
+
+impl AxisProjection {
+    fn try_new(
+        axis_sizes: &AxisSizes,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+        checkpoint_iteration: &mut usize,
+    ) -> Result<Self> {
+        resources.charge_layout_work(axis_sizes.len())?;
+        let mut max_index = None;
+        for index in axis_sizes.keys().copied() {
+            checkpoint_projection(execution, checkpoint_iteration)?;
+            max_index = Some(max_index.map_or(index, |current: usize| current.max(index)));
+        }
+
+        let cell_count = max_index
+            .map(|index| resources.checked_grid_add(index, 1))
+            .transpose()?
+            .unwrap_or_default();
+        let prefix_count = resources.checked_grid_add(cell_count, 1)?;
+        resources.grid_extent(prefix_count, 1)?;
+        resources.charge_layout_work(cell_count)?;
+
+        let mut prefix_sizes = Vec::new();
+        try_reserve_vec(&mut prefix_sizes, prefix_count)?;
+        prefix_sizes.push(0);
+        let mut total = 0usize;
+        for index in 0..cell_count {
+            checkpoint_projection(execution, checkpoint_iteration)?;
+            total = resources
+                .checked_grid_add(total, axis_sizes.get(&index).copied().unwrap_or_default())?;
+            prefix_sizes.push(total);
+        }
+        Ok(Self { prefix_sizes })
+    }
+
+    pub(super) fn position(&self, index: usize) -> usize {
+        let cell_count = self.prefix_sizes.len().saturating_sub(1);
+        if index >= cell_count {
+            return self.total();
+        }
+        let start = self.prefix_sizes[index];
+        let end = self.prefix_sizes[index + 1];
+        start + (end - start) / 2
+    }
+
+    fn span(&self, start: usize, len: usize) -> usize {
+        let cell_count = self.prefix_sizes.len().saturating_sub(1);
+        let start = start.min(cell_count);
+        let end = start.saturating_add(len).min(cell_count);
+        self.prefix_sizes[end] - self.prefix_sizes[start]
+    }
+
+    fn total(&self) -> usize {
+        self.prefix_sizes.last().copied().unwrap_or_default()
+    }
+}
 
 struct RankedGridPlacements {
     nodes: Vec<GridCoord>,
@@ -242,19 +304,15 @@ fn layout_left_right_grid_nodes(
         }
     }
 
-    let width = checked_axis_total(&column_widths, resources)?;
-    let height = checked_axis_total(&row_heights, resources)?;
-    resources.grid_extent(width, height)?;
-
-    let layouts = build_node_layouts(
+    finalize_node_layouts(
         graph,
         placements,
         &column_widths,
         &row_heights,
         options.terminal_width_profile,
-    )?;
-
-    Ok((layouts, column_widths, row_heights))
+        resources,
+        execution,
+    )
 }
 
 fn place_left_right_grid_nodes(
@@ -574,19 +632,15 @@ fn layout_top_down_grid_nodes(
         }
     }
 
-    let width = checked_axis_total(&column_widths, resources)?;
-    let height = checked_axis_total(&row_heights, resources)?;
-    resources.grid_extent(width, height)?;
-
-    let layouts = build_node_layouts(
+    finalize_node_layouts(
         graph,
         placements,
         &column_widths,
         &row_heights,
         options.terminal_width_profile,
-    )?;
-
-    Ok((layouts, column_widths, row_heights))
+        resources,
+        execution,
+    )
 }
 
 fn reserve_leaf_group_rank_axis_sizes(
@@ -798,12 +852,48 @@ fn new_axis_sizes(node_count: usize, resources: &ResourceContext) -> Result<Axis
     Ok(axis_sizes)
 }
 
-fn build_node_layouts(
+fn finalize_node_layouts(
     graph: &AsciiGraph,
     placements: Vec<GridCoord>,
     column_widths: &AxisSizes,
     row_heights: &AxisSizes,
     width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<GridNodeLayoutParts> {
+    resources.transaction(|resources| {
+        let mut checkpoint_iteration = 0usize;
+        let column_projection = AxisProjection::try_new(
+            column_widths,
+            resources,
+            execution,
+            &mut checkpoint_iteration,
+        )?;
+        let row_projection =
+            AxisProjection::try_new(row_heights, resources, execution, &mut checkpoint_iteration)?;
+        resources.grid_extent(column_projection.total(), row_projection.total())?;
+        resources.charge_layout_work(placements.len())?;
+        let layouts = build_node_layouts(
+            graph,
+            placements,
+            &column_projection,
+            &row_projection,
+            width_profile,
+            execution,
+            &mut checkpoint_iteration,
+        )?;
+        Ok((layouts, column_projection, row_projection))
+    })
+}
+
+fn build_node_layouts(
+    graph: &AsciiGraph,
+    placements: Vec<GridCoord>,
+    column_projection: &AxisProjection,
+    row_projection: &AxisProjection,
+    width_profile: TerminalWidthProfile,
+    execution: AsciiExecution<'_>,
+    checkpoint_iteration: &mut usize,
 ) -> Result<Vec<NodeLayout>> {
     if placements.len() != graph.nodes.len() {
         return Err(invalid_node_label_plans(graph.diagram_type()));
@@ -811,19 +901,26 @@ fn build_node_layouts(
     let mut layouts = Vec::new();
     try_reserve_vec(&mut layouts, placements.len())?;
     for (coord, node) in placements.into_iter().zip(graph.nodes.iter()) {
+        checkpoint_projection(execution, checkpoint_iteration)?;
         layouts.push(NodeLayout {
             id: node.id.clone(),
             label: GraphLabel::unmaterialized_with_profile(width_profile),
             shape: node.shape,
             style: node.style,
             grid: coord,
-            x: axis_position(column_widths, coord.x),
-            y: axis_position(row_heights, coord.y),
-            width: axis_span(column_widths, coord.x, 3),
-            height: axis_span(row_heights, coord.y, 3),
+            x: column_projection.position(coord.x),
+            y: row_projection.position(coord.y),
+            width: column_projection.span(coord.x, 3),
+            height: row_projection.span(coord.y, 3),
         });
     }
     Ok(layouts)
+}
+
+fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: &mut usize) -> Result<()> {
+    execution.checkpoint_loop(merman_core::OperationPhase::Layout, *iteration)?;
+    *iteration = iteration.saturating_add(1);
+    Ok(())
 }
 
 pub(super) fn materialize_node_labels(
@@ -852,21 +949,6 @@ fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
         .or_insert(size);
 }
 
-pub(super) fn axis_position(axis_sizes: &AxisSizes, index: usize) -> usize {
-    axis_sizes
-        .iter()
-        .filter(|(axis_index, _)| **axis_index < index)
-        .map(|(_, size)| *size)
-        .sum::<usize>()
-        + axis_sizes.get(&index).copied().unwrap_or_default() / 2
-}
-
-fn axis_span(axis_sizes: &AxisSizes, start: usize, len: usize) -> usize {
-    (start..(start + len))
-        .map(|index| axis_sizes.get(&index).copied().unwrap_or_default())
-        .sum()
-}
-
 fn node_shape_size(
     node: &AsciiGraphNode,
     label_plan: &GraphNodeLabelPlan,
@@ -887,12 +969,6 @@ fn invalid_node_label_plans(diagram_type: &'static str) -> AsciiError {
         diagram_type,
         feature: "invalid graph node label plans",
     }
-}
-
-fn checked_axis_total(axis_sizes: &AxisSizes, resources: &ResourceContext) -> Result<usize> {
-    axis_sizes.values().try_fold(0usize, |total, size| {
-        resources.checked_grid_add(total, *size)
-    })
 }
 
 fn try_reserve_vec<T>(values: &mut Vec<T>, additional: usize) -> Result<()> {
@@ -1071,6 +1147,85 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 7);
         assert_eq!(resources.document_cells_used(), 11);
+    }
+
+    #[test]
+    fn sparse_axis_projection_admits_linear_work_before_materializing_layouts() {
+        const NODE_COUNT: usize = 256;
+        const EXPECTED_WORK: usize = 2_053;
+
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        let mut placements = Vec::with_capacity(NODE_COUNT);
+        let mut column_widths = AxisSizes::new();
+        let mut row_heights = AxisSizes::new();
+        for index in 0..NODE_COUNT {
+            let id = format!("node-{index}");
+            graph.add_node(id.clone(), id);
+            let x = index * 4;
+            placements.push(GridCoord { x, y: 0 });
+            for offset in 0..3 {
+                set_axis_size(&mut column_widths, x + offset, 1);
+            }
+        }
+        for index in 0..3 {
+            set_axis_size(&mut row_heights, index, 1);
+        }
+
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let measured = ResourceContext::new(unbounded);
+        let (layouts, columns, rows) = finalize_node_layouts(
+            &graph,
+            placements.clone(),
+            &column_widths,
+            &row_heights,
+            TerminalWidthProfile::Unicode,
+            &measured,
+            AsciiExecution::for_test(&unbounded),
+        )
+        .expect("sparse axis projection should materialize");
+        assert_eq!(layouts.len(), NODE_COUNT);
+        assert_eq!(columns.total(), NODE_COUNT * 3);
+        assert_eq!(rows.total(), 3);
+        assert_eq!(measured.layout_work_used(), EXPECTED_WORK);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK)
+            .expect("exact axis projection work limit should be valid");
+        let exact = ResourceContext::new(exact_policy);
+        finalize_node_layouts(
+            &graph,
+            placements.clone(),
+            &column_widths,
+            &row_heights,
+            TerminalWidthProfile::Unicode,
+            &exact,
+            AsciiExecution::for_test(&exact_policy),
+        )
+        .expect("exact axis projection work should pass");
+        assert_eq!(exact.layout_work_used(), EXPECTED_WORK);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK - 1)
+            .expect("max-minus-one axis projection work limit should be valid");
+        let below = ResourceContext::new(below_policy);
+        let error = finalize_node_layouts(
+            &graph,
+            placements,
+            &column_widths,
+            &row_heights,
+            TerminalWidthProfile::Unicode,
+            &below,
+            AsciiExecution::for_test(&below_policy),
+        )
+        .expect_err("max-minus-one work must reject before node layout materialization");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == EXPECTED_WORK
+                    && details.max == EXPECTED_WORK - 1
+        ));
+        assert_eq!(below.layout_work_used(), 0);
     }
 
     #[test]

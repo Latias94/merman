@@ -5,7 +5,6 @@ use crate::error::Result;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
-use std::collections::HashMap;
 
 mod grid;
 mod groups;
@@ -16,8 +15,8 @@ pub(super) struct GraphLayout {
     pub(super) groups: Vec<GroupLayout>,
     /// Group indices ordered from containing backgrounds to nested backgrounds.
     pub(super) group_background_order: Vec<usize>,
-    column_widths: HashMap<usize, usize>,
-    row_heights: HashMap<usize, usize>,
+    column_widths: grid::AxisProjection,
+    row_heights: grid::AxisProjection,
     offset_x: usize,
     offset_y: usize,
 }
@@ -25,8 +24,8 @@ pub(super) struct GraphLayout {
 impl GraphLayout {
     pub(super) fn grid_to_canvas(&self, coord: GridCoord) -> CanvasCoord {
         CanvasCoord {
-            x: self.offset_x + grid::axis_position(&self.column_widths, coord.x),
-            y: self.offset_y + grid::axis_position(&self.row_heights, coord.y),
+            x: self.offset_x + self.column_widths.position(coord.x),
+            y: self.offset_y + self.row_heights.position(coord.y),
         }
     }
 }
@@ -166,17 +165,11 @@ pub(super) fn layout_graph_with_resources_and_execution(
     }
     let offset_x = nodes
         .first()
-        .map(|node| {
-            node.x
-                .saturating_sub(grid::axis_position(&column_widths, node.grid.x))
-        })
+        .map(|node| node.x.saturating_sub(column_widths.position(node.grid.x)))
         .unwrap_or_default();
     let offset_y = nodes
         .first()
-        .map(|node| {
-            node.y
-                .saturating_sub(grid::axis_position(&row_heights, node.grid.y))
-        })
+        .map(|node| node.y.saturating_sub(row_heights.position(node.grid.y)))
         .unwrap_or_default();
     checkpoint_layout(execution)?;
     let laid_out_groups = if graph.groups.is_empty() {
