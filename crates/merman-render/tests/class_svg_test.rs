@@ -1190,6 +1190,22 @@ fn class_svg_cardinality_terminals_emit_positive_measured_bounds() {
 }
 
 #[test]
+fn class_svg_authored_none_cardinalities_are_not_missing_labels() {
+    for diagram_type in ["classDiagram", "classDiagram-v2"] {
+        let svg = render_class_svg_from_text(&format!(
+            "{diagram_type}\nclass A\nclass B\nA \"none\" --> \"NONE\" B"
+        ));
+
+        for label in ["none", "NONE"] {
+            assert!(
+                svg.contains(&format!("<p>{label}</p>")),
+                "{diagram_type} should preserve authored endpoint label {label:?}: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
 fn class_svg_hand_drawn_cardinality_terminals_keep_xhtml_and_measured_bounds() {
     let svg = render_class_svg_from_text(
         r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%

@@ -104,10 +104,15 @@ pub struct ClassRelation {
     pub id: String,
     pub id1: String,
     pub id2: String,
-    #[serde(rename = "relationTitle1")]
-    pub relation_title_1: String,
-    #[serde(rename = "relationTitle2")]
-    pub relation_title_2: String,
+    /// Authored label attached to the first endpoint, or `None` when no label was authored.
+    ///
+    /// Mermaid's compatibility JSON projects `None` as `"none"`; typed consumers must use this
+    /// optional field rather than interpreting that boundary representation.
+    #[serde(default, rename = "relationTitle1")]
+    pub relation_title_1: Option<String>,
+    /// Authored label attached to the second endpoint, or `None` when no label was authored.
+    #[serde(default, rename = "relationTitle2")]
+    pub relation_title_2: Option<String>,
     pub title: String,
     pub relation: RelationShape,
 }

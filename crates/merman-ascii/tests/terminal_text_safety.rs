@@ -309,7 +309,7 @@ fn graph_and_relation_edge_labels_normalize_before_empty_checks() {
                     .relations
                     .first_mut()
                     .expect("class relation")
-                    .relation_title_1 = authored.to_string();
+                    .relation_title_1 = Some(authored.to_string());
             }
             other => panic!("{family} fixture parsed as unexpected model {other:?}"),
         }

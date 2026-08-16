@@ -1161,13 +1161,13 @@ fn relation_layout<'a>(
     let label =
         RelationGraphLabel::try_new(&relation.title, width_profile, deferred_text, resources)?;
     let left_endpoint_label = relation_endpoint_label(
-        &relation.relation_title_1,
+        relation.relation_title_1.as_deref(),
         width_profile,
         deferred_text,
         resources,
     )?;
     let right_endpoint_label = relation_endpoint_label(
-        &relation.relation_title_2,
+        relation.relation_title_2.as_deref(),
         width_profile,
         deferred_text,
         resources,
@@ -1381,15 +1381,14 @@ fn external_namespace_note_summary_rows<'a>(
 }
 
 fn relation_endpoint_label<'a>(
-    label: &'a str,
+    label: Option<&'a str>,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<Option<RelationGraphLabel>> {
-    if label.trim().eq_ignore_ascii_case("none") {
-        return Ok(None);
-    }
-    RelationGraphLabel::try_new(label, width_profile, deferred_text, resources)
+    label.map_or(Ok(None), |label| {
+        RelationGraphLabel::try_new(label, width_profile, deferred_text, resources)
+    })
 }
 
 fn plan_vertical_relation<'plan>(
@@ -2553,8 +2552,12 @@ fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -
         charge_text_layout(resources, &relation.id1)?;
         charge_text_layout(resources, &relation.id2)?;
         charge_text_layout(resources, &relation.title)?;
-        charge_text_layout(resources, &relation.relation_title_1)?;
-        charge_text_layout(resources, &relation.relation_title_2)?;
+        if let Some(label) = relation.relation_title_1.as_deref() {
+            charge_text_layout(resources, label)?;
+        }
+        if let Some(label) = relation.relation_title_2.as_deref() {
+            charge_text_layout(resources, label)?;
+        }
     }
 
     for namespace in model.namespaces.values() {
@@ -2718,8 +2721,8 @@ mod tests {
             }
         }
         model.relations[0].title = "self<&中".to_string();
-        model.relations[0].relation_title_1 = "a<&中<br>b".to_string();
-        model.relations[0].relation_title_2 = "a/b<&中".to_string();
+        model.relations[0].relation_title_1 = Some("a<&中<br>b".to_string());
+        model.relations[0].relation_title_2 = Some("a/b<&中".to_string());
         model.relations[1].title = "linked<&中".to_string();
         model
     }

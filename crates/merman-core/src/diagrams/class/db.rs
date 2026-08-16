@@ -1071,8 +1071,8 @@ impl<'a> ClassDb<'a> {
                 id: idx.to_string(),
                 id1: r.id1,
                 id2: r.id2,
-                relation_title_1: r.relation_title1.unwrap_or_else(|| "none".to_string()),
-                relation_title_2: r.relation_title2.unwrap_or_else(|| "none".to_string()),
+                relation_title_1: r.relation_title1,
+                relation_title_2: r.relation_title2,
                 title: r.title.unwrap_or_default(),
                 relation: class_typed::RelationShape {
                     type1: r.relation.type1,

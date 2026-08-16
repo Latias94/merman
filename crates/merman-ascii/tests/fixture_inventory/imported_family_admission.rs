@@ -243,11 +243,16 @@ fn primary_typed_semantic_witnesses(model: &RenderSemanticModel) -> Vec<Semantic
             for relation in &model.relations {
                 push_semantic_witness(&mut witnesses, "class relation", &relation.title);
                 for (role, label) in [
-                    ("class source endpoint label", &relation.relation_title_1),
-                    ("class target endpoint label", &relation.relation_title_2),
+                    (
+                        "class source endpoint label",
+                        relation.relation_title_1.as_deref(),
+                    ),
+                    (
+                        "class target endpoint label",
+                        relation.relation_title_2.as_deref(),
+                    ),
                 ] {
-                    // Core projects an absent endpoint label as this sentinel.
-                    if !label.eq_ignore_ascii_case("none") {
+                    if let Some(label) = label {
                         push_semantic_witness(&mut witnesses, role, label);
                     }
                 }

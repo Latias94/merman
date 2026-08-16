@@ -1961,6 +1961,22 @@ fn class_parser_endpoint_labels_render_near_relation_endpoints() {
 }
 
 #[test]
+fn class_parser_authored_none_endpoint_labels_are_not_absence_sentinels() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nA \"none\" --> \"NONE\" B",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("authored endpoint labels should render");
+
+    for label in ["none", "NONE"] {
+        assert!(
+            rendered.contains(label),
+            "authored endpoint label {label:?} should remain visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn class_parser_reverse_extension_endpoint_labels_follow_normalized_endpoints() {
     let rendered = render_class(
         "classDiagram\nclass Child\nclass Parent\nChild \"*\" --|> \"1\" Parent : extends",

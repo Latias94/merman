@@ -26,6 +26,35 @@ C1 <|-- C2 : inherits
 }
 
 #[test]
+fn typed_relations_distinguish_authored_none_from_the_compatibility_sentinel() {
+    let code = r#"classDiagram
+class A
+class B
+A --> B
+A "none" --> B
+A "" --> B
+"#;
+
+    let model = parse::parse_class_typed(code, &meta()).expect("class diagram should parse");
+
+    assert_eq!(model.relations[0].relation_title_1, None);
+    assert_eq!(model.relations[1].relation_title_1.as_deref(), Some("none"));
+    assert_eq!(model.relations[2].relation_title_1.as_deref(), Some(""));
+
+    let typed_json = serde_json::to_value(&model).unwrap();
+    assert!(typed_json["relations"][0]["relationTitle1"].is_null());
+    assert_eq!(typed_json["relations"][1]["relationTitle1"], "none");
+    let round_trip: crate::models::class_diagram::ClassDiagram =
+        serde_json::from_value(typed_json).unwrap();
+    assert_eq!(round_trip, model);
+
+    let compatibility = render_model_to_compat_json(&model, &meta()).unwrap();
+    assert_eq!(compatibility["relations"][0]["relationTitle1"], "none");
+    assert_eq!(compatibility["relations"][1]["relationTitle1"], "none");
+    assert_eq!(compatibility["relations"][2]["relationTitle1"], "");
+}
+
+#[test]
 fn namespace_qualified_relation_endpoints_create_facade_classes_like_mermaid() {
     let code = r#"classDiagram
 namespace Platform["Platform Layer"] {

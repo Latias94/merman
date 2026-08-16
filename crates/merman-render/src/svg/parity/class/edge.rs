@@ -391,11 +391,7 @@ pub(super) fn render_class_edge_groups(
         let Some(rel) = ctx.relations_by_id.get(e.id.as_str()).copied() else {
             continue;
         };
-        let start_text = if rel.relation_title_1 == "none" {
-            ""
-        } else {
-            rel.relation_title_1.as_str()
-        };
+        let start_text = rel.relation_title_1.as_deref().unwrap_or_default();
         for lbl in [&e.start_label_left, &e.start_label_right] {
             if let Some(lbl) = lbl.as_ref() {
                 let (terminal_w, terminal_h) = class_terminal_box_size(start_text);
@@ -437,11 +433,7 @@ pub(super) fn render_class_edge_groups(
         let Some(rel) = ctx.relations_by_id.get(e.id.as_str()).copied() else {
             continue;
         };
-        let end_text = if rel.relation_title_2 == "none" {
-            ""
-        } else {
-            rel.relation_title_2.as_str()
-        };
+        let end_text = rel.relation_title_2.as_deref().unwrap_or_default();
         for lbl in [&e.end_label_left, &e.end_label_right] {
             if let Some(lbl) = lbl.as_ref() {
                 let (terminal_w, terminal_h) = class_terminal_box_size(end_text);
