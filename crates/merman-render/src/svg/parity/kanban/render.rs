@@ -4,19 +4,24 @@ use crate::kanban::{
     KanbanPreparedLabelGeometry,
 };
 
-fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
+fn write_kanban_css(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> Result<()> {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let theme = MermaidThemeAdapter::new(effective_config).kanban()?;
-    let mut out = parts.css_prefix;
     let root_rule = parts.root_rule;
 
-    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
+    out.push_str(&parts.css_prefix);
+    let _ = write!(out, r#"#{} .edge{{stroke-width:3;}}"#, id);
+    out.checkpoint()?;
     for (i, section_theme) in theme.sections.iter().enumerate() {
         let section = i as i64 - 1;
         let sw = 17_i64 - 3_i64 * (i as i64);
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} polygon,#{} .section-{} path{{fill:{};stroke:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .kanban-ticket-link{{fill:{};stroke:{};text-decoration:underline;}}"#,
             id,
             section,
@@ -60,10 +65,11 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<
             theme.background,
             theme.node_border
         );
+        out.checkpoint()?;
     }
 
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:{};}}#{} .section-root text{{fill:{};}}#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}#{} .edge{{fill:none;}}#{} .cluster-label,#{} .label{{color:{};fill:{};}}#{} .kanban-label{{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
         id,
         id,
@@ -83,6 +89,13 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<
         id
     );
     out.push_str(&root_rule);
+    out.checkpoint()
+}
+
+#[cfg(test)]
+fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
+    let mut out = String::new();
+    write_kanban_css(&mut out, diagram_id, effective_config)?;
     Ok(out)
 }
 
@@ -125,10 +138,10 @@ struct KanbanLabelGroup<'a> {
 }
 
 fn write_kanban_label_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     context: &KanbanLabelRenderContext,
     group: KanbanLabelGroup<'_>,
-) {
+) -> Result<()> {
     let KanbanLabelGroup {
         position: (x, y),
         text,
@@ -187,6 +200,7 @@ fn write_kanban_label_group(
         let _ = write!(out, r#"<p>{}</p>"#, escape_xml(text));
     }
     out.push_str("</span></div></foreignObject></g>");
+    out.checkpoint()
 }
 
 pub(crate) fn render_kanban_diagram_svg(
@@ -212,7 +226,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "kanban");
     root_chrome.dom = root_svg::RootDomProfile {
@@ -222,15 +236,19 @@ pub(crate) fn render_kanban_diagram_svg(
         ..root_svg::RootDomProfile::default()
     };
     let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::KANBAN, diagram_id).write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
-                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
-            root_chrome,
-        )?;
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::KANBAN, diagram_id)
+            .with_resource_policy(options.resource_policy())
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+                    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+                root_chrome,
+            )?;
 
-    let css = kanban_css(diagram_id, effective_config)?;
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    out.push_str("<style>");
+    write_kanban_css(&mut out, diagram_id, effective_config)?;
+    out.push_str("</style>");
+    out.checkpoint()?;
     let config_view = crate::kanban::KanbanConfigView::new(effective_config);
     let label_style = config_view.layout_settings().text_style;
     let label_min_height =
@@ -240,8 +258,10 @@ pub(crate) fn render_kanban_diagram_svg(
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
     out.push_str(r#"<g/>"#);
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="sections">"#);
+    out.checkpoint()?;
     for (s, prepared_label) in layout.sections.iter().zip(prepared_sections) {
         let left = s.center_x - s.width / 2.0;
         let geometry = prepared_label.geometry;
@@ -278,10 +298,13 @@ pub(crate) fn render_kanban_diagram_svg(
             div_style = escape_attr(&section_div_style),
             label = prepared_label.html.as_str(),
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="items">"#);
+    out.checkpoint()?;
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
     let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
@@ -355,7 +378,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: n.icon.as_deref().map(|_| "labelBkg"),
                 wrap_title: true,
             },
-        );
+        )?;
 
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
         let ticket_text = n.ticket.as_deref();
@@ -380,8 +403,9 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         wrap_title: false,
                     },
-                );
+                )?;
                 out.push_str("</a>");
+                out.checkpoint()?;
             } else {
                 write_kanban_label_group(
                     &mut out,
@@ -394,7 +418,7 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         wrap_title: false,
                     },
-                );
+                )?;
             }
         } else {
             write_kanban_label_group(
@@ -408,7 +432,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     div_class: None,
                     wrap_title: false,
                 },
-            );
+            )?;
         }
 
         // Assigned label.
@@ -423,7 +447,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: None,
                 wrap_title: false,
             },
-        );
+        )?;
 
         if let Some(p) = n.priority.as_deref() {
             let y1 = rect_y + (n.rx / 2.0).floor();
@@ -443,11 +467,12 @@ pub(crate) fn render_kanban_diagram_svg(
         }
 
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     out.push_str("</g>");
     out.push_str("</svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
