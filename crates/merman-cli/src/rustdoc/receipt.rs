@@ -2,6 +2,7 @@ use super::config::Config;
 use super::document::GeneratedRustdocBundle;
 use crate::diagnostics::DiagnosticSink;
 use crate::error::{CliError, safe_path};
+use crate::input::IO_CHUNK_BYTES;
 use crate::resources::{ByteLedgerKind, ResolvedResourcePolicy};
 use crate::runtime::SharedWriter;
 use serde::{Deserialize, Serialize};
@@ -78,13 +79,17 @@ impl ExpectedRustdocBundle {
         &self.receipt_path
     }
 
-    fn check_disk(&self, resources: &ResolvedResourcePolicy) -> Result<(), CliError> {
+    fn check_disk(
+        &self,
+        resources: &ResolvedResourcePolicy,
+        control: &merman::OperationControl,
+    ) -> Result<(), CliError> {
         ensure_no_transaction_evidence(
             self.receipt_path
                 .parent()
                 .expect("the receipt path has a managed-root parent"),
         )?;
-        let actual_receipt = read_receipt(&self.receipt_path, resources)?;
+        let actual_receipt = read_receipt(&self.receipt_path, resources, control)?;
         let decoded = RustdocReceipt::decode(&actual_receipt, &self.receipt_path)?;
         if decoded != self.receipt || actual_receipt != self.receipt_bytes {
             return Err(CliError::rustdoc_stale(
@@ -94,7 +99,7 @@ impl ExpectedRustdocBundle {
         }
 
         for fragment in self.generated.fragments() {
-            compare_managed_file(fragment.output(), fragment.bytes())?;
+            compare_managed_file(fragment.output(), fragment.bytes(), control)?;
         }
         ensure_no_transaction_evidence(
             self.receipt_path
@@ -412,14 +417,14 @@ pub(crate) fn check(
 ) -> Result<(), CliError> {
     ensure_no_transaction_evidence(config.output_root())?;
     let receipt_path = config.receipt_path();
-    let previous = read_previous(&receipt_path, resources)?;
+    let previous = read_previous(&receipt_path, resources, control)?;
     if let Some(previous) = previous.as_ref() {
         previous.ensure_owner(config, &receipt_path)?;
     }
     let generated = super::generate(config, resources, control, stderr)?;
     super::document::verify_input_snapshots(config, &generated, resources, control)?;
     let expected = ExpectedRustdocBundle::new(config, generated, resources)?;
-    expected.check_disk(resources)?;
+    expected.check_disk(resources, control)?;
     super::document::verify_input_snapshots(config, expected.generated(), resources, control)?;
     ensure_no_transaction_evidence(config.output_root())?;
     DiagnosticSink::new(quiet, stderr).info(format!(
@@ -470,8 +475,9 @@ impl PreviousRustdocReceipt {
 pub(crate) fn read_previous(
     path: &Path,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<Option<PreviousRustdocReceipt>, CliError> {
-    let Some(bytes) = read_receipt_optional(path, resources)? else {
+    let Some(bytes) = read_receipt_optional(path, resources, control)? else {
         return Ok(None);
     };
     decode_previous(path, &bytes).map(Some)
@@ -491,15 +497,21 @@ pub(super) fn decode_previous(
     Ok(PreviousRustdocReceipt { receipt })
 }
 
-fn read_receipt(path: &Path, resources: &ResolvedResourcePolicy) -> Result<Vec<u8>, CliError> {
-    read_receipt_optional(path, resources)?
+fn read_receipt(
+    path: &Path,
+    resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
+) -> Result<Vec<u8>, CliError> {
+    read_receipt_optional(path, resources, control)?
         .ok_or_else(|| CliError::rustdoc_stale(path, "receipt is missing"))
 }
 
 fn read_receipt_optional(
     path: &Path,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<Option<Vec<u8>>, CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     let path_metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -552,19 +564,7 @@ fn read_receipt_optional(
             "receipt changed while it was opened",
         ));
     }
-    let limit = receipt_limit(resources);
-    let mut bytes = Vec::new();
-    file.take(limit.saturating_add(1) as u64)
-        .read_to_end(&mut bytes)
-        .map_err(|error| {
-            CliError::rustdoc_receipt(path, format!("failed to read receipt: {error}"))
-        })?;
-    if bytes.len() > limit {
-        return Err(CliError::rustdoc_receipt(
-            path,
-            format!("receipt exceeds the {limit}-byte limit"),
-        ));
-    }
+    let bytes = read_receipt_bytes(file, path, receipt_limit(resources), control)?;
     let final_metadata = std::fs::symlink_metadata(path).map_err(|error| {
         CliError::rustdoc_receipt(path, format!("failed to reinspect receipt path: {error}"))
     })?;
@@ -589,6 +589,45 @@ fn read_receipt_optional(
     Ok(Some(bytes))
 }
 
+fn read_receipt_bytes(
+    mut reader: impl Read,
+    path: &Path,
+    limit: usize,
+    control: &merman::OperationControl,
+) -> Result<Vec<u8>, CliError> {
+    let mut bytes = Vec::new();
+    let read_ceiling = limit.saturating_add(1);
+    let mut chunk = [0_u8; IO_CHUNK_BYTES];
+    while bytes.len() < read_ceiling {
+        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        let requested = (read_ceiling - bytes.len()).min(chunk.len());
+        let count = match reader.read(&mut chunk[..requested]) {
+            Ok(0) => break,
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => {
+                return Err(CliError::rustdoc_receipt(
+                    path,
+                    format!("failed to read receipt: {error}"),
+                ));
+            }
+        };
+        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        bytes.try_reserve(count).map_err(|error| {
+            CliError::rustdoc_receipt(path, format!("failed to allocate receipt buffer: {error}"))
+        })?;
+        bytes.extend_from_slice(&chunk[..count]);
+    }
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+    if bytes.len() > limit {
+        return Err(CliError::rustdoc_receipt(
+            path,
+            format!("receipt exceeds the {limit}-byte limit"),
+        ));
+    }
+    Ok(bytes)
+}
+
 pub(super) fn receipt_limit(resources: &ResolvedResourcePolicy) -> usize {
     resources
         .files()
@@ -597,7 +636,12 @@ pub(super) fn receipt_limit(resources: &ResolvedResourcePolicy) -> usize {
         .min(RECEIPT_HARD_LIMIT_BYTES)
 }
 
-fn compare_managed_file(path: &Path, expected: &[u8]) -> Result<(), CliError> {
+fn compare_managed_file(
+    path: &Path,
+    expected: &[u8],
+    control: &merman::OperationControl,
+) -> Result<(), CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
     let path_metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -619,7 +663,7 @@ fn compare_managed_file(path: &Path, expected: &[u8]) -> Result<(), CliError> {
             "generated fragment is a symlink or non-regular file",
         ));
     }
-    let file = match File::open(path) {
+    let mut file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(CliError::rustdoc_stale(
@@ -676,18 +720,7 @@ fn compare_managed_file(path: &Path, expected: &[u8]) -> Result<(), CliError> {
             "generated fragment bytes differ",
         ));
     }
-    let mut actual = Vec::with_capacity(expected.len());
-    file.take(expected.len().saturating_add(1) as u64)
-        .read_to_end(&mut actual)
-        .map_err(|error| {
-            CliError::rustdoc_receipt(path, format!("failed to read generated fragment: {error}"))
-        })?;
-    if actual != expected {
-        return Err(CliError::rustdoc_stale(
-            path,
-            "generated fragment bytes differ",
-        ));
-    }
+    compare_managed_bytes(&mut file, path, expected, control)?;
     let final_metadata = std::fs::symlink_metadata(path).map_err(|error| {
         CliError::rustdoc_receipt(
             path,
@@ -712,6 +745,65 @@ fn compare_managed_file(path: &Path, expected: &[u8]) -> Result<(), CliError> {
             "generated fragment identity changed while reading",
         ));
     }
+    Ok(())
+}
+
+fn compare_managed_bytes(
+    mut reader: impl Read,
+    path: &Path,
+    expected: &[u8],
+    control: &merman::OperationControl,
+) -> Result<(), CliError> {
+    let mut offset = 0;
+    let mut chunk = [0_u8; IO_CHUNK_BYTES];
+    while offset < expected.len() {
+        crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
+        let requested = (expected.len() - offset).min(chunk.len());
+        let count = match reader.read(&mut chunk[..requested]) {
+            Ok(0) => {
+                return Err(CliError::rustdoc_stale(
+                    path,
+                    "generated fragment bytes differ",
+                ));
+            }
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => {
+                return Err(CliError::rustdoc_receipt(
+                    path,
+                    format!("failed to read generated fragment: {error}"),
+                ));
+            }
+        };
+        crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
+        if chunk[..count] != expected[offset..offset + count] {
+            return Err(CliError::rustdoc_stale(
+                path,
+                "generated fragment bytes differ",
+            ));
+        }
+        offset += count;
+    }
+    loop {
+        crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
+        match reader.read(&mut chunk[..1]) {
+            Ok(0) => break,
+            Ok(_) => {
+                return Err(CliError::rustdoc_stale(
+                    path,
+                    "generated fragment bytes differ",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => {
+                return Err(CliError::rustdoc_receipt(
+                    path,
+                    format!("failed to read generated fragment: {error}"),
+                ));
+            }
+        }
+    }
+    crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
     Ok(())
 }
 
@@ -782,6 +874,34 @@ mod tests {
     use super::*;
     use crate::resources::ResolvedResourcePolicy;
     use std::fs;
+    use std::io::{self, Cursor, Read};
+
+    struct CancelAfterFirstRead<R> {
+        inner: R,
+        control: merman::OperationControl,
+        cancelled: bool,
+    }
+
+    impl<R> CancelAfterFirstRead<R> {
+        fn new(inner: R, control: &merman::OperationControl) -> Self {
+            Self {
+                inner,
+                control: control.clone(),
+                cancelled: false,
+            }
+        }
+    }
+
+    impl<R: Read> Read for CancelAfterFirstRead<R> {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let count = self.inner.read(buffer)?;
+            if count > 0 && !self.cancelled {
+                self.cancelled = true;
+                self.control.cancel();
+            }
+            Ok(count)
+        }
+    }
 
     fn resources() -> ResolvedResourcePolicy {
         ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
@@ -949,6 +1069,7 @@ mod tests {
     fn check_is_read_only_and_compares_receipt_and_fragment_bytes() {
         let root = tempfile::tempdir().unwrap();
         let expected = expected(root.path());
+        let control = merman::OperationControl::new();
         fs::create_dir_all(expected.receipt_path().parent().unwrap()).unwrap();
         for fragment in expected.generated().fragments() {
             fs::write(fragment.output(), fragment.bytes()).unwrap();
@@ -959,9 +1080,9 @@ mod tests {
             .modified()
             .unwrap();
 
-        expected.check_disk(&resources()).unwrap();
+        expected.check_disk(&resources(), &control).unwrap();
         assert!(
-            read_previous(expected.receipt_path(), &resources())
+            read_previous(expected.receipt_path(), &resources(), &control)
                 .unwrap()
                 .is_some()
         );
@@ -974,8 +1095,49 @@ mod tests {
         );
 
         fs::write(expected.generated().fragments()[0].output(), b"tampered").unwrap();
-        let error = expected.check_disk(&resources()).unwrap_err();
+        let error = expected.check_disk(&resources(), &control).unwrap_err();
         assert_eq!(error.exit_code(), std::process::ExitCode::from(1));
         assert!(error.to_string().contains("bytes differ"));
+    }
+
+    #[test]
+    fn receipt_read_observes_admission_cancellation_between_chunks() {
+        let control = merman::OperationControl::new();
+        let bytes = vec![b' '; IO_CHUNK_BYTES * 2 + 1];
+        let reader = CancelAfterFirstRead::new(Cursor::new(bytes), &control);
+
+        let error = read_receipt_bytes(
+            reader,
+            Path::new("receipt.json"),
+            RECEIPT_HARD_LIMIT_BYTES,
+            &control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::Render(merman::RenderError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Admission,
+                reason: merman::CancelReason::Requested,
+            }))
+        ));
+    }
+
+    #[test]
+    fn managed_file_comparison_observes_emit_cancellation_between_chunks() {
+        let expected = vec![b'x'; IO_CHUNK_BYTES * 2 + 1];
+        let control = merman::OperationControl::new();
+        let reader = CancelAfterFirstRead::new(Cursor::new(expected.as_slice()), &control);
+
+        let error = compare_managed_bytes(reader, Path::new("fragment.md"), &expected, &control)
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::Render(merman::RenderError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Emit,
+                reason: merman::CancelReason::Requested,
+            }))
+        ));
     }
 }

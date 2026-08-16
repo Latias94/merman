@@ -52,7 +52,7 @@ pub(crate) fn build(
     quiet: bool,
 ) -> Result<(), CliError> {
     let receipt_path = config.receipt_path();
-    let previous_before_generation = read_previous(&receipt_path, resources)?;
+    let previous_before_generation = read_previous(&receipt_path, resources, control)?;
     if let Some(previous) = previous_before_generation.as_ref() {
         previous.ensure_owner(config, &receipt_path)?;
     }
