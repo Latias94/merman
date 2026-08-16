@@ -55,7 +55,8 @@ pub(super) fn render_sequence_note(
         ctx.sanitize_config,
         ctx.math_renderer,
         SequenceMathHeightMode::Draw,
-    ) {
+        ctx.checkpoints,
+    )? {
         write_sequence_katex_foreign_object(
             out,
             &katex,
@@ -74,7 +75,8 @@ pub(super) fn render_sequence_note(
             2.0 * ctx.wrap_padding,
             ctx.measurer,
             ctx.note_text_style,
-        );
+            ctx.checkpoints.text(),
+        )?;
         render_sequence_note_lines(
             out,
             lines.iter().map(String::as_str),

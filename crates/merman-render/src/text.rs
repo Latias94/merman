@@ -43,7 +43,10 @@ pub(crate) use markdown_label::{
     mermaid_xhtml_label_plain_text, mermaid_xhtml_label_text_content,
 };
 pub use measure::TextMeasurer;
-pub(crate) use measure::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions};
+pub(crate) use measure::{
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
+    measure_mermaid_text_dimensions_with_checkpoint,
+};
 pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
 pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
@@ -60,6 +63,7 @@ pub(crate) use whitespace::{
     trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
     trim_start_ecmascript_whitespace,
 };
+pub(crate) use wrap::wrap_label_like_mermaid_lines_with_checkpoint;
 pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even, split_html_br_lines,
     wrap_label_like_mermaid_lines, wrap_text_lines_measurer,

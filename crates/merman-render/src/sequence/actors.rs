@@ -174,7 +174,8 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 ctx.measurer,
                 ctx.actor_text_style,
                 wrap_w,
-            );
+                ctx.checkpoints.text(),
+            )?;
             let wrapped_label = wrapped_lines.join("<br>");
             let text_h = measure_sequence_math_label(
                 ctx.measurer,
@@ -183,7 +184,8 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 ctx.math_config,
                 ctx.math_renderer,
                 SequenceMathHeightMode::Actor,
-            )
+                ctx.checkpoints.text(),
+            )?
             .map_or_else(
                 || {
                     let line_count = wrapped_lines.len().max(1) as f64;
@@ -201,7 +203,8 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 ctx.math_config,
                 ctx.math_renderer,
                 SequenceMathHeightMode::Actor,
-            );
+                ctx.checkpoints.text(),
+            )?;
             let w = (w0 + 2.0 * ctx.wrap_padding).max(ctx.actor_width_min);
             actor_base_heights.push(ctx.actor_height.max(1.0));
             actor_widths.push(w.max(1.0));
@@ -269,19 +272,30 @@ fn actor_message_widths(
                 ctx.math_config,
                 ctx.math_renderer,
                 SequenceMathHeightMode::Bound,
-            )
+                ctx.checkpoints.text(),
+            )?
         } else {
             let measured_text = if msg.wrap {
                 // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when
                 // computing max per-actor message widths for spacing.
                 let wrap_w = (ctx.actor_width_min - 2.0 * ctx.wrap_padding).max(1.0);
-                let lines =
-                    wrap_sequence_label_like_mermaid_lines(text, ctx.measurer, style, wrap_w);
+                let lines = wrap_sequence_label_like_mermaid_lines(
+                    text,
+                    ctx.measurer,
+                    style,
+                    wrap_w,
+                    ctx.checkpoints.text(),
+                )?;
                 lines.join("<br>")
             } else {
                 text.to_string()
             };
-            measure_svg_like_with_html_br(ctx.measurer, &measured_text, style)
+            measure_svg_like_with_html_br(
+                ctx.measurer,
+                &measured_text,
+                style,
+                ctx.checkpoints.text(),
+            )?
         };
         if is_message && !msg.wrap && !is_math {
             // Final direct `<text>` drawing is a distinct DOM probe and deliberately does not use
@@ -397,7 +411,8 @@ fn box_margins(
             ctx.math_config,
             ctx.math_renderer,
             SequenceMathHeightMode::Bound,
-        );
+            ctx.checkpoints.text(),
+        )?;
         let min_width = total_width.max(text_w + 2.0 * ctx.wrap_padding);
         if total_width < min_width {
             box_margins[box_idx] += (min_width - total_width) / 2.0;

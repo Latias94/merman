@@ -219,7 +219,8 @@ fn include_self_message_bounds(
                 ctx.math_config,
                 ctx.math_renderer,
                 SequenceMathHeightMode::Bound,
-            )
+                ctx.checkpoints.text(),
+            )?
         };
         let dx = (text_w.max(1.0) / 2.0).max(ctx.actor_width_min / 2.0);
         bounds_box.include(center_x - dx, center_x + dx);

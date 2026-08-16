@@ -1,3 +1,4 @@
+use super::SequenceLayoutCheckpoints;
 use super::activation::SequenceActivationState;
 use super::constants::SEQUENCE_MESSAGE_WRAP_PADDING_SIDES;
 use super::message_metrics::SequenceMessageBoundMetrics;
@@ -6,6 +7,7 @@ use super::metrics::{
     measure_sequence_label_for_layout, measure_svg_like_with_html_br,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
+use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
@@ -39,6 +41,7 @@ pub(super) struct SequenceMessageHorizontalContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,14 +63,20 @@ struct MessageHorizontalRequest {
 pub(super) fn sequence_message_horizontal_model(
     msg: &SequenceMessage,
     ctx: SequenceMessageHorizontalContext<'_>,
-) -> Option<SequenceMessageHorizontalModel> {
-    let semantics = msg.signal_semantics()?;
+) -> Result<Option<SequenceMessageHorizontalModel>> {
+    let Some(semantics) = msg.signal_semantics() else {
+        return Ok(None);
+    };
     let central_decoration = msg.central_decoration().unwrap_or_default();
-    let (from, to) = (msg.from.as_deref()?, msg.to.as_deref()?);
-    let (from_index, to_index) = (
-        ctx.actor_index.get(from).copied()?,
-        ctx.actor_index.get(to).copied()?,
-    );
+    let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+        return Ok(None);
+    };
+    let (Some(from_index), Some(to_index)) = (
+        ctx.actor_index.get(from).copied(),
+        ctx.actor_index.get(to).copied(),
+    ) else {
+        return Ok(None);
+    };
     let from_bounds = ctx
         .activation_state
         .actor_bounds(from_index, ctx.actor_centers_x[from_index]);
@@ -79,12 +88,17 @@ pub(super) fn sequence_message_horizontal_model(
     } else if let Some(metrics) = ctx.premeasured_bound {
         metrics.width()
     } else {
-        measure_svg_like_with_html_br(ctx.measurer, msg.message_text(), ctx.msg_text_style)
-            .0
-            .max(0.0)
+        measure_svg_like_with_html_br(
+            ctx.measurer,
+            msg.message_text(),
+            ctx.msg_text_style,
+            ctx.checkpoints.text(),
+        )?
+        .0
+        .max(0.0)
     };
 
-    Some(message_horizontal_model_from_request(
+    Ok(Some(message_horizontal_model_from_request(
         MessageHorizontalRequest {
             semantics,
             central_decoration,
@@ -99,7 +113,7 @@ pub(super) fn sequence_message_horizontal_model(
             default_width: ctx.default_width,
             wrap_padding: ctx.wrap_padding,
         },
-    ))
+    )))
 }
 
 fn message_horizontal_model_from_request(
@@ -210,6 +224,7 @@ pub(super) struct SequenceMessageLayoutContext<'a> {
     pub(super) destroyed_from_index: Option<usize>,
     pub(super) destroyed_to_index: Option<usize>,
     pub(super) actor_is_type_width_limited: &'a dyn Fn(&str) -> bool,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 pub(super) struct SequenceMessageLayout {
@@ -226,20 +241,20 @@ pub(super) struct SequenceMessageLayout {
 pub(super) fn layout_sequence_message(
     msg: &SequenceMessage,
     ctx: SequenceMessageLayoutContext<'_>,
-) -> Option<SequenceMessageLayout> {
+) -> Result<Option<SequenceMessageLayout>> {
     let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-        return None;
+        return Ok(None);
     };
     let (Some(fi), Some(ti)) = (
         ctx.actor_index.get(from).copied(),
         ctx.actor_index.get(to).copied(),
     ) else {
-        return None;
+        return Ok(None);
     };
     let from_x = ctx.actor_centers_x[fi];
     let to_x = ctx.actor_centers_x[ti];
 
-    let horizontal = sequence_message_horizontal_model(
+    let Some(horizontal) = sequence_message_horizontal_model(
         msg,
         SequenceMessageHorizontalContext {
             actor_index: ctx.actor_index,
@@ -251,8 +266,12 @@ pub(super) fn layout_sequence_message(
             measurer: ctx.measurer,
             msg_text_style: ctx.msg_text_style,
             premeasured_bound: ctx.premeasured_bound,
+            checkpoints: ctx.checkpoints,
         },
-    )?;
+    )?
+    else {
+        return Ok(None);
+    };
     let mut startx = horizontal.start_x;
     let mut stopx = horizontal.stop_x;
     let is_self = from == to;
@@ -281,7 +300,7 @@ pub(super) fn layout_sequence_message(
         is_math_message,
         horizontal.bounded_width,
         &ctx,
-    );
+    )?;
     let effective_text = wrapped_text.as_deref().unwrap_or(text);
 
     let premeasured_bound = if wrapped_text.is_none() && !is_math_message {
@@ -295,7 +314,7 @@ pub(super) fn layout_sequence_message(
         is_self,
         premeasured_bound,
         &ctx,
-    );
+    )?;
 
     let x1 = startx;
     let x2 = stopx;
@@ -306,7 +325,7 @@ pub(super) fn layout_sequence_message(
         x2,
         vertical.label_y,
         &ctx,
-    );
+    )?;
 
     let self_insert = is_self.then(|| {
         let dx = (vertical.text_width / 2.0).max(ctx.actor_width_min / 2.0);
@@ -337,7 +356,7 @@ pub(super) fn layout_sequence_message(
                 .unwrap_or(f64::NEG_INFINITY),
         );
 
-    Some(SequenceMessageLayout {
+    Ok(Some(SequenceMessageLayout {
         edge: LayoutEdge {
             id: format!("msg-{}", msg.id),
             from: from.to_string(),
@@ -370,7 +389,7 @@ pub(super) fn layout_sequence_message(
         line_y: vertical.line_y,
         inserted_bottom_y: vertical.inserted_bottom_y,
         cursor_step: vertical.cursor_step,
-    })
+    }))
 }
 
 fn central_decoration_start_offset(
@@ -481,18 +500,23 @@ fn wrapped_message_text(
     is_math_message: bool,
     bounded_width: f64,
     ctx: &SequenceMessageLayoutContext<'_>,
-) -> Option<String> {
+) -> Result<Option<String>> {
     if text.is_empty() || !should_wrap || is_math_message {
-        return None;
+        return Ok(None);
     }
 
     // Upstream wraps message labels to `max(boundedWidth + 2*wrapPadding, conf.width)`.
     let wrap_w = (bounded_width + SEQUENCE_MESSAGE_WRAP_PADDING_SIDES * ctx.wrap_padding)
         .max(ctx.actor_width_min)
         .max(1.0);
-    let lines =
-        wrap_sequence_label_like_mermaid_lines(text, ctx.measurer, ctx.msg_text_style, wrap_w);
-    Some(lines.join("<br>"))
+    let lines = wrap_sequence_label_like_mermaid_lines(
+        text,
+        ctx.measurer,
+        ctx.msg_text_style,
+        wrap_w,
+        ctx.checkpoints.text(),
+    )?;
+    Ok(Some(lines.join("<br>")))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -510,7 +534,7 @@ fn message_vertical_geometry(
     is_self: bool,
     premeasured_bound: Option<SequenceMessageBoundMetrics>,
     ctx: &SequenceMessageLayoutContext<'_>,
-) -> SequenceMessageVerticalGeometry {
+) -> Result<SequenceMessageVerticalGeometry> {
     let (text_width, text_height) = if effective_text.is_empty() {
         (0.0, 0.0)
     } else if let Some(metrics) = premeasured_bound {
@@ -523,7 +547,8 @@ fn message_vertical_geometry(
             ctx.math_config,
             ctx.math_renderer,
             SequenceMathHeightMode::Bound,
-        )
+            ctx.checkpoints.text(),
+        )?
     };
 
     let lines = split_html_br_lines(effective_text).len().max(1);
@@ -538,7 +563,7 @@ fn message_vertical_geometry(
         wrap_padding: ctx.wrap_padding,
     });
     geometry.text_width = text_width;
-    geometry
+    Ok(geometry)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -584,16 +609,16 @@ fn message_label(
     x2: f64,
     label_y: f64,
     ctx: &SequenceMessageLayoutContext<'_>,
-) -> Option<LayoutLabel> {
+) -> Result<Option<LayoutLabel>> {
     if effective_text.is_empty() {
         // Mermaid renders an (empty) message text node even when the label is empty (e.g.
         // trailing colon `Alice->Bob:`). Keep a placeholder label to preserve DOM structure.
-        return Some(LayoutLabel {
+        return Ok(Some(LayoutLabel {
             x: ((x1 + x2) / 2.0).round(),
             y: label_y.round(),
             width: 1.0,
             height: ctx.message_font_size.max(1.0),
-        });
+        }));
     }
 
     let (w, h) = if is_math_message {
@@ -604,7 +629,8 @@ fn message_label(
             ctx.math_config,
             ctx.math_renderer,
             SequenceMathHeightMode::Draw,
-        )
+            ctx.checkpoints.text(),
+        )?
     } else {
         // Sequence sets `textObj.tspan = false` for messages, so the final label bbox is a direct
         // `<text>` measurement even though the earlier layout probe used `drawSimpleText` with a
@@ -614,14 +640,15 @@ fn message_label(
             effective_text,
             ctx.msg_text_style,
             SequenceDrawnTextNode::Direct,
-        )
+            ctx.checkpoints.text(),
+        )?
     };
-    Some(LayoutLabel {
+    Ok(Some(LayoutLabel {
         x: ((x1 + x2) / 2.0).round(),
         y: label_y.round(),
         width: w.max(1.0),
         height: h.max(1.0),
-    })
+    }))
 }
 
 #[cfg(test)]

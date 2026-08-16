@@ -49,6 +49,10 @@ impl<'a> SequenceEmitCheckpoints<'a> {
         }
         Ok(())
     }
+
+    pub(super) const fn text(self) -> crate::sequence::SequenceTextCheckpoints<'a> {
+        crate::sequence::SequenceTextCheckpoints::for_phase(self.work_meter, OperationPhase::Emit)
+    }
 }
 
 pub(super) use render::render_sequence_diagram_svg_model_with_config;

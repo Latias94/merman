@@ -343,7 +343,8 @@ pub(super) fn render_sequence_messages(
                 ctx.sanitize_config,
                 ctx.math_renderer,
                 SequenceMathHeightMode::Draw,
-            ) {
+                ctx.checkpoints,
+            )? {
                 let center_x = (p0.x + p1.x) / 2.0;
                 write_sequence_katex_foreign_object(
                     out,
@@ -363,7 +364,8 @@ pub(super) fn render_sequence_messages(
                     ctx.measurer,
                     ctx.loop_text_style,
                     wrap_w,
-                );
+                    ctx.checkpoints.text(),
+                )?;
                 render_sequence_message_text_lines(
                     out,
                     raw_lines.iter().map(String::as_str),

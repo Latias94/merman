@@ -284,9 +284,9 @@ fn handle_sequence_note(
     state: &mut SequenceLayoutLoopState<'_>,
     ctx: &SequenceLayoutGraphContext<'_>,
     nodes: &mut Vec<LayoutNode>,
-) -> bool {
+) -> Result<bool> {
     if msg.semantic_kind() != SequenceMessageKind::Note {
-        return false;
+        return Ok(false);
     }
 
     let Some(note) = layout_sequence_note(
@@ -305,9 +305,11 @@ fn handle_sequence_note(
             note_text_style: ctx.note_text_style,
             math_config: ctx.math_config,
             math_renderer: ctx.math_renderer,
+            checkpoints: ctx.checkpoints,
         },
-    ) else {
-        return true;
+    )?
+    else {
+        return Ok(true);
     };
 
     include_rect_stack_bounds(
@@ -325,7 +327,7 @@ fn handle_sequence_note(
 
     nodes.push(note.node);
     state.cursor_y += note.cursor_step;
-    true
+    Ok(true)
 }
 
 fn handle_sequence_message(
@@ -335,7 +337,7 @@ fn handle_sequence_message(
     ctx: &SequenceLayoutGraphContext<'_>,
     edges: &mut Vec<LayoutEdge>,
     actor_is_type_width_limited: &dyn Fn(&str) -> bool,
-) -> bool {
+) -> Result<bool> {
     let Some(message) = layout_sequence_message(
         msg,
         SequenceMessageLayoutContext {
@@ -371,9 +373,11 @@ fn handle_sequence_message(
                 .as_deref()
                 .and_then(|to| state.actor_lifecycle.destroyed_actor_index(to)),
             actor_is_type_width_limited,
+            checkpoints: ctx.checkpoints,
         },
-    ) else {
-        return false;
+    )?
+    else {
+        return Ok(false);
     };
     let super::messages::SequenceMessageLayout {
         edge,
@@ -400,7 +404,7 @@ fn handle_sequence_message(
     state.cursor_y += lifecycle_adjustment;
     state.include_inserted_bottom(inserted_bottom_y + lifecycle_adjustment, ctx.box_margin);
     edges.push(edge);
-    true
+    Ok(true)
 }
 
 pub(super) fn build_sequence_layout_graph(
@@ -470,7 +474,7 @@ pub(super) fn build_sequence_layout_graph(
             continue;
         }
 
-        if handle_sequence_note(msg, &mut state, &ctx, &mut nodes) {
+        if handle_sequence_note(msg, &mut state, &ctx, &mut nodes)? {
             continue;
         }
 
@@ -481,7 +485,7 @@ pub(super) fn build_sequence_layout_graph(
             &ctx,
             &mut edges,
             &actor_is_type_width_limited,
-        ) {
+        )? {
             continue;
         }
     }

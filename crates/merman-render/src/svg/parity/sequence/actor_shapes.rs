@@ -278,15 +278,20 @@ fn write_actor_label(
     ctx: &ActorLabelContext<'_>,
 ) -> Result<()> {
     ctx.checkpoints.checkpoint()?;
-    let wrapped_label = wrap.then(|| {
-        crate::sequence::wrap_sequence_label_like_mermaid_lines(
-            label,
-            ctx.measurer,
-            ctx.style,
-            ctx.wrap_width_px,
+    let wrapped_label = if wrap {
+        Some(
+            crate::sequence::wrap_sequence_label_like_mermaid_lines(
+                label,
+                ctx.measurer,
+                ctx.style,
+                ctx.wrap_width_px,
+                ctx.checkpoints.text(),
+            )?
+            .join("<br>"),
         )
-        .join("<br>")
-    });
+    } else {
+        None
+    };
     let rendered_label = wrapped_label.as_deref().unwrap_or(label);
 
     if let Some(katex) = sequence_katex_label(
@@ -296,7 +301,8 @@ fn write_actor_label(
         ctx.config,
         ctx.math_renderer,
         SequenceMathHeightMode::Actor,
-    ) {
+        ctx.checkpoints,
+    )? {
         let x = cx - katex.width / 2.0;
         let y = cy - katex.height / 2.0;
         out.push_str("<switch>");

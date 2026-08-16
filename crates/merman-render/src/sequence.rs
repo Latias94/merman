@@ -49,6 +49,30 @@ use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_seque
 use rect::{SequenceRectStackBoundsContext, sequence_rect_stack_x_bounds};
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
 
+/// Phase-aware cancellation projection for Sequence text and math callbacks.
+///
+/// Text measurement traits remain infallible for host compatibility. Sequence-owned orchestration
+/// therefore checks the operation immediately before and after every opaque callback and inside
+/// each label-local loop, returning cancellation through the surrounding fallible render path.
+#[derive(Clone, Copy)]
+pub(crate) struct SequenceTextCheckpoints<'a> {
+    work_meter: &'a OperationWorkMeter,
+    phase: OperationPhase,
+}
+
+impl<'a> SequenceTextCheckpoints<'a> {
+    pub(crate) const fn for_phase(
+        work_meter: &'a OperationWorkMeter,
+        phase: OperationPhase,
+    ) -> Self {
+        Self { work_meter, phase }
+    }
+
+    pub(crate) fn checkpoint(self) -> Result<()> {
+        self.work_meter.checkpoint(self.phase).map_err(Into::into)
+    }
+}
+
 /// Non-billing cancellation projection shared by Sequence derived-geometry passes.
 ///
 /// Main preparation owns the `Layout` phase. SVG-only frame-width reconstruction runs after
@@ -77,6 +101,10 @@ impl<'a> SequenceLayoutCheckpoints<'a> {
             self.checkpoint()?;
         }
         Ok(())
+    }
+
+    pub(super) const fn text(self) -> SequenceTextCheckpoints<'a> {
+        SequenceTextCheckpoints::for_phase(self.work_meter, self.phase)
     }
 }
 
