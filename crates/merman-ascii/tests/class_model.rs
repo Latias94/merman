@@ -403,6 +403,29 @@ fn class_parser_class_and_namespace_same_id_keep_distinct_route_ownership() {
 }
 
 #[test]
+fn class_parser_explicit_qualified_class_is_not_folded_into_namespace_member() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "namespace N {\n",
+            "  class C\n",
+            "}\n",
+            "class N.C[\"Distinct\"]\n",
+            "class D\n",
+            "N.C --> D : calls\n",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("an explicit qualified class must retain its own identity and route endpoint");
+
+    assert_eq!(rendered.matches("│ C │").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("Distinct").count(), 1, "{rendered}");
+    assert!(rendered.contains("id(bytes=3)=\"N.C\""), "{rendered}");
+    assert!(rendered.contains("calls"), "{rendered}");
+    assert!(!rendered.contains("member(bytes=3)=\"N.C\""), "{rendered}");
+}
+
+#[test]
 fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
     let mut model = parse_class_model("classDiagram\nclass A");
     let mut class = model

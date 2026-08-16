@@ -66,4 +66,36 @@ Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
         model.namespaces["Platform.Core"].class_ids,
         vec!["Renderer"]
     );
+    assert_eq!(
+        model.namespace_facade_aliases,
+        std::collections::BTreeMap::from([
+            ("Platform.Core.Renderer".to_string(), "Renderer".to_string(),),
+            (
+                "Platform.FFI.DartBinding".to_string(),
+                "DartBinding".to_string(),
+            ),
+            (
+                "Platform.FFI.PythonBinding".to_string(),
+                "PythonBinding".to_string(),
+            ),
+        ])
+    );
+}
+
+#[test]
+fn explicit_qualified_class_is_not_a_synthetic_namespace_facade() {
+    let code = r#"classDiagram
+namespace N {
+  class C
+}
+class N.C["Distinct"]
+class D
+N.C --> D
+"#;
+
+    let model = parse::parse_class_typed(code, &meta()).expect("class diagram should parse");
+
+    assert!(model.namespace_facade_aliases.is_empty());
+    assert_eq!(model.classes["N.C"].text, "Distinct");
+    assert_eq!(model.relations[0].id1, "N.C");
 }

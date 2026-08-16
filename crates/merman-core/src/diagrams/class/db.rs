@@ -5,6 +5,7 @@ use crate::utils::format_url;
 use crate::{MermaidConfig, ParseMetadata};
 use indexmap::IndexMap;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 use super::ast::{Action, RelationData};
 use super::{
@@ -224,6 +225,7 @@ struct ClassNode {
     have_callback: bool,
     callback: Option<serde_json::Map<String, Value>>,
     callback_effective: bool,
+    relation_endpoint_facade_candidate: bool,
 }
 
 impl ClassNode {
@@ -397,9 +399,12 @@ impl<'a> ClassDb<'a> {
         (class_name, type_param)
     }
 
-    pub(super) fn add_class(&mut self, id: &str) {
+    fn add_class_with_origin(&mut self, id: &str, relation_endpoint_facade_candidate: bool) {
         let (class_name, type_param) = self.split_class_name_and_type(id);
-        if self.classes.contains_key(&class_name) {
+        if let Some(class) = self.classes.get_mut(&class_name) {
+            if !relation_endpoint_facade_candidate {
+                class.relation_endpoint_facade_candidate = false;
+            }
             return;
         }
         let dom_id = format!("{MERMAID_DOM_ID_PREFIX}{class_name}-{}", self.class_counter);
@@ -429,8 +434,13 @@ impl<'a> ClassDb<'a> {
                 have_callback: false,
                 callback: None,
                 callback_effective: false,
+                relation_endpoint_facade_candidate,
             },
         );
+    }
+
+    pub(super) fn add_class(&mut self, id: &str) {
+        self.add_class_with_origin(id, false);
     }
 
     pub(super) fn set_class_label(&mut self, id: &str, label: &str) {
@@ -510,6 +520,7 @@ impl<'a> ClassDb<'a> {
             }
             let (class_name, _) = self.split_class_name_and_type(id);
             if let Some(c) = self.classes.get_mut(&class_name) {
+                c.relation_endpoint_facade_candidate = false;
                 c.css_classes.push(' ');
                 c.css_classes.push_str(css_class);
             }
@@ -519,6 +530,7 @@ impl<'a> ClassDb<'a> {
     fn set_tooltip(&mut self, id: &str, tooltip: &str) {
         let (class_name, _) = self.split_class_name_and_type(id);
         if let Some(c) = self.classes.get_mut(&class_name) {
+            c.relation_endpoint_facade_candidate = false;
             c.tooltip = Some(sanitize_text(tooltip, self.config));
         }
     }
@@ -526,6 +538,7 @@ impl<'a> ClassDb<'a> {
     fn set_link(&mut self, id: &str, url: &str, target: Option<String>) {
         let (class_name, _) = self.split_class_name_and_type(id);
         if let Some(c) = self.classes.get_mut(&class_name) {
+            c.relation_endpoint_facade_candidate = false;
             c.link = format_url(url, self.config);
 
             let final_target = if self.security_level == Some("sandbox") {
@@ -543,6 +556,7 @@ impl<'a> ClassDb<'a> {
     fn set_click_event(&mut self, id: &str, function: &str, args: Option<String>) {
         let (class_name, _) = self.split_class_name_and_type(id);
         if let Some(c) = self.classes.get_mut(&class_name) {
+            c.relation_endpoint_facade_candidate = false;
             c.have_callback = true;
             let mut map = serde_json::Map::new();
             map.insert("function".to_string(), Value::String(function.to_string()));
@@ -571,6 +585,7 @@ impl<'a> ClassDb<'a> {
         let Some(c) = self.classes.get_mut(id) else {
             return;
         };
+        c.relation_endpoint_facade_candidate = false;
         for s in styles {
             for part in s.split(',') {
                 let t = part.trim();
@@ -763,8 +778,35 @@ impl<'a> ClassDb<'a> {
             return existing_id;
         }
 
-        self.add_class(id);
+        self.add_class_with_origin(id, true);
         class_name
+    }
+
+    fn namespace_facade_aliases(&self) -> BTreeMap<String, String> {
+        let mut qualified_members = BTreeMap::<String, (usize, String)>::new();
+        for namespace in self.namespaces.values() {
+            for class_id in &namespace.class_ids {
+                let qualified_id = format!("{}.{}", namespace.id, class_id);
+                let namespace_len = namespace.id.len();
+                match qualified_members.get(&qualified_id) {
+                    Some((existing_len, _)) if *existing_len >= namespace_len => {}
+                    _ => {
+                        qualified_members
+                            .insert(qualified_id, (namespace_len, class_id.to_string()));
+                    }
+                }
+            }
+        }
+
+        self.classes
+            .values()
+            .filter(|class| class.relation_endpoint_facade_candidate)
+            .filter_map(|class| {
+                qualified_members
+                    .get(class.id.as_str())
+                    .map(|(_, target)| (class.id.clone(), target.clone()))
+            })
+            .collect()
     }
 
     fn add_relation(&mut self, mut rel: RelationData) {
@@ -1013,6 +1055,7 @@ impl<'a> ClassDb<'a> {
 
     pub(super) fn into_typed_model(mut self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
         self.apply_namespace_render_config();
+        let namespace_facade_aliases = self.namespace_facade_aliases();
 
         let classes = self
             .classes
@@ -1066,6 +1109,7 @@ impl<'a> ClassDb<'a> {
             notes,
             interfaces,
             namespaces,
+            namespace_facade_aliases,
             style_classes,
             constants: class_typed::ClassConstants {
                 line_type: class_typed::ClassLineTypeConstants {

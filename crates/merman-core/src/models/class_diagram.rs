@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClassDiagram {
@@ -22,6 +23,13 @@ pub struct ClassDiagram {
     pub interfaces: Vec<ClassInterface>,
     #[serde(default)]
     pub namespaces: IndexMap<String, Namespace>,
+    /// Parser-owned provenance for qualified relation endpoints synthesized as facade classes.
+    ///
+    /// This is excluded from the Mermaid-compatible JSON projection because it is renderer
+    /// metadata rather than an authored Mermaid field. Direct Rust model callers may populate it
+    /// when constructing the same semantic shape without the parser.
+    #[serde(rename = "namespaceFacadeAliases", default, skip_serializing)]
+    pub namespace_facade_aliases: BTreeMap<String, String>,
     #[serde(rename = "styleClasses")]
     #[serde(default)]
     pub style_classes: IndexMap<String, StyleClass>,

@@ -29,8 +29,9 @@ use std::collections::{HashMap, HashSet};
 mod namespace;
 
 use namespace::{
-    has_renderable_namespaces, namespace_facade_aliases, render_namespace_container_box,
-    render_namespaced_class_diagram, validate_class_namespace_ownership,
+    NamespaceFacadeAliases, has_renderable_namespaces, namespace_facade_aliases,
+    render_namespace_container_box, render_namespaced_class_diagram,
+    validate_class_namespace_ownership,
 };
 
 const CLASS_LEVEL_HORIZONTAL_GAP: usize = 4;
@@ -413,16 +414,16 @@ fn render_class_diagram_impl(
         direction,
     };
     let mut deferred_text = DeferredTextRegistry::new();
-    let namespace_facade_aliases = namespace_facade_aliases(model)?;
+    validate_class_namespace_ownership(model, &mut resources)?;
+    let namespace_facade_aliases = namespace_facade_aliases(model);
     checkpoint(execution, merman_core::OperationPhase::Layout)?;
     resources = execution_context.resource_context(&resources, merman_core::OperationPhase::Layout);
-    validate_class_references(model, &namespace_facade_aliases, &mut resources)?;
-    validate_class_namespace_ownership(model, &mut resources)?;
+    validate_class_references(model, namespace_facade_aliases, &mut resources)?;
     if has_renderable_namespaces(model) {
         let rendered = render_namespaced_class_diagram(
             model,
             settings,
-            &namespace_facade_aliases,
+            namespace_facade_aliases,
             &mut deferred_text,
             &mut resources,
             execution,
@@ -434,7 +435,7 @@ fn render_class_diagram_impl(
     let boxes = render_class_boxes(
         model,
         settings,
-        &namespace_facade_aliases,
+        namespace_facade_aliases,
         &mut deferred_text,
         &mut resources,
         execution,
@@ -480,7 +481,7 @@ fn render_class_diagram_impl(
         layouts.push(relation_layout(
             model,
             relation,
-            &namespace_facade_aliases,
+            namespace_facade_aliases,
             options.terminal_width_profile,
             &mut deferred_text,
             &resources,
@@ -488,7 +489,7 @@ fn render_class_diagram_impl(
     }
     layouts.extend(note_relation_layouts(
         model,
-        &namespace_facade_aliases,
+        namespace_facade_aliases,
         &box_by_id,
         &mut resources,
     )?);
@@ -631,7 +632,7 @@ fn validate_unique_class_render_ids(
 
 fn validate_class_references(
     model: &ClassDiagram,
-    namespace_facade_aliases: &HashMap<String, String>,
+    namespace_facade_aliases: &NamespaceFacadeAliases,
     resources: &mut ResourceContext,
 ) -> Result<()> {
     let endpoint_capacity = model
@@ -685,7 +686,7 @@ fn validate_class_references(
 fn render_class_boxes<'a>(
     model: &'a ClassDiagram,
     settings: ClassRenderSettings<'_>,
-    namespace_facade_aliases: &HashMap<String, String>,
+    namespace_facade_aliases: &NamespaceFacadeAliases,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
     execution: Option<AsciiExecution<'_>>,
@@ -1195,7 +1196,7 @@ fn generic_materialization_scan_work(
 fn relation_layout<'a>(
     model: &'a ClassDiagram,
     relation: &'a ClassRelation,
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
@@ -1283,7 +1284,7 @@ fn relation_layout<'a>(
 }
 
 fn relation_endpoint_id<'a>(
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
     id: &'a str,
 ) -> &'a str {
     namespace_facade_aliases
@@ -1295,7 +1296,7 @@ fn relation_endpoint_id<'a>(
 fn class_explicit_namespace_id<'a>(
     model: &'a ClassDiagram,
     id: &'a str,
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
 ) -> Option<&'a str> {
     let class_id = relation_endpoint_id(namespace_facade_aliases, id);
     let parent = model.classes.get(class_id)?.parent.as_deref()?;
@@ -1309,7 +1310,7 @@ fn class_explicit_namespace_id<'a>(
 fn note_explicit_namespace_id<'a>(
     model: &'a ClassDiagram,
     note: &'a ClassNote,
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
 ) -> Option<&'a str> {
     let note_parent = note.parent.as_deref()?;
     let note_namespace = model
@@ -1353,7 +1354,7 @@ fn marker_for_relation_type(
 
 fn note_relation_layouts<'a>(
     model: &'a ClassDiagram,
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
     box_by_id: &RenderedClassBoxIndex<'_>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationLayout<'a>>> {
@@ -1367,7 +1368,7 @@ fn note_relation_layouts<'a>(
 
 fn note_relation_layouts_for_notes<'a>(
     notes: impl Iterator<Item = &'a ClassNote>,
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
     box_by_id: &RenderedClassBoxIndex<'_>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationLayout<'a>>> {
@@ -1401,7 +1402,7 @@ fn note_relation_layouts_for_notes<'a>(
 
 fn external_namespace_note_summary_rows<'a>(
     model: &'a ClassDiagram,
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
@@ -2838,7 +2839,7 @@ mod tests {
             charset,
             direction,
         };
-        let aliases = namespace_facade_aliases(model).expect("class summary aliases should plan");
+        let aliases = namespace_facade_aliases(model);
         let mut deferred = DeferredTextRegistry::new();
         let boxes = render_class_boxes(
             model,

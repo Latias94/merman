@@ -14,13 +14,15 @@ use crate::resource::ResourceContext;
 use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_blank};
 use crate::{AsciiError, Result};
 use merman_core::OperationPhase;
-use merman_core::models::class_diagram::{ClassDiagram, ClassNode, Namespace};
-use std::collections::{HashMap, HashSet};
+use merman_core::models::class_diagram::{ClassDiagram, Namespace};
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+pub(super) type NamespaceFacadeAliases = BTreeMap<String, String>;
 
 struct NamespaceRenderContext<'model, 'render> {
     model: &'model ClassDiagram,
     settings: ClassRenderSettings<'render>,
-    namespace_facade_aliases: &'model HashMap<String, String>,
+    namespace_facade_aliases: &'model NamespaceFacadeAliases,
     scope_index: &'render NamespaceScopeIndex<'model>,
     note_by_id: ClassNoteIndex<'model>,
     execution: Option<AsciiExecution<'render>>,
@@ -43,7 +45,7 @@ struct ScopedEndpoint<'a> {
 impl<'a> NamespaceScopeIndex<'a> {
     fn new(
         model: &'a ClassDiagram,
-        namespace_facade_aliases: &HashMap<String, String>,
+        namespace_facade_aliases: &NamespaceFacadeAliases,
         resources: &ResourceContext,
         execution: Option<AsciiExecution<'_>>,
     ) -> Result<Self> {
@@ -54,7 +56,7 @@ impl<'a> NamespaceScopeIndex<'a> {
 
     fn new_in_transaction(
         model: &'a ClassDiagram,
-        namespace_facade_aliases: &HashMap<String, String>,
+        namespace_facade_aliases: &NamespaceFacadeAliases,
         resources: &ResourceContext,
         execution: Option<AsciiExecution<'_>>,
     ) -> Result<Self> {
@@ -311,6 +313,7 @@ pub(super) fn validate_class_namespace_ownership(
         .checked_add(note_membership_capacity)
         .and_then(|value| value.checked_add(model.classes.len()))
         .and_then(|value| value.checked_add(model.notes.len()))
+        .and_then(|value| value.checked_add(model.namespace_facade_aliases.len()))
         .ok_or_else(|| work_overflow(resources))?;
     resources.charge_layout_work(validation_work)?;
 
@@ -378,6 +381,28 @@ pub(super) fn validate_class_namespace_ownership(
         }
     }
 
+    for (facade_id, target_id) in &model.namespace_facade_aliases {
+        let Some(facade) = model.classes.get(facade_id) else {
+            return Err(inconsistent_class_namespace_ownership());
+        };
+        let Some(target) = model.classes.get(target_id) else {
+            return Err(inconsistent_class_namespace_ownership());
+        };
+        let Some(parent) = target.parent.as_deref() else {
+            return Err(inconsistent_class_namespace_ownership());
+        };
+        if facade_id == target_id
+            || facade.parent.is_some()
+            || facade_id
+                .strip_prefix(parent)
+                .and_then(|remainder| remainder.strip_prefix('.'))
+                != Some(target_id.as_str())
+            || class_owners.get(target_id.as_str()).copied() != Some(parent)
+        {
+            return Err(inconsistent_class_namespace_ownership());
+        }
+    }
+
     Ok(())
 }
 
@@ -391,7 +416,7 @@ fn inconsistent_class_namespace_ownership() -> AsciiError {
 pub(super) fn render_namespaced_class_diagram<'a>(
     model: &'a ClassDiagram,
     settings: ClassRenderSettings<'_>,
-    namespace_facade_aliases: &'a HashMap<String, String>,
+    namespace_facade_aliases: &'a NamespaceFacadeAliases,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
     execution: Option<AsciiExecution<'_>>,
@@ -1153,49 +1178,8 @@ fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn namespace_facade_aliases(model: &ClassDiagram) -> Result<HashMap<String, String>> {
-    let mut aliases = HashMap::new();
-    aliases
-        .try_reserve(model.classes.len())
-        .map_err(|_| layout_allocation_failed())?;
-    for class in model.classes.values() {
-        let Some(local_id) = namespace_facade_local_id(model, class) else {
-            continue;
-        };
-        aliases.insert(class.id.clone(), local_id.to_string());
-    }
-    Ok(aliases)
-}
-
-fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) -> Option<&'a str> {
-    if class
-        .parent
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|parent| !parent.is_empty())
-        || !class.annotations.is_empty()
-        || !class.members.is_empty()
-        || !class.methods.is_empty()
-    {
-        return None;
-    }
-
-    model
-        .namespaces
-        .values()
-        .filter_map(|namespace| {
-            let remainder = class
-                .id
-                .strip_prefix(namespace.id.as_str())?
-                .strip_prefix('.')?;
-            namespace
-                .class_ids
-                .iter()
-                .any(|id| id == remainder)
-                .then_some((namespace.id.len(), remainder))
-        })
-        .max_by_key(|(namespace_len, _)| *namespace_len)
-        .and_then(|(_, local_id)| model.classes.contains_key(local_id).then_some(local_id))
+pub(super) fn namespace_facade_aliases(model: &ClassDiagram) -> &NamespaceFacadeAliases {
+    &model.namespace_facade_aliases
 }
 
 #[cfg(test)]
@@ -1221,7 +1205,7 @@ mod tests {
         let model = parsed_class_model(
             "classDiagram\nnamespace Platform {\n  namespace FFI {\n    class Dart\n  }\n  namespace Core {\n    class Renderer\n  }\n}\nDart --> Renderer",
         );
-        let aliases = namespace_facade_aliases(&model).expect("aliases should build");
+        let aliases = namespace_facade_aliases(&model);
         let unbounded = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
@@ -1274,7 +1258,7 @@ mod tests {
             .get_mut("Right")
             .expect("Right namespace should exist")
             .parent = Some("Left".to_string());
-        let aliases = namespace_facade_aliases(&model).expect("aliases should build");
+        let aliases = namespace_facade_aliases(&model);
         let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
