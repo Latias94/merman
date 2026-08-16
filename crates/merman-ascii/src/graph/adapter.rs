@@ -103,11 +103,7 @@ fn from_flowchart_model_transactional(
             continue;
         };
         let id = try_clone_projection_string(&node.id)?;
-        let label = node_plan
-            .label
-            .materialize_after_admission_with_checkpoint(|iteration| {
-                checkpoint_projection(execution, iteration)
-            })?;
+        let label = try_clone_projection_string(node_plan.label)?;
         graph.add_node_with_semantics(
             id,
             label,
@@ -504,7 +500,7 @@ struct FlowchartProjectionPlan<'a> {
 
 #[derive(Debug, Clone, Copy)]
 struct FlowchartNodeProjectionPlan<'a> {
-    label: NormalizedTextPlan<'a>,
+    label: &'a str,
     shape: ResolvedGraphNodeShape,
 }
 
@@ -586,10 +582,17 @@ impl<'a> FlowchartProjectionPlan<'a> {
             }
             let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
             let projected_label = shape.projected_label(node.label.as_deref().unwrap_or(&node.id));
-            let label = try_plan_normalized_text(projected_label, width_profile, resources)?;
+            // Validate terminal text before allocating the projection, but retain the authored
+            // text so the graph label planner remains the sole owner of normalization and
+            // wrapping. Materializing the visible escape here would erase its atomic segment
+            // boundary and allow a later wrap pass to split `\u{HEX}` across rows.
+            let _label = try_plan_normalized_text(projected_label, width_profile, resources)?;
             admission.include_copy(&node.id, resources)?;
-            admission.include_visible_text(label, resources)?;
-            nodes.push(Some(FlowchartNodeProjectionPlan { label, shape }));
+            admission.include_copy(projected_label, resources)?;
+            nodes.push(Some(FlowchartNodeProjectionPlan {
+                label: projected_label,
+                shape,
+            }));
         }
 
         let mut edge_labels = Vec::new();
@@ -857,8 +860,8 @@ mod tests {
     fn flowchart_projection_admits_exact_and_rejects_n_minus_one_atomically() {
         const PRIOR_WORK: usize = 11;
         const PRIOR_DOCUMENT_CELLS: usize = 2;
-        const EXPECTED_DOCUMENT_CELLS: usize = 28;
-        const EXPECTED_OUTPUT_BYTES: usize = 32;
+        const EXPECTED_DOCUMENT_CELLS: usize = 16;
+        const EXPECTED_OUTPUT_BYTES: usize = 16;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut edge = flow_edge("A", "B");
         edge.label = Some("  边\u{7}  ".to_string());
@@ -877,7 +880,7 @@ mod tests {
         });
 
         let assert_visible_text = |graph: &AsciiGraph| {
-            assert_eq!(graph.nodes[0].label, "节点\\u{1B}");
+            assert_eq!(graph.nodes[0].label, "节点\u{1b}");
             assert_eq!(graph.nodes[1].label, "🧭");
             assert_eq!(graph.edges[0].label.as_deref(), Some("边\\u{7}"));
             assert_eq!(graph.groups[0].title, "组\\u{7}");
