@@ -51,7 +51,55 @@ impl SvgOutput for String {
 pub(super) struct BoundedSvgOutput<'a> {
     out: String,
     work_meter: &'a OperationWorkMeter,
-    error: Option<crate::Error>,
+    state: BoundedSvgOutputState,
+}
+
+enum BoundedSvgOutputState {
+    Active,
+    Failed(BoundedSvgOutputFailure),
+}
+
+#[derive(Clone)]
+enum BoundedSvgOutputFailure {
+    Operation(crate::resources::OperationWorkError),
+    InvalidModel(&'static str),
+}
+
+impl BoundedSvgOutputState {
+    fn record_failure(&mut self, failure: BoundedSvgOutputFailure) {
+        if matches!(self, Self::Active) {
+            *self = Self::Failed(failure);
+        }
+    }
+
+    fn error(&self) -> Option<crate::Error> {
+        match self {
+            Self::Active => None,
+            Self::Failed(failure) => Some(failure.to_error()),
+        }
+    }
+
+    fn into_error(self) -> Option<crate::Error> {
+        match self {
+            Self::Active => None,
+            Self::Failed(failure) => Some(failure.into_error()),
+        }
+    }
+}
+
+impl BoundedSvgOutputFailure {
+    fn to_error(&self) -> crate::Error {
+        self.clone().into_error()
+    }
+
+    fn into_error(self) -> crate::Error {
+        match self {
+            Self::Operation(error) => error.into(),
+            Self::InvalidModel(message) => crate::Error::InvalidModel {
+                message: message.to_string(),
+            },
+        }
+    }
 }
 
 impl<'a> BoundedSvgOutput<'a> {
@@ -59,13 +107,15 @@ impl<'a> BoundedSvgOutput<'a> {
         Self {
             out: String::new(),
             work_meter,
-            error: None,
+            state: BoundedSvgOutputState::Active,
         }
     }
 
-    pub(super) fn finish(mut self) -> crate::Result<String> {
-        self.checkpoint()?;
-        Ok(self.out)
+    pub(super) fn finish(self) -> crate::Result<String> {
+        match self.state.into_error() {
+            Some(error) => Err(error),
+            None => Ok(self.out),
+        }
     }
 
     fn replace_retained_range(
@@ -73,41 +123,42 @@ impl<'a> BoundedSvgOutput<'a> {
         range: Range<usize>,
         replacement: &str,
     ) -> crate::Result<()> {
-        if let Some(error) = self.error.take() {
+        if let Some(error) = self.state.error() {
             return Err(error);
         }
         let removed = range.len();
-        let retained_without_range =
-            self.out
-                .len()
-                .checked_sub(removed)
-                .ok_or_else(|| crate::Error::InvalidModel {
-                    message: "bounded SVG replacement range exceeds the current output".to_string(),
-                })?;
-        let final_len = retained_without_range
-            .checked_add(replacement.len())
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: "bounded SVG replacement length overflowed".to_string(),
-            })?;
+        let Some(retained_without_range) = self.out.len().checked_sub(removed) else {
+            return Err(self.fail(BoundedSvgOutputFailure::InvalidModel(
+                "bounded SVG replacement range exceeds the current output",
+            )));
+        };
+        let Some(final_len) = retained_without_range.checked_add(replacement.len()) else {
+            return Err(self.fail(BoundedSvgOutputFailure::InvalidModel(
+                "bounded SVG replacement length overflowed",
+            )));
+        };
         if final_len > self.out.len() {
             let growth = final_len - self.out.len();
-            self.admit_growth(growth)?;
+            if let Err(failure) = self.admit_growth(growth) {
+                return Err(self.fail(failure));
+            }
         }
         self.out.replace_range(range, replacement);
         Ok(())
     }
 
-    fn admit_growth(&mut self, additional: usize) -> crate::Result<()> {
+    fn admit_growth(&mut self, additional: usize) -> Result<(), BoundedSvgOutputFailure> {
         self.work_meter
-            .check_svg_append(self.out.len(), additional)?;
+            .check_svg_append(self.out.len(), additional)
+            .map_err(BoundedSvgOutputFailure::Operation)?;
 
         let required_len =
             self.out
                 .len()
                 .checked_add(additional)
-                .ok_or_else(|| crate::Error::InvalidModel {
-                    message: "bounded SVG output length overflowed".to_string(),
-                })?;
+                .ok_or(BoundedSvgOutputFailure::InvalidModel(
+                    "bounded SVG output length overflowed",
+                ))?;
         let current_capacity = self.out.capacity();
         if required_len <= current_capacity {
             return Ok(());
@@ -118,28 +169,33 @@ impl<'a> BoundedSvgOutput<'a> {
         if let Some(max_svg_bytes) = self.work_meter.max_svg_bytes() {
             target_capacity = target_capacity.min(max_svg_bytes);
         }
-        let reserve = target_capacity.checked_sub(self.out.len()).ok_or_else(|| {
-            crate::Error::InvalidModel {
-                message: "bounded SVG output capacity fell below its retained length".to_string(),
-            }
-        })?;
-        self.out
-            .try_reserve_exact(reserve)
-            .map_err(|_| crate::Error::InvalidModel {
-                message: "failed to reserve bounded SVG output".to_string(),
-            })
+        let reserve = target_capacity.checked_sub(self.out.len()).ok_or(
+            BoundedSvgOutputFailure::InvalidModel(
+                "bounded SVG output capacity fell below its retained length",
+            ),
+        )?;
+        self.out.try_reserve_exact(reserve).map_err(|_| {
+            BoundedSvgOutputFailure::InvalidModel("failed to reserve bounded SVG output")
+        })
     }
 
     fn record_write(&mut self, value: &str) -> fmt::Result {
-        if self.error.is_some() {
+        if matches!(&self.state, BoundedSvgOutputState::Failed(_)) {
             return Err(fmt::Error);
         }
-        if let Err(error) = self.admit_growth(value.len()) {
-            self.error = Some(error);
+        if let Err(failure) = self.admit_growth(value.len()) {
+            self.state.record_failure(failure);
             return Err(fmt::Error);
         }
         self.out.push_str(value);
         Ok(())
+    }
+
+    fn fail(&mut self, failure: BoundedSvgOutputFailure) -> crate::Error {
+        self.state.record_failure(failure);
+        self.state
+            .error()
+            .expect("recording a bounded SVG failure must make the sink terminal")
     }
 
     #[cfg(test)]
@@ -177,7 +233,7 @@ impl SvgOutput for BoundedSvgOutput<'_> {
     }
 
     fn checkpoint(&mut self) -> crate::Result<()> {
-        match self.error.take() {
+        match self.state.error() {
             Some(error) => Err(error),
             None => Ok(()),
         }
@@ -211,6 +267,31 @@ mod tests {
     }
 
     #[test]
+    fn bounded_svg_output_keeps_the_first_failure_after_every_checkpoint() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 10)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+
+        out.push_str("<svg>12345");
+        out.push('x');
+
+        let first = resource_limit(out.checkpoint().unwrap_err());
+        let repeated = resource_limit(out.checkpoint().unwrap_err());
+        assert_eq!(repeated, first);
+
+        let replacement = out.replace_range(0..5, "").unwrap_err();
+        assert_eq!(resource_limit(replacement), first);
+        assert_eq!(out.as_str(), "<svg>12345");
+        assert_eq!(meter.projected_svg_bytes(), 0);
+
+        let finished = resource_limit(out.finish().unwrap_err());
+        assert_eq!(finished, first);
+        assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
     fn bounded_svg_output_geometrically_reserves_repeated_short_writes() {
         const MAX_SVG_BYTES: usize = 64;
 
@@ -236,5 +317,12 @@ mod tests {
         assert_eq!(meter.projected_svg_bytes(), 0);
         assert_eq!(out.finish().unwrap(), "x".repeat(MAX_SVG_BYTES));
         assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    fn resource_limit(error: crate::Error) -> crate::ResourceLimitExceeded {
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected bounded SVG output to preserve its resource-limit failure");
+        };
+        error
     }
 }
