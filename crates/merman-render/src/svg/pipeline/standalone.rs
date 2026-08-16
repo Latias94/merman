@@ -108,7 +108,15 @@ impl StandaloneSvgArtifact {
                 StandaloneSvgTerminalStatus::Compatible,
                 Some(SvgFinalizationReport::from_pipeline(pipeline, &terminal)),
             ),
-            Err(crate::Error::SvgPostprocess { .. }) => {
+            Err(crate::Error::SvgPostprocess { .. })
+                if pipeline.preset() != SvgPipelinePreset::ResvgSafe =>
+            {
+                (StandaloneSvgTerminalStatus::ValidationFailed, None)
+            }
+            Err(crate::Error::ResourceLimitExceeded(limit))
+                if pipeline.preset() != SvgPipelinePreset::ResvgSafe
+                    && limit.is_svg_backend_compatibility_ceiling() =>
+            {
                 (StandaloneSvgTerminalStatus::ValidationFailed, None)
             }
             Err(error) => return Err(error),
@@ -275,5 +283,56 @@ mod tests {
         .unwrap_err();
 
         assert_max_svg_elements(error);
+    }
+
+    #[test]
+    fn parity_observation_records_backend_depth_incompatibility_without_failing() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let depth = crate::resources::MAX_RESVG_TREE_DEPTH + 1;
+        let mut svg =
+            String::from(r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">"#);
+        svg.push_str(&"<g>".repeat(depth));
+        svg.push_str(&"</g>".repeat(depth));
+        svg.push_str("</svg>");
+
+        let artifact = StandaloneSvgArtifact::observe_exact(
+            svg,
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &SvgPipeline::parity(),
+            &session,
+        )
+        .expect("backend incompatibility is evidence, not a standalone SVG resource failure");
+
+        assert_eq!(
+            artifact.terminal_status(),
+            StandaloneSvgTerminalStatus::ValidationFailed
+        );
+        assert!(artifact.finalization_report().is_none());
+    }
+
+    #[test]
+    fn resvg_safe_observation_cannot_downgrade_terminal_validation_failure() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>"#;
+
+        let error = StandaloneSvgArtifact::observe_exact(
+            svg.to_owned(),
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &SvgPipeline::resvg_safe(),
+            &session,
+        )
+        .expect_err("a resvg-safe artifact must fail closed on terminal validation errors");
+
+        assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
     }
 }

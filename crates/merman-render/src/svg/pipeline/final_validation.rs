@@ -34,7 +34,6 @@ pub(crate) fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) 
     reader.config_mut().enable_all_checks(true);
     let mut depth = 0usize;
     let mut elements = 0usize;
-    let mut max_tree_depth = 0usize;
     let mut root_seen = false;
     let mut root_closed = false;
     let mut document_started = false;
@@ -59,8 +58,7 @@ pub(crate) fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) 
                 }
                 elements = elements.saturating_add(1);
                 depth += 1;
-                max_tree_depth = max_tree_depth.max(depth.saturating_sub(1));
-                limits.check_svg_structure(elements, max_tree_depth)?;
+                limits.check_svg_element_count(elements)?;
             }
             Event::Empty(element) => {
                 document_started = true;
@@ -73,8 +71,7 @@ pub(crate) fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) 
                 let (namespace, _) = reader.resolver().resolve_element(element.name());
                 validate_well_formed_element(&element, namespace, reader.resolver(), is_root)?;
                 elements = elements.saturating_add(1);
-                max_tree_depth = max_tree_depth.max(depth);
-                limits.check_svg_structure(elements, max_tree_depth)?;
+                limits.check_svg_element_count(elements)?;
                 if is_root {
                     root_seen = true;
                     root_closed = true;
@@ -1338,6 +1335,14 @@ mod tests {
         validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).map(|_| ())
     }
 
+    fn nested_group_svg(depth: usize) -> String {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg">"#);
+        svg.push_str(&"<g>".repeat(depth));
+        svg.push_str(&"</g>".repeat(depth));
+        svg.push_str("</svg>");
+        svg
+    }
+
     #[test]
     fn accepts_structural_fragments_and_raster_data_images() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="paint"/><clipPath id="clip"><rect width="1" height="1"/></clipPath><rect id="filter-source"/></defs><circle fill="url(#paint)" style="clip-path:url(#clip);content:&quot;45deg&quot;"/><image href="data:image/png;base64,AAAA"/><filter><feImage href="#filter-source"/><feImage href="data:image/png;base64,BBBB"/></filter></svg>"##;
@@ -1562,10 +1567,7 @@ mod tests {
     #[test]
     fn rejects_svg_deeper_than_downstream_recursive_renderers_support() {
         let depth = crate::resources::MAX_RESVG_TREE_DEPTH + 1;
-        let mut svg = String::from("<svg>");
-        svg.push_str(&"<g>".repeat(depth));
-        svg.push_str(&"</g>".repeat(depth));
-        svg.push_str("</svg>");
+        let svg = nested_group_svg(depth);
 
         let error = validate_resvg_compatible_svg(
             &svg,
@@ -1577,6 +1579,14 @@ mod tests {
             error.to_string().contains("svg_backend_tree_depth"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn well_formed_svg_validation_does_not_apply_raster_backend_depth_limits() {
+        let svg = nested_group_svg(crate::resources::MAX_RESVG_TREE_DEPTH + 1);
+
+        validate_well_formed_svg(&svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .expect("standalone XML validation must not inherit a raster backend capability limit");
     }
 
     #[test]

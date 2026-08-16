@@ -630,11 +630,7 @@ impl RenderResourcePolicy {
         elements: usize,
         tree_depth: usize,
     ) -> Result<(), ResourceLimitExceeded> {
-        self.check_render_limit(
-            ResourceLimitPhase::SvgPostprocess,
-            RenderResourceLimitId::MaxSvgElements,
-            elements,
-        )?;
+        self.check_svg_element_count(elements)?;
         if elements > MAX_RESVG_TREE_NODES {
             return Err(ResourceLimitExceeded {
                 cause: ResourceLimitCause::Ceiling,
@@ -664,6 +660,17 @@ impl RenderResourcePolicy {
                 .map(|(id, value)| ResourceLimitOverride { id, value })
                 .collect(),
         })
+    }
+
+    pub(crate) fn check_svg_element_count(
+        &self,
+        elements: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_render_limit(
+            ResourceLimitPhase::SvgPostprocess,
+            RenderResourceLimitId::MaxSvgElements,
+            elements,
+        )
     }
 
     pub(crate) fn check_svg_backend_coordinate_magnitude(
@@ -1198,6 +1205,15 @@ impl std::fmt::Display for ResourceLimitExceeded {
 impl std::error::Error for ResourceLimitExceeded {}
 
 impl ResourceLimitExceeded {
+    pub(crate) fn is_svg_backend_compatibility_ceiling(&self) -> bool {
+        matches!(
+            self.limit,
+            SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID
+                | SVG_BACKEND_TREE_NODES_HARD_CAP_ID
+                | SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID
+        )
+    }
+
     fn from_input(policy: &RenderResourcePolicy, error: InputResourceLimitExceeded) -> Self {
         Self {
             cause: ResourceLimitCause::Ceiling,
