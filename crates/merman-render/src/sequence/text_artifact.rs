@@ -18,7 +18,6 @@ use crate::{Error, Result};
 pub(crate) struct SequenceTextSidecar {
     prepared_text_layout: Option<PreparedTextLayout>,
     base_typography: ThemeTextStyle,
-    source_font_stack: Option<ParsedCssFontStack>,
     role_typography: Arc<super::typography::SequenceTypographyPlan>,
     work_meter: Arc<OperationWorkMeter>,
     labels: RefCell<Vec<PreparedTextLabelLedgerEntry>>,
@@ -39,14 +38,12 @@ impl SequenceTextSidecar {
             .unwrap_or(16.0)
             .max(1.0) as f32;
         let base_typography = ThemeTextStyle::default()
+            .with_font_stack(role_typography.inherited_font_stack().font_stack().clone())
             .with_font_size_px(font_size)
             .expect("Sequence font size is normalized to a positive finite value");
-        let source_font_stack =
-            parse_css_font_stack(&crate::config::config_font_family_css(effective_config));
         Self {
             prepared_text_layout: prepared_text_layout.cloned(),
             base_typography,
-            source_font_stack,
             role_typography,
             work_meter,
             labels: RefCell::new(Vec::new()),
@@ -107,11 +104,10 @@ impl SequenceTextSidecar {
                         .as_ref()
                         .filter(|stack| stack.contains_named_family())
                         .or_else(|| {
-                            role_typography.and_then(
-                                super::typography::SequenceResolvedTypography::source_font_stack,
-                            )
+                            role_typography
+                                .map(super::typography::SequenceResolvedTypography::font_stack)
                         })
-                        .or(self.source_font_stack.as_ref()),
+                        .or_else(|| Some(self.role_typography.inherited_font_stack())),
                 )
                 .map_err(Error::from)?;
             let request = PrepareTextRequest::new(fragments[0], typography.typography().clone())

@@ -84,7 +84,7 @@ impl SequenceTypographyRole {
 pub(crate) struct SequenceResolvedTypography {
     text_style: TextStyle,
     prepared_typography: ThemeTextStyle,
-    source_font_stack: Option<ParsedCssFontStack>,
+    font_stack: ParsedCssFontStack,
     resolved_style: Option<ResolvedThemeStyle>,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
     config_overrides: BTreeSet<ThemeTypographyProperty>,
@@ -97,6 +97,7 @@ impl SequenceResolvedTypography {
         effective_config: &MermaidConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
+        inherited_font_family: &str,
     ) -> Result<Self, OperationWorkError> {
         let config_overrides = DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES
             .into_iter()
@@ -140,11 +141,12 @@ impl SequenceResolvedTypography {
                 typed_properties.insert(property);
             }
         }
-        let (prepared_typography, source_font_stack) = prepared_typography(&text_style);
+        let font_stack = cssom_effective_font_stack(&mut text_style, inherited_font_family);
+        let prepared_typography = prepared_typography(&text_style, &font_stack);
         Ok(Self {
             text_style,
             prepared_typography,
-            source_font_stack,
+            font_stack,
             resolved_style,
             typed_properties,
             config_overrides,
@@ -159,8 +161,8 @@ impl SequenceResolvedTypography {
         &self.prepared_typography
     }
 
-    pub(crate) const fn source_font_stack(&self) -> Option<&ParsedCssFontStack> {
-        self.source_font_stack.as_ref()
+    pub(crate) const fn font_stack(&self) -> &ParsedCssFontStack {
+        &self.font_stack
     }
 
     pub(crate) const fn resolved_style(&self) -> Option<&ResolvedThemeStyle> {
@@ -218,6 +220,7 @@ impl SequenceResolvedTypography {
 
 #[derive(Debug)]
 pub(crate) struct SequenceTypographyPlan {
+    inherited_font_stack: ParsedCssFontStack,
     actor: SequenceResolvedTypography,
     message: SequenceResolvedTypography,
     note: SequenceResolvedTypography,
@@ -242,14 +245,20 @@ impl SequenceTypographyPlan {
         {
             note.font_weight = Some(weight);
         }
+        let inherited_font_family =
+            crate::config::config_font_family_css(effective_config.as_value());
+        let inherited_font_stack = parse_css_font_stack(&inherited_font_family)
+            .expect("normalized Mermaid font-family CSS must remain parseable");
         let loop_label = message.clone();
         Ok(Self {
+            inherited_font_stack,
             actor: SequenceResolvedTypography::resolve(
                 SequenceTypographyRole::Actor,
                 actor,
                 effective_config,
                 resolved_theme,
                 work_meter,
+                &inherited_font_family,
             )?,
             message: SequenceResolvedTypography::resolve(
                 SequenceTypographyRole::Message,
@@ -257,6 +266,7 @@ impl SequenceTypographyPlan {
                 effective_config,
                 resolved_theme,
                 work_meter,
+                &inherited_font_family,
             )?,
             note: SequenceResolvedTypography::resolve(
                 SequenceTypographyRole::Note,
@@ -264,6 +274,7 @@ impl SequenceTypographyPlan {
                 effective_config,
                 resolved_theme,
                 work_meter,
+                &inherited_font_family,
             )?,
             loop_label: SequenceResolvedTypography::resolve(
                 SequenceTypographyRole::Loop,
@@ -271,8 +282,13 @@ impl SequenceTypographyPlan {
                 effective_config,
                 resolved_theme,
                 work_meter,
+                &inherited_font_family,
             )?,
         })
+    }
+
+    pub(crate) const fn inherited_font_stack(&self) -> &ParsedCssFontStack {
+        &self.inherited_font_stack
     }
 
     pub(crate) const fn role(&self, role: SequenceTypographyRole) -> &SequenceResolvedTypography {
@@ -331,15 +347,26 @@ fn apply_direct_property(
     }
 }
 
-fn prepared_typography(text_style: &TextStyle) -> (ThemeTextStyle, Option<ParsedCssFontStack>) {
-    let source_font_stack = text_style
+fn cssom_effective_font_stack(
+    text_style: &mut TextStyle,
+    inherited_font_family: &str,
+) -> ParsedCssFontStack {
+    if let Some(font_stack) = text_style
         .font_family
         .as_deref()
-        .and_then(parse_css_font_stack);
-    let mut prepared = ThemeTextStyle::default();
-    if let Some(stack) = source_font_stack.as_ref() {
-        prepared = prepared.with_font_stack(stack.font_stack().clone());
+        .and_then(parse_css_font_stack)
+    {
+        return font_stack;
     }
+
+    let font_stack = parse_css_font_stack(inherited_font_family)
+        .expect("normalized Mermaid font-family CSS must remain parseable");
+    text_style.font_family = Some(inherited_font_family.to_string());
+    font_stack
+}
+
+fn prepared_typography(text_style: &TextStyle, font_stack: &ParsedCssFontStack) -> ThemeTextStyle {
+    let mut prepared = ThemeTextStyle::default().with_font_stack(font_stack.font_stack().clone());
     prepared = prepared
         .with_font_size_px(text_style.font_size.max(1.0) as f32)
         .expect("Sequence role font size is normalized before prepared-text admission");
@@ -359,7 +386,7 @@ fn prepared_typography(text_style: &TextStyle) -> (ThemeTextStyle, Option<Parsed
             _ => crate::diagram_theme::FontStyle::Normal,
         });
     }
-    (prepared, source_font_stack)
+    prepared
 }
 
 fn append_typography_declarations(style: &mut String, typography: &TextStyle) {
@@ -391,4 +418,35 @@ fn append_font_weight_and_style_declarations(style: &mut String, typography: &Te
     style.push_str(typography.font_weight.as_deref().unwrap_or("400"));
     style.push_str(";font-style:");
     style.push_str(typography.font_style.as_deref().unwrap_or("normal"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cssom_rejected_role_font_falls_back_to_the_inherited_theme_stack() {
+        let mut style = TextStyle {
+            font_family: Some("Legacy Root;".to_string()),
+            ..TextStyle::default()
+        };
+
+        let stack = cssom_effective_font_stack(&mut style, "Theme Sans,sans-serif");
+
+        assert_eq!(style.font_family.as_deref(), Some("Theme Sans,sans-serif"));
+        assert_eq!(stack.families(), ["Theme Sans", "sans-serif"]);
+    }
+
+    #[test]
+    fn cssom_valid_role_font_remains_above_the_inherited_theme_stack() {
+        let mut style = TextStyle {
+            font_family: Some("Root Sans,serif".to_string()),
+            ..TextStyle::default()
+        };
+
+        let stack = cssom_effective_font_stack(&mut style, "Theme Sans,sans-serif");
+
+        assert_eq!(style.font_family.as_deref(), Some("Root Sans,serif"));
+        assert_eq!(stack.families(), ["Root Sans", "serif"]);
+    }
 }

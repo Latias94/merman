@@ -550,6 +550,20 @@ fn sequence_role_typography_theme() -> DiagramTheme {
         .expect("compile Sequence role typography theme")
 }
 
+fn sequence_excalifont_asset_theme() -> DiagramTheme {
+    let font_bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_assets(ThemeAssets::default().with_font_catalog(
+                FontCatalogSpec::new([FontAssetSpec::new("excalifont", font_bytes)]),
+            )),
+        )
+        .expect("compile Sequence Excalifont asset theme")
+}
+
 fn inline_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> {
     style.split(';').find_map(|declaration| {
         let (name, value) = declaration.split_once(':')?;
@@ -2367,6 +2381,114 @@ end"#;
     assert_eq!(inline_style_value(inline, "font-weight"), Some("700"));
     assert_eq!(inline_style_value(inline, "font-style"), Some("normal"));
     assert_eq!(sequence_number.attribute("font-size"), Some("12px"));
+}
+
+#[test]
+fn sequence_cssom_rejected_root_font_uses_public_theme_font_end_to_end() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {"fontFamily": "Excalifont"},
+    })));
+    let source = r#"sequenceDiagram
+participant Alice as CSSOM Actor
+participant Bob
+Alice->>Bob: CSSOM Message
+Note over Alice,Bob: CSSOM Note
+loop CSSOM Loop
+Bob-->>Alice: Reply
+end"#;
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-cssom-font-owner").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session()
+        .expect("begin Sequence CSSOM font measurement session");
+    let _measurement_artifact = family::prepare(
+        parse_sequence_for_render(&engine, source),
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare Sequence CSSOM font measurement artifact");
+    let requests = host.snapshot();
+
+    for text_fragment in ["CSSOM Actor", "CSSOM Message", "CSSOM Note", "CSSOM Loop"] {
+        let matching = requests
+            .iter()
+            .filter(|exchange| exchange.request.text.contains(text_fragment))
+            .collect::<Vec<_>>();
+        assert!(
+            !matching.is_empty(),
+            "expected layout measurement requests for {text_fragment:?}"
+        );
+        let configured = matching
+            .iter()
+            .filter(|exchange| exchange.request.font_family.as_deref() != Some("sans-serif"))
+            .collect::<Vec<_>>();
+        assert!(
+            !configured.is_empty()
+                && configured.iter().all(|exchange| {
+                    exchange.request.font_family.as_deref() == Some("Excalifont")
+                }),
+            "configured layout measurement must use the CSSOM-effective theme font for {text_fragment:?}: {matching:#?}"
+        );
+    }
+
+    let theme = sequence_excalifont_asset_theme();
+    let render_engine =
+        merman_render::__private::install_parse_compatibility(&theme, engine.clone());
+    let rendered = family::prepare(
+        parse_sequence_for_render(&render_engine, source),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin portable Sequence CSSOM font session"),
+    )
+    .expect("prepare portable Sequence CSSOM font artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render portable Sequence CSSOM font SVG");
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Sequence CSSOM font SVG");
+
+    for (class_name, text_fragment) in [
+        ("actor-box", "CSSOM Actor"),
+        ("messageText", "CSSOM Message"),
+        ("noteText", "CSSOM Note"),
+        ("loopText", "CSSOM Loop"),
+    ] {
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == class_name)
+                    })
+                    && node
+                        .descendants()
+                        .filter(|descendant| descendant.is_text())
+                        .filter_map(|descendant| descendant.text())
+                        .any(|text| text.contains(text_fragment))
+            })
+            .unwrap_or_else(|| panic!("missing {class_name} text containing {text_fragment:?}"));
+        let style = text
+            .attribute("style")
+            .expect("prepared Sequence terminal text style");
+        assert_eq!(
+            inline_style_value(style, "font-family"),
+            Some("Excalifont"),
+            "prepared terminal text must use the same CSSOM-effective font as layout"
+        );
+    }
 }
 
 #[test]
