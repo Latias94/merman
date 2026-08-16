@@ -157,6 +157,9 @@ pub(super) fn render_flowchart_svg_model(
     // internal reordering. `render_edges` already reflects the source-backed ordering rules.
     let edge_order: Vec<super::render_input::FlowchartRenderEdgeRef<'_>> =
         render_edges.iter().map(|edge| edge.as_ref()).collect();
+    let edge_dom_id_plan = crate::flowchart::FlowchartEdgeTransportPlan::for_keyed_edges(
+        edge_order.iter().map(|edge| (edge.key, edge.edge)),
+    );
     let mut edges_by_key: FxHashMap<
         crate::flowchart::FlowchartEdgeKey,
         super::render_input::FlowchartRenderEdgeRef<'_>,
@@ -296,6 +299,7 @@ pub(super) fn render_flowchart_svg_model(
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         class_defs: &model.class_defs,
         edge_style_plan,
+        edge_dom_id_plan,
         node_border_color,
         node_fill_color,
         node_stroke_width,

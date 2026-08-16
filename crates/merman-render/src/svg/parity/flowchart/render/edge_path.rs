@@ -21,6 +21,15 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
 ) -> crate::Result<()> {
     let key = edge_ref.key;
     let edge = edge_ref.edge;
+    let edge_dom_id = ctx
+        .edge_dom_id_plan
+        .id(key)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: format!(
+                "missing prepared Flowchart DOM id for edge occurrence {}",
+                key.semantic_index()
+            ),
+        })?;
     let trace_enabled = ctx.trace_edge_id.is_some_and(|id| id == edge.id.as_str());
     let data_look = flowchart_config_diagram_look(ctx.config);
     let hand_drawn = data_look.is_hand_drawn();
@@ -147,6 +156,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     let source_style_svg_bytes = ctx.edge_style_plan.edge_source_style_svg_bytes_for(key)?;
     let edge_receipt = FlowchartEdgeSvgEmission {
         diagram_id: ctx.diagram_id,
+        edge_dom_id,
         edge,
         d,
         data_points_b64,
@@ -197,6 +207,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
 
 struct FlowchartEdgeSvgEmission<'a> {
     diagram_id: &'a str,
+    edge_dom_id: &'a str,
     edge: &'a crate::flowchart::FlowEdge,
     d: &'a str,
     data_points_b64: &'a str,
@@ -318,7 +329,7 @@ impl FlowchartEdgeSvgEmission<'_> {
             r#"<path d="{}" id="{}-{}" class="{}" style=""#,
             self.d,
             escape_xml_display(self.diagram_id),
-            escape_xml_display(&self.edge.id),
+            escape_xml_display(self.edge_dom_id),
             self.class_attr,
         )
     }
@@ -647,6 +658,7 @@ mod tests {
         let neo_edge_mask = neo_mask(16.0, &edge, false);
         let emission = FlowchartEdgeSvgEmission {
             diagram_id: "diagram<&",
+            edge_dom_id: &edge.id,
             edge: &edge,
             d: "M0,0L16,0",
             data_points_b64: "W3sieCI6MH1d",

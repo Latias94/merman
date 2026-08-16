@@ -784,6 +784,7 @@ linkStyle 1 stroke:#2563eb
         2,
         "both semantic occurrences must render: {svg}"
     );
+    assert_duplicate_raw_edge_path_dom_identity(&paths, "L_A_B_0", &svg);
     assert_ne!(
         paths[0].attribute("d"),
         paths[1].attribute("d"),
@@ -887,6 +888,30 @@ fn duplicate_flowchart_self_loop_ids_merge_each_semantic_occurrence_independentl
     assert!(svg.contains("second loop"), "{svg}");
 }
 
+fn assert_duplicate_raw_edge_path_dom_identity(
+    paths: &[roxmltree::Node<'_, '_>],
+    raw_id: &str,
+    svg: &str,
+) {
+    assert_eq!(paths.len(), 2, "expected two duplicate-id paths: {svg}");
+    assert!(
+        paths
+            .iter()
+            .all(|path| path.attribute("data-id") == Some(raw_id)),
+        "public data-id must preserve the raw Mermaid id: {svg}"
+    );
+    let first_dom_id = paths[0]
+        .attribute("id")
+        .unwrap_or_else(|| panic!("first duplicate-id path is missing a DOM id: {svg}"));
+    let second_dom_id = paths[1]
+        .attribute("id")
+        .unwrap_or_else(|| panic!("second duplicate-id path is missing a DOM id: {svg}"));
+    assert_ne!(
+        first_dom_id, second_dom_id,
+        "duplicate raw ids must use occurrence-safe DOM ids: {svg}"
+    );
+}
+
 fn assert_duplicate_raw_edge_occurrences_are_isolated(svg: &str) {
     let document = roxmltree::Document::parse(svg).expect("valid Flowchart-family SVG");
     let paths = document
@@ -902,6 +927,7 @@ fn assert_duplicate_raw_edge_occurrences_are_isolated(svg: &str) {
         2,
         "both semantic occurrences must render: {svg}"
     );
+    assert_duplicate_raw_edge_path_dom_identity(&paths, "L_A_B_0", svg);
     assert_ne!(
         paths[0].attribute("d"),
         paths[1].attribute("d"),
