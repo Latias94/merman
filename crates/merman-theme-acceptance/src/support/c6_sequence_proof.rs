@@ -6,8 +6,8 @@ use merman_theme_fixtures::ReferenceThemeMechanism;
 use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
-    BrutalistSequenceFixtureContract, C6ProofError, C6ProofResult, C6RasterImage, class_contains,
-    decode_bounded_png_artifact,
+    BrutalistSequenceFixtureContract, C6BoundTargetProof, C6ProofError, C6ProofResult,
+    C6RasterImage, C6TargetArtifact, class_contains, decode_bounded_png_artifact,
 };
 
 const CELL_MECHANISMS: [ReferenceThemeMechanism; 1] = [ReferenceThemeMechanism::ThemeVariables];
@@ -15,6 +15,7 @@ const CELL_MECHANISMS: [ReferenceThemeMechanism; 1] = [ReferenceThemeMechanism::
 #[derive(Clone, Debug)]
 pub(crate) struct BrutalistSequenceSvgProof {
     mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    target_proof: C6BoundTargetProof,
     view_box: [f64; 4],
     actor_fill_region: [f64; 4],
     note_fill_region: [f64; 4],
@@ -27,12 +28,41 @@ impl BrutalistSequenceSvgProof {
     ) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
         self.mechanisms.clone()
     }
+
+    pub(crate) fn target_proof(&self) -> C6BoundTargetProof {
+        self.target_proof.clone()
+    }
 }
 
 pub(crate) fn prove_brutalist_sequence_svg(
     contract: &BrutalistSequenceFixtureContract<'_>,
-    svg: &str,
+    artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<BrutalistSequenceSvgProof> {
+    let mechanisms = applied_cell_mechanisms();
+    let ((view_box, actor_fill_region, note_fill_region, message_stroke_region), target_proof) =
+        artifact.check_with(
+            "brutalist-sequence-standalone-svg-v1",
+            mechanisms.clone(),
+            |bytes| check_brutalist_sequence_svg(contract, bytes),
+        )?;
+    Ok(BrutalistSequenceSvgProof {
+        mechanisms,
+        target_proof,
+        view_box,
+        actor_fill_region,
+        note_fill_region,
+        message_stroke_region,
+    })
+}
+
+type BrutalistSequenceSvgGeometry = ([f64; 4], [f64; 4], [f64; 4], [f64; 4]);
+
+fn check_brutalist_sequence_svg(
+    contract: &BrutalistSequenceFixtureContract<'_>,
+    bytes: &[u8],
+) -> C6ProofResult<BrutalistSequenceSvgGeometry> {
+    let svg = std::str::from_utf8(bytes)
+        .map_err(|error| C6ProofError::new("sequence-svg-utf8", error.to_string()))?;
     let document = roxmltree::Document::parse(svg)
         .map_err(|error| C6ProofError::new("sequence-svg-parse", error.to_string()))?;
     let root = document.root_element();
@@ -153,47 +183,53 @@ pub(crate) fn prove_brutalist_sequence_svg(
         "Brutalist Sequence did not retain terminal native SVG text"
     );
 
-    Ok(BrutalistSequenceSvgProof {
-        mechanisms: applied_cell_mechanisms(),
+    Ok((
         view_box,
-        actor_fill_region: corner_fill_region(actor_rects[0])?,
-        note_fill_region: corner_fill_region(notes[0])?,
-        message_stroke_region: middle_line_region(message_lines[0])?,
-    })
+        corner_fill_region(actor_rects[0])?,
+        corner_fill_region(notes[0])?,
+        middle_line_region(message_lines[0])?,
+    ))
 }
 
 pub(crate) fn prove_brutalist_sequence_png(
     contract: &BrutalistSequenceFixtureContract<'_>,
     svg_proof: &BrutalistSequenceSvgProof,
-    bytes: &[u8],
+    artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
-) -> C6ProofResult<()> {
-    let raster = decode_bounded_png_artifact(bytes, plan)?;
-    prove_roi_color(
-        &raster,
-        svg_proof.view_box,
-        svg_proof.actor_fill_region,
-        parse_hex_rgb(contract.actor_fill())?,
-        24,
-        "sequence-png-actor-fill",
+) -> C6ProofResult<C6BoundTargetProof> {
+    let (_, target_proof) = artifact.check_with(
+        "brutalist-sequence-png-v1",
+        svg_proof.mechanisms(),
+        |bytes| {
+            let raster = decode_bounded_png_artifact(bytes, plan)?;
+            prove_roi_color(
+                &raster,
+                svg_proof.view_box,
+                svg_proof.actor_fill_region,
+                parse_hex_rgb(contract.actor_fill())?,
+                24,
+                "sequence-png-actor-fill",
+            )?;
+            prove_roi_color(
+                &raster,
+                svg_proof.view_box,
+                svg_proof.note_fill_region,
+                parse_hex_rgb(contract.note_fill())?,
+                24,
+                "sequence-png-note-fill",
+            )?;
+            prove_roi_color(
+                &raster,
+                svg_proof.view_box,
+                svg_proof.message_stroke_region,
+                parse_hex_rgb(contract.stroke())?,
+                4,
+                "sequence-png-message-stroke",
+            )?;
+            Ok(())
+        },
     )?;
-    prove_roi_color(
-        &raster,
-        svg_proof.view_box,
-        svg_proof.note_fill_region,
-        parse_hex_rgb(contract.note_fill())?,
-        24,
-        "sequence-png-note-fill",
-    )?;
-    prove_roi_color(
-        &raster,
-        svg_proof.view_box,
-        svg_proof.message_stroke_region,
-        parse_hex_rgb(contract.stroke())?,
-        4,
-        "sequence-png-message-stroke",
-    )?;
-    Ok(())
+    Ok(target_proof)
 }
 
 fn prove_roi_color(

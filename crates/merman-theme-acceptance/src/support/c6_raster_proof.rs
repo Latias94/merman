@@ -1,7 +1,10 @@
-use std::{cmp::Ordering, io::Cursor};
+use std::io::Cursor;
 
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use image::{ColorType, ImageDecoder, ImageFormat, ImageReader, Limits};
 use merman_export::{DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, RasterPlan};
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+use std::cmp::Ordering;
 
 use super::{BrutalistStateFixtureContract, C6ProofError, C6ProofResult};
 
@@ -13,6 +16,7 @@ const MIN_PNG_CORNER_COVERAGE: f64 = 0.82;
 const MIN_PNG_SHADOW_COVERAGE: f64 = 0.82;
 const MIN_PNG_SHADOW_CONTROL_COVERAGE: f64 = 0.72;
 const MIN_LABEL_INK_PIXELS: usize = 48;
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 const MIN_JPEG_PSNR_DB: f64 = 28.0;
 const PNG_COLOR_TOLERANCE: u8 = 0;
 const PNG_LABEL_TOLERANCE: u8 = 8;
@@ -20,13 +24,8 @@ const PNG_STROKE_WIDTH_ERROR_PX: usize = 2;
 const MAX_RASTER_ARTIFACT_OVERHEAD_BYTES: usize = 1024 * 1024;
 
 pub(crate) struct PngArtifactProof {
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     raster: RasterImage,
-}
-
-impl PngArtifactProof {
-    pub(crate) fn target_proof(&self) -> super::C6TargetProof {
-        super::C6TargetProof::brutalist_state_png(super::brutalist_state_applied_mechanisms())
-    }
 }
 
 pub(crate) fn prove_brutalist_state_png(
@@ -47,7 +46,10 @@ pub(crate) fn prove_brutalist_state_png(
     );
     prove_brutalist_state_raster(&contract, &geometry, &raster)?;
 
-    Ok(PngArtifactProof { raster })
+    Ok(PngArtifactProof {
+        #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+        raster,
+    })
 }
 
 pub(crate) fn decode_bounded_png_artifact(
@@ -78,6 +80,7 @@ pub(crate) fn parse_c6_hex_rgb(value: &str) -> C6ProofResult<[u8; 3]> {
     Ok([color.red, color.green, color.blue])
 }
 
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub(crate) fn prove_brutalist_state_jpeg(
     bytes: &[u8],
     raster_plan: RasterPlan,
@@ -105,6 +108,7 @@ struct Rgb {
 }
 
 impl Rgb {
+    #[cfg(any(test, all(feature = "png", feature = "jpeg", feature = "pdf")))]
     const WHITE: Self = Self {
         red: u8::MAX,
         green: u8::MAX,
@@ -643,6 +647,7 @@ impl RasterImage {
         })
     }
 
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(super) fn decode_jpeg(bytes: &[u8], plan: RasterPlan) -> C6ProofResult<Self> {
         let planned_rgb = PlannedRaster::new(plan, 3, "jpeg-decode")?;
         let planned_rgba = PlannedRaster::new(plan, 4, "jpeg-decode")?;
@@ -742,6 +747,7 @@ impl RasterImage {
         })
     }
 
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn pixel_count(&self) -> usize {
         self.pixels.len() / 4
     }
@@ -884,6 +890,79 @@ impl RasterImage {
             minimum_coverage,
             label,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn prove_opaque_color_difference_coverage_in_svg_rect(
+        &self,
+        view_box: [f64; 4],
+        rect: [f64; 4],
+        reference: [u8; 3],
+        minimum_difference: u8,
+        minimum_coverage: f64,
+        stage: &'static str,
+        label: &str,
+    ) -> C6ProofResult<()> {
+        let [view_left, view_top, view_width, view_height] = view_box;
+        let [left, top, width, height] = rect;
+        c6_ensure!(
+            stage,
+            view_box.into_iter().chain(rect).all(f64::is_finite)
+                && view_width > 0.0
+                && view_height > 0.0
+                && width > 0.0
+                && height > 0.0
+                && minimum_difference > 0
+                && minimum_coverage > 0.0
+                && minimum_coverage <= 1.0
+                && self.width > 0
+                && self.height > 0,
+            "invalid {label} C6 difference region"
+        );
+        let transform = self.transform(Rect {
+            left: view_left,
+            top: view_top,
+            width: view_width,
+            height: view_height,
+        });
+        let bounds = Rect {
+            left,
+            top,
+            width,
+            height,
+        };
+        let mut matching = 0usize;
+        let mut total = 0usize;
+        let pixel_bounds = transform.pixel_bounds(bounds);
+        for y in pixel_bounds.top..pixel_bounds.bottom {
+            for x in pixel_bounds.left..pixel_bounds.right {
+                let (user_x, user_y) = transform.user_point(x, y);
+                if !bounds.contains(user_x, user_y) {
+                    continue;
+                }
+                total += 1;
+                let Some(actual) = self.rgb(x, y) else {
+                    continue;
+                };
+                let difference = actual
+                    .red
+                    .abs_diff(reference[0])
+                    .max(actual.green.abs_diff(reference[1]))
+                    .max(actual.blue.abs_diff(reference[2]));
+                matching += usize::from(difference >= minimum_difference);
+            }
+        }
+        c6_ensure!(stage, total > 0, "{label} C6 region must contain pixels");
+        let coverage = matching as f64 / total as f64;
+        c6_ensure!(
+            stage,
+            coverage >= minimum_coverage,
+            "{label} must visibly differ from its reference color across at least {:.0}% of its C6 region; coverage={coverage:.3}, matching={matching}, total={total}, raster={}x{}",
+            minimum_coverage * 100.0,
+            self.width,
+            self.height,
+        );
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1236,6 +1315,7 @@ fn rgb_near_segment(actual: &[u8], left: ([u8; 3], u8), right: ([u8; 3], u8)) ->
 struct PlannedRaster {
     width: u32,
     height: u32,
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     pixel_count: usize,
     decoded_bytes: usize,
 }
@@ -1271,6 +1351,7 @@ impl PlannedRaster {
         Ok(Self {
             width: plan.width_px,
             height: plan.height_px,
+            #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
             pixel_count,
             decoded_bytes,
         })
@@ -1740,6 +1821,7 @@ fn prove_node_label_ink(
     Ok(())
 }
 
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn prove_jpeg_tracks_png(jpeg: &RasterImage, png: &RasterImage) -> C6ProofResult<()> {
     c6_ensure!(
         "jpeg-control",
@@ -1788,6 +1870,7 @@ fn prove_jpeg_tracks_png(jpeg: &RasterImage, png: &RasterImage) -> C6ProofResult
     Ok(())
 }
 
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn composite_rgba_over(pixel: [u8; 4], matte: Rgb) -> [u8; 3] {
     let alpha = u32::from(pixel[3]);
     let inverse_alpha = u32::from(u8::MAX) - alpha;
@@ -2631,6 +2714,7 @@ mod tests {
         );
     }
 
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]
     fn jpeg_global_similarity_accepts_bounded_loss() {
         let png = RasterImage {
@@ -2648,6 +2732,7 @@ mod tests {
             .expect("small whole-image loss must satisfy the JPEG smoke");
     }
 
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]
     fn jpeg_global_similarity_rejects_whole_image_drift() {
         let png = RasterImage {

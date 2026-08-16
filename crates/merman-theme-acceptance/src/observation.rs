@@ -225,58 +225,49 @@ impl C6RenderGroupReceipt {
     }
 }
 
-/// Target-local semantic proof produced only after the acceptance observer checks final bytes.
+/// Target bytes paired with the production receipt that admitted those exact bytes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct C6TargetArtifact<'a> {
+    bytes: &'a [u8],
+    receipt: &'a TargetAdmissionReceipt,
+}
+
+impl<'a> C6TargetArtifact<'a> {
+    pub(crate) fn new(bytes: &'a [u8], receipt: &'a TargetAdmissionReceipt) -> Option<Self> {
+        (sha256(bytes) == receipt.artifact_digest()).then_some(Self { bytes, receipt })
+    }
+
+    /// Runs a semantic checker against the bound bytes and seals only after that checker succeeds.
+    pub(crate) fn check_with<T, E>(
+        self,
+        semantic_assertion_id: &'static str,
+        mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+        checker: impl FnOnce(&'a [u8]) -> Result<T, E>,
+    ) -> Result<(T, C6BoundTargetProof), E> {
+        let checked = checker(self.bytes)?;
+        Ok((
+            checked,
+            C6BoundTargetProof {
+                target_receipt_digest: self.receipt.receipt_digest(),
+                semantic_assertion_id,
+                mechanism_dispositions,
+            },
+        ))
+    }
+}
+
+/// Semantic proof sealed to one target-owned receipt after checking the exact artifact bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct C6TargetProof {
+pub(crate) struct C6BoundTargetProof {
+    // Opaque target identity; the acceptance harness never reconstructs the receipt protocol.
+    target_receipt_digest: [u8; 32],
     semantic_assertion_id: &'static str,
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
 }
 
-impl C6TargetProof {
-    pub(crate) fn brutalist_flowchart_standalone_svg(
-        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        Self::seal("brutalist-flowchart-standalone-svg-v1", mechanisms)
-    }
-
-    pub(crate) fn brutalist_flowchart_png(
-        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        Self::seal("brutalist-flowchart-png-v1", mechanisms)
-    }
-
-    pub(crate) fn brutalist_state_standalone_svg(
-        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        Self::seal("brutalist-state-standalone-svg-v1", mechanisms)
-    }
-
-    pub(crate) fn brutalist_state_png(
-        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        Self::seal("brutalist-state-png-v1", mechanisms)
-    }
-
-    pub(crate) fn brutalist_sequence_standalone_svg(
-        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        Self::seal("brutalist-sequence-standalone-svg-v1", mechanisms)
-    }
-
-    pub(crate) fn brutalist_sequence_png(
-        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        Self::seal("brutalist-sequence-png-v1", mechanisms)
-    }
-
-    fn seal(
-        semantic_assertion_id: &'static str,
-        mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        Self {
-            semantic_assertion_id,
-            mechanism_dispositions,
-        }
+impl C6BoundTargetProof {
+    pub(crate) fn matches_receipt(&self, target_receipt: &TargetAdmissionReceipt) -> bool {
+        self.target_receipt_digest == target_receipt.receipt_digest()
     }
 }
 
@@ -300,7 +291,7 @@ pub(crate) fn seal_cell_from_evidence(
     identity: C6RenderIdentity,
     target_receipt: TargetAdmissionReceipt,
     residual_ids: BTreeSet<String>,
-    proof: C6TargetProof,
+    proof: C6BoundTargetProof,
 ) -> Result<C6CellReceipt, C6RuntimeError> {
     let key = enforced.key();
     require_evidence(
@@ -335,6 +326,16 @@ pub(crate) fn seal_cell_from_evidence(
     )?;
     require_evidence(
         key,
+        "target-receipt-digest",
+        target_receipt.receipt_digest() != [0; 32],
+    )?;
+    require_evidence(
+        key,
+        "target-proof-receipt-digest",
+        proof.target_receipt_digest == target_receipt.receipt_digest(),
+    )?;
+    require_evidence(
+        key,
         "resource-fingerprint",
         target_receipt.resource_fingerprint().as_bytes() != &[0; 32],
     )?;
@@ -362,11 +363,6 @@ pub(crate) fn seal_cell_from_evidence(
         key,
         "font-source",
         target_receipt.font_source() == TargetFontSource::Embedded,
-    )?;
-    require_evidence(
-        key,
-        "target-receipt-digest",
-        target_receipt.receipt_digest() != [0; 32],
     )?;
     if key.target() == ExpectedOutputTarget::StandaloneSvg {
         require_evidence(
@@ -889,7 +885,8 @@ mod tests {
         (themes, acceptance)
     }
 
-    fn themed_state_document_with_ceiling(
+    fn themed_state_document(
+        source: &str,
         ceiling: ThemeResourcePolicy,
     ) -> merman::RenderedDocument {
         let theme = DiagramThemeCompiler::new()
@@ -903,18 +900,20 @@ mod tests {
             SvgEnvironment::deterministic().with_theme_resource_ceiling(ceiling);
         let output = renderer
             .render(
-                RenderRequest::document(
-                    "stateDiagram-v2\n[*] --> Ready\n",
-                    OperationControl::new(),
-                    svg_request,
-                )
-                .with_theme(theme),
+                RenderRequest::document(source, OperationControl::new(), svg_request)
+                    .with_theme(theme),
             )
             .expect("deterministic themed state document should render");
         let RenderOutput::Document(Some(output)) = output else {
             panic!("expected deterministic themed document output");
         };
         output
+    }
+
+    fn themed_state_document_with_ceiling(
+        ceiling: ThemeResourcePolicy,
+    ) -> merman::RenderedDocument {
+        themed_state_document("stateDiagram-v2\n[*] --> Ready\n", ceiling)
     }
 
     fn synthetic_group(
@@ -1024,6 +1023,86 @@ mod tests {
     }
 
     #[test]
+    fn target_artifact_rejects_bytes_from_another_receipt() {
+        let first = themed_state_document(
+            "stateDiagram-v2\n[*] --> Ready\n",
+            ThemeResourcePolicy::interactive(),
+        );
+        let second = themed_state_document(
+            "stateDiagram-v2\n[*] --> Waiting\n",
+            ThemeResourcePolicy::interactive(),
+        );
+        assert_ne!(
+            first.standalone_svg_admission().artifact_digest(),
+            second.standalone_svg_admission().artifact_digest()
+        );
+
+        assert!(
+            C6TargetArtifact::new(first.svg().as_bytes(), first.standalone_svg_admission(),)
+                .is_some()
+        );
+        assert!(
+            C6TargetArtifact::new(second.svg().as_bytes(), first.standalone_svg_admission(),)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn cell_sealing_rejects_proof_bound_to_another_target_receipt() {
+        let (themes, acceptance) = load_catalogs();
+        let enforced = acceptance
+            .enforced_tranche()
+            .cells()
+            .find(|cell| {
+                cell.key().theme() == C6ProofTheme::Brutalist
+                    && cell.key().family() == C6ProofFamily::State
+                    && cell.key().target() == ExpectedOutputTarget::StandaloneSvg
+            })
+            .expect("enforced Brutalist State SVG cell");
+        let first = themed_state_document(
+            "stateDiagram-v2\n[*] --> Ready\n",
+            ThemeResourcePolicy::interactive(),
+        );
+        let second = themed_state_document(
+            "stateDiagram-v2\n[*] --> Waiting\n",
+            ThemeResourcePolicy::interactive(),
+        );
+        let identity = C6RenderIdentity::from_evidence(second.evidence());
+        let group = C6RenderGroupReceipt::seal(
+            C6RenderGroupKey::for_cell(enforced),
+            &themes,
+            &identity,
+            second.standalone_svg_admission(),
+        )
+        .expect("seal second render group");
+        let (_, proof) =
+            C6TargetArtifact::new(first.svg().as_bytes(), first.standalone_svg_admission())
+                .expect("bind first artifact to its production receipt")
+                .check_with("brutalist-state-standalone-svg-v1", BTreeMap::new(), |_| {
+                    Ok::<(), std::convert::Infallible>(())
+                })
+                .expect("check first artifact through its bound byte view");
+        let expectation = acceptance
+            .cell(enforced.key())
+            .expect("Brutalist State SVG expectation")
+            .expectation();
+
+        assert_evidence_field(
+            seal_cell_from_evidence(
+                expectation,
+                enforced,
+                &group,
+                identity,
+                second.standalone_svg_admission().clone(),
+                BTreeSet::new(),
+                proof,
+            )
+            .expect_err("proof and target receipt from different artifacts must fail closed"),
+            "target-proof-receipt-digest",
+        );
+    }
+
+    #[test]
     fn evaluator_accepts_receipts_bound_to_their_render_group() {
         let (themes, acceptance) = load_catalogs();
         let book = synthetic_valid_book(&themes, &acceptance);
@@ -1031,8 +1110,8 @@ mod tests {
             .evaluate(&acceptance, &themes)
             .expect("complete synthetic receipts");
 
-        assert_eq!(report.verified_cell_count(), 6);
-        assert_eq!(report.render_group_count(), 3);
+        assert_eq!(report.verified_cell_count(), 12);
+        assert_eq!(report.render_group_count(), 6);
         assert_eq!(report.manifest_digest(), acceptance.manifest_digest());
         assert_ne!(report.execution_digest(), &[0; 32]);
     }

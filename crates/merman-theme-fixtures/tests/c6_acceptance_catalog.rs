@@ -80,7 +80,9 @@ fn expected_mechanisms(
             Mechanism::StrokeStyling,
         ],
         (C6ProofTheme::Spotless, C6ProofFamily::State) => &[
+            Mechanism::CanvasGradient,
             Mechanism::CanvasLayering,
+            Mechanism::CanvasPattern,
             Mechanism::CanvasSolid,
             Mechanism::CssLetterSpacing,
             Mechanism::CssTextTransform,
@@ -100,6 +102,7 @@ fn expected_mechanisms(
             Mechanism::StrokeStyling,
         ],
         (C6ProofTheme::Cyberpunk, C6ProofFamily::State) => &[
+            Mechanism::CanvasSolid,
             Mechanism::CssFilter,
             Mechanism::FontStack,
             Mechanism::RoundedCorners,
@@ -145,8 +148,8 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
         C6_ACCEPTANCE_CELL_COUNT
     );
     assert_eq!(C6_ACCEPTANCE_CELL_COUNT, 18);
-    assert_eq!(catalog.enforced_tranche().cells().len(), 6);
-    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 12);
+    assert_eq!(catalog.enforced_tranche().cells().len(), 12);
+    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 6);
     assert_eq!(actual_keys, expected_keys);
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
 
@@ -198,22 +201,40 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
                 .map(|cell| cell.source_fixture_id()),
             Some("fixture-sequence-proof")
         );
+
+        for (theme, fixture_id) in [
+            (C6ProofTheme::Spotless, "fixture-c6-spotless-state"),
+            (C6ProofTheme::Cyberpunk, "fixture-c6-cyberpunk-state"),
+        ] {
+            let key = C6CellKey::new(theme, C6ProofFamily::State, target);
+            assert_eq!(
+                catalog
+                    .enforced_tranche()
+                    .cell(key)
+                    .map(|cell| cell.source_fixture_id()),
+                Some(fixture_id)
+            );
+        }
+
+        let key = C6CellKey::new(C6ProofTheme::Spotless, C6ProofFamily::Flowchart, target);
+        assert_eq!(
+            catalog
+                .enforced_tranche()
+                .cell(key)
+                .map(|cell| cell.source_fixture_id()),
+            Some("fixture-c6-spotless-flowchart")
+        );
     }
     for theme in C6_PROOF_THEMES {
         for family in C6_PROOF_FAMILIES {
-            if theme == C6ProofTheme::Brutalist {
-                continue;
-            }
             for target in C6_NATIVE_OUTPUT_TARGETS {
                 let key = C6CellKey::new(theme, family, target);
-                let expected = if theme == C6ProofTheme::Brutalist {
-                    C6ReadinessBlocker::FamilyAdapterIncomplete
-                } else {
-                    C6ReadinessBlocker::ThemeSliceIncomplete
-                };
+                if catalog.enforced_tranche().cell(key).is_some() {
+                    continue;
+                }
                 assert_eq!(
                     catalog.enforced_tranche().readiness_blocker(key),
-                    Some(expected)
+                    Some(C6ReadinessBlocker::ThemeSliceIncomplete)
                 );
             }
         }

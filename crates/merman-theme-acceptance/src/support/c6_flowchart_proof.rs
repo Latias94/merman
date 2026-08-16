@@ -6,9 +6,9 @@ use merman_theme_fixtures::ReferenceThemeMechanism;
 use crate::observation::C6ObservedMechanismDisposition;
 
 use super::{
-    BrutalistFlowchartFixtureContract, C6ProofError, C6ProofResult, C6RasterImage, class_contains,
-    decode_bounded_png_artifact, parse_c6_hex_rgb, parse_c6_svg_view_box, style_value,
-    transformed_c6_svg_rect,
+    BrutalistFlowchartFixtureContract, C6BoundTargetProof, C6ProofError, C6ProofResult,
+    C6RasterImage, C6TargetArtifact, class_contains, decode_bounded_png_artifact, parse_c6_hex_rgb,
+    parse_c6_svg_view_box, style_value, transformed_c6_svg_rect,
 };
 
 const NODE_IDS: [&str; 6] = ["A", "B", "C", "D", "E", "F"];
@@ -25,6 +25,7 @@ const PNG_STROKE_WIDTH_ERROR_PX: usize = 1;
 #[derive(Clone, Debug)]
 pub(crate) struct BrutalistFlowchartSvgProof {
     mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    target_proof: C6BoundTargetProof,
     view_box: [f64; 4],
     nodes: Vec<NodeGeometry>,
 }
@@ -35,6 +36,10 @@ impl BrutalistFlowchartSvgProof {
     ) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
         self.mechanisms.clone()
     }
+
+    pub(crate) fn target_proof(&self) -> C6BoundTargetProof {
+        self.target_proof.clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -44,8 +49,28 @@ struct NodeGeometry {
 
 pub(crate) fn prove_brutalist_flowchart_svg(
     contract: &BrutalistFlowchartFixtureContract<'_>,
-    svg: &str,
+    artifact: C6TargetArtifact<'_>,
 ) -> C6ProofResult<BrutalistFlowchartSvgProof> {
+    let mechanisms = applied_cell_mechanisms();
+    let ((view_box, nodes), target_proof) = artifact.check_with(
+        "brutalist-flowchart-standalone-svg-v1",
+        mechanisms.clone(),
+        |bytes| check_brutalist_flowchart_svg(contract, bytes),
+    )?;
+    Ok(BrutalistFlowchartSvgProof {
+        mechanisms,
+        target_proof,
+        view_box,
+        nodes,
+    })
+}
+
+fn check_brutalist_flowchart_svg(
+    contract: &BrutalistFlowchartFixtureContract<'_>,
+    bytes: &[u8],
+) -> C6ProofResult<([f64; 4], Vec<NodeGeometry>)> {
+    let svg = std::str::from_utf8(bytes)
+        .map_err(|error| C6ProofError::new("flowchart-svg-utf8", error.to_string()))?;
     let document = roxmltree::Document::parse(svg)
         .map_err(|error| C6ProofError::new("flowchart-svg-parse", error.to_string()))?;
     let root = document.root_element();
@@ -128,77 +153,82 @@ pub(crate) fn prove_brutalist_flowchart_svg(
         })
         .collect::<C6ProofResult<Vec<_>>>()?;
 
-    Ok(BrutalistFlowchartSvgProof {
-        mechanisms: applied_cell_mechanisms(),
-        view_box,
-        nodes,
-    })
+    Ok((view_box, nodes))
 }
 
 pub(crate) fn prove_brutalist_flowchart_png(
     contract: &BrutalistFlowchartFixtureContract<'_>,
     svg_proof: &BrutalistFlowchartSvgProof,
-    bytes: &[u8],
+    artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
-) -> C6ProofResult<()> {
-    let raster = decode_bounded_png_artifact(bytes, plan)?;
-    for (ordinal, node) in svg_proof.nodes.iter().enumerate() {
-        raster.prove_opaque_color_coverage_in_svg_rect(
-            svg_proof.view_box,
-            fill_region(
-                node.rect,
+) -> C6ProofResult<C6BoundTargetProof> {
+    let (_, target_proof) = artifact.check_with(
+        "brutalist-flowchart-png-v1",
+        svg_proof.mechanisms(),
+        |bytes| {
+            let raster = decode_bounded_png_artifact(bytes, plan)?;
+            for (ordinal, node) in svg_proof.nodes.iter().enumerate() {
+                raster.prove_opaque_color_coverage_in_svg_rect(
+                    svg_proof.view_box,
+                    fill_region(
+                        node.rect,
+                        f64::from(contract.radius_px),
+                        f64::from(contract.border.width_px()),
+                    )?,
+                    parse_c6_hex_rgb(
+                        &contract.palette_colors[ordinal % contract.palette_colors.len()],
+                    )?,
+                    PNG_COLOR_TOLERANCE,
+                    MIN_FILL_COVERAGE,
+                    "flowchart-png-node-fill",
+                    "Flowchart node fill",
+                )?;
+            }
+
+            let first = svg_proof.nodes[0].rect;
+            prove_stroke_width(
+                &raster,
+                svg_proof.view_box,
+                first,
                 f64::from(contract.radius_px),
                 f64::from(contract.border.width_px()),
-            )?,
-            parse_c6_hex_rgb(&contract.palette_colors[ordinal % contract.palette_colors.len()])?,
-            PNG_COLOR_TOLERANCE,
-            MIN_FILL_COVERAGE,
-            "flowchart-png-node-fill",
-            "Flowchart node fill",
-        )?;
-    }
+                parse_c6_hex_rgb(contract.border.color())?,
+            )?;
 
-    let first = svg_proof.nodes[0].rect;
-    prove_stroke_width(
-        &raster,
-        svg_proof.view_box,
-        first,
-        f64::from(contract.radius_px),
-        f64::from(contract.border.width_px()),
-        parse_c6_hex_rgb(contract.border.color())?,
-    )?;
-
-    let coverage = raster
-        .rounded_corner_coverage_in_svg_rect(
-            svg_proof.view_box,
-            first,
-            f64::from(contract.radius_px),
-            f64::from(contract.border.width_px()),
-            parse_c6_hex_rgb(contract.tokens.background())?,
-            10,
-        )
-        .ok_or_else(|| {
-            C6ProofError::new(
+            let coverage = raster
+                .rounded_corner_coverage_in_svg_rect(
+                    svg_proof.view_box,
+                    first,
+                    f64::from(contract.radius_px),
+                    f64::from(contract.border.width_px()),
+                    parse_c6_hex_rgb(contract.tokens.background())?,
+                    10,
+                )
+                .ok_or_else(|| {
+                    C6ProofError::new(
+                        "flowchart-png-node-rounding",
+                        "invalid Flowchart rounded-corner ROI",
+                    )
+                })?;
+            c6_ensure!(
                 "flowchart-png-node-rounding",
-                "invalid Flowchart rounded-corner ROI",
-            )
-        })?;
-    c6_ensure!(
-        "flowchart-png-node-rounding",
-        coverage.inside_total() >= 3 && coverage.outside_total() >= 3,
-        "rounded corner retained too few classified pixels; inside={}, outside={}",
-        coverage.inside_total(),
-        coverage.outside_total()
-    );
-    c6_ensure!(
-        "flowchart-png-node-rounding",
-        coverage.inside_ratio() >= MIN_CORNER_COVERAGE
-            && coverage.outside_ratio() >= MIN_CORNER_COVERAGE,
-        "rounded corner coverage is incomplete; inside={:.3}, outside={:.3}",
-        coverage.inside_ratio(),
-        coverage.outside_ratio()
-    );
-    Ok(())
+                coverage.inside_total() >= 3 && coverage.outside_total() >= 3,
+                "rounded corner retained too few classified pixels; inside={}, outside={}",
+                coverage.inside_total(),
+                coverage.outside_total()
+            );
+            c6_ensure!(
+                "flowchart-png-node-rounding",
+                coverage.inside_ratio() >= MIN_CORNER_COVERAGE
+                    && coverage.outside_ratio() >= MIN_CORNER_COVERAGE,
+                "rounded corner coverage is incomplete; inside={:.3}, outside={:.3}",
+                coverage.inside_ratio(),
+                coverage.outside_ratio()
+            );
+            Ok(())
+        },
+    )?;
+    Ok(target_proof)
 }
 
 fn applied_cell_mechanisms() -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {

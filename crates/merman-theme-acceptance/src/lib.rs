@@ -23,26 +23,28 @@ macro_rules! c6_ensure {
     };
 }
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "png")]
 mod cutover;
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "png")]
 mod cutover_manifest;
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "png")]
 mod observation;
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "png")]
 mod runner;
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "png")]
 pub use cutover::RouteCutoverAuthorizationReport;
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "png")]
 pub use observation::{C6ExecutionReport, C6RuntimeError, RouteCutoverRuntimeError};
+
+#[cfg(feature = "png")]
+pub use runner::{run_enforced_c6_runtime, run_route_cutover_authorization};
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use runner::{
-    NativeExportSmokeError, NativeExportSmokeSummary, run_enforced_c6_runtime,
-    run_representative_native_export_smoke, run_route_cutover_authorization,
+    NativeExportSmokeError, NativeExportSmokeSummary, run_representative_native_export_smoke,
 };

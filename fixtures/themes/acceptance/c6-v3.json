@@ -130,8 +130,8 @@
         "semanticAssertionId": "spotless-flowchart-standalone-svg-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-flowchart"
       }
     },
     {
@@ -151,8 +151,8 @@
         "semanticAssertionId": "spotless-flowchart-png-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-flowchart"
       }
     },
     {
@@ -161,7 +161,9 @@
       "target": "standalone-svg",
       "expectation": {
         "mechanismRequirements": {
+          "canvas-gradient": "must-apply",
           "canvas-layering": "must-apply",
+          "canvas-pattern": "must-apply",
           "canvas-solid": "must-apply",
           "css-letter-spacing": "must-apply",
           "css-text-transform": "must-apply",
@@ -172,8 +174,8 @@
         "semanticAssertionId": "spotless-state-standalone-svg-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-state"
       }
     },
     {
@@ -182,7 +184,9 @@
       "target": "png",
       "expectation": {
         "mechanismRequirements": {
+          "canvas-gradient": "must-apply",
           "canvas-layering": "must-apply",
+          "canvas-pattern": "must-apply",
           "canvas-solid": "must-apply",
           "css-letter-spacing": "must-apply",
           "css-text-transform": "must-apply",
@@ -193,8 +197,8 @@
         "semanticAssertionId": "spotless-state-png-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-state"
       }
     },
     {
@@ -279,6 +283,7 @@
       "target": "standalone-svg",
       "expectation": {
         "mechanismRequirements": {
+          "canvas-solid": "must-apply",
           "css-filter": "must-apply",
           "font-stack": "must-apply",
           "rounded-corners": "must-apply",
@@ -289,8 +294,8 @@
         "semanticAssertionId": "cyberpunk-state-standalone-svg-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-state"
       }
     },
     {
@@ -299,6 +304,7 @@
       "target": "png",
       "expectation": {
         "mechanismRequirements": {
+          "canvas-solid": "must-apply",
           "css-filter": "must-apply",
           "font-stack": "must-apply",
           "rounded-corners": "must-apply",
@@ -309,8 +315,8 @@
         "semanticAssertionId": "cyberpunk-state-png-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-state"
       }
     },
     {
