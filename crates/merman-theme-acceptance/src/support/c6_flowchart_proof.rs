@@ -362,26 +362,30 @@ mod tests {
     }
 
     #[test]
-    fn one_svg_pixel_stroke_cannot_prove_a_three_pixel_contract_at_two_x() {
-        let mut raster = C6RasterImage::solid_for_test(TEST_WIDTH, TEST_HEIGHT, [0xff, 0xff, 0xff]);
-        for y in 19..21 {
-            for x in 4..56 {
-                raster.set_rgb_for_test(x, y, TEST_COLOR);
+    fn thin_strokes_cannot_prove_a_three_pixel_contract_at_two_x() {
+        for raster_stroke_width in [2, 4] {
+            let mut raster =
+                C6RasterImage::solid_for_test(TEST_WIDTH, TEST_HEIGHT, [0xff, 0xff, 0xff]);
+            let top = 20 - raster_stroke_width / 2;
+            for y in top..top + raster_stroke_width {
+                for x in 4..56 {
+                    raster.set_rgb_for_test(x, y, TEST_COLOR);
+                }
             }
+
+            let result = prove_stroke_width(
+                &raster,
+                TEST_VIEW_BOX,
+                [2.0, 10.0, 26.0, 8.0],
+                0.0,
+                3.0,
+                TEST_COLOR,
+            );
+
+            assert!(
+                result.is_err(),
+                "a {raster_stroke_width}-raster-pixel line is thinner than 3 SVG pixels at 2x"
+            );
         }
-
-        let result = prove_stroke_width(
-            &raster,
-            TEST_VIEW_BOX,
-            [2.0, 10.0, 26.0, 8.0],
-            0.0,
-            3.0,
-            TEST_COLOR,
-        );
-
-        assert!(
-            result.is_err(),
-            "a 2-raster-pixel line represents only 1 SVG pixel at 2x"
-        );
     }
 }
