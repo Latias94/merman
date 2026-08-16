@@ -17,9 +17,9 @@ theme-to-family path and its visible residuals.
 
 | Diagram family | Current theme path | Evidence status | Residual / follow-up |
 | --- | --- | --- | --- |
-| State | Direct crate-private `ResolvedDiagramTheme` consumption in `state/style_plan.rs` and `state/label_artifact.rs`, including semantic targets, ordinal resolution, typography, and source-style provenance | Typed family adapter | Brutalist, Spotless, and Cyberpunk State each have representative Standalone SVG and PNG C6 cells, accounting for six of the active ledger's twelve enforced cells. This family coverage does not complete the 18-cell C6a checkpoint. |
-| Flowchart and Swimlane | A family-local program is prepared with the render operation. Node and Edge paint, Edge dash arrays, selected Node geometry, NodeLabel/EdgeLabel font stack and size, and Node ordinal palettes have narrow direct consumers; remaining Mermaid/CSS surfaces still receive a family-scoped compatibility overlay. | Partial typed adapter plus legacy compatibility | Brutalist and Spotless Flowchart each have representative Standalone SVG and PNG C6 cells from one `RenderedDocument`; Cyberpunk Flowchart remains deferred. HTML/Markdown edge labels, base typography, remaining geometry and surfaces, and broader canvas/effect behavior remain open. |
-| Sequence | Static unqualified Actor, Lifeline, Note, and Activation fill/stroke plus Message stroke (solid/transparent) are consumed directly by the Sequence CSS/shape writers and reconciled from terminal emission receipts. Native terminal text now carries prepared-text evidence into the final font seal. Message fill, signal/message text, loop, family typography, label, variant, ordinal, and non-scalar paint routes remain compatibility-only or unsupported. | Partial typed adapter plus legacy compatibility | Actor/Lifeline/Note/Activation/Message cutover routes have private SVG/PNG authorization witnesses. Brutalist Sequence has representative Standalone SVG and PNG C6 cells from one `RenderedDocument`; Spotless and Cyberpunk Sequence remain deferred. |
+| State | Direct crate-private `ResolvedDiagramTheme` consumption in `state/style_plan.rs` and `state/label_artifact.rs`, including semantic targets, ordinal resolution, typography, and source-style provenance | Typed family adapter | Brutalist, Spotless, and Cyberpunk State each have representative Standalone SVG and PNG C6 cells, accounting for six of the active ledger's 18 enforced cells. |
+| Flowchart and Swimlane | A family-local program is prepared with the render operation. Node and Edge paint, Edge dash arrays, selected Node geometry, NodeLabel/EdgeLabel font stack and size, and Node ordinal palettes have narrow direct consumers; remaining Mermaid/CSS surfaces still receive a family-scoped compatibility overlay. | Partial typed adapter plus legacy compatibility | Brutalist, Spotless, and Cyberpunk Flowchart each have representative Standalone SVG and PNG C6 cells from one `RenderedDocument`. HTML/Markdown edge labels, base typography, remaining geometry and surfaces, and broader canvas/effect behavior remain open. |
+| Sequence | Static unqualified Actor, Lifeline, Note, and Activation fill/stroke plus Message stroke (solid/transparent) are consumed directly by the Sequence CSS/shape writers and reconciled from terminal emission receipts. Native terminal text now carries prepared-text evidence into the final font seal. Message fill, signal/message text, loop, family typography, label, variant, ordinal, and non-scalar paint routes remain compatibility-only or unsupported. | Partial typed adapter plus legacy compatibility | Actor/Lifeline/Note/Activation/Message cutover routes have private SVG/PNG authorization witnesses. Brutalist, Spotless, and Cyberpunk Sequence each have representative Standalone SVG and PNG C6 cells from one `RenderedDocument`. |
 | Class and Block | Node-family semantic targets are projected through `LegacyFamilyThemeBridge`; renderers continue to consume final Mermaid variables and CSS | Legacy compatibility | Source/property provenance and family-owned typed emission are not yet complete. |
 | Mindmap, Tree View, and GitGraph | Node/palette targets are projected through the family-local compatibility bridge, then consumed through final resolved Mermaid variables | Legacy compatibility | Palette projection is not direct ordinal-palette evidence at the SVG consumer. |
 | Gantt and Kanban | Task, status, text, line, and palette targets are projected through the task-family bridge | Legacy compatibility | Family-local fixed colors and status details still require typed classification. |
@@ -46,17 +46,18 @@ capabilities and text-layout capabilities. Later stages own different facts:
 | Export | Target-specific resource closure and SVG/PNG/JPEG/PDF admission |
 
 These stages are monotonic: a later stage may preserve or weaken earlier evidence, but an
-unevaluated family or output cannot be upgraded to portable. C6a is not yet proven because the
-representative Flowchart/State/Sequence by Standalone SVG/PNG positive-output ledger is incomplete.
+unevaluated family or output cannot be upgraded to portable. All 18 representative
+Flowchart/State/Sequence by Standalone SVG/PNG cells now execute successfully, but the dedicated
+eligibility seal and remaining C5 gates are still required before C6a can be declared complete.
 
 The current private cutover manifest contains 34 route-level authorization witnesses producing 46
 artifact witnesses. These witnesses prove only that the named bridge projections may be retired;
 they do not increase C6a's 18-cell count.
-The active `acceptance/c6-v3.json` representative ledger is C6a `12/18`, spanning six render groups:
-Brutalist Flowchart, State, and Sequence; Spotless Flowchart and State; and Cyberpunk State. Each
-render group projects Standalone SVG and PNG from one completed `RenderedDocument`. The six deferred
-cells are Spotless Sequence plus Cyberpunk Flowchart and Sequence on those same two targets. No
-`C6aEligibilityReceipt` exists yet, so C7a remains blocked.
+The active `acceptance/c6-v3.json` representative ledger executes `18/18` cells across nine render
+groups: Brutalist, Spotless, and Cyberpunk by Flowchart, State, and Sequence. Each render group
+projects Standalone SVG and PNG from one completed `RenderedDocument`; no cells remain deferred.
+Execution coverage alone is not contract eligibility: no `C6aEligibilityReceipt` exists yet, so C6a
+is not sealed and C7a remains blocked.
 Four historical cross-target observations exist for the Brutalist State render group, but C6b
 equal-depth certification is paused and has no active completion percentage. Browser SVG remains
 unstarted.
