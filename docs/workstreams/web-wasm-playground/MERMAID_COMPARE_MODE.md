@@ -88,23 +88,25 @@ Benchmark pauses coordinator scheduling and resumes exactly the latest input aft
 
 Every interactive operation sends `800x600` and `screenAvailableWidth=800` to both engines. The
 Mermaid realm installs the controlled screen width before Mermaid loads. Pane allocation, canvas
-resize, zoom, pan, pinch, fit, and SVG Bounds visibility remain presentation-only and cannot enqueue
-a render. The Benchmark owns its canonical input independently.
+resize, zoom, pan, pinch, fit, Infinite Canvas/ViewBox Frame selection, and SVG Bounds visibility
+remain presentation-only and cannot enqueue a render. The Benchmark owns its canonical input
+independently.
 
 The Share menu separates portable workspace links from issue-reproduction links. Workspace links
 carry render intent but never device pixels. Issue links additionally restore the workspace pane,
-editor tab, Preview mode, and SVG Bounds preference. New links contain no host dimensions or camera
-coordinates; legacy Host-bearing links restore supported fields and degrade to canonical rendering.
-Neither copy action mutates the current URL or active operation.
+editor tab, Preview mode, SVG presentation mode, and SVG Bounds preference. New links contain no
+host dimensions or camera coordinates; legacy Host-bearing links restore supported fields and
+degrade to canonical rendering. Neither copy action mutates the current URL or active operation.
 
-Preview presentation preserves each engine's valid SVG `viewBox` byte-for-byte while the diagram
-floats directly on a full-surface grid canvas. The responsive clone suppresses Merman's known
-default white root background without changing the frozen artifact, exports, or non-default root
-backgrounds. A missing-`viewBox` artifact may retain preview-local
-intrinsic dimensions, but browser bounds are never promoted into renderer geometry. The optional
-SVG Bounds outline follows the mounted root and affects neither fit nor export. Browser-dependent
-title or root-viewBox clipping visible in pinned Mermaid therefore remains visible in both panes;
-the Playground does not hide it with a Merman-only bounds workaround.
+Preview presentation preserves each engine's valid SVG `viewBox` byte-for-byte. Infinite Canvas
+floats the diagram on a full-surface grid; ViewBox Frame removes the grid and gives the exact mounted
+SVG viewport a finite outline and shadow. Both modes share the same artifact and camera state. The
+responsive clone suppresses Merman's known default white root background without changing the
+frozen artifact, exports, or non-default root backgrounds. A missing-`viewBox` artifact may retain
+preview-local intrinsic dimensions, but browser bounds are never promoted into renderer geometry.
+The optional SVG Bounds outline follows the mounted root and affects neither fit nor export.
+Browser-dependent title or root-viewBox clipping visible in pinned Mermaid therefore remains
+visible in both panes; the Playground does not hide it with a Merman-only bounds workaround.
 
 Each Compare pane has one export launcher. The workbench keeps the engine identity visible and
 does not retarget when a newer render completes. Mermaid raster output uses the pane's validated

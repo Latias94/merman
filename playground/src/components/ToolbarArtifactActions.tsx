@@ -167,6 +167,7 @@ export function useToolbarArtifactActions() {
         editorMode: state.editorMode,
         previewMode: state.previewMode,
         showSvgBounds: state.showSvgBounds,
+        svgPresentationMode: state.svgPresentationMode,
       });
       toast.success(t("share.copied"));
     } catch {

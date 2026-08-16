@@ -13,6 +13,10 @@ import type {
   MermanSvgPipeline,
   MermanTextMeasurementMode,
 } from "../runtime/merman-core.ts";
+import {
+  DEFAULT_SVG_PRESENTATION_MODE,
+  type SvgPresentationMode,
+} from "../lib/svg-presentation.ts";
 
 export type Theme = ThemeName;
 export type UITheme = "light" | "dark" | "system";
@@ -22,6 +26,7 @@ export type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
 export type WorkspacePane = "editor" | "preview";
 export type TextMeasurementMode = MermanTextMeasurementMode;
 export type SvgPipeline = MermanSvgPipeline;
+export type { SvgPresentationMode };
 export type { DiagramFont };
 export { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot };
 
@@ -61,6 +66,8 @@ export interface AppState {
   setWorkspacePane: (pane: WorkspacePane) => void;
   previewMode: PreviewMode;
   setPreviewMode: (mode: PreviewMode) => void;
+  svgPresentationMode: SvgPresentationMode;
+  setSvgPresentationMode: (mode: SvgPresentationMode) => void;
   showSvgBounds: boolean;
   setShowSvgBounds: (show: boolean) => void;
 }
@@ -162,6 +169,7 @@ export const useAppStore = create<AppState>((set) => ({
       workspacePane: view.workspacePane,
       editorMode: view.editorMode,
       previewMode: view.previewMode,
+      svgPresentationMode: view.svgPresentationMode,
       showSvgBounds: view.showSvgBounds,
       shareViewWarning: warning,
     }),
@@ -181,6 +189,13 @@ export const useAppStore = create<AppState>((set) => ({
   setWorkspacePane: (workspacePane) => set({ workspacePane }),
   previewMode: "svg",
   setPreviewMode: (previewMode) => set({ previewMode }),
+  svgPresentationMode: DEFAULT_SVG_PRESENTATION_MODE,
+  setSvgPresentationMode: (svgPresentationMode) =>
+    set((state) =>
+      state.svgPresentationMode === svgPresentationMode
+        ? state
+        : { svgPresentationMode },
+    ),
   showSvgBounds: false,
   setShowSvgBounds: (showSvgBounds) => set({ showSvgBounds }),
 }));

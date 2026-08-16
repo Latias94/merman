@@ -60,6 +60,19 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
     )
     .toBeGreaterThan(0);
 
+  const viewBoxToggle = page.getByRole("button", {
+    name: "ViewBox Frame",
+    exact: true,
+  });
+  await viewBoxToggle.scrollIntoViewIfNeeded();
+  await expectInsideViewport(page, viewBoxToggle);
+  await viewBoxToggle.tap();
+  await expect(viewBoxToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(primaryViewport(page)).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "viewbox",
+  );
+
   const boundsToggle = page.getByTestId("svg-bounds-toggle");
   await boundsToggle.scrollIntoViewIfNeeded();
   await expect(boundsToggle).toBeVisible();
@@ -103,7 +116,7 @@ test("mid-width layouts retain every toolbar action through compact controls", a
   errors.assertNone();
 });
 
-test("landscape issue sharing keeps both link actions and SVG Bounds reachable", async ({
+test("landscape issue sharing keeps presentation, Bounds, and link actions reachable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 844, height: 390 });
@@ -123,6 +136,7 @@ test("landscape issue sharing keeps both link actions and SVG Bounds reachable",
         editorMode: "code",
         previewMode: "compare",
         showSvgBounds: true,
+        svgPresentationMode: "viewbox",
       },
       { origin: "https://example.test", pathname: "/" },
     ),
@@ -133,6 +147,12 @@ test("landscape issue sharing keeps both link actions and SVG Bounds reachable",
   await waitForPreviewSvg(page);
 
   const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  const viewBoxToggle = page.getByRole("button", {
+    name: "ViewBox Frame",
+    exact: true,
+  });
+  await expectInsideViewport(page, viewBoxToggle);
+  await expect(viewBoxToggle).toHaveAttribute("aria-pressed", "true");
   await expectInsideViewport(page, boundsToggle);
   await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);

@@ -10,6 +10,11 @@ import {
   validateRealmViewport,
   validateScreenAvailableWidth,
 } from "../runtime/realm/channel-protocol.ts";
+import {
+  DEFAULT_SVG_PRESENTATION_MODE,
+  isSvgPresentationMode,
+  type SvgPresentationMode,
+} from "./svg-presentation.ts";
 
 const SHARE_VIEW_VERSION = "1";
 // Decoder-only compatibility for Host-bearing rv=1 links created on the open branch.
@@ -25,6 +30,7 @@ const VIEW_PARAMETER_KEYS = [
   "editorMode",
   "previewMode",
   "showSvgBounds",
+  "svgPresentationMode",
   LEGACY_RENDER_VIEWPORT_KEY,
   ...LEGACY_HOST_LOCK_KEYS,
 ] as const;
@@ -38,6 +44,7 @@ export interface ShareViewDescriptor {
   readonly editorMode: ShareEditorMode;
   readonly previewMode: SharePreviewMode;
   readonly showSvgBounds: boolean;
+  readonly svgPresentationMode: SvgPresentationMode;
 }
 
 export const SHARE_VIEW_DEFAULTS: Readonly<ShareViewDescriptor> = Object.freeze({
@@ -45,6 +52,7 @@ export const SHARE_VIEW_DEFAULTS: Readonly<ShareViewDescriptor> = Object.freeze(
   editorMode: "code",
   previewMode: "svg",
   showSvgBounds: false,
+  svgPresentationMode: DEFAULT_SVG_PRESENTATION_MODE,
 });
 
 export interface ShareViewWarning {
@@ -109,11 +117,13 @@ export function decodeShareView(
   const editorMode = params.get("editorMode");
   const previewMode = params.get("previewMode");
   const showSvgBounds = decodeOptionalBoolean(params, "showSvgBounds", false);
+  const svgPresentationMode = decodeOptionalSvgPresentationMode(params);
   if (
     !isWorkspacePane(workspacePane) ||
     !isEditorMode(editorMode) ||
     !isPreviewMode(previewMode) ||
-    showSvgBounds === null
+    showSvgBounds === null ||
+    svgPresentationMode === null
   ) {
     return invalidShareView();
   }
@@ -125,6 +135,7 @@ export function decodeShareView(
       editorMode,
       previewMode,
       showSvgBounds,
+      svgPresentationMode,
     }),
     warning: null,
   });
@@ -138,6 +149,7 @@ export function encodeShareView(view: ShareViewDescriptor): string {
   params.set("editorMode", normalized.editorMode);
   params.set("previewMode", normalized.previewMode);
   params.set("showSvgBounds", String(normalized.showSvgBounds));
+  params.set("svgPresentationMode", normalized.svgPresentationMode);
   return params.toString();
 }
 
@@ -184,7 +196,8 @@ function normalizeShareView(
     !isWorkspacePane(view.workspacePane) ||
     !isEditorMode(view.editorMode) ||
     !isPreviewMode(view.previewMode) ||
-    typeof view.showSvgBounds !== "boolean"
+    typeof view.showSvgBounds !== "boolean" ||
+    !isSvgPresentationMode(view.svgPresentationMode)
   ) {
     throw new RangeError("View descriptor is invalid.");
   }
@@ -194,7 +207,19 @@ function normalizeShareView(
     editorMode: view.editorMode,
     previewMode: view.previewMode,
     showSvgBounds: view.showSvgBounds,
+    svgPresentationMode: view.svgPresentationMode,
   });
+}
+
+function decodeOptionalSvgPresentationMode(
+  params: URLSearchParams,
+): SvgPresentationMode | null {
+  if (!params.has("svgPresentationMode")) {
+    return DEFAULT_SVG_PRESENTATION_MODE;
+  }
+  if (!hasSingleValue(params, "svgPresentationMode")) return null;
+  const value = params.get("svgPresentationMode");
+  return isSvgPresentationMode(value) ? value : null;
 }
 
 function hasValidLegacyHostState(params: URLSearchParams): boolean {

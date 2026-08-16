@@ -88,7 +88,7 @@
     "workspaceLink": "Copy workspace link",
     "workspaceLinkDesc": "Restores the render workspace on the recipient's device.",
     "issueLink": "Copy issue reproduction link",
-    "issueLinkDesc": "Restores this page, editor tab, Preview mode, and SVG Bounds preference.",
+    "issueLinkDesc": "Restores this page, editor tab, Preview mode, SVG presentation, and Bounds preference.",
     "issueViewNotRestored": "Issue reproduction context could not be restored. Local view defaults are being used.",
     "copied": "Copied!",
     "copyFailed": "Copy failed",
@@ -317,6 +317,11 @@
     "reset": "Reset view",
     "resetZoom": "Reset zoom",
     "fitToView": "Fit to view",
+    "presentationMode": "SVG presentation",
+    "infiniteCanvas": "Infinite Canvas",
+    "infiniteCanvasShort": "Canvas",
+    "viewBoxFrame": "ViewBox Frame",
+    "viewBoxFrameShort": "ViewBox",
     "svgBounds": "Show SVG Bounds"
   },
   "status": {

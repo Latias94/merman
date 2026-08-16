@@ -20,6 +20,10 @@ import type { MermanRuntimeFailure } from "@/src/runtime/merman-core";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import { resolveMermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
 import {
+  SVG_PRESENTATION_MODES,
+  type SvgPresentationMode,
+} from "@/src/lib/svg-presentation";
+import {
   asciiSupportDescription,
   asciiSupportLabelKey,
   type AsciiCapability,
@@ -108,6 +112,12 @@ export function Preview({ className }: PreviewProps) {
   const isDarkMode = useAppStore((state) => state.resolvedTheme === "dark");
   const previewMode = useAppStore((state) => state.previewMode);
   const setPreviewMode = useAppStore((state) => state.setPreviewMode);
+  const svgPresentationMode = useAppStore(
+    (state) => state.svgPresentationMode,
+  );
+  const setSvgPresentationMode = useAppStore(
+    (state) => state.setSvgPresentationMode,
+  );
   const showSvgBounds = useAppStore((state) => state.showSvgBounds);
   const setShowSvgBounds = useAppStore((state) => state.setShowSvgBounds);
   const { openExport } = useExportWorkbench();
@@ -346,11 +356,22 @@ export function Preview({ className }: PreviewProps) {
     canvasMode || showToolbarActions ? (
       <>
         {canvasMode && (
-          <SvgBoundsToggle
-            pressed={showSvgBounds}
-            label={t("preview.svgBounds")}
-            onPressedChange={setShowSvgBounds}
-          />
+          <>
+            <SvgPresentationModeToggle
+              value={svgPresentationMode}
+              groupLabel={t("preview.presentationMode")}
+              infiniteLabel={t("preview.infiniteCanvas")}
+              infiniteShortLabel={t("preview.infiniteCanvasShort")}
+              viewBoxLabel={t("preview.viewBoxFrame")}
+              viewBoxShortLabel={t("preview.viewBoxFrameShort")}
+              onValueChange={setSvgPresentationMode}
+            />
+            <SvgBoundsToggle
+              pressed={showSvgBounds}
+              label={t("preview.svgBounds")}
+              onPressedChange={setShowSvgBounds}
+            />
+          </>
         )}
         {showToolbarActions && (
           <>
@@ -478,6 +499,9 @@ export function Preview({ className }: PreviewProps) {
           canvasMode && "preview-canvas",
         )}
         data-preview-canvas-tone={canvasMode ? canvasTone : undefined}
+        data-svg-presentation-mode={
+          canvasMode ? svgPresentationMode : undefined
+        }
       >
         {loading ? (
           <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
@@ -509,6 +533,7 @@ export function Preview({ className }: PreviewProps) {
                   presentationKey={currentPublicationId}
                   controller={svgViewport}
                   showSvgBounds={showSvgBounds}
+                  presentationMode={svgPresentationMode}
                   renderMountError={(mountError) => (
                     <RenderError
                       engine={t("preview.mermanEngine")}
@@ -556,6 +581,7 @@ export function Preview({ className }: PreviewProps) {
                 canvasTone={canvasTone}
                 isDarkMode={isDarkMode}
                 showSvgBounds={showSvgBounds}
+                presentationMode={svgPresentationMode}
                 t={t}
               />
             )}
@@ -679,7 +705,10 @@ function TabBar({
       </div>
 
       {rightContent && (
-        <div className="scrollbar-thin flex min-h-10 w-full shrink-0 items-center justify-end gap-1 overflow-x-auto border-t px-2 xl:min-h-0 xl:w-auto xl:border-t-0 xl:px-0">
+        <div
+          data-testid="preview-toolbar-actions"
+          className="scrollbar-thin flex min-h-10 w-full shrink-0 items-center justify-start gap-1 overflow-x-auto border-t px-2 xl:ml-auto xl:min-h-0 xl:w-auto xl:min-w-0 xl:max-w-full xl:shrink xl:border-t-0 xl:px-0"
+        >
           {rightContent}
         </div>
       )}
@@ -1117,6 +1146,69 @@ function SvgBoundsToggle({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function SvgPresentationModeToggle({
+  value,
+  groupLabel,
+  infiniteLabel,
+  infiniteShortLabel,
+  viewBoxLabel,
+  viewBoxShortLabel,
+  onValueChange,
+}: {
+  value: SvgPresentationMode;
+  groupLabel: string;
+  infiniteLabel: string;
+  infiniteShortLabel: string;
+  viewBoxLabel: string;
+  viewBoxShortLabel: string;
+  onValueChange(value: SvgPresentationMode): void;
+}) {
+  const labels = {
+    infinite: {
+      label: infiniteLabel,
+      shortLabel: infiniteShortLabel,
+    },
+    viewbox: {
+      label: viewBoxLabel,
+      shortLabel: viewBoxShortLabel,
+    },
+  } satisfies Record<
+    SvgPresentationMode,
+    { readonly label: string; readonly shortLabel: string }
+  >;
+
+  return (
+    <div
+      role="group"
+      aria-label={groupLabel}
+      data-testid="svg-presentation-mode-toggle"
+      className="flex shrink-0 items-center rounded-md border bg-background/70 p-0.5"
+    >
+      {SVG_PRESENTATION_MODES.map((choice) => {
+        const pressed = value === choice;
+        return (
+          <Button
+            key={choice}
+            type="button"
+            variant={pressed ? "secondary" : "ghost"}
+            size="sm"
+            aria-label={labels[choice].label}
+            aria-pressed={pressed}
+            className={cn(
+              "h-7 px-2 text-xs",
+              pressed && "ring-1 ring-ring",
+            )}
+            onClick={() => onValueChange(choice)}
+          >
+            <span className="sm:hidden">{labels[choice].shortLabel}</span>
+            <span className="hidden sm:inline">{labels[choice].label}</span>
+          </Button>
+        );
+      })}
+    </div>
   );
 }
 

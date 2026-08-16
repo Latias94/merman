@@ -72,16 +72,25 @@ test("applies one complete workspace snapshot with one coherent notification", (
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), next);
 });
 
-test("stores one Preview-owned SVG Bounds preference outside workspace snapshots", () => {
-  useAppStore.setState({ showSvgBounds: false });
+test("stores Preview-owned SVG presentation preferences outside workspace snapshots", () => {
+  useAppStore.setState({
+    showSvgBounds: false,
+    svgPresentationMode: "infinite",
+  });
 
   useAppStore.getState().setShowSvgBounds(true);
+  useAppStore.getState().setSvgPresentationMode("viewbox");
 
   assert.equal(useAppStore.getState().showSvgBounds, true);
+  assert.equal(useAppStore.getState().svgPresentationMode, "viewbox");
   assert.equal("showSvgBounds" in selectWorkspaceSnapshot(useAppStore.getState()), false);
+  assert.equal(
+    "svgPresentationMode" in selectWorkspaceSnapshot(useAppStore.getState()),
+    false,
+  );
 });
 
-test("applies startup workspace, view, Bounds preference, and warning in one store transition", () => {
+test("applies startup workspace, view preferences, and warning in one store transition", () => {
   const hydration: StartupShareHydration = {
     workspace: {
       code: "flowchart TD\nA --> B",
@@ -98,6 +107,7 @@ test("applies startup workspace, view, Bounds preference, and warning in one sto
       editorMode: "config",
       previewMode: "compare",
       showSvgBounds: true,
+      svgPresentationMode: "viewbox",
     },
     warning: {
       code: "share-view-not-restored",
@@ -112,6 +122,7 @@ test("applies startup workspace, view, Bounds preference, and warning in one sto
       editorMode: state.editorMode,
       previewMode: state.previewMode,
       showSvgBounds: state.showSvgBounds,
+      svgPresentationMode: state.svgPresentationMode,
       shareViewWarning: state.shareViewWarning,
     });
   });
@@ -126,6 +137,7 @@ test("applies startup workspace, view, Bounds preference, and warning in one sto
       editorMode: hydration.view.editorMode,
       previewMode: hydration.view.previewMode,
       showSvgBounds: hydration.view.showSvgBounds,
+      svgPresentationMode: hydration.view.svgPresentationMode,
       shareViewWarning: hydration.warning,
     },
   ]);

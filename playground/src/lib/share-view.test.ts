@@ -33,9 +33,10 @@ const VIEW: ShareViewDescriptor = {
   editorMode: "config",
   previewMode: "compare",
   showSvgBounds: true,
+  svgPresentationMode: "viewbox",
 };
 
-test("distinguishes an absent view from current and pre-Bounds rv=1 descriptors", () => {
+test("distinguishes an absent view from current and legacy rv=1 descriptors", () => {
   assert.deepEqual(decodeShareView("?utm_source=issue"), {
     status: "absent",
     view: null,
@@ -47,13 +48,17 @@ test("distinguishes an absent view from current and pre-Bounds rv=1 descriptors"
     ),
     {
       status: "valid",
-      view: { ...VIEW, showSvgBounds: false },
+      view: {
+        ...VIEW,
+        showSvgBounds: false,
+        svgPresentationMode: "infinite",
+      },
       warning: null,
     },
   );
 });
 
-test("round-trips pane, editor, Preview mode, and SVG Bounds without Host keys", () => {
+test("round-trips pane, editor, Preview mode, presentation, and SVG Bounds without Host keys", () => {
   const url = createIssueShareUrl(WORKSPACE, VIEW, {
     origin: "https://example.test",
     pathname: "/merman/",
@@ -83,7 +88,11 @@ test("validates and ignores a complete legacy rv=1 Host lock without warning", (
     ),
     {
       status: "valid",
-      view: { ...VIEW, showSvgBounds: false },
+      view: {
+        ...VIEW,
+        showSvgBounds: false,
+        svgPresentationMode: "infinite",
+      },
       warning: null,
     },
   );
@@ -95,6 +104,7 @@ test("rejects malformed or future view state atomically", () => {
     "?rv=2&workspacePane=preview&editorMode=config&previewMode=compare",
     "?rv=1&workspacePane=preview&editorMode=config",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&showSvgBounds=maybe",
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&svgPresentationMode=paper",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=-1&hostHeight=480&screenAvailableWidth=1512",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=4097&hostHeight=480&screenAvailableWidth=1512",
@@ -169,7 +179,11 @@ test("hydrates a legacy Host issue link canonically without an avoidable warning
   assert.deepEqual(applied, [
     {
       workspace: WORKSPACE,
-      view: { ...VIEW, showSvgBounds: false },
+      view: {
+        ...VIEW,
+        showSvgBounds: false,
+        svgPresentationMode: "infinite",
+      },
       warning: null,
     },
   ]);

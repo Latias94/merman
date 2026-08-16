@@ -473,12 +473,13 @@ test("a current issue link restores workspace, view, and SVG Bounds", async ({
         editorMode: "config",
         previewMode: "compare",
         showSvgBounds: true,
+        svgPresentationMode: "viewbox",
       },
       { origin: "https://example.test", pathname: "/" },
     ),
   );
   expect(shared.search).toBe(
-    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&showSvgBounds=true",
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&showSvgBounds=true&svgPresentationMode=viewbox",
   );
 
   await page.goto(`./${shared.search}${shared.hash}`, {
@@ -496,6 +497,21 @@ test("a current issue link restores workspace, view, and SVG Bounds", async ({
   );
   const boundsToggle = page.getByTestId("svg-bounds-toggle");
   await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("button", { name: "ViewBox Frame", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-merman-svg-viewport="true"]')
+        .evaluateAll((elements) =>
+          elements.every(
+            (element) =>
+              element.getAttribute("data-svg-presentation-mode") === "viewbox",
+          ),
+        ),
+    )
+    .toBe(true);
   await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
   await expect(page.getByTestId("share-view-warning")).toHaveCount(0);
   expect(await previewSvgText(page)).toContain("IssueFirst");

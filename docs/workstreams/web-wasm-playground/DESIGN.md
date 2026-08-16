@@ -110,29 +110,31 @@ boundary; this feedback is not represented as a formal cross-engine benchmark.
 Interactive rendering owns one canonical layout environment: `800x600` CSS pixels with
 `screenAvailableWidth=800`. The same frozen values enter the Merman layout environment and Mermaid
 realm, and the opaque Mermaid realm installs the controlled screen width before loading the engine.
-Preview allocation, resizing, pan, pinch, zoom, fit, and SVG Bounds visibility are presentation
-state only; they do not participate in operation identity. Benchmark keeps an independent copy of
-the same canonical values.
+Preview allocation, resizing, pan, pinch, zoom, fit, Infinite Canvas/ViewBox Frame selection, and
+SVG Bounds visibility are presentation state only; they do not participate in operation identity.
+Benchmark keeps an independent copy of the same canonical values.
 
 Sharing has two explicit promises. A `#s2:` workspace link contains the versioned, bounded,
 compressed render-affecting workspace. An issue-reproduction link adds an independently versioned
-`rv=1` query describing the workspace pane, editor tab, Preview mode, and SVG Bounds preference.
-Startup applies the complete workspace and view before React mounts. An invalid or future view
-layer is rejected atomically while a valid workspace remains usable with local navigation defaults.
+`rv=1` query describing the workspace pane, editor tab, Preview mode, SVG presentation mode, and
+SVG Bounds preference. Startup applies the complete workspace and view before React mounts. An
+invalid or future view layer is rejected atomically while a valid workspace remains usable with
+local navigation defaults.
 Legacy Host-bearing Base64, `#s2:`, and `rv=1` links validate their bounded fields, restore the
 supported workspace/view state, ignore the removed Host geometry, and render canonically. Copying
 either link is clipboard-only.
 
 Renderer geometry, operation viewport, responsive presentation, and export dimensions remain
-separate owners. Visual and Compare use the full available surface as an effectively unbounded
-camera canvas without adding a paper background, padding, rounding, or shadow around the diagram.
-The responsive presentation clone preserves a valid renderer `viewBox` byte-for-byte. An SVG
-without `viewBox` may use only preview-local intrinsic width and height. The clone suppresses the
-known Merman default white root background so the grid remains the presentation canvas; the frozen
-artifact, exports, and non-default root backgrounds remain unchanged. SVG Bounds is a
-pointer-transparent presentation outline on the mounted root; it does not synthesize browser
-bounds, expose arbitrary `viewBox` editing, mutate export geometry, or claim to repair
-renderer-owned title clipping.
+separate owners. Visual and Compare share two presentation shells over the same mounted artifact
+and camera state. Infinite Canvas uses the full available grid surface without a finite paper edge.
+ViewBox Frame removes the grid and outlines the exact mounted SVG viewport with a finite surface and
+shadow; it adds no padding, rounding, or renderer geometry. The responsive presentation clone
+preserves a valid renderer `viewBox` byte-for-byte. An SVG without `viewBox` may use only
+preview-local intrinsic width and height. The clone suppresses the known Merman default white root
+background so the selected presentation shell owns the surface; the frozen artifact, exports, and
+non-default root backgrounds remain unchanged. SVG Bounds is an independent pointer-transparent
+outline on the mounted root; neither control synthesizes browser bounds, exposes arbitrary
+`viewBox` editing, mutates export geometry, or claims to repair renderer-owned title clipping.
 
 ## Export Workbench
 

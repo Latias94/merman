@@ -24,6 +24,7 @@ import {
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
 import type { MermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
+import type { SvgPresentationMode } from "@/src/lib/svg-presentation";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
@@ -69,6 +70,7 @@ export function CompareView({
   canvasTone,
   isDarkMode,
   showSvgBounds,
+  presentationMode,
   t,
 }: {
   merman: ComparePaneModel;
@@ -77,6 +79,7 @@ export function CompareView({
   canvasTone: MermaidCanvasTone;
   isDarkMode: boolean;
   showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
   t: (key: string) => string;
 }) {
   return (
@@ -84,6 +87,7 @@ export function CompareView({
       className="preview-canvas h-full overflow-auto overscroll-contain p-2 sm:p-3"
       data-merman-compare-scroll-owner="true"
       data-preview-canvas-tone={canvasTone}
+      data-svg-presentation-mode={presentationMode}
     >
       <div className="grid min-h-full grid-cols-1 gap-3 xl:grid-cols-2">
         {[merman, mermaid].map((pane) => (
@@ -94,6 +98,7 @@ export function CompareView({
             canvasTone={canvasTone}
             isDarkMode={isDarkMode}
             showSvgBounds={showSvgBounds}
+            presentationMode={presentationMode}
             t={t}
           />
         ))}
@@ -108,6 +113,7 @@ function ComparePane({
   canvasTone,
   isDarkMode,
   showSvgBounds,
+  presentationMode,
   t,
 }: {
   model: ComparePaneModel;
@@ -115,6 +121,7 @@ function ComparePane({
   canvasTone: MermaidCanvasTone;
   isDarkMode: boolean;
   showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
   t: (key: string) => string;
 }) {
   const { artifact } = model;
@@ -270,6 +277,7 @@ function ComparePane({
             actions.onRetry();
           }}
           showSvgBounds={showSvgBounds}
+          presentationMode={presentationMode}
           t={t}
         />
       </div>
@@ -307,6 +315,7 @@ function ComparePaneBody({
   onPresentationReady,
   onRetry,
   showSvgBounds,
+  presentationMode,
   t,
 }: {
   artifact: CompareArtifact;
@@ -317,6 +326,7 @@ function ComparePaneBody({
   onPresentationReady(at: number): void;
   onRetry(): void;
   showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
   t: (key: string) => string;
 }) {
   if (artifact.loading && !artifact.svgArtifact) {
@@ -355,6 +365,7 @@ function ComparePaneBody({
       navigationEnabled={!artifact.loading && !artifact.stale}
       onPresentationReady={onPresentationReady}
       showSvgBounds={showSvgBounds}
+      presentationMode={presentationMode}
       renderMountError={(mountError) => (
         <CompareFailure
           detail={mountError.stack ?? null}

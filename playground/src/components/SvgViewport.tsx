@@ -16,6 +16,7 @@ import {
   type SvgDimensions,
 } from "@/src/lib/svg-geometry";
 import type { MermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
+import type { SvgPresentationMode } from "@/src/lib/svg-presentation";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 
 interface Point {
@@ -178,6 +179,7 @@ interface SvgViewportProps {
   onPresentationReady?: (at: number) => void;
   renderMountError?: (error: Error) => ReactNode;
   showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
 }
 
 const PAN_ACTIVATION_DISTANCE = 6;
@@ -194,6 +196,7 @@ export function SvgViewport({
   onPresentationReady,
   renderMountError,
   showSvgBounds,
+  presentationMode,
 }: SvgViewportProps) {
   const prepared = useMemo<PreparedSvgPresentation>(() => {
     if (!artifact) return { error: null, preview: null };
@@ -869,6 +872,7 @@ export function SvgViewport({
       data-auto-fit="true"
       data-merman-svg-viewport="true"
       data-preview-canvas-tone={canvasTone}
+      data-svg-presentation-mode={presentationMode}
       data-zoom="1"
       onAuxClickCapture={handleAnchorClickCapture}
       onClickCapture={handleAnchorClickCapture}
@@ -905,6 +909,7 @@ export function SvgViewport({
             <div
               ref={contentRef}
               className="preview-container relative inline-flex"
+              data-svg-presentation-mode={presentationMode}
             >
               <div ref={shadowHostRef} className="block shrink-0" />
               {showSvgBounds && (

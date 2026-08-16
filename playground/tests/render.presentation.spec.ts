@@ -93,7 +93,7 @@ test("SVG mount failures stay inside the preview pane", async ({ page }) => {
   errors.assertNone();
 });
 
-test("Visual and Compare use full-surface canvas while SVG Bounds stays presentation-only", async ({
+test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as presentation-only state", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
@@ -107,6 +107,10 @@ test("Visual and Compare use full-surface canvas while SVG Bounds stays presenta
   await expect(viewport).toHaveAttribute(
     "data-preview-canvas-tone",
     /^(light|dark)$/u,
+  );
+  await expect(viewport).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "infinite",
   );
   await expect(viewport).not.toHaveCSS("background-image", "none");
   const content = viewport.locator(".preview-container");
@@ -134,6 +138,29 @@ test("Visual and Compare use full-surface canvas while SVG Bounds stays presenta
           ?.querySelector("svg")
           ?.getAttribute("data-test-bounds-artifact") ?? null,
     );
+
+  const infiniteButton = page.getByRole("button", {
+    name: "Infinite Canvas",
+    exact: true,
+  });
+  const viewBoxButton = page.getByRole("button", {
+    name: "ViewBox Frame",
+    exact: true,
+  });
+  await expect(infiniteButton).toHaveAttribute("aria-pressed", "true");
+  await expect(viewBoxButton).toHaveAttribute("aria-pressed", "false");
+  await viewBoxButton.click();
+  await expect(viewBoxButton).toHaveAttribute("aria-pressed", "true");
+  await expect(infiniteButton).toHaveAttribute("aria-pressed", "false");
+  await expect(viewport).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "viewbox",
+  );
+  await expect(viewport).toHaveCSS("background-image", "none");
+  await expect(content).toHaveCSS("outline-style", "solid");
+  await expect(content).not.toHaveCSS("box-shadow", "none");
+  expect(await artifactMarker()).toBe("stable");
+  await expect(viewport).toHaveAttribute("data-zoom", zoomBeforeBounds ?? "");
 
   const boundsToggle = page.getByTestId("svg-bounds-toggle");
   await expect(boundsToggle).toHaveAccessibleName("Show SVG Bounds");
@@ -164,9 +191,23 @@ test("Visual and Compare use full-surface canvas while SVG Bounds stays presenta
     "data-preview-canvas-tone",
     /^(light|dark)$/u,
   );
-  await expect(compareCanvas).not.toHaveCSS("background-image", "none");
+  await expect(compareCanvas).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "viewbox",
+  );
+  await expect(compareCanvas).toHaveCSS("background-image", "none");
   const compareViewports = page.locator('[data-merman-svg-viewport="true"]');
   await expect(compareViewports).toHaveCount(2);
+  await expect
+    .poll(() =>
+      compareViewports.evaluateAll((elements) =>
+        elements.every(
+          (element) =>
+            element.getAttribute("data-svg-presentation-mode") === "viewbox",
+        ),
+      ),
+    )
+    .toBe(true);
   await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
   await expect
     .poll(() =>
@@ -175,13 +216,64 @@ test("Visual and Compare use full-surface canvas while SVG Bounds stays presenta
           const content = element.querySelector(".preview-container");
           return (
             content instanceof HTMLElement &&
-            getComputedStyle(element).backgroundImage !== "none" &&
-            getComputedStyle(content).backgroundColor === "rgba(0, 0, 0, 0)"
+            getComputedStyle(element).backgroundImage === "none" &&
+            getComputedStyle(content).outlineStyle === "solid"
           );
         }),
       ),
     )
     .toBe(true);
+
+  errors.assertNone();
+});
+
+test("desktop Preview actions remain reachable at the minimum pane width", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const separator = page.locator('[data-slot="resizable-handle"]');
+  const separatorBox = await separator.boundingBox();
+  expect(separatorBox).not.toBeNull();
+  await page.mouse.move(
+    separatorBox!.x + separatorBox!.width / 2,
+    separatorBox!.y + separatorBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(960, separatorBox!.y + separatorBox!.height / 2, {
+    steps: 8,
+  });
+  await page.mouse.up();
+
+  const previewPanel = page.locator("#preview-mode-panel");
+  await expect
+    .poll(async () => (await previewPanel.boundingBox())?.width ?? 0)
+    .toBeLessThanOrEqual(330);
+  const actions = page.getByTestId("preview-toolbar-actions");
+  await expect
+    .poll(() =>
+      actions.evaluate((element) => element.scrollWidth > element.clientWidth),
+    )
+    .toBe(true);
+
+  const panelBox = await previewPanel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  const buttons = actions.getByRole("button");
+  const buttonCount = await buttons.count();
+  expect(buttonCount).toBeGreaterThan(0);
+  for (let index = 0; index < buttonCount; index += 1) {
+    const button = buttons.nth(index);
+    await button.scrollIntoViewIfNeeded();
+    const buttonBox = await button.boundingBox();
+    expect(buttonBox).not.toBeNull();
+    expect(buttonBox!.x).toBeGreaterThanOrEqual(panelBox!.x - 1);
+    expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(
+      panelBox!.x + panelBox!.width + 1,
+    );
+  }
 
   errors.assertNone();
 });
