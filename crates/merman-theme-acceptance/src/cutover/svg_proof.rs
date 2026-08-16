@@ -1385,6 +1385,7 @@ fn sequence_static_rect_route_observation(
     let property = facet_property(route.facet());
     let value = sequence_stylesheet_property(document, &selector, property)?;
     let mut target_regions = Vec::with_capacity(surfaces.len());
+    let mut activation_fill_region = None;
     let mut terminal = b"merman.c6-route-sequence-static-rect-surfaces.v1\0".to_vec();
     append_len_prefixed(&mut terminal, route.target().id().as_bytes());
     for (identity, rect) in surfaces {
@@ -1402,10 +1403,20 @@ fn sequence_static_rect_route_observation(
             )
         })?;
         let region = element_bounds(rect, route.facet())?;
+        if route.target() == ThemeTarget::Activation
+            && route.facet() == ThemeRouteCutoverFacet::Fill
+            && identity == "activation0"
+        {
+            let [x, y, width, height] = raw_element_bounds(rect)?.rect(0.0)?;
+            activation_fill_region = Some([x, y, width, width.min(height)]);
+        }
         append_len_prefixed(&mut terminal, identity.as_bytes());
         append_len_prefixed(&mut terminal, base_value.as_bytes());
         append_rect(&mut terminal, region);
         target_regions.push(region);
+    }
+    if let Some(region) = activation_fill_region {
+        target_regions = vec![region];
     }
     append_len_prefixed(&mut terminal, selector.as_bytes());
     append_len_prefixed(&mut terminal, value.as_bytes());
@@ -1444,6 +1455,13 @@ fn sequence_stylesheet_property<'a>(
 mod tests {
     use super::*;
 
+    const NESTED_ACTIVATION_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 120">
+<style>#fixture .activation0,#fixture .activation1,#fixture .activation2{fill:#dc2626;}</style>
+<rect x="10" y="10" width="10" height="100" fill="#edf2ae" class="activation0"/>
+<rect x="15" y="40" width="10" height="50" fill="#edf2ae" class="activation1"/>
+<rect x="20" y="60" width="10" height="20" fill="#edf2ae" class="activation2"/>
+</svg>"##;
+
     const ALL_POINT_MARKER_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 100">
 <style>#fixture .marker{fill:#333333;stroke:#333333;}</style>
 <defs>
@@ -1454,6 +1472,46 @@ mod tests {
 <path data-edge="true" data-id="L_B_C_0" data-look="classic" d="M 0 20 L 10 20" marker-start="url(#fixture-pointStart)" marker-end="url(#fixture-pointEnd)"/>
 <path data-edge="true" data-id="L_C_D_0" data-look="classic" d="M 0 30 L 10 30" marker-start="url(#fixture-pointStart)" marker-end="url(#fixture-pointEnd)"/>
 </svg>"##;
+
+    fn sequence_activation_fill_route() -> ThemeRouteCutoverDescriptor {
+        legacy_replacing_typed_theme_routes()
+            .expect("derive route inventory")
+            .into_iter()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::SEQUENCE
+                    && route.target() == ThemeTarget::Activation
+                    && route.facet() == ThemeRouteCutoverFacet::Fill
+                    && route.value() == ThemeRouteCutoverValue::Solid
+            })
+            .expect("Sequence Activation fill route")
+    }
+
+    fn nested_activation_observation(svg: &str) -> SequenceRouteObservation {
+        let document = roxmltree::Document::parse(svg).expect("parse nested activation SVG");
+        sequence_static_rect_route_observation(&document, sequence_activation_fill_route())
+            .expect("observe nested activation fill")
+    }
+
+    #[test]
+    fn sequence_activation_fill_uses_one_non_overlapping_png_region() {
+        let observation = nested_activation_observation(NESTED_ACTIVATION_SVG);
+
+        assert_eq!(observation.value, SOLID_FILL.css);
+        assert_eq!(observation.target_regions, vec![[10.0, 10.0, 10.0, 10.0]]);
+    }
+
+    #[test]
+    fn sequence_activation_fill_roi_does_not_narrow_terminal_svg_proof() {
+        let baseline = nested_activation_observation(NESTED_ACTIVATION_SVG);
+        let changed_svg = NESTED_ACTIVATION_SVG.replace(
+            r##"fill="#edf2ae" class="activation2""##,
+            r##"fill="#fef3c7" class="activation2""##,
+        );
+        let changed = nested_activation_observation(&changed_svg);
+
+        assert_eq!(changed.target_regions, baseline.target_regions);
+        assert_ne!(changed.terminal_digest, baseline.terminal_digest);
+    }
 
     #[test]
     fn marker_witness_rejects_all_shapes_mapped_to_point() {
