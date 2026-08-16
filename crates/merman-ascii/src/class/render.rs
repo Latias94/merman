@@ -2580,23 +2580,7 @@ fn charge_class_model_work(model: &ClassDiagram, resources: &mut ResourceContext
         .and_then(|value| value.checked_add(model.relations.len()))
         .and_then(|value| value.checked_add(model.namespaces.len()))
         .ok_or_else(|| work_overflow(resources))?;
-    resources.charge_layout_work(item_count.max(1))?;
-    charge_work_product(
-        resources,
-        model.classes.len(),
-        model.namespaces.len().max(1),
-    )?;
-    charge_work_product(
-        resources,
-        model.relations.len(),
-        model.namespaces.len().max(1),
-    )?;
-    charge_work_product(
-        resources,
-        model.namespaces.len(),
-        model.namespaces.len().max(1),
-    )?;
-    Ok(())
+    resources.charge_layout_work(item_count.max(1))
 }
 
 fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -> Result<()> {
@@ -2674,10 +2658,6 @@ fn preflight_class_member_text(
         }
     }
     Ok(())
-}
-
-fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usize) -> Result<()> {
-    resources.charge_layout_work_product(left, right)
 }
 
 fn grid_overflow(resources: &ResourceContext) -> AsciiError {
@@ -2844,7 +2824,7 @@ mod tests {
         let boxes = render_class_boxes(
             model,
             settings,
-            &aliases,
+            aliases,
             &mut deferred,
             &mut resources,
             None,
@@ -2859,7 +2839,7 @@ mod tests {
                 relation_layout(
                     model,
                     relation,
-                    &aliases,
+                    aliases,
                     options.terminal_width_profile,
                     &mut deferred,
                     &resources,

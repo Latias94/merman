@@ -15,7 +15,7 @@ use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_
 use crate::{AsciiError, Result};
 use merman_core::OperationPhase;
 use merman_core::models::class_diagram::{ClassDiagram, Namespace};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 pub(super) type NamespaceFacadeAliases = BTreeMap<String, String>;
 
@@ -23,9 +23,150 @@ struct NamespaceRenderContext<'model, 'render> {
     model: &'model ClassDiagram,
     settings: ClassRenderSettings<'render>,
     namespace_facade_aliases: &'model NamespaceFacadeAliases,
+    render_plan: &'render NamespaceRenderPlan<'model>,
     scope_index: &'render NamespaceScopeIndex<'model>,
     note_by_id: ClassNoteIndex<'model>,
     execution: Option<AsciiExecution<'render>>,
+}
+
+#[derive(Debug)]
+struct NamespaceRenderPlan<'a> {
+    children: HashMap<&'a str, Vec<&'a Namespace>>,
+    roots: Vec<&'a Namespace>,
+    postorder: Vec<&'a Namespace>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NamespaceVisitState {
+    Visiting,
+    Rendered,
+}
+
+impl<'a> NamespaceRenderPlan<'a> {
+    fn new(
+        model: &'a ClassDiagram,
+        resources: &ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
+    ) -> Result<Self> {
+        resources.transaction(|resources| Self::new_in_transaction(model, resources, execution))
+    }
+
+    fn new_in_transaction(
+        model: &'a ClassDiagram,
+        resources: &ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
+    ) -> Result<Self> {
+        checkpoint_layout(execution)?;
+        let namespace_count = model.namespaces.len();
+        let stack_capacity = namespace_count
+            .checked_mul(2)
+            .ok_or_else(|| work_overflow(resources))?;
+        let plan_work = namespace_count
+            .checked_mul(5)
+            .ok_or_else(|| work_overflow(resources))?;
+        resources.charge_layout_work(plan_work)?;
+
+        let mut child_counts = HashMap::new();
+        child_counts
+            .try_reserve(namespace_count)
+            .map_err(|_| layout_allocation_failed())?;
+        let mut roots = Vec::new();
+        roots
+            .try_reserve_exact(namespace_count)
+            .map_err(|_| layout_allocation_failed())?;
+        for namespace in model.namespaces.values() {
+            checkpoint_layout(execution)?;
+            if let Some(parent) = namespace.parent.as_deref() {
+                let count = child_counts.entry(parent).or_insert(0usize);
+                *count = count
+                    .checked_add(1)
+                    .ok_or_else(|| work_overflow(resources))?;
+            } else {
+                roots.push(namespace);
+            }
+        }
+
+        let mut children = HashMap::new();
+        children
+            .try_reserve(child_counts.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for (parent, child_count) in child_counts {
+            let mut entries = Vec::new();
+            entries
+                .try_reserve_exact(child_count)
+                .map_err(|_| layout_allocation_failed())?;
+            children.insert(parent, entries);
+        }
+        for namespace in model.namespaces.values() {
+            checkpoint_layout(execution)?;
+            if let Some(parent) = namespace.parent.as_deref() {
+                children
+                    .get_mut(parent)
+                    .ok_or_else(inconsistent_class_namespace_ownership)?
+                    .push(namespace);
+            }
+        }
+
+        let mut states = HashMap::new();
+        states
+            .try_reserve(namespace_count)
+            .map_err(|_| layout_allocation_failed())?;
+        let mut postorder = Vec::new();
+        postorder
+            .try_reserve_exact(namespace_count)
+            .map_err(|_| layout_allocation_failed())?;
+        let mut stack = Vec::new();
+        stack
+            .try_reserve_exact(stack_capacity)
+            .map_err(|_| layout_allocation_failed())?;
+
+        for root in &roots {
+            stack.push((*root, false, 1usize));
+            while let Some((namespace, expanded, depth)) = stack.pop() {
+                checkpoint_layout(execution)?;
+                if expanded {
+                    states.insert(namespace.id.as_str(), NamespaceVisitState::Rendered);
+                    postorder.push(namespace);
+                    continue;
+                }
+                match states.get(namespace.id.as_str()).copied() {
+                    Some(NamespaceVisitState::Visiting) => {
+                        return Err(inconsistent_class_namespace_ownership());
+                    }
+                    Some(NamespaceVisitState::Rendered) => continue,
+                    None => {}
+                }
+                resources.check_nesting_depth(depth)?;
+                states.insert(namespace.id.as_str(), NamespaceVisitState::Visiting);
+                stack.push((namespace, true, depth));
+                if let Some(child_namespaces) = children.get(namespace.id.as_str()) {
+                    let child_depth = depth
+                        .checked_add(1)
+                        .ok_or_else(|| nesting_overflow(resources))?;
+                    for child in child_namespaces.iter().rev() {
+                        stack.push((*child, false, child_depth));
+                    }
+                }
+            }
+        }
+
+        if postorder.len() != namespace_count {
+            return Err(inconsistent_class_namespace_ownership());
+        }
+
+        Ok(Self {
+            children,
+            roots,
+            postorder,
+        })
+    }
+
+    fn children(&self, namespace_id: &str) -> &[&'a Namespace] {
+        self.children
+            .get(namespace_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Debug)]
@@ -287,10 +428,7 @@ pub(super) fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
     model.namespaces.values().any(|namespace| {
         !namespace.class_ids.is_empty()
             || !namespace.note_ids.is_empty()
-            || model
-                .namespaces
-                .values()
-                .any(|child| child.parent.as_deref() == Some(namespace.id.as_str()))
+            || namespace.parent.is_some()
     })
 }
 
@@ -422,6 +560,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     execution: Option<AsciiExecution<'_>>,
 ) -> Result<String> {
     checkpoint_layout(execution)?;
+    let render_plan = NamespaceRenderPlan::new(model, resources, execution)?;
     let scope_index =
         NamespaceScopeIndex::new(model, namespace_facade_aliases, resources, execution)?;
     let note_by_id = ClassNoteIndex::new(&model.notes, resources)?;
@@ -429,6 +568,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
         model,
         settings,
         namespace_facade_aliases,
+        render_plan: &render_plan,
         scope_index: &scope_index,
         note_by_id,
         execution,
@@ -647,18 +787,33 @@ fn render_namespaced_class_boxes<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RenderedClassBox>> {
-    let mut rendered_namespace_ids = HashSet::new();
-    rendered_namespace_ids
+    let mut rendered_namespaces = HashMap::new();
+    rendered_namespaces
         .try_reserve(context.model.namespaces.len())
         .map_err(|_| layout_allocation_failed())?;
-    let mut visiting_namespace_ids = HashSet::new();
-    visiting_namespace_ids
-        .try_reserve(context.model.namespaces.len())
-        .map_err(|_| layout_allocation_failed())?;
+    for namespace in &context.render_plan.postorder {
+        checkpoint_layout(context.execution)?;
+        let child_namespaces = context.render_plan.children(namespace.id.as_str());
+        let mut children = Vec::new();
+        children
+            .try_reserve_exact(child_namespaces.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for child in child_namespaces {
+            children.push(
+                rendered_namespaces
+                    .remove(child.id.as_str())
+                    .ok_or_else(inconsistent_class_namespace_ownership)?,
+            );
+        }
+        let rendered =
+            render_namespace_box(context, namespace, children, deferred_text, resources)?;
+        rendered_namespaces.insert(namespace.id.as_str(), rendered);
+    }
+
     let mut boxes = Vec::new();
     let box_capacity = context
-        .model
-        .namespaces
+        .render_plan
+        .roots
         .len()
         .checked_add(context.model.classes.len())
         .and_then(|value| value.checked_add(context.model.interfaces.len()))
@@ -668,47 +823,23 @@ fn render_namespaced_class_boxes<'a>(
         .try_reserve_exact(box_capacity)
         .map_err(|_| layout_allocation_failed())?;
 
-    for namespace in context
-        .model
-        .namespaces
-        .values()
-        .filter(|namespace| namespace.parent.is_none())
-    {
+    for namespace in &context.render_plan.roots {
         checkpoint_layout(context.execution)?;
-        boxes.push(render_namespace_box(
-            context,
-            namespace,
-            &mut rendered_namespace_ids,
-            &mut visiting_namespace_ids,
-            1,
-            deferred_text,
-            resources,
-        )?);
+        boxes.push(
+            rendered_namespaces
+                .remove(namespace.id.as_str())
+                .ok_or_else(inconsistent_class_namespace_ownership)?,
+        );
     }
-
-    for namespace in context.model.namespaces.values() {
-        checkpoint_layout(context.execution)?;
-        if !rendered_namespace_ids.contains(namespace.id.as_str()) {
-            boxes.push(render_namespace_box(
-                context,
-                namespace,
-                &mut rendered_namespace_ids,
-                &mut visiting_namespace_ids,
-                1,
-                deferred_text,
-                resources,
-            )?);
-        }
+    if !rendered_namespaces.is_empty() {
+        return Err(inconsistent_class_namespace_ownership());
     }
 
     for class in context.model.classes.values().filter(|class| {
         !context
             .namespace_facade_aliases
             .contains_key(class.id.as_str())
-            && class
-                .parent
-                .as_ref()
-                .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
+            && class.parent.is_none()
     }) {
         checkpoint_layout(context.execution)?;
         boxes.push(render_class_box(
@@ -729,11 +860,12 @@ fn render_namespaced_class_boxes<'a>(
             resources,
         )?);
     }
-    for note in context.model.notes.iter().filter(|note| {
-        note.parent
-            .as_ref()
-            .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
-    }) {
+    for note in context
+        .model
+        .notes
+        .iter()
+        .filter(|note| note.parent.is_none())
+    {
         checkpoint_layout(context.execution)?;
         boxes.push(render_note_box(
             note,
@@ -750,54 +882,11 @@ fn render_namespaced_class_boxes<'a>(
 fn render_namespace_box<'model>(
     context: &NamespaceRenderContext<'model, '_>,
     namespace: &'model Namespace,
-    rendered_namespace_ids: &mut HashSet<String>,
-    visiting_namespace_ids: &mut HashSet<String>,
-    depth: usize,
+    mut children: Vec<RenderedClassBox>,
     deferred_text: &mut DeferredTextRegistry<'model>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
     checkpoint_layout(context.execution)?;
-    resources.check_nesting_depth(depth)?;
-    resources.charge_layout_work(context.model.namespaces.len().max(1))?;
-    if !visiting_namespace_ids.insert(namespace.id.clone()) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "cyclic class namespace nesting",
-        });
-    }
-    rendered_namespace_ids.insert(namespace.id.clone());
-    let child_capacity = context
-        .model
-        .namespaces
-        .len()
-        .checked_add(namespace.class_ids.len())
-        .and_then(|value| value.checked_add(namespace.note_ids.len()))
-        .ok_or_else(|| work_overflow(resources))?;
-    let mut children = Vec::new();
-    children
-        .try_reserve_exact(child_capacity)
-        .map_err(|_| layout_allocation_failed())?;
-
-    for child in context
-        .model
-        .namespaces
-        .values()
-        .filter(|child| child.parent.as_deref() == Some(namespace.id.as_str()))
-    {
-        checkpoint_layout(context.execution)?;
-        children.push(render_namespace_box(
-            context,
-            child,
-            rendered_namespace_ids,
-            visiting_namespace_ids,
-            depth
-                .checked_add(1)
-                .ok_or_else(|| nesting_overflow(resources))?,
-            deferred_text,
-            resources,
-        )?);
-    }
-
     let mut direct_boxes = Vec::new();
     let direct_box_capacity = namespace
         .class_ids
@@ -806,6 +895,9 @@ fn render_namespace_box<'model>(
         .ok_or_else(|| work_overflow(resources))?;
     direct_boxes
         .try_reserve_exact(direct_box_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    children
+        .try_reserve(direct_box_capacity)
         .map_err(|_| layout_allocation_failed())?;
     for class_id in &namespace.class_ids {
         checkpoint_layout(context.execution)?;
@@ -928,7 +1020,6 @@ fn render_namespace_box<'model>(
         children.push(relation_component);
     }
 
-    visiting_namespace_ids.remove(namespace.id.as_str());
     render_namespace_container_box(
         namespace,
         children,
@@ -1185,8 +1276,10 @@ pub(super) fn namespace_facade_aliases(model: &ClassDiagram) -> &NamespaceFacade
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::options::AsciiRenderOptions;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::diagram::RenderSemanticModel;
+    use merman_core::resources::ResourceProfile;
     use merman_core::{Engine, ParseOptions};
 
     fn parsed_class_model(input: &str) -> ClassDiagram {
@@ -1200,6 +1293,109 @@ mod tests {
         }
     }
 
+    fn deeply_nested_namespace_model(depth: usize) -> ClassDiagram {
+        let mut model = parsed_class_model("classDiagram\nnamespace Seed {}");
+        model.namespaces.clear();
+        for index in 0..depth {
+            let id = format!("n{index}");
+            model.namespaces.insert(
+                id.clone(),
+                Namespace {
+                    id: id.clone(),
+                    label: id.clone(),
+                    dom_id: id,
+                    class_ids: Vec::new(),
+                    note_ids: Vec::new(),
+                    parent: index.checked_sub(1).map(|parent| format!("n{parent}")),
+                    explicit: true,
+                },
+            );
+        }
+        model
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn namespace_render_is_iterative_and_plan_admits_exact_linear_work() {
+        const PLAN_DEPTH: usize = 512;
+        const RENDER_DEPTH: usize = 128;
+
+        std::thread::Builder::new()
+            .name("class-namespace-plan-small-stack".to_string())
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let model = deeply_nested_namespace_model(PLAN_DEPTH);
+                let unbounded =
+                    AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+                let measured = ResourceContext::new(unbounded);
+                let plan = NamespaceRenderPlan::new(
+                    &model,
+                    &measured,
+                    Some(AsciiExecution::for_test(&unbounded)),
+                )
+                .expect("deep namespace planning should not depend on the thread stack");
+                let exact_work = PLAN_DEPTH * 5;
+                assert_eq!(measured.layout_work_used(), exact_work);
+                assert_eq!(plan.roots.len(), 1);
+                assert_eq!(plan.roots[0].id, "n0");
+                assert_eq!(
+                    plan.postorder
+                        .first()
+                        .map(|namespace| namespace.id.as_str()),
+                    Some("n511")
+                );
+                assert_eq!(
+                    plan.postorder.last().map(|namespace| namespace.id.as_str()),
+                    Some("n0")
+                );
+
+                let exact_policy = unbounded
+                    .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+                    .expect("exact namespace-plan work limit should be valid");
+                let exact = ResourceContext::new(exact_policy);
+                NamespaceRenderPlan::new(
+                    &model,
+                    &exact,
+                    Some(AsciiExecution::for_test(&exact_policy)),
+                )
+                .expect("exact namespace-plan work should build");
+                assert_eq!(exact.layout_work_used(), exact_work);
+
+                let below_policy = unbounded
+                    .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+                    .expect("max-minus-one namespace-plan work limit should be valid");
+                let below = ResourceContext::new(below_policy);
+                let error = NamespaceRenderPlan::new(
+                    &model,
+                    &below,
+                    Some(AsciiExecution::for_test(&below_policy)),
+                )
+                .expect_err("max-minus-one namespace-plan work must reject");
+                assert!(matches!(
+                    error,
+                    AsciiError::ResourceLimitExceeded(details)
+                        if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                            && details.actual == exact_work
+                            && details.max == exact_work - 1
+                ));
+                assert_eq!(below.layout_work_used(), 0);
+                assert_eq!(below.document_cells_used(), 0);
+
+                let render_model = deeply_nested_namespace_model(RENDER_DEPTH);
+                let rendered = crate::class::render::render_class_diagram_with_execution(
+                    &render_model,
+                    &AsciiRenderOptions::ascii(),
+                    AsciiExecution::for_test(&unbounded),
+                )
+                .expect("deep namespace rendering should not depend on the thread stack");
+                assert!(rendered.contains("n0"));
+                assert!(rendered.contains("n127"));
+            })
+            .expect("the small-stack thread should start")
+            .join()
+            .expect("the small-stack thread should finish");
+    }
+
     #[test]
     fn namespace_scope_index_admits_exact_work_and_rolls_back_n_minus_one() {
         let model = parsed_class_model(
@@ -1210,7 +1406,7 @@ mod tests {
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let measured = ResourceContext::new(unbounded);
-        NamespaceScopeIndex::new(&model, &aliases, &measured, None)
+        NamespaceScopeIndex::new(&model, aliases, &measured, None)
             .expect("unbounded namespace index should build");
         let exact_work = measured.layout_work_used();
         assert!(exact_work > 1);
@@ -1219,7 +1415,7 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact namespace-index work limit should be valid");
         let exact = ResourceContext::new(exact_policy);
-        NamespaceScopeIndex::new(&model, &aliases, &exact, None)
+        NamespaceScopeIndex::new(&model, aliases, &exact, None)
             .expect("exact namespace-index work should build");
         assert_eq!(exact.layout_work_used(), exact_work);
 
@@ -1231,7 +1427,7 @@ mod tests {
             .charge_layout_work(1)
             .expect("test checkpoint should be admitted");
         let checkpoint = below.layout_work_used();
-        let error = NamespaceScopeIndex::new(&model, &aliases, &below, None)
+        let error = NamespaceScopeIndex::new(&model, aliases, &below, None)
             .expect_err("max-minus-one namespace-index work must reject");
         assert!(matches!(
             error,
@@ -1263,7 +1459,7 @@ mod tests {
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
 
-        let error = NamespaceScopeIndex::new(&model, &aliases, &resources, None)
+        let error = NamespaceScopeIndex::new(&model, aliases, &resources, None)
             .expect_err("cyclic namespace parents must reject while building the scope index");
         assert!(matches!(
             error,
