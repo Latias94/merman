@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { ThemeName } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
+import type {
+  LockedRenderEnvironment,
+  ShareViewWarning,
+  StartupShareHydration,
+} from "../lib/share-view.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -53,6 +58,9 @@ export interface AppState {
   diagramFont: DiagramFont;
   setDiagramFont: (font: DiagramFont) => void;
   applyWorkspaceSnapshot: (snapshot: WorkspaceSnapshot) => void;
+  sharedRenderEnvironmentLock: Readonly<LockedRenderEnvironment> | null;
+  shareViewWarning: Readonly<ShareViewWarning> | null;
+  applyStartupShareHydration: (hydration: StartupShareHydration) => void;
 
   // Workbench theme
   uiTheme: UITheme;
@@ -173,6 +181,17 @@ export const useAppStore = create<AppState>((set) => ({
   diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
   setDiagramFont: (diagramFont) => set({ diagramFont }),
   applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot }),
+  sharedRenderEnvironmentLock: null,
+  shareViewWarning: null,
+  applyStartupShareHydration: ({ workspace, view, warning }) =>
+    set({
+      ...workspace,
+      workspacePane: view.workspacePane,
+      editorMode: view.editorMode,
+      previewMode: view.previewMode,
+      sharedRenderEnvironmentLock: view.lockedEnvironment,
+      shareViewWarning: warning,
+    }),
 
   // Workbench theme
   uiTheme: initialUITheme,

@@ -6,6 +6,7 @@ import {
   useAppStore,
   type WorkspaceSnapshot,
 } from "./index.ts";
+import type { StartupShareHydration } from "../lib/share-view.ts";
 
 test("presentation setters update only their own axis", () => {
   useAppStore.setState({
@@ -96,6 +97,61 @@ test("stores viewport intent but keeps measured Host pixels transient", () => {
   });
   assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).renderViewportMode, "host");
   assert.equal("hostRenderViewport" in selectWorkspaceSnapshot(useAppStore.getState()), false);
+});
+
+test("applies startup workspace, view, lock, and warning in one store transition", () => {
+  const hydration: StartupShareHydration = {
+    workspace: {
+      code: "flowchart TD\nA --> B",
+      mermaidConfig: '{"look":"neo"}',
+      diagramTheme: "forest",
+      diagramFont: "arial",
+      presentationProfileId: "future-profile",
+      presentationThemePresetId: "future-theme",
+      renderViewportMode: "host",
+      svgPipeline: "readable",
+      textMeasurementMode: "headless",
+    },
+    view: {
+      workspacePane: "preview",
+      editorMode: "config",
+      previewMode: "compare",
+      lockedEnvironment: {
+        width: 640,
+        height: 480,
+        screenAvailableWidth: 1512,
+      },
+    },
+    warning: {
+      code: "share-view-not-restored",
+      message: "warning",
+    },
+  };
+  const notifications: Array<Record<string, unknown>> = [];
+  const unsubscribe = useAppStore.subscribe((state) => {
+    notifications.push({
+      workspace: selectWorkspaceSnapshot(state),
+      workspacePane: state.workspacePane,
+      editorMode: state.editorMode,
+      previewMode: state.previewMode,
+      sharedRenderEnvironmentLock: state.sharedRenderEnvironmentLock,
+      shareViewWarning: state.shareViewWarning,
+    });
+  });
+
+  useAppStore.getState().applyStartupShareHydration(hydration);
+  unsubscribe();
+
+  assert.deepEqual(notifications, [
+    {
+      workspace: hydration.workspace,
+      workspacePane: hydration.view.workspacePane,
+      editorMode: hydration.view.editorMode,
+      previewMode: hydration.view.previewMode,
+      sharedRenderEnvironmentLock: hydration.view.lockedEnvironment,
+      shareViewWarning: hydration.warning,
+    },
+  ]);
 });
 
 function presentationState() {
