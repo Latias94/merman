@@ -28,7 +28,7 @@ use super::c6_spotless_state_proof::{
 };
 use super::{
     C6CompletedRenderGroup, C6ProofError, C6ProofResult, C6RenderGroupAdapter, C6RenderGroupWork,
-    FamilyEvidenceRequirements, bind_target_artifact, brutalist_solid as fixture_solid,
+    FamilyEvidenceRequirements, bind_document_svg_artifact, brutalist_solid as fixture_solid,
     c6_renderer, complete_c6_svg_png_render_group, load_render_group_fixture, portable_svg_request,
     prove_portable_family_evidence, prove_render_group,
     render_brutalist_document as render_c6_document,
@@ -269,10 +269,7 @@ fn prove_spotless_flowchart_rendered_document(
         )?;
         (document, identity, expected)
     };
-    let artifact = bind_target_artifact(
-        document.svg().as_bytes(),
-        document.standalone_svg_admission(),
-    )?;
+    let artifact = bind_document_svg_artifact(&document);
     let svg_proof = prove_spotless_flowchart_svg(expected, artifact)?;
     Ok(SpotlessFlowchartRenderedDocument {
         expected,
@@ -303,10 +300,7 @@ fn prove_spotless_state_rendered_document(
         )?;
         (document, identity, expected)
     };
-    let artifact = bind_target_artifact(
-        document.svg().as_bytes(),
-        document.standalone_svg_admission(),
-    )?;
+    let artifact = bind_document_svg_artifact(&document);
     let svg_proof = prove_spotless_state_svg(expected, artifact)?;
     Ok(SpotlessStateRenderedDocument {
         expected,
@@ -344,10 +338,7 @@ fn prove_cyberpunk_state_rendered_document(
                 "production State evidence lacks a native-filter receipt",
             )
         })?;
-    let artifact = bind_target_artifact(
-        document.svg().as_bytes(),
-        document.standalone_svg_admission(),
-    )?;
+    let artifact = bind_document_svg_artifact(&document);
     let svg_proof = prove_cyberpunk_state_svg(expected, artifact, native_filter)?;
     Ok(CyberpunkStateRenderedDocument {
         expected,

@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
+use merman::__theme_acceptance::TargetArtifactView;
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontAssetSpec,
@@ -83,16 +84,12 @@ impl NativeExportSmokeError {
 pub(crate) type C6ProofError = NativeExportSmokeError;
 pub(crate) type C6ProofResult<T> = Result<T, C6ProofError>;
 
-fn bind_target_artifact<'a>(
-    bytes: &'a [u8],
-    receipt: &'a TargetAdmissionReceipt,
-) -> C6ProofResult<C6TargetArtifact<'a>> {
-    C6TargetArtifact::new(bytes, receipt).ok_or_else(|| {
-        C6ProofError::new(
-            "target-artifact-receipt",
-            "target artifact bytes do not match the production admission receipt",
-        )
-    })
+pub(super) fn bind_document_svg_artifact(document: &RenderedDocument) -> C6TargetArtifact<'_> {
+    C6TargetArtifact::new(TargetArtifactView::from_rendered_document(document))
+}
+
+fn bind_raster_artifact(output: &merman::RasterOutput) -> C6TargetArtifact<'_> {
+    C6TargetArtifact::new(TargetArtifactView::from_raster_output(output))
 }
 
 /// Coarse result for the representative PNG/JPEG/PDF native export smoke.
@@ -874,24 +871,14 @@ fn complete_c6_svg_png_render_group(
                 )
                 .map_err(|error| C6ProofError::new("png-render", error.to_string())),
         )?;
-        let target_artifact = prove_target(
-            &group.key,
-            ExpectedOutputTarget::Png,
-            &png_dependents,
-            bind_target_artifact(output.bytes(), output.admission()),
-        )?;
+        let target_artifact = bind_raster_artifact(&output);
         let target_proof = prove_target(
             &group.key,
             ExpectedOutputTarget::Png,
             &png_dependents,
             prove_png_artifact(document.svg(), target_artifact, output.plan()),
         )?;
-        Some(C6TargetObservation::from_target_receipt(
-            &group.key,
-            identity.clone(),
-            output.admission(),
-            target_proof,
-        )?)
+        Some(C6TargetObservation::new(identity.clone(), target_proof))
     };
 
     prove_shared_document_identity(
@@ -899,7 +886,7 @@ fn complete_c6_svg_png_render_group(
         document.standalone_svg_admission(),
         png_observation
             .as_ref()
-            .map(|observation| &observation.target_receipt),
+            .map(C6TargetObservation::target_receipt),
     )?;
     let group_receipt = C6RenderGroupReceipt::seal(
         group.key.clone(),
@@ -907,12 +894,7 @@ fn complete_c6_svg_png_render_group(
         identity,
         document.standalone_svg_admission(),
     )?;
-    let svg_observation = C6TargetObservation::from_target_receipt(
-        &group.key,
-        identity.clone(),
-        document.standalone_svg_admission(),
-        standalone_svg_proof,
-    )?;
+    let svg_observation = C6TargetObservation::new(identity.clone(), standalone_svg_proof);
 
     let mut cells = Vec::with_capacity(group.cells.len());
     for enforced in &group.cells {
@@ -1035,10 +1017,7 @@ fn prove_brutalist_flowchart_rendered_document<'a>(
         DiagramFamilyId::FLOWCHART,
         FamilyEvidenceRequirements::BRUTALIST_FLOWCHART,
     )?;
-    let artifact = bind_target_artifact(
-        document.svg().as_bytes(),
-        document.standalone_svg_admission(),
-    )?;
+    let artifact = bind_document_svg_artifact(&document);
     let svg_proof = prove_brutalist_flowchart_svg(&contract, artifact)?;
 
     Ok(BrutalistFlowchartRenderedDocument {
@@ -1068,10 +1047,7 @@ fn prove_brutalist_state_rendered_document<'a>(
     let renderer = c6_renderer();
     let document = render_brutalist_document(&renderer, source, &theme, portable_svg_request())?;
     let identity = prove_brutalist_state_evidence(document.evidence(), &theme)?;
-    let artifact = bind_target_artifact(
-        document.svg().as_bytes(),
-        document.standalone_svg_admission(),
-    )?;
+    let artifact = bind_document_svg_artifact(&document);
     let svg_proof = prove_brutalist_state_svg(&contract, artifact)?;
     prove_mechanism_coverage(&contract.common.mechanisms, &svg_proof.mechanisms)?;
 
@@ -1105,10 +1081,7 @@ fn prove_brutalist_sequence_rendered_document<'a>(
         DiagramFamilyId::SEQUENCE,
         FamilyEvidenceRequirements::BRUTALIST_SEQUENCE,
     )?;
-    let artifact = bind_target_artifact(
-        document.svg().as_bytes(),
-        document.standalone_svg_admission(),
-    )?;
+    let artifact = bind_document_svg_artifact(&document);
     let svg_proof = prove_brutalist_sequence_svg(&contract, artifact)?;
 
     Ok(BrutalistSequenceRenderedDocument {
@@ -1129,27 +1102,21 @@ fn render_group_error(key: &C6RenderGroupKey, field: &'static str) -> C6RuntimeE
 #[derive(Clone)]
 struct C6TargetObservation {
     identity: crate::observation::C6RenderIdentity,
-    target_receipt: TargetAdmissionReceipt,
     residual_ids: BTreeSet<String>,
     proof: C6BoundTargetProof,
 }
 
 impl C6TargetObservation {
-    fn from_target_receipt(
-        group: &C6RenderGroupKey,
-        identity: crate::observation::C6RenderIdentity,
-        target_receipt: &TargetAdmissionReceipt,
-        proof: C6BoundTargetProof,
-    ) -> Result<Self, C6RuntimeError> {
-        if !proof.matches_receipt(target_receipt) {
-            return Err(render_group_error(group, "target-proof-receipt-digest"));
-        }
-        Ok(Self {
+    fn new(identity: crate::observation::C6RenderIdentity, proof: C6BoundTargetProof) -> Self {
+        Self {
             identity,
-            target_receipt: target_receipt.clone(),
             residual_ids: BTreeSet::new(),
             proof,
-        })
+        }
+    }
+
+    fn target_receipt(&self) -> &TargetAdmissionReceipt {
+        self.proof.target_receipt()
     }
 
     fn seal(
@@ -1170,7 +1137,6 @@ impl C6TargetObservation {
             enforced,
             group,
             self.identity,
-            self.target_receipt,
             self.residual_ids,
             self.proof,
         )
@@ -2457,31 +2423,6 @@ mod tests {
         let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
         let acceptance = C6AcceptanceCatalog::load(&theme_catalog).expect("load C6 acceptance");
         let key = enforced_brutalist_state_native_key(&acceptance);
-        let fixture = theme_catalog
-            .fixture(BRUTALIST_STATE_FIXTURE_ID)
-            .expect("Brutalist State fixture");
-        let source = theme_catalog
-            .source_text(fixture.id())
-            .expect("read Brutalist State source");
-        let rendered = prove_brutalist_state_rendered_document(
-            &theme_catalog,
-            fixture.theme_input().expect("typed Brutalist State input"),
-            &source,
-        )
-        .expect("render valid Brutalist State document");
-        let svg = prove_render_group(
-            &key,
-            bind_target_artifact(b"<svg>", rendered.document.standalone_svg_admission()),
-        )
-        .expect_err("bytes outside the production receipt must fail closed");
-        assert!(matches!(
-            svg,
-            C6RuntimeError::RenderGroupProofFailed {
-                group,
-                stage: "target-artifact-receipt",
-                detail,
-            } if group == key.label() && !detail.is_empty()
-        ));
 
         let png_required_by = [ExpectedOutputTarget::Png];
         let png = prove_target(

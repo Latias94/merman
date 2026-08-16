@@ -124,6 +124,49 @@ pub mod svg;
 #[cfg(feature = "internal-theme-acceptance")]
 #[doc(hidden)]
 pub mod __theme_acceptance {
+    /// Borrowed production-owned artifact and its inseparable target admission receipt.
+    ///
+    /// The acceptance harness may inspect the exact bytes, but it cannot pair arbitrary bytes with
+    /// a receipt or reconstruct the production target seal.
+    #[derive(Debug, Clone, Copy)]
+    pub struct TargetArtifactView<'a> {
+        bytes: &'a [u8],
+        receipt: &'a crate::TargetAdmissionReceipt,
+    }
+
+    impl<'a> TargetArtifactView<'a> {
+        pub fn from_rendered_document(document: &'a crate::RenderedDocument) -> Self {
+            Self {
+                bytes: document.svg().as_bytes(),
+                receipt: document.standalone_svg_admission(),
+            }
+        }
+
+        #[cfg(any(feature = "png", feature = "jpeg"))]
+        pub fn from_raster_output(output: &'a crate::RasterOutput) -> Self {
+            Self {
+                bytes: output.bytes(),
+                receipt: output.admission(),
+            }
+        }
+
+        #[cfg(feature = "pdf")]
+        pub fn from_pdf_output(output: &'a crate::PdfOutput) -> Self {
+            Self {
+                bytes: output.bytes(),
+                receipt: output.admission(),
+            }
+        }
+
+        pub const fn bytes(self) -> &'a [u8] {
+            self.bytes
+        }
+
+        pub const fn receipt(self) -> &'a crate::TargetAdmissionReceipt {
+            self.receipt
+        }
+    }
+
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct ThemeAcceptanceScopeEvidence {
         projection: crate::render::ThemeEvidenceScopeProjection,

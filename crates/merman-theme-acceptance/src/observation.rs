@@ -1,6 +1,7 @@
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+use merman::__theme_acceptance::TargetArtifactView;
 use merman::svg::ThemeRecipeFingerprint;
 use merman::{
     DiagramFamilyId, RenderArtifactKind, RenderEvidence, TargetAdmissionReceipt,
@@ -228,13 +229,12 @@ impl C6RenderGroupReceipt {
 /// Target bytes paired with the production receipt that admitted those exact bytes.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct C6TargetArtifact<'a> {
-    bytes: &'a [u8],
-    receipt: &'a TargetAdmissionReceipt,
+    view: TargetArtifactView<'a>,
 }
 
 impl<'a> C6TargetArtifact<'a> {
-    pub(crate) fn new(bytes: &'a [u8], receipt: &'a TargetAdmissionReceipt) -> Option<Self> {
-        (sha256(bytes) == receipt.artifact_digest()).then_some(Self { bytes, receipt })
+    pub(crate) const fn new(view: TargetArtifactView<'a>) -> Self {
+        Self { view }
     }
 
     /// Runs a semantic checker against the bound bytes and seals only after that checker succeeds.
@@ -244,11 +244,11 @@ impl<'a> C6TargetArtifact<'a> {
         mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
         checker: impl FnOnce(&'a [u8]) -> Result<T, E>,
     ) -> Result<(T, C6BoundTargetProof), E> {
-        let checked = checker(self.bytes)?;
+        let checked = checker(self.view.bytes())?;
         Ok((
             checked,
             C6BoundTargetProof {
-                target_receipt_digest: self.receipt.receipt_digest(),
+                target_receipt: self.view.receipt().clone(),
                 semantic_assertion_id,
                 mechanism_dispositions,
             },
@@ -259,15 +259,15 @@ impl<'a> C6TargetArtifact<'a> {
 /// Semantic proof sealed to one target-owned receipt after checking the exact artifact bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct C6BoundTargetProof {
-    // Opaque target identity; the acceptance harness never reconstructs the receipt protocol.
-    target_receipt_digest: [u8; 32],
+    // Opaque production seal; the acceptance harness never reconstructs its constituent fields.
+    target_receipt: TargetAdmissionReceipt,
     semantic_assertion_id: &'static str,
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
 }
 
 impl C6BoundTargetProof {
-    pub(crate) fn matches_receipt(&self, target_receipt: &TargetAdmissionReceipt) -> bool {
-        self.target_receipt_digest == target_receipt.receipt_digest()
+    pub(crate) const fn target_receipt(&self) -> &TargetAdmissionReceipt {
+        &self.target_receipt
     }
 }
 
@@ -289,11 +289,15 @@ pub(crate) fn seal_cell_from_evidence(
     enforced: &C6EnforcedCell,
     group: &C6RenderGroupReceipt,
     identity: C6RenderIdentity,
-    target_receipt: TargetAdmissionReceipt,
     residual_ids: BTreeSet<String>,
     proof: C6BoundTargetProof,
 ) -> Result<C6CellReceipt, C6RuntimeError> {
     let key = enforced.key();
+    let C6BoundTargetProof {
+        target_receipt,
+        semantic_assertion_id,
+        mechanism_dispositions,
+    } = proof;
     require_evidence(
         key,
         "render-group-key",
@@ -302,7 +306,7 @@ pub(crate) fn seal_cell_from_evidence(
     require_evidence(
         key,
         "semantic-assertion-id",
-        proof.semantic_assertion_id == expectation.semantic_assertion_id(),
+        semantic_assertion_id == expectation.semantic_assertion_id(),
     )?;
     require_evidence(
         key,
@@ -328,11 +332,6 @@ pub(crate) fn seal_cell_from_evidence(
         key,
         "target-receipt-digest",
         target_receipt.receipt_digest() != [0; 32],
-    )?;
-    require_evidence(
-        key,
-        "target-proof-receipt-digest",
-        proof.target_receipt_digest == target_receipt.receipt_digest(),
     )?;
     require_evidence(
         key,
@@ -376,8 +375,8 @@ pub(crate) fn seal_cell_from_evidence(
         render_group_key: group.key.clone(),
         render_group_digest: group.digest,
         target_receipt_digest: target_receipt.receipt_digest(),
-        semantic_assertion_id: proof.semantic_assertion_id.to_owned(),
-        mechanism_dispositions: proof.mechanism_dispositions,
+        semantic_assertion_id: semantic_assertion_id.to_owned(),
+        mechanism_dispositions,
         residual_ids,
         digest: [0; 32],
     };
@@ -1023,7 +1022,7 @@ mod tests {
     }
 
     #[test]
-    fn target_artifact_rejects_bytes_from_another_receipt() {
+    fn target_artifact_view_keeps_the_production_receipt_atomic() {
         let first = themed_state_document(
             "stateDiagram-v2\n[*] --> Ready\n",
             ThemeResourcePolicy::interactive(),
@@ -1036,19 +1035,20 @@ mod tests {
             first.standalone_svg_admission().artifact_digest(),
             second.standalone_svg_admission().artifact_digest()
         );
-
-        assert!(
-            C6TargetArtifact::new(first.svg().as_bytes(), first.standalone_svg_admission(),)
-                .is_some()
-        );
-        assert!(
-            C6TargetArtifact::new(second.svg().as_bytes(), first.standalone_svg_admission(),)
-                .is_none()
+        let (_, proof) = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(&first))
+            .check_with("atomic-target-view-v1", BTreeMap::new(), |bytes| {
+                assert_eq!(bytes, first.svg().as_bytes());
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .expect("check the production-owned target view");
+        assert_eq!(
+            proof.target_receipt().receipt_digest(),
+            first.standalone_svg_admission().receipt_digest()
         );
     }
 
     #[test]
-    fn cell_sealing_rejects_proof_bound_to_another_target_receipt() {
+    fn cell_sealing_rejects_proof_bound_to_another_render_group() {
         let (themes, acceptance) = load_catalogs();
         let enforced = acceptance
             .enforced_tranche()
@@ -1075,13 +1075,11 @@ mod tests {
             second.standalone_svg_admission(),
         )
         .expect("seal second render group");
-        let (_, proof) =
-            C6TargetArtifact::new(first.svg().as_bytes(), first.standalone_svg_admission())
-                .expect("bind first artifact to its production receipt")
-                .check_with("brutalist-state-standalone-svg-v1", BTreeMap::new(), |_| {
-                    Ok::<(), std::convert::Infallible>(())
-                })
-                .expect("check first artifact through its bound byte view");
+        let (_, proof) = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(&first))
+            .check_with("brutalist-state-standalone-svg-v1", BTreeMap::new(), |_| {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .expect("check first artifact through its production-owned byte view");
         let expectation = acceptance
             .cell(enforced.key())
             .expect("Brutalist State SVG expectation")
@@ -1093,12 +1091,11 @@ mod tests {
                 enforced,
                 &group,
                 identity,
-                second.standalone_svg_admission().clone(),
                 BTreeSet::new(),
                 proof,
             )
-            .expect_err("proof and target receipt from different artifacts must fail closed"),
-            "target-proof-receipt-digest",
+            .expect_err("proof and render group from different artifacts must fail closed"),
+            "render-group-evidence",
         );
     }
 

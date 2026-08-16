@@ -19,7 +19,7 @@ use super::c6_sequence_proof::{
 };
 use super::{
     C6CompletedRenderGroup, C6ProofError, C6ProofResult, C6RenderGroupAdapter, C6RenderGroupWork,
-    FamilyEvidenceRequirements, bind_target_artifact, brutalist_solid as fixture_solid,
+    FamilyEvidenceRequirements, bind_document_svg_artifact, brutalist_solid as fixture_solid,
     c6_renderer, complete_c6_svg_png_render_group, load_render_group_fixture, portable_svg_request,
     prove_portable_family_evidence, prove_render_group,
     render_brutalist_document as render_c6_document,
@@ -103,10 +103,7 @@ fn prove_cyberpunk_sequence_rendered_document(
         FamilyEvidenceRequirements::BRUTALIST_SEQUENCE,
     )?;
     let contract = proof_contract();
-    let artifact = bind_target_artifact(
-        document.svg().as_bytes(),
-        document.standalone_svg_admission(),
-    )?;
+    let artifact = bind_document_svg_artifact(&document);
     let svg_proof = prove_sequence_svg(
         contract,
         &CELL_MECHANISMS,
