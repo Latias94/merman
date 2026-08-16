@@ -305,6 +305,46 @@ fn gantt_task_variant_override_does_not_reuse_unqualified_geometry() {
 }
 
 #[test]
+fn gantt_task_radius_stays_bound_to_semantic_occurrence_after_date_sorting() {
+    let source = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Late plain: late-task, 2024-01-03, 1d\n",
+        "Early active critical: crit, active, early-task, 2024-01-01, 1d\n",
+    );
+    let radius_style = |radius| ThemeStylePatch {
+        geometry: ThemeGeometryPatch {
+            radius: Specified::Value(radius),
+        },
+        ..ThemeStylePatch::default()
+    };
+    let theme = gantt_task_rules_theme([
+        ThemeRule::new(ThemeTarget::Task, radius_style(7.0)),
+        ThemeRule::new(ThemeTarget::Task, radius_style(11.0)).with_variant(ThemeVariant::Active),
+    ]);
+    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let projection = artifact.layout_json().expect("Gantt layout projection");
+    let layout: GanttDiagramLayout =
+        serde_json::from_value(projection["layout"]["GanttDiagram"].clone())
+            .expect("themed Gantt layout");
+
+    assert_eq!(layout.tasks[0].id, "early-task");
+    assert_eq!(layout.tasks[0].bar.rx, 3.0);
+    assert_eq!(layout.tasks[1].id, "late-task");
+    assert_eq!(layout.tasks[1].bar.rx, 7.0);
+
+    let error = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .err()
+        .expect("the unsupported active override must remain residual");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::GANTT, 1))
+    );
+}
+
+#[test]
 fn gantt_task_radius_receipt_binds_the_canonical_svg_number() {
     let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d";
     let svg = render_gantt_svg_from_text_with_theme(

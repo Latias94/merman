@@ -331,11 +331,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
             );
 
             let _ = write!(&mut out, r#"<rect"#);
-            let rx = fmt(t.bar.rx).to_string();
-            let ry = fmt(t.bar.ry).to_string();
-            let expected_radius = task_theme
-                .radius_px(*task_index)
-                .map(|radius| fmt(radius).to_string());
+            let rx = fmt(t.bar.rx);
+            let ry = fmt(t.bar.ry);
             let _ = write!(
                 &mut out,
                 r#" id="{}""#,
@@ -344,8 +341,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{origin}" class="{cls}"/>"#,
-                rx = &rx,
-                ry = &ry,
+                rx = rx,
+                ry = ry,
                 x = fmt(t.bar.x),
                 y = fmt(t.bar.y),
                 w = fmt(t.bar.width),
@@ -355,6 +352,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
             );
             out.checkpoint()?;
             if let Some(receipt) = task_radius_receipt.as_mut() {
+                let expected_radius = task_theme
+                    .radius_px_for_layout_task(*task_index)
+                    .map(|radius| fmt(radius).to_string());
+                let rx = rx.to_string();
+                let ry = ry.to_string();
                 receipt.record_checkpointed_task(
                     *task_index,
                     expected_radius

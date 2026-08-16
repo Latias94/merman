@@ -1067,8 +1067,17 @@ pub(crate) fn layout_gantt_diagram_typed(
         && (!m.excludes.is_empty() || !m.includes.is_empty())
         && span_ms <= max_exclude_span_ms;
 
-    // Sort by start time for rendering.
-    m.tasks.sort_by_key(|a| a.start_ms);
+    // Sort by start time for rendering while retaining the source semantic occurrence. Theme
+    // selectors are resolved against source order, so a render-order index is not interchangeable
+    // with the semantic occurrence index.
+    let mut indexed_tasks = std::mem::take(&mut m.tasks)
+        .into_iter()
+        .enumerate()
+        .collect::<Vec<_>>();
+    indexed_tasks.sort_by_key(|(_, task)| task.start_ms);
+    let (semantic_task_occurrences, sorted_tasks): (Vec<_>, Vec<_>) =
+        indexed_tasks.into_iter().unzip();
+    m.tasks = sorted_tasks;
 
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
@@ -1186,9 +1195,9 @@ pub(crate) fn layout_gantt_diagram_typed(
     };
 
     let mut tasks: Vec<GanttTaskLayout> = Vec::new();
-    for (task_index, t) in m.tasks.iter().enumerate() {
+    for (t, &semantic_task_index) in m.tasks.iter().zip(&semantic_task_occurrences) {
         let task_radius = task_theme
-            .radius_px(task_index)
+            .radius_px(semantic_task_index)
             .expect("Gantt task theme count was validated before layout");
         let start_x = scale_time(t.start_ms, min_ms, max_ms, range);
         let end_x = scale_time(t.end_ms, min_ms, max_ms, range);
@@ -1419,6 +1428,13 @@ pub(crate) fn layout_gantt_diagram_typed(
         max_x: width,
         max_y: height,
     });
+
+    if !task_theme.bind_layout_occurrences(semantic_task_occurrences) {
+        return Err(crate::Error::InvalidModel {
+            message: "Gantt task theme could not bind semantic occurrences to layout order"
+                .to_string(),
+        });
+    }
 
     Ok(GanttDiagramLayout {
         bounds,

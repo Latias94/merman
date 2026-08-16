@@ -21,6 +21,7 @@ pub(crate) struct GanttTaskTheme {
     task_radii: Vec<f64>,
     evidence: FamilyThemeEvidence,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
+    layout_occurrences: OnceLock<Box<[usize]>>,
     terminal_receipt: OnceLock<GanttTaskRadiusThemeReceipt>,
 }
 
@@ -36,6 +37,7 @@ impl GanttTaskTheme {
 
         let mut task_radii = Vec::with_capacity(tasks.len());
         let mut winner_properties = BTreeSet::new();
+        let mut emitted_winner_properties = BTreeSet::new();
         for (task_index, task) in tasks.iter().enumerate() {
             let variants = task_theme_variants(task);
             let mut primary_radius = MERMAID_TASK_RADIUS_PX;
@@ -46,12 +48,13 @@ impl GanttTaskTheme {
                     Some(task_index + 1),
                     work_meter,
                 )?;
-                winner_properties.extend(
-                    style
-                        .winner_rule_properties()
-                        .into_iter()
-                        .map(|(property, origin)| (origin.rule_index(), property)),
-                );
+                for (property, origin) in style.winner_rule_properties() {
+                    let winner = (origin.rule_index(), property);
+                    winner_properties.insert(winner);
+                    if variant_index == 0 {
+                        emitted_winner_properties.insert(winner);
+                    }
+                }
                 if variant_index == 0 {
                     primary_radius = typed_radius_px(theme, &style);
                 }
@@ -78,7 +81,8 @@ impl GanttTaskTheme {
                     observation.applicable = true;
                     match (route.disposition(), facet) {
                         (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Radius) => {
-                            observation.radius_pending = true;
+                            observation.radius_pending = emitted_winner_properties
+                                .contains(&(rule_index, resolved_style_property_for_facet(facet)));
                         }
                         (FamilyThemeDisposition::Unsupported, facet) => {
                             observation
@@ -137,6 +141,8 @@ impl GanttTaskTheme {
             } else if observation.radius_pending {
                 debug_assert!(pending_radius_key.is_none());
                 pending_radius_key = Some(key);
+            } else {
+                evidence.mark_not_applicable(key);
             }
         }
 
@@ -144,6 +150,7 @@ impl GanttTaskTheme {
             task_radii,
             evidence,
             pending_radius_key,
+            layout_occurrences: OnceLock::new(),
             terminal_receipt: OnceLock::new(),
         })
     }
@@ -153,6 +160,7 @@ impl GanttTaskTheme {
             task_radii: vec![MERMAID_TASK_RADIUS_PX; task_count],
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: None,
+            layout_occurrences: OnceLock::new(),
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -163,6 +171,32 @@ impl GanttTaskTheme {
 
     pub(crate) fn radius_px(&self, task_index: usize) -> Option<f64> {
         self.task_radii.get(task_index).copied()
+    }
+
+    pub(crate) fn bind_layout_occurrences(&self, layout_occurrences: Vec<usize>) -> bool {
+        if layout_occurrences.len() != self.task_count() {
+            return false;
+        }
+        let mut seen = vec![false; self.task_count()];
+        for &semantic_index in &layout_occurrences {
+            let Some(entry) = seen.get_mut(semantic_index) else {
+                return false;
+            };
+            if *entry {
+                return false;
+            }
+            *entry = true;
+        }
+        seen.into_iter().all(|entry| entry)
+            && self
+                .layout_occurrences
+                .set(layout_occurrences.into_boxed_slice())
+                .is_ok()
+    }
+
+    pub(crate) fn radius_px_for_layout_task(&self, layout_index: usize) -> Option<f64> {
+        let semantic_index = *self.layout_occurrences.get()?.get(layout_index)?;
+        self.radius_px(semantic_index)
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<GanttTaskRadiusThemeReceipt> {
@@ -274,6 +308,20 @@ struct GanttTaskRuleObservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, ThemeGeometryPatch, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
+    use crate::resources::RenderResourcePolicy;
+
+    fn radius_style(radius: f32) -> ThemeStylePatch {
+        ThemeStylePatch {
+            geometry: ThemeGeometryPatch {
+                radius: Specified::Value(radius),
+            },
+            ..ThemeStylePatch::default()
+        }
+    }
 
     #[test]
     fn task_radius_receipt_requires_each_terminal_attribute_once() {
@@ -299,6 +347,7 @@ mod tests {
             task_radii: vec![3.0, 3.0],
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: Some(key),
+            layout_occurrences: OnceLock::new(),
             terminal_receipt: OnceLock::new(),
         };
         let mut wrong_count = GanttTaskRadiusThemeReceipt::new(1);
@@ -314,5 +363,71 @@ mod tests {
         duplicate.record_checkpointed_task(0, true);
         duplicate.record_checkpointed_task(1, true);
         assert!(!theme.record_terminal(duplicate));
+    }
+
+    #[test]
+    fn layout_binding_maps_render_order_back_to_semantic_occurrences() {
+        let theme = GanttTaskTheme {
+            task_radii: vec![7.0, 3.0],
+            evidence: FamilyThemeEvidence::default(),
+            pending_radius_key: None,
+            layout_occurrences: OnceLock::new(),
+            terminal_receipt: OnceLock::new(),
+        };
+
+        assert!(theme.bind_layout_occurrences(vec![1, 0]));
+        assert_eq!(theme.radius_px_for_layout_task(0), Some(3.0));
+        assert_eq!(theme.radius_px_for_layout_task(1), Some(7.0));
+        assert!(!theme.bind_layout_occurrences(vec![0, 1]));
+
+        let invalid = GanttTaskTheme::baseline(2);
+        assert!(!invalid.bind_layout_occurrences(vec![0, 0]));
+        assert!(!invalid.bind_layout_occurrences(vec![0, 2]));
+    }
+
+    #[test]
+    fn secondary_variant_winner_cannot_claim_terminal_radius_evidence() {
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(ThemeTarget::Task, radius_style(7.0)))
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Task, radius_style(11.0))
+                                .with_variant(ThemeVariant::Active),
+                        ),
+                ),
+            )
+            .expect("compile Gantt multi-state theme")
+            .resolve(crate::DiagramFamilyId::GANTT);
+        let task = GanttRenderTask {
+            active: true,
+            crit: true,
+            ..GanttRenderTask::default()
+        };
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let task_theme = GanttTaskTheme::resolve(Some(&resolved), &[task], &work_meter)
+            .expect("resolve Gantt multi-state theme");
+        assert_eq!(task_theme.radius_px(0), Some(MERMAID_TASK_RADIUS_PX));
+
+        let evidence = task_theme.finish_evidence();
+        let unqualified = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Task,
+        };
+        let active = FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::Task,
+        };
+        assert!(!evidence.applied().contains(&unqualified));
+        assert!(evidence.not_applicable_mechanisms().contains(&unqualified));
+        assert!(
+            evidence
+                .residuals()
+                .iter()
+                .any(|residual| residual.key() == &active)
+        );
     }
 }
