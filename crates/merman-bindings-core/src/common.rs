@@ -245,6 +245,36 @@ impl BindingDiagnosticErrorDetails {
     }
 }
 
+pub(crate) fn parse_error(error: impl Into<merman::TerminalDiagnostic>) -> BindingError {
+    let error = error.into();
+    let message = error.terminal_safe_message();
+    BindingError::new(BindingStatus::ParseError, message).with_diagnostic_details(
+        binding_diagnostic_details(error.terminal_diagnostic_details()),
+    )
+}
+
+pub(crate) fn binding_diagnostic_details(
+    details: merman::TerminalDiagnosticDetails,
+) -> BindingDiagnosticErrorDetails {
+    let span = details.span.and_then(|span| {
+        Some(BindingDiagnosticSpan {
+            start: u64::try_from(span.start).ok()?,
+            end: u64::try_from(span.end).ok()?,
+            kind: match details.span_kind? {
+                merman::ParseDiagnosticSpanKind::Exact => "exact",
+                merman::ParseDiagnosticSpanKind::InsertionPoint => "insertion-point",
+                merman::ParseDiagnosticSpanKind::Fallback => "fallback",
+            },
+        })
+    });
+    BindingDiagnosticErrorDetails {
+        code: details.code,
+        span,
+        field: details.field,
+        diagram_type: details.diagram_type,
+    }
+}
+
 impl BindingResourceErrorDetails {
     /// Projects exact resource counts into the lossless JSON representation used by JavaScript
     /// transports without changing the native binding payload contract.
@@ -1862,11 +1892,19 @@ pub(crate) fn binding_runtime_policy_from(
     Ok(runtime_policy)
 }
 
-pub(crate) fn runtime_policy_error(error: merman::runtime::RuntimePolicyError) -> BindingError {
+pub(crate) fn runtime_policy_error(
+    error: impl Into<merman::TerminalRuntimePolicyError>,
+) -> BindingError {
+    let error = error.into();
+    let safe_message = error.terminal_safe_message();
     if let Some(capability) = error.missing_capability() {
-        BindingError::missing_capability(capability.id(), error.to_string())
+        BindingError::missing_capability(capability.id(), safe_message).with_diagnostic_details(
+            binding_diagnostic_details(error.terminal_diagnostic_details()),
+        )
     } else {
-        BindingError::new(BindingStatus::RenderError, error.to_string())
+        BindingError::new(BindingStatus::RenderError, safe_message).with_diagnostic_details(
+            binding_diagnostic_details(error.terminal_diagnostic_details()),
+        )
     }
 }
 
@@ -2568,6 +2606,34 @@ mod tests {
         assert_eq!(json["details"]["resource"]["max"], 800_000);
         assert_eq!(std::mem::size_of::<BindingResourceLimitCause>(), 1);
         assert!(std::mem::size_of::<BindingError>() < 128);
+    }
+
+    #[test]
+    fn runtime_policy_errors_are_terminal_safe_and_structured() {
+        let error = runtime_policy_error(merman::runtime::RuntimePolicyError::SystemTimeZone(
+            "adapter\u{1b}\u{7}".to_string(),
+        ));
+
+        assert_eq!(error.status(), BindingStatus::RenderError);
+        assert!(!error.message().contains('\u{1b}'));
+        assert!(!error.message().contains('\u{7}'));
+        let details = error
+            .diagnostic_details()
+            .expect("runtime-policy errors expose diagnostic details");
+        assert_eq!(details.code, "merman.runtime_policy");
+
+        let missing = runtime_policy_error(merman::runtime::RuntimePolicyError::MissingCapability(
+            merman::runtime::RuntimeCapability::SystemRandom,
+        ));
+        assert_eq!(missing.kind(), BindingErrorKind::MissingCapability);
+        assert_eq!(missing.capability_id(), Some("system-random"));
+        assert_eq!(
+            missing
+                .diagnostic_details()
+                .expect("missing-capability errors retain runtime diagnostics")
+                .code,
+            "merman.runtime_policy"
+        );
     }
 
     #[test]

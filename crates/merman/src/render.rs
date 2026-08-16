@@ -6,12 +6,11 @@
 
 use merman_core::{
     Engine, OperationCancelled, OperationControl, ParseOptions, resources::InputResourcePolicy,
-    runtime::RuntimePolicyError,
 };
 
-use crate::operation_runner::Operation;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::operation_runner::OperationExecution;
+use crate::{TerminalDiagnostic, TerminalRuntimePolicyError, operation_runner::Operation};
 
 #[cfg(feature = "ascii")]
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
@@ -284,9 +283,9 @@ pub enum RenderError {
     #[error(transparent)]
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
-    Parse(#[from] merman_core::Error),
+    Parse(#[from] TerminalDiagnostic),
     #[error(transparent)]
-    RuntimePolicy(#[from] RuntimePolicyError),
+    RuntimePolicy(#[from] TerminalRuntimePolicyError),
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[cfg(feature = "svg")]
@@ -300,6 +299,18 @@ pub enum RenderError {
     Export(#[from] ExportError),
     #[error("render target is not available in this feature configuration: {0}")]
     UnsupportedTarget(&'static str),
+}
+
+impl From<merman_core::Error> for RenderError {
+    fn from(error: merman_core::Error) -> Self {
+        Self::Parse(TerminalDiagnostic::from(error))
+    }
+}
+
+impl From<merman_core::runtime::RuntimePolicyError> for RenderError {
+    fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
+        Self::RuntimePolicy(TerminalRuntimePolicyError::from(error))
+    }
 }
 
 /// Transport-neutral resource rejection projected by the common facade.
@@ -726,7 +737,7 @@ impl SemanticArtifact {
             .model()
             .compatibility_json_controlled(self.parsed().metadata(), self.control())
             .map_err(RenderError::Cancelled)?
-            .map_err(RenderError::Parse)
+            .map_err(RenderError::from)
     }
 
     /// Consumes this operation-owned semantic artifact into one typed output target.

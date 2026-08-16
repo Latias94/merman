@@ -70,13 +70,7 @@ fn map_ascii_render_error(
     resources: merman::ascii::AsciiResourcePolicy,
 ) -> CliError {
     match error {
-        merman::RenderError::Parse(error) => {
-            CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
-        }
         merman::RenderError::Ascii(error) => {
-            CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
-        }
-        merman::RenderError::RuntimePolicy(error) => {
             CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
         }
         merman::RenderError::ResourceLimitExceeded(error) => {
@@ -85,7 +79,7 @@ fn map_ascii_render_error(
             }
             CliError::ascii_resource(error, resources.profile())
         }
-        other => CliError::Render(other),
+        other => CliError::from(other),
     }
 }
 
@@ -185,7 +179,7 @@ pub(crate) fn execute_graphical(
         PreparedGraphicalSource::RawSvg(environment) => {
             let session = environment
                 .begin_session_with_control(control.clone())
-                .map_err(|error| CliError::Render(merman::RenderError::RuntimePolicy(error)))?;
+                .map_err(merman::RenderError::from)?;
             let svg = prepared
                 .pipeline
                 .process_resvg_compatible(source, &session)

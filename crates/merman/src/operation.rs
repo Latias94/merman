@@ -32,9 +32,7 @@ impl Operation {
         resources
             .check_source_bytes(source)
             .map_err(crate::render::ResourceLimitExceeded::from_input)?;
-        let context = engine
-            .begin_operation()
-            .map_err(RenderError::RuntimePolicy)?;
+        let context = engine.begin_operation().map_err(RenderError::from)?;
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(RenderError::Cancelled)?;
@@ -64,7 +62,7 @@ impl Operation {
             );
         let parsed = match parsed {
             Err(cancelled) => return Err(RenderError::Cancelled(cancelled)),
-            Ok(result) => result.map_err(RenderError::Parse)?,
+            Ok(result) => result.map_err(RenderError::from)?,
         };
         let Some(parsed) = parsed else {
             return Ok(None);

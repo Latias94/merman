@@ -11,7 +11,10 @@ generated bindings together.
 | Alpha.5 or development-snapshot API | Unreleased replacement |
 | --- | --- |
 | `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` functions, or CPU-bound render `async fn` wrappers | `Renderer` with one typed `RenderRequest` / `RenderTarget`; retain an `OperationControl` clone when the host must cancel stale synchronous work |
-| `HeadlessAsciiError` | Match the canonical `RenderError`; use `ascii::AsciiDiagnostic` only when projecting parse, runtime-policy, or target failures onto an untrusted terminal surface |
+| `HeadlessAsciiError` | Match the canonical `RenderError`; use target-neutral `TerminalDiagnostic` for parser display, `TerminalRuntimePolicyError` for runtime-policy display, and `ascii::AsciiDiagnostic` only for ASCII target-local failures |
+| `RenderError::Parse(merman::Error)` or raw `merman::Error` display in a terminal host | `RenderError::Parse(TerminalDiagnostic)`; direct parser hosts should wrap an error with `TerminalDiagnostic::from(error)` and read `terminal_diagnostic_details()` for bounded code/span/field/diagram-type context |
+| `RenderError::RuntimePolicy(RuntimePolicyError)` | `RenderError::RuntimePolicy(TerminalRuntimePolicyError)`; capability classification remains available through `missing_capability()`, while display/debug output is bounded and terminal-safe |
+| `ascii::AsciiDiagnosticDetails` or parse codes under `merman.ascii.*` | `TerminalDiagnosticDetails`; parser diagnostics now use the target-neutral `merman.parse.*` namespace, while ASCII target-local codes remain under `merman.ascii.*` |
 | `AsciiRenderOptions::resources`, `with_resource_policy(...)`, `with_resource_profile(...)`, or `with_resource_limit(...)` | Keep presentation settings in `AsciiRenderOptions`; set `AsciiRequest::resources` for facade rendering, or pass an explicit `AsciiResourcePolicy` as the fourth argument to `AsciiRenderer::render_model` |
 | `PreparedSemantic`, public SVG `PreparedRender`, or SVG-owned `HeadlessOperation` | Format-neutral `SemanticArtifact`, consumed once by a typed SVG, ASCII, layout, or export target |
 | `ParseControl`, `ParseCancelled`, or `ParseControlResult` | `OperationControl`, `OperationCancelled`, and `OperationControlResult`; analysis may keep its domain token but it shares the same operation state |
@@ -28,6 +31,10 @@ generated bindings together.
 | `DocumentWorkspace::upsert(...)` | `analyze_document_snapshot_with_shared_text(...)` and caller-owned document storage |
 | `DocumentWorkspace::build_analysis_context_with_shared_text(...)` | `analyze_document_context_with_shared_text(...)` |
 | `DocumentAnalysisOutcome` | `Result<DocumentAnalysisContext, AnalysisRejection>` |
+
+The binding-result envelope remains version `1` because its JSON shape is unchanged. Consumers
+that match `details.diagnostic.code` must update parser-code expectations from `merman.ascii.*` to
+`merman.parse.*`; this development-snapshot namespace migration is not a payload-schema change.
 
 The one-shot editor functions accept caller-owned `Arc<str>` source text. Standalone Mermaid,
 Markdown, and MDX inputs still use their corresponding analysis pipelines, but editor-core no

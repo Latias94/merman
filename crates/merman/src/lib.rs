@@ -80,9 +80,14 @@
 
 pub use merman_core::*;
 
+pub mod diagnostic;
 #[path = "operation.rs"]
 mod operation_runner;
 pub mod render;
+pub use diagnostic::{
+    TerminalDiagnostic, TerminalDiagnosticDetails, TerminalRuntimePolicyError,
+    normalize_terminal_diagnostic, normalize_terminal_text,
+};
 #[cfg(feature = "ascii")]
 pub use render::AsciiRequest;
 #[cfg(feature = "jpeg")]

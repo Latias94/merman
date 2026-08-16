@@ -88,10 +88,10 @@ pub(crate) enum CliError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
-    Mermaid(#[from] merman::Error),
+    Diagnostic(merman::TerminalDiagnostic),
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[error("{0}")]
-    Render(#[from] merman::RenderError),
+    Render(merman::RenderError),
     #[cfg(feature = "ascii")]
     #[error("{0}")]
     Ascii(merman::ascii::AsciiDiagnostic),
@@ -160,6 +160,22 @@ pub(crate) enum CliError {
         #[source]
         source: Box<CliError>,
     },
+}
+
+impl From<merman::Error> for CliError {
+    fn from(error: merman::Error) -> Self {
+        Self::Diagnostic(merman::TerminalDiagnostic::from(error))
+    }
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+impl From<merman::RenderError> for CliError {
+    fn from(error: merman::RenderError) -> Self {
+        match error {
+            merman::RenderError::Parse(error) => Self::Diagnostic(error),
+            other => Self::Render(other),
+        }
+    }
 }
 
 impl CliError {
@@ -268,7 +284,7 @@ impl CliError {
             #[cfg(feature = "network-icons")]
             Self::Network(_) => ErrorCategory::Usage,
             Self::BrokenStdoutPipe => ErrorCategory::Success,
-            Self::Mermaid(_) | Self::NoDiagram => ErrorCategory::Content,
+            Self::Diagnostic(_) | Self::NoDiagram => ErrorCategory::Content,
             #[cfg(feature = "ascii")]
             Self::Ascii(_) | Self::AsciiResource(_) => ErrorCategory::Content,
             #[cfg(any(test, feature = "svg", feature = "ascii"))]
@@ -305,5 +321,24 @@ mod tests {
         assert!(!rendered.contains('\u{1b}'));
         assert!(rendered.contains("\\n"));
         assert!(rendered.contains("\\u{1b}"));
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn parser_and_render_errors_use_terminal_safe_diagnostics() {
+        let parser_error = merman::Error::diagram_parse_fallback("flow\u{1b}", "bad\u{7}input");
+        let direct = CliError::from(parser_error);
+        let rendered = CliError::from(merman::RenderError::from(
+            merman::Error::diagram_parse_fallback("state\u{1b}", "bad\u{7}input"),
+        ));
+
+        for error in [direct, rendered] {
+            let message = error.to_string();
+            assert!(!message.contains('\u{1b}'));
+            assert!(!message.contains('\u{7}'));
+            assert!(message.contains("\\u{1B}"));
+            assert!(message.contains("\\u{7}"));
+            assert_eq!(error.category(), ErrorCategory::Content);
+        }
     }
 }

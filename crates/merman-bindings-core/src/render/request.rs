@@ -4,7 +4,7 @@ use crate::common::{
     BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus,
     PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
     binding_site_config, css_declaration_value, finite_positive, internal_json_error,
-    no_diagram_error, normalize_option, runtime_policy_error,
+    no_diagram_error, normalize_option, parse_error, runtime_policy_error,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
@@ -653,9 +653,7 @@ fn classify_render_error(
 ) -> BindingError {
     match err {
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
-        merman::RenderError::Parse(err) => {
-            BindingError::new(BindingStatus::ParseError, err.to_string())
-        }
+        merman::RenderError::Parse(err) => parse_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -716,6 +714,34 @@ fn unexpected_render_output(target: &str) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graphical_parse_errors_are_terminal_safe_and_structured() {
+        let span = merman::SourceSpan::new(2, 7);
+        let diagnostic = merman::ParseDiagnostic::new("bad\u{7}input")
+            .with_span(span, merman::ParseDiagnosticSpanKind::Exact)
+            .with_code("merman.test\u{1b}");
+        let error = classify_render_error(
+            merman::RenderError::from(merman::Error::diagram_parse_diagnostic(
+                "flow\u{1b}",
+                diagnostic,
+            )),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::ParseError);
+        assert!(!error.message().contains('\u{1b}'));
+        assert!(!error.message().contains('\u{7}'));
+        let details = error
+            .diagnostic_details()
+            .expect("graphical parse errors preserve structured details");
+        assert_eq!(details.code, "merman.test\\u{1B}");
+        assert_eq!(details.diagram_type.as_deref(), Some("flow\\u{1B}"));
+        assert_eq!(
+            details.span,
+            Some(crate::common::BindingDiagnosticSpan::new(2, 7, "exact"))
+        );
+    }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]

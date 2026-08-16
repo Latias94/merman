@@ -1,7 +1,7 @@
 use crate::common::{
-    BindingDiagnosticErrorDetails, BindingDiagnosticSpan, BindingError, BindingResourceLimitCause,
-    BindingStatus, binding_ascii_resource_policy, binding_input_resource_policy,
-    binding_site_config, no_diagram_error, source_text,
+    BindingError, BindingResourceLimitCause, BindingStatus, binding_ascii_resource_policy,
+    binding_diagnostic_details, binding_input_resource_policy, binding_site_config,
+    no_diagram_error, parse_error, runtime_policy_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -301,26 +301,8 @@ fn classify_render_error(
 ) -> BindingError {
     match err {
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
-        merman::RenderError::RuntimePolicy(err) => {
-            let safe_message =
-                merman::ascii::AsciiDiagnostic::from(err.clone()).terminal_safe_message();
-            if let Some(capability) = err.missing_capability() {
-                BindingError::missing_capability(capability.id(), safe_message)
-            } else {
-                BindingError::new(BindingStatus::RenderError, safe_message)
-            }
-        }
-        merman::RenderError::Parse(err) => {
-            let error = merman::ascii::AsciiDiagnostic::from(err);
-            let safe_message = error.terminal_safe_message();
-            let diagnostic = error
-                .terminal_diagnostic_details()
-                .map(binding_diagnostic_details);
-            attach_diagnostic(
-                BindingError::new(BindingStatus::ParseError, safe_message),
-                diagnostic,
-            )
-        }
+        merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
+        merman::RenderError::Parse(err) => parse_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -333,7 +315,7 @@ fn classify_render_error(
             err.actual,
             err.maximum,
             resource_profile.id(),
-            merman::ascii::normalize_terminal_diagnostic(&err.to_string()),
+            merman::normalize_terminal_diagnostic(&err.to_string()),
         ),
         merman::RenderError::Ascii(err) => {
             let status = match &err {
@@ -349,44 +331,17 @@ fn classify_render_error(
             let diagnostic = error
                 .terminal_diagnostic_details()
                 .map(binding_diagnostic_details);
-            attach_diagnostic(BindingError::new(status, safe_message), diagnostic)
+            match diagnostic {
+                Some(diagnostic) => {
+                    BindingError::new(status, safe_message).with_diagnostic_details(diagnostic)
+                }
+                None => BindingError::new(status, safe_message),
+            }
         }
         merman::RenderError::UnsupportedTarget(target) => BindingError::internal(format!(
             "renderer returned unsupported target `{target}` for an admitted ASCII operation"
         )),
         _ => BindingError::internal("unknown canonical ASCII renderer failure"),
-    }
-}
-
-fn attach_diagnostic(
-    error: BindingError,
-    diagnostic: Option<BindingDiagnosticErrorDetails>,
-) -> BindingError {
-    match diagnostic {
-        Some(diagnostic) => error.with_diagnostic_details(diagnostic),
-        None => error,
-    }
-}
-
-fn binding_diagnostic_details(
-    details: merman::ascii::AsciiDiagnosticDetails,
-) -> BindingDiagnosticErrorDetails {
-    let span = details.span.and_then(|span| {
-        Some(BindingDiagnosticSpan {
-            start: u64::try_from(span.start).ok()?,
-            end: u64::try_from(span.end).ok()?,
-            kind: match details.span_kind? {
-                merman::ParseDiagnosticSpanKind::Exact => "exact",
-                merman::ParseDiagnosticSpanKind::InsertionPoint => "insertion-point",
-                merman::ParseDiagnosticSpanKind::Fallback => "fallback",
-            },
-        })
-    });
-    BindingDiagnosticErrorDetails {
-        code: details.code,
-        span,
-        field: details.field,
-        diagram_type: details.diagram_type,
     }
 }
 
@@ -438,19 +393,25 @@ mod tests {
     }
 
     #[test]
-    fn render_ascii_parse_error_does_not_echo_source_or_controls() {
+    fn render_ascii_parse_error_preserves_safe_mermaid_baseline_message() {
         let source = b"not-a-diagram\x1b]8;;https://example.invalid\x07link";
 
         let error = render_ascii(source, b"").expect_err("source should not detect as Mermaid");
 
         assert_eq!(error.status(), BindingStatus::ParseError);
-        assert_eq!(error.message(), "No Mermaid diagram type detected");
+        assert!(
+            error
+                .message()
+                .starts_with("No diagram type detected matching given configuration for text: ")
+        );
+        assert!(error.message().contains("\\u{1B}"));
+        assert!(error.message().contains("\\u{7}"));
         assert!(!error.message().as_bytes().contains(&0x1b));
         assert!(!error.message().as_bytes().contains(&0x07));
         let diagnostic = error
             .diagnostic_details()
             .expect("detect failure should preserve diagnostic details");
-        assert_eq!(diagnostic.code, "merman.ascii.no_diagram_detected");
+        assert_eq!(diagnostic.code, "merman.parse.no_diagram_detected");
         assert_eq!(diagnostic.span, None);
     }
 
@@ -461,7 +422,7 @@ mod tests {
             .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
             .with_code("merman.test");
         let error = classify_render_error(
-            merman::RenderError::Parse(merman::Error::diagram_parse_diagnostic(
+            merman::RenderError::from(merman::Error::diagram_parse_diagnostic(
                 "flow\u{1b}",
                 diagnostic,
             )),
@@ -474,7 +435,7 @@ mod tests {
         assert_eq!(details.code, "merman.test");
         assert_eq!(
             details.span,
-            Some(BindingDiagnosticSpan {
+            Some(crate::common::BindingDiagnosticSpan {
                 start: 3,
                 end: 8,
                 kind: "insertion-point",

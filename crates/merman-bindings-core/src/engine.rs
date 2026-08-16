@@ -1018,7 +1018,7 @@ impl SemanticOperationEngine {
 fn classify_semantic_error(error: merman::Error) -> BindingError {
     match error {
         merman::Error::RuntimePolicy(error) => common::runtime_policy_error(error),
-        error => BindingError::new(crate::BindingStatus::ParseError, error.to_string()),
+        error => common::parse_error(error),
     }
 }
 
@@ -1046,6 +1046,31 @@ mod tests {
         fn calls(&self) -> usize {
             self.calls.load(Ordering::SeqCst)
         }
+    }
+
+    #[test]
+    fn semantic_parse_errors_are_terminal_safe_and_structured() {
+        let span = merman::SourceSpan::new(5, 5);
+        let diagnostic = merman::ParseDiagnostic::new("missing\u{7}value")
+            .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
+            .with_code("merman.semantic\u{1b}");
+        let error = classify_semantic_error(merman::Error::diagram_parse_diagnostic(
+            "state\u{1b}",
+            diagnostic,
+        ));
+
+        assert_eq!(error.status(), crate::BindingStatus::ParseError);
+        assert!(!error.message().contains('\u{1b}'));
+        assert!(!error.message().contains('\u{7}'));
+        let details = error
+            .diagnostic_details()
+            .expect("semantic parse errors preserve structured details");
+        assert_eq!(details.code, "merman.semantic\\u{1B}");
+        assert_eq!(details.diagram_type.as_deref(), Some("state\\u{1B}"));
+        assert_eq!(
+            details.span,
+            Some(crate::BindingDiagnosticSpan::new(5, 5, "insertion-point"))
+        );
     }
 
     #[cfg(feature = "svg")]
