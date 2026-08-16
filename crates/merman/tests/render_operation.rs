@@ -405,9 +405,7 @@ fn themed_state_svg_reports_verified_coarse_theme_evidence() {
     assert!(summary.is_verified());
     assert!(summary.is_satisfied());
 
-    let admission = output
-        .admission()
-        .expect("best-effort SVG output should retain target-owned admission");
+    let admission = output.admission();
     assert_eq!(admission.artifact_kind(), merman::RenderArtifactKind::Svg);
     assert_eq!(
         admission.artifact_digest(),
@@ -457,13 +455,13 @@ fn standalone_class_svg_separates_verified_relation_width_from_font_portability(
         ThemeEvidenceStatus::Verified
     );
     assert!(output.svg().contains("stroke-width:5px !important"));
-    let admission = output
-        .admission()
-        .expect("best-effort Class SVG must retain target-owned admission");
+    let admission = output.admission();
     assert_eq!(
         admission.status(),
         merman::TargetAdmissionStatus::HostDependent
     );
+    assert!(!admission.status().is_portable());
+    assert_ne!(admission.receipt_digest(), [0; 32]);
     assert!(
         admission
             .reasons()
@@ -865,9 +863,7 @@ fn require_portable_svg_output_retains_the_exact_target_receipt() {
     let RenderOutput::Svg(Some(output)) = output else {
         panic!("expected a strict standalone SVG output");
     };
-    let admission = output
-        .admission()
-        .expect("strict SVG output must retain target-owned admission");
+    let admission = output.admission();
     assert_eq!(admission.artifact_kind(), merman::RenderArtifactKind::Svg);
     assert_eq!(admission.status(), merman::TargetAdmissionStatus::Portable);
     assert_eq!(
@@ -958,9 +954,7 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
         parity.svg()
     );
     let parity_digest = <[u8; 32]>::from(Sha256::digest(parity.svg().as_bytes()));
-    let parity_receipt = parity
-        .admission()
-        .expect("best-effort parity SVG should carry admission");
+    let parity_receipt = parity.admission();
     assert_eq!(parity_receipt.artifact_digest(), parity_digest);
     assert_eq!(
         parity_receipt.status(),
@@ -1034,9 +1028,7 @@ fn best_effort_svg_seals_terminal_validation_failure_without_discarding_the_arti
     let output =
         render(merman::svg::SvgPipeline::parity().with_postprocessor(MissingFragmentPostprocessor));
     assert!(output.svg().contains("data-test-missing-fragment"));
-    let admission = output
-        .admission()
-        .expect("best-effort SVG should retain its rejected receipt");
+    let admission = output.admission();
     assert_eq!(
         admission.artifact_digest(),
         <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
@@ -1049,17 +1041,11 @@ fn best_effort_svg_seals_terminal_validation_failure_without_discarding_the_arti
     );
     assert_ne!(
         admission.resource_fingerprint(),
-        baseline
-            .admission()
-            .expect("baseline SVG should retain admission")
-            .resource_fingerprint()
+        baseline.admission().resource_fingerprint()
     );
     assert_ne!(
         admission.document_digest(),
-        baseline
-            .admission()
-            .expect("baseline SVG should retain admission")
-            .document_digest()
+        baseline.admission().document_digest()
     );
 
     let strict_error = Renderer::new()

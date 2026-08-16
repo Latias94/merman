@@ -355,12 +355,13 @@ impl SvgOutput {
 
     /// Returns the target-owned admission bound to these exact SVG bytes.
     ///
-    /// Every successful standalone SVG has a receipt. The `Option` wrapper remains for source
-    /// compatibility with the alpha facade: successful outputs currently always return `Some`.
-    /// `BestEffort` returns non-portable evidence to the caller, while `RequirePortable` rejects it
-    /// with [`RenderError::TargetAdmission`]. Neither policy changes the selected SVG pipeline.
-    pub const fn admission(&self) -> Option<&TargetAdmissionReceipt> {
-        Some(&self.admission)
+    /// Every successful standalone SVG has a receipt. `BestEffort` returns the receipt even when
+    /// its status is host-dependent or rejected, while `RequirePortable` rejects such output with
+    /// [`RenderError::TargetAdmission`]. Callers must inspect the receipt status, for example with
+    /// `output.admission().status().is_portable()`, rather than treating receipt presence as
+    /// portability. Neither policy changes the selected SVG pipeline.
+    pub const fn admission(&self) -> &TargetAdmissionReceipt {
+        &self.admission
     }
 
     /// Returns SVG text and evidence, deliberately discarding any target-admission receipt.
