@@ -235,6 +235,38 @@
       ]
     },
     {
+      "id": "fixture-c6-cyberpunk-flowchart",
+      "sourcePath": "sources/c6-cyberpunk-flowchart.mmd",
+      "sourceSha256": "a2bb8cc673f1202592eb6d273b7e22d21e5682bd52a7d86763b0f2afd078e500",
+      "expectationPath": "expectations/c6-cyberpunk-flowchart.json",
+      "expectationSha256": "1593023743594d0899b0edd5ad0818146f369ae15d5fe5e07ff02e72d08e572f",
+      "themeInputPath": "inputs/c6-cyberpunk-flowchart.json",
+      "themeInputSha256": "4f0ec258c20cfe0b444d2c998d0dd2b888cff068e3020e7289f257e0bf3a2b17",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-cyberpunk-sequence",
+      "sourcePath": "sources/c6-cyberpunk-sequence.mmd",
+      "sourceSha256": "1f215578de05d71a02d22fff376c55a88ed71c7c36df909b5a5ff6a31a8583e8",
+      "expectationPath": "expectations/c6-cyberpunk-sequence.json",
+      "expectationSha256": "5fdea53228c718318935761e381570d1ccff7056b9553f662f5b7b3a2ebfe689",
+      "themeInputPath": "inputs/c6-cyberpunk-sequence.json",
+      "themeInputSha256": "ae0bd0b3aa37435bff5b3e306f690ba3a6ec7bb10cb623574ef56fc7556baeff",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
       "id": "fixture-c6-spotless-state",
       "sourcePath": "sources/c6-spotless-state.mmd",
       "sourceSha256": "695c0e0badd4e5d8c6f6546a0004315b19a3b018aa2a1da370455c86873120d6",
@@ -242,6 +274,22 @@
       "expectationSha256": "7d3590d1493f58ee7a33875790e55d03e8e252488535d49031d516ed6324b046",
       "themeInputPath": "inputs/c6-spotless-state.json",
       "themeInputSha256": "9fe23046cfeeca228d3858c6da41ff8d0b3f37f65fa8ec812c5d16c62c5796c6",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-spotless-sequence",
+      "sourcePath": "sources/sequence-proof.mmd",
+      "sourceSha256": "dbac54565c93b5e2d733b350e4cde7ecb7b464a79daf28d1ed6a0dc51b367d91",
+      "expectationPath": "expectations/c6-spotless-sequence.json",
+      "expectationSha256": "6e4cad331b2089515a332bf730e1d6f77fe305ef9363318cbbdc074248bbdc23",
+      "themeInputPath": "inputs/c6-spotless-sequence.json",
+      "themeInputSha256": "96ae066cc1bc4a277958cdae5e4f661a37a376312ec8934dff1fe3e9e232cedb",
       "evidenceSourceIds": [
         "source-excalidraw",
         "source-modern-mermaid"
@@ -697,6 +745,7 @@
       "sourceId": "source-modern-mermaid",
       "fixtureIds": [
         "fixture-c6-spotless-flowchart",
+        "fixture-c6-spotless-sequence",
         "fixture-c6-spotless-state",
         "fixture-hand-drawn-effects",
         "fixture-layered-canvas",
@@ -793,6 +842,8 @@
       "referenceName": "cyberpunk",
       "sourceId": "source-modern-mermaid",
       "fixtureIds": [
+        "fixture-c6-cyberpunk-flowchart",
+        "fixture-c6-cyberpunk-sequence",
         "fixture-c6-cyberpunk-state",
         "fixture-layered-canvas",
         "fixture-mixed-script-typography",

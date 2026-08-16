@@ -215,8 +215,8 @@
         "semanticAssertionId": "spotless-sequence-standalone-svg-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-sequence"
       }
     },
     {
@@ -233,8 +233,8 @@
         "semanticAssertionId": "spotless-sequence-png-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-sequence"
       }
     },
     {
@@ -253,8 +253,8 @@
         "semanticAssertionId": "cyberpunk-flowchart-standalone-svg-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-flowchart"
       }
     },
     {
@@ -273,8 +273,8 @@
         "semanticAssertionId": "cyberpunk-flowchart-png-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-flowchart"
       }
     },
     {
@@ -334,8 +334,8 @@
         "semanticAssertionId": "cyberpunk-sequence-standalone-svg-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-sequence"
       }
     },
     {
@@ -353,8 +353,8 @@
         "semanticAssertionId": "cyberpunk-sequence-png-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "theme-slice-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-sequence"
       }
     }
   ]

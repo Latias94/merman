@@ -25,7 +25,7 @@ fn committed_catalog_is_hash_bound_licensed_and_complete() {
 
     assert_eq!(catalog.sources().len(), 3);
     assert_eq!(catalog.assets().len(), 2);
-    assert_eq!(catalog.fixtures().len(), 22);
+    assert_eq!(catalog.fixtures().len(), 25);
     assert_eq!(catalog.themes().len(), MODERN_MERMAID_REFERENCE_THEME_COUNT);
     assert!(
         catalog

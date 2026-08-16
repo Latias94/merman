@@ -182,6 +182,9 @@ mod c6_pdf_proof;
 #[path = "support/c6_sequence_proof.rs"]
 mod c6_sequence_proof;
 
+#[path = "support/c6_spotless_sequence_group.rs"]
+mod c6_spotless_sequence_group;
+
 #[path = "support/c6_flowchart_proof.rs"]
 mod c6_flowchart_proof;
 
@@ -194,9 +197,20 @@ mod c6_spotless_state_proof;
 #[path = "support/c6_cyberpunk_state_proof.rs"]
 mod c6_cyberpunk_state_proof;
 
+#[path = "support/c6_cyberpunk_flowchart_proof.rs"]
+mod c6_cyberpunk_flowchart_proof;
+
+#[path = "support/c6_cyberpunk_flowchart_group.rs"]
+mod c6_cyberpunk_flowchart_group;
+
+#[path = "support/c6_cyberpunk_sequence_group.rs"]
+mod c6_cyberpunk_sequence_group;
+
 #[path = "support/c6_reference_theme_groups.rs"]
 mod c6_reference_theme_groups;
 
+use c6_cyberpunk_flowchart_group::CYBERPUNK_FLOWCHART_ADAPTER;
+use c6_cyberpunk_sequence_group::CYBERPUNK_SEQUENCE_ADAPTER;
 use c6_flowchart_proof::{
     BrutalistFlowchartSvgProof, prove_brutalist_flowchart_png, prove_brutalist_flowchart_svg,
 };
@@ -215,6 +229,7 @@ use c6_reference_theme_groups::{
 use c6_sequence_proof::{
     BrutalistSequenceSvgProof, prove_brutalist_sequence_png, prove_brutalist_sequence_svg,
 };
+use c6_spotless_sequence_group::SPOTLESS_SEQUENCE_ADAPTER;
 
 const SHADOW_EFFECT_ID: &str = "c6-brutalist-state-shadow";
 const BRUTALIST_FLOWCHART_FIXTURE_ID: &str = "fixture-ordinal-palette";
@@ -720,8 +735,11 @@ static C6_RENDER_GROUP_ADAPTERS: &[C6RenderGroupAdapter] = &[
     BRUTALIST_FLOWCHART_ADAPTER,
     BRUTALIST_SEQUENCE_ADAPTER,
     BRUTALIST_STATE_ADAPTER,
+    CYBERPUNK_FLOWCHART_ADAPTER,
+    CYBERPUNK_SEQUENCE_ADAPTER,
     CYBERPUNK_STATE_ADAPTER,
     SPOTLESS_FLOWCHART_ADAPTER,
+    SPOTLESS_SEQUENCE_ADAPTER,
     SPOTLESS_STATE_ADAPTER,
 ];
 

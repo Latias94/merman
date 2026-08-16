@@ -1,7 +1,7 @@
 use merman_theme_fixtures::{
     C6_ACCEPTANCE_CELL_COUNT, C6_ACCEPTANCE_RELATIVE_PATH, C6_ACCEPTANCE_SCHEMA_VERSION,
     C6_NATIVE_OUTPUT_TARGETS, C6_PROOF_FAMILIES, C6_PROOF_THEMES, C6AcceptanceCatalog, C6CellKey,
-    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofTheme, C6ReadinessBlocker, CatalogError,
+    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofTheme, CatalogError,
     ExpectedOutputTarget, ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 use serde_json::{Value, json};
@@ -148,8 +148,8 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
         C6_ACCEPTANCE_CELL_COUNT
     );
     assert_eq!(C6_ACCEPTANCE_CELL_COUNT, 18);
-    assert_eq!(catalog.enforced_tranche().cells().len(), 12);
-    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 6);
+    assert_eq!(catalog.enforced_tranche().cells().len(), 18);
+    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 0);
     assert_eq!(actual_keys, expected_keys);
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
 
@@ -224,19 +224,32 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
                 .map(|cell| cell.source_fixture_id()),
             Some("fixture-c6-spotless-flowchart")
         );
-    }
-    for theme in C6_PROOF_THEMES {
-        for family in C6_PROOF_FAMILIES {
-            for target in C6_NATIVE_OUTPUT_TARGETS {
-                let key = C6CellKey::new(theme, family, target);
-                if catalog.enforced_tranche().cell(key).is_some() {
-                    continue;
-                }
-                assert_eq!(
-                    catalog.enforced_tranche().readiness_blocker(key),
-                    Some(C6ReadinessBlocker::ThemeSliceIncomplete)
-                );
-            }
+
+        for (theme, family, fixture_id) in [
+            (
+                C6ProofTheme::Spotless,
+                C6ProofFamily::Sequence,
+                "fixture-c6-spotless-sequence",
+            ),
+            (
+                C6ProofTheme::Cyberpunk,
+                C6ProofFamily::Flowchart,
+                "fixture-c6-cyberpunk-flowchart",
+            ),
+            (
+                C6ProofTheme::Cyberpunk,
+                C6ProofFamily::Sequence,
+                "fixture-c6-cyberpunk-sequence",
+            ),
+        ] {
+            let key = C6CellKey::new(theme, family, target);
+            assert_eq!(
+                catalog
+                    .enforced_tranche()
+                    .cell(key)
+                    .map(|cell| cell.source_fixture_id()),
+                Some(fixture_id)
+            );
         }
     }
 }

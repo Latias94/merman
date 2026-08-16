@@ -1110,8 +1110,8 @@ mod tests {
             .evaluate(&acceptance, &themes)
             .expect("complete synthetic receipts");
 
-        assert_eq!(report.verified_cell_count(), 12);
-        assert_eq!(report.render_group_count(), 6);
+        assert_eq!(report.verified_cell_count(), 18);
+        assert_eq!(report.render_group_count(), 9);
         assert_eq!(report.manifest_digest(), acceptance.manifest_digest());
         assert_ne!(report.execution_digest(), &[0; 32]);
     }
