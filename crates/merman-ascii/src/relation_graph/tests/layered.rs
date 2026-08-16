@@ -232,12 +232,13 @@ fn layered_relation_route_plan_draws_route_and_overlays() {
         ],
     );
     let mut canvas = Canvas::new(3, 5);
+    let resources = test_resources(AsciiResourcePolicy::default());
 
     route
-        .draw_route_at(&mut canvas)
+        .draw_route_at(&mut canvas, &resources)
         .expect("test route should fit");
     route
-        .draw_overlays_at(&mut canvas)
+        .draw_overlays_at(&mut canvas, &resources)
         .expect("test overlays should fit");
 
     assert_eq!(canvas.get(1, 1), Some('T'));

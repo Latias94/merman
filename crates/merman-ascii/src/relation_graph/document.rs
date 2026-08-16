@@ -10,8 +10,9 @@ use super::summary::{
     RelationGraphSummaryRow, relation_summary_extent, relation_summary_lines_for_rows,
 };
 use super::{
-    RelationGraphBox, RelationGraphLine, RelationParallelPlan, RelationSelfLoopPlan,
-    RelationSelfLoopRows, RelationStackPlan, grid_overflow, layout_allocation_failed,
+    RelationCheckpointCursor, RelationGraphBox, RelationGraphLine, RelationParallelPlan,
+    RelationResourceCheckpointCursor, RelationSelfLoopPlan, RelationSelfLoopRows,
+    RelationStackPlan, grid_overflow, layout_allocation_failed,
 };
 use crate::Result;
 use crate::color::AsciiColorRole;
@@ -241,17 +242,16 @@ impl RelationRegionPlan<'_> {
         resources: &ResourceContext,
     ) -> Result<RelationRegionPlan<'a>> {
         regions.retain(|region| region.extent().height() > 0);
-        let regions_width = regions.iter().try_fold(0usize, |width, region| {
-            resources.checked_grid_add(width, region.extent().width())
-        })?;
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
+        let mut regions_width = 0;
+        let mut height = 0;
+        for region in &regions {
+            checkpoints.tick(resources)?;
+            regions_width = resources.checked_grid_add(regions_width, region.extent().width())?;
+            height = height.max(region.extent().height());
+        }
         let gaps_width = resources.checked_grid_mul(gap, regions.len().saturating_sub(1))?;
         let width = resources.checked_grid_add(regions_width, gaps_width)?;
-        let height = regions
-            .iter()
-            .map(RelationRegionPlan::extent)
-            .map(LogicalExtent::height)
-            .max()
-            .unwrap_or(0);
         let extent = resources.grid_extent(width, height)?;
         Ok(RelationRegionPlan::HorizontalStrip {
             regions,
@@ -268,18 +268,24 @@ fn paint_horizontal_relation_strip(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
     let mut blocks = Vec::new();
     blocks
         .try_reserve_exact(regions.len())
         .map_err(|_| layout_allocation_failed())?;
     for region in regions {
+        checkpoints.tick(resources)?;
         let expected = region.extent();
         let lines = region.paint(options, resources)?;
-        if lines
-            .iter()
-            .any(|line| line.width_profile() != options.terminal_width_profile)
-            || relation_lines_extent(&lines, resources)? != expected
-        {
+        let mut invalid_profile = false;
+        for line in &lines {
+            checkpoints.tick(resources)?;
+            if line.width_profile() != options.terminal_width_profile {
+                invalid_profile = true;
+                break;
+            }
+        }
+        if invalid_profile || relation_lines_extent(&lines, resources)? != expected {
             return Err(grid_overflow(resources));
         }
         blocks.push((expected, lines));
@@ -289,8 +295,10 @@ fn paint_horizontal_relation_strip(
     rows.try_reserve_exact(extent.height())
         .map_err(|_| layout_allocation_failed())?;
     for row_index in 0..extent.height() {
+        checkpoints.tick(resources)?;
         let mut row = StyledLine::with_resources(options.terminal_width_profile, resources);
         for (block_index, (block_extent, lines)) in blocks.iter().enumerate() {
+            checkpoints.tick(resources)?;
             if block_index > 0 {
                 row.try_push_spaces(gap)?;
             }
@@ -324,17 +332,17 @@ impl<'a> RelationRenderPlan<'a> {
         resources: &mut ResourceContext,
     ) -> Result<Self> {
         regions.retain(|region| region.extent().height() > 0);
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
         let separators = regions.len().saturating_sub(1);
-        let height = regions.iter().try_fold(separators, |height, region| {
-            resources.checked_grid_add(height, region.extent().height())
-        })?;
-        let width = regions
-            .iter()
-            .map(RelationRegionPlan::extent)
-            .map(LogicalExtent::width)
-            .max()
-            .unwrap_or(0);
+        let mut height = separators;
+        let mut width = 0;
+        for region in &regions {
+            checkpoints.tick(resources)?;
+            height = resources.checked_grid_add(height, region.extent().height())?;
+            width = width.max(region.extent().width());
+        }
         let extent = resources.grid_extent(width, height)?;
+        resources.checkpoint()?;
         resources.charge_layout_work(extent.cells())?;
         Ok(Self { regions, extent })
     }
@@ -348,12 +356,14 @@ impl<'a> RelationRenderPlan<'a> {
         self,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
+        checkpoints: &mut RelationCheckpointCursor<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
         let mut joined = Vec::new();
         joined
             .try_reserve_exact(self.extent.height())
             .map_err(|_| layout_allocation_failed())?;
         for region in self.regions {
+            checkpoints.tick()?;
             if !joined.is_empty() {
                 joined.push(RelationGraphLine::try_plain(
                     "",
@@ -363,11 +373,15 @@ impl<'a> RelationRenderPlan<'a> {
             }
             let expected = region.extent();
             let lines = region.paint(options, resources)?;
-            if lines
-                .iter()
-                .any(|line| line.width_profile() != options.terminal_width_profile)
-                || relation_lines_extent(&lines, resources)? != expected
-            {
+            let mut invalid_profile = false;
+            for line in &lines {
+                checkpoints.tick()?;
+                if line.width_profile() != options.terminal_width_profile {
+                    invalid_profile = true;
+                    break;
+                }
+            }
+            if invalid_profile || relation_lines_extent(&lines, resources)? != expected {
                 return Err(grid_overflow(resources));
             }
             joined.extend(lines);
@@ -580,11 +594,14 @@ impl<'a> LayeredRelationPaintPlan<'a> {
             extent: _,
         } = self;
         let mut canvas = scene.canvas_with_boxes(options, resources)?;
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
         for route in &routes {
-            route.draw_route_at(&mut canvas)?;
+            checkpoints.tick(resources)?;
+            route.draw_route_at(&mut canvas, resources)?;
         }
         for route in &routes {
-            route.draw_overlays_at(&mut canvas)?;
+            checkpoints.tick(resources)?;
+            route.draw_overlays_at(&mut canvas, resources)?;
         }
         let styled_lines = canvas.into_styled_lines_preserving_extent()?;
         resources.charge_layout_work(styled_lines.len().max(1))?;
@@ -592,7 +609,10 @@ impl<'a> LayeredRelationPaintPlan<'a> {
         rendered
             .try_reserve_exact(styled_lines.len())
             .map_err(|_| layout_allocation_failed())?;
-        rendered.extend(styled_lines.into_iter().map(RelationGraphLine::from_styled));
+        for line in styled_lines {
+            checkpoints.tick(resources)?;
+            rendered.push(RelationGraphLine::from_styled(line));
+        }
         Ok(rendered)
     }
 }
@@ -601,10 +621,11 @@ pub(super) fn relation_lines_extent(
     lines: &[RelationGraphLine],
     resources: &ResourceContext,
 ) -> Result<LogicalExtent> {
-    let width = lines
-        .iter()
-        .map(RelationGraphLine::width)
-        .max()
-        .unwrap_or(0);
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
+    let mut width = 0;
+    for line in lines {
+        checkpoints.tick(resources)?;
+        width = width.max(line.width());
+    }
     resources.grid_extent(width, lines.len())
 }

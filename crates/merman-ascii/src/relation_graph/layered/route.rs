@@ -1,8 +1,8 @@
-use super::super::RelationGraphLabel;
+use super::super::{RelationGraphLabel, RelationResourceCheckpointCursor};
 use super::boxes::PlacedRelationGraphBox;
 use super::draw::{
-    RelationLineChars, draw_relation_span_inclusive, put_relation_char,
-    write_centered_relation_label, write_centered_relation_text,
+    RelationLineChars, put_relation_char, write_centered_relation_label,
+    write_centered_relation_text,
 };
 use crate::AsciiError;
 use crate::Result;
@@ -275,16 +275,23 @@ impl LayeredRelationRouteSegment {
         vertical_char: char,
         horizontal_char: char,
         relation_chars: RelationLineChars,
+        resources: &ResourceContext,
+        checkpoints: &mut RelationResourceCheckpointCursor,
     ) -> Result<()> {
         match self {
             Self::Horizontal { y, left, right } => {
                 for x in left..=right {
+                    checkpoints.tick(resources)?;
                     put_relation_char(canvas, x, y, horizontal_char, relation_chars)?;
                 }
                 Ok(())
             }
             Self::Vertical { x, top, bottom } => {
-                draw_relation_span_inclusive(canvas, x, top, bottom, vertical_char, relation_chars)
+                for y in top..=bottom {
+                    checkpoints.tick(resources)?;
+                    put_relation_char(canvas, x, y, vertical_char, relation_chars)?;
+                }
+                Ok(())
             }
         }
     }
@@ -555,13 +562,21 @@ impl LayeredRelationRoutePlan {
         }
     }
 
-    pub(crate) fn draw_route_at(&self, canvas: &mut Canvas) -> Result<()> {
+    pub(crate) fn draw_route_at(
+        &self,
+        canvas: &mut Canvas,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
         for segment in self.geometry.segments() {
+            checkpoints.tick(resources)?;
             segment.draw(
                 canvas,
                 self.vertical_char,
                 self.horizontal_char,
                 self.relation_chars,
+                resources,
+                &mut checkpoints,
             )?;
         }
         Ok(())
@@ -571,8 +586,14 @@ impl LayeredRelationRoutePlan {
         &self.geometry
     }
 
-    pub(crate) fn draw_overlays_at(&self, canvas: &mut Canvas) -> Result<()> {
+    pub(crate) fn draw_overlays_at(
+        &self,
+        canvas: &mut Canvas,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
         for overlay in &self.overlays {
+            checkpoints.tick(resources)?;
             overlay.draw_at(canvas)?;
         }
         Ok(())

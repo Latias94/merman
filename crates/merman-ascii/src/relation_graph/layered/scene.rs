@@ -1,4 +1,4 @@
-use super::super::RelationGraphBox;
+use super::super::{RelationGraphBox, RelationResourceCheckpointCursor};
 use super::boxes::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationLayoutKind, LayeredRelationPlan,
     LayeredRelationPlanningError, PlacedRelationGraphBox, plan_layered_relation_boxes,
@@ -174,13 +174,16 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         options: &AsciiRenderOptions,
         resources: &ResourceContext,
     ) -> Result<Canvas> {
+        resources.checkpoint()?;
         let mut canvas = Canvas::try_with_resources(
             self.width(),
             self.height(),
             options.terminal_width_profile,
             resources,
         )?;
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
         for placed_box in self.plan.placed_boxes() {
+            checkpoints.tick(resources)?;
             placed_box.draw_at(&mut canvas, resources)?;
         }
         Ok(canvas)
@@ -682,7 +685,7 @@ mod tests {
             Vec::new(),
         );
         route
-            .draw_route_at(&mut canvas)
+            .draw_route_at(&mut canvas, &resources)
             .expect("route glyphs should fit the test canvas");
 
         assert!(

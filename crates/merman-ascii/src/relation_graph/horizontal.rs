@@ -1,9 +1,10 @@
 use super::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationSummaryReason, RelationBoxStripPlan,
-    RelationComponentAdapter, RelationGraphBox, RelationGraphLabel, RelationGraphLine,
-    RelationLineChars, RelationRegionPlan, RelationRenderPlan, RelationSelfLoopPlan,
-    RelationSummaryPaintPlan, build_layered_edges, grid_overflow, layout_allocation_failed,
-    put_relation_char, relation_components, work_overflow,
+    RelationCheckpointCursor, RelationComponentAdapter, RelationGraphBox, RelationGraphLabel,
+    RelationGraphLine, RelationLineChars, RelationRegionPlan, RelationRenderPlan,
+    RelationResourceCheckpointCursor, RelationSelfLoopPlan, RelationSummaryPaintPlan,
+    build_layered_edges, grid_overflow, layout_allocation_failed, put_relation_char,
+    relation_components, work_overflow,
 };
 use crate::Result;
 use crate::canvas::Canvas;
@@ -191,12 +192,12 @@ struct HorizontalEdgePlan {
     lane_y: usize,
 }
 
-struct HorizontalComponentPlanContext<'a, R, A> {
-    edges: &'a [LayeredRelationEdge],
-    relations: &'a [R],
+struct HorizontalComponentPlanContext<'plan, 'scratch, R, A> {
+    edges: &'scratch [LayeredRelationEdge],
+    relations: &'plan [R],
     direction: RelationGraphHorizontalDirection,
-    options: &'a AsciiRenderOptions,
-    adapter: &'a A,
+    options: &'scratch AsciiRenderOptions,
+    adapter: &'plan A,
 }
 
 pub(crate) struct HorizontalRelationPaintPlan<'a> {
@@ -216,6 +217,8 @@ impl HorizontalRelationPaintPlan<'_> {
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
     ) -> Result<Vec<RelationGraphLine>> {
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
+        resources.checkpoint()?;
         let mut canvas = Canvas::try_with_resources(
             self.extent.width(),
             self.extent.height(),
@@ -223,11 +226,23 @@ impl HorizontalRelationPaintPlan<'_> {
             resources,
         )?;
         for edge in &self.edges {
-            draw_horizontal_edge(&mut canvas, &self.nodes, edge, self.box_top, resources)?;
+            checkpoints.tick(resources)?;
+            draw_horizontal_edge(
+                &mut canvas,
+                &self.nodes,
+                edge,
+                self.box_top,
+                resources,
+                &mut checkpoints,
+            )?;
         }
         for node in &self.nodes {
-            node.visual
-                .draw_at(&mut canvas, node.x, self.box_top, resources)?;
+            checkpoints.tick(resources)?;
+            for (row_index, line) in node.visual.lines().iter().enumerate() {
+                checkpoints.tick(resources)?;
+                let y = resources.checked_grid_add(self.box_top, row_index)?;
+                line.draw_at(&mut canvas, node.x, y)?;
+            }
         }
 
         let styled_lines = canvas.into_styled_lines_preserving_extent()?;
@@ -235,7 +250,10 @@ impl HorizontalRelationPaintPlan<'_> {
         rendered
             .try_reserve_exact(styled_lines.len())
             .map_err(|_| layout_allocation_failed())?;
-        rendered.extend(styled_lines.into_iter().map(RelationGraphLine::from_styled));
+        for line in styled_lines {
+            checkpoints.tick(resources)?;
+            rendered.push(RelationGraphLine::from_styled(line));
+        }
         Ok(rendered)
     }
 }
@@ -281,34 +299,43 @@ pub(crate) fn render_horizontal_relation_components_with_execution<'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    let mut resources = execution.resource_context(resources, OperationPhase::Layout);
-    render_horizontal_relation_components_impl(
+    let mut layout_checkpoints = RelationCheckpointCursor::new(execution, OperationPhase::Layout);
+    let mut layout_resources = execution.resource_context(resources, OperationPhase::Layout);
+    layout_checkpoints.checkpoint()?;
+    let plan = plan_horizontal_relation_components(
         boxes,
         relations,
         direction,
         options,
-        &mut resources,
+        &mut layout_resources,
         adapter,
         deferred,
-    )
+        &mut layout_checkpoints,
+    )?;
+    let mut emit_checkpoints = layout_checkpoints.next_phase(OperationPhase::Emit);
+    let mut emit_resources = execution.resource_context(resources, OperationPhase::Emit);
+    emit_checkpoints.checkpoint()?;
+    let lines = plan.materialize(options, &mut emit_resources, &mut emit_checkpoints)?;
+    emit_checkpoints.checkpoint()?;
+    Ok(lines)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_horizontal_relation_components_impl<'text, R, A>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
+fn plan_horizontal_relation_components<'plan, 'text, R, A>(
+    boxes: &'plan [RelationGraphBox],
+    relations: &'plan [R],
     direction: RelationGraphHorizontalDirection,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
-    adapter: &A,
+    adapter: &'plan A,
     deferred: &mut DeferredTextRegistry<'text>,
-) -> Result<Vec<RelationGraphLine>>
+    checkpoints: &mut RelationCheckpointCursor<'_>,
+) -> Result<RelationRenderPlan<'plan>>
 where
-    A: RelationComponentAdapter<'text, R>,
+    A: RelationComponentAdapter<'text, R> + 'plan,
 {
-    resources.checkpoint()?;
     if boxes.is_empty() {
-        return Ok(Vec::new());
+        return RelationRenderPlan::try_new(Vec::new(), resources);
     }
     if relations.is_empty() {
         let mut refs = Vec::new();
@@ -322,11 +349,14 @@ where
             options.terminal_width_profile,
             resources,
         )?);
-        return RelationRenderPlan::try_new(vec![region], resources)?
-            .materialize(options, resources);
+        checkpoints.before_charge()?;
+        return RelationRenderPlan::try_new(vec![region], resources);
     }
 
-    let edges = build_layered_edges(relations, adapter, resources)?;
+    let edges = build_layered_edges(relations, adapter, resources, checkpoints)?;
+    for _ in boxes {
+        checkpoints.tick()?;
+    }
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(|semantic| adapter.layered_error(semantic)))?;
     let mut regions = Vec::new();
@@ -346,7 +376,7 @@ where
     };
 
     for component in &components {
-        resources.checkpoint()?;
+        checkpoints.tick()?;
         if component.edge_indices().is_empty() {
             standalone.extend(component.boxes().iter().copied());
             continue;
@@ -357,6 +387,7 @@ where
             &context,
             resources,
             deferred,
+            checkpoints,
         )?);
     }
 
@@ -372,8 +403,8 @@ where
         ));
     }
 
-    resources.checkpoint()?;
-    RelationRenderPlan::try_new(regions, resources)?.materialize(options, resources)
+    checkpoints.before_charge()?;
+    RelationRenderPlan::try_new(regions, resources)
 }
 
 pub(crate) fn render_horizontal_box_strip_lines(
@@ -396,14 +427,14 @@ pub(crate) fn horizontal_box_strip_extent(
     gap: usize,
     resources: &ResourceContext,
 ) -> Result<LogicalExtent> {
-    let height = boxes
-        .iter()
-        .map(RelationGraphBox::height)
-        .max()
-        .unwrap_or(0);
-    let box_width = boxes.iter().try_fold(0usize, |width, relation_box| {
-        resources.checked_grid_add(width, relation_box.width())
-    })?;
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
+    let mut height = 0;
+    let mut box_width = 0;
+    for relation_box in boxes {
+        checkpoints.tick(resources)?;
+        height = height.max(relation_box.height());
+        box_width = resources.checked_grid_add(box_width, relation_box.width())?;
+    }
     let gap_width = resources.checked_grid_mul(boxes.len().saturating_sub(1), gap)?;
     let width = resources.checked_grid_add(box_width, gap_width)?;
     resources.grid_extent(width, height)
@@ -414,14 +445,14 @@ pub(crate) fn horizontal_box_strip_ref_extent(
     gap: usize,
     resources: &ResourceContext,
 ) -> Result<LogicalExtent> {
-    let height = boxes
-        .iter()
-        .map(|relation_box| relation_box.height())
-        .max()
-        .unwrap_or(0);
-    let box_width = boxes.iter().try_fold(0usize, |width, relation_box| {
-        resources.checked_grid_add(width, relation_box.width())
-    })?;
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
+    let mut height = 0;
+    let mut box_width = 0;
+    for relation_box in boxes {
+        checkpoints.tick(resources)?;
+        height = height.max(relation_box.height());
+        box_width = resources.checked_grid_add(box_width, relation_box.width())?;
+    }
     let gap_width = resources.checked_grid_mul(boxes.len().saturating_sub(1), gap)?;
     let width = resources.checked_grid_add(box_width, gap_width)?;
     resources.grid_extent(width, height)
@@ -430,9 +461,10 @@ pub(crate) fn horizontal_box_strip_ref_extent(
 fn plan_horizontal_component<'plan, 'text, R, A>(
     boxes: &[&'plan RelationGraphBox],
     edge_indices: &[usize],
-    context: &HorizontalComponentPlanContext<'plan, R, A>,
+    context: &HorizontalComponentPlanContext<'plan, '_, R, A>,
     resources: &mut ResourceContext,
     deferred: &mut DeferredTextRegistry<'text>,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<RelationRegionPlan<'plan>>
 where
     A: RelationComponentAdapter<'text, R>,
@@ -447,17 +479,20 @@ where
         context.direction,
         resources,
         adapter,
+        checkpoints,
     )?;
-    let self_relation_count = edge_indices.iter().try_fold(0usize, |count, edge_index| {
+    let mut self_relation_count = 0usize;
+    for edge_index in edge_indices {
+        checkpoints.tick()?;
         let relation = relations
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         if adapter.is_self_relation(relation) {
-            count.checked_add(1).ok_or_else(|| work_overflow(resources))
-        } else {
-            Ok(count)
+            self_relation_count = self_relation_count
+                .checked_add(1)
+                .ok_or_else(|| work_overflow(resources))?;
         }
-    })?;
+    }
     if self_relation_count > 0 && self_relation_count < edge_indices.len() {
         return Ok(RelationRegionPlan::Summary(
             plan_horizontal_relation_summary(
@@ -469,6 +504,7 @@ where
                 resources,
                 adapter,
                 deferred,
+                checkpoints,
             )?,
         ));
     }
@@ -489,21 +525,25 @@ where
             .try_reserve_exact(edge_indices.len())
             .map_err(|_| layout_allocation_failed())?;
         for edge_index in edge_indices {
+            checkpoints.tick()?;
             let relation = relations
                 .get(*edge_index)
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
             relation_refs.push(relation);
             metrics.push(adapter.self_loop_metrics(relation, resources)?);
         }
+        checkpoints.before_charge()?;
         let plan = RelationSelfLoopPlan::try_new(relation_box, metrics, resources)?;
         return Ok(RelationRegionPlan::SelfLoops {
             plan,
             rows: Box::new(move |resources| {
+                let mut checkpoints = RelationResourceCheckpointCursor::new();
                 let mut loops = Vec::new();
                 loops
                     .try_reserve_exact(relation_refs.len())
                     .map_err(|_| layout_allocation_failed())?;
                 for relation in relation_refs {
+                    checkpoints.tick(resources)?;
                     loops.push(adapter.self_loop_rows(relation, resources)?);
                 }
                 Ok(loops)
@@ -515,6 +555,7 @@ where
         .try_reserve_exact(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
     for box_index in &order {
+        checkpoints.tick()?;
         let original = boxes[*box_index];
         nodes.push(HorizontalNode {
             original,
@@ -528,6 +569,7 @@ where
         .try_reserve_exact(edge_indices.len())
         .map_err(|_| layout_allocation_failed())?;
     for edge_index in edge_indices {
+        checkpoints.tick()?;
         let relation = relations
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
@@ -535,9 +577,9 @@ where
             .edges
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        let source_index = node_index(&nodes, edge.source_id())
+        let source_index = node_index(&nodes, edge.source_id(), checkpoints)?
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        let target_index = node_index(&nodes, edge.target_id())
+        let target_index = node_index(&nodes, edge.target_id(), checkpoints)?
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         let (source_side, target_side) = if source_index < target_index {
             (RelationPortSide::Right, RelationPortSide::Left)
@@ -579,9 +621,11 @@ where
         adapter.layered_horizontal_gap(),
     );
     for edge_plan in &edge_plans {
+        checkpoints.tick()?;
         let left = edge_plan.source_index.min(edge_plan.target_index);
         let right = edge_plan.source_index.max(edge_plan.target_index);
-        let available = horizontal_span_between(&nodes, &gaps, left, right, resources)?;
+        let available =
+            horizontal_span_between(&nodes, &gaps, left, right, resources, checkpoints)?;
         let required =
             resources.checked_grid_add(edge_plan.style.required_inner_width(resources)?, 2)?;
         if available < required {
@@ -591,6 +635,7 @@ where
 
     let mut width = 0;
     for (index, node) in nodes.iter_mut().enumerate() {
+        checkpoints.tick()?;
         node.x = width;
         width = resources.checked_grid_add(width, node.visual.width())?;
         if let Some(gap) = gaps.get(index) {
@@ -600,6 +645,7 @@ where
 
     let mut label_cursor = 0;
     for edge_plan in &mut edge_plans {
+        checkpoints.tick()?;
         edge_plan.label_top = label_cursor;
         let label_height = edge_plan.style.label_height();
         label_cursor = resources.checked_grid_add(label_cursor, label_height)?;
@@ -610,18 +656,19 @@ where
     let lane_height = resources.checked_grid_mul(edge_plans.len(), 2)?;
     let lane_top = label_cursor;
     for (index, edge_plan) in edge_plans.iter_mut().enumerate() {
+        checkpoints.tick()?;
         edge_plan.lane_y =
             resources.checked_grid_add(lane_top, resources.checked_grid_mul(index, 2)?)?;
     }
     let box_top =
         resources.checked_grid_add(resources.checked_grid_add(label_cursor, lane_height)?, 1)?;
-    let box_height = nodes
-        .iter()
-        .map(|node| node.visual.height())
-        .max()
-        .unwrap_or(0);
+    let mut box_height = 0;
+    for node in &nodes {
+        checkpoints.tick()?;
+        box_height = box_height.max(node.visual.height());
+    }
     let height = resources.checked_grid_add(box_top, box_height)?;
-    if horizontal_edge_owners_overlap(&nodes, &edge_plans, box_top, resources)? {
+    if horizontal_edge_owners_overlap(&nodes, &edge_plans, box_top, resources, checkpoints)? {
         return Ok(RelationRegionPlan::Summary(
             plan_horizontal_relation_summary(
                 boxes,
@@ -632,6 +679,7 @@ where
                 resources,
                 adapter,
                 deferred,
+                checkpoints,
             )?,
         ));
     }
@@ -656,6 +704,7 @@ fn plan_horizontal_relation_summary<'plan, 'text, R, A>(
     resources: &mut ResourceContext,
     adapter: &A,
     deferred: &mut DeferredTextRegistry<'text>,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<RelationSummaryPaintPlan<'plan>>
 where
     A: RelationComponentAdapter<'text, R>,
@@ -665,6 +714,7 @@ where
         .try_reserve_exact(order.len())
         .map_err(|_| layout_allocation_failed())?;
     for box_index in order {
+        checkpoints.tick()?;
         ordered_boxes.push(
             *boxes
                 .get(*box_index)
@@ -676,6 +726,7 @@ where
     rows.try_reserve_exact(edge_indices.len())
         .map_err(|_| layout_allocation_failed())?;
     for edge_index in edge_indices {
+        checkpoints.tick()?;
         let relation = relations
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
@@ -700,10 +751,12 @@ fn stable_horizontal_order<'text, R, A>(
     direction: RelationGraphHorizontalDirection,
     resources: &mut ResourceContext,
     adapter: &A,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<Vec<usize>>
 where
     A: RelationComponentAdapter<'text, R>,
 {
+    checkpoints.before_charge()?;
     resources.charge_layout_work_product(boxes.len().max(1), edge_indices.len().max(1))?;
     let mut indegree = Vec::new();
     indegree
@@ -711,13 +764,14 @@ where
         .map_err(|_| layout_allocation_failed())?;
     indegree.resize(boxes.len(), 0usize);
     for edge_index in edge_indices {
+        checkpoints.tick()?;
         let edge = edges
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         if edge.source_id() == edge.target_id() {
             continue;
         }
-        let target = box_index(boxes, edge.target_id())
+        let target = box_index(boxes, edge.target_id(), checkpoints)?
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         indegree[target] = indegree[target]
             .checked_add(1)
@@ -734,23 +788,37 @@ where
         .try_reserve_exact(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
     while order.len() < boxes.len() {
-        let next = indegree
-            .iter()
-            .enumerate()
-            .find_map(|(index, degree)| (!emitted[index] && *degree == 0).then_some(index))
-            .or_else(|| emitted.iter().position(|was_emitted| !was_emitted))
-            .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
+        let mut next = None;
+        for (index, degree) in indegree.iter().enumerate() {
+            checkpoints.tick()?;
+            if !emitted[index] && *degree == 0 {
+                next = Some(index);
+                break;
+            }
+        }
+        if next.is_none() {
+            for (index, was_emitted) in emitted.iter().enumerate() {
+                checkpoints.tick()?;
+                if !was_emitted {
+                    next = Some(index);
+                    break;
+                }
+            }
+        }
+        let next =
+            next.ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         emitted[next] = true;
         order.push(next);
         let source_id = boxes[next].id();
         for edge_index in edge_indices {
+            checkpoints.tick()?;
             let edge = edges
                 .get(*edge_index)
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
             if edge.source_id() != source_id || edge.source_id() == edge.target_id() {
                 continue;
             }
-            let target = box_index(boxes, edge.target_id())
+            let target = box_index(boxes, edge.target_id(), checkpoints)?
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
             indegree[target] = indegree[target].saturating_sub(1);
         }
@@ -767,12 +835,14 @@ fn horizontal_span_between(
     left: usize,
     right: usize,
     resources: &ResourceContext,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<usize> {
     if left >= right {
         return Err(grid_overflow(resources));
     }
     let mut span = *gaps.get(left).ok_or_else(|| grid_overflow(resources))?;
     for (node, gap) in nodes.iter().zip(gaps).take(right).skip(left + 1) {
+        checkpoints.tick()?;
         span = resources.checked_grid_add(span, node.visual.width())?;
         span = resources.checked_grid_add(span, *gap)?;
     }
@@ -861,13 +931,16 @@ fn horizontal_edge_owners_overlap(
     edges: &[HorizontalEdgePlan],
     box_top: usize,
     resources: &mut ResourceContext,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<bool> {
+    checkpoints.before_charge()?;
     resources.charge_layout_work(edges.len())?;
     let mut geometries = Vec::new();
     geometries
         .try_reserve_exact(edges.len())
         .map_err(|_| layout_allocation_failed())?;
     for edge in edges {
+        checkpoints.tick()?;
         geometries.push(horizontal_edge_geometry(nodes, edge, box_top, resources)?);
     }
 
@@ -876,9 +949,11 @@ fn horizontal_edge_owners_overlap(
         .checked_mul(edges.len().saturating_sub(1))
         .map(|pairs| pairs / 2)
         .ok_or_else(|| work_overflow(resources))?;
+    checkpoints.before_charge()?;
     resources.charge_layout_work(pair_count)?;
     for left_index in 0..edges.len() {
         for right_index in (left_index + 1)..edges.len() {
+            checkpoints.tick()?;
             let compatible_shared_endpoints =
                 compatible_shared_endpoints(&edges[left_index], &edges[right_index]);
             if geometries[left_index]
@@ -897,6 +972,7 @@ fn draw_horizontal_edge(
     edge: &HorizontalEdgePlan,
     box_top: usize,
     resources: &mut ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<()> {
     let (_, left_endpoint, _, right_endpoint) = edge.physical_endpoints();
     let geometry = horizontal_edge_geometry(nodes, edge, box_top, resources)?;
@@ -909,6 +985,7 @@ fn draw_horizontal_edge(
         .checked_add(geometry.right_stem.bottom.abs_diff(geometry.right_stem.top))
         .ok_or_else(|| work_overflow(resources))?;
     let horizontal_work = right_stem_x.abs_diff(left_stem_x);
+    resources.checkpoint()?;
     resources.charge_layout_work(
         vertical_work
             .checked_add(horizontal_work)
@@ -923,6 +1000,8 @@ fn draw_horizontal_edge(
         geometry.left_port_y,
         edge.style.vertical,
         edge.style.line_chars,
+        resources,
+        checkpoints,
     )?;
     draw_vertical_span(
         canvas,
@@ -931,6 +1010,8 @@ fn draw_horizontal_edge(
         geometry.right_port_y,
         edge.style.vertical,
         edge.style.line_chars,
+        resources,
+        checkpoints,
     )?;
 
     let content_start = resources.checked_grid_add(left_stem_x, 1)?;
@@ -947,6 +1028,7 @@ fn draw_horizontal_edge(
         return Err(grid_overflow(resources));
     }
     for x in left_marker_end..right_marker_start {
+        checkpoints.tick(resources)?;
         put_relation_char(
             canvas,
             x,
@@ -970,6 +1052,7 @@ fn draw_horizontal_edge(
         content_start,
         resources.checked_grid_add(content_end, 1)?,
         resources,
+        checkpoints,
     )
 }
 
@@ -981,6 +1064,7 @@ fn draw_horizontal_labels(
     content_start: usize,
     content_end: usize,
     resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<()> {
     let left_width = left_endpoint.label_width();
     let relation_width = edge.style.label_width();
@@ -1005,13 +1089,34 @@ fn draw_horizontal_labels(
         .min(maximum_relation_start.max(minimum_relation_start));
 
     if let Some(label) = left_endpoint.label.as_ref() {
-        draw_label_at(canvas, content_start, edge.label_top, label, resources)?;
+        draw_label_at(
+            canvas,
+            content_start,
+            edge.label_top,
+            label,
+            resources,
+            checkpoints,
+        )?;
     }
     if let Some(label) = edge.style.label.as_ref() {
-        draw_label_at(canvas, relation_start, edge.label_top, label, resources)?;
+        draw_label_at(
+            canvas,
+            relation_start,
+            edge.label_top,
+            label,
+            resources,
+            checkpoints,
+        )?;
     }
     if let Some(label) = right_endpoint.label.as_ref() {
-        draw_label_at(canvas, right_start, edge.label_top, label, resources)?;
+        draw_label_at(
+            canvas,
+            right_start,
+            edge.label_top,
+            label,
+            resources,
+            checkpoints,
+        )?;
     }
     Ok(())
 }
@@ -1022,8 +1127,10 @@ fn draw_label_at(
     y: usize,
     label: &RelationGraphLabel,
     resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<()> {
     for (offset, line) in label.lines().iter().enumerate() {
+        checkpoints.tick(resources)?;
         let row = resources.checked_grid_add(y, offset)?;
         canvas.write_deferred_text_role(x, row, line, AsciiColorRole::EdgeLabel)?;
     }
@@ -1037,8 +1144,11 @@ fn draw_vertical_span(
     end_y: usize,
     ch: char,
     chars: RelationLineChars,
+    resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<()> {
     for y in start_y.min(end_y)..=start_y.max(end_y) {
+        checkpoints.tick(resources)?;
         put_relation_char(canvas, x, y, ch, chars)?;
     }
     Ok(())
@@ -1051,14 +1161,17 @@ pub(crate) fn horizontal_box_strip_lines(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
     let extent = horizontal_box_strip_ref_extent(boxes, gap, resources)?;
     let height = extent.height();
+    resources.checkpoint()?;
     resources.charge_layout_work(extent.cells())?;
     let mut lines = Vec::new();
     lines
         .try_reserve_exact(height)
         .map_err(|_| layout_allocation_failed())?;
     for y in 0..height {
+        checkpoints.tick(resources)?;
         let mut parts = Vec::new();
         let part_capacity = resources
             .checked_work_mul(boxes.len(), 2)?
@@ -1067,6 +1180,7 @@ pub(crate) fn horizontal_box_strip_lines(
             .try_reserve_exact(part_capacity)
             .map_err(|_| layout_allocation_failed())?;
         for ordered_index in 0..boxes.len() {
+            checkpoints.tick(resources)?;
             let box_index = if direction.is_reversed() {
                 boxes.len() - ordered_index - 1
             } else {
@@ -1092,14 +1206,32 @@ pub(crate) fn horizontal_box_strip_lines(
     Ok(lines)
 }
 
-fn box_index(boxes: &[&RelationGraphBox], id: &str) -> Option<usize> {
-    boxes
-        .iter()
-        .position(|relation_box| relation_box.id() == id)
+fn box_index(
+    boxes: &[&RelationGraphBox],
+    id: &str,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
+) -> Result<Option<usize>> {
+    for (index, relation_box) in boxes.iter().enumerate() {
+        checkpoints.tick()?;
+        if relation_box.id() == id {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
 }
 
-fn node_index(nodes: &[HorizontalNode<'_>], id: &str) -> Option<usize> {
-    nodes.iter().position(|node| node.original.id() == id)
+fn node_index(
+    nodes: &[HorizontalNode<'_>],
+    id: &str,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
+) -> Result<Option<usize>> {
+    for (index, node) in nodes.iter().enumerate() {
+        checkpoints.tick()?;
+        if node.original.id() == id {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -1107,6 +1239,7 @@ mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl};
 
     #[test]
     fn horizontal_owner_scan_has_an_exact_work_boundary() {
@@ -1158,10 +1291,21 @@ mod tests {
         ];
 
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let mut measured_resources = ResourceContext::new(unbounded);
+        let measured_ledger = ResourceContext::new(unbounded);
+        let measured_execution = AsciiExecution::for_test(&unbounded);
+        let mut measured_resources =
+            measured_execution.resource_context(&measured_ledger, OperationPhase::Layout);
+        let mut measured_checkpoints =
+            RelationCheckpointCursor::new(measured_execution, OperationPhase::Layout);
         assert!(
-            horizontal_edge_owners_overlap(&nodes, &edges, 8, &mut measured_resources)
-                .expect("shared-source owner scan should succeed")
+            horizontal_edge_owners_overlap(
+                &nodes,
+                &edges,
+                8,
+                &mut measured_resources,
+                &mut measured_checkpoints,
+            )
+            .expect("shared-source owner scan should succeed")
         );
         let exact_work = measured_resources.layout_work_used();
         assert_eq!(exact_work, 3);
@@ -1169,19 +1313,41 @@ mod tests {
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact owner-scan work limit should be valid");
-        let mut exact_resources = ResourceContext::new(exact_policy);
+        let exact_ledger = ResourceContext::new(exact_policy);
+        let exact_execution = AsciiExecution::for_test(&exact_policy);
+        let mut exact_resources =
+            exact_execution.resource_context(&exact_ledger, OperationPhase::Layout);
+        let mut exact_checkpoints =
+            RelationCheckpointCursor::new(exact_execution, OperationPhase::Layout);
         assert!(
-            horizontal_edge_owners_overlap(&nodes, &edges, 8, &mut exact_resources)
-                .expect("exact owner-scan work should pass")
+            horizontal_edge_owners_overlap(
+                &nodes,
+                &edges,
+                8,
+                &mut exact_resources,
+                &mut exact_checkpoints,
+            )
+            .expect("exact owner-scan work should pass")
         );
         assert_eq!(exact_resources.layout_work_used(), exact_work);
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("max-minus-one owner-scan work limit should be valid");
-        let mut below_resources = ResourceContext::new(below_policy);
-        let error = horizontal_edge_owners_overlap(&nodes, &edges, 8, &mut below_resources)
-            .expect_err("max-minus-one owner-scan work should reject");
+        let below_ledger = ResourceContext::new(below_policy);
+        let below_execution = AsciiExecution::for_test(&below_policy);
+        let mut below_resources =
+            below_execution.resource_context(&below_ledger, OperationPhase::Layout);
+        let mut below_checkpoints =
+            RelationCheckpointCursor::new(below_execution, OperationPhase::Layout);
+        let error = horizontal_edge_owners_overlap(
+            &nodes,
+            &edges,
+            8,
+            &mut below_resources,
+            &mut below_checkpoints,
+        )
+        .expect_err("max-minus-one owner-scan work should reject");
         assert!(matches!(
             error,
             crate::error::AsciiError::ResourceLimitExceeded(details)
@@ -1189,6 +1355,71 @@ mod tests {
                     && details.actual == exact_work
                     && details.max == exact_work - 1
         ));
+    }
+
+    #[test]
+    fn horizontal_owner_scan_observes_cancellation_before_work_admission() {
+        let boxes = [
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let nodes = vec![
+            HorizontalNode {
+                original: &boxes[0],
+                visual: boxes[0].shared_projection(),
+                x: 0,
+            },
+            HorizontalNode {
+                original: &boxes[1],
+                visual: boxes[1].shared_projection(),
+                x: 10,
+            },
+        ];
+        let style = HorizontalRelationStyle::new(
+            HorizontalRelationEndpoint::new(None, None),
+            HorizontalRelationEndpoint::new(None, None),
+            None,
+            '-',
+            '|',
+            RelationLineChars::new(['-', '|', '.', ':'], '+'),
+        );
+        let edges = vec![
+            HorizontalEdgePlan {
+                source_index: 0,
+                target_index: 1,
+                style: style.clone(),
+                label_top: 0,
+                lane_y: 2,
+            },
+            HorizontalEdgePlan {
+                source_index: 0,
+                target_index: 1,
+                style,
+                label_top: 0,
+                lane_y: 4,
+            },
+        ];
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("single work-unit policy should be valid");
+        let control = OperationControl::new();
+        control.cancel();
+        let ledger = ResourceContext::new(policy);
+        let execution = AsciiExecution::new(&control, &policy);
+        let mut resources = execution.resource_context(&ledger, OperationPhase::Layout);
+        let mut checkpoints = RelationCheckpointCursor::new(execution, OperationPhase::Layout);
+
+        let error =
+            horizontal_edge_owners_overlap(&nodes, &edges, 8, &mut resources, &mut checkpoints)
+                .expect_err("cancellation should win over work admission");
+
+        assert!(matches!(
+            error,
+            crate::error::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
     }
 
     #[test]

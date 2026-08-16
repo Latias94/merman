@@ -6,6 +6,7 @@ use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::DeferredTextRegistry;
 use crate::text::StyledLine;
 use crate::{AsciiError, Result};
+use merman_core::OperationPhase;
 #[cfg(test)]
 use std::rc::Rc;
 mod document;
@@ -16,6 +17,67 @@ mod model;
 mod self_loop;
 mod stack;
 mod summary;
+
+const RELATION_CHECKPOINT_INTERVAL: usize = 64;
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct RelationCheckpointCursor<'a> {
+    execution: AsciiExecution<'a>,
+    phase: OperationPhase,
+    iteration: usize,
+}
+
+impl<'a> RelationCheckpointCursor<'a> {
+    pub(super) const fn new(execution: AsciiExecution<'a>, phase: OperationPhase) -> Self {
+        Self {
+            execution,
+            phase,
+            iteration: 0,
+        }
+    }
+
+    pub(super) fn next_phase(&self, phase: OperationPhase) -> Self {
+        Self {
+            execution: self.execution,
+            phase,
+            iteration: self.iteration,
+        }
+    }
+
+    pub(super) fn tick(&mut self) -> Result<()> {
+        let iteration = self.iteration;
+        self.iteration = self.iteration.wrapping_add(1);
+        self.execution.checkpoint_loop(self.phase, iteration)
+    }
+
+    pub(super) fn before_charge(&self) -> Result<()> {
+        self.checkpoint()
+    }
+
+    pub(super) fn checkpoint(&self) -> Result<()> {
+        self.execution.checkpoint(self.phase)
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct RelationResourceCheckpointCursor {
+    iteration: usize,
+}
+
+impl RelationResourceCheckpointCursor {
+    pub(super) const fn new() -> Self {
+        Self { iteration: 0 }
+    }
+
+    pub(super) fn tick(&mut self, resources: &ResourceContext) -> Result<()> {
+        let iteration = self.iteration;
+        self.iteration = self.iteration.wrapping_add(1);
+        if iteration.is_multiple_of(RELATION_CHECKPOINT_INTERVAL) {
+            resources.checkpoint()?;
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 pub(crate) use self::document::RelationDocumentPlan;
@@ -140,17 +202,19 @@ fn build_layered_edges<'text, R, A>(
     relations: &[R],
     adapter: &A,
     resources: &mut ResourceContext,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<Vec<LayeredRelationEdge>>
 where
     A: RelationComponentAdapter<'text, R>,
 {
+    checkpoints.before_charge()?;
     resources.charge_layout_work(relations.len().max(1))?;
     let mut edges = Vec::new();
     edges
         .try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for relation in relations {
-        resources.checkpoint()?;
+        checkpoints.tick()?;
         edges.push(adapter.build_edges(relation));
     }
     Ok(edges)
@@ -168,7 +232,6 @@ pub(crate) fn render_relation_components_with_deferred_with_execution<'text, R, 
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let lines = materialize_relation_component_lines_with_execution(
         boxes, relations, options, resources, adapter, deferred, execution,
     )?;
@@ -199,17 +262,19 @@ fn plan_relation_components<'plan, 'text, R, A>(
     resources: &mut ResourceContext,
     adapter: &'plan A,
     deferred: &mut DeferredTextRegistry<'text>,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<RelationRenderPlan<'plan>>
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
 {
-    let edges = build_layered_edges(relations, adapter, resources)?;
+    let edges = build_layered_edges(relations, adapter, resources, checkpoints)?;
     for _ in boxes {
-        resources.checkpoint()?;
+        checkpoints.tick()?;
     }
     let layered_error = |error| adapter.layered_error(error);
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(layered_error))?;
+    checkpoints.before_charge()?;
     resources.charge_layout_work(components.len().max(1))?;
     let mut relation_regions = Vec::new();
     relation_regions
@@ -220,10 +285,16 @@ where
         .try_reserve_exact(components.len())
         .map_err(|_| layout_allocation_failed())?;
     for component in components {
-        resources.checkpoint()?;
+        checkpoints.tick()?;
         let has_relations = !component.edge_indices().is_empty();
         let region = plan_relation_component_region(
-            component, relations, options, resources, adapter, deferred,
+            component,
+            relations,
+            options,
+            resources,
+            adapter,
+            deferred,
+            checkpoints,
         )?;
         if has_relations {
             relation_regions.push(region);
@@ -251,6 +322,7 @@ where
         regions.extend(relation_regions);
     }
     regions.extend(standalone_regions);
+    checkpoints.before_charge()?;
     RelationRenderPlan::try_new(regions, resources)
 }
 
@@ -266,8 +338,16 @@ fn materialize_relation_component_lines<'plan, 'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
 {
-    let plan = plan_relation_components(boxes, relations, options, resources, adapter, deferred)?;
-    plan.materialize(options, resources)
+    let policy = resources.policy();
+    materialize_relation_component_lines_with_execution(
+        boxes,
+        relations,
+        options,
+        resources,
+        adapter,
+        deferred,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 fn materialize_relation_component_lines_with_execution<'plan, 'text, R, A>(
@@ -282,8 +362,9 @@ fn materialize_relation_component_lines_with_execution<'plan, 'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
 {
-    let mut layout_resources =
-        execution.resource_context(resources, merman_core::OperationPhase::Layout);
+    let mut layout_checkpoints = RelationCheckpointCursor::new(execution, OperationPhase::Layout);
+    let mut layout_resources = execution.resource_context(resources, OperationPhase::Layout);
+    layout_checkpoints.checkpoint()?;
     let plan = plan_relation_components(
         boxes,
         relations,
@@ -291,14 +372,13 @@ where
         &mut layout_resources,
         adapter,
         deferred,
+        &mut layout_checkpoints,
     )?;
-    let mut emit_resources =
-        execution.resource_context(resources, merman_core::OperationPhase::Emit);
-    emit_resources.checkpoint()?;
-    let lines = plan.materialize(options, &mut emit_resources)?;
-    for _ in &lines {
-        emit_resources.checkpoint()?;
-    }
+    let mut emit_checkpoints = layout_checkpoints.next_phase(OperationPhase::Emit);
+    let mut emit_resources = execution.resource_context(resources, OperationPhase::Emit);
+    emit_checkpoints.checkpoint()?;
+    let lines = plan.materialize(options, &mut emit_resources, &mut emit_checkpoints)?;
+    emit_checkpoints.checkpoint()?;
     Ok(lines)
 }
 
@@ -326,6 +406,7 @@ fn plan_relation_component_region<'plan, 'text, R, A>(
     resources: &mut ResourceContext,
     adapter: &'plan A,
     deferred: &mut DeferredTextRegistry<'text>,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<RelationRegionPlan<'plan>>
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
@@ -336,7 +417,7 @@ where
         .try_reserve_exact(edge_indices.len())
         .map_err(|_| layout_allocation_failed())?;
     for edge_index in edge_indices {
-        resources.checkpoint()?;
+        checkpoints.tick()?;
         selected.push(
             relations
                 .get(edge_index)
@@ -353,7 +434,7 @@ where
     let mut has_self = false;
     let mut has_non_self = false;
     for relation in &selected {
-        resources.checkpoint()?;
+        checkpoints.tick()?;
         if adapter.is_self_relation(*relation) {
             has_self = true;
         } else {
@@ -376,7 +457,7 @@ where
         let first_edge = adapter.build_edges(selected[0]);
         let mut same_endpoint = true;
         for relation in &selected {
-            resources.checkpoint()?;
+            checkpoints.tick()?;
             let edge = adapter.build_edges(*relation);
             if edge.source_id() != first_edge.source_id()
                 || edge.target_id() != first_edge.target_id()
@@ -388,31 +469,46 @@ where
         if same_endpoint {
             let relation_box = find_box_ref(&component_boxes, first_edge.source_id())
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            return plan_relation_self_loop_region(relation_box, selected, adapter, resources);
+            return plan_relation_self_loop_region(
+                relation_box,
+                selected,
+                adapter,
+                resources,
+                checkpoints,
+            );
         }
     }
 
-    if selected.len() > 1 && same_directed_endpoints(&selected, adapter, resources)? {
-        return adapter.plan_parallel_region(
+    if selected.len() > 1 && same_directed_endpoints(&selected, adapter, checkpoints)? {
+        checkpoints.checkpoint()?;
+        let region = adapter.plan_parallel_region(
             component_boxes,
             selected,
             options,
             resources,
             deferred,
-        );
+        )?;
+        checkpoints.checkpoint()?;
+        return Ok(region);
     }
     if let [relation] = selected.as_slice() {
-        return adapter.plan_vertical_region(&component_boxes, relation, resources);
+        checkpoints.checkpoint()?;
+        let region = adapter.plan_vertical_region(&component_boxes, relation, resources)?;
+        checkpoints.checkpoint()?;
+        return Ok(region);
     }
 
-    match plan_layered_relation_component_ref_result(
+    checkpoints.checkpoint()?;
+    let planned = plan_layered_relation_component_ref_result(
         &component_boxes,
         &selected,
         options,
         adapter.layered_horizontal_gap(),
         resources,
         adapter,
-    )? {
+    )?;
+    checkpoints.checkpoint()?;
+    match planned {
         Ok(plan) => Ok(RelationRegionPlan::Layered(plan)),
         Err(reason) => plan_relation_summary_region(
             component_boxes,
@@ -429,7 +525,7 @@ where
 fn same_directed_endpoints<'text, R, A>(
     relations: &[&R],
     adapter: &A,
-    resources: &ResourceContext,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<bool>
 where
     A: RelationComponentAdapter<'text, R>,
@@ -439,7 +535,7 @@ where
     };
     let first = adapter.build_edges(first);
     for relation in relations.iter().skip(1) {
-        resources.checkpoint()?;
+        checkpoints.tick()?;
         let edge = adapter.build_edges(*relation);
         if edge.source_id() != first.source_id() || edge.target_id() != first.target_id() {
             return Ok(false);
@@ -453,6 +549,7 @@ fn plan_relation_self_loop_region<'plan, 'text, R, A>(
     relations: Vec<&'plan R>,
     adapter: &'plan A,
     resources: &mut ResourceContext,
+    checkpoints: &mut RelationCheckpointCursor<'_>,
 ) -> Result<RelationRegionPlan<'plan>>
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
@@ -462,17 +559,21 @@ where
         .try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for relation in &relations {
+        checkpoints.tick()?;
         metrics.push(adapter.self_loop_metrics(relation, resources)?);
     }
+    checkpoints.before_charge()?;
     let plan = RelationSelfLoopPlan::try_new(relation_box, metrics, resources)?;
     Ok(RelationRegionPlan::SelfLoops {
         plan,
         rows: Box::new(move |resources| {
+            let mut checkpoints = RelationResourceCheckpointCursor::new();
             let mut loops = Vec::new();
             loops
                 .try_reserve_exact(relations.len())
                 .map_err(|_| layout_allocation_failed())?;
             for relation in relations {
+                checkpoints.tick(resources)?;
                 loops.push(adapter.self_loop_rows(relation, resources)?);
             }
             Ok(loops)
@@ -492,10 +593,12 @@ fn plan_relation_summary_region<'plan, 'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R>,
 {
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
     let mut rows = Vec::new();
     rows.try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for relation in relations {
+        checkpoints.tick(resources)?;
         rows.push(adapter.build_summary_row(relation, reason, resources, deferred)?);
     }
     Ok(RelationRegionPlan::Summary(

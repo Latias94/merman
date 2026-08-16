@@ -72,7 +72,11 @@ fn render_plan_admits_aggregate_extent_before_materializing_regions() -> Result<
     assert_eq!(plan.extent(), resources.grid_extent(5, 6)?);
     assert!(!first_called.get());
     assert!(!second_called.get());
-    let lines = plan.materialize(&options, &mut resources)?;
+    let policy = resources.policy();
+    let execution = AsciiExecution::for_test(&policy);
+    let mut emit_resources = execution.resource_context(&resources, OperationPhase::Emit);
+    let mut checkpoints = RelationCheckpointCursor::new(execution, OperationPhase::Emit);
+    let lines = plan.materialize(&options, &mut emit_resources, &mut checkpoints)?;
     assert_eq!(
         relation_lines_extent(&lines, &resources)?,
         resources.grid_extent(5, 6)?

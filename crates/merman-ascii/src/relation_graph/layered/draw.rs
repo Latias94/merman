@@ -27,22 +27,6 @@ impl RelationLineChars {
     }
 }
 
-pub(super) fn draw_relation_span_inclusive(
-    canvas: &mut Canvas,
-    x: usize,
-    start_y: usize,
-    end_y: usize,
-    ch: char,
-    chars: RelationLineChars,
-) -> Result<()> {
-    let start = start_y.min(end_y);
-    let end = start_y.max(end_y);
-    for y in start..=end {
-        put_relation_char(canvas, x, y, ch, chars)?;
-    }
-    Ok(())
-}
-
 pub(crate) fn marker_line_with_role(
     marker: char,
     center: usize,
