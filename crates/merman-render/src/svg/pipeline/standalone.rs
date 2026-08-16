@@ -100,18 +100,18 @@ impl StandaloneSvgArtifact {
         );
         let validation =
             final_validation::validate_resvg_compatible_svg(&svg, session.resource_policy());
-        // Compatibility validation is observational. Only operation cancellation may preempt an
-        // already-produced best-effort artifact.
+        // Compatibility validation is observational. Operation-control and resource failures are
+        // not compatibility evidence and must still fail the operation.
         session.checkpoint(OperationPhase::Postprocess)?;
         let (terminal_status, finalization_report) = match validation {
             Ok(terminal) => (
                 StandaloneSvgTerminalStatus::Compatible,
                 Some(SvgFinalizationReport::from_pipeline(pipeline, &terminal)),
             ),
-            Err(error @ crate::Error::Cancelled(_))
-            | Err(error @ crate::Error::ResourceLimitExceeded(_))
-            | Err(error @ crate::Error::ThemeResourceLimitExceeded(_)) => return Err(error),
-            Err(_) => (StandaloneSvgTerminalStatus::ValidationFailed, None),
+            Err(crate::Error::SvgPostprocess { .. }) => {
+                (StandaloneSvgTerminalStatus::ValidationFailed, None)
+            }
+            Err(error) => return Err(error),
         };
         Ok(Self {
             inner: StandaloneSvgArtifactKind::Observed(ObservedStandaloneSvg {
@@ -213,5 +213,67 @@ impl From<ResvgCompatibleSvg> for StandaloneSvgArtifact {
 impl AsRef<str> for StandaloneSvgArtifact {
     fn as_ref(&self) -> &str {
         self.as_str()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    fn session_with_max_svg_elements(max_svg_elements: usize) -> RenderSession {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgElements, max_svg_elements)
+            .unwrap();
+        crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .unwrap()
+    }
+
+    fn assert_max_svg_elements(error: crate::Error) {
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected max_svg_elements resource failure, got {error}");
+        };
+        assert_eq!(limit.limit, "max_svg_elements");
+    }
+
+    #[test]
+    fn omitted_pipeline_observation_propagates_svg_element_limit() {
+        let session = session_with_max_svg_elements(2);
+        // `RenderedFamilySvg::finalize_standalone(None)` reaches this direct observation path and
+        // records the implicit default as the parity preset without running a draft pipeline.
+        let error = StandaloneSvgArtifact::observe_exact(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><g/><g/></svg>"#.to_owned(),
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &SvgPipeline::parity(),
+            &session,
+        )
+        .unwrap_err();
+
+        assert_max_svg_elements(error);
+    }
+
+    #[test]
+    fn readable_pipeline_observation_propagates_expanded_svg_element_limit() {
+        let session = session_with_max_svg_elements(6);
+        let pipeline = SvgPipeline::readable();
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
+        let processed = pipeline
+            .process_owned_to_string(svg.to_owned(), &session)
+            .expect("the explicit non-resvg pipeline should stay within the raw element limit");
+        let error = StandaloneSvgArtifact::observe_exact(
+            processed,
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &pipeline,
+            &session,
+        )
+        .unwrap_err();
+
+        assert_max_svg_elements(error);
     }
 }
