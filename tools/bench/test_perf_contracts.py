@@ -5032,13 +5032,14 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
         self.assertIn('if [[ "$RENDER_EXIT" -ne 0 ]]', workflow)
         self.assertIn('case "$COMPARISON_EXIT" in', workflow)
 
-    def test_unlabeled_pr_keeps_ascii_compiled_contract_without_timing(
-        self,
-    ) -> None:
+    def test_standalone_contracts_require_performance_owner_or_explicit_label(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(
             encoding="utf-8"
         )
 
+        eligibility = workflow.split("  eligibility:\n", 1)[1].split(
+            "\n  contracts:\n", 1
+        )[0]
         contracts = workflow.split("  contracts:\n", 1)[1].split(
             "\n  measurement-plan:\n", 1
         )[0]
@@ -5050,8 +5051,16 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
             "\n    runs-on:", 1
         )[0]
 
-        self.assertNotIn("\n    if:", contracts_header)
-        self.assertEqual(workflow.count("if: github.event_name != 'pull_request'\n"), 2)
+        self.assertIn("python3 scripts/ci_plan.py plan", eligibility)
+        self.assertIn("fetch-depth: 0", eligibility)
+        self.assertIn("outputs:\n      contracts: ${{ steps.select.outputs.performance }}", eligibility)
+        for label in ("'perf'", "'perf-ascii'", "'perf-frontmatter'"):
+            self.assertIn(label, eligibility)
+        self.assertIn("needs: eligibility", contracts_header)
+        self.assertIn(
+            "if: ${{ needs.eligibility.outputs.contracts == 'true' }}",
+            contracts_header,
+        )
         self.assertIn("Verify compiled pipeline benchmark list", workflow)
         self.assertIn("Verify compiled ASCII benchmark list", contracts)
         self.assertNotIn("\n        if:", ascii_contract)

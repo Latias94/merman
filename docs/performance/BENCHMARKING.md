@@ -92,8 +92,10 @@ gh workflow run performance.yml \
 
 The workflow accepts `comparable` and `closeout`; use `closeout` for the five medium U25 families.
 The larger `large-closeout` suite is intentionally excluded from unattended timing and must be run
-locally for the tracked closeout scorecard. Path-matched pull requests still compile and verify the
-complete ASCII benchmark list even when no timing label is present.
+locally for the tracked closeout scorecard. Pull requests whose changed paths select the performance
+owner still compile and verify the complete ASCII benchmark list without a timing label. Ordinary
+renderer changes do not run the standalone performance contracts unless `perf`, `perf-ascii`, or
+`perf-frontmatter` is applied.
 
 For a decision-grade adjacent-revision comparison, first ensure both checkouts contain the same
 benchmark-only harness: `ascii_pipeline.rs`, its `Cargo.toml` bench entry, the selected corpus,

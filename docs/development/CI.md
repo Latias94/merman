@@ -125,7 +125,9 @@ discovery.
 
 The performance workflow selects regression and frontmatter descriptors into one measurement
 matrix. Each descriptor uses the same base/head runner, receipt, artifact, summary, and outcome
-consumer. Pull requests remain read-only and write only to the job summary; schedules run both
+consumer. Its standalone contracts run for pull requests only when the shared CI classifier selects
+the performance owner or an explicit `perf`, `perf-ascii`, or `perf-frontmatter` label requests a
+measurement. Pull requests remain read-only and write only to the job summary; schedules run both
 self-comparison descriptors plus the independent external-renderer reference lane.
 
 ## Release Preflight

@@ -115,8 +115,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  eligibility:
+    name: perf-eligibility
+    runs-on: ubuntu-24.04
+    outputs:
+      contracts: ${{ steps.select.outputs.performance }}
+    steps:
+      - name: Checkout classifier input
+        if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'perf') && !contains(github.event.pull_request.labels.*.name, 'perf-ascii') && !contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select standalone performance contracts
+        id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HAS_REGRESSION_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf') }}
+          HAS_ASCII_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf-ascii') }}
+          HAS_FRONTMATTER_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != "pull_request" ||
+                "$HAS_REGRESSION_LABEL" == "true" ||
+                "$HAS_ASCII_LABEL" == "true" ||
+                "$HAS_FRONTMATTER_LABEL" == "true" ]]; then
+            echo "performance=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 scripts/ci_plan.py plan \
+            --base "$PR_BASE_SHA" \
+            --head "$PR_HEAD_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
   contracts:
     name: perf-contracts
+    needs: eligibility
+    if: ${{ needs.eligibility.outputs.contracts == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CARGO_BUILD_JOBS: "1"
