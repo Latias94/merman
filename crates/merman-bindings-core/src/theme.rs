@@ -758,12 +758,14 @@ enum BindingCanvasPaintObjectJson {
     LinearGradient {
         angle_degrees: f32,
         stops: Vec<BindingGradientStopJson>,
+        repetition: Option<BindingLinearGradientRepetitionJson>,
     },
     RadialGradient {
         center_x: BindingThemeLengthJson,
         center_y: BindingThemeLengthJson,
         radius: BindingThemeLengthJson,
         stops: Vec<BindingGradientStopJson>,
+        repetition: Option<BindingRadialGradientRepetitionJson>,
     },
     Pattern {
         pattern: String,
@@ -784,25 +786,36 @@ impl BindingCanvasPaintObjectJson {
             Self::LinearGradient {
                 angle_degrees,
                 stops,
-            } => Ok(CanvasPaint::LinearGradient(
-                LinearGradient::new(*angle_degrees, binding_gradient_stops(stops)?).map_err(
-                    |error| theme_value_error("theme.spec.paint.linear_gradient", error),
-                )?,
-            )),
+                repetition,
+            } => {
+                let gradient = LinearGradient::new(*angle_degrees, binding_gradient_stops(stops)?)
+                    .map_err(|error| {
+                        theme_value_error("theme.spec.paint.linear_gradient", error)
+                    })?;
+                Ok(CanvasPaint::LinearGradient(match repetition {
+                    Some(repetition) => repetition.apply(gradient)?,
+                    None => gradient,
+                }))
+            }
             Self::RadialGradient {
                 center_x,
                 center_y,
                 radius,
                 stops,
-            } => Ok(CanvasPaint::RadialGradient(
-                RadialGradient::new(
+                repetition,
+            } => {
+                let gradient = RadialGradient::new(
                     center_x.to_length(),
                     center_y.to_length(),
                     radius.to_length(),
                     binding_gradient_stops(stops)?,
                 )
-                .map_err(|error| theme_value_error("theme.spec.paint.radial_gradient", error))?,
-            )),
+                .map_err(|error| theme_value_error("theme.spec.paint.radial_gradient", error))?;
+                Ok(CanvasPaint::RadialGradient(match repetition {
+                    Some(repetition) => repetition.apply(gradient)?,
+                    None => gradient,
+                }))
+            }
             Self::Pattern {
                 pattern,
                 cell_width,
@@ -831,6 +844,52 @@ impl BindingCanvasPaintObjectJson {
                 }
                 Ok(CanvasPaint::Pattern(pattern))
             }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+enum BindingLinearGradientRepetitionJson {
+    Repeating { period_px: f32 },
+    Tiled { width_px: f32, height_px: f32 },
+}
+
+impl BindingLinearGradientRepetitionJson {
+    fn apply(&self, gradient: LinearGradient) -> Result<LinearGradient, BindingError> {
+        match self {
+            Self::Repeating { period_px } => gradient
+                .with_repeating_period_px(*period_px)
+                .map_err(|error| theme_value_error("theme.spec.paint.repetition", error)),
+            Self::Tiled {
+                width_px,
+                height_px,
+            } => gradient
+                .with_tile_px(*width_px, *height_px)
+                .map_err(|error| theme_value_error("theme.spec.paint.repetition", error)),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+enum BindingRadialGradientRepetitionJson {
+    Repeating,
+    Tiled { width_px: f32, height_px: f32 },
+}
+
+impl BindingRadialGradientRepetitionJson {
+    fn apply(&self, gradient: RadialGradient) -> Result<RadialGradient, BindingError> {
+        match self {
+            Self::Repeating => gradient
+                .with_repeating()
+                .map_err(|error| theme_value_error("theme.spec.paint.repetition", error)),
+            Self::Tiled {
+                width_px,
+                height_px,
+            } => gradient
+                .with_tile_px(*width_px, *height_px)
+                .map_err(|error| theme_value_error("theme.spec.paint.repetition", error)),
         }
     }
 }
@@ -1720,6 +1779,134 @@ mod tests {
                 .report()
                 .requires_capability(ThemeCapability::RoundedGeometry)
         );
+    }
+
+    #[test]
+    fn gradient_repetition_wire_is_typed_bounded_and_capability_complete() {
+        let selection: BindingThemeOptionsJson = serde_json::from_value(serde_json::json!({
+            "spec": {
+                "canvas": {
+                    "base": {
+                        "kind": "linear-gradient",
+                        "angle_degrees": 135.0,
+                        "stops": [
+                            { "offset": 0.0, "color": "#0f172a" },
+                            { "offset": 1.0, "color": "#f8fafc" }
+                        ],
+                        "repetition": { "kind": "repeating", "period_px": 16.0 }
+                    },
+                    "layers": [{
+                        "paint": {
+                            "kind": "radial-gradient",
+                            "center_x": { "percent": 50.0 },
+                            "center_y": { "percent": 50.0 },
+                            "radius": { "percent": 50.0 },
+                            "stops": [
+                                { "offset": 0.0, "color": "#22d3ee55" },
+                                { "offset": 1.0, "color": "#22d3ee00" }
+                            ],
+                            "repetition": {
+                                "kind": "tiled",
+                                "width_px": 20.0,
+                                "height_px": 20.0
+                            }
+                        }
+                    }]
+                }
+            }
+        }))
+        .expect("typed gradient repetition wire");
+
+        let compiler = DiagramThemeCompiler::new();
+        let typed = selection
+            .spec
+            .as_ref()
+            .expect("structured spec")
+            .to_theme_spec(compiler.resource_policy())
+            .expect("typed gradient repetition spec");
+        let CanvasPaint::LinearGradient(base) = typed.canvas().base() else {
+            panic!("expected linear gradient base")
+        };
+        assert_eq!(base.repeating_period_px(), Some(16.0));
+        let CanvasPaint::RadialGradient(layer) = typed.canvas().layers()[0].paint() else {
+            panic!("expected tiled radial gradient layer")
+        };
+        assert_eq!(layer.tile_size_px(), Some((20.0, 20.0)));
+
+        let theme = compile_theme_with(&compiler, Some(&selection))
+            .expect("compile repeated gradient theme")
+            .expect("compiled theme");
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::GradientPaint)
+        );
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::PatternPaint)
+        );
+    }
+
+    #[test]
+    fn gradient_repetition_wire_rejects_ambiguous_or_unsafe_geometry() {
+        let invalid = [
+            serde_json::json!({
+                "spec": { "canvas": { "base": {
+                    "kind": "linear-gradient",
+                    "angle_degrees": 90.0,
+                    "stops": [
+                        { "offset": 0.0, "color": "#000000" },
+                        { "offset": 1.0, "color": "#ffffff" }
+                    ],
+                    "repetition": {
+                        "kind": "repeating",
+                        "period_px": 16.0,
+                        "width_px": 20.0
+                    }
+                } } }
+            }),
+            serde_json::json!({
+                "spec": { "canvas": { "base": {
+                    "kind": "linear-gradient",
+                    "angle_degrees": 90.0,
+                    "stops": [
+                        { "offset": 0.0, "color": "#000000" },
+                        { "offset": 1.0, "color": "#ffffff" }
+                    ],
+                    "repetition": { "kind": "tiled", "width_px": 20.0 }
+                } } }
+            }),
+        ];
+        for value in invalid {
+            assert!(
+                serde_json::from_value::<BindingThemeOptionsJson>(value).is_err(),
+                "ambiguous or incomplete tagged repetition must fail closed"
+            );
+        }
+
+        for repetition in [
+            serde_json::json!({ "kind": "repeating", "period_px": 0.5 }),
+            serde_json::json!({ "kind": "repeating", "period_px": 65537.0 }),
+            serde_json::json!({ "kind": "tiled", "width_px": 4097.0, "height_px": 4097.0 }),
+        ] {
+            let selection: BindingThemeOptionsJson = serde_json::from_value(serde_json::json!({
+                "spec": { "canvas": { "base": {
+                    "kind": "linear-gradient",
+                    "angle_degrees": 90.0,
+                    "stops": [
+                        { "offset": 0.0, "color": "#000000" },
+                        { "offset": 1.0, "color": "#ffffff" }
+                    ],
+                    "repetition": repetition
+                } } }
+            }))
+            .expect("structurally valid repetition");
+            let error = compile_theme_with(&DiagramThemeCompiler::new(), Some(&selection))
+                .expect_err("unsafe gradient geometry must fail compilation");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains("theme.spec.paint.repetition"));
+        }
     }
 
     #[test]

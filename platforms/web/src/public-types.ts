@@ -260,6 +260,7 @@ export type ThemePaint =
       kind: "linear-gradient";
       angle_degrees: number;
       stops: ThemeGradientStop[];
+      repetition?: ThemeLinearGradientRepetition;
     }
   | {
       kind: "radial-gradient";
@@ -267,6 +268,7 @@ export type ThemePaint =
       center_y: ThemeLength;
       radius: ThemeLength;
       stops: ThemeGradientStop[];
+      repetition?: ThemeRadialGradientRepetition;
     }
   | {
       kind: "pattern";
@@ -277,6 +279,14 @@ export type ThemePaint =
       background?: string;
       angle_degrees?: number;
     };
+
+export type ThemeLinearGradientRepetition =
+  | { kind: "repeating"; period_px: number }
+  | { kind: "tiled"; width_px: number; height_px: number };
+
+export type ThemeRadialGradientRepetition =
+  | { kind: "repeating" }
+  | { kind: "tiled"; width_px: number; height_px: number };
 
 export interface ThemeGradientStop {
   offset: number;

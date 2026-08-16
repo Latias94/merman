@@ -6,6 +6,9 @@ import type {
   EditorResourceOptions,
   ResourceOptions,
   SvgBindingOptions,
+  ThemeLinearGradientRepetition,
+  ThemePaint,
+  ThemeRadialGradientRepetition,
 } from "../src/public-types.js";
 
 const resources: ResourceOptions = { profile: "interactive" };
@@ -48,6 +51,41 @@ const tightenedSvgOptions = withResourceOptions(
   resources,
 );
 tightenedSvgOptions.svg.diagram_id;
+
+const repeatedLinearCanvas: ThemePaint = {
+  kind: "linear-gradient",
+  angle_degrees: 135,
+  stops: [
+    { offset: 0, color: "#0f172a" },
+    { offset: 1, color: "#f8fafc" },
+  ],
+  repetition: { kind: "repeating", period_px: 16 },
+};
+const tiledRadialCanvas: ThemePaint = {
+  kind: "radial-gradient",
+  center_x: { percent: 50 },
+  center_y: { percent: 50 },
+  radius: { percent: 50 },
+  stops: [
+    { offset: 0, color: "#22d3ee55" },
+    { offset: 1, color: "#22d3ee00" },
+  ],
+  repetition: { kind: "tiled", width_px: 20, height_px: 20 },
+};
+
+// @ts-expect-error repeating linear gradients require one explicit period.
+const implicitLinearRepetition = { kind: "repeating" } satisfies ThemeLinearGradientRepetition;
+
+const ambiguousLinearRepetition = {
+  kind: "repeating",
+  period_px: 16,
+  // @ts-expect-error repetition variants cannot mix period and tile geometry.
+  width_px: 20,
+  height_px: 20,
+} satisfies ThemeLinearGradientRepetition;
+
+// @ts-expect-error radial repetition uses its authored radius and accepts no linear period.
+const radialWithLinearPeriod = { kind: "repeating", period_px: 16 } satisfies ThemeRadialGradientRepetition;
 
 // @ts-expect-error browser editor sessions cannot select a looser native profile.
 const looserEditorProfile = { resources: { profile: "trusted-native" } } satisfies EditorBindingOptions;
@@ -101,3 +139,8 @@ void mixedCommonRoot;
 void mixedSvgRoot;
 void looserEditorProfile;
 void rendererOnlyEditorLimit;
+void repeatedLinearCanvas;
+void tiledRadialCanvas;
+void implicitLinearRepetition;
+void ambiguousLinearRepetition;
+void radialWithLinearPeriod;

@@ -1,9 +1,14 @@
-use merman_core::theme_color::{ColorChannel, ThemeColor};
+use std::borrow::Cow;
+
+use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor};
 
 use super::ThemeCompileValidationError;
 
 const MAX_GRADIENT_STOPS: usize = 64;
 const MAX_CANVAS_LAYERS: usize = 32;
+const MIN_GRADIENT_GEOMETRY_PX: f32 = 1.0;
+const MAX_GRADIENT_PERIOD_PX: f32 = 65_536.0;
+const MAX_GRADIENT_TILE_EDGE_PX: f32 = 4_096.0;
 
 /// A parsed, canonical color owned by a typed diagram theme.
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +29,21 @@ impl ThemeColorValue {
 
     pub fn as_css(&self) -> String {
         self.0.stringify()
+    }
+
+    pub(crate) fn as_css_cow(&self) -> Cow<'_, str> {
+        match self.0.source_format() {
+            ColorSourceFormat::Hex | ColorSourceFormat::Rgb | ColorSourceFormat::Hsl => {
+                Cow::Borrowed(
+                    self.0
+                        .raw()
+                        .expect("parsed source-backed theme color must retain its input"),
+                )
+            }
+            ColorSourceFormat::Keyword | ColorSourceFormat::ConstructedRgb => {
+                Cow::Owned(self.0.stringify())
+            }
+        }
     }
 
     pub fn alpha(&self) -> f64 {
@@ -166,6 +186,7 @@ impl GradientStop {
 pub struct LinearGradient {
     angle_degrees: f32,
     stops: Vec<GradientStop>,
+    repetition: GradientRepetition,
 }
 
 impl LinearGradient {
@@ -183,7 +204,34 @@ impl LinearGradient {
         Ok(Self {
             angle_degrees,
             stops,
+            repetition: GradientRepetition::None,
         })
+    }
+
+    /// Repeats the gradient along its authored angle using a 1..=65,536px user-space period.
+    pub fn with_repeating_period_px(
+        mut self,
+        period_px: f32,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        validate_gradient_period_px(period_px, "canvas.linear_gradient.repeating_period_px")?;
+        self.repetition = GradientRepetition::Repeating {
+            period_px: Some(period_px),
+        };
+        Ok(self)
+    }
+
+    /// Repeats one complete gradient tile with bounded 1..=4,096px edges.
+    pub fn with_tile_px(
+        mut self,
+        width_px: f32,
+        height_px: f32,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        validate_gradient_tile_px(width_px, height_px, "canvas.linear_gradient.tile")?;
+        self.repetition = GradientRepetition::Tiled {
+            width_px,
+            height_px,
+        };
+        Ok(self)
     }
 
     pub const fn angle_degrees(&self) -> f32 {
@@ -193,6 +241,21 @@ impl LinearGradient {
     pub fn stops(&self) -> &[GradientStop] {
         &self.stops
     }
+
+    pub const fn repeating_period_px(&self) -> Option<f32> {
+        match self.repetition {
+            GradientRepetition::Repeating {
+                period_px: Some(period_px),
+            } => Some(period_px),
+            GradientRepetition::None
+            | GradientRepetition::Repeating { period_px: None }
+            | GradientRepetition::Tiled { .. } => None,
+        }
+    }
+
+    pub const fn tile_size_px(&self) -> Option<(f32, f32)> {
+        self.repetition.tile_size_px()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -201,6 +264,7 @@ pub struct RadialGradient {
     center_y: ThemeLength,
     radius: ThemeLength,
     stops: Vec<GradientStop>,
+    repetition: GradientRepetition,
 }
 
 impl RadialGradient {
@@ -220,7 +284,45 @@ impl RadialGradient {
             center_y,
             radius,
             stops,
+            repetition: GradientRepetition::None,
         })
+    }
+
+    /// Repeats the radial stops using the authored radius as the period.
+    ///
+    /// Pixel radii are bounded immediately. Percentage radii are resolved against terminal paint
+    /// bounds and receive portable evidence only when the resulting period is 1..=65,536px.
+    pub fn with_repeating(mut self) -> Result<Self, ThemeCompileValidationError> {
+        match self.radius {
+            ThemeLength::Px(radius_px) => {
+                validate_gradient_period_px(radius_px, "canvas.radial_gradient.repeating_radius")?
+            }
+            ThemeLength::Percent(radius_percent) => {
+                self.radius
+                    .validate("canvas.radial_gradient.repeating_radius")?;
+                if radius_percent <= 0.0 {
+                    return Err(ThemeCompileValidationError::InvalidNumber {
+                        field: "canvas.radial_gradient.repeating_radius",
+                    });
+                }
+            }
+        }
+        self.repetition = GradientRepetition::Repeating { period_px: None };
+        Ok(self)
+    }
+
+    /// Repeats one complete radial-gradient tile with bounded 1..=4,096px edges.
+    pub fn with_tile_px(
+        mut self,
+        width_px: f32,
+        height_px: f32,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        validate_gradient_tile_px(width_px, height_px, "canvas.radial_gradient.tile")?;
+        self.repetition = GradientRepetition::Tiled {
+            width_px,
+            height_px,
+        };
+        Ok(self)
     }
 
     pub const fn center_x(&self) -> ThemeLength {
@@ -237,6 +339,56 @@ impl RadialGradient {
 
     pub fn stops(&self) -> &[GradientStop] {
         &self.stops
+    }
+
+    pub const fn is_repeating(&self) -> bool {
+        matches!(
+            self.repetition,
+            GradientRepetition::Repeating { period_px: None }
+        )
+    }
+
+    pub const fn tile_size_px(&self) -> Option<(f32, f32)> {
+        self.repetition.tile_size_px()
+    }
+
+    pub(crate) fn resolved_repeating_radius_is_bounded(&self, radius_px: f64) -> bool {
+        !self.is_repeating()
+            || (radius_px.is_finite()
+                && (f64::from(MIN_GRADIENT_GEOMETRY_PX)..=f64::from(MAX_GRADIENT_PERIOD_PX))
+                    .contains(&radius_px))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum GradientRepetition {
+    None,
+    Repeating { period_px: Option<f32> },
+    Tiled { width_px: f32, height_px: f32 },
+}
+
+impl GradientRepetition {
+    const fn tile_size_px(self) -> Option<(f32, f32)> {
+        match self {
+            Self::Tiled {
+                width_px,
+                height_px,
+            } => Some((width_px, height_px)),
+            Self::None | Self::Repeating { .. } => None,
+        }
+    }
+
+    fn validate(self, field: &'static str) -> Result<(), ThemeCompileValidationError> {
+        match self {
+            Self::None | Self::Repeating { period_px: None } => Ok(()),
+            Self::Repeating {
+                period_px: Some(period_px),
+            } => validate_gradient_period_px(period_px, field),
+            Self::Tiled {
+                width_px,
+                height_px,
+            } => validate_gradient_tile_px(width_px, height_px, field),
+        }
     }
 }
 
@@ -338,10 +490,25 @@ impl CanvasPaint {
         matches!(self, Self::Transparent)
     }
 
+    pub(crate) const fn requires_pattern_capability(&self) -> bool {
+        match self {
+            Self::LinearGradient(gradient) => {
+                gradient.repeating_period_px().is_some() || gradient.tile_size_px().is_some()
+            }
+            Self::RadialGradient(gradient) => {
+                gradient.is_repeating() || gradient.tile_size_px().is_some()
+            }
+            Self::Transparent | Self::Solid(_) | Self::Pattern(_) => false,
+        }
+    }
+
     pub(crate) fn validate(&self, field: &'static str) -> Result<(), ThemeCompileValidationError> {
         match self {
             Self::Transparent | Self::Solid(_) => Ok(()),
-            Self::LinearGradient(gradient) => validate_gradient_stops(gradient.stops(), field),
+            Self::LinearGradient(gradient) => {
+                validate_gradient_stops(gradient.stops(), field)?;
+                gradient.repetition.validate(field)
+            }
             Self::RadialGradient(gradient) => {
                 gradient
                     .center_x()
@@ -352,7 +519,8 @@ impl CanvasPaint {
                 gradient
                     .radius()
                     .validate("canvas.radial_gradient.radius")?;
-                validate_gradient_stops(gradient.stops(), field)
+                validate_gradient_stops(gradient.stops(), field)?;
+                gradient.repetition.validate(field)
             }
             Self::Pattern(pattern) => {
                 validate_positive(pattern.cell_width(), field)?;
@@ -535,6 +703,31 @@ fn validate_positive(value: f32, field: &'static str) -> Result<(), ThemeCompile
     Ok(())
 }
 
+fn validate_gradient_period_px(
+    value: f32,
+    field: &'static str,
+) -> Result<(), ThemeCompileValidationError> {
+    if !value.is_finite() || !(MIN_GRADIENT_GEOMETRY_PX..=MAX_GRADIENT_PERIOD_PX).contains(&value) {
+        return Err(ThemeCompileValidationError::InvalidNumber { field });
+    }
+    Ok(())
+}
+
+fn validate_gradient_tile_px(
+    width_px: f32,
+    height_px: f32,
+    field: &'static str,
+) -> Result<(), ThemeCompileValidationError> {
+    for value in [width_px, height_px] {
+        if !value.is_finite()
+            || !(MIN_GRADIENT_GEOMETRY_PX..=MAX_GRADIENT_TILE_EDGE_PX).contains(&value)
+        {
+            return Err(ThemeCompileValidationError::InvalidNumber { field });
+        }
+    }
+    Ok(())
+}
+
 fn validate_unit_interval(
     value: f32,
     field: &'static str,
@@ -543,4 +736,167 @@ fn validate_unit_interval(
         return Err(ThemeCompileValidationError::InvalidNumber { field });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn color(value: &str) -> ThemeColorValue {
+        ThemeColorValue::parse(value).expect("valid test color")
+    }
+
+    fn stops() -> [GradientStop; 2] {
+        [
+            GradientStop::new(0.0, color("#0f172a")).unwrap(),
+            GradientStop::new(1.0, color("#f8fafc")).unwrap(),
+        ]
+    }
+
+    #[test]
+    fn source_backed_color_css_is_borrowed_for_svg_preflight() {
+        let rgb = color("rgb(1,   2, 3)");
+        assert!(matches!(rgb.as_css_cow(), Cow::Borrowed("rgb(1,   2, 3)")));
+
+        let keyword = color("transparent");
+        assert!(matches!(keyword.as_css_cow(), Cow::Owned(_)));
+        assert_eq!(keyword.as_css_cow(), "#00000000");
+    }
+
+    #[test]
+    fn repeating_linear_gradient_requires_a_positive_bounded_period() {
+        let ordinary = LinearGradient::new(135.0, stops()).unwrap();
+        assert_eq!(ordinary.repeating_period_px(), None);
+        assert_eq!(ordinary.tile_size_px(), None);
+
+        let repeated = ordinary
+            .clone()
+            .with_repeating_period_px(MAX_GRADIENT_PERIOD_PX)
+            .unwrap();
+        assert_eq!(repeated.repeating_period_px(), Some(MAX_GRADIENT_PERIOD_PX));
+        assert_eq!(repeated.tile_size_px(), None);
+        assert!(
+            ordinary
+                .clone()
+                .with_repeating_period_px(MIN_GRADIENT_GEOMETRY_PX)
+                .is_ok()
+        );
+
+        for period in [
+            0.0,
+            MIN_GRADIENT_GEOMETRY_PX / 2.0,
+            -1.0,
+            f32::NAN,
+            f32::INFINITY,
+            MAX_GRADIENT_PERIOD_PX + 1.0,
+        ] {
+            assert!(
+                ordinary.clone().with_repeating_period_px(period).is_err(),
+                "period {period:?} must fail closed"
+            );
+        }
+    }
+
+    #[test]
+    fn tiled_gradient_geometry_is_positive_bounded_and_mutually_exclusive() {
+        let linear = LinearGradient::new(90.0, stops())
+            .unwrap()
+            .with_repeating_period_px(16.0)
+            .unwrap()
+            .with_tile_px(24.0, 32.0)
+            .unwrap();
+        assert_eq!(linear.repeating_period_px(), None);
+        assert_eq!(linear.tile_size_px(), Some((24.0, 32.0)));
+
+        let radial = RadialGradient::new(
+            ThemeLength::percent(50.0),
+            ThemeLength::percent(50.0),
+            ThemeLength::percent(50.0),
+            stops(),
+        )
+        .unwrap()
+        .with_repeating()
+        .unwrap()
+        .with_tile_px(20.0, 20.0)
+        .unwrap();
+        assert!(!radial.is_repeating());
+        assert_eq!(radial.tile_size_px(), Some((20.0, 20.0)));
+        assert!(
+            LinearGradient::new(90.0, stops())
+                .unwrap()
+                .with_tile_px(MAX_GRADIENT_TILE_EDGE_PX, MAX_GRADIENT_TILE_EDGE_PX)
+                .is_ok()
+        );
+
+        for (width, height) in [
+            (0.0, 16.0),
+            (MIN_GRADIENT_GEOMETRY_PX / 2.0, 16.0),
+            (16.0, 0.0),
+            (-1.0, 16.0),
+            (16.0, f32::NAN),
+            (MAX_GRADIENT_TILE_EDGE_PX + 1.0, 16.0),
+            (16.0, MAX_GRADIENT_TILE_EDGE_PX + 1.0),
+        ] {
+            assert!(
+                LinearGradient::new(90.0, stops())
+                    .unwrap()
+                    .with_tile_px(width, height)
+                    .is_err(),
+                "tile {width:?}x{height:?} must fail closed"
+            );
+        }
+
+        let zero_radius = RadialGradient::new(
+            ThemeLength::percent(50.0),
+            ThemeLength::percent(50.0),
+            ThemeLength::px(0.0),
+            stops(),
+        )
+        .unwrap();
+        assert!(zero_radius.with_repeating().is_err());
+
+        let subpercent_radius = RadialGradient::new(
+            ThemeLength::percent(50.0),
+            ThemeLength::percent(50.0),
+            ThemeLength::percent(0.5),
+            stops(),
+        )
+        .unwrap();
+        assert!(subpercent_radius.with_repeating().is_ok());
+
+        let unbounded_radius = RadialGradient::new(
+            ThemeLength::percent(50.0),
+            ThemeLength::percent(50.0),
+            ThemeLength::px(MAX_GRADIENT_PERIOD_PX + 1.0),
+            stops(),
+        )
+        .unwrap();
+        assert!(unbounded_radius.with_repeating().is_err());
+    }
+
+    #[test]
+    fn repeating_or_tiled_gradients_require_pattern_capability() {
+        let ordinary = CanvasPaint::LinearGradient(LinearGradient::new(90.0, stops()).unwrap());
+        let repeated = CanvasPaint::LinearGradient(
+            LinearGradient::new(90.0, stops())
+                .unwrap()
+                .with_repeating_period_px(16.0)
+                .unwrap(),
+        );
+        let tiled = CanvasPaint::RadialGradient(
+            RadialGradient::new(
+                ThemeLength::percent(50.0),
+                ThemeLength::percent(50.0),
+                ThemeLength::percent(50.0),
+                stops(),
+            )
+            .unwrap()
+            .with_tile_px(20.0, 20.0)
+            .unwrap(),
+        );
+
+        assert!(!ordinary.requires_pattern_capability());
+        assert!(repeated.requires_pattern_capability());
+        assert!(tiled.requires_pattern_capability());
+    }
 }

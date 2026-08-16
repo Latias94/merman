@@ -17,6 +17,24 @@ pub(crate) fn paint_capability(paint: &CanvasPaint) -> Option<ThemeCapability> {
     }
 }
 
+/// Returns the complete atomic capability set required by one typed paint.
+///
+/// A repeating or explicitly tiled gradient remains a gradient, but it also requires pattern
+/// materialization at the terminal canvas seam. Keeping both facts together prevents compilation
+/// and root evidence from independently classifying the same paint.
+pub(crate) fn paint_capabilities(
+    paint: &CanvasPaint,
+) -> impl Iterator<Item = ThemeCapability> + '_ {
+    [
+        paint_capability(paint),
+        paint
+            .requires_pattern_capability()
+            .then_some(ThemeCapability::PatternPaint),
+    ]
+    .into_iter()
+    .flatten()
+}
+
 pub(crate) fn collect_typography_capabilities(
     typography: &TypographySpec,
     required: &mut BTreeSet<ThemeCapability>,
@@ -33,15 +51,11 @@ pub(crate) fn collect_style_patch_capabilities(
     style: &ThemeStylePatch,
     required: &mut BTreeSet<ThemeCapability>,
 ) {
-    if let Specified::Value(paint) = &style.paint.fill
-        && let Some(capability) = paint_capability(paint)
-    {
-        required.insert(capability);
+    if let Specified::Value(paint) = &style.paint.fill {
+        required.extend(paint_capabilities(paint));
     }
-    if let Specified::Value(paint) = &style.stroke.paint
-        && let Some(capability) = paint_capability(paint)
-    {
-        required.insert(capability);
+    if let Specified::Value(paint) = &style.stroke.paint {
+        required.extend(paint_capabilities(paint));
     }
     if !matches!(style.stroke.width, Specified::Unspecified)
         || !matches!(style.stroke.linecap, Specified::Unspecified)

@@ -65,7 +65,9 @@ pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape,
 };
-pub(crate) use mechanisms::{collect_effect_graph_capabilities, paint_capability};
+pub(crate) use mechanisms::{
+    collect_effect_graph_capabilities, paint_capabilities, paint_capability,
+};
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
 };

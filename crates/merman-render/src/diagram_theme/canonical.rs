@@ -315,6 +315,14 @@ fn encode_canvas_paint(encoder: &mut CanonicalEncoder, paint: &CanvasPaint) {
             encoder.field("stops", |encoder| {
                 encode_gradient_stops(encoder, gradient.stops())
             });
+            if let Some(period_px) = gradient.repeating_period_px() {
+                encoder.field("repetition", |encoder| {
+                    encoder.field("kind", |encoder| encoder.string("repeating"));
+                    encoder.field("period-px", |encoder| encoder.f32(period_px));
+                });
+            } else if let Some((width_px, height_px)) = gradient.tile_size_px() {
+                encode_gradient_tile(encoder, width_px, height_px);
+            }
         }
         CanvasPaint::RadialGradient(gradient) => {
             encoder.field("kind", |encoder| encoder.string("radial-gradient"));
@@ -330,6 +338,13 @@ fn encode_canvas_paint(encoder: &mut CanonicalEncoder, paint: &CanvasPaint) {
             encoder.field("stops", |encoder| {
                 encode_gradient_stops(encoder, gradient.stops())
             });
+            if gradient.is_repeating() {
+                encoder.field("repetition", |encoder| {
+                    encoder.field("kind", |encoder| encoder.string("repeating"));
+                });
+            } else if let Some((width_px, height_px)) = gradient.tile_size_px() {
+                encode_gradient_tile(encoder, width_px, height_px);
+            }
         }
         CanvasPaint::Pattern(pattern) => {
             encoder.field("kind", |encoder| encoder.string("pattern"));
@@ -353,6 +368,14 @@ fn encode_canvas_paint(encoder: &mut CanonicalEncoder, paint: &CanvasPaint) {
             });
         }
     }
+}
+
+fn encode_gradient_tile(encoder: &mut CanonicalEncoder, width_px: f32, height_px: f32) {
+    encoder.field("repetition", |encoder| {
+        encoder.field("kind", |encoder| encoder.string("tiled"));
+        encoder.field("width-px", |encoder| encoder.f32(width_px));
+        encoder.field("height-px", |encoder| encoder.f32(height_px));
+    });
 }
 
 fn encode_gradient_stops(encoder: &mut CanonicalEncoder, stops: &[super::GradientStop]) {
@@ -1393,6 +1416,51 @@ mod tests {
             CanvasSpec::default().with_base(linear_paint(30.0, 0.0, "#1f2937")),
         ));
         cases.push((
+            "canvas.linear.repeating_period_px",
+            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
+                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
+                    .unwrap()
+                    .with_repeating_period_px(16.0)
+                    .unwrap(),
+            )),
+            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
+                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
+                    .unwrap()
+                    .with_repeating_period_px(24.0)
+                    .unwrap(),
+            )),
+        ));
+        cases.push((
+            "canvas.linear.tile_width_px",
+            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
+                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
+                    .unwrap()
+                    .with_tile_px(16.0, 20.0)
+                    .unwrap(),
+            )),
+            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
+                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
+                    .unwrap()
+                    .with_tile_px(24.0, 20.0)
+                    .unwrap(),
+            )),
+        ));
+        cases.push((
+            "canvas.linear.tile_height_px",
+            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
+                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
+                    .unwrap()
+                    .with_tile_px(16.0, 20.0)
+                    .unwrap(),
+            )),
+            CanvasSpec::default().with_base(CanvasPaint::LinearGradient(
+                LinearGradient::new(30.0, gradient_stops(0.0, "#111827"))
+                    .unwrap()
+                    .with_tile_px(16.0, 24.0)
+                    .unwrap(),
+            )),
+        ));
+        cases.push((
             "canvas.radial.center_x",
             CanvasSpec::default().with_base(radial_paint(
                 ThemeLength::percent(40.0),
@@ -1475,6 +1543,52 @@ mod tests {
                 ThemeLength::percent(60.0),
                 0.1,
                 "#1f2937",
+            )),
+        ));
+        cases.push((
+            "canvas.radial.repeating",
+            CanvasSpec::default().with_base(radial_paint(
+                ThemeLength::percent(50.0),
+                ThemeLength::percent(50.0),
+                ThemeLength::percent(60.0),
+                0.0,
+                "#111827",
+            )),
+            CanvasSpec::default().with_base(CanvasPaint::RadialGradient(
+                RadialGradient::new(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    gradient_stops(0.0, "#111827"),
+                )
+                .unwrap()
+                .with_repeating()
+                .unwrap(),
+            )),
+        ));
+        cases.push((
+            "canvas.radial.tile_size_px",
+            CanvasSpec::default().with_base(CanvasPaint::RadialGradient(
+                RadialGradient::new(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    gradient_stops(0.0, "#111827"),
+                )
+                .unwrap()
+                .with_tile_px(16.0, 20.0)
+                .unwrap(),
+            )),
+            CanvasSpec::default().with_base(CanvasPaint::RadialGradient(
+                RadialGradient::new(
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(50.0),
+                    ThemeLength::percent(60.0),
+                    gradient_stops(0.0, "#111827"),
+                )
+                .unwrap()
+                .with_tile_px(20.0, 20.0)
+                .unwrap(),
             )),
         ));
         cases.push((

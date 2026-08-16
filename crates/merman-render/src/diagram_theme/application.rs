@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use super::admission::ThemeCapability;
 use super::mechanisms::{
-    collect_effect_graph_capabilities, collect_style_patch_capabilities, paint_capability,
+    collect_effect_graph_capabilities, collect_style_patch_capabilities, paint_capabilities,
 };
 use super::{CanvasSpec, DiagramTheme, DiagramThemeSpec, Specified, ThemeTarget};
 
@@ -488,19 +488,18 @@ impl RootThemeRequirement {
 
 pub(crate) fn root_theme_requirements(spec: &DiagramThemeSpec) -> Vec<RootThemeRequirement> {
     let mut requirements = Vec::new();
-    if spec.canvas().has_explicit_base()
-        && let Some(capability) = paint_capability(spec.canvas().base())
-    {
-        requirements.push(RootThemeRequirement::new(
-            RootThemeMechanismKey::CanvasBase,
-            [capability],
-        ));
+    if spec.canvas().has_explicit_base() {
+        let capabilities = paint_capabilities(spec.canvas().base()).collect::<BTreeSet<_>>();
+        if !capabilities.is_empty() {
+            requirements.push(RootThemeRequirement::new(
+                RootThemeMechanismKey::CanvasBase,
+                capabilities,
+            ));
+        }
     }
     for (index, layer) in spec.canvas().layers().iter().enumerate() {
         let mut capabilities = BTreeSet::from([ThemeCapability::LayeredCanvas]);
-        if let Some(capability) = paint_capability(layer.paint()) {
-            capabilities.insert(capability);
-        }
+        capabilities.extend(paint_capabilities(layer.paint()));
         if layer.opacity() != 1.0 {
             capabilities.insert(ThemeCapability::Opacity);
         }
