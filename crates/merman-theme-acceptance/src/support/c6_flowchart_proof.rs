@@ -17,9 +17,10 @@ const CELL_MECHANISMS: [ReferenceThemeMechanism; 3] = [
     ReferenceThemeMechanism::RoundedCorners,
     ReferenceThemeMechanism::StrokeStyling,
 ];
-const MIN_FILL_PIXELS: usize = 24;
-const MIN_STROKE_PIXELS: usize = 12;
+const MIN_FILL_COVERAGE: f64 = 0.86;
 const MIN_CORNER_COVERAGE: f64 = 0.75;
+const PNG_COLOR_TOLERANCE: u8 = 10;
+const PNG_STROKE_WIDTH_ERROR_PX: usize = 1;
 
 #[derive(Clone, Debug)]
 pub(crate) struct BrutalistFlowchartSvgProof {
@@ -142,8 +143,7 @@ pub(crate) fn prove_brutalist_flowchart_png(
 ) -> C6ProofResult<()> {
     let raster = decode_bounded_png_artifact(bytes, plan)?;
     for (ordinal, node) in svg_proof.nodes.iter().enumerate() {
-        prove_roi_color(
-            &raster,
+        raster.prove_opaque_color_coverage_in_svg_rect(
             svg_proof.view_box,
             fill_region(
                 node.rect,
@@ -151,23 +151,21 @@ pub(crate) fn prove_brutalist_flowchart_png(
                 f64::from(contract.border.width_px()),
             )?,
             parse_c6_hex_rgb(&contract.palette_colors[ordinal % contract.palette_colors.len()])?,
-            MIN_FILL_PIXELS,
+            PNG_COLOR_TOLERANCE,
+            MIN_FILL_COVERAGE,
             "flowchart-png-node-fill",
+            "Flowchart node fill",
         )?;
     }
 
     let first = svg_proof.nodes[0].rect;
-    prove_roi_color(
+    prove_stroke_width(
         &raster,
         svg_proof.view_box,
-        stroke_region(
-            first,
-            f64::from(contract.radius_px),
-            f64::from(contract.border.width_px()),
-        )?,
+        first,
+        f64::from(contract.radius_px),
+        f64::from(contract.border.width_px()),
         parse_c6_hex_rgb(contract.border.color())?,
-        MIN_STROKE_PIXELS,
-        "flowchart-png-node-stroke",
     )?;
 
     let coverage = raster
@@ -248,7 +246,14 @@ fn fill_region(rect: [f64; 4], radius: f64, stroke_width: f64) -> C6ProofResult<
     ])
 }
 
-fn stroke_region(rect: [f64; 4], radius: f64, stroke_width: f64) -> C6ProofResult<[f64; 4]> {
+fn prove_stroke_width(
+    raster: &C6RasterImage,
+    view_box: [f64; 4],
+    rect: [f64; 4],
+    radius: f64,
+    stroke_width: f64,
+    color: [u8; 3],
+) -> C6ProofResult<()> {
     let [left, top, width, _] = rect;
     let clearance = radius + stroke_width + 2.0;
     let span = width - clearance * 2.0;
@@ -257,30 +262,44 @@ fn stroke_region(rect: [f64; 4], radius: f64, stroke_width: f64) -> C6ProofResul
         span >= 12.0,
         "Flowchart node is too small for a stable stroke ROI"
     );
-    Ok([
-        left + clearance,
-        top - stroke_width / 2.0 - 1.0,
-        span.min(24.0),
-        stroke_width + 2.0,
-    ])
-}
-
-fn prove_roi_color(
-    raster: &C6RasterImage,
-    view_box: [f64; 4],
-    region: [f64; 4],
-    color: [u8; 3],
-    minimum_pixels: usize,
-    stage: &'static str,
-) -> C6ProofResult<()> {
-    let count = raster
-        .count_opaque_pixels_near_in_svg_rect(view_box, region, color, 10)
-        .ok_or_else(|| C6ProofError::new(stage, "invalid Flowchart PNG proof region"))?;
     c6_ensure!(
-        stage,
-        count >= minimum_pixels,
-        "Flowchart PNG ROI retained {count} matching pixels, expected at least {minimum_pixels}"
+        "flowchart-png-node-stroke",
+        view_box[3].is_finite() && view_box[3] > 0.0,
+        "Flowchart PNG viewBox height must be positive"
     );
+    let raster_scale = f64::from(raster.dimensions().1) / view_box[3];
+    let expected = (stroke_width * raster_scale).round();
+    c6_ensure!(
+        "flowchart-png-node-stroke",
+        expected >= 1.0 && expected <= usize::MAX as f64,
+        "Flowchart PNG expected stroke width is invalid: {expected}"
+    );
+    let expected = expected as usize;
+    let scan_radius = expected
+        .checked_add(PNG_STROKE_WIDTH_ERROR_PX + 2)
+        .ok_or_else(|| {
+            C6ProofError::new(
+                "flowchart-png-node-stroke",
+                "Flowchart PNG stroke scan radius overflowed",
+            )
+        })?;
+    for position in [0.25, 0.5, 0.75] {
+        let x = left + clearance + span * position;
+        let actual = raster.vertical_opaque_color_run_at_svg_point(
+            view_box,
+            [x, top],
+            color,
+            PNG_COLOR_TOLERANCE,
+            scan_radius,
+            "flowchart-png-node-stroke",
+            "Flowchart",
+        )?;
+        c6_ensure!(
+            "flowchart-png-node-stroke",
+            actual.abs_diff(expected) <= PNG_STROKE_WIDTH_ERROR_PX,
+            "Flowchart stroke width must remain within {PNG_STROKE_WIDTH_ERROR_PX}px of {expected}px, found {actual}px at x={x:.3}"
+        );
+    }
     Ok(())
 }
 
@@ -308,4 +327,61 @@ fn css_px(raw: &str) -> C6ProofResult<f64> {
 
 fn approx_eq(left: f64, right: f64) -> bool {
     (left - right).abs() <= 1e-6
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_VIEW_BOX: [f64; 4] = [0.0, 0.0, 30.0, 20.0];
+    const TEST_WIDTH: u32 = 60;
+    const TEST_HEIGHT: u32 = 40;
+    const TEST_COLOR: [u8; 3] = [0x11, 0x11, 0x11];
+
+    #[test]
+    fn partial_fill_cannot_satisfy_the_old_fixed_pixel_floor() {
+        let mut raster = C6RasterImage::solid_for_test(TEST_WIDTH, TEST_HEIGHT, [0xff, 0xff, 0xff]);
+        for x in 4..28 {
+            raster.set_rgb_for_test(x, 4, TEST_COLOR);
+        }
+
+        let result = raster.prove_opaque_color_coverage_in_svg_rect(
+            TEST_VIEW_BOX,
+            [2.0, 2.0, 12.0, 10.0],
+            TEST_COLOR,
+            PNG_COLOR_TOLERANCE,
+            MIN_FILL_COVERAGE,
+            "flowchart-png-node-fill",
+            "Flowchart node fill",
+        );
+
+        assert!(
+            result.is_err(),
+            "24 isolated fill pixels must not prove a 12x10 SVG fill region"
+        );
+    }
+
+    #[test]
+    fn one_svg_pixel_stroke_cannot_prove_a_three_pixel_contract_at_two_x() {
+        let mut raster = C6RasterImage::solid_for_test(TEST_WIDTH, TEST_HEIGHT, [0xff, 0xff, 0xff]);
+        for y in 19..21 {
+            for x in 4..56 {
+                raster.set_rgb_for_test(x, y, TEST_COLOR);
+            }
+        }
+
+        let result = prove_stroke_width(
+            &raster,
+            TEST_VIEW_BOX,
+            [2.0, 10.0, 26.0, 8.0],
+            0.0,
+            3.0,
+            TEST_COLOR,
+        );
+
+        assert!(
+            result.is_err(),
+            "a 2-raster-pixel line represents only 1 SVG pixel at 2x"
+        );
+    }
 }

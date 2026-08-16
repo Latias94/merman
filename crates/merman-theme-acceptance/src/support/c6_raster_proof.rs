@@ -756,6 +756,23 @@ impl RasterImage {
         (self.width, self.height)
     }
 
+    #[cfg(test)]
+    pub(crate) fn solid_for_test(width: u32, height: u32, color: [u8; 3]) -> Self {
+        Self {
+            width,
+            height,
+            pixels: [color[0], color[1], color[2], u8::MAX]
+                .repeat(width as usize * height as usize),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_rgb_for_test(&mut self, x: u32, y: u32, color: [u8; 3]) {
+        assert!(x < self.width && y < self.height);
+        let start = ((y * self.width + x) * 4) as usize;
+        self.pixels[start..start + 4].copy_from_slice(&[color[0], color[1], color[2], u8::MAX]);
+    }
+
     pub(crate) fn count_opaque_pixels_near(&self, expected: [u8; 3], tolerance: u8) -> usize {
         self.pixels
             .chunks_exact(4)
@@ -815,6 +832,101 @@ impl RasterImage {
             }
         }
         Some(count)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn prove_opaque_color_coverage_in_svg_rect(
+        &self,
+        view_box: [f64; 4],
+        rect: [f64; 4],
+        expected: [u8; 3],
+        tolerance: u8,
+        minimum_coverage: f64,
+        stage: &'static str,
+        label: &str,
+    ) -> C6ProofResult<()> {
+        let [view_left, view_top, view_width, view_height] = view_box;
+        let [left, top, width, height] = rect;
+        c6_ensure!(
+            stage,
+            view_box.into_iter().chain(rect).all(f64::is_finite)
+                && view_width > 0.0
+                && view_height > 0.0
+                && width > 0.0
+                && height > 0.0
+                && self.width > 0
+                && self.height > 0,
+            "invalid {label} C6 coverage region"
+        );
+        let transform = self.transform(Rect {
+            left: view_left,
+            top: view_top,
+            width: view_width,
+            height: view_height,
+        });
+        prove_color_region_coverage(
+            stage,
+            self,
+            transform,
+            Rect {
+                left,
+                top,
+                width,
+                height,
+            },
+            |_, _| true,
+            &[Rgb {
+                red: expected[0],
+                green: expected[1],
+                blue: expected[2],
+            }],
+            tolerance,
+            minimum_coverage,
+            label,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn vertical_opaque_color_run_at_svg_point(
+        &self,
+        view_box: [f64; 4],
+        point: [f64; 2],
+        expected: [u8; 3],
+        tolerance: u8,
+        radius: usize,
+        stage: &'static str,
+        label: &str,
+    ) -> C6ProofResult<usize> {
+        let [view_left, view_top, view_width, view_height] = view_box;
+        c6_ensure!(
+            stage,
+            view_box.into_iter().chain(point).all(f64::is_finite)
+                && view_width > 0.0
+                && view_height > 0.0
+                && self.width > 0
+                && self.height > 0,
+            "invalid {label} C6 color-run projection"
+        );
+        let transform = self.transform(Rect {
+            left: view_left,
+            top: view_top,
+            width: view_width,
+            height: view_height,
+        });
+        contiguous_filtered_color_run(
+            self,
+            transform.point(point[0], point[1]),
+            ScanAxis::Vertical,
+            radius,
+            Rgb {
+                red: expected[0],
+                green: expected[1],
+                blue: expected[2],
+            },
+            tolerance,
+            stage,
+            label,
+        )
     }
 
     pub(crate) fn rounded_corner_coverage_in_svg_rect(
@@ -1390,6 +1502,8 @@ fn prove_node_stroke(
                 expected_vertical_width + 4,
                 contract.border,
                 PNG_COLOR_TOLERANCE,
+                "raster-node-stroke",
+                "State",
             )?,
             expected_vertical_width,
         ));
@@ -1402,6 +1516,8 @@ fn prove_node_stroke(
                 expected_horizontal_width + 4,
                 contract.border,
                 PNG_COLOR_TOLERANCE,
+                "raster-node-stroke",
+                "State",
             )?,
             expected_horizontal_width,
         ));
@@ -2010,12 +2126,14 @@ fn contiguous_filtered_color_run(
     radius: usize,
     expected: Rgb,
     tolerance: u8,
+    stage: &'static str,
+    label: &str,
 ) -> C6ProofResult<usize> {
     let expected = filtered_color_candidates(expected);
     let radius = i32::try_from(radius).map_err(|error| {
         C6ProofError::new(
-            "raster-node-stroke",
-            format!("stroke scan radius exceeds i32: {error}"),
+            stage,
+            format!("{label} stroke scan radius exceeds i32: {error}"),
         )
     })?;
     let color_at = |offset: i32| {
@@ -2026,9 +2144,9 @@ fn contiguous_filtered_color_run(
         matches_any_color(raster.rgb(point.0, point.1), &expected, tolerance)
     };
     c6_ensure!(
-        "raster-node-stroke",
+        stage,
         color_at(0),
-        "State stroke scan center must match the expected border color"
+        "{label} stroke scan center must match the expected border color"
     );
     let mut first = 0;
     while first > -radius && color_at(first - 1) {
@@ -2040,8 +2158,8 @@ fn contiguous_filtered_color_run(
     }
     usize::try_from(last - first + 1).map_err(|error| {
         C6ProofError::new(
-            "raster-node-stroke",
-            format!("State stroke color run is invalid: {error}"),
+            stage,
+            format!("{label} stroke color run is invalid: {error}"),
         )
     })
 }
