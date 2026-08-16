@@ -5,6 +5,7 @@ members = [
     "crates/merman-analysis",
     "crates/merman-editor-core",
     "crates/merman-fixture-render-context",
+    "crates/merman-theme-contract",
     "crates/merman-theme-fixtures",
     "crates/merman-theme-acceptance",
     "crates/merman-core",
@@ -77,6 +78,7 @@ ryu-js = "1.0.2"
 roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.2", default-features = false }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.150"
+serde_json_canonicalizer = "0.3.2"
 same-file = "1.0.6"
 rustix = { version = "1.1.4", default-features = false, features = ["fs", "std"] }
 rustybuzz = { version = "0.20.1", default-features = false, features = ["std"] }

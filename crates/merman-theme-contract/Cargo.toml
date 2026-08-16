@@ -1,0 +1,26 @@
+[package]
+name = "merman-theme-contract"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Versioned authoring and canonical JSON contracts for Merman themes."
+documentation = "https://docs.rs/merman-theme-contract"
+readme = "README.md"
+keywords = ["mermaid", "themes", "json", "contracts"]
+categories = ["encoding", "visualization"]
+publish = false
+
+[features]
+default = []
+
+[dependencies]
+serde.workspace = true
+serde_json_canonicalizer.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

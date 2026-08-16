@@ -33,6 +33,7 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-ffi",
     "merman-lsp",
     "merman-render",
+    "merman-theme-contract",
     "merman-typst-plugin",
     "merman-uniffi",
     "merman-wasm",
@@ -110,6 +111,11 @@ const FEATURE_INVENTORY: &[FeatureInventory] = &[
     FeatureInventory {
         package: "merman-rustdoc",
         public_extras: &["complete-svg"],
+        internal_extras: &[],
+    },
+    FeatureInventory {
+        package: "merman-theme-contract",
+        public_extras: &[],
         internal_extras: &[],
     },
     FeatureInventory {

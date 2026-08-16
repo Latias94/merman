@@ -2712,6 +2712,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-theme-contract"
+version = "0.8.0-alpha.5"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "merman-theme-fixtures"
 version = "0.8.0-alpha.5"
 dependencies = [
@@ -4194,6 +4204,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_json_canonicalizer"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe52319a927259afbfa5180c5157cd8167edfd3e8c254f9558c7fef44c5649f2"
+dependencies = [
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
