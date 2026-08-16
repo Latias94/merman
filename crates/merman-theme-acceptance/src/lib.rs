@@ -1,10 +1,10 @@
 //! Non-published theme runtime acceptance harness.
 //!
-//! The crate exposes separate coarse summaries for the C6 catalog-cell gate and the exact
-//! route-cutover authorization gate, plus a representative PNG/JPEG/PDF native export smoke that
-//! does not participate in either gate. Route authorization only permits bridge ownership cutover;
-//! it does not add C6 cells or contribute to the C6 execution report or digest. Internal
-//! observation, per-route, and sealed authorization receipts remain private so callers cannot
+//! The crate exposes the C6 progress report, the exact native C6a eligibility seal, and the
+//! independent route-cutover authorization summary, plus a representative PNG/JPEG/PDF native
+//! export smoke that does not participate in those gates. Route authorization only permits bridge
+//! ownership cutover; it does not add C6 cells or contribute to the C6 execution or eligibility
+//! digests. Internal observation, per-cell, and per-route receipts remain private so callers cannot
 //! report their own success.
 //!
 //! ```compile_fail
@@ -30,6 +30,9 @@ mod cutover;
 mod cutover_manifest;
 
 #[cfg(feature = "png")]
+mod eligibility;
+
+#[cfg(feature = "png")]
 mod observation;
 
 #[cfg(feature = "png")]
@@ -39,10 +42,13 @@ mod runner;
 pub use cutover::RouteCutoverAuthorizationReport;
 
 #[cfg(feature = "png")]
+pub use eligibility::C6aEligibilityReceipt;
+
+#[cfg(feature = "png")]
 pub use observation::{C6ExecutionReport, C6RuntimeError, RouteCutoverRuntimeError};
 
 #[cfg(feature = "png")]
-pub use runner::{run_enforced_c6_runtime, run_route_cutover_authorization};
+pub use runner::{run_c6a_eligibility, run_enforced_c6_runtime, run_route_cutover_authorization};
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use runner::{

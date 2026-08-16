@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 4,
+  "manifestRevision": "c6a-native-v1",
+  "previousManifestDigest": "6ed1f3b001947a82f98c6167acc19344e2a9254d1d775b0a5f6b307570e2bd98",
+  "requiredCriticalMechanisms": [
+    "canvas-blend",
+    "canvas-gradient",
+    "canvas-layering",
+    "canvas-pattern",
+    "canvas-solid",
+    "css-filter",
+    "css-letter-spacing",
+    "css-text-transform",
+    "dash-array",
+    "font-stack",
+    "nth-child-selector",
+    "rounded-corners",
+    "stroke-styling",
+    "theme-variables"
+  ],
+  "proofRecipes": [
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "sourceFixtureId": "fixture-ordinal-palette",
+      "proofRecipeRevision": "brutalist-flowchart-v1"
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "sourceFixtureId": "fixture-c6-brutalist-state",
+      "proofRecipeRevision": "brutalist-state-v1"
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "sourceFixtureId": "fixture-sequence-proof",
+      "proofRecipeRevision": "brutalist-sequence-v1"
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "sourceFixtureId": "fixture-c6-spotless-flowchart",
+      "proofRecipeRevision": "spotless-flowchart-v1"
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "sourceFixtureId": "fixture-c6-spotless-state",
+      "proofRecipeRevision": "spotless-state-v1"
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "sourceFixtureId": "fixture-c6-spotless-sequence",
+      "proofRecipeRevision": "spotless-sequence-v1"
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "sourceFixtureId": "fixture-c6-cyberpunk-flowchart",
+      "proofRecipeRevision": "cyberpunk-flowchart-v1"
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "sourceFixtureId": "fixture-c6-cyberpunk-state",
+      "proofRecipeRevision": "cyberpunk-state-v1"
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "sourceFixtureId": "fixture-c6-cyberpunk-sequence",
+      "proofRecipeRevision": "cyberpunk-sequence-v1"
+    }
+  ],
+  "cells": [
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "brutalist-flowchart-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-ordinal-palette"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "brutalist-flowchart-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-ordinal-palette"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "brutalist-state-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-brutalist-state"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "brutalist-state-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-brutalist-state"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "brutalist-sequence-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-sequence-proof"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "brutalist-sequence-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-sequence-proof"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-gradient": "must-apply",
+          "canvas-pattern": "must-apply",
+          "dash-array": "must-apply",
+          "font-stack": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "spotless-flowchart-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-flowchart"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-gradient": "must-apply",
+          "canvas-pattern": "must-apply",
+          "dash-array": "must-apply",
+          "font-stack": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "spotless-flowchart-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-flowchart"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-gradient": "must-apply",
+          "canvas-layering": "must-apply",
+          "canvas-pattern": "must-apply",
+          "canvas-solid": "must-apply",
+          "css-letter-spacing": "must-apply",
+          "css-text-transform": "must-apply",
+          "font-stack": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "spotless-state-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-state"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-gradient": "must-apply",
+          "canvas-layering": "must-apply",
+          "canvas-pattern": "must-apply",
+          "canvas-solid": "must-apply",
+          "css-letter-spacing": "must-apply",
+          "css-text-transform": "must-apply",
+          "font-stack": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "spotless-state-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-state"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "font-stack": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "spotless-sequence-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-sequence"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "font-stack": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "spotless-sequence-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-spotless-sequence"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-blend": "must-apply",
+          "canvas-gradient": "must-apply",
+          "canvas-layering": "must-apply",
+          "canvas-pattern": "must-apply",
+          "stroke-styling": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "cyberpunk-flowchart-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-flowchart"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-blend": "must-apply",
+          "canvas-gradient": "must-apply",
+          "canvas-layering": "must-apply",
+          "canvas-pattern": "must-apply",
+          "stroke-styling": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "cyberpunk-flowchart-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-flowchart"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "cyberpunk-state-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-state"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "cyberpunk-state-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-state"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "target": "standalone-svg",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "font-stack": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "cyberpunk-sequence-standalone-svg-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-sequence"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "target": "png",
+      "expectation": {
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "font-stack": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "semanticAssertionId": "cyberpunk-sequence-png-v1"
+      },
+      "enforcement": {
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-c6-cyberpunk-sequence"
+      }
+    }
+  ]
+}

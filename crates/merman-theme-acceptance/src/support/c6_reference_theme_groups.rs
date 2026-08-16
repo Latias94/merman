@@ -129,6 +129,7 @@ pub(super) const SPOTLESS_FLOWCHART_ADAPTER: C6RenderGroupAdapter = C6RenderGrou
     theme: C6ProofTheme::Spotless,
     family: C6ProofFamily::Flowchart,
     source_fixture_id: SPOTLESS_FLOWCHART_FIXTURE_ID,
+    proof_recipe_revision: "spotless-flowchart-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,
@@ -140,6 +141,7 @@ pub(super) const SPOTLESS_STATE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAda
     theme: C6ProofTheme::Spotless,
     family: C6ProofFamily::State,
     source_fixture_id: SPOTLESS_STATE_FIXTURE_ID,
+    proof_recipe_revision: "spotless-state-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,
@@ -151,6 +153,7 @@ pub(super) const CYBERPUNK_STATE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAd
     theme: C6ProofTheme::Cyberpunk,
     family: C6ProofFamily::State,
     source_fixture_id: CYBERPUNK_STATE_FIXTURE_ID,
+    proof_recipe_revision: "cyberpunk-state-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,

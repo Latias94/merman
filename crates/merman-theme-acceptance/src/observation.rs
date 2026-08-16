@@ -84,6 +84,7 @@ impl C6RenderGroupKey {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct C6RenderGroupReceipt {
     key: C6RenderGroupKey,
+    proof_recipe_revision: String,
     source_sha256: [u8; 32],
     theme_input_sha256: [u8; 32],
     recipe_fingerprint: [u8; 32],
@@ -96,6 +97,7 @@ pub(crate) struct C6RenderGroupReceipt {
 impl C6RenderGroupReceipt {
     pub(crate) fn seal(
         key: C6RenderGroupKey,
+        proof_recipe_revision: &str,
         catalog: &ThemeFixtureCatalog,
         identity: &C6RenderIdentity,
         standalone_receipt: &TargetAdmissionReceipt,
@@ -164,6 +166,7 @@ impl C6RenderGroupReceipt {
         )?;
         let mut receipt = Self {
             key,
+            proof_recipe_revision: proof_recipe_revision.to_owned(),
             source_sha256,
             theme_input_sha256,
             recipe_fingerprint: *recipe_fingerprint.as_bytes(),
@@ -188,7 +191,11 @@ impl C6RenderGroupReceipt {
             && target_receipt.document_digest() == self.shared_document_digest
     }
 
-    fn validate(&self, catalog: &ThemeFixtureCatalog) -> Result<(), C6RuntimeError> {
+    fn validate(
+        &self,
+        acceptance: &C6AcceptanceCatalog,
+        catalog: &ThemeFixtureCatalog,
+    ) -> Result<(), C6RuntimeError> {
         let fixture = catalog
             .fixture(self.key.source_fixture_id())
             .ok_or_else(|| group_evidence_mismatch(&self.key, "source-fixture"))?;
@@ -209,20 +216,51 @@ impl C6RenderGroupReceipt {
         )?;
         require_group_evidence(
             &self.key,
+            "proof-recipe-revision",
+            acceptance
+                .proof_recipe(merman_theme_fixtures::C6ProofRecipeKey::new(
+                    self.key.theme(),
+                    self.key.family(),
+                ))
+                .map(|recipe| {
+                    recipe.source_fixture_id() == self.key.source_fixture_id()
+                        && recipe.proof_recipe_revision() == self.proof_recipe_revision
+                })
+                .unwrap_or(false),
+        )?;
+        require_group_evidence(
+            &self.key,
             "render-group-digest",
             self.digest == self.canonical_digest(),
         )
     }
 
     fn canonical_digest(&self) -> [u8; 32] {
-        let mut value = b"merman.c6-render-group-receipt.v7\0".to_vec();
+        let mut value = b"merman.c6-render-group-receipt.v8\0".to_vec();
         encode_render_group_key(&mut value, &self.key);
+        append_len_prefixed(&mut value, self.proof_recipe_revision.as_bytes());
         value.extend_from_slice(&self.source_sha256);
         value.extend_from_slice(&self.theme_input_sha256);
         value.extend_from_slice(&self.recipe_fingerprint);
         value.extend_from_slice(&self.shared_document_digest);
         value.extend_from_slice(&self.svg_target_receipt_digest);
         sha256(value)
+    }
+
+    pub(crate) fn proof_recipe_revision(&self) -> &str {
+        &self.proof_recipe_revision
+    }
+
+    pub(crate) const fn recipe_fingerprint(&self) -> &[u8; 32] {
+        &self.recipe_fingerprint
+    }
+
+    pub(crate) const fn shared_document_digest(&self) -> &[u8; 32] {
+        &self.shared_document_digest
+    }
+
+    pub(crate) const fn digest(&self) -> &[u8; 32] {
+        &self.digest
     }
 }
 
@@ -276,8 +314,8 @@ pub(crate) struct C6CellReceipt {
     key: C6CellKey,
     render_group_key: C6RenderGroupKey,
     render_group_digest: [u8; 32],
-    // Target-owned identity; observation never re-encodes its constituent fields.
-    target_receipt_digest: [u8; 32],
+    // Opaque target-owned seal retained intact for eligibility evaluation.
+    target_receipt: TargetAdmissionReceipt,
     semantic_assertion_id: String,
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
     residual_ids: BTreeSet<String>,
@@ -374,7 +412,7 @@ pub(crate) fn seal_cell_from_evidence(
         key,
         render_group_key: group.key.clone(),
         render_group_digest: group.digest,
-        target_receipt_digest: target_receipt.receipt_digest(),
+        target_receipt,
         semantic_assertion_id: semantic_assertion_id.to_owned(),
         mechanism_dispositions,
         residual_ids,
@@ -386,11 +424,11 @@ pub(crate) fn seal_cell_from_evidence(
 
 impl C6CellReceipt {
     fn canonical_digest(&self) -> [u8; 32] {
-        let mut value = b"merman.c6-cell-receipt.v7\0".to_vec();
+        let mut value = b"merman.c6-cell-receipt.v8\0".to_vec();
         encode_cell_key(&mut value, self.key);
         encode_render_group_key(&mut value, &self.render_group_key);
         value.extend_from_slice(&self.render_group_digest);
-        value.extend_from_slice(&self.target_receipt_digest);
+        value.extend_from_slice(&self.target_receipt.receipt_digest());
         append_len_prefixed(&mut value, self.semantic_assertion_id.as_bytes());
         append_len_prefixed(&mut value, b"mechanism-dispositions");
         value.extend_from_slice(&mechanism_digest(&self.mechanism_dispositions));
@@ -400,6 +438,46 @@ impl C6CellReceipt {
             append_len_prefixed(&mut value, residual_id.as_bytes());
         }
         sha256(value)
+    }
+
+    pub(crate) const fn key(&self) -> C6CellKey {
+        self.key
+    }
+
+    pub(crate) const fn render_group_key(&self) -> &C6RenderGroupKey {
+        &self.render_group_key
+    }
+
+    pub(crate) const fn render_group_digest(&self) -> &[u8; 32] {
+        &self.render_group_digest
+    }
+
+    pub(crate) const fn target_receipt(&self) -> &TargetAdmissionReceipt {
+        &self.target_receipt
+    }
+
+    pub(crate) fn mechanism_dispositions(
+        &self,
+    ) -> &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
+        &self.mechanism_dispositions
+    }
+
+    pub(crate) fn residual_ids(&self) -> &BTreeSet<String> {
+        &self.residual_ids
+    }
+
+    pub(crate) const fn digest(&self) -> &[u8; 32] {
+        &self.digest
+    }
+
+    #[cfg(test)]
+    pub(crate) fn replace_target_receipt(&mut self, receipt: TargetAdmissionReceipt) {
+        self.target_receipt = receipt;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remove_mechanism(&mut self, mechanism: ReferenceThemeMechanism) {
+        self.mechanism_dispositions.remove(&mechanism);
     }
 }
 
@@ -454,7 +532,7 @@ impl C6ReceiptBook {
                 require_evidence(
                     cell.key,
                     "target-receipt-digest",
-                    cell.target_receipt_digest == group.svg_target_receipt_digest,
+                    cell.target_receipt.receipt_digest() == group.svg_target_receipt_digest,
                 )?;
             }
             referenced_groups.insert(cell.render_group_key.clone());
@@ -475,10 +553,10 @@ impl C6ReceiptBook {
     }
 
     pub(crate) fn evaluate(
-        &self,
+        self,
         acceptance: &C6AcceptanceCatalog,
         theme_catalog: &ThemeFixtureCatalog,
-    ) -> Result<C6ExecutionReport, C6RuntimeError> {
+    ) -> Result<C6EvaluatedLedger, C6RuntimeError> {
         if self.cells.is_empty() {
             return Err(C6RuntimeError::EmptyTranche);
         }
@@ -496,7 +574,7 @@ impl C6ReceiptBook {
         }
 
         for group in self.groups.values() {
-            group.validate(theme_catalog)?;
+            group.validate(acceptance, theme_catalog)?;
         }
 
         for enforced in acceptance.enforced_tranche().cells() {
@@ -531,7 +609,7 @@ impl C6ReceiptBook {
                 require_evidence(
                     key,
                     "target-receipt-digest",
-                    receipt.target_receipt_digest == group.svg_target_receipt_digest,
+                    receipt.target_receipt.receipt_digest() == group.svg_target_receipt_digest,
                 )?;
             }
             require_evidence(
@@ -555,7 +633,7 @@ impl C6ReceiptBook {
             require_evidence(
                 key,
                 "target-receipt-digest",
-                receipt.target_receipt_digest != [0; 32],
+                receipt.target_receipt.receipt_digest() != [0; 32],
             )?;
             require_evidence(
                 key,
@@ -569,7 +647,7 @@ impl C6ReceiptBook {
             )?;
         }
 
-        let mut digest_input = b"merman.c6-execution-report.v7\0".to_vec();
+        let mut digest_input = b"merman.c6-execution-report.v8\0".to_vec();
         digest_input.extend_from_slice(&acceptance.schema_version().to_be_bytes());
         digest_input.extend_from_slice(acceptance.manifest_digest());
         for group in self.groups.values() {
@@ -580,12 +658,43 @@ impl C6ReceiptBook {
             encode_cell_key(&mut digest_input, receipt.key);
             digest_input.extend_from_slice(&receipt.digest);
         }
-        Ok(C6ExecutionReport {
+        let report = C6ExecutionReport {
             verified_cell_count: self.cells.len(),
             render_group_count: self.groups.len(),
             manifest_digest: *acceptance.manifest_digest(),
             execution_digest: sha256(digest_input),
+        };
+        Ok(C6EvaluatedLedger {
+            groups: self.groups,
+            cells: self.cells,
+            report,
         })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct C6EvaluatedLedger {
+    groups: BTreeMap<C6RenderGroupKey, C6RenderGroupReceipt>,
+    cells: BTreeMap<C6CellKey, C6CellReceipt>,
+    report: C6ExecutionReport,
+}
+
+impl C6EvaluatedLedger {
+    pub(crate) fn execution_report(&self) -> C6ExecutionReport {
+        self.report.clone()
+    }
+
+    pub(crate) fn groups(&self) -> &BTreeMap<C6RenderGroupKey, C6RenderGroupReceipt> {
+        &self.groups
+    }
+
+    pub(crate) fn cells(&self) -> &BTreeMap<C6CellKey, C6CellReceipt> {
+        &self.cells
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cells_mut(&mut self) -> &mut BTreeMap<C6CellKey, C6CellReceipt> {
+        &mut self.cells
     }
 }
 
@@ -658,6 +767,8 @@ pub enum C6RuntimeError {
     },
     #[error("C6 render group `{group}` was not referenced by any cell receipt")]
     UnreferencedRenderGroup { group: String },
+    #[error("the exact C6a eligibility ledger failed invariant `{field}`")]
+    EligibilityInvariant { field: &'static str },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -869,6 +980,7 @@ mod tests {
         OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest,
     };
     use std::path::{Path, PathBuf};
+    use std::sync::OnceLock;
 
     fn themes_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -915,9 +1027,41 @@ mod tests {
         themed_state_document("stateDiagram-v2\n[*] --> Ready\n", ceiling)
     }
 
+    fn alternate_target_receipt() -> &'static TargetAdmissionReceipt {
+        static RECEIPT: OnceLock<TargetAdmissionReceipt> = OnceLock::new();
+        RECEIPT.get_or_init(|| {
+            themed_state_document(
+                "stateDiagram-v2\n[*] --> Alternate\n",
+                ThemeResourcePolicy::interactive(),
+            )
+            .standalone_svg_admission()
+            .clone()
+        })
+    }
+
+    fn synthetic_target_receipts() -> &'static (TargetAdmissionReceipt, TargetAdmissionReceipt) {
+        static RECEIPTS: OnceLock<(TargetAdmissionReceipt, TargetAdmissionReceipt)> =
+            OnceLock::new();
+        RECEIPTS.get_or_init(|| {
+            let document = themed_state_document_with_ceiling(ThemeResourcePolicy::interactive());
+            let png = document
+                .export_png(
+                    &merman_export::RasterOptions::default(),
+                    OperationControl::new(),
+                )
+                .expect("synthetic PNG target receipt");
+            (
+                document.standalone_svg_admission().clone(),
+                png.admission().clone(),
+            )
+        })
+    }
+
     fn synthetic_group(
         cell: &C6EnforcedCell,
+        acceptance: &C6AcceptanceCatalog,
         themes: &ThemeFixtureCatalog,
+        svg_receipt: &TargetAdmissionReceipt,
         seed: u8,
     ) -> C6RenderGroupReceipt {
         let fixture = themes
@@ -925,6 +1069,14 @@ mod tests {
             .expect("enforced fixture");
         let mut receipt = C6RenderGroupReceipt {
             key: C6RenderGroupKey::for_cell(cell),
+            proof_recipe_revision: acceptance
+                .proof_recipe(merman_theme_fixtures::C6ProofRecipeKey::new(
+                    cell.key().theme(),
+                    cell.key().family(),
+                ))
+                .expect("synthetic proof recipe")
+                .proof_recipe_revision()
+                .to_owned(),
             source_sha256: parse_hex_digest(fixture.source_sha256()).expect("source digest"),
             theme_input_sha256: parse_hex_digest(
                 fixture
@@ -933,8 +1085,8 @@ mod tests {
             )
             .expect("theme input digest"),
             recipe_fingerprint: [seed; 32],
-            shared_document_digest: [seed.wrapping_add(1); 32],
-            svg_target_receipt_digest: [seed.wrapping_add(5); 32],
+            shared_document_digest: svg_receipt.document_digest(),
+            svg_target_receipt_digest: svg_receipt.receipt_digest(),
             digest: [0; 32],
         };
         receipt.digest = receipt.canonical_digest();
@@ -945,6 +1097,7 @@ mod tests {
         enforced: &C6EnforcedCell,
         acceptance: &C6AcceptanceCatalog,
         group: &C6RenderGroupReceipt,
+        target_receipt: &TargetAdmissionReceipt,
     ) -> C6CellReceipt {
         let key = enforced.key();
         let expectation = acceptance
@@ -959,16 +1112,11 @@ mod tests {
                 (*mechanism, expected_observed_disposition(*disposition))
             })
             .collect::<BTreeMap<_, _>>();
-        let target_receipt_digest = if key.target() == ExpectedOutputTarget::StandaloneSvg {
-            group.svg_target_receipt_digest
-        } else {
-            sha256(format!("synthetic-target-receipt-{key:?}"))
-        };
         let mut receipt = C6CellReceipt {
             key,
             render_group_key: group.key.clone(),
             render_group_digest: group.digest,
-            target_receipt_digest,
+            target_receipt: target_receipt.clone(),
             semantic_assertion_id: expectation.semantic_assertion_id().to_owned(),
             mechanism_dispositions,
             residual_ids: expectation.expected_residual_ids().clone(),
@@ -982,6 +1130,7 @@ mod tests {
         themes: &ThemeFixtureCatalog,
         acceptance: &C6AcceptanceCatalog,
     ) -> C6ReceiptBook {
+        let (svg_receipt, png_receipt) = synthetic_target_receipts();
         let mut groups = BTreeMap::new();
         for cell in acceptance.enforced_tranche().cells() {
             let key = C6RenderGroupKey::for_cell(cell);
@@ -989,7 +1138,10 @@ mod tests {
                 continue;
             }
             let seed = u8::try_from(groups.len() + 1).expect("synthetic group count fits u8");
-            groups.insert(key, synthetic_group(cell, themes, seed));
+            groups.insert(
+                key,
+                synthetic_group(cell, acceptance, themes, svg_receipt, seed),
+            );
         }
         let cells = acceptance
             .enforced_tranche()
@@ -997,7 +1149,12 @@ mod tests {
             .map(|cell| {
                 let key = C6RenderGroupKey::for_cell(cell);
                 let group = groups.get(&key).expect("synthetic render group");
-                synthetic_cell(cell, acceptance, group)
+                let target_receipt = match cell.key().target() {
+                    ExpectedOutputTarget::StandaloneSvg => svg_receipt,
+                    ExpectedOutputTarget::Png => png_receipt,
+                    _ => unreachable!("synthetic C6a ledger has only SVG and PNG targets"),
+                };
+                synthetic_cell(cell, acceptance, group, target_receipt)
             })
             .collect::<Vec<_>>();
         C6ReceiptBook::from_receipts(
@@ -1070,6 +1227,7 @@ mod tests {
         let identity = C6RenderIdentity::from_evidence(second.evidence());
         let group = C6RenderGroupReceipt::seal(
             C6RenderGroupKey::for_cell(enforced),
+            "brutalist-state-v1",
             &themes,
             &identity,
             second.standalone_svg_admission(),
@@ -1103,9 +1261,10 @@ mod tests {
     fn evaluator_accepts_receipts_bound_to_their_render_group() {
         let (themes, acceptance) = load_catalogs();
         let book = synthetic_valid_book(&themes, &acceptance);
-        let report = book
+        let ledger = book
             .evaluate(&acceptance, &themes)
             .expect("complete synthetic receipts");
+        let report = ledger.execution_report();
 
         assert_eq!(report.verified_cell_count(), 18);
         assert_eq!(report.render_group_count(), 9);
@@ -1125,6 +1284,13 @@ mod tests {
         let identity = C6RenderIdentity::from_evidence(document.evidence());
         let group = C6RenderGroupReceipt::seal(
             C6RenderGroupKey::for_cell(enforced),
+            acceptance
+                .proof_recipe(merman_theme_fixtures::C6ProofRecipeKey::new(
+                    enforced.key().theme(),
+                    enforced.key().family(),
+                ))
+                .expect("State proof recipe")
+                .proof_recipe_revision(),
             &themes,
             &identity,
             document.standalone_svg_admission(),
@@ -1154,7 +1320,7 @@ mod tests {
         assert_ne!(group.canonical_digest(), changed_group.canonical_digest());
 
         let mut changed = cell.clone();
-        changed.target_receipt_digest[0] ^= 1;
+        changed.target_receipt = alternate_target_receipt().clone();
         assert_ne!(cell.canonical_digest(), changed.canonical_digest());
 
         let mut changed = cell.clone();
@@ -1172,15 +1338,17 @@ mod tests {
             .values_mut()
             .find(|cell| cell.key.target() == ExpectedOutputTarget::Png)
             .expect("native target cell receipt");
-        cell.target_receipt_digest[0] ^= 1;
+        cell.target_receipt = alternate_target_receipt().clone();
         cell.digest = cell.canonical_digest();
 
         let first = first_book
             .evaluate(&acceptance, &themes)
-            .expect("first target receipt binding");
+            .expect("first target receipt binding")
+            .execution_report();
         let second = second_book
             .evaluate(&acceptance, &themes)
-            .expect("second target receipt binding");
+            .expect("second target receipt binding")
+            .execution_report();
 
         assert_ne!(first.execution_digest(), second.execution_digest());
     }
@@ -1194,7 +1362,7 @@ mod tests {
             .values_mut()
             .find(|cell| cell.key.target() == ExpectedOutputTarget::StandaloneSvg)
             .expect("SVG target cell receipt");
-        cell.target_receipt_digest[0] ^= 1;
+        cell.target_receipt = alternate_target_receipt().clone();
         cell.digest = cell.canonical_digest();
 
         assert_evidence_field(
@@ -1323,7 +1491,7 @@ mod tests {
             .iter_mut()
             .find(|cell| cell.key.target() == ExpectedOutputTarget::StandaloneSvg)
             .expect("standalone SVG cell receipt");
-        cell.target_receipt_digest[0] ^= 1;
+        cell.target_receipt = alternate_target_receipt().clone();
         cell.digest = cell.canonical_digest();
 
         assert_evidence_field(

@@ -16,6 +16,28 @@ pub enum CatalogError {
     InvalidC6AcceptanceJson(serde_json::Error),
     #[error("unsupported C6 acceptance schema version {0}")]
     UnsupportedC6AcceptanceSchemaVersion(u32),
+    #[error("C6 acceptance manifest is invalid: {reason}")]
+    InvalidC6AcceptanceManifest { reason: String },
+    #[error(
+        "C6 acceptance manifest lineage mismatch; declared predecessor {declared}, actual {actual}"
+    )]
+    C6AcceptanceManifestLineageMismatch { declared: String, actual: String },
+    #[error("C6 proof recipe `{key}` is duplicated")]
+    DuplicateC6ProofRecipe { key: String },
+    #[error("C6 proof recipe set mismatch; missing {missing:?}, unexpected {unexpected:?}")]
+    C6ProofRecipeSetMismatch {
+        missing: Vec<String>,
+        unexpected: Vec<String>,
+    },
+    #[error("C6 proof recipe `{key}` is invalid: {reason}")]
+    InvalidC6ProofRecipe { key: String, reason: String },
+    #[error("C6 critical mechanism set mismatch; missing {missing:?}, unexpected {unexpected:?}")]
+    C6CriticalMechanismSetMismatch {
+        missing: Vec<String>,
+        unexpected: Vec<String>,
+    },
+    #[error("C6 critical mechanisms are not covered by the acceptance cells: {mechanisms:?}")]
+    UncoveredC6CriticalMechanisms { mechanisms: Vec<String> },
     #[error("C6 acceptance cell `{key}` is duplicated")]
     DuplicateC6AcceptanceCell { key: String },
     #[error("C6 acceptance cell set mismatch; missing {missing:?}, unexpected {unexpected:?}")]

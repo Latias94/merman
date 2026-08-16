@@ -47,6 +47,7 @@ pub(super) const SPOTLESS_SEQUENCE_ADAPTER: C6RenderGroupAdapter = C6RenderGroup
     theme: C6ProofTheme::Spotless,
     family: C6ProofFamily::Sequence,
     source_fixture_id: FIXTURE_ID,
+    proof_recipe_revision: "spotless-sequence-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,

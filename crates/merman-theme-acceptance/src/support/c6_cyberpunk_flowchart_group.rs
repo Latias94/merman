@@ -58,6 +58,7 @@ pub(super) const CYBERPUNK_FLOWCHART_ADAPTER: C6RenderGroupAdapter = C6RenderGro
     theme: C6ProofTheme::Cyberpunk,
     family: C6ProofFamily::Flowchart,
     source_fixture_id: FIXTURE_ID,
+    proof_recipe_revision: "cyberpunk-flowchart-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,

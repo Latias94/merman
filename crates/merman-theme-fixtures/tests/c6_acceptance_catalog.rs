@@ -1,10 +1,12 @@
 use merman_theme_fixtures::{
-    C6_ACCEPTANCE_CELL_COUNT, C6_ACCEPTANCE_RELATIVE_PATH, C6_ACCEPTANCE_SCHEMA_VERSION,
-    C6_NATIVE_OUTPUT_TARGETS, C6_PROOF_FAMILIES, C6_PROOF_THEMES, C6AcceptanceCatalog, C6CellKey,
-    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofTheme, CatalogError,
+    C6_ACCEPTANCE_CELL_COUNT, C6_ACCEPTANCE_PREVIOUS_RELATIVE_PATH, C6_ACCEPTANCE_RELATIVE_PATH,
+    C6_ACCEPTANCE_RENDER_GROUP_COUNT, C6_ACCEPTANCE_SCHEMA_VERSION, C6_NATIVE_OUTPUT_TARGETS,
+    C6_PROOF_FAMILIES, C6_PROOF_THEMES, C6AcceptanceCatalog, C6CellKey,
+    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofRecipeKey, C6ProofTheme, CatalogError,
     ExpectedOutputTarget, ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,6 +30,10 @@ fn committed_acceptance_json() -> String {
 
 fn committed_acceptance_value() -> Value {
     serde_json::from_str(&committed_acceptance_json()).expect("parse committed acceptance JSON")
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn parse_value(
@@ -140,9 +146,19 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
         .map(|cell| cell.key())
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(C6_ACCEPTANCE_RELATIVE_PATH, "acceptance/c6-v3.json");
+    assert_eq!(C6_ACCEPTANCE_RELATIVE_PATH, "acceptance/c6-v4.json");
+    assert_eq!(
+        C6_ACCEPTANCE_PREVIOUS_RELATIVE_PATH,
+        "acceptance/c6-v3.json"
+    );
     assert_eq!(catalog.schema_version(), C6_ACCEPTANCE_SCHEMA_VERSION);
-    assert_eq!(C6_ACCEPTANCE_SCHEMA_VERSION, 3);
+    assert_eq!(C6_ACCEPTANCE_SCHEMA_VERSION, 4);
+    assert_eq!(catalog.manifest_revision(), "c6a-native-v1");
+    assert_eq!(
+        catalog.proof_recipes().len(),
+        C6_ACCEPTANCE_RENDER_GROUP_COUNT
+    );
+    assert_eq!(C6_ACCEPTANCE_RENDER_GROUP_COUNT, 9);
     assert_eq!(
         catalog.specification().cells().len(),
         C6_ACCEPTANCE_CELL_COUNT
@@ -152,6 +168,44 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
     assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 0);
     assert_eq!(actual_keys, expected_keys);
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
+    assert_eq!(
+        encode_hex(catalog.manifest_digest()),
+        "b6f964abffcf653a825c17f7af547c7eb776f75c683d5df9289e6713d00106e9"
+    );
+    assert_eq!(
+        encode_hex(catalog.previous_manifest_digest()),
+        "6ed1f3b001947a82f98c6167acc19344e2a9254d1d775b0a5f6b307570e2bd98"
+    );
+
+    let expected_recipe_keys = C6_PROOF_THEMES
+        .into_iter()
+        .flat_map(|theme| {
+            C6_PROOF_FAMILIES
+                .into_iter()
+                .map(move |family| C6ProofRecipeKey::new(theme, family))
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        catalog
+            .proof_recipes()
+            .map(|recipe| recipe.key())
+            .collect::<BTreeSet<_>>(),
+        expected_recipe_keys
+    );
+    for recipe in catalog.proof_recipes() {
+        assert!(recipe.proof_recipe_revision().ends_with("-v1"));
+        for target in C6_NATIVE_OUTPUT_TARGETS {
+            let cell = catalog
+                .enforced_tranche()
+                .cell(C6CellKey::new(
+                    recipe.key().theme(),
+                    recipe.key().family(),
+                    target,
+                ))
+                .expect("proof recipe target cell");
+            assert_eq!(cell.source_fixture_id(), recipe.source_fixture_id());
+        }
+    }
 
     let mut semantic_assertion_ids = BTreeSet::new();
     for cell in catalog.specification().cells() {
@@ -255,6 +309,77 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
 }
 
 #[test]
+fn committed_v3_manifest_is_an_immutable_predecessor() {
+    let bytes = fs::read(themes_root().join(C6_ACCEPTANCE_PREVIOUS_RELATIVE_PATH))
+        .expect("read immutable C6 v3 predecessor");
+
+    assert_eq!(
+        encode_hex(&Sha256::digest(bytes)),
+        "a73dd91f4b47302b84d0be3d921004f3439493f37aa9b3c3f6b3a2e689763a20"
+    );
+}
+
+#[test]
+fn manifest_lineage_group_identity_and_critical_mechanisms_fail_closed() {
+    let source_catalog = source_catalog();
+
+    let mut wrong_predecessor = committed_acceptance_value();
+    wrong_predecessor["previousManifestDigest"] = json!("00".repeat(32));
+    assert!(matches!(
+        parse_value(&wrong_predecessor, &source_catalog),
+        Err(CatalogError::C6AcceptanceManifestLineageMismatch { .. })
+    ));
+
+    let mut duplicate_group = committed_acceptance_value();
+    let duplicate = duplicate_group["proofRecipes"][0].clone();
+    duplicate_group["proofRecipes"]
+        .as_array_mut()
+        .expect("proof recipes")
+        .push(duplicate);
+    assert!(matches!(
+        parse_value(&duplicate_group, &source_catalog),
+        Err(CatalogError::DuplicateC6ProofRecipe { .. })
+    ));
+
+    let mut wrong_fixture = committed_acceptance_value();
+    wrong_fixture["proofRecipes"][0]["sourceFixtureId"] = json!("fixture-c6-brutalist-state");
+    assert!(matches!(
+        parse_value(&wrong_fixture, &source_catalog),
+        Err(CatalogError::InvalidC6ProofRecipe { .. })
+    ));
+
+    let mut mismatched_group_fixture = committed_acceptance_value();
+    mismatched_group_fixture["proofRecipes"][0]["sourceFixtureId"] =
+        json!("fixture-token-baseline");
+    match parse_value(&mismatched_group_fixture, &source_catalog) {
+        Err(CatalogError::InvalidC6ProofRecipe { reason, .. }) => {
+            assert!(reason.contains("source fixture differs from the proof recipe"));
+        }
+        other => panic!("mismatched proof recipe group was accepted: {other:?}"),
+    }
+
+    let mut missing_critical = committed_acceptance_value();
+    missing_critical["requiredCriticalMechanisms"]
+        .as_array_mut()
+        .expect("critical mechanisms")
+        .remove(0);
+    assert!(matches!(
+        parse_value(&missing_critical, &source_catalog),
+        Err(CatalogError::C6CriticalMechanismSetMismatch { .. })
+    ));
+
+    let mut unexpected_critical = committed_acceptance_value();
+    unexpected_critical["requiredCriticalMechanisms"]
+        .as_array_mut()
+        .expect("critical mechanisms")
+        .push(json!("backdrop-filter"));
+    assert!(matches!(
+        parse_value(&unexpected_critical, &source_catalog),
+        Err(CatalogError::C6CriticalMechanismSetMismatch { .. })
+    ));
+}
+
+#[test]
 fn schema_and_exact_cell_set_fail_closed() {
     let source_catalog = source_catalog();
 
@@ -335,6 +460,12 @@ fn semantic_assertion_ids_are_closed_unique_manifest_identity() {
         json!("brutalist-state-png-v2");
     let changed = parse_value(&changed, &source_catalog).expect("parse changed semantic contract");
     assert_ne!(original.manifest_digest(), changed.manifest_digest());
+
+    let mut changed_recipe = committed_acceptance_value();
+    changed_recipe["proofRecipes"][0]["proofRecipeRevision"] = json!("brutalist-flowchart-v2");
+    let changed_recipe =
+        parse_value(&changed_recipe, &source_catalog).expect("parse changed proof recipe revision");
+    assert_ne!(original.manifest_digest(), changed_recipe.manifest_digest());
 
     let mut duplicate = committed_acceptance_value();
     cell_mut(&mut duplicate, "brutalist", "state", "png")["expectation"]["semanticAssertionId"] =

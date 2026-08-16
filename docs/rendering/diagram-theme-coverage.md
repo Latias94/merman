@@ -47,17 +47,21 @@ capabilities and text-layout capabilities. Later stages own different facts:
 
 These stages are monotonic: a later stage may preserve or weaken earlier evidence, but an
 unevaluated family or output cannot be upgraded to portable. All 18 representative
-Flowchart/State/Sequence by Standalone SVG/PNG cells now execute successfully, but the dedicated
-eligibility seal and remaining C5 gates are still required before C6a can be declared complete.
+Flowchart/State/Sequence by Standalone SVG/PNG cells execute successfully and the private harness
+now seals that exact ledger with `C6aEligibilityReceipt`. Remaining C5 and C7a pre-freeze witnesses
+still block the public authoring contract.
 
 The current private cutover manifest contains 34 route-level authorization witnesses producing 46
 artifact witnesses. These witnesses prove only that the named bridge projections may be retired;
 they do not increase C6a's 18-cell count.
-The active `acceptance/c6-v3.json` representative ledger executes `18/18` cells across nine render
-groups: Brutalist, Spotless, and Cyberpunk by Flowchart, State, and Sequence. Each render group
-projects Standalone SVG and PNG from one completed `RenderedDocument`; no cells remain deferred.
-Execution coverage alone is not contract eligibility: no `C6aEligibilityReceipt` exists yet, so C6a
-is not sealed and C7a remains blocked.
+The active `acceptance/c6-v4.json` representative ledger preserves `c6-v3.json` as an immutable
+predecessor and executes `18/18` cells across nine render groups: Brutalist, Spotless, and Cyberpunk
+by Flowchart, State, and Sequence. Each versioned proof recipe projects Standalone SVG and PNG from
+one completed `RenderedDocument`; no cells remain deferred. The eligibility issuer accepts only the
+exact manifest lineage, nine paired group identities, portable target-owned receipts with embedded
+fonts and no residuals, and the declared critical-mechanism union. Route-cutover receipts and
+JPEG/PDF smoke results are outside this type boundary and cannot increase C6a eligibility. C7a
+remains blocked by the separate C5 and pre-freeze authoring/consumer gates.
 Four historical cross-target observations exist for the Brutalist State render group, but C6b
 equal-depth certification is paused and has no active completion percentage. Browser SVG remains
 unstarted.

@@ -28,10 +28,11 @@ use merman_theme_fixtures::{
     ReferenceThemeInput, ReferenceThemeMechanism, ReferenceThemeTokens, ThemeFixtureCatalog,
 };
 
+use crate::eligibility::{C6aEligibilityReceipt, issue_c6a_eligibility};
 use crate::observation::{
-    C6BoundTargetProof, C6CellReceipt, C6ExecutionReport, C6ObservedMechanismDisposition,
-    C6ReceiptBook, C6RenderGroupKey, C6RenderGroupReceipt, C6RuntimeError, C6TargetArtifact,
-    RouteCutoverRuntimeError, seal_cell_from_evidence,
+    C6BoundTargetProof, C6CellReceipt, C6EvaluatedLedger, C6ExecutionReport,
+    C6ObservedMechanismDisposition, C6ReceiptBook, C6RenderGroupKey, C6RenderGroupReceipt,
+    C6RuntimeError, C6TargetArtifact, RouteCutoverRuntimeError, seal_cell_from_evidence,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -589,6 +590,11 @@ pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
     run_enforced_c6_runtime_from_root(themes_root())
 }
 
+/// Runs the exact 18-cell native ledger and issues the private-harness C6a eligibility seal.
+pub fn run_c6a_eligibility() -> Result<C6aEligibilityReceipt, C6RuntimeError> {
+    run_c6a_eligibility_from_root(themes_root())
+}
+
 /// Runs the exact route-cutover authorization gate independently of the C6 cell gate.
 pub fn run_route_cutover_authorization()
 -> Result<crate::cutover::RouteCutoverAuthorizationReport, RouteCutoverRuntimeError> {
@@ -647,10 +653,26 @@ fn run_enforced_c6_runtime_from_root(
     run_catalog(&theme_catalog, &acceptance)
 }
 
+fn run_c6a_eligibility_from_root(
+    root: impl AsRef<Path>,
+) -> Result<C6aEligibilityReceipt, C6RuntimeError> {
+    let theme_catalog = ThemeFixtureCatalog::load(root)?;
+    let acceptance = C6AcceptanceCatalog::load(&theme_catalog)?;
+    let ledger = run_catalog_evaluated(&theme_catalog, &acceptance)?;
+    issue_c6a_eligibility(ledger, &acceptance)
+}
+
 fn run_catalog(
     theme_catalog: &ThemeFixtureCatalog,
     acceptance: &C6AcceptanceCatalog,
 ) -> Result<C6ExecutionReport, C6RuntimeError> {
+    Ok(run_catalog_evaluated(theme_catalog, acceptance)?.execution_report())
+}
+
+pub(crate) fn run_catalog_evaluated(
+    theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
+) -> Result<C6EvaluatedLedger, C6RuntimeError> {
     let plan = C6ExecutionPlan::from_catalog(acceptance)?;
     let expected_keys = acceptance
         .enforced_tranche()
@@ -679,6 +701,7 @@ struct C6RenderGroupAdapter {
     theme: C6ProofTheme,
     family: C6ProofFamily,
     source_fixture_id: &'static str,
+    proof_recipe_revision: &'static str,
     supported_targets: &'static [ExpectedOutputTarget],
     execute: C6RenderGroupExecutor,
 }
@@ -688,10 +711,11 @@ impl C6RenderGroupAdapter {
         self.supported_targets.contains(&target)
     }
 
-    fn matches_group(&self, key: &C6RenderGroupKey) -> bool {
+    fn matches_group(&self, key: &C6RenderGroupKey, proof_recipe_revision: &str) -> bool {
         self.theme == key.theme()
             && self.family == key.family()
             && self.source_fixture_id == key.source_fixture_id()
+            && self.proof_recipe_revision == proof_recipe_revision
     }
 }
 
@@ -699,6 +723,7 @@ const BRUTALIST_FLOWCHART_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
     theme: C6ProofTheme::Brutalist,
     family: C6ProofFamily::Flowchart,
     source_fixture_id: BRUTALIST_FLOWCHART_FIXTURE_ID,
+    proof_recipe_revision: "brutalist-flowchart-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,
@@ -710,6 +735,7 @@ const BRUTALIST_STATE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
     theme: C6ProofTheme::Brutalist,
     family: C6ProofFamily::State,
     source_fixture_id: BRUTALIST_STATE_FIXTURE_ID,
+    proof_recipe_revision: "brutalist-state-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,
@@ -721,6 +747,7 @@ const BRUTALIST_SEQUENCE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
     theme: C6ProofTheme::Brutalist,
     family: C6ProofFamily::Sequence,
     source_fixture_id: BRUTALIST_SEQUENCE_FIXTURE_ID,
+    proof_recipe_revision: "brutalist-sequence-v1",
     supported_targets: &[
         ExpectedOutputTarget::StandaloneSvg,
         ExpectedOutputTarget::Png,
@@ -743,6 +770,7 @@ static C6_RENDER_GROUP_ADAPTERS: &[C6RenderGroupAdapter] = &[
 #[derive(Debug)]
 struct C6RenderGroupWork {
     key: C6RenderGroupKey,
+    proof_recipe_revision: &'static str,
     cells: Vec<C6EnforcedCell>,
 }
 
@@ -770,8 +798,21 @@ impl C6ExecutionPlan {
         >::new();
         for cell in enforced {
             let key = C6RenderGroupKey::for_cell(cell);
-            let adapter = adapter_for_group(C6_RENDER_GROUP_ADAPTERS, &key)?
-                .ok_or_else(|| C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() })?;
+            let proof_recipe = acceptance
+                .proof_recipe(merman_theme_fixtures::C6ProofRecipeKey::new(
+                    key.theme(),
+                    key.family(),
+                ))
+                .ok_or(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() })?;
+            if proof_recipe.source_fixture_id() != key.source_fixture_id() {
+                return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
+            }
+            let adapter = adapter_for_group(
+                C6_RENDER_GROUP_ADAPTERS,
+                &key,
+                proof_recipe.proof_recipe_revision(),
+            )?
+            .ok_or_else(|| C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() })?;
             if !adapter.supports_target(cell.key().target()) {
                 return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
             }
@@ -784,7 +825,11 @@ impl C6ExecutionPlan {
                 .into_iter()
                 .map(|(key, (adapter, cells))| C6RenderGroupPlan {
                     adapter,
-                    work: C6RenderGroupWork { key, cells },
+                    work: C6RenderGroupWork {
+                        key,
+                        proof_recipe_revision: adapter.proof_recipe_revision,
+                        cells,
+                    },
                 })
                 .collect(),
         })
@@ -794,8 +839,11 @@ impl C6ExecutionPlan {
 fn adapter_for_group<'a>(
     adapters: &'a [C6RenderGroupAdapter],
     key: &C6RenderGroupKey,
+    proof_recipe_revision: &str,
 ) -> Result<Option<&'a C6RenderGroupAdapter>, C6RuntimeError> {
-    let mut matching = adapters.iter().filter(|adapter| adapter.matches_group(key));
+    let mut matching = adapters
+        .iter()
+        .filter(|adapter| adapter.matches_group(key, proof_recipe_revision));
     let Some(adapter) = matching.next() else {
         return Ok(None);
     };
@@ -890,6 +938,7 @@ fn complete_c6_svg_png_render_group(
     )?;
     let group_receipt = C6RenderGroupReceipt::seal(
         group.key.clone(),
+        group.proof_recipe_revision,
         theme_catalog,
         identity,
         document.standalone_svg_admission(),
@@ -2374,7 +2423,7 @@ mod tests {
         let key = enforced_brutalist_state_native_key(&acceptance);
         let adapters = [BRUTALIST_STATE_ADAPTER; 2];
 
-        let error = adapter_for_group(&adapters, &key)
+        let error = adapter_for_group(&adapters, &key, "brutalist-state-v1")
             .expect_err("duplicate adapter identity must fail closed");
 
         assert!(matches!(
@@ -2526,7 +2575,7 @@ mod tests {
         let key = enforced_brutalist_state_native_key(&acceptance);
 
         assert!(
-            adapter_for_group(&[BRUTALIST_STATE_ADAPTER], &key)
+            adapter_for_group(&[BRUTALIST_STATE_ADAPTER], &key, "brutalist-state-v1",)
                 .expect("match exact adapter identity")
                 .is_some()
         );
@@ -2553,11 +2602,18 @@ mod tests {
                     ..BRUTALIST_STATE_ADAPTER
                 },
             ),
+            (
+                "recipe revision",
+                C6RenderGroupAdapter {
+                    proof_recipe_revision: "brutalist-state-v2",
+                    ..BRUTALIST_STATE_ADAPTER
+                },
+            ),
         ];
 
         for (dimension, adapter) in mismatched_adapters {
             assert!(
-                adapter_for_group(std::slice::from_ref(&adapter), &key)
+                adapter_for_group(std::slice::from_ref(&adapter), &key, "brutalist-state-v1",)
                     .expect("evaluate adapter identity")
                     .is_none(),
                 "{dimension} mismatch must not select the adapter"
