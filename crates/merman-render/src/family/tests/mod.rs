@@ -1,4 +1,5 @@
 use super::*;
+use crate::RenderCapability;
 use crate::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, FontStack, GradientStop, LinearGradient, MermaidThemeCompatibility,
