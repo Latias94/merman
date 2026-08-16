@@ -544,8 +544,8 @@ export function Preview({ className }: PreviewProps) {
 
 function useHostViewportMeasurement() {
   const hostRef = useRef<HTMLDivElement>(null);
-  const setHostRenderViewport = useAppStore(
-    (state) => state.setHostRenderViewport,
+  const setLiveHostRenderViewport = useAppStore(
+    (state) => state.setLiveHostRenderViewport,
   );
 
   useEffect(() => {
@@ -558,7 +558,7 @@ function useHostViewportMeasurement() {
       if (width <= 0 || height <= 0) return;
       if (publishTimeout) clearTimeout(publishTimeout);
       publishTimeout = setTimeout(
-        () => setHostRenderViewport({ width, height }),
+        () => setLiveHostRenderViewport({ width, height }),
         120,
       );
     };
@@ -576,7 +576,7 @@ function useHostViewportMeasurement() {
       observer?.disconnect();
       if (publishTimeout) clearTimeout(publishTimeout);
     };
-  }, [setHostRenderViewport]);
+  }, [setLiveHostRenderViewport]);
 
   return hostRef;
 }

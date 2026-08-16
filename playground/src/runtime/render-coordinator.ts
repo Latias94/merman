@@ -555,6 +555,16 @@ function renderCompare(
       detail: null,
     });
   }
+  const screenAvailableWidth =
+    operation.layoutEnvironment.screenAvailableWidth;
+  if (screenAvailableWidth === undefined) {
+    return Promise.resolve({
+      status: "failure",
+      stage: "presentation",
+      message: "Compare screen width is unavailable.",
+      detail: null,
+    });
+  }
   let result: Promise<MermaidRealmRenderResult>;
   try {
     result = compare.render({
@@ -563,6 +573,7 @@ function renderCompare(
       configJson: operation.configJson,
       diagramFont: operation.diagramFont,
       externalRequirements,
+      screenAvailableWidth,
       viewport: operation.viewport,
     });
   } catch (error) {

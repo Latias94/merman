@@ -11,7 +11,12 @@ import { captureRenderViewport } from "./render-viewport.ts";
 
 export function RenderCoordinatorBridge() {
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
-  const hostRenderViewport = useAppStore((state) => state.hostRenderViewport);
+  const liveHostRenderViewport = useAppStore(
+    (state) => state.liveHostRenderViewport,
+  );
+  const sharedRenderEnvironmentLock = useAppStore(
+    (state) => state.sharedRenderEnvironmentLock,
+  );
   const facade = useMermanRuntime(selectMermanFacade);
 
   useEffect(() => {
@@ -19,11 +24,13 @@ export function RenderCoordinatorBridge() {
       facade,
       renderViewport: captureRenderViewport(
         workspace.renderViewportMode,
-        hostRenderViewport
+        liveHostRenderViewport,
+        window.screen.availWidth,
+        sharedRenderEnvironmentLock,
       ),
       workspace,
     });
-  }, [facade, hostRenderViewport, workspace]);
+  }, [facade, liveHostRenderViewport, sharedRenderEnvironmentLock, workspace]);
 
   return null;
 }

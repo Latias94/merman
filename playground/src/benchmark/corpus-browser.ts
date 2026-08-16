@@ -69,6 +69,7 @@ const orchestrator = createBenchmarkCorpusOrchestrator({
         theme: "default",
         diagramFont: "trebuchet",
         externalRequirements: mermaidExternalRequirementsFor(fixture.detection),
+        screenAvailableWidth: window.screen.availWidth,
         viewport: CANONICAL_RENDER_VIEWPORT,
       },
       detection: fixture.detection,

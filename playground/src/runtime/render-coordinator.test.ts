@@ -26,7 +26,7 @@ import type {
   MermaidRealmRenderResult,
 } from "./mermaid-realm-controller.ts";
 
-test("freezes one Host viewport into Merman and Mermaid inputs", async () => {
+test("freezes one shared Host environment into Merman and Mermaid inputs", async () => {
   const compare = fakeCompare([Promise.resolve(mermaidSuccess("host"))]);
   const renderedOperations: FrozenRenderOperation[] = [];
   const domainFacade: MermanDomainFacade = {
@@ -43,7 +43,12 @@ test("freezes one Host viewport into Merman and Mermaid inputs", async () => {
       "host",
       domainFacade,
       {},
-      captureRenderViewport("host", { width: 960, height: 540 }, 1440),
+      captureRenderViewport(
+        "host",
+        { width: 960, height: 540 },
+        1440,
+        { width: 640, height: 480, screenAvailableWidth: 1512 },
+      ),
     ),
   );
 
@@ -52,14 +57,15 @@ test("freezes one Host viewport into Merman and Mermaid inputs", async () => {
   const renderedOperation = renderedOperations[0];
   assert.ok(renderedOperation);
   assert.equal(renderedOperation.renderViewportMode, "host");
-  assert.equal(renderedOperation.renderViewportStatus, "host");
+  assert.equal(renderedOperation.renderViewportStatus, "host-locked");
   assert.deepEqual(renderedOperation.layoutEnvironment, {
-    containerWidth: 960,
-    containerHeight: 540,
-    screenAvailableWidth: 1440,
+    containerWidth: 640,
+    containerHeight: 480,
+    screenAvailableWidth: 1512,
   });
-  assert.deepEqual(renderedOperation.viewport, { width: 960, height: 540 });
-  assert.deepEqual(compare.calls[0]?.viewport, { width: 960, height: 540 });
+  assert.deepEqual(renderedOperation.viewport, { width: 640, height: 480 });
+  assert.deepEqual(compare.calls[0]?.viewport, { width: 640, height: 480 });
+  assert.equal(compare.calls[0]?.screenAvailableWidth, 1512);
 });
 
 test("latest request publishes Merman and Mermaid as one coherent batch", async () => {

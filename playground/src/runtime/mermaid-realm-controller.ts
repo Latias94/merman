@@ -18,6 +18,7 @@ export interface MermaidRealmRenderInput {
   readonly configJson: string;
   readonly diagramFont: DiagramFont;
   readonly externalRequirements: MermaidExternalRequirements;
+  readonly screenAvailableWidth: number;
   readonly source: string;
   readonly theme: string;
   readonly viewport: RealmViewport;

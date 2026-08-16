@@ -75,28 +75,66 @@ test("applies one complete workspace snapshot with one coherent notification", (
 
 test("stores viewport intent but keeps measured Host pixels transient", () => {
   useAppStore.setState({
-    hostRenderViewport: null,
+    liveHostRenderViewport: null,
     renderViewportMode: "canonical",
   });
 
   useAppStore.getState().setRenderViewportMode("host");
   useAppStore
     .getState()
-    .setHostRenderViewport({ width: 959.6, height: 539.5 });
-  assert.deepEqual(useAppStore.getState().hostRenderViewport, {
+    .setLiveHostRenderViewport({ width: 959.6, height: 539.5 });
+  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
     width: 960,
     height: 540,
   });
 
   useAppStore
     .getState()
-    .setHostRenderViewport({ width: 0, height: 0 });
-  assert.deepEqual(useAppStore.getState().hostRenderViewport, {
+    .setLiveHostRenderViewport({ width: 0, height: 0 });
+  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
     width: 960,
     height: 540,
   });
   assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).renderViewportMode, "host");
-  assert.equal("hostRenderViewport" in selectWorkspaceSnapshot(useAppStore.getState()), false);
+  assert.equal("liveHostRenderViewport" in selectWorkspaceSnapshot(useAppStore.getState()), false);
+});
+
+test("a shared lock keeps winning while live Host measurement stays current", () => {
+  useAppStore.setState({
+    liveHostRenderViewport: { width: 800, height: 600 },
+    sharedRenderEnvironmentLock: {
+      width: 640,
+      height: 480,
+      screenAvailableWidth: 1512,
+    },
+  });
+
+  useAppStore
+    .getState()
+    .setLiveHostRenderViewport({ width: 1024, height: 768 });
+  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
+    width: 1024,
+    height: 768,
+  });
+  assert.deepEqual(useAppStore.getState().sharedRenderEnvironmentLock, {
+    width: 640,
+    height: 480,
+    screenAvailableWidth: 1512,
+  });
+
+  let notifications = 0;
+  const unsubscribe = useAppStore.subscribe(() => {
+    notifications += 1;
+  });
+  useAppStore.getState().clearSharedRenderEnvironmentLock();
+  unsubscribe();
+
+  assert.equal(notifications, 1);
+  assert.equal(useAppStore.getState().sharedRenderEnvironmentLock, null);
+  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
+    width: 1024,
+    height: 768,
+  });
 });
 
 test("applies startup workspace, view, lock, and warning in one store transition", () => {

@@ -6,9 +6,14 @@ import {
 } from "./share.ts";
 import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import {
-  validateRealmViewport,
-  type RealmViewport,
+  REALM_BUDGETS,
 } from "../runtime/realm/channel-protocol.ts";
+import {
+  validateLockedRenderEnvironment,
+  type LockedRenderEnvironment,
+} from "../runtime/render-viewport.ts";
+
+export type { LockedRenderEnvironment } from "../runtime/render-viewport.ts";
 
 const SHARE_VIEW_VERSION = "1";
 const VIEW_PARAMETER_KEYS = [
@@ -29,12 +34,8 @@ const LOCK_PARAMETER_KEYS = [
 
 export const SHARE_VIEW_LIMITS = Object.freeze({
   // CSS-pixel screen width is a separate C4 input, not the 4096px Host viewport.
-  screenAvailableWidth: 16_384,
+  screenAvailableWidth: REALM_BUDGETS.maxScreenAvailableWidth,
 });
-
-export interface LockedRenderEnvironment extends RealmViewport {
-  readonly screenAvailableWidth: number;
-}
 
 export type ShareWorkspacePane = "editor" | "preview";
 export type ShareEditorMode = "code" | "config";
@@ -235,7 +236,7 @@ function normalizeShareView(
     editorMode: view.editorMode,
     previewMode: view.previewMode,
     lockedEnvironment: view.lockedEnvironment
-      ? validateLockedEnvironment(view.lockedEnvironment)
+      ? validateLockedRenderEnvironment(view.lockedEnvironment)
       : null,
   });
 }
@@ -256,36 +257,14 @@ function decodeLockedEnvironment(
     return null;
   }
   try {
-    return validateLockedEnvironment({ width, height, screenAvailableWidth });
+    return validateLockedRenderEnvironment({
+      width,
+      height,
+      screenAvailableWidth,
+    });
   } catch {
     return null;
   }
-}
-
-function validateLockedEnvironment(
-  value: LockedRenderEnvironment
-): Readonly<LockedRenderEnvironment> {
-  if (
-    !Number.isSafeInteger(value.width) ||
-    !Number.isSafeInteger(value.height)
-  ) {
-    throw new RangeError("Shared Host dimensions are invalid.");
-  }
-  const viewport = validateRealmViewport({
-    width: value.width,
-    height: value.height,
-  });
-  if (
-    !Number.isSafeInteger(value.screenAvailableWidth) ||
-    value.screenAvailableWidth <= 0 ||
-    value.screenAvailableWidth > SHARE_VIEW_LIMITS.screenAvailableWidth
-  ) {
-    throw new RangeError("Shared screen width is invalid.");
-  }
-  return Object.freeze({
-    ...viewport,
-    screenAvailableWidth: value.screenAvailableWidth,
-  });
 }
 
 function parsePositiveInteger(value: string | null): number | null {

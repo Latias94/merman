@@ -7,9 +7,18 @@ import { useAppStore } from "@/src/store";
 export function RenderViewportControl() {
   const { t } = useTranslation();
   const mode = useAppStore((state) => state.renderViewportMode);
-  const hostViewport = useAppStore((state) => state.hostRenderViewport);
+  const liveHostViewport = useAppStore(
+    (state) => state.liveHostRenderViewport,
+  );
+  const sharedRenderEnvironmentLock = useAppStore(
+    (state) => state.sharedRenderEnvironmentLock,
+  );
   const setMode = useAppStore((state) => state.setRenderViewportMode);
-  const resolved = resolveRenderViewport(mode, hostViewport);
+  const resolved = resolveRenderViewport(
+    mode,
+    liveHostViewport,
+    sharedRenderEnvironmentLock,
+  );
   const status =
     resolved.status === "host-measuring"
       ? t("preview.viewportMeasuring", {

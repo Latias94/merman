@@ -226,6 +226,7 @@ export function BenchDialog({
           theme: diagramTheme,
           diagramFont,
           externalRequirements: mermaidExternalRequirementsFor(detection),
+          screenAvailableWidth: window.screen.availWidth,
           viewport: CANONICAL_RENDER_VIEWPORT,
         },
         detection,

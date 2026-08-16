@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type { ThemeName } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import type {
-  LockedRenderEnvironment,
   ShareViewWarning,
   StartupShareHydration,
 } from "../lib/share-view.ts";
@@ -17,6 +16,7 @@ import type {
 import type { RealmViewport } from "../runtime/realm/channel-protocol.ts";
 import {
   resolveRenderViewport,
+  type LockedRenderEnvironment,
   type RenderViewportMode,
 } from "../runtime/render-viewport.ts";
 
@@ -49,8 +49,8 @@ export interface AppState {
   setPresentationProfileId: (profileId: string | null) => void;
   renderViewportMode: RenderViewportMode;
   setRenderViewportMode: (mode: RenderViewportMode) => void;
-  hostRenderViewport: Readonly<RealmViewport> | null;
-  setHostRenderViewport: (viewport: RealmViewport) => void;
+  liveHostRenderViewport: Readonly<RealmViewport> | null;
+  setLiveHostRenderViewport: (viewport: RealmViewport) => void;
   svgPipeline: SvgPipeline;
   setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
@@ -59,6 +59,7 @@ export interface AppState {
   setDiagramFont: (font: DiagramFont) => void;
   applyWorkspaceSnapshot: (snapshot: WorkspaceSnapshot) => void;
   sharedRenderEnvironmentLock: Readonly<LockedRenderEnvironment> | null;
+  clearSharedRenderEnvironmentLock: () => void;
   shareViewWarning: Readonly<ShareViewWarning> | null;
   applyStartupShareHydration: (hydration: StartupShareHydration) => void;
 
@@ -160,19 +161,19 @@ export const useAppStore = create<AppState>((set) => ({
     set({ presentationProfileId }),
   renderViewportMode: DEFAULT_WORKSPACE_SNAPSHOT.renderViewportMode,
   setRenderViewportMode: (renderViewportMode) => set({ renderViewportMode }),
-  hostRenderViewport: null,
-  setHostRenderViewport: (candidate) =>
+  liveHostRenderViewport: null,
+  setLiveHostRenderViewport: (candidate) =>
     set((state) => {
       const resolved = resolveRenderViewport("host", candidate);
       if (resolved.status !== "host") return state;
-      const previous = state.hostRenderViewport;
+      const previous = state.liveHostRenderViewport;
       if (
         previous?.width === resolved.viewport.width &&
         previous.height === resolved.viewport.height
       ) {
         return state;
       }
-      return { hostRenderViewport: resolved.viewport };
+      return { liveHostRenderViewport: resolved.viewport };
     }),
   svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
   setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
@@ -182,6 +183,12 @@ export const useAppStore = create<AppState>((set) => ({
   setDiagramFont: (diagramFont) => set({ diagramFont }),
   applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot }),
   sharedRenderEnvironmentLock: null,
+  clearSharedRenderEnvironmentLock: () =>
+    set((state) =>
+      state.sharedRenderEnvironmentLock
+        ? { sharedRenderEnvironmentLock: null }
+        : state,
+    ),
   shareViewWarning: null,
   applyStartupShareHydration: ({ workspace, view, warning }) =>
     set({

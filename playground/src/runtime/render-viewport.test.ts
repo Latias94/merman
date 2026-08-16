@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   CANONICAL_RENDER_VIEWPORT,
+  captureRenderViewport,
   resolveRenderViewport,
 } from "./render-viewport.ts";
 
@@ -37,6 +38,41 @@ test("normalizes a positive Host measurement into operation dimensions", () => {
       mode: "host",
       status: "host",
       viewport: { width: 960, height: 540 },
+    },
+  );
+});
+
+test("a shared Host environment wins without discarding the live measurement", () => {
+  const lock = {
+    width: 640,
+    height: 480,
+    screenAvailableWidth: 1512,
+  };
+
+  assert.deepEqual(
+    resolveRenderViewport("host", { width: 960, height: 540 }, lock),
+    {
+      mode: "host",
+      status: "host-locked",
+      viewport: { width: 640, height: 480 },
+    },
+  );
+  assert.deepEqual(
+    captureRenderViewport(
+      "host",
+      { width: 960, height: 540 },
+      1440,
+      lock,
+    ),
+    {
+      mode: "host",
+      status: "host-locked",
+      viewport: { width: 640, height: 480 },
+      layoutEnvironment: {
+        containerWidth: 640,
+        containerHeight: 480,
+        screenAvailableWidth: 1512,
+      },
     },
   );
 });
