@@ -36,7 +36,7 @@ pub(crate) struct ConfiguredRenderer {
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 impl ConfiguredRenderer {
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "icons"))]
     pub(crate) fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
         self.svg.environment = environment;
         self

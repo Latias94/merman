@@ -1470,7 +1470,7 @@ _merman-cli() {
             return 0
             ;;
         merman__cli__subcmd__rustdoc__subcmd__build)
-            opts="-h -V --config --quiet --help --version"
+            opts="-h -V --config --quiet --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1491,6 +1491,10 @@ _merman-cli() {
                     fi
                     return 0
                     ;;
+                --operation-timeout-ms)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;
@@ -1499,7 +1503,7 @@ _merman-cli() {
             return 0
             ;;
         merman__cli__subcmd__rustdoc__subcmd__check)
-            opts="-h -V --config --quiet --help --version"
+            opts="-h -V --config --quiet --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1518,6 +1522,10 @@ _merman-cli() {
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o filenames
                     fi
+                    return 0
+                    ;;
+                --operation-timeout-ms)
+                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 *)

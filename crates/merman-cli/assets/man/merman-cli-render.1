@@ -341,9 +341,9 @@ Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
 .SH "OPERATION CONTROL"
 .TP
 \fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
-Cancel the complete render operation after this many milliseconds.
+Cancel the complete command operation after this many milliseconds.
 
-The deadline starts before input acquisition and covers rendering and publication. Zero cancels at the first cooperative checkpoint.
+The deadline starts before input acquisition and covers generation, rendering, and publication. Zero cancels at the first cooperative checkpoint.
 .SH EXTRA
 Examples:
   merman\-cli render diagram.mmd

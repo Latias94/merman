@@ -99,6 +99,9 @@ pub(crate) struct RustdocCommandArgs {
     /// Suppress non-error progress output.
     #[arg(long)]
     pub(crate) quiet: bool,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[derive(Debug, Clone, ClapArgs)]
@@ -140,10 +143,10 @@ impl Default for ResourceCliArgs {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, Copy, ClapArgs, Default)]
 pub(crate) struct OperationCliArgs {
-    /// Cancel the complete render operation after this many milliseconds.
+    /// Cancel the complete command operation after this many milliseconds.
     ///
-    /// The deadline starts before input acquisition and covers rendering and publication. Zero
-    /// cancels at the first cooperative checkpoint.
+    /// The deadline starts before input acquisition and covers generation, rendering, and
+    /// publication. Zero cancels at the first cooperative checkpoint.
     #[arg(
         long = "operation-timeout-ms",
         value_name = "MILLISECONDS",

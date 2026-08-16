@@ -58,9 +58,10 @@ _arguments "${_arguments_options[@]}" : \
             (build)
 _arguments "${_arguments_options[@]}" : \
 '--config=[Rustdoc fragment configuration file]:PATH:_files' \
+'--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
 '--quiet[Suppress non-error progress output]' \
-'-h[Print help]' \
-'--help[Print help]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 '-V[Print version]' \
 '--version[Print version]' \
 && ret=0
@@ -68,9 +69,10 @@ _arguments "${_arguments_options[@]}" : \
 (check)
 _arguments "${_arguments_options[@]}" : \
 '--config=[Rustdoc fragment configuration file]:PATH:_files' \
+'--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
 '--quiet[Suppress non-error progress output]' \
-'-h[Print help]' \
-'--help[Print help]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 '-V[Print version]' \
 '--version[Print version]' \
 && ret=0
@@ -188,7 +190,7 @@ constrained\:"Constrained rendering for untrusted or publicly submitted document
 trusted-native\:"Local CLI and controlled native batch rendering"
 unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
-'--operation-timeout-ms=[Cancel the complete render operation after this many milliseconds]:MILLISECONDS:_default' \
+'--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
 '-q[Suppress non-error log output]' \
 '--quiet[Suppress non-error log output]' \
 '(--raster-max-width --raster-max-height --raster-max-pixels)--raster-unbounded[Disable raster size limits. Use only for trusted oversized exports]' \
@@ -262,7 +264,7 @@ constrained\:"Constrained rendering for untrusted or publicly submitted document
 trusted-native\:"Local CLI and controlled native batch rendering"
 unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
-'--operation-timeout-ms=[Cancel the complete render operation after this many milliseconds]:MILLISECONDS:_default' \
+'--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
 '-q[Suppress non-error log output]' \
 '--quiet[Suppress non-error log output]' \
 '(--raster-max-width --raster-max-height --raster-max-pixels)--raster-unbounded[Disable raster size limits. Use only for trusted oversized exports]' \
@@ -452,7 +454,7 @@ constrained\:"Constrained rendering for untrusted or publicly submitted document
 trusted-native\:"Local CLI and controlled native batch rendering"
 unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
-'--operation-timeout-ms=[Cancel the complete render operation after this many milliseconds]:MILLISECONDS:_default' \
+'--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
 '-f[Scale PDF to fit chart. Accepted for mmdc compatibility]' \
 '--pdfFit[Scale PDF to fit chart. Accepted for mmdc compatibility]' \
 '-q[Suppress non-error log output]' \

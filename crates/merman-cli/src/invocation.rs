@@ -102,6 +102,7 @@ pub(crate) enum RustdocAction {
 pub(crate) struct ResolvedRustdoc {
     pub(crate) action: RustdocAction,
     pub(crate) quiet: bool,
+    pub(crate) operation_timeout: Option<Duration>,
     pub(crate) resources: ResolvedResourcePolicy,
     config: ResolvedRustdocConfig,
 }
@@ -520,6 +521,7 @@ fn normalize_rustdoc(args: RustdocArgs) -> Result<ResolvedRustdoc, CliError> {
     Ok(ResolvedRustdoc {
         action,
         quiet: args.quiet,
+        operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
         resources: resolve_resource_policy(ResourceCliArgs::default())?,
         config: ResolvedRustdocConfig::Requested(args.config),
     })
@@ -2223,6 +2225,27 @@ mod tests {
             resolved.common.operation_timeout,
             Some(Duration::from_millis(43))
         );
+    }
+
+    #[cfg(feature = "rustdoc")]
+    #[test]
+    fn rustdoc_resolves_the_same_host_operation_timeout() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "rustdoc",
+            "check",
+            "--operation-timeout-ms",
+            "47",
+        ])
+        .expect("parse Rustdoc operation timeout");
+
+        let ResolvedInvocation::Rustdoc(resolved) =
+            resolve(cli, &facts(false)).expect("resolve Rustdoc operation timeout")
+        else {
+            panic!("expected Rustdoc invocation");
+        };
+
+        assert_eq!(resolved.operation_timeout, Some(Duration::from_millis(47)));
     }
 
     #[test]

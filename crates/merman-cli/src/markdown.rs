@@ -130,6 +130,8 @@ pub(crate) struct MarkdownChartLimitExceeded {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg(any(feature = "rustdoc", test))]
 pub(crate) enum MarkdownReplacementScanError {
+    #[error(transparent)]
+    Cancelled(#[from] merman::OperationCancelled),
     #[error(
         "Markdown chart limit {max} exceeded by chart {observed} at line {line}, column {column}"
     )]
@@ -183,12 +185,21 @@ pub(crate) fn scan_native_limited(
     native::scan(source, max_charts)
 }
 
-#[cfg(any(feature = "rustdoc", test))]
+#[cfg(test)]
 pub(crate) fn scan_rustdoc_replacements_limited(
     source: &str,
     max_charts: Option<u64>,
 ) -> Result<Vec<MarkdownReplacement<'_>>, MarkdownReplacementScanError> {
-    native::scan_rustdoc(source, max_charts)
+    native::scan_rustdoc_controlled(source, max_charts, &merman::OperationControl::new())
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+pub(crate) fn scan_rustdoc_replacements_limited_controlled<'source>(
+    source: &'source str,
+    max_charts: Option<u64>,
+    control: &merman::OperationControl,
+) -> Result<Vec<MarkdownReplacement<'source>>, MarkdownReplacementScanError> {
+    native::scan_rustdoc_controlled(source, max_charts, control)
 }
 
 pub(crate) fn scan_mmdc_11_16_0_limited(
@@ -655,6 +666,23 @@ mod tests {
         assert_eq!(
             scan_native_limited(source, None).expect("batch scan").len(),
             1
+        );
+    }
+
+    #[test]
+    fn rustdoc_controlled_scan_reports_admission_cancellation() {
+        let control = merman::OperationControl::new();
+        control.cancel();
+
+        let error = scan_rustdoc_replacements_limited_controlled("prose\n", None, &control)
+            .expect_err("cancelled Rustdoc scan must stop");
+
+        assert_eq!(
+            error,
+            MarkdownReplacementScanError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Admission,
+                reason: merman::CancelReason::Requested,
+            })
         );
     }
 

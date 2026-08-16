@@ -5,7 +5,7 @@ use crate::error::{CliError, FileOperation, safe_path};
 use crate::input::InputLimit;
 use crate::input::InputReadError;
 use crate::markdown::{
-    MarkdownFenceLocation, MarkdownReplacement, scan_rustdoc_replacements_limited,
+    MarkdownFenceLocation, MarkdownReplacement, scan_rustdoc_replacements_limited_controlled,
 };
 use crate::resources::{
     ByteLedgerKind, CheckedBytes, CliResourceLimitId, CountLedgerKind, ResolvedResourcePolicy,
@@ -109,6 +109,12 @@ struct GenerationState<'a> {
     acquired_inputs: BTreeMap<String, Arc<config::AcquiredText>>,
     input_aliases: HashMap<String, String>,
     input_identities: HashMap<Arc<same_file::Handle>, String>,
+}
+
+#[derive(Clone, Copy)]
+enum RustdocTheme {
+    Light,
+    Dark,
 }
 
 pub(crate) fn generate(
@@ -275,35 +281,41 @@ impl GenerationState<'_> {
         let mut chart_count = self
             .resources
             .checked_count(CountLedgerKind::MarkdownCharts);
-        let replacements =
-            match scan_rustdoc_replacements_limited(fragment.text(), chart_count.max()) {
-                Ok(replacements) => replacements,
-                Err(crate::markdown::MarkdownReplacementScanError::ChartLimit {
-                    observed,
+        let replacements = match scan_rustdoc_replacements_limited_controlled(
+            fragment.text(),
+            chart_count.max(),
+            self.control,
+        ) {
+            Ok(replacements) => replacements,
+            Err(crate::markdown::MarkdownReplacementScanError::Cancelled(cancelled)) => {
+                return Err(CliError::Render(merman::RenderError::Cancelled(cancelled)));
+            }
+            Err(crate::markdown::MarkdownReplacementScanError::ChartLimit {
+                observed,
+                line,
+                column,
+                ..
+            }) => {
+                let limit_error = chart_count
+                    .try_add(observed)
+                    .expect_err("scanner reported a count above the same policy limit");
+                return Err(CliError::rustdoc_content(
+                    fragment.source(),
                     line,
                     column,
-                    ..
-                }) => {
-                    let limit_error = chart_count
-                        .try_add(observed)
-                        .expect_err("scanner reported a count above the same policy limit");
-                    return Err(CliError::rustdoc_content(
-                        fragment.source(),
-                        line,
-                        column,
-                        limit_error.to_string(),
-                    ));
-                }
-                Err(error) => {
-                    let location = replacement_error_location(&error);
-                    return Err(CliError::rustdoc_content(
-                        fragment.source(),
-                        location.line,
-                        location.column,
-                        error.to_string(),
-                    ));
-                }
-            };
+                    limit_error.to_string(),
+                ));
+            }
+            Err(error) => {
+                let location = replacement_error_location(&error);
+                return Err(CliError::rustdoc_content(
+                    fragment.source(),
+                    location.line,
+                    location.column,
+                    error.to_string(),
+                ));
+            }
+        };
         let replacement_count = u64::try_from(replacements.len()).map_err(|_| {
             CliError::rustdoc_content(
                 fragment.source(),
@@ -533,26 +545,8 @@ impl GenerationState<'_> {
         *occurrence = occurrence.saturating_add(1);
         let base_id = stable_base_id(logical_path, &source_hash, current_occurrence);
 
-        let light = render_cached(
-            &mut self.light_cache,
-            &self.renderers.light,
-            source,
-            self.stderr,
-            diagnostic_path,
-            location,
-            self.resources,
-            self.control,
-        )?;
-        let dark = render_cached(
-            &mut self.dark_cache,
-            &self.renderers.dark,
-            source,
-            self.stderr,
-            diagnostic_path,
-            location,
-            self.resources,
-            self.control,
-        )?;
+        let light = self.render_cached(RustdocTheme::Light, source, diagnostic_path, location)?;
+        let dark = self.render_cached(RustdocTheme::Dark, source, diagnostic_path, location)?;
         let session = merman_render::environment::RenderEnvironment::deterministic()
             .with_resource_policy(self.resources.render_policy())
             .begin_session_with_control(self.control.clone())
@@ -614,6 +608,62 @@ impl GenerationState<'_> {
         )
     }
 
+    fn render_cached(
+        &mut self,
+        theme: RustdocTheme,
+        source: &str,
+        diagnostic_path: &Path,
+        location: MarkdownFenceLocation,
+    ) -> Result<Arc<str>, CliError> {
+        let cache = match theme {
+            RustdocTheme::Light => &self.light_cache,
+            RustdocTheme::Dark => &self.dark_cache,
+        };
+        if let Some(svg) = cache.get(source) {
+            return Ok(Arc::clone(svg));
+        }
+
+        let renderer = match theme {
+            RustdocTheme::Light => &self.renderers.light,
+            RustdocTheme::Dark => &self.renderers.dark,
+        };
+        let bytes =
+            crate::render::execute_rustdoc_svg_raw(renderer, source, self.control, self.stderr)
+                .map_err(|error| {
+                    rustdoc_render_error(
+                        error,
+                        diagnostic_path,
+                        location,
+                        format!(
+                            "failed to render Mermaid source near {:?}",
+                            source_preview(source)
+                        ),
+                    )
+                })?;
+        let svg = String::from_utf8(bytes).map_err(|error| {
+            CliError::rustdoc_content(
+                diagnostic_path,
+                location.line,
+                location.column,
+                format!("renderer returned non-UTF-8 SVG: {error}"),
+            )
+        })?;
+        let svg: Arc<str> = prepare_static_svg(
+            &svg,
+            diagnostic_path,
+            location,
+            self.resources,
+            self.control,
+        )?
+        .into();
+        let cache = match theme {
+            RustdocTheme::Light => &mut self.light_cache,
+            RustdocTheme::Dark => &mut self.dark_cache,
+        };
+        cache.insert(source.to_string(), Arc::clone(&svg));
+        Ok(svg)
+    }
+
     fn charge_staged_output(
         &mut self,
         bytes: usize,
@@ -663,46 +713,6 @@ fn include_acquisition_error(
     } else {
         CliError::rustdoc_input(fragment.source(), location.line, location.column, error)
     }
-}
-
-fn render_cached(
-    cache: &mut HashMap<String, Arc<str>>,
-    renderer: &crate::render::PreparedGraphicalRender,
-    source: &str,
-    stderr: &SharedWriter,
-    diagnostic_path: &Path,
-    location: MarkdownFenceLocation,
-    resources: &ResolvedResourcePolicy,
-    control: &OperationControl,
-) -> Result<Arc<str>, CliError> {
-    if let Some(svg) = cache.get(source) {
-        return Ok(Arc::clone(svg));
-    }
-    let bytes = crate::render::execute_rustdoc_svg_raw(renderer, source, control, stderr).map_err(
-        |error| {
-            rustdoc_render_error(
-                error,
-                diagnostic_path,
-                location,
-                format!(
-                    "failed to render Mermaid source near {:?}",
-                    source_preview(source)
-                ),
-            )
-        },
-    )?;
-    let svg = String::from_utf8(bytes).map_err(|error| {
-        CliError::rustdoc_content(
-            diagnostic_path,
-            location.line,
-            location.column,
-            format!("renderer returned non-UTF-8 SVG: {error}"),
-        )
-    })?;
-    let svg: Arc<str> =
-        prepare_static_svg(&svg, diagnostic_path, location, resources, control)?.into();
-    cache.insert(source.to_string(), Arc::clone(&svg));
-    Ok(svg)
 }
 
 fn rustdoc_render_error(
@@ -797,6 +807,9 @@ fn replacement_error_location(
                 line: *line,
                 column: *column,
             }
+        }
+        crate::markdown::MarkdownReplacementScanError::Cancelled(_) => {
+            unreachable!("controlled scanner cancellations are handled before location mapping")
         }
     }
 }

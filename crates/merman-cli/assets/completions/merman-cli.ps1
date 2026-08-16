@@ -60,18 +60,20 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
         }
         'merman-cli;rustdoc;build' {
             [CompletionResult]::new('--config', '--config', [CompletionResultType]::ParameterName, 'Rustdoc fragment configuration file')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-error progress output')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             break
         }
         'merman-cli;rustdoc;check' {
             [CompletionResult]::new('--config', '--config', [CompletionResultType]::ParameterName, 'Rustdoc fragment configuration file')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-error progress output')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             break
@@ -170,7 +172,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--ascii-max-grid-cells', '--ascii-max-grid-cells', [CompletionResultType]::ParameterName, 'Maximum graph grid cells for text route planning')
             [CompletionResult]::new('--resource-profile', '--resource-profile', [CompletionResultType]::ParameterName, 'Resource policy for input, semantic models, output, and CLI acquisition')
             [CompletionResult]::new('--resource-limit', '--resource-limit', [CompletionResultType]::ParameterName, 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated')
-            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete render operation after this many milliseconds')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-error log output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-error log output')
             [CompletionResult]::new('--raster-unbounded', '--raster-unbounded', [CompletionResultType]::ParameterName, 'Disable raster size limits. Use only for trusted oversized exports')
@@ -239,7 +241,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--hand-drawn-seed', '--hand-drawn-seed', [CompletionResultType]::ParameterName, 'Stabilize rough/hand-drawn rendering where supported')
             [CompletionResult]::new('--resource-profile', '--resource-profile', [CompletionResultType]::ParameterName, 'Resource policy for input, semantic models, output, and CLI acquisition')
             [CompletionResult]::new('--resource-limit', '--resource-limit', [CompletionResultType]::ParameterName, 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated')
-            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete render operation after this many milliseconds')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-error log output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-error log output')
             [CompletionResult]::new('--raster-unbounded', '--raster-unbounded', [CompletionResultType]::ParameterName, 'Disable raster size limits. Use only for trusted oversized exports')
@@ -407,7 +409,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--hand-drawn-seed', '--hand-drawn-seed', [CompletionResultType]::ParameterName, 'Stabilize rough/hand-drawn rendering where supported')
             [CompletionResult]::new('--resource-profile', '--resource-profile', [CompletionResultType]::ParameterName, 'Resource policy for input, semantic models, output, and CLI acquisition')
             [CompletionResult]::new('--resource-limit', '--resource-limit', [CompletionResultType]::ParameterName, 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated')
-            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete render operation after this many milliseconds')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
             [CompletionResult]::new('-f', '-f', [CompletionResultType]::ParameterName, 'Scale PDF to fit chart. Accepted for mmdc compatibility')
             [CompletionResult]::new('--pdfFit', '--pdfFit', [CompletionResultType]::ParameterName, 'Scale PDF to fit chart. Accepted for mmdc compatibility')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-error log output')
