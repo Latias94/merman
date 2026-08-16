@@ -478,10 +478,10 @@ jobs:
         if: matrix.parity
         run: |
           cargo nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,jpeg,pdf --test c6_runtime \
+            --no-default-features --features png --test c6_runtime \
             --cargo-quiet
           cargo nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,jpeg,pdf --test route_cutover_runtime \
+            --no-default-features --features png --test route_cutover_runtime \
             --cargo-quiet
           cargo nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png,jpeg,pdf --test native_export_smoke \
