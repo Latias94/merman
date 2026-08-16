@@ -52,6 +52,7 @@ pdf = [
     "dep:merman-core",
     "dep:merman-render",
     "dep:quick-xml",
+    "dep:svgtypes",
     "dep:thiserror",
     "dep:ttf-parser",
     "dep:usvg",
