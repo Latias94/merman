@@ -2,7 +2,7 @@
 title: Playground Host Viewport and Export Workbench - Plan
 type: feat
 date: 2026-08-15
-deepened: 2026-08-15
+deepened: 2026-08-16
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: ce-plan-bootstrap
@@ -15,11 +15,11 @@ execution: code
 
 | Field | Contract |
 |---|---|
-| Objective | Let Playground users compare Merman and Mermaid.js under either a deterministic canonical viewport or one shared host-sized viewport, then export the current validated artifact as SVG, transparent or backed PNG, and backed JPEG from a mobile-safe workflow. |
+| Objective | Let Playground users compare Merman and Mermaid.js under either a deterministic canonical viewport or one shared host-sized viewport, export the current validated artifact as SVG, transparent or backed PNG, and backed JPEG, and share either a portable workspace or a controlled issue-reproduction context from a mobile-safe workflow. |
 | Authority | Product requirements and session-settled decisions in this plan override implementation preferences. Pinned Mermaid behavior and existing parity contracts override visual convenience. |
 | Execution profile | Deep cross-cutting frontend refactor with proof-first unit coverage, browser integration coverage, responsive visual inspection, and incremental Conventional Commits. |
-| Stop conditions | Stop if both engines cannot receive the same frozen Host viewport, if export would mutate the current publication, or if transparency requires changing semantic diagram fills. |
-| Tail ownership | `ce-work` owns implementation, simplification, review, verification, and local commits on `feat/playground-host-export`. |
+| Stop conditions | Stop if both engines cannot receive the same frozen Playground-controlled layout environment, if export or Host presentation would mutate the current publication, or if transparency requires changing semantic diagram fills. |
+| Tail ownership | The original Host/Export units landed through PR #66; `ce-work` owns U7 implementation, simplification, review, verification, and local commits on `feat/playground-share-view`. |
 
 ---
 
@@ -27,7 +27,7 @@ execution: code
 
 ### Summary
 
-Add an explicit Canonical/Host viewport mode and replace the direct export shortcuts with one artifact-aware export workbench. Preserve deterministic parity by default while making host-sized integrations, raster consumer behavior, backgrounds, and mobile export reproducible.
+Add an explicit Canonical/Host viewport mode and replace the direct export shortcuts with one artifact-aware export workbench. Preserve deterministic parity by default while making host-sized integrations, raster consumer behavior, backgrounds, mobile export, and issue reproduction links explicit and reproducible.
 
 ### Problem Frame
 
@@ -35,10 +35,14 @@ The Playground currently freezes `800x600` as the render input while responsivel
 
 SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits whatever root background the SVG happens to paint. Export ownership is split across toolbar handlers, per-engine Preview handlers, an artifact action union, a PNG-only planner, and browser Canvas helpers. This shape cannot express guaranteed transparency, custom backgrounds, JPEG encoding, a faithful raster preview, or mobile resource limits without multiplying paths.
 
+The current share contract serializes raw JSON through Base64 and permits multi-megabyte workspace payloads, so a valid workspace can produce an impractical URL. The replacement therefore needs compression and a hard encoded envelope budget as part of the product contract, not merely as a transport optimization.
+
 ### Key Decisions
 
 - **Keep Canonical and add Host as explicit modes.** (session-settled: user-approved — chosen over an unbounded or Host-only canvas: deterministic parity remains the default while integration sizing becomes inspectable.) Governs R1-R5.
 - **Use one shared Host viewport for both Compare engines.** (session-settled: user-directed — chosen over measuring each Compare pane: per-pane dimensions would compare different layouts.) Governs R2-R3, R14.
+- **Keep renderer `viewBox` ownership separate from Host and export sizing.** (session-settled: user-approved — chosen over a freely editable `viewBox`: Host presentation and export canvases may resize without mutating the engine-owned content coordinate system or hiding upstream clipping.) Governs R5, R16-R17.
+- **Offer workspace links and issue-reproduction links as different promises.** (session-settled: user-approved — chosen over serializing every transient UI state into one link: ordinary sharing stays portable while issue links can lock the page, mode, and controlled Host environment needed to reproduce a defect.) Governs R18-R20.
 - **Ship SVG, PNG, and JPEG in the same export workbench.** (session-settled: user-directed — chosen over deferring JPEG: the user authorized the complete format set with explicit background handling.) Governs R6-R11.
 - **Treat mobile behavior as part of the feature.** (session-settled: user-approved — chosen over desktop-first follow-up work: viewport and export states must remain usable on supported narrow and landscape layouts.) Governs R12-R15.
 - **Preserve pinned Mermaid renderer semantics.** (session-settled: user-approved — chosen over locally expanding Sequence title bounds: inherited upstream clipping stays visible rather than being hidden by a Merman-only semantic divergence.) Governs R16.
@@ -69,6 +73,10 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 - R14. Host resizing, workspace tab changes, Compare activation, and mobile orientation changes cannot mix viewport dimensions or artifacts across operations.
 - R15. Raster planning rejects invalid geometry, caps side length and total pixels before allocation, and reports downscaling or browser encoding failure without crashing the page.
 - R16. Viewport and export work preserve pinned Mermaid renderer semantics and do not add a Merman-only root-bounds workaround to hide inherited title clipping.
+- R17. Host presentation constrains the mounted SVG to the bounded host with responsive width and height while preserving its engine-owned `viewBox`; changing Host or export dimensions never rewrites the published artifact's content bounds.
+- R18. A workspace link contains render-affecting workspace inputs but omits device-specific Host pixels and transient navigation, so opening it resolves Host dimensions from the receiving device.
+- R19. An explicit reproduction link adds the current workspace pane, editor tab, Preview mode, and a validated locked render environment when the shared workspace already selects Host. The lock includes Host width, Host height, and browser `screen.availWidth`; reopening the link feeds those same Playground-controlled inputs to both engines while documenting that browser/font residuals may remain.
+- R20. Workspace and view state are independently versioned, compact, size-bounded, and atomically validated. Existing Base64 workspace hashes remain readable; an invalid or future view descriptor is rejected as a whole, restores documented local navigation/live-Host defaults, and exposes a non-blocking accessible warning instead of pretending exact restoration succeeded.
 
 ### Key Flows
 
@@ -87,6 +95,11 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
   - **Steps:** The last valid Host size remains coherent; the visible workspace is measured after layout settles; a changed size creates a new operation; the dialog adapts without hiding controls.
   - **Outcome:** No zero-sized render, stale download, horizontal page overflow, or inaccessible action occurs.
   - **Covered by:** R2, R5, R11-R15.
+- F4. Share a reproducible view
+  - **Trigger:** A user needs another person to open the same Compare or diagnostic context used to report a defect.
+  - **Steps:** The user chooses the reproduction-link action; the Playground serializes the workspace separately from an atomically validated view descriptor; the recipient hydrates both before React/render startup and then executes one operation using the locked environment when present.
+  - **Outcome:** The recipient starts on the same page and Playground-controlled render context without inheriting operation identifiers or a rewritten SVG `viewBox`; unavoidable browser/font residuals remain visible rather than being misrepresented as deterministic.
+  - **Covered by:** R17-R20.
 
 ### Acceptance Examples
 
@@ -100,6 +113,9 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 - AE8. Covers F3 / R12-R15. Given `320x568` and `568x320` viewports, when every format and background state is exercised, controls remain reachable, preview remains bounded, and the document has no horizontal overflow.
 - AE9. Covers F2 / R9. Given intrinsic geometry and a requested width, height, or fit box, when raster planning runs, the unspecified axis preserves aspect ratio and the preview/download recipe uses the displayed output dimensions.
 - AE10. Covers F1 / R2-R3, R16. Given the long Sequence title reported in Zed issue 62410, when Host Compare renders it, Merman and pinned Mermaid.js receive the same operation viewport and expose the same upstream root-viewBox clipping behavior; the Playground does not hide it with a Merman-only bounds workaround.
+- AE11. Covers F4 / R18-R19. Given Host Compare at `640x480` with `screen.availWidth=1512`, when the user copies a workspace link and an issue-reproduction link, the workspace link resolves the recipient's live Host environment while the reproduction link opens Compare and gives both engines the locked `640x480` and `1512` inputs.
+- AE12. Covers F4 / R19-R20. Given a legacy hash, an unsupported view version, or invalid/oversized view fields, when the Playground opens the link, the workspace remains backward compatible, the complete view descriptor is rejected before store mutation, local navigation/live-Host defaults apply, and an accessible warning explains that the reproduction context was not restored.
+- AE13. Covers R17. Given an SVG whose title extends outside the engine-owned `viewBox`, when Canonical, Host, and export sizing change, the published SVG `viewBox` is unchanged and the Playground does not imply that responsive sizing repaired the renderer bounds.
 
 ### Success Criteria
 
@@ -108,6 +124,7 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 - Mobile browser tests exercise the complete export path, not only opening the menu.
 - Desktop and mobile screenshots show no overlap, clipped controls, or layout shift across mode and export state changes.
 - Current Canonical Compare, Benchmark, SVG download, PNG download, share-link, and viewport gesture tests remain green or are replaced by stronger equivalent coverage.
+- Workspace and issue-reproduction links are visibly distinct, legacy links remain readable, and one browser test proves a locked layout environment on a differently sized recipient viewport without claiming cross-browser pixel identity.
 
 ### Scope Boundaries
 
@@ -115,12 +132,14 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 
 - Breaking and deleting Playground-internal viewport, export action, planner, feedback, and UI APIs when the replacement has one clear owner.
 - Backward-compatible decoding of existing share hashes, with Canonical as the default for hashes that predate viewport mode.
+- A versioned compact share envelope, explicit current-view reproduction state, and responsive Host presentation that preserves renderer-owned SVG bounds.
 - Real-browser validation in Chromium plus the existing non-Chromium smoke lane.
 
 **Outside this product's identity**
 
 - Changing Merman parser, layout, renderer, or pinned Mermaid semantics to conceal an upstream SVG root-bound defect.
 - Adding PDF, WebP, print layout, cloud storage, upload, telemetry, or a general image editor.
+- Adding a server-backed short-link service, automatically syncing every pan/zoom gesture into browser history, or exposing raw `viewBox` editing as a normal Playground control.
 - Claiming pixel parity between browser Canvas encoders, native `resvg`, and Mermaid's browser rendering.
 
 ---
@@ -138,7 +157,13 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 - KTD7. **One browser rasterizer serves preview, PNG, and JPEG.** It loads a transformed SVG Blob, draws into a bounded Canvas, explicitly paints opaque JPEG backgrounds, checks the returned Blob MIME, revokes object URLs, and returns typed failures. Implements R7-R10 and R15.
 - KTD8. **The export dialog owns configuration and lifecycle.** Toolbar and per-engine Compare controls launch the dialog with an artifact target; they no longer contain format-specific download handlers or busy sets. Implements R10-R13. (session-settled: user-directed — chosen over incrementally extending direct handlers: broad internal breaking refactors and obsolete-code deletion are authorized.)
 - KTD9. **Responsive UI is one component tree.** Desktop dialog and mobile full-screen presentation share state, validation, and action ownership; CSS and media queries change composition without duplicating export logic. Implements R12-R13.
-- KTD10. **Share state records mode, not measured pixels.** Existing hashes decode to Canonical; new hashes preserve Canonical/Host intent while each host resolves its own current dimensions. Implements R1-R2 and R5.
+- KTD10. **Share has separate workspace and view contracts.** Workspace links serialize the render-affecting workspace, including Canonical/Host intent, and let Host pixels resolve locally. Issue-reproduction links add an optional view descriptor containing workspace pane, editor tab, Preview mode, and a locked environment only when the workspace already selects Host. `renderViewportMode` remains workspace-owned and is never duplicated in the view descriptor. (session-settled: user-approved — chosen over one all-purpose link: portable sharing and controlled issue reproduction need different promises.) Implements R1-R2, R5, and R18-R20.
+- KTD11. **Responsive presentation never owns content bounds.** Host mode mounts a validated presentation clone into a bounded contain-style surface using `width`, `height`, `max-width`, and `max-height` constraints. A valid engine `viewBox` is preserved byte-for-byte; an SVG lacking one may receive a preview-only intrinsic width/height fallback, but presentation never calls browser bounds or widens content to hide clipping, and the published/export artifact is unchanged. (session-settled: user-approved — chosen over editable `viewBox` sizing: presentation must not conceal pinned Mermaid behavior.) Implements R5, R16-R17, and AE13.
+- KTD12. **New workspace and view wire formats are independently versioned.** New workspace fragments use the externally visible `#s2:` prefix and a synchronous URL-safe zlib/Base64URL envelope backed by the audited `fflate@0.8.2` runtime dependency. The encoded workspace envelope is capped at `512 KiB`; decoded fields remain constrained by `SHARE_LIMITS`. View state uses a separate `rv=1` query version. Each workspace version owns an immutable complete default snapshot; decoders never borrow future application defaults. Legacy uncompressed Base64 JSON remains a separate decode path. Implements R18-R20.
+- KTD13. **Share decoding is bounded before publication.** Startup synchronously decodes and atomically applies workspace, view, and any lock before React mounts. Compressed input is rejected above the `512 KiB` encoded cap, streaming decompression stops before the existing `SHARE_LIMITS.jsonBytes` decoded budget, malformed workspace writes nothing, and malformed/future view state discards the whole optional view layer with one accessible warning. Implements R19-R20 and AE12.
+- KTD14. **Live measurement and reproduction lock have separate owners.** ResizeObserver always updates the latest positive live Host environment, while an optional reproduction lock wins only for effective operation capture. Host measuring disables issue-reproduction copying; clearing a lock atomically switches to the cached live environment and produces exactly one new operation. Temporary Canonical selection does not destroy a Host lock; only the explicit return-to-live action does. Implements R2, R14, R19, and AE11.
+- KTD15. **A reproduction lock covers all controlled layout inputs.** The descriptor locks Host width, Host height, and `screenAvailableWidth`; the opaque Mermaid realm receives the same emulated `screen.availWidth` before Mermaid loads. If that reference environment cannot be established, the operation fails visibly rather than comparing engines under different inputs. Browser/font/text-measurement residuals remain documented and are not labeled exact. Implements R3, R19, and AE11.
+- KTD16. **Copying a link is a pure command.** Workspace and issue-reproduction actions construct and copy their canonical URLs without mutating the current address bar or runtime state. Returning a loaded lock to live Host is the only flow that removes reproduction parameters with `history.replaceState`, keeping URL and effective owner coherent. Implements R18-R20.
 
 ### Assumptions
 
@@ -147,6 +172,9 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 - Original is the default PNG background policy. JPEG defaults to quality `90`; when the source root is not provably opaque, the UI explicitly selects Custom `#ffffff` rather than silently changing Original semantics.
 - Raster sizing defaults to Scale `2x`, offers bounded `1x`, `2x`, `3x`, and `4x` choices, and also offers Width, Height, and Fit box pixel modes. Width/Height edit one axis and derive the other; Fit box edits both maximum axes; aspect ratio is always locked. Format switches preserve valid sizing drafts, while temporary invalid input retains the last successful preview and disables download.
 - Host mode reacts to a settled workspace resize with one debounced rerender; it does not continuously scale layout during pointer-driven pane resizing.
+- A reproduction link with a locked environment temporarily owns the Host operation inputs until the user explicitly returns to live Host measurement; a workspace link never locks recipient dimensions.
+- Camera pan/zoom remains presentation-only and is not required in the first reproduction-link schema; it may be added later as an optional view field without changing the workspace contract.
+- The first share-view schema restores workspace pane, editor tab, and Preview mode but not diagnostic sub-tabs, editor cursor/scroll, or viewport camera.
 - Browser rasterization uses platform APIs and existing dependencies. A new production image-encoding or DOM simulation dependency is unnecessary unless implementation proves a required browser cannot satisfy R7-R10.
 
 ### High-Level Technical Design
@@ -220,13 +248,31 @@ stateDiagram-v2
   Ready --> [*]: explicit close restores launcher focus
 ```
 
+```mermaid
+flowchart LR
+  Workspace[Workspace inputs] --> Portable[Workspace link]
+  Workspace --> Reproduction[Issue reproduction link]
+  Navigation[Page and Preview mode] --> Reproduction
+  Host[Validated locked Host environment] --> Reproduction
+  Portable --> Mode{Workspace viewport mode}
+  Reproduction --> ReproMode{Workspace viewport mode}
+  Mode -->|Canonical| Canonical[Canonical operation]
+  Mode -->|Host| Local[Recipient resolves live Host environment]
+  ReproMode -->|Canonical| CanonicalView[Canonical operation plus restored navigation]
+  ReproMode -->|Host| Locked[Restored navigation plus locked Host environment]
+  Canonical --> Render[Unmodified renderer viewBox]
+  Local --> Render
+  CanonicalView --> Render
+  Locked --> Render
+```
+
 ### System-Wide Impact
 
-- **Render identity:** Viewport mode and resolved dimensions become first-class operation inputs and must remain coherent across Merman, Mermaid.js, diagnostics, and publication guards.
-- **Share compatibility:** Workspace serialization gains one optional enum and retains legacy defaults; measured Host pixels remain ephemeral.
+- **Render identity:** Viewport mode, effective Host dimensions, and `screenAvailableWidth` become first-class operation inputs and must remain coherent across Merman, Mermaid.js, diagnostics, and publication guards.
+- **Share compatibility:** Workspace and view state become separate contracts; legacy hashes remain readable, workspace links keep Host pixels local, and issue-reproduction links may intentionally lock a validated Host environment.
 - **Artifact authority:** Global toolbar and Compare pane actions converge on the same artifact action owner and publication guard.
 - **Resource posture:** Raster previews and downloads share explicit pixel budgets, cleanup, cancellation, and error projection.
-- **Accessibility and localization:** New labels, errors, format choices, dimensions, and background controls require English and Chinese strings and focus restoration.
+- **Accessibility and localization:** New labels, errors, format choices, dimensions, share promises, locked/live ownership, and background controls require English and Chinese strings, distinct accessible descriptions, one-shot announcements, and focus restoration.
 
 ### Risks and Mitigations
 
@@ -235,6 +281,12 @@ stateDiagram-v2
 | ResizeObserver feedback creates render loops | Measure a stable workspace owner, compare normalized dimensions, debounce settled changes, and keep presentation fit outside operation identity. |
 | Hidden mobile Preview reports zero dimensions | Ignore non-positive measurements and retain the last valid workspace snapshot until a positive visible measurement arrives. |
 | Compare panes accidentally receive different widths | Resolve viewport once above Compare and assert equality in coordinator and browser tests. |
+| A shared link silently changes meaning across releases | Version the workspace and view contracts independently, omit unsupported optional view state, and retain legacy decode fixtures. |
+| Locked Host dimensions are confused with live measurement | Label reproduction-owned dimensions, provide an explicit return-to-live action, and keep workspace links dimension-free. |
+| Responsive CSS is mistaken for a renderer-bounds fix | Assert the published SVG `viewBox` is unchanged across Canonical, Host, and export presentation paths. |
+| Compressed input expands beyond the workspace budget | Route by an external version prefix, use streaming synchronous decompression, and abort before decoded bytes exceed the existing JSON budget. |
+| Recipient `screen.availWidth` changes C4 despite locked Host dimensions | Capture one locked render environment and emulate the same screen width in the opaque Mermaid realm before engine load. |
+| Copying one link type changes the active lock or URL | Keep both copy actions pure; only the explicit return-to-live transition rewrites current view parameters. |
 | Transparent export removes semantic white fills | Transform only the root SVG canvas style/attribute on a parsed clone and verify descendant pixels. |
 | JPEG transparency becomes black | Paint the validated opaque background before `drawImage` and test pixel output. |
 | Huge raster requests exhaust browser memory | Enforce the native `4096` side and `16,777,216` pixel limits before allocation, show downscaling, and project an earlier platform failure when a browser is more restrictive. |
@@ -252,6 +304,9 @@ stateDiagram-v2
 - [HTML Canvas bitmap serialization](https://html.spec.whatwg.org/multipage/canvas.html#serialising-bitmaps-to-a-file) requires explicit non-alpha compositing behavior.
 - [MDN Canvas limits](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/canvas) documents mobile allocation constraints.
 - [Mermaid Live export actions](https://github.com/mermaid-js/mermaid-live-editor/blob/develop/src/lib/components/Actions.svelte) separate export dimensions and backgrounds from preview pan/zoom.
+- [Mermaid Live state serialization](https://github.com/mermaid-js/mermaid-live-editor/blob/develop/CLAUDE.md) uses a compressed URL fragment and carries navigation/pan-zoom state, establishing compressed client-only links as viable prior art.
+- [tldraw deep links](https://tldraw.dev/sdk-features/deep-links) separate page/viewport targeting from document content, informing the workspace-versus-view contract.
+- [draw.io publish and embed options](https://www.drawio.com/doc/faq/embed-html-options) expose page and zoom/fit choices explicitly, informing the separate reproduction-link action instead of silently serializing every transient gesture.
 - [Graphviz JPEG output](https://graphviz.org/docs/outputs/jpg/) records JPEG's lossy text and line tradeoff, which informs default quality and format labeling.
 
 ---
@@ -304,7 +359,7 @@ stateDiagram-v2
 
 **Goal:** Let users select Canonical or Host and see the effective shared dimensions across desktop, Compare, share links, and hidden mobile workspaces.
 
-**Requirements:** R1-R5, R14, R16; KTD1, KTD2, KTD10.
+**Requirements:** R1-R5, R14, R16; KTD1-KTD2.
 
 **Dependencies:** U1.
 
@@ -330,7 +385,7 @@ stateDiagram-v2
 2. Measure that stable Preview workspace allocation and use Canonical as the initial fallback until the first positive Host measurement exists; expose this as a Host measuring state rather than implying `800x600` is already host-derived.
 3. Feed settled positive dimensions to the coordinator and preserve the last valid value through hidden or transient layouts.
 4. Present Canonical/Host as a compact segmented mode control with the effective dimensions adjacent to the selection. While Host has no positive measurement, retain the Host selection and announce that Canonical `800x600` is the current fallback; announce the effective Host dimensions when they arrive.
-5. Serialize the mode in new share hashes and decode absent mode as Canonical without serializing measured pixels.
+5. Serialize the mode in portable workspace links and decode absent mode as Canonical without serializing measured pixels; U7 adds a separate explicit reproduction descriptor.
 
 **Execution note:** Prove desktop resize, hidden mobile Preview, and legacy share behavior before replacing the fixed capture path.
 
@@ -343,7 +398,7 @@ stateDiagram-v2
 3. Rapid pane resizing publishes only the settled effective size and does not loop.
 4. Hidden mobile Preview never overwrites the last valid Host dimensions with zero, and first use exposes a Host measuring / Canonical fallback state until a positive measurement exists.
 5. Rotating from `320x568` to `568x320` triggers one coherent Host rerender after layout settles.
-6. Old share hashes load Canonical; new hashes preserve mode but resolve current-device Host pixels.
+6. Share hashes that predate viewport mode load Canonical; Base64 links that already contain the mode preserve it and resolve current-device Host pixels, while U7 separately proves locked issue-reproduction links.
 7. Keyboard and screen-reader users can select either mode and read the effective dimensions.
 8. The Zed issue 62410 long-title fixture renders both engines with one Host operation viewport and retains the pinned Mermaid root-viewBox behavior without a renderer workaround.
 
@@ -531,6 +586,84 @@ stateDiagram-v2
 
 **Verification:** The mobile Playwright lane, desktop Chromium lane, non-Chromium smoke lane, screenshots, and source searches prove the final responsive contract and cleanup.
 
+### U7. Add workspace and issue-reproduction share links
+
+**Goal:** Preserve portable workspace sharing while allowing issue reports to reopen the same page, editor tab, Preview mode, and controlled locked Host environment without exposing renderer `viewBox` editing.
+
+**Requirements:** R17-R20; KTD10-KTD16.
+
+**Dependencies:** U1, U2, U6.
+
+**Files:**
+
+- Create `playground/src/lib/share-view.ts`.
+- Create `playground/src/lib/share-view.test.ts`.
+- Refactor `playground/src/lib/share.ts`.
+- Modify `playground/src/lib/share.test.ts`.
+- Modify `playground/src/main.tsx`.
+- Modify `playground/src/store/index.ts`.
+- Modify `playground/src/store/index.test.ts`.
+- Modify `playground/src/App.tsx`.
+- Modify `playground/src/components/ToolbarArtifactActions.tsx`.
+- Modify `playground/src/components/RenderViewportControl.tsx`.
+- Modify `playground/src/components/SvgViewport.tsx` only where the responsive presentation contract needs one owner.
+- Modify `playground/src/runtime/RenderCoordinatorBridge.tsx`.
+- Modify `playground/src/runtime/render-viewport.ts`.
+- Modify `playground/src/runtime/render-viewport.test.ts`.
+- Modify `playground/src/runtime/realm/channel-protocol.ts`.
+- Modify `playground/src/runtime/realm/channel-protocol.test.ts`.
+- Modify `playground/src/runtime/realm/browser-realm-channel.ts`.
+- Modify `playground/src/runtime/realm/browser-realm-channel.test.ts`.
+- Modify `playground/src/runtime/realm/compare-bootstrap.ts`.
+- Modify `playground/src/runtime/realm/compare-bootstrap.test.ts`.
+- Modify `playground/src/lib/svg-geometry.ts`.
+- Modify `playground/src/i18n/locales/en.json`.
+- Modify `playground/src/i18n/locales/zh.json`.
+- Modify `playground/package.json` to include `share-view.test.ts` in `test:runtime` and add the codec dependency.
+- Modify `playground/package-lock.json` for `fflate@0.8.2`.
+- Regenerate `playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt`.
+- Modify `playground/tests/viewport-workspace.spec.ts`.
+- Modify `playground/tests/playground.smoke.spec.ts`.
+- Modify `playground/tests/render.presentation.spec.ts`.
+- Modify `playground/tests/svg-geometry.spec.ts`.
+- Modify `playground/tests/mobile.interactions.spec.ts`.
+- Modify `docs/workstreams/web-wasm-playground/DESIGN.md`.
+- Modify `docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md`.
+
+**Approach:**
+
+1. Split the share boundary into a `#s2:` workspace envelope and an independently versioned `rv=1` view descriptor. Keep the workspace in the fragment and represent current-view fields as explicit URL parameters so navigation changes do not require rewriting or recompressing the diagram payload. Bind omitted fields to an immutable `WORKSPACE_V2_DEFAULTS` snapshot rather than current application defaults.
+2. Encode new workspace links synchronously with `fflate@0.8.2` zlib plus Base64URL, enforce the `512 KiB` encoded cap and existing decoded field budgets during decompression, and retain the complete raw Base64 JSON decoder as the legacy path. Reject unsupported versions, malformed bytes, and budget overflow before any partial store mutation. Keep the dependency because the current raw multi-megabyte envelope cannot produce reliably shareable URLs; require representative compressed links to be no longer than legacy output and a repetitive `100 KiB` source fixture to shrink by at least `50%`.
+3. Replace the ambiguous single Share command with one menu containing `Copy workspace link` / `复制工作区链接` and `Copy issue reproduction link` / `复制问题复现链接`. Their descriptions say respectively that the recipient uses its live Host environment or that the current controlled environment is locked. Copy is a pure clipboard command and never mutates the current URL or active lock.
+4. Define three honest reproduction states. Canonical can always create an issue link without a Host lock. Resolved Host can create one showing its dimensions. Host measuring disables that menu item with visible `Waiting for Host size` help and `aria-describedby`; it never serializes the canonical fallback as if measured.
+5. Decode the workspace and the complete optional view descriptor synchronously before React mounts, then atomically seed the store so the first published operation already owns the restored page, editor tab, Preview mode, and lock. Invalid/future view state keeps the valid workspace, applies documented navigation defaults (`workspacePane=editor`, `editorMode=code`, `previewMode=svg`) and live Host ownership, and exposes one non-blocking accessible warning.
+6. Keep live Host measurement and an optional shared lock as separate store owners. ResizeObserver continues updating the positive live cache while the lock wins effective operation capture. `RenderViewportControl` distinguishes `Canonical · 800×600`, `Live Host · W×H`, and `Shared lock · W×H`; `Use live Host size` / `使用实时 Host 尺寸` atomically clears the lock, adopts the cached live environment, removes `rv` view parameters with one `history.replaceState`, and causes exactly one new operation. Temporary Canonical selection preserves the dormant Host lock.
+7. Lock the complete Playground-controlled layout environment: Host width, Host height, and `screenAvailableWidth`. Propagate it through both operation inputs and configure the opaque Mermaid realm's emulated `screen.availWidth` before Mermaid loads; fail visibly if both engines cannot receive the same environment.
+8. Centralize responsive SVG presentation as contain-style `width`/`height` and maximum-size constraints. Preserve a valid engine `viewBox` byte-for-byte; for SVG without a `viewBox`, permit only a preview-local intrinsic width/height fallback. Never use browser bounds to synthesize content bounds, mutate the publication/export artifact, or imply that responsive presentation repairs title clipping.
+9. Keep pan/zoom, diagnostic sub-tabs, editor cursor/scroll, publication IDs, transient errors/loading state, DPR, user-agent, and export-dialog drafts outside the first reproduction schema.
+10. Keep one accessible interaction contract across desktop and mobile: distinct names and descriptions, Tab plus Enter/Space activation, Escape and focus return for the menu, polite copy-success announcements, alert semantics for copy/decode failure, and a one-shot locked/live ownership announcement.
+
+**Execution note:** Characterize the existing legacy share decoder first, then land the new codec and view contract with one focused browser reproduction before expanding UI copy. Do not duplicate every share field across unit and browser suites.
+
+**Patterns to follow:** Existing bounded optional-field decoding in `playground/src/lib/share.ts`; operation viewport normalization in `playground/src/runtime/render-viewport.ts`; stable navigation state in `playground/src/store/index.ts`; explicit deep-link page/viewport separation used by mature canvas tools.
+
+**Test scenarios:**
+
+1. Covers AE11. A workspace link created in Host Compare contains no locked pixels; opening it at a different browser size resolves that recipient's live Host environment.
+2. Covers AE11. An issue-reproduction link created in Host Compare at `640x480` with `screen.availWidth=1512` opens Compare and gives both Merman and Mermaid.js the same three locked inputs on a differently sized recipient viewport.
+3. Covers AE12. Every existing legacy hash fixture decodes unchanged, while `#s2:` round-trips Unicode workspace state, `rv=1` independently restores workspace pane/editor tab/Preview mode, and omitted fields use immutable v2 defaults even when application defaults differ.
+4. Covers AE12. Unsupported view versions, negative, non-finite, oversized, or over-budget fields discard the entire view descriptor, keep the workspace, apply documented live/navigation defaults, and expose one accessible warning before any locked operation is published.
+5. Startup hydration proves the first observable publication already contains the restored view and lock; no canonical/live intermediate operation escapes.
+6. Copying either link from a loaded lock leaves the address bar, active lock, and runtime state unchanged; each copied URL represents the selected promise rather than inheriting unrelated current query state.
+7. Returning from `Shared lock · 640×480` to live Host measurement produces one coherent new operation, updates the visible owner to `Live Host`, removes the view parameters once, and leaves the workspace hash unchanged. Switching temporarily through Canonical does not destroy the lock.
+8. Host measuring visibly disables issue-reproduction copying instead of locking `800x600`; Canonical issue sharing remains enabled without Host fields.
+9. Covers AE13. Canonical, live Host, locked Host, workspace-link restoration, issue-link restoration, and export presentation preserve the published SVG `viewBox` for the long Sequence-title fixture; a missing-`viewBox` fixture only receives preview-local intrinsic sizing.
+10. The `#s2:` envelope rejects input beyond `512 KiB` encoded or `SHARE_LIMITS.jsonBytes` decoded, never partially mutates state, is no longer than legacy output for representative fixtures, and shrinks a repetitive `100 KiB` source by at least `50%`.
+11. Keyboard and screen-reader assertions cover distinct menu descriptions, disabled measuring help, focus return, copy announcements, decode warning, and locked/live ownership without duplicate announcements.
+12. On portrait and `844x390` landscape mobile layouts, both share actions and `Use live Host size` remain reachable, the menu respects safe areas, and a locked issue link creates no page overflow.
+
+**Verification:** Focused share/store tests prove codec compatibility and validation; one desktop browser scenario proves cross-device locked reproduction; the existing mobile and presentation suites prove reachability and immutable `viewBox` ownership.
+
 ---
 
 ## Verification Contract
@@ -538,12 +671,12 @@ stateDiagram-v2
 | Gate | Command or evidence | Proves |
 |---|---|---|
 | Type and unit behavior | `npm --prefix playground run test:browser:typecheck` | Browser-test types remain valid. |
-| Runtime ownership | `npm --prefix playground run test:runtime` | Frozen viewport and publication/action contracts. |
+| Runtime ownership | `npm --prefix playground run test:runtime` | Frozen viewport, share codec/view state, publication, and action contracts. |
 | Export planning | `npm --prefix playground run test:export` | Format-neutral scale, width, height, and fit-box geometry, fixed limits, and validation. |
 | Full Playground tests | `npm --prefix playground test` | Existing runtime, realm, benchmark, share, and export regressions. |
 | Static quality | `npm --prefix playground run lint` | React, TypeScript, accessibility-adjacent lint, and source quality. |
 | Production build | `npm --prefix playground run build` | WASM preparation, opaque realm, CSP, licenses, TypeScript, and Vite output. |
-| Desktop browser | `npm --prefix playground run test:browser:chromium:desktop:built` | Host Compare, export dialog, alpha/JPEG pixels, stale publication, and desktop layout. |
+| Desktop browser | `npm --prefix playground run test:browser:chromium:desktop:built` | Host Compare, locked reproduction links, immutable published `viewBox`, export dialog, alpha/JPEG pixels, stale publication, and desktop layout. |
 | Mobile browser | `npm --prefix playground run test:browser:mobile:built` | Portrait, landscape, visual viewport, touch, export, and overflow behavior. |
 | Cross-browser smoke | `npm --prefix playground run test:browser:smoke:non-chromium:built` | Blob, Canvas, PNG, and JPEG behavior outside Chromium. |
 | Visual evidence | Playwright screenshots at `1440x900`, `390x844`, `320x568`, and `568x320` | No overlap, clipping, blank preview, or unreachable control. |
@@ -556,11 +689,12 @@ The implementation should run the smallest focused gate that can fail for each u
 ## Definition of Done
 
 - U1 is done when viewport mode and resolved dimensions are immutable operation identity, Compare shares them, and Bench remains canonical.
-- U2 is done when users can select and inspect Host mode across desktop/mobile and legacy share hashes still load Canonical.
+- U2 is done when users can select and inspect Host mode across desktop/mobile; hashes that predate viewport mode default to Canonical, while Base64 links that already contain a valid mode preserve it.
 - U3 is done when one typed export recipe and format-neutral planner replace every PNG-only planning/action contract.
 - U4 is done when real-browser PNG/JPEG preview and downloads share one bounded raster path with verified alpha, background, MIME, dimensions, cleanup, and failure behavior.
 - U5 is done when global and per-engine export use one accessible dialog and obsolete direct image-download handlers are removed.
 - U6 is done when supported mobile layouts pass complete export interactions, documentation reflects the new contracts, and abandoned or compatibility-only code from the refactor is absent.
+- U7 is done when workspace links remain device-portable; issue-reproduction links atomically restore workspace pane, editor tab, Preview mode, viewport intent, and the complete validated Host lock when applicable; legacy links remain readable; copying is pure; live ownership can be restored coherently; and responsive presentation never rewrites the published SVG `viewBox`.
 - All Verification Contract gates pass, or a platform-specific manual residual is documented with concrete evidence and does not mask a failed automated contract.
 - The final diff contains no renderer-semantic workaround for the inherited Mermaid Sequence title viewBox behavior.
 - The code-review workflow has no unresolved actionable finding, and every logical implementation unit is represented by a reviewable Conventional Commit.
