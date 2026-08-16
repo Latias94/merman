@@ -55,12 +55,13 @@ pub(crate) fn render_model_to_compat_json(
             }
         }
     }
-    value
+    let object = value
         .as_object_mut()
-        .expect("Class typed model must serialize to a JSON object")
-        .insert(
-            "type".to_string(),
-            serde_json::Value::String(meta.diagram_type.clone()),
-        );
+        .expect("Class typed model must serialize to a JSON object");
+    object.remove("namespaceFacadeAliases");
+    object.insert(
+        "type".to_string(),
+        serde_json::Value::String(meta.diagram_type.clone()),
+    );
     Ok(value)
 }

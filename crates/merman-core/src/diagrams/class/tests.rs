@@ -109,6 +109,19 @@ Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
             ),
         ])
     );
+
+    let typed_json = serde_json::to_value(&model).expect("typed class model should serialize");
+    assert_eq!(
+        typed_json["namespaceFacadeAliases"]["Platform.FFI.DartBinding"],
+        "DartBinding"
+    );
+    let round_trip: crate::models::class_diagram::ClassDiagram =
+        serde_json::from_value(typed_json).expect("typed class model should deserialize");
+    assert_eq!(round_trip, model);
+
+    let compatibility =
+        render_model_to_compat_json(&model, &meta()).expect("compatibility projection should work");
+    assert!(compatibility.get("namespaceFacadeAliases").is_none());
 }
 
 #[test]

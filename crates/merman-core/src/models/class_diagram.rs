@@ -25,10 +25,10 @@ pub struct ClassDiagram {
     pub namespaces: IndexMap<String, Namespace>,
     /// Parser-owned provenance for qualified relation endpoints synthesized as facade classes.
     ///
-    /// This is excluded from the Mermaid-compatible JSON projection because it is renderer
-    /// metadata rather than an authored Mermaid field. Direct Rust model callers may populate it
-    /// when constructing the same semantic shape without the parser.
-    #[serde(rename = "namespaceFacadeAliases", default, skip_serializing)]
+    /// Typed serde preserves this provenance so a model can round-trip without changing relation
+    /// routing. The Mermaid-compatible JSON projection removes it explicitly because it is
+    /// renderer metadata rather than an authored Mermaid field.
+    #[serde(rename = "namespaceFacadeAliases", default)]
     pub namespace_facade_aliases: BTreeMap<String, String>,
     #[serde(rename = "styleClasses")]
     #[serde(default)]
