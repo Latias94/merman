@@ -92,12 +92,12 @@ fn check_brutalist_flowchart_svg(
         .iter()
         .enumerate()
         .map(|(ordinal, node_id)| {
-            let marker = format!("-flowchart-{node_id}-");
             let wrappers = document
                 .descendants()
                 .filter(|node| {
                     node.has_tag_name("g")
-                        && node.attribute("id").is_some_and(|id| id.contains(&marker))
+                        && node.attribute("data-id") == Some(*node_id)
+                        && node.attribute("data-et") == Some("node")
                 })
                 .collect::<Vec<_>>();
             c6_ensure!(

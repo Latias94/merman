@@ -98,7 +98,16 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let x = layout_node.x + ctx.tx - origin_x;
     let y = layout_node.y + ctx.ty - origin_y;
 
-    if helpers::try_render_self_loop_label_placeholder(out, node_id, x, y, ctx.node_html_labels) {
+    if let Some(dom_id) = ctx.document_ids.synthetic_label(node_id)
+        && helpers::try_render_self_loop_label_placeholder(
+            out,
+            node_id,
+            dom_id,
+            x,
+            y,
+            ctx.node_html_labels,
+        )
+    {
         return Ok(());
     }
 
@@ -110,7 +119,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let tooltip_enabled = !tooltip.trim().is_empty();
 
     let look = flowchart_config_look(ctx.config);
-    let dom_idx = resolved.dom_idx;
+    let node_dom_id = ctx
+        .document_ids
+        .node(node_id)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: format!("missing prepared Flowchart DOM id for node `{node_id}`"),
+        })?;
     let class_attr_base = if look == "handDrawn" {
         match resolved.class_attr_base {
             "node default" => "rough-node default",
@@ -147,9 +161,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     helpers::open_node_wrapper(
         out,
         helpers::NodeWrapperAttrs {
-            diagram_id: ctx.diagram_id,
-            node_id,
-            dom_idx,
+            dom_id: node_dom_id,
+            data_id: node_id,
             classes: wrapper_classes,
             wrapped_in_a,
             href: href.as_ref(),

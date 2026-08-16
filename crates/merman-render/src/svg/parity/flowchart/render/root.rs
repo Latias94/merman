@@ -215,7 +215,7 @@ fn render_flowchart_elk_subgraphs(
     out.push_str(r#"<g class="subgraphs">"#);
     for &cluster in clusters_to_draw {
         out.push_str(r#"<g class="subgraph">"#);
-        render_flowchart_cluster(out, ctx, cluster, 0.0, 0.0);
+        render_flowchart_cluster(out, ctx, cluster, 0.0, 0.0)?;
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -370,7 +370,7 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
     } else {
         out.push_str(r#"<g class="clusters">"#);
         for &cluster in clusters_to_draw {
-            render_flowchart_cluster(out, ctx, cluster, origin_x, frame.content_origin_y);
+            render_flowchart_cluster(out, ctx, cluster, origin_x, frame.content_origin_y)?;
             out.checkpoint()?;
         }
         out.push_str("</g>");

@@ -22,8 +22,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     let key = edge_ref.key;
     let edge = edge_ref.edge;
     let edge_dom_id = ctx
-        .edge_dom_id_plan
-        .id(key)
+        .document_ids
+        .edge(key)
         .ok_or_else(|| crate::Error::InvalidModel {
             message: format!(
                 "missing prepared Flowchart DOM id for edge occurrence {}",
@@ -148,14 +148,13 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     scratch.edge_marker_attrs.clear();
     marker_plan.push_edge_marker_attributes_for(
         &mut scratch.edge_marker_attrs,
-        ctx.diagram_id,
+        ctx.document_ids.marker_scope(),
         ctx.diagram_type,
         key,
         ctx.work_meter,
     )?;
     let source_style_svg_bytes = ctx.edge_style_plan.edge_source_style_svg_bytes_for(key)?;
     let edge_receipt = FlowchartEdgeSvgEmission {
-        diagram_id: ctx.diagram_id,
         edge_dom_id,
         edge,
         d,
@@ -206,7 +205,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
 }
 
 struct FlowchartEdgeSvgEmission<'a> {
-    diagram_id: &'a str,
     edge_dom_id: &'a str,
     edge: &'a crate::flowchart::FlowEdge,
     d: &'a str,
@@ -326,9 +324,8 @@ impl FlowchartEdgeSvgEmission<'_> {
     fn write_prefix_to(&self, out: &mut impl fmt::Write) -> fmt::Result {
         write!(
             out,
-            r#"<path d="{}" id="{}-{}" class="{}" style=""#,
+            r#"<path d="{}" id="{}" class="{}" style=""#,
             self.d,
-            escape_xml_display(self.diagram_id),
             escape_xml_display(self.edge_dom_id),
             self.class_attr,
         )
@@ -657,7 +654,6 @@ mod tests {
             .expect("finite source-style projection");
         let neo_edge_mask = neo_mask(16.0, &edge, false);
         let emission = FlowchartEdgeSvgEmission {
-            diagram_id: "diagram<&",
             edge_dom_id: &edge.id,
             edge: &edge,
             d: "M0,0L16,0",
@@ -673,7 +669,7 @@ mod tests {
             default_edge_style: &default_edge_style,
             neo_edge_mask: Some(neo_edge_mask),
         };
-        let expected_edge = r##"<path d="M0,0L16,0" id="diagram&lt;&amp;-edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444;stroke:#0f172a !important;stroke-width:2.5px !important;stroke-dasharray:7 3 !important" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
+        let expected_edge = r##"<path d="M0,0L16,0" id="edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444;stroke:#0f172a !important;stroke-width:2.5px !important;stroke-dasharray:7 3 !important" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
         let probe_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),

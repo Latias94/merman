@@ -235,11 +235,12 @@ fn prove_terminal_node(
     node_id: &str,
     contract: SpotlessFlowchartProofContract<'_>,
 ) -> C6ProofResult<[f64; 4]> {
-    let marker = format!("-flowchart-{node_id}-");
     let wrappers = document
         .descendants()
         .filter(|node| {
-            node.has_tag_name("g") && node.attribute("id").is_some_and(|id| id.contains(&marker))
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some(node_id)
+                && node.attribute("data-et") == Some("node")
         })
         .collect::<Vec<_>>();
     c6_ensure!(

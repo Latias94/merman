@@ -34,8 +34,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
-    pub(in crate::svg::parity::flowchart) edge_dom_id_plan:
-        crate::flowchart::FlowchartEdgeTransportPlan,
+    pub(in crate::svg::parity::flowchart) document_ids:
+        &'a super::document_ids::FlowchartDocumentIds,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,

@@ -690,8 +690,13 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
 
     let _ = write!(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/>{}<g class="label"{} transform="translate({}, {})"><rect/>"#,
-        escape_xml_display(node_id),
+        r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({}, {})"><rect width="0.1" height="0.1"/>{}<g class="label"{} transform="translate({}, {})"><rect/>"#,
+        escape_xml_display(ctx.document_ids.synthetic_label(node_id).ok_or_else(|| {
+            crate::Error::InvalidModel {
+                message: format!("missing prepared Swimlane edge-label DOM id for `{node_id}`"),
+            }
+        })?,),
+        escape_xml_display(&edge.id),
         fmt_display(x),
         fmt_display(y),
         background,

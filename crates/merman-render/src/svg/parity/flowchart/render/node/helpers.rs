@@ -14,7 +14,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     icon_name: &str,
     icon_size: f64,
 ) -> crate::Result<String> {
-    let id_scope = format!("{}-flowchart-icon-{node_id}", ctx.diagram_id);
+    let id_scope =
+        ctx.document_ids
+            .icon_scope(node_id)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Flowchart icon scope for node `{node_id}`"),
+            })?;
     let icon = match ctx.icon_registry {
         Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
             icon_name,
@@ -50,6 +55,7 @@ fn is_self_loop_label_node_id(id: &str) -> bool {
 pub(super) fn try_render_self_loop_label_placeholder(
     out: &mut impl crate::svg::parity::SvgOutput,
     node_id: &str,
+    dom_id: &str,
     x: f64,
     y: f64,
     html_labels: bool,
@@ -60,7 +66,8 @@ pub(super) fn try_render_self_loop_label_placeholder(
 
     let _ = write!(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
+        r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
+        escape_xml_display(dom_id),
         escape_xml_display(node_id),
         fmt_display(x),
         fmt_display(y)
@@ -117,9 +124,8 @@ fn write_class_attr(out: &mut impl crate::svg::parity::SvgOutput, classes: NodeW
 }
 
 pub(super) struct NodeWrapperAttrs<'a> {
-    pub(super) diagram_id: &'a str,
-    pub(super) node_id: &'a str,
-    pub(super) dom_idx: Option<usize>,
+    pub(super) dom_id: &'a str,
+    pub(super) data_id: &'a str,
     pub(super) classes: NodeWrapperClasses<'a>,
     pub(super) wrapped_in_a: bool,
     pub(super) href: Option<&'a SerializedMermaidNavigationHref>,
@@ -136,9 +142,8 @@ pub(super) fn open_node_wrapper(
     attrs: NodeWrapperAttrs<'_>,
 ) {
     let NodeWrapperAttrs {
-        diagram_id,
-        node_id,
-        dom_idx,
+        dom_id,
+        data_id,
         classes,
         wrapped_in_a,
         href,
@@ -178,47 +183,25 @@ pub(super) fn open_node_wrapper(
         }
         out.push_str(r#"<g class=""#);
         write_class_attr(out, classes);
-        if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
-            out.push_str(r#"-flowchart-"#);
-            escape_xml_into(out, node_id);
-            let _ = write!(out, "-{dom_idx}\"");
-        } else {
-            out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
-            out.push('-');
-            escape_xml_into(out, node_id);
-            out.push('"');
-        }
+        out.push_str(r#"" id=""#);
+        escape_xml_into(out, dom_id);
+        out.push_str(r#"" data-id=""#);
+        escape_xml_into(out, data_id);
+        out.push_str(r#"" data-et="node""#);
     } else {
         out.push_str(r#"<g class=""#);
         write_class_attr(out, classes);
-        if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
-            out.push_str(r#"-flowchart-"#);
-            escape_xml_into(out, node_id);
-            let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
-            crate::svg::parity::util::fmt_into(out, x);
-            out.push(',');
-            crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
-            out.push('"');
-        } else {
-            out.push_str(r#"" id=""#);
-            escape_xml_into(out, diagram_id);
-            out.push('-');
-            escape_xml_into(out, node_id);
-            out.push_str(r#"" transform="translate("#);
-            crate::svg::parity::util::fmt_into(out, x);
-            out.push(',');
-            crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")" data-look=""#);
-            escape_xml_into(out, look);
-            out.push('"');
-        }
+        out.push_str(r#"" id=""#);
+        escape_xml_into(out, dom_id);
+        out.push_str(r#"" transform="translate("#);
+        crate::svg::parity::util::fmt_into(out, x);
+        out.push(',');
+        crate::svg::parity::util::fmt_into(out, y);
+        out.push_str(r#")" data-look=""#);
+        escape_xml_into(out, look);
+        out.push_str(r#"" data-id=""#);
+        escape_xml_into(out, data_id);
+        out.push_str(r#"" data-et="node""#);
     }
     if tooltip_enabled {
         let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));

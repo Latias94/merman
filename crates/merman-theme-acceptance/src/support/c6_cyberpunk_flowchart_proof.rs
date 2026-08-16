@@ -372,11 +372,12 @@ fn prove_terminal_node(
     node_id: &str,
     contract: CyberpunkFlowchartProofContract<'_>,
 ) -> C6ProofResult<[f64; 4]> {
-    let marker = format!("-flowchart-{node_id}-");
     let wrappers = document
         .descendants()
         .filter(|node| {
-            node.has_tag_name("g") && node.attribute("id").is_some_and(|id| id.contains(&marker))
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some(node_id)
+                && node.attribute("data-et") == Some("node")
         })
         .collect::<Vec<_>>();
     c6_ensure!(
@@ -594,7 +595,7 @@ mod tests {
 
     #[test]
     fn terminal_node_rejects_mutated_stroke() {
-        let valid = r##"<svg><g id="fixture-flowchart-A-0"><rect class="basic label-container" x="0" y="0" width="20" height="10" style="fill:#0f172a;stroke:#22d3ee;stroke-width:2px"/><text style="font-family:Excalifont">A</text></g></svg>"##;
+        let valid = r##"<svg><g id="fixture-merman-flowchart-node-0" data-id="A" data-et="node"><rect class="basic label-container" x="0" y="0" width="20" height="10" style="fill:#0f172a;stroke:#22d3ee;stroke-width:2px"/><text style="font-family:Excalifont">A</text></g></svg>"##;
         let document = roxmltree::Document::parse(valid).unwrap();
         assert!(prove_terminal_node(&document, "A", contract()).is_ok());
 

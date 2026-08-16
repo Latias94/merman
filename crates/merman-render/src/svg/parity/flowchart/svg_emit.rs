@@ -1,5 +1,6 @@
 use super::defs::{FlowchartMarkerEmissionPlan, prepare_flowchart_defs};
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
+use super::document_ids::{FlowchartDocumentIdRequest, FlowchartDocumentIds};
 use super::render_config::{FlowchartRenderConfig, prepare_flowchart_render_config};
 use super::render_input::{FlowchartRenderInputs, prepare_flowchart_render_inputs};
 use super::viewbox::{
@@ -157,9 +158,6 @@ pub(super) fn render_flowchart_svg_model(
     // internal reordering. `render_edges` already reflects the source-backed ordering rules.
     let edge_order: Vec<super::render_input::FlowchartRenderEdgeRef<'_>> =
         render_edges.iter().map(|edge| edge.as_ref()).collect();
-    let edge_dom_id_plan = crate::flowchart::FlowchartEdgeTransportPlan::for_keyed_edges(
-        edge_order.iter().map(|edge| (edge.key, edge.edge)),
-    );
     let mut edges_by_key: FxHashMap<
         crate::flowchart::FlowchartEdgeKey,
         super::render_input::FlowchartRenderEdgeRef<'_>,
@@ -266,6 +264,15 @@ pub(super) fn render_flowchart_svg_model(
     let ty = 0.0;
 
     let node_dom_index = flowchart_node_dom_indices(model);
+    let document_ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
+        diagram_id,
+        edge_order: &edge_order,
+        node_dom_index: &node_dom_index,
+        subgraph_index_by_id: &subgraph_index_by_id,
+        layout_nodes: &layout.nodes,
+        swimlane_nodes: swimlane_layout.map(|layout| layout.nodes.as_slice()),
+        swimlane_lanes: swimlane_layout.map(|layout| layout.lanes.as_slice()),
+    });
     let node_theme_ordinals =
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
@@ -299,7 +306,7 @@ pub(super) fn render_flowchart_svg_model(
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         class_defs: &model.class_defs,
         edge_style_plan,
-        edge_dom_id_plan,
+        document_ids: &document_ids,
         node_border_color,
         node_fill_color,
         node_stroke_width,
@@ -406,6 +413,7 @@ pub(super) fn render_flowchart_svg_model(
         diagram_id,
         diagram_type,
         model,
+        document_ids: &document_ids,
         use_max_width,
         diagram_padding,
         bbox_min_x,
@@ -426,6 +434,8 @@ pub(super) fn render_flowchart_svg_model(
     write_flowchart_css(
         &mut out,
         diagram_id,
+        document_ids.drop_shadow(),
+        document_ids.drop_shadow_small(),
         effective_config_value,
         &font_family,
         font_size,
@@ -437,7 +447,12 @@ pub(super) fn render_flowchart_svg_model(
     out.push_str("</style>");
     out.checkpoint()?;
 
-    let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx, &marker_plan);
+    let defs = prepare_flowchart_defs(
+        document_ids.marker_scope(),
+        diagram_type,
+        &ctx,
+        &marker_plan,
+    );
 
     let mut root_session = FlowchartRootRenderSession {
         timing: render_timing,
@@ -452,11 +467,11 @@ pub(super) fn render_flowchart_svg_model(
         defs.push_extra_markers(&mut out)?;
         out.push_str("</g>");
         out.checkpoint()?;
-        push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        push_flowchart_shadow_defs(&mut out, &document_ids, effective_config_value);
         out.checkpoint()?;
         render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session)?;
     } else {
-        push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        push_flowchart_shadow_defs(&mut out, &document_ids, effective_config_value);
         out.checkpoint()?;
         out.push_str("<g>");
         defs.push_base_markers(&mut out)?;
@@ -466,7 +481,7 @@ pub(super) fn render_flowchart_svg_model(
         out.push_str("</g>");
         out.checkpoint()?;
     }
-    push_flowchart_gradient(&mut out, diagram_id, effective_config_value);
+    push_flowchart_gradient(&mut out, &document_ids, effective_config_value);
     out.checkpoint()?;
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;
@@ -622,7 +637,7 @@ mod tests {
 
 fn push_flowchart_shadow_defs(
     out: &mut impl crate::svg::parity::SvgOutput,
-    diagram_id: &str,
+    document_ids: &FlowchartDocumentIds,
     effective_config_value: &serde_json::Value,
 ) {
     let flood_color = effective_config_value
@@ -631,20 +646,19 @@ fn push_flowchart_shadow_defs(
         .filter(|theme| theme.contains("dark"))
         .map(|_| "#FFFFFF")
         .unwrap_or("#000000");
-    let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
-        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        diagram_id.as_str(),
+        r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        escape_xml_display(document_ids.drop_shadow()),
         flood_color,
-        diagram_id.as_str(),
+        escape_xml_display(document_ids.drop_shadow_small()),
         flood_color
     );
 }
 
 fn push_flowchart_gradient(
     out: &mut impl crate::svg::parity::SvgOutput,
-    diagram_id: &str,
+    document_ids: &FlowchartDocumentIds,
     effective_config_value: &serde_json::Value,
 ) {
     if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
@@ -669,13 +683,12 @@ fn push_flowchart_gradient(
         })
         .unwrap_or_else(|| gradient_start.clone());
 
-    let diagram_id = escape_xml(diagram_id);
     let gradient_start = escape_xml(&gradient_start);
     let gradient_stop = escape_xml(&gradient_stop);
     let _ = write!(
         out,
-        r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        diagram_id.as_str(),
+        r#"<linearGradient id="{}" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
+        escape_xml_display(document_ids.root_gradient()),
         gradient_start.as_str(),
         gradient_stop.as_str()
     );

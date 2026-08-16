@@ -83,13 +83,16 @@ fn flowchart_classdef_cssom_string(
 pub(in crate::svg::parity) fn write_flowchart_css(
     out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: &str,
+    drop_shadow_id: &str,
+    drop_shadow_small_id: &str,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
 ) -> Result<()> {
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
+    let drop_shadow_id = escape_xml(drop_shadow_id);
+    let drop_shadow_small_id = escape_xml(drop_shadow_small_id);
     let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
@@ -113,12 +116,9 @@ pub(in crate::svg::parity) fn write_flowchart_css(
     let scoped_drop_shadow = drop_shadow
         .replace(
             "url(#drop-shadow-small)",
-            &format!("url(#{fragment_id}-drop-shadow-small)"),
+            &format!("url(#{drop_shadow_small_id})"),
         )
-        .replace(
-            "url(#drop-shadow)",
-            &format!("url(#{fragment_id}-drop-shadow)"),
-        );
+        .replace("url(#drop-shadow)", &format!("url(#{drop_shadow_id})"));
 
     let _ = write!(
         &mut *out,
@@ -334,6 +334,8 @@ fn flowchart_css(
     write_flowchart_css(
         &mut out,
         diagram_id,
+        &format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow"),
+        &format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"),
         effective_config,
         font_family,
         font_size,
@@ -397,6 +399,8 @@ mod tests {
         let error = write_flowchart_css(
             &mut out,
             "bounded-css",
+            "bounded-css-merman-flowchart-document-filter-drop-shadow",
+            "bounded-css-merman-flowchart-document-filter-drop-shadow-small",
             &json!({}),
             "sans-serif",
             16.0,

@@ -6,7 +6,6 @@ use crate::flowchart::{
     FlowchartThemeFacetEmission,
 };
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
-use std::borrow::Cow;
 
 const FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH: f64 = 200.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
@@ -171,23 +170,28 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     cluster: &LayoutCluster,
     origin_x: f64,
     origin_y: f64,
-) {
+) -> crate::Result<()> {
     if let Some(lane) = ctx.swimlane_lanes_by_id.get(cluster.id.as_str())
         && lane.parent_id.is_none()
     {
         super::super::swimlane::render_swimlane_cluster(
             out, ctx, cluster, lane, origin_x, origin_y,
-        );
-        return;
+        )?;
+        return Ok(());
     }
 
     let Some(sg) = ctx.subgraphs_by_id.get(cluster.id.as_str()) else {
-        return;
+        return Err(crate::Error::InvalidModel {
+            message: format!(
+                "Flowchart layout cluster `{}` has no semantic subgraph owner",
+                cluster.id
+            ),
+        });
     };
     if !ctx.subgraph_has_children(cluster.id.as_str())
         && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
     {
-        return;
+        return Ok(());
     }
 
     let compiled_styles = flowchart_compile_styles(ctx.class_defs, &sg.classes, &sg.styles, &[]);
@@ -217,15 +221,23 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
     let label_top = top + cluster.title_margin_top.max(0.0);
-    let cluster_dom_id = if ctx.uses_elk_adapter_dom {
-        Cow::Borrowed("[object Object]")
-    } else {
-        Cow::Owned(format!("{}-{}", ctx.diagram_id, cluster.id))
+    let Some(cluster_dom_id) = ctx.document_ids.cluster(cluster.id.as_str()) else {
+        return Err(crate::Error::InvalidModel {
+            message: format!(
+                "missing prepared Flowchart DOM id for cluster `{}`",
+                cluster.id
+            ),
+        });
     };
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let Some(subgraph_index) = ctx.subgraph_index_by_id.get(cluster.id.as_str()).copied() else {
-        return;
+        return Err(crate::Error::InvalidModel {
+            message: format!(
+                "missing semantic Flowchart subgraph index for cluster `{}`",
+                cluster.id
+            ),
+        });
     };
     let render_title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
 
@@ -252,9 +264,10 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         let label_left = left + rect_w / 2.0 - label_w / 2.0;
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="{}">"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}">"#,
             escape_xml_display(&class_attr),
-            escape_xml_display(&cluster_dom_id),
+            escape_xml_display(cluster_dom_id),
+            escape_xml_display(&cluster.id),
             escape_xml_display(data_look),
         );
         let shape_source_receipt = write_flowchart_cluster_shape(
@@ -312,7 +325,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             &compiled_styles
                 .emitted_label_source_residuals(cluster.id.as_str(), label_type != "markdown"),
         );
-        return;
+        return Ok(());
     }
 
     let title_html = flowchart_label_html(render_title, label_type, ctx.config, ctx.math_renderer);
@@ -337,9 +350,10 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-look="{}">"#,
+        r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}">"#,
         escape_xml_display(&class_attr),
-        escape_xml_display(&cluster_dom_id),
+        escape_xml_display(cluster_dom_id),
+        escape_xml_display(&cluster.id),
         escape_xml_display(data_look),
     );
     let shape_source_receipt = write_flowchart_cluster_shape(
@@ -381,4 +395,5 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             &title_html,
         ),
     );
+    Ok(())
 }

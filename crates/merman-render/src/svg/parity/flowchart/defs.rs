@@ -239,13 +239,13 @@ impl FlowchartMarkerEmissionPlan {
                 edge.edge,
                 marker_color,
                 margin,
-                ctx.diagram_id,
+                ctx.document_ids.marker_scope(),
                 ctx.diagram_type,
                 ctx.work_meter,
             )?;
         }
         plan.finalize_svg_budget(
-            ctx.diagram_id,
+            ctx.document_ids.marker_scope(),
             ctx.diagram_type,
             ctx.security_level_loose,
             ctx.work_meter,

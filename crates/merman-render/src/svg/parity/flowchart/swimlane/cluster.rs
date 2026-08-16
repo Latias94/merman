@@ -162,7 +162,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     lane: &SwimlaneLaneLayout,
     origin_x: f64,
     origin_y: f64,
-) {
+) -> crate::Result<()> {
     let subgraph = ctx.subgraphs_by_id.get(cluster.id.as_str()).copied();
     let class_names = subgraph.map_or(&[][..], |subgraph| subgraph.classes.as_slice());
     let styles = subgraph.map_or(&[][..], |subgraph| subgraph.styles.as_slice());
@@ -205,11 +205,17 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             classes.push_str(class);
         }
     }
+    let lane_dom_id =
+        ctx.document_ids
+            .lane(&lane.id)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!("missing prepared Swimlane DOM id for lane `{}`", lane.id),
+            })?;
     let _ = write!(
         out,
         r#"<g class="{}" id="{}" data-id="{}" data-et="cluster""#,
         escape_xml_display(&classes),
-        escape_xml_display(&lane.id),
+        escape_xml_display(lane_dom_id),
         escape_xml_display(&lane.id),
     );
     if subgraph.is_some() {
@@ -361,4 +367,5 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         );
     }
     out.push_str("</g>");
+    Ok(())
 }

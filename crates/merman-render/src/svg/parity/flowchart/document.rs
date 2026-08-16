@@ -1,11 +1,13 @@
 use super::super::root_svg;
 use super::super::util::{escape_attr_into, escape_xml_into};
+use super::document_ids::FlowchartDocumentIds;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub family_id: crate::DiagramFamilyId,
     pub diagram_id: &'a str,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
+    pub document_ids: &'a FlowchartDocumentIds,
     pub use_max_width: bool,
     pub diagram_padding: f64,
     pub bbox_min_x: f64,
@@ -52,8 +54,9 @@ pub(super) fn prepare_flowchart_svg_document(
         .as_deref()
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{}", request.diagram_id));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{}", request.diagram_id));
+    let aria_labelledby = acc_title.map(|_| request.document_ids.accessibility_title().to_string());
+    let aria_describedby =
+        acc_descr.map(|_| request.document_ids.accessibility_description().to_string());
 
     FlowchartSvgDocument {
         diagram_id: request.diagram_id,
