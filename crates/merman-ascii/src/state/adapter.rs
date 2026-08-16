@@ -4,16 +4,18 @@ use crate::graph::style::{
     apply_node_declarations,
 };
 use crate::graph::{
-    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,
-    GraphNodeCompartments, GraphNodeSemantics, GraphNodeShape, GraphNodeSide,
-    GraphNodeSideConstraint, GraphNodeStyle,
+    AsciiGraph, DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan, GraphDirection,
+    GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle, GraphNodeSemantics,
+    GraphNodeShape, GraphNodeSide, GraphNodeSideConstraint, GraphNodeStyle,
 };
 use crate::operation::AsciiExecution;
+use crate::options::TerminalWidthProfile;
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::safe_text::charge_text_layout;
-use crate::text::normalize_optional_text;
+use crate::safe_text::{
+    NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_trimmed_text,
+};
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
@@ -22,10 +24,27 @@ use std::collections::HashMap;
 const STATE_DIAGRAM_TYPE: &str = "state";
 const STATE_NODE_PROJECTION_WORK_UNITS: usize = 10;
 const STATE_EDGE_PROJECTION_WORK_UNITS: usize = 2;
+const STATE_TEXT_COPY_CHUNK_BYTES: usize = 8 * 1024;
 
-struct StateDirectionProjection {
-    node_by_id: HashMap<String, GraphDirection>,
-    group_by_id: HashMap<String, GraphDirection>,
+struct StateDirectionProjection<'a> {
+    node_by_id: HashMap<&'a str, GraphDirection>,
+    group_by_id: HashMap<&'a str, GraphDirection>,
+}
+
+type StateGroupMembers<'a> = HashMap<&'a str, Vec<&'a str>>;
+type StateNoteParentIndex<'a> = HashMap<&'a str, &'a str>;
+type StateNoteSideConstraints<'a> = HashMap<&'a str, StateNoteSideConstraint<'a>>;
+
+#[derive(Clone, Copy)]
+struct StateNoteSideConstraint<'a> {
+    anchor_id: &'a str,
+    side: GraphNodeSide,
+}
+
+struct StateProjectionTextPlan<'a> {
+    nodes: Vec<Option<DeferredGraphNodeLabelPlan<'a>>>,
+    group_titles: HashMap<&'a str, DeferredGraphLabelSectionPlan<'a>>,
+    edge_labels: Vec<Option<NormalizedTrimmedTextPlan<'a>>>,
 }
 
 #[cfg(test)]
@@ -36,6 +55,7 @@ pub(crate) fn from_state_model_with_resources(
     let mut resources = ResourceContext::new(policy);
     from_state_model_with_context_and_execution(
         model,
+        TerminalWidthProfile::Unicode,
         &mut resources,
         AsciiExecution::for_test(&policy),
     )
@@ -43,25 +63,50 @@ pub(crate) fn from_state_model_with_resources(
 
 pub(crate) fn from_state_model_with_context_and_execution(
     model: &StateDiagramRenderModel,
+    width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
+    resources.transaction(|resources| {
+        from_state_model_transactional(model, width_profile, resources, execution)
+    })
+}
+
+fn from_state_model_transactional(
+    model: &StateDiagramRenderModel,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<AsciiGraph> {
     preflight_state_projection_text(model, resources, execution)?;
     let projection_work = state_projection_work(model, resources, execution)?;
     resources.charge_layout_work(projection_work)?;
     validate_supported_state_model(model, resources, execution)?;
 
+    let direction = parse_state_direction(&model.direction)?;
     let group_members = group_members_by_id(model, execution)?;
     let note_node_parent_by_id = note_node_parent_by_id(model, execution)?;
     let note_side_constraints = note_side_constraints(model, &note_node_parent_by_id, execution)?;
-    let direction = parse_state_direction(&model.direction)?;
+    let StateProjectionTextPlan {
+        nodes: node_text_plans,
+        mut group_titles,
+        edge_labels,
+    } = plan_state_texts(
+        model,
+        &group_members,
+        &note_node_parent_by_id,
+        &note_side_constraints,
+        width_profile,
+        resources,
+        execution,
+    )?;
     let state_directions = state_direction_projection(model, direction, resources, execution)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
     graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.nodes.len())?;
     graph.use_incoming_edge_roots();
 
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, (node, text_plan)) in model.nodes.iter().zip(node_text_plans).enumerate() {
         checkpoint_projection(execution, index)?;
         if is_group_container(node, &group_members) {
             continue;
@@ -69,10 +114,16 @@ pub(crate) fn from_state_model_with_context_and_execution(
         if is_state_note_node(node) {
             continue;
         }
-        let (label, compartments) = state_node_text(node)?;
-        graph.add_node_with_semantics(
-            &node.id,
-            label,
+        let text = text_plan
+            .ok_or_else(|| unsupported("missing state node label plan"))?
+            .materialize_after_admission(resources)?;
+        let side_constraint = materialize_note_side_constraint(
+            note_side_constraints.get(node.id.as_str()),
+            resources,
+        )?;
+        graph.add_node_with_prepared_text(
+            materialize_state_text(&node.id, resources)?,
+            text,
             state_node_shape(
                 node,
                 state_directions
@@ -82,10 +133,7 @@ pub(crate) fn from_state_model_with_context_and_execution(
                     .unwrap_or_else(|| direction.canonical()),
             )?,
             state_node_style(node),
-            GraphNodeSemantics {
-                compartments,
-                side_constraint: note_side_constraints.get(&node.id).cloned(),
-            },
+            GraphNodeSemantics { side_constraint },
         );
     }
 
@@ -94,10 +142,22 @@ pub(crate) fn from_state_model_with_context_and_execution(
         .enumerate()
     {
         checkpoint_projection(execution, index)?;
-        let members = group_members.get(&node.id).cloned().unwrap_or_default();
+        let members = materialize_group_members(
+            group_members.get(node.id.as_str()).map(Vec::as_slice),
+            resources,
+            execution,
+        )?;
+        let title = if state_group_title_is_empty(node) {
+            String::new()
+        } else {
+            group_titles
+                .remove(node.id.as_str())
+                .ok_or_else(|| unsupported("missing state group title plan"))?
+                .materialize_normalized_after_admission(resources)?
+        };
         graph.add_group_with_kind_and_style(
-            &node.id,
-            state_group_title(node),
+            materialize_state_text(&node.id, resources)?,
+            title,
             state_directions.group_by_id.get(node.id.as_str()).copied(),
             members,
             state_group_kind(node),
@@ -105,7 +165,7 @@ pub(crate) fn from_state_model_with_context_and_execution(
         );
     }
 
-    for (index, edge) in model.edges.iter().enumerate() {
+    for (index, (edge, label_plan)) in model.edges.iter().zip(edge_labels).enumerate() {
         checkpoint_projection(execution, index)?;
         let mut from = remap_note_endpoint(&edge.start, &note_node_parent_by_id);
         let mut to = remap_note_endpoint(&edge.end, &note_node_parent_by_id);
@@ -114,10 +174,16 @@ pub(crate) fn from_state_model_with_context_and_execution(
                 canonical_note_edge_endpoints(from, to, &note_side_constraints, direction)?;
         }
         graph.add_edge_with_attrs(
-            from,
-            to,
+            materialize_state_text(from, resources)?,
+            materialize_state_text(to, resources)?,
             GraphEdgeAttrs {
-                label: edge_label(&edge.label),
+                label: label_plan
+                    .map(|plan| {
+                        plan.materialize_after_admission_with_checkpoint(|iteration| {
+                            checkpoint_projection(execution, iteration)
+                        })
+                    })
+                    .transpose()?,
                 end_marker: edge_marker(edge),
                 ..GraphEdgeAttrs::default()
             },
@@ -133,7 +199,7 @@ fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: usize) -> Res
 
 fn preflight_state_projection_text(
     model: &StateDiagramRenderModel,
-    resources: &mut ResourceContext,
+    resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     charge_text_layout(resources, &model.direction)?;
@@ -146,32 +212,244 @@ fn preflight_state_projection_text(
         if let Some(position) = node.position.as_deref() {
             charge_text_layout(resources, position)?;
         }
-        if let Some(label) = node.label.as_ref() {
-            if let Some(label) = label.as_str() {
-                charge_text_layout(resources, label)?;
-            } else if let Some(items) = label.as_array() {
-                for (item_index, item) in items.iter().enumerate() {
-                    checkpoint_projection(execution, item_index)?;
-                    if let Some(line) = item.as_str() {
-                        charge_text_layout(resources, line)?;
-                    }
-                }
-            }
-        }
-        if let Some(description) = node.description.as_ref() {
-            for (line_index, line) in description.iter().enumerate() {
-                checkpoint_projection(execution, line_index)?;
-                charge_text_layout(resources, line)?;
-            }
-        }
     }
     for (index, edge) in model.edges.iter().enumerate() {
         checkpoint_projection(execution, index)?;
         charge_text_layout(resources, &edge.start)?;
         charge_text_layout(resources, &edge.end)?;
-        charge_text_layout(resources, &edge.label)?;
     }
     Ok(())
+}
+
+fn plan_state_texts<'a>(
+    model: &'a StateDiagramRenderModel,
+    group_members: &StateGroupMembers<'a>,
+    note_node_parent_by_id: &StateNoteParentIndex<'a>,
+    note_side_constraints: &StateNoteSideConstraints<'a>,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<StateProjectionTextPlan<'a>> {
+    let mut nodes = Vec::new();
+    nodes
+        .try_reserve_exact(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    let mut group_titles = HashMap::new();
+    group_titles
+        .try_reserve(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    let mut work_units = 0usize;
+    let mut retained_document_cells = 0usize;
+    let mut planned_document_cells = 0usize;
+    let mut output_bytes = 0usize;
+
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
+        if is_group_container(node, group_members) {
+            nodes.push(None);
+            work_units = include_state_copy_work(work_units, &node.id, resources)?;
+            for (member_index, member) in group_members
+                .get(node.id.as_str())
+                .into_iter()
+                .flat_map(|members| members.iter().copied())
+                .enumerate()
+            {
+                checkpoint_projection(execution, member_index)?;
+                work_units = include_state_copy_work(work_units, member, resources)?;
+            }
+            if state_group_title_is_empty(node) {
+                continue;
+            }
+            let title = DeferredGraphLabelSectionPlan::try_joined(
+                state_label_fragments(node).chain(state_description_fragments(node)),
+                Some(node.id.as_str()),
+                STATE_DIAGRAM_TYPE,
+                width_profile,
+                resources,
+            )?
+            .ok_or_else(|| unsupported("state group without title fallback"))?;
+            work_units = resources.checked_work_add(
+                work_units,
+                title.normalized_materialization_work_units(resources)?,
+            )?;
+            retained_document_cells = checked_state_projection_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxDocumentCells,
+                retained_document_cells,
+                title.document_cells(),
+            )?;
+            output_bytes = checked_state_projection_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxOutputBytes,
+                output_bytes,
+                title.normalized_joined_bytes(resources)?,
+            )?;
+            group_titles.insert(node.id.as_str(), title);
+            continue;
+        }
+        if is_state_note_node(node) {
+            nodes.push(None);
+            continue;
+        }
+        work_units = include_state_copy_work(work_units, &node.id, resources)?;
+        if let Some(constraint) = note_side_constraints.get(node.id.as_str()) {
+            work_units = include_state_copy_work(work_units, constraint.anchor_id, resources)?;
+        }
+        let plan = state_node_text_plan(node, width_profile, resources)?;
+        work_units =
+            resources.checked_work_add(work_units, plan.source_materialization_work_units())?;
+        planned_document_cells = checked_state_projection_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxDocumentCells,
+            planned_document_cells,
+            plan.document_cells(),
+        )?;
+        output_bytes = checked_state_projection_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxOutputBytes,
+            output_bytes,
+            plan.materialized_bytes(),
+        )?;
+        nodes.push(Some(plan));
+    }
+
+    let mut edge_labels = Vec::new();
+    edge_labels
+        .try_reserve_exact(model.edges.len())
+        .map_err(|_| projection_allocation_failed())?;
+    for (index, edge) in model.edges.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
+        let from = remap_note_endpoint(&edge.start, note_node_parent_by_id);
+        let to = remap_note_endpoint(&edge.end, note_node_parent_by_id);
+        work_units = include_state_copy_work(work_units, from, resources)?;
+        work_units = include_state_copy_work(work_units, to, resources)?;
+        let label = try_plan_normalized_trimmed_text(&edge.label, width_profile, resources)?;
+        if let Some(label) = label {
+            work_units =
+                resources.checked_work_add(work_units, label.materialization_work_units())?;
+            let metrics = label.metrics();
+            retained_document_cells = checked_state_projection_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxDocumentCells,
+                retained_document_cells,
+                metrics.document_cells,
+            )?;
+            output_bytes = checked_state_projection_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxOutputBytes,
+                output_bytes,
+                metrics.materialized_bytes,
+            )?;
+        }
+        edge_labels.push(label);
+    }
+
+    let admitted_document_cells = checked_state_projection_metric_add(
+        resources,
+        AsciiResourceLimitId::MaxDocumentCells,
+        retained_document_cells,
+        planned_document_cells,
+    )?;
+    resources.check_usage(work_units, admitted_document_cells)?;
+    resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+    resources.charge_usage(work_units, retained_document_cells)?;
+    Ok(StateProjectionTextPlan {
+        nodes,
+        group_titles,
+        edge_labels,
+    })
+}
+
+fn include_state_copy_work(
+    work_units: usize,
+    value: &str,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    resources.checked_work_add(work_units, value.len())
+}
+
+fn state_node_text_plan<'a>(
+    node: &'a StateDiagramRenderNode,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<DeferredGraphNodeLabelPlan<'a>> {
+    if is_state_pseudo_shape(node.shape.as_str()) {
+        return DeferredGraphNodeLabelPlan::single(
+            DeferredGraphLabelSectionPlan::try_single(
+                "",
+                None,
+                STATE_DIAGRAM_TYPE,
+                width_profile,
+                resources,
+            )?,
+            None,
+            STATE_DIAGRAM_TYPE,
+            width_profile,
+            resources,
+        );
+    }
+
+    if node.shape == "rectWithTitle" {
+        let title = DeferredGraphLabelSectionPlan::try_joined(
+            state_label_fragments(node),
+            Some(node.id.as_str()),
+            STATE_DIAGRAM_TYPE,
+            width_profile,
+            resources,
+        )?
+        .ok_or_else(|| unsupported("state title/body compartments without title"))?;
+        let body = DeferredGraphLabelSectionPlan::try_joined(
+            state_description_fragments(node),
+            None,
+            STATE_DIAGRAM_TYPE,
+            width_profile,
+            resources,
+        )?
+        .ok_or_else(|| unsupported("state title/body compartments without body"))?;
+        return DeferredGraphNodeLabelPlan::compartmented(
+            title,
+            body,
+            STATE_DIAGRAM_TYPE,
+            width_profile,
+            resources,
+        );
+    }
+
+    let label = DeferredGraphLabelSectionPlan::try_joined(
+        state_label_fragments(node).chain(state_description_fragments(node)),
+        Some(node.id.as_str()),
+        STATE_DIAGRAM_TYPE,
+        width_profile,
+        resources,
+    )?
+    .ok_or_else(|| unsupported("state node without label fallback"))?;
+    DeferredGraphNodeLabelPlan::single(label, None, STATE_DIAGRAM_TYPE, width_profile, resources)
+}
+
+fn state_label_fragments(node: &StateDiagramRenderNode) -> impl Iterator<Item = &str> {
+    node.label.iter().flat_map(|label| {
+        label.as_str().into_iter().chain(
+            label
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|item| item.as_str()),
+        )
+    })
+}
+
+fn state_description_fragments(node: &StateDiagramRenderNode) -> impl Iterator<Item = &str> {
+    node.description.iter().flatten().map(String::as_str)
+}
+
+fn checked_state_projection_metric_add(
+    resources: &ResourceContext,
+    limit: AsciiResourceLimitId,
+    left: usize,
+    right: usize,
+) -> Result<usize> {
+    left.checked_add(right)
+        .ok_or_else(|| resources.overflow(limit))
 }
 
 fn state_projection_work(
@@ -345,11 +623,11 @@ fn unsupported(feature: &'static str) -> AsciiError {
     }
 }
 
-fn group_members_by_id(
-    model: &StateDiagramRenderModel,
+fn group_members_by_id<'a>(
+    model: &'a StateDiagramRenderModel,
     execution: AsciiExecution<'_>,
-) -> Result<HashMap<String, Vec<String>>> {
-    let mut members = HashMap::<String, Vec<String>>::new();
+) -> Result<StateGroupMembers<'a>> {
+    let mut members = StateGroupMembers::new();
     members
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
@@ -358,19 +636,70 @@ fn group_members_by_id(
         let Some(parent_id) = node.parent_id.as_ref() else {
             continue;
         };
-        let group_members = members.entry(parent_id.clone()).or_default();
+        let group_members = members.entry(parent_id.as_str()).or_default();
         group_members
             .try_reserve(1)
             .map_err(|_| projection_allocation_failed())?;
-        group_members.push(node.id.clone());
+        group_members.push(node.id.as_str());
     }
     Ok(members)
 }
 
-fn note_node_parent_by_id(
-    model: &StateDiagramRenderModel,
+fn materialize_group_members(
+    members: Option<&[&str]>,
+    resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<HashMap<String, String>> {
+) -> Result<Vec<String>> {
+    let members = members.unwrap_or_default();
+    resources.checkpoint()?;
+    let mut owned = Vec::new();
+    owned
+        .try_reserve_exact(members.len())
+        .map_err(|_| projection_allocation_failed())?;
+    for (index, member) in members.iter().copied().enumerate() {
+        checkpoint_projection(execution, index)?;
+        owned.push(materialize_state_text(member, resources)?);
+    }
+    Ok(owned)
+}
+
+fn materialize_state_text(value: &str, resources: &ResourceContext) -> Result<String> {
+    resources.checkpoint()?;
+    let mut owned = String::new();
+    owned
+        .try_reserve_exact(value.len())
+        .map_err(|_| projection_allocation_failed())?;
+    let mut start = 0usize;
+    while start < value.len() {
+        resources.checkpoint()?;
+        let mut end = start
+            .saturating_add(STATE_TEXT_COPY_CHUNK_BYTES)
+            .min(value.len());
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        owned.push_str(&value[start..end]);
+        start = end;
+    }
+    Ok(owned)
+}
+
+fn materialize_note_side_constraint(
+    constraint: Option<&StateNoteSideConstraint<'_>>,
+    resources: &ResourceContext,
+) -> Result<Option<GraphNodeSideConstraint>> {
+    constraint
+        .map(|constraint| {
+            materialize_state_text(constraint.anchor_id, resources)
+                .map(|anchor_id| GraphNodeSideConstraint::new(anchor_id, constraint.side))
+        })
+        .transpose()
+}
+
+fn note_node_parent_by_id<'a>(
+    model: &'a StateDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<StateNoteParentIndex<'a>> {
     let mut parents = HashMap::new();
     parents
         .try_reserve(model.nodes.len())
@@ -383,16 +712,16 @@ fn note_node_parent_by_id(
         let Some(parent_id) = node.parent_id.as_ref() else {
             continue;
         };
-        parents.insert(node.id.clone(), parent_id.clone());
+        parents.insert(node.id.as_str(), parent_id.as_str());
     }
     Ok(parents)
 }
 
-fn note_side_constraints(
-    model: &StateDiagramRenderModel,
-    note_node_parent_by_id: &HashMap<String, String>,
+fn note_side_constraints<'a>(
+    model: &'a StateDiagramRenderModel,
+    note_node_parent_by_id: &StateNoteParentIndex<'a>,
     execution: AsciiExecution<'_>,
-) -> Result<HashMap<String, GraphNodeSideConstraint>> {
+) -> Result<StateNoteSideConstraints<'a>> {
     let mut note_group_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
     note_group_by_id
         .try_reserve(model.nodes.len())
@@ -430,8 +759,8 @@ fn note_side_constraints(
         };
         if constraints
             .insert(
-                note_group.id.clone(),
-                GraphNodeSideConstraint::new(anchor_id, side),
+                note_group.id.as_str(),
+                StateNoteSideConstraint { anchor_id, side },
             )
             .is_some()
         {
@@ -447,7 +776,7 @@ fn note_side_constraints(
 fn canonical_note_edge_endpoints<'a>(
     from: &'a str,
     to: &'a str,
-    constraints: &HashMap<String, GraphNodeSideConstraint>,
+    constraints: &StateNoteSideConstraints<'a>,
     direction: GraphDirection,
 ) -> Result<(&'a str, &'a str)> {
     let (note_id, anchor_id, constraint) = match (constraints.get(from), constraints.get(to)) {
@@ -455,13 +784,13 @@ fn canonical_note_edge_endpoints<'a>(
         (None, Some(constraint)) => (to, from, constraint),
         _ => return Err(unsupported("state note edge ownership")),
     };
-    if constraint.anchor_id() != anchor_id {
+    if constraint.anchor_id != anchor_id {
         return Err(unsupported("state note edge ownership"));
     }
     let side = if direction == GraphDirection::RightLeft {
-        constraint.side().reversed()
+        constraint.side.reversed()
     } else {
-        constraint.side()
+        constraint.side
     };
     Ok(match side {
         GraphNodeSide::Left => (note_id, anchor_id),
@@ -471,7 +800,7 @@ fn canonical_note_edge_endpoints<'a>(
 
 fn sorted_group_nodes<'a>(
     model: &'a StateDiagramRenderModel,
-    group_members: &HashMap<String, Vec<String>>,
+    group_members: &StateGroupMembers<'a>,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<&'a StateDiagramRenderNode>> {
@@ -555,12 +884,12 @@ fn node_depth(
     }
 }
 
-fn state_direction_projection(
-    model: &StateDiagramRenderModel,
+fn state_direction_projection<'a>(
+    model: &'a StateDiagramRenderModel,
     root_direction: GraphDirection,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<StateDirectionProjection> {
+) -> Result<StateDirectionProjection<'a>> {
     let mut node_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
     node_by_id
         .try_reserve(model.nodes.len())
@@ -587,7 +916,7 @@ fn state_direction_projection(
             resources,
             execution,
         )?;
-        node_directions.insert(node.id.clone(), inherited.unwrap_or(root_direction));
+        node_directions.insert(node.id.as_str(), inherited.unwrap_or(root_direction));
 
         let group_direction = if node.explicit_dir == Some(true) {
             Some(parse_state_direction(node.dir.as_deref().ok_or_else(
@@ -597,7 +926,7 @@ fn state_direction_projection(
             inherited
         };
         if let Some(group_direction) = group_direction {
-            group_directions.insert(node.id.clone(), group_direction);
+            group_directions.insert(node.id.as_str(), group_direction);
         }
     }
     Ok(StateDirectionProjection {
@@ -646,14 +975,14 @@ fn checkpoint_projection_before_charge(execution: AsciiExecution<'_>) -> Result<
 
 fn is_group_container(
     node: &StateDiagramRenderNode,
-    group_members: &HashMap<String, Vec<String>>,
+    group_members: &StateGroupMembers<'_>,
 ) -> bool {
     if is_state_note_group(node) {
         return false;
     }
     node.is_group
         && group_members
-            .get(&node.id)
+            .get(node.id.as_str())
             .is_some_and(|members| !members.is_empty())
 }
 
@@ -701,14 +1030,6 @@ fn state_group_kind(node: &StateDiagramRenderNode) -> GraphGroupKind {
     }
 }
 
-fn state_group_title(node: &StateDiagramRenderNode) -> String {
-    if is_state_divider_group(node) {
-        String::new()
-    } else {
-        state_node_label(node)
-    }
-}
-
 fn is_state_note_group(node: &StateDiagramRenderNode) -> bool {
     node.shape == "noteGroup"
 }
@@ -721,75 +1042,8 @@ fn is_state_divider_group(node: &StateDiagramRenderNode) -> bool {
     node.shape == "divider"
 }
 
-fn state_node_label(node: &StateDiagramRenderNode) -> String {
-    if is_state_pseudo_shape(node.shape.as_str()) {
-        return String::new();
-    }
-
-    let mut lines = Vec::new();
-    if let Some(label) = node.label.as_ref() {
-        if let Some(label) = label.as_str() {
-            push_nonempty_label_line(&mut lines, label);
-        } else if let Some(items) = label.as_array() {
-            for item in items {
-                if let Some(line) = item.as_str() {
-                    push_nonempty_label_line(&mut lines, line);
-                }
-            }
-        }
-    }
-    if let Some(description) = node.description.as_ref() {
-        for line in description {
-            push_nonempty_label_line(&mut lines, line);
-        }
-    }
-
-    if lines.is_empty() {
-        node.id.clone()
-    } else {
-        lines.join("\n")
-    }
-}
-
-fn state_node_text(
-    node: &StateDiagramRenderNode,
-) -> Result<(String, Option<GraphNodeCompartments>)> {
-    if node.shape != "rectWithTitle" {
-        return Ok((state_node_label(node), None));
-    }
-
-    let title = state_node_title(node);
-    let mut body_lines = Vec::new();
-    if let Some(description) = node.description.as_ref() {
-        for line in description {
-            push_nonempty_label_line(&mut body_lines, line);
-        }
-    }
-    if body_lines.is_empty() {
-        return Err(unsupported("state title/body compartments without body"));
-    }
-    let body = body_lines.join("\n");
-    Ok((String::new(), Some(GraphNodeCompartments::new(title, body))))
-}
-
-fn state_node_title(node: &StateDiagramRenderNode) -> String {
-    let mut lines = Vec::new();
-    if let Some(label) = node.label.as_ref() {
-        if let Some(label) = label.as_str() {
-            push_nonempty_label_line(&mut lines, label);
-        } else if let Some(items) = label.as_array() {
-            for item in items {
-                if let Some(line) = item.as_str() {
-                    push_nonempty_label_line(&mut lines, line);
-                }
-            }
-        }
-    }
-    if lines.is_empty() {
-        node.id.clone()
-    } else {
-        lines.join("\n")
-    }
+fn state_group_title_is_empty(node: &StateDiagramRenderNode) -> bool {
+    is_state_divider_group(node) || is_state_pseudo_shape(node.shape.as_str())
 }
 
 fn is_state_pseudo_shape(shape: &str) -> bool {
@@ -797,16 +1051,6 @@ fn is_state_pseudo_shape(shape: &str) -> bool {
         shape,
         "stateStart" | "stateEnd" | "fork" | "join" | "choice"
     )
-}
-
-fn push_nonempty_label_line(lines: &mut Vec<String>, line: &str) {
-    if let Some(line) = normalize_optional_text(Some(line)) {
-        lines.push(line);
-    }
-}
-
-fn edge_label(label: &str) -> Option<String> {
-    normalize_optional_text(Some(label))
 }
 
 fn edge_marker(edge: &StateDiagramRenderEdge) -> GraphEdgeMarker {
@@ -825,11 +1069,11 @@ fn is_note_edge(edge: &StateDiagramRenderEdge) -> bool {
 
 fn remap_note_endpoint<'a>(
     endpoint: &'a str,
-    note_node_parent_by_id: &'a HashMap<String, String>,
+    note_node_parent_by_id: &StateNoteParentIndex<'a>,
 ) -> &'a str {
     note_node_parent_by_id
         .get(endpoint)
-        .map(String::as_str)
+        .copied()
         .unwrap_or(endpoint)
 }
 
@@ -865,6 +1109,7 @@ mod tests {
 
         let error = from_state_model_with_context_and_execution(
             &model,
+            TerminalWidthProfile::Unicode,
             &mut resources,
             AsciiExecution::new(&control, &policy),
         )
@@ -887,6 +1132,42 @@ mod tests {
             ..StateDiagramRenderModel::default()
         };
         assert_projection_accepts_exact_work(&model);
+    }
+
+    #[test]
+    fn state_projection_admits_fallback_text_before_owned_source_materialization() {
+        let mut group = state_node("pseudo-group");
+        group.shape = "choice".to_string();
+        group.is_group = true;
+        let mut node = state_node("AB");
+        node.parent_id = Some(group.id.clone());
+        let model = StateDiagramRenderModel {
+            direction: "TB".to_string(),
+            nodes: vec![group, node],
+            ..StateDiagramRenderModel::default()
+        };
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 1)
+            .expect("one document cell should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+
+        let error = from_state_model_with_context_and_execution(
+            &model,
+            TerminalWidthProfile::Unicode,
+            &mut resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .expect_err("the aggregate node-label bound must reject before source ownership");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxDocumentCells
+                    && details.actual == 2
+                    && details.max == 1
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
     }
 
     #[test]
@@ -1078,6 +1359,7 @@ mod tests {
         let mut measured = ResourceContext::new(unbounded);
         from_state_model_with_context_and_execution(
             model,
+            TerminalWidthProfile::Unicode,
             &mut measured,
             AsciiExecution::for_test(&unbounded),
         )

@@ -310,6 +310,7 @@ fn render_state_model(
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
     let graph = state::from_state_model_with_context_and_execution(
         model,
+        options.terminal_width_profile,
         &mut semantic_resources,
         *execution,
     )?;

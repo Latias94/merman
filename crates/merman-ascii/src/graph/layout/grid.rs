@@ -1,4 +1,4 @@
-use super::super::label::{GraphLabel, GraphNodeLabelPlan};
+use super::super::label::{GraphLabel, GraphNodeLabelPlan, GraphNodeLabelPlanHandle};
 use super::super::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphNodeSide,
 };
@@ -22,6 +22,7 @@ const MINIMUM_NODE_GRID_HEIGHT: usize = 3;
 const MINIMUM_NODE_GRID_CELLS: usize = MINIMUM_NODE_GRID_WIDTH * MINIMUM_NODE_GRID_HEIGHT;
 const AXIS_ENTRIES_PER_NODE: usize = 4;
 const MINIMUM_GROUP_RANK_GAP: usize = 1;
+const NODE_LABEL_PLAN_CHECKPOINT_INTERVAL: usize = 64;
 
 pub(super) type AxisSizes = HashMap<usize, usize>;
 type NodeIndexById<'a> = HashMap<&'a str, usize>;
@@ -117,7 +118,7 @@ pub(super) fn layout_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     topology: Option<&GraphGroupTopology<'_>>,
-    label_plans: &[GraphNodeLabelPlan],
+    label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
@@ -137,38 +138,28 @@ pub(super) fn layout_nodes(
     }
 }
 
-pub(super) fn plan_node_labels(
-    graph: &AsciiGraph,
+pub(super) fn plan_node_labels<'a>(
+    graph: &'a AsciiGraph,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
-) -> Result<Vec<GraphNodeLabelPlan>> {
-    plan_node_labels_impl(graph, width_profile, resources, || {})
+) -> Result<Vec<GraphNodeLabelPlanHandle<'a>>> {
+    resources
+        .transaction(|resources| plan_node_labels_transactional(graph, width_profile, resources))
 }
 
-fn plan_node_labels_impl(
-    graph: &AsciiGraph,
+fn plan_node_labels_transactional<'a>(
+    graph: &'a AsciiGraph,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
-    before_plan_reserve: impl FnOnce(),
-) -> Result<Vec<GraphNodeLabelPlan>> {
-    resources.transaction(|resources| {
-        plan_node_labels_transactional(graph, width_profile, resources, before_plan_reserve)
-    })
-}
-
-fn plan_node_labels_transactional(
-    graph: &AsciiGraph,
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-    before_plan_reserve: impl FnOnce(),
-) -> Result<Vec<GraphNodeLabelPlan>> {
+) -> Result<Vec<GraphNodeLabelPlanHandle<'a>>> {
     // Measure the full batch without retaining the outer container so aggregate document/output
     // admission precedes O(N) plan storage. The scratch replay rebuilds the deterministic plans,
     // while its work is charged to the shared render ledger before allocation.
     let base_work = resources.layout_work_used();
     let mut document_cells = 0usize;
     let mut materialized_bytes = 0usize;
-    for node in &graph.nodes {
+    for (index, node) in graph.nodes.iter().enumerate() {
+        checkpoint_node_label_plan(resources, index)?;
         let plan = GraphNodeLabelPlan::try_for_node(
             node,
             graph.node_label_wrap_width(),
@@ -197,11 +188,11 @@ fn plan_node_labels_transactional(
     // render-wide ledger. Charge that replay before reserving the owned plan vector.
     resources.charge_layout_work(planning_work)?;
 
-    before_plan_reserve();
     let mut plans = Vec::new();
     try_reserve_vec(&mut plans, graph.nodes.len())?;
     let replay_resources = resources.detached();
-    for node in &graph.nodes {
+    for (index, node) in graph.nodes.iter().enumerate() {
+        checkpoint_node_label_plan(&replay_resources, index)?;
         plans.push(GraphNodeLabelPlan::try_for_node(
             node,
             graph.node_label_wrap_width(),
@@ -216,11 +207,18 @@ fn plan_node_labels_transactional(
     Ok(plans)
 }
 
+fn checkpoint_node_label_plan(resources: &ResourceContext, iteration: usize) -> Result<()> {
+    if iteration.is_multiple_of(NODE_LABEL_PLAN_CHECKPOINT_INTERVAL) {
+        resources.checkpoint()?;
+    }
+    Ok(())
+}
+
 fn layout_left_right_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     topology: Option<&GraphGroupTopology<'_>>,
-    label_plans: &[GraphNodeLabelPlan],
+    label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
@@ -546,7 +544,7 @@ fn layout_top_down_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     topology: Option<&GraphGroupTopology<'_>>,
-    label_plans: &[GraphNodeLabelPlan],
+    label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
@@ -926,7 +924,7 @@ fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: &mut usize) -
 pub(super) fn materialize_node_labels(
     layouts: &mut [NodeLayout],
     graph: &AsciiGraph,
-    label_plans: &[GraphNodeLabelPlan],
+    label_plans: &[GraphNodeLabelPlanHandle<'_>],
     resources: &ResourceContext,
 ) -> Result<()> {
     if layouts.len() != graph.nodes.len() || label_plans.len() != graph.nodes.len() {
@@ -1037,22 +1035,15 @@ mod tests {
     }
 
     #[test]
-    fn node_label_batch_admits_aggregate_limits_before_reserving_plan_storage() {
+    fn node_label_batch_admits_aggregate_limits_atomically() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         graph.add_node("alpha", "Alpha");
         graph.add_node("bravo", "Bravo");
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
 
         let measured_resources = ResourceContext::new(unbounded);
-        let reserve_started = std::cell::Cell::new(false);
-        let plans = plan_node_labels_impl(
-            &graph,
-            TerminalWidthProfile::Unicode,
-            &measured_resources,
-            || reserve_started.set(true),
-        )
-        .expect("unbounded node-label planning should succeed");
-        assert!(reserve_started.get());
+        let plans = plan_node_labels(&graph, TerminalWidthProfile::Unicode, &measured_resources)
+            .expect("unbounded node-label planning should succeed");
         assert_eq!(plans.len(), 2);
         let exact_work = measured_resources.layout_work_used();
         let exact_document_cells = 10;
@@ -1061,14 +1052,14 @@ mod tests {
         assert_eq!(
             plans
                 .iter()
-                .map(GraphNodeLabelPlan::document_cells)
+                .map(|plan| plan.document_cells())
                 .sum::<usize>(),
             exact_document_cells
         );
         assert_eq!(
             plans
                 .iter()
-                .map(GraphNodeLabelPlan::materialized_bytes)
+                .map(|plan| plan.materialized_bytes())
                 .sum::<usize>(),
             exact_output_bytes
         );
@@ -1081,15 +1072,8 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes)
             .expect("exact node-label output limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
-        let exact_reserve_started = std::cell::Cell::new(false);
-        plan_node_labels_impl(
-            &graph,
-            TerminalWidthProfile::Unicode,
-            &exact_resources,
-            || exact_reserve_started.set(true),
-        )
-        .expect("exact node-label limits should permit planning");
-        assert!(exact_reserve_started.get());
+        plan_node_labels(&graph, TerminalWidthProfile::Unicode, &exact_resources)
+            .expect("exact node-label limits should permit planning");
         assert_eq!(exact_resources.layout_work_used(), exact_work);
 
         for (limit, actual) in [
@@ -1101,28 +1085,21 @@ mod tests {
                 .with_limit(limit, actual - 1)
                 .expect("max-minus-one node-label limit should be valid");
             let below_resources = ResourceContext::new(below_policy);
-            let below_reserve_started = std::cell::Cell::new(false);
-            let error = plan_node_labels_impl(
-                &graph,
-                TerminalWidthProfile::Unicode,
-                &below_resources,
-                || below_reserve_started.set(true),
-            )
-            .expect_err("max-minus-one node-label limit should reject before allocation");
+            let error = plan_node_labels(&graph, TerminalWidthProfile::Unicode, &below_resources)
+                .expect_err("max-minus-one node-label limit should reject atomically");
             let AsciiError::ResourceLimitExceeded(details) = error else {
                 panic!("expected a node-label resource error, got {error:?}");
             };
             assert_eq!(details.limit, limit);
             assert_eq!(details.actual, actual);
             assert_eq!(details.max, actual - 1);
-            assert!(!below_reserve_started.get());
             assert_eq!(below_resources.layout_work_used(), 0, "limit={limit:?}");
             assert_eq!(below_resources.document_cells_used(), 0, "limit={limit:?}");
         }
     }
 
     #[test]
-    fn node_label_replay_observes_cancellation_and_restores_shared_ledger() {
+    fn node_label_planning_observes_cancellation_and_restores_shared_ledger() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         graph.add_node("alpha", "Alpha");
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
@@ -1132,12 +1109,10 @@ mod tests {
             .expect("the shared ledger should accept its initial usage");
         let control = OperationControl::new();
         let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+        control.cancel();
 
-        let error =
-            plan_node_labels_impl(&graph, TerminalWidthProfile::Unicode, &controlled, || {
-                control.cancel()
-            })
-            .expect_err("the deterministic label replay must observe cancellation");
+        let error = plan_node_labels(&graph, TerminalWidthProfile::Unicode, &controlled)
+            .expect_err("node-label planning must observe cancellation");
 
         assert!(matches!(
             error,

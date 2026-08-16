@@ -1,3 +1,4 @@
+use super::label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
 use super::model::{
     AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphEdgeStroke,
     GraphNodeSemantics,
@@ -19,6 +20,8 @@ use merman_core::diagrams::flowchart::{
 };
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
+
+const FLOW_PROJECTION_COPY_CHUNK_BYTES: usize = 8 * 1024;
 
 #[cfg(test)]
 pub(crate) fn from_flowchart_model(
@@ -75,6 +78,7 @@ fn from_flowchart_model_transactional(
         model,
         &memberships,
         direction,
+        Some(wrap_width.get()),
         options.terminal_width_profile,
         resources,
         execution,
@@ -102,11 +106,11 @@ fn from_flowchart_model_transactional(
         let Some(node_plan) = node_plan else {
             continue;
         };
-        let id = try_clone_projection_string(&node.id)?;
-        let label = try_clone_projection_string(node_plan.label)?;
-        graph.add_node_with_semantics(
+        let id = try_clone_projection_string(&node.id, resources)?;
+        let text = node_plan.text.materialize_after_admission(resources)?;
+        graph.add_node_with_prepared_text(
             id,
-            label,
+            text,
             node_plan.shape.shape,
             resolve_node_style(model, node),
             GraphNodeSemantics::default(),
@@ -115,13 +119,13 @@ fn from_flowchart_model_transactional(
 
     for (index, (edge, label_plan)) in model.edges.iter().zip(edge_labels).enumerate() {
         checkpoint_projection(execution, index)?;
-        let from = try_clone_projection_string(&edge.from)?;
-        let to = try_clone_projection_string(&edge.to)?;
+        let from = try_clone_projection_string(&edge.from, resources)?;
+        let to = try_clone_projection_string(&edge.to, resources)?;
         graph.add_edge_with_attrs(
             from,
             to,
             GraphEdgeAttrs {
-                id: Some(try_clone_projection_string(&edge.id)?),
+                id: Some(try_clone_projection_string(&edge.id, resources)?),
                 is_user_defined_id: edge.is_user_defined_id,
                 label: label_plan
                     .map(|plan| {
@@ -153,10 +157,10 @@ fn from_flowchart_model_transactional(
             .map_err(|_| projection_allocation_failed())?;
         for (member_index, member) in canonical_members.iter().enumerate() {
             checkpoint_projection(execution, member_index)?;
-            members.push(try_clone_projection_string(member)?);
+            members.push(try_clone_projection_string(member, resources)?);
         }
         graph.add_group_with_style(
-            try_clone_projection_string(&subgraph.id)?,
+            try_clone_projection_string(&subgraph.id, resources)?,
             group_plan
                 .title
                 .materialize_after_admission_with_checkpoint(|iteration| {
@@ -498,9 +502,9 @@ struct FlowchartProjectionPlan<'a> {
     groups: Vec<FlowchartGroupProjectionPlan<'a>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 struct FlowchartNodeProjectionPlan<'a> {
-    label: &'a str,
+    text: DeferredGraphNodeLabelPlan<'a>,
     shape: ResolvedGraphNodeShape,
 }
 
@@ -514,7 +518,8 @@ struct FlowchartGroupProjectionPlan<'a> {
 #[derive(Debug, Default)]
 struct ProjectionMaterializationAdmission {
     work_units: usize,
-    document_cells: usize,
+    retained_document_cells: usize,
+    planned_document_cells: usize,
     output_bytes: usize,
 }
 
@@ -532,10 +537,10 @@ impl ProjectionMaterializationAdmission {
         self.work_units =
             resources.checked_work_add(self.work_units, plan.materialization_work_units())?;
         let metrics = plan.metrics();
-        self.document_cells = checked_projection_metric_add(
+        self.retained_document_cells = checked_projection_metric_add(
             resources,
             AsciiResourceLimitId::MaxDocumentCells,
-            self.document_cells,
+            self.retained_document_cells,
             metrics.document_cells,
         )?;
         self.output_bytes = checked_projection_metric_add(
@@ -547,10 +552,38 @@ impl ProjectionMaterializationAdmission {
         Ok(())
     }
 
+    fn include_node_label(
+        &mut self,
+        plan: &DeferredGraphNodeLabelPlan<'_>,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.work_units = resources
+            .checked_work_add(self.work_units, plan.source_materialization_work_units())?;
+        self.planned_document_cells = checked_projection_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.planned_document_cells,
+            plan.document_cells(),
+        )?;
+        self.output_bytes = checked_projection_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.output_bytes,
+            plan.materialized_bytes(),
+        )?;
+        Ok(())
+    }
+
     fn admit(self, resources: &ResourceContext) -> Result<()> {
-        resources.check_usage(self.work_units, self.document_cells)?;
+        let admitted_document_cells = checked_projection_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.retained_document_cells,
+            self.planned_document_cells,
+        )?;
+        resources.check_usage(self.work_units, admitted_document_cells)?;
         resources.check(AsciiResourceLimitId::MaxOutputBytes, self.output_bytes)?;
-        resources.charge_usage(self.work_units, self.document_cells)
+        resources.charge_usage(self.work_units, self.retained_document_cells)
     }
 }
 
@@ -559,6 +592,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
         model: &'a FlowchartModel,
         memberships: &FlowchartMembershipIndex<'_>,
         direction: GraphDirection,
+        wrap_width: Option<usize>,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
@@ -582,17 +616,22 @@ impl<'a> FlowchartProjectionPlan<'a> {
             }
             let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
             let projected_label = shape.projected_label(node.label.as_deref().unwrap_or(&node.id));
-            // Validate terminal text before allocating the projection, but retain the authored
-            // text so the graph label planner remains the sole owner of normalization and
-            // wrapping. Materializing the visible escape here would erase its atomic segment
-            // boundary and allow a later wrap pass to split `\u{HEX}` across rows.
-            let _label = try_plan_normalized_text(projected_label, width_profile, resources)?;
+            let text = DeferredGraphNodeLabelPlan::single(
+                DeferredGraphLabelSectionPlan::try_single(
+                    projected_label,
+                    wrap_width,
+                    "flowchart",
+                    width_profile,
+                    resources,
+                )?,
+                wrap_width,
+                "flowchart",
+                width_profile,
+                resources,
+            )?;
             admission.include_copy(&node.id, resources)?;
-            admission.include_copy(projected_label, resources)?;
-            nodes.push(Some(FlowchartNodeProjectionPlan {
-                label: projected_label,
-                shape,
-            }));
+            admission.include_node_label(&text, resources)?;
+            nodes.push(Some(FlowchartNodeProjectionPlan { text, shape }));
         }
 
         let mut edge_labels = Vec::new();
@@ -663,12 +702,24 @@ fn checked_projection_metric_add(
         .ok_or_else(|| resources.policy().overflow(limit))
 }
 
-fn try_clone_projection_string(value: &str) -> Result<String> {
+fn try_clone_projection_string(value: &str, resources: &ResourceContext) -> Result<String> {
+    resources.checkpoint()?;
     let mut output = String::new();
     output
         .try_reserve_exact(value.len())
         .map_err(|_| projection_allocation_failed())?;
-    output.push_str(value);
+    let mut start = 0usize;
+    while start < value.len() {
+        resources.checkpoint()?;
+        let mut end = start
+            .saturating_add(FLOW_PROJECTION_COPY_CHUNK_BYTES)
+            .min(value.len());
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        output.push_str(&value[start..end]);
+        start = end;
+    }
     Ok(output)
 }
 
@@ -861,7 +912,7 @@ mod tests {
         const PRIOR_WORK: usize = 11;
         const PRIOR_DOCUMENT_CELLS: usize = 2;
         const EXPECTED_DOCUMENT_CELLS: usize = 16;
-        const EXPECTED_OUTPUT_BYTES: usize = 16;
+        const RETAINED_OUTPUT_BYTES: usize = 16;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut edge = flow_edge("A", "B");
         edge.label = Some("  边\u{7}  ".to_string());
@@ -880,8 +931,8 @@ mod tests {
         });
 
         let assert_visible_text = |graph: &AsciiGraph| {
-            assert_eq!(graph.nodes[0].label, "节点\u{1b}");
-            assert_eq!(graph.nodes[1].label, "🧭");
+            assert_eq!(graph.nodes[0].label(), "节点\u{1b}");
+            assert_eq!(graph.nodes[1].label(), "🧭");
             assert_eq!(graph.edges[0].label.as_deref(), Some("边\\u{7}"));
             assert_eq!(graph.groups[0].title, "组\\u{7}");
         };
@@ -901,6 +952,26 @@ mod tests {
         .expect("unbounded projection measurement should succeed");
         assert_visible_text(&measured);
         let expected_layout_work = measuring_resources.layout_work_used();
+        let planned_node_document_cells = measured
+            .nodes
+            .iter()
+            .map(|node| {
+                node.prepared_label_plan()
+                    .expect("flowchart nodes should retain their borrowed label plans")
+                    .document_cells()
+            })
+            .sum::<usize>();
+        let planned_node_output_bytes = measured
+            .nodes
+            .iter()
+            .map(|node| {
+                node.prepared_label_plan()
+                    .expect("flowchart nodes should retain their borrowed label plans")
+                    .materialized_bytes()
+            })
+            .sum::<usize>();
+        let expected_document_admission = EXPECTED_DOCUMENT_CELLS + planned_node_document_cells;
+        let expected_output_admission = RETAINED_OUTPUT_BYTES + planned_node_output_bytes;
         assert_eq!(
             measuring_resources.document_cells_used(),
             EXPECTED_DOCUMENT_CELLS
@@ -914,12 +985,12 @@ mod tests {
             ),
             (
                 AsciiResourceLimitId::MaxDocumentCells,
-                EXPECTED_DOCUMENT_CELLS,
+                expected_document_admission,
                 "document cells",
             ),
             (
                 AsciiResourceLimitId::MaxOutputBytes,
-                EXPECTED_OUTPUT_BYTES,
+                expected_output_admission,
                 "output bytes",
             ),
         ];

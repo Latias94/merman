@@ -174,13 +174,13 @@ fn build_group_override_graph_impl(
             member,
             resources,
         )?;
-        override_graph.nodes.push(AsciiGraphNode {
-            id: member.id.clone(),
-            label: member.id.clone(),
-            shape: GraphNodeShape::Rect,
-            style: GraphNodeStyle::default(),
+        override_graph.nodes.push(AsciiGraphNode::new(
+            member.id.clone(),
+            member.id.clone(),
+            GraphNodeShape::Rect,
+            GraphNodeStyle::default(),
             semantics,
-        });
+        ));
     }
 
     resources.charge_layout_work(graph.edges.len())?;

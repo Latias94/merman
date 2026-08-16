@@ -290,7 +290,6 @@ mod tests {
             GraphNodeStyle::default(),
             GraphNodeSemantics {
                 side_constraint: Some(GraphNodeSideConstraint::new("anchor", GraphNodeSide::Right)),
-                ..GraphNodeSemantics::default()
             },
         );
         graph.add_group_with_style(

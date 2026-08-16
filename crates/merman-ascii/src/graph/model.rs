@@ -1,3 +1,4 @@
+use super::label::{GraphNodeLabelPlan, PreparedGraphNodeText};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::resource::AsciiResourceLimitPhase;
@@ -59,15 +60,114 @@ pub(crate) struct AsciiGraph {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AsciiGraphNode {
     pub(super) id: String,
-    pub(super) label: String,
+    text: GraphNodeText,
     pub(super) shape: GraphNodeShape,
     pub(super) style: GraphNodeStyle,
     pub(super) semantics: GraphNodeSemantics,
 }
 
+#[derive(Debug, Clone)]
+enum GraphNodeText {
+    Unprepared {
+        label: String,
+        compartments: Option<GraphNodeCompartments>,
+    },
+    Prepared(PreparedGraphNodeText),
+}
+
+impl PartialEq for GraphNodeText {
+    fn eq(&self, other: &Self) -> bool {
+        self.label() == other.label() && self.compartments() == other.compartments()
+    }
+}
+
+impl Eq for GraphNodeText {}
+
+impl GraphNodeText {
+    fn label(&self) -> &str {
+        match self {
+            Self::Unprepared { label, .. } => label,
+            Self::Prepared(text) => text.label(),
+        }
+    }
+
+    fn compartments(&self) -> Option<&GraphNodeCompartments> {
+        match self {
+            Self::Unprepared { compartments, .. } => compartments.as_ref(),
+            Self::Prepared(text) => text.compartments(),
+        }
+    }
+
+    fn prepared_label_plan(&self) -> Option<&GraphNodeLabelPlan> {
+        match self {
+            Self::Unprepared { .. } => None,
+            Self::Prepared(text) => Some(text.plan()),
+        }
+    }
+}
+
+impl AsciiGraphNode {
+    pub(super) fn new(
+        id: String,
+        label: String,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) -> Self {
+        Self::new_with_compartments(id, label, None, shape, style, semantics)
+    }
+
+    pub(super) fn new_with_compartments(
+        id: String,
+        label: String,
+        compartments: Option<GraphNodeCompartments>,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) -> Self {
+        Self {
+            id,
+            text: GraphNodeText::Unprepared {
+                label,
+                compartments,
+            },
+            shape,
+            style,
+            semantics,
+        }
+    }
+
+    pub(super) fn new_with_prepared_text(
+        id: String,
+        text: PreparedGraphNodeText,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) -> Self {
+        Self {
+            id,
+            text: GraphNodeText::Prepared(text),
+            shape,
+            style,
+            semantics,
+        }
+    }
+
+    pub(super) fn label(&self) -> &str {
+        self.text.label()
+    }
+
+    pub(super) fn compartments(&self) -> Option<&GraphNodeCompartments> {
+        self.text.compartments()
+    }
+
+    pub(super) fn prepared_label_plan(&self) -> Option<&GraphNodeLabelPlan> {
+        self.text.prepared_label_plan()
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct GraphNodeSemantics {
-    pub(crate) compartments: Option<GraphNodeCompartments>,
     pub(crate) side_constraint: Option<GraphNodeSideConstraint>,
 }
 
@@ -357,6 +457,7 @@ impl AsciiGraph {
         self.add_node_with_semantics(id, label, shape, style, GraphNodeSemantics::default());
     }
 
+    #[cfg(test)]
     pub(crate) fn add_node_with_semantics(
         &mut self,
         id: impl Into<String>,
@@ -365,13 +466,30 @@ impl AsciiGraph {
         style: GraphNodeStyle,
         semantics: GraphNodeSemantics,
     ) {
-        self.nodes.push(AsciiGraphNode {
-            id: id.into(),
-            label: label.into(),
+        self.nodes.push(AsciiGraphNode::new(
+            id.into(),
+            label.into(),
             shape,
             style,
             semantics,
-        });
+        ));
+    }
+
+    pub(crate) fn add_node_with_prepared_text(
+        &mut self,
+        id: impl Into<String>,
+        text: PreparedGraphNodeText,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) {
+        self.nodes.push(AsciiGraphNode::new_with_prepared_text(
+            id.into(),
+            text,
+            shape,
+            style,
+            semantics,
+        ));
     }
 
     #[cfg(test)]

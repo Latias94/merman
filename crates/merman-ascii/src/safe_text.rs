@@ -23,8 +23,8 @@ pub(crate) use framing::{
     visit_quoted_terminal_text,
 };
 pub(crate) use label::{
-    LabelBreakPolicy, NormalizedLabelPlan, try_measure_normalized_label_lines,
-    try_plan_normalized_label_lines_with_policy,
+    LabelBreakPolicy, NormalizedLabelMetrics, NormalizedLabelPlan,
+    try_measure_normalized_label_lines, try_plan_normalized_label_lines_with_policy,
     try_plan_normalized_label_lines_with_policy_and_checkpoint,
 };
 #[cfg(test)]

@@ -14,10 +14,10 @@ pub(crate) use adapter::from_flowchart_model_with_execution;
 #[cfg(test)]
 pub(crate) use draw::render_graph_with_execution;
 pub(crate) use draw::render_graph_with_resources_and_execution;
+pub(crate) use label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,
-    GraphNodeCompartments, GraphNodeSemantics, GraphNodeShape, GraphNodeSide,
-    GraphNodeSideConstraint, GraphNodeStyle,
+    GraphNodeSemantics, GraphNodeShape, GraphNodeSide, GraphNodeSideConstraint, GraphNodeStyle,
 };
 
 #[cfg(test)]

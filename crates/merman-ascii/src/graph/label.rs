@@ -1,16 +1,19 @@
-use super::model::AsciiGraphNode;
+use super::model::{AsciiGraphNode, GraphNodeCompartments};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
-    LabelBreakPolicy, NormalizedLabelPlan, try_measure_normalized_label_lines,
-    try_plan_normalized_label_lines_with_policy,
+    LabelBreakPolicy, NormalizedLabelMetrics, NormalizedLabelPlan,
+    try_measure_normalized_label_lines, try_plan_normalized_label_lines_with_policy,
 };
 use crate::text::display_width_with_profile;
 #[cfg(test)]
 use crate::text::{split_label_lines, wrap_label_lines_with_profile};
+use std::ops::Deref;
 
 pub(super) const GRAPH_LABEL_LINE_GAP: usize = 1;
 const GENERIC_GRAPH_DIAGRAM_TYPE: &str = "graph";
+const GRAPH_LABEL_CHECKPOINT_INTERVAL: usize = 64;
+const GRAPH_LABEL_COPY_CHUNK_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GraphLabelMetrics {
@@ -18,23 +21,106 @@ pub(super) struct GraphLabelMetrics {
     pub(super) content_height: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct GraphNodeLabelPlan {
     kind: GraphNodeLabelPlanKind,
-    primary: NormalizedLabelPlan,
-    secondary: Option<NormalizedLabelPlan>,
+    primary: GraphLabelSectionPlan,
+    secondary: Option<GraphLabelSectionPlan>,
     title_line_count: usize,
     metrics: GraphLabelMetrics,
     document_cells: usize,
     materialized_bytes: usize,
     width_profile: TerminalWidthProfile,
     diagram_type: &'static str,
+    wrap_width: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GraphNodeLabelPlanKind {
     Single,
     Compartmented,
+}
+
+#[derive(Debug, Clone)]
+struct GraphLabelSectionPlan {
+    parts: GraphLabelSectionParts,
+    metrics: NormalizedLabelMetrics,
+}
+
+#[derive(Debug, Clone)]
+// Keeping the common single-part plan inline avoids an allocation during the aggregate
+// admission pass. Joined sections allocate only when a family has already admitted their
+// borrowed source batch.
+#[allow(clippy::large_enum_variant)]
+enum GraphLabelSectionParts {
+    Single(NormalizedLabelPlan),
+    Joined(Vec<GraphLabelPartPlan>),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GraphLabelPartPlan {
+    source_start: usize,
+    source_end: usize,
+    plan: NormalizedLabelPlan,
+}
+
+/// A borrowed node-label plan retained until the whole projection batch has passed admission.
+///
+/// Family adapters may assemble one logical label from multiple authored fields without cloning
+/// or joining those fields first. The owned source and replay metadata are created only after the
+/// caller admits the aggregate work, document-cell, and output-byte bounds.
+#[derive(Debug)]
+pub(crate) struct DeferredGraphNodeLabelPlan<'a> {
+    kind: GraphNodeLabelPlanKind,
+    primary: DeferredGraphLabelSectionPlan<'a>,
+    secondary: Option<DeferredGraphLabelSectionPlan<'a>>,
+    metrics: GraphLabelMetrics,
+    document_cells: usize,
+    materialized_bytes: usize,
+    source_materialization_work_units: usize,
+    width_profile: TerminalWidthProfile,
+    diagram_type: &'static str,
+    wrap_width: Option<usize>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DeferredGraphLabelSectionPlan<'a> {
+    parts: Vec<DeferredGraphLabelPartPlan<'a>>,
+    metrics: NormalizedLabelMetrics,
+    source_bytes: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DeferredGraphLabelPartPlan<'a> {
+    source: &'a str,
+    plan: NormalizedLabelPlan,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedGraphNodeText {
+    label: String,
+    compartments: Option<GraphNodeCompartments>,
+    plans: Vec<GraphNodeLabelPlan>,
+}
+
+#[derive(Debug)]
+// An owned plan is intentionally inline: the first aggregate planning pass must not allocate
+// plan storage before document/output admission. Prepared family nodes use the borrowed variant.
+#[allow(clippy::large_enum_variant)]
+pub(super) enum GraphNodeLabelPlanHandle<'a> {
+    Borrowed(&'a GraphNodeLabelPlan),
+    Owned(GraphNodeLabelPlan),
+}
+
+impl Deref for GraphNodeLabelPlanHandle<'_> {
+    type Target = GraphNodeLabelPlan;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Borrowed(plan) => plan,
+            Self::Owned(plan) => plan,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,14 +350,424 @@ impl GraphLabel {
     }
 }
 
-impl GraphNodeLabelPlan {
-    pub(super) fn try_for_node(
-        node: &AsciiGraphNode,
+impl GraphLabelSectionPlan {
+    fn single(plan: NormalizedLabelPlan) -> Self {
+        Self {
+            metrics: plan.metrics(),
+            parts: GraphLabelSectionParts::Single(plan),
+        }
+    }
+
+    fn replay_work_units(&self, resources: &ResourceContext) -> crate::Result<usize> {
+        match &self.parts {
+            GraphLabelSectionParts::Single(plan) => Ok(plan.materialization_work_units()),
+            GraphLabelSectionParts::Joined(parts) => {
+                let mut work = 0usize;
+                for (index, part) in parts.iter().enumerate() {
+                    checkpoint_label_loop(resources, index)?;
+                    work =
+                        resources.checked_work_add(work, part.plan.materialization_work_units())?;
+                }
+                Ok(work)
+            }
+        }
+    }
+
+    fn materialize_after_admission(
+        &self,
+        source: &str,
+        resources: &ResourceContext,
+    ) -> crate::Result<(Vec<String>, usize)> {
+        match &self.parts {
+            GraphLabelSectionParts::Single(plan) => plan
+                .materialize_after_admission_with_checkpoint(source, || resources.checkpoint())
+                .map(|lines| lines.into_parts()),
+            GraphLabelSectionParts::Joined(parts) => {
+                let mut lines = Vec::new();
+                lines
+                    .try_reserve_exact(self.metrics.line_count)
+                    .map_err(|_| label_allocation_failed())?;
+                let mut width = 0usize;
+                for part in parts.iter().copied() {
+                    resources.checkpoint()?;
+                    let raw = source
+                        .get(part.source_start..part.source_end)
+                        .ok_or_else(|| invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE))?;
+                    let (part_lines, part_width) = part
+                        .plan
+                        .materialize_after_admission_with_checkpoint(raw, || {
+                            resources.checkpoint()
+                        })?
+                        .into_parts();
+                    width = width.max(part_width);
+                    for (line_index, line) in part_lines.into_iter().enumerate() {
+                        checkpoint_label_loop(resources, line_index)?;
+                        lines.push(line);
+                    }
+                }
+                if lines.len() != self.metrics.line_count || width != self.metrics.max_width {
+                    return Err(invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE));
+                }
+                Ok((lines, width))
+            }
+        }
+    }
+}
+
+impl<'a> DeferredGraphLabelSectionPlan<'a> {
+    pub(crate) fn try_single(
+        raw: &'a str,
         wrap_width: Option<usize>,
         diagram_type: &'static str,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> crate::Result<Self> {
+        let plan = required_label_plan(raw, wrap_width, diagram_type, width_profile, resources)?;
+        let mut parts = Vec::new();
+        parts
+            .try_reserve_exact(1)
+            .map_err(|_| label_allocation_failed())?;
+        parts.push(DeferredGraphLabelPartPlan { source: raw, plan });
+        Self::from_parts(parts, resources)
+    }
+
+    pub(crate) fn try_joined(
+        fragments: impl IntoIterator<Item = &'a str>,
+        fallback: Option<&'a str>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Option<Self>> {
+        let mut parts = Vec::new();
+        for raw in fragments {
+            resources.checkpoint()?;
+            let Some(plan) = try_plan_normalized_label_lines_with_policy(
+                raw,
+                width_profile,
+                true,
+                None,
+                LabelBreakPolicy::MermaidLabelBreaks,
+                resources,
+            )?
+            else {
+                continue;
+            };
+            parts
+                .try_reserve(1)
+                .map_err(|_| label_allocation_failed())?;
+            parts.push(DeferredGraphLabelPartPlan { source: raw, plan });
+        }
+        if parts.is_empty() {
+            let Some(fallback) = fallback else {
+                return Ok(None);
+            };
+            return Self::try_single(fallback, None, diagram_type, width_profile, resources)
+                .map(Some);
+        }
+        Self::from_parts(parts, resources).map(Some)
+    }
+
+    fn from_parts(
+        parts: Vec<DeferredGraphLabelPartPlan<'a>>,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let mut metrics = empty_normalized_label_metrics();
+        let mut source_bytes = 0usize;
+        for (index, part) in parts.iter().enumerate() {
+            checkpoint_label_loop(resources, index)?;
+            let part_metrics = part.plan.metrics();
+            metrics.materialized_bytes = checked_label_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxOutputBytes,
+                metrics.materialized_bytes,
+                part_metrics.materialized_bytes,
+            )?;
+            metrics.document_cells = checked_label_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxDocumentCells,
+                metrics.document_cells,
+                part_metrics.document_cells,
+            )?;
+            metrics.line_count = checked_label_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxDocumentCells,
+                metrics.line_count,
+                part_metrics.line_count,
+            )?;
+            metrics.max_width = metrics.max_width.max(part_metrics.max_width);
+            if index != 0 {
+                source_bytes = resources.checked_work_add(source_bytes, 1)?;
+            }
+            source_bytes = resources.checked_work_add(source_bytes, part.source.len())?;
+        }
+        Ok(Self {
+            parts,
+            metrics,
+            source_bytes,
+        })
+    }
+
+    fn source_materialization_work_units(&self) -> usize {
+        self.source_bytes.max(1)
+    }
+
+    pub(crate) const fn document_cells(&self) -> usize {
+        self.metrics.document_cells
+    }
+
+    pub(crate) fn normalized_joined_bytes(
+        &self,
+        resources: &ResourceContext,
+    ) -> crate::Result<usize> {
+        self.metrics
+            .materialized_bytes
+            .checked_add(self.metrics.line_count.saturating_sub(1))
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
+    }
+
+    pub(crate) fn normalized_materialization_work_units(
+        &self,
+        resources: &ResourceContext,
+    ) -> crate::Result<usize> {
+        let mut replay_work = 0usize;
+        for (index, part) in self.parts.iter().enumerate() {
+            checkpoint_label_loop(resources, index)?;
+            replay_work =
+                resources.checked_work_add(replay_work, part.plan.materialization_work_units())?;
+        }
+        resources.checked_work_add(replay_work, self.normalized_joined_bytes(resources)?.max(1))
+    }
+
+    pub(crate) fn materialize_normalized_after_admission(
+        self,
+        resources: &ResourceContext,
+    ) -> crate::Result<String> {
+        let expected_bytes = self.normalized_joined_bytes(resources)?;
+        resources.checkpoint()?;
+        let mut output = String::new();
+        output
+            .try_reserve_exact(expected_bytes)
+            .map_err(|_| label_allocation_failed())?;
+        let mut first_line = true;
+        for part in self.parts {
+            resources.checkpoint()?;
+            let (lines, _) = part
+                .plan
+                .materialize_after_admission_with_checkpoint(part.source, || {
+                    resources.checkpoint()
+                })?
+                .into_parts();
+            for (line_index, line) in lines.into_iter().enumerate() {
+                checkpoint_label_loop(resources, line_index)?;
+                if !first_line {
+                    output.push('\n');
+                }
+                push_graph_label_source(&mut output, &line, resources)?;
+                first_line = false;
+            }
+        }
+        if output.len() != expected_bytes {
+            return Err(invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE));
+        }
+        Ok(output)
+    }
+
+    fn materialize_source(
+        self,
+        resources: &ResourceContext,
+    ) -> crate::Result<(String, GraphLabelSectionPlan)> {
+        resources.checkpoint()?;
+        let mut source = String::new();
+        source
+            .try_reserve_exact(self.source_bytes)
+            .map_err(|_| label_allocation_failed())?;
+        let mut owned_parts = Vec::new();
+        owned_parts
+            .try_reserve_exact(self.parts.len())
+            .map_err(|_| label_allocation_failed())?;
+        for (index, part) in self.parts.into_iter().enumerate() {
+            resources.checkpoint()?;
+            if index != 0 {
+                source.push('\n');
+            }
+            let source_start = source.len();
+            push_graph_label_source(&mut source, part.source, resources)?;
+            let source_end = source.len();
+            owned_parts.push(GraphLabelPartPlan {
+                source_start,
+                source_end,
+                plan: part.plan,
+            });
+        }
+        if source.len() != self.source_bytes {
+            return Err(invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE));
+        }
+        let parts = match owned_parts.as_slice() {
+            [part] if part.source_start == 0 && part.source_end == source.len() => {
+                GraphLabelSectionParts::Single(part.plan)
+            }
+            _ => GraphLabelSectionParts::Joined(owned_parts),
+        };
+        Ok((
+            source,
+            GraphLabelSectionPlan {
+                parts,
+                metrics: self.metrics,
+            },
+        ))
+    }
+}
+
+impl<'a> DeferredGraphNodeLabelPlan<'a> {
+    pub(crate) fn single(
+        primary: DeferredGraphLabelSectionPlan<'a>,
+        wrap_width: Option<usize>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let metrics = primary.metrics;
+        Ok(Self {
+            kind: GraphNodeLabelPlanKind::Single,
+            secondary: None,
+            metrics: graph_label_metrics(metrics.max_width, metrics.line_count, resources)?,
+            document_cells: metrics.document_cells,
+            materialized_bytes: metrics.materialized_bytes,
+            source_materialization_work_units: primary.source_materialization_work_units(),
+            primary,
+            width_profile,
+            diagram_type,
+            wrap_width,
+        })
+    }
+
+    pub(crate) fn compartmented(
+        primary: DeferredGraphLabelSectionPlan<'a>,
+        secondary: DeferredGraphLabelSectionPlan<'a>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let line_count = checked_label_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxDocumentCells,
+            primary.metrics.line_count,
+            secondary.metrics.line_count,
+        )?;
+        let document_cells = checked_label_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxDocumentCells,
+            primary.metrics.document_cells,
+            secondary.metrics.document_cells,
+        )?;
+        let materialized_bytes = checked_label_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxOutputBytes,
+            primary.metrics.materialized_bytes,
+            secondary.metrics.materialized_bytes,
+        )?;
+        let source_materialization_work_units = resources.checked_work_add(
+            primary.source_materialization_work_units(),
+            secondary.source_materialization_work_units(),
+        )?;
+        Ok(Self {
+            kind: GraphNodeLabelPlanKind::Compartmented,
+            metrics: graph_label_metrics(
+                primary.metrics.max_width.max(secondary.metrics.max_width),
+                line_count,
+                resources,
+            )?,
+            document_cells,
+            materialized_bytes,
+            source_materialization_work_units,
+            primary,
+            secondary: Some(secondary),
+            width_profile,
+            diagram_type,
+            wrap_width: None,
+        })
+    }
+
+    pub(crate) const fn document_cells(&self) -> usize {
+        self.document_cells
+    }
+
+    pub(crate) const fn materialized_bytes(&self) -> usize {
+        self.materialized_bytes
+    }
+
+    pub(crate) const fn source_materialization_work_units(&self) -> usize {
+        self.source_materialization_work_units
+    }
+
+    pub(crate) fn materialize_after_admission(
+        self,
+        resources: &ResourceContext,
+    ) -> crate::Result<PreparedGraphNodeText> {
+        let title_line_count = if self.kind == GraphNodeLabelPlanKind::Compartmented {
+            self.primary.metrics.line_count
+        } else {
+            0
+        };
+        let (primary_source, primary) = self.primary.materialize_source(resources)?;
+        let (label, compartments, secondary) = match self.secondary {
+            Some(secondary) => {
+                let (body, secondary) = secondary.materialize_source(resources)?;
+                (
+                    String::new(),
+                    Some(GraphNodeCompartments::new(primary_source, body)),
+                    Some(secondary),
+                )
+            }
+            None => (primary_source, None, None),
+        };
+        let mut plans = Vec::new();
+        plans
+            .try_reserve_exact(1)
+            .map_err(|_| label_allocation_failed())?;
+        plans.push(GraphNodeLabelPlan {
+            kind: self.kind,
+            primary,
+            secondary,
+            title_line_count,
+            metrics: self.metrics,
+            document_cells: self.document_cells,
+            materialized_bytes: self.materialized_bytes,
+            width_profile: self.width_profile,
+            diagram_type: self.diagram_type,
+            wrap_width: self.wrap_width,
+        });
+        Ok(PreparedGraphNodeText {
+            label,
+            compartments,
+            plans,
+        })
+    }
+}
+
+impl PreparedGraphNodeText {
+    pub(super) fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub(super) fn compartments(&self) -> Option<&GraphNodeCompartments> {
+        self.compartments.as_ref()
+    }
+
+    pub(super) fn plan(&self) -> &GraphNodeLabelPlan {
+        // `materialize_after_admission` is the sole constructor and always installs one plan.
+        &self.plans[0]
+    }
+}
+
+impl GraphNodeLabelPlan {
+    pub(super) fn try_for_node<'a>(
+        node: &'a AsciiGraphNode,
+        wrap_width: Option<usize>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphNodeLabelPlanHandle<'a>> {
         resources.transaction(|resources| {
             Self::try_for_node_transactional(
                 node,
@@ -283,13 +779,19 @@ impl GraphNodeLabelPlan {
         })
     }
 
-    fn try_for_node_transactional(
-        node: &AsciiGraphNode,
+    fn try_for_node_transactional<'a>(
+        node: &'a AsciiGraphNode,
         wrap_width: Option<usize>,
         diagram_type: &'static str,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
-    ) -> crate::Result<Self> {
+    ) -> crate::Result<GraphNodeLabelPlanHandle<'a>> {
+        if let Some(plan) = node.prepared_label_plan() {
+            if plan.matches_node(node, wrap_width, diagram_type, width_profile) {
+                return Ok(GraphNodeLabelPlanHandle::Borrowed(plan));
+            }
+            return Err(invalid_graph_label_plan(diagram_type));
+        }
         let (
             kind,
             primary,
@@ -299,7 +801,7 @@ impl GraphNodeLabelPlan {
             line_count,
             document_cells,
             materialized_bytes,
-        ) = match node.semantics.compartments.as_ref() {
+        ) = match node.compartments() {
             Some(compartments) => {
                 let title = required_label_plan(
                     &compartments.title,
@@ -331,8 +833,8 @@ impl GraphNodeLabelPlan {
                     .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
                 (
                     GraphNodeLabelPlanKind::Compartmented,
-                    title,
-                    Some(body),
+                    GraphLabelSectionPlan::single(title),
+                    Some(GraphLabelSectionPlan::single(body)),
                     title_metrics.line_count,
                     title_metrics.max_width.max(body_metrics.max_width),
                     line_count,
@@ -342,7 +844,7 @@ impl GraphNodeLabelPlan {
             }
             None => {
                 let plan = required_label_plan(
-                    &node.label,
+                    node.label(),
                     wrap_width,
                     diagram_type,
                     width_profile,
@@ -351,7 +853,7 @@ impl GraphNodeLabelPlan {
                 let metrics = plan.metrics();
                 (
                     GraphNodeLabelPlanKind::Single,
-                    plan,
+                    GraphLabelSectionPlan::single(plan),
                     None,
                     0,
                     metrics.max_width,
@@ -361,7 +863,7 @@ impl GraphNodeLabelPlan {
                 )
             }
         };
-        Ok(Self {
+        Ok(GraphNodeLabelPlanHandle::Owned(Self {
             kind,
             primary,
             secondary,
@@ -371,7 +873,8 @@ impl GraphNodeLabelPlan {
             materialized_bytes,
             width_profile,
             diagram_type,
-        })
+            wrap_width,
+        }))
     }
 
     pub(super) const fn metrics(&self) -> GraphLabelMetrics {
@@ -421,12 +924,12 @@ impl GraphNodeLabelPlan {
         resources: &ResourceContext,
         before_body_reserve: impl FnOnce(),
     ) -> crate::Result<GraphLabel> {
-        match (self.kind, node.semantics.compartments.as_ref()) {
+        self.admit_materialization(resources)?;
+        match (self.kind, node.compartments()) {
             (GraphNodeLabelPlanKind::Single, None) => {
                 let (lines, width) = self
                     .primary
-                    .materialize(&node.label, resources)?
-                    .into_parts();
+                    .materialize_after_admission(node.label(), resources)?;
                 Ok(GraphLabel {
                     lines,
                     width,
@@ -435,23 +938,22 @@ impl GraphNodeLabelPlan {
                 })
             }
             (GraphNodeLabelPlanKind::Compartmented, Some(compartments)) => {
-                let Some(body) = self.secondary else {
+                let Some(body) = self.secondary.as_ref() else {
                     return Err(invalid_graph_label_plan(self.diagram_type));
                 };
-                self.admit_compartment_materialization(body, resources)?;
                 let (mut lines, title_width) = self
                     .primary
-                    .materialize_after_admission(&compartments.title)?
-                    .into_parts();
-                let body_metrics = body.metrics();
+                    .materialize_after_admission(&compartments.title, resources)?;
                 before_body_reserve();
                 lines
-                    .try_reserve_exact(body_metrics.line_count)
+                    .try_reserve_exact(body.metrics.line_count)
                     .map_err(|_| label_allocation_failed())?;
-                let (mut body_lines, body_width) = body
-                    .materialize_after_admission(&compartments.body)?
-                    .into_parts();
-                lines.append(&mut body_lines);
+                let (body_lines, body_width) =
+                    body.materialize_after_admission(&compartments.body, resources)?;
+                for (line_index, line) in body_lines.into_iter().enumerate() {
+                    checkpoint_label_loop(resources, line_index)?;
+                    lines.push(line);
+                }
                 Ok(GraphLabel {
                     lines,
                     width: title_width.max(body_width),
@@ -463,25 +965,84 @@ impl GraphNodeLabelPlan {
         }
     }
 
-    fn admit_compartment_materialization(
-        &self,
-        body: NormalizedLabelPlan,
-        resources: &ResourceContext,
-    ) -> crate::Result<()> {
-        let work_units = resources.checked_work_add(
-            self.primary.materialization_work_units(),
-            body.materialization_work_units(),
-        )?;
+    fn admit_materialization(&self, resources: &ResourceContext) -> crate::Result<()> {
+        let mut work_units = self.primary.replay_work_units(resources)?;
+        if let Some(body) = self.secondary.as_ref() {
+            work_units =
+                resources.checked_work_add(work_units, body.replay_work_units(resources)?)?;
+        }
         // The final canvas owns document accounting. This phase only checks the planned label
         // bound and commits replay work after every dimension has passed.
-        resources.check_usage(work_units, 0)?;
-        resources.check(AsciiResourceLimitId::MaxDocumentCells, self.document_cells)?;
+        resources.check_usage(work_units, self.document_cells)?;
         resources.check(
             AsciiResourceLimitId::MaxOutputBytes,
             self.materialized_bytes,
         )?;
         resources.charge_layout_work(work_units)
     }
+
+    fn matches_node(
+        &self,
+        node: &AsciiGraphNode,
+        wrap_width: Option<usize>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+    ) -> bool {
+        self.diagram_type == diagram_type
+            && self.width_profile == width_profile
+            && self.wrap_width == wrap_width
+            && matches!(
+                (self.kind, node.compartments()),
+                (GraphNodeLabelPlanKind::Single, None)
+                    | (GraphNodeLabelPlanKind::Compartmented, Some(_))
+            )
+    }
+}
+
+fn empty_normalized_label_metrics() -> NormalizedLabelMetrics {
+    NormalizedLabelMetrics {
+        materialized_bytes: 0,
+        document_cells: 0,
+        line_count: 0,
+        max_width: 0,
+    }
+}
+
+fn checkpoint_label_loop(resources: &ResourceContext, iteration: usize) -> crate::Result<()> {
+    if iteration.is_multiple_of(GRAPH_LABEL_CHECKPOINT_INTERVAL) {
+        resources.checkpoint()?;
+    }
+    Ok(())
+}
+
+fn push_graph_label_source(
+    output: &mut String,
+    source: &str,
+    resources: &ResourceContext,
+) -> crate::Result<()> {
+    let mut start = 0usize;
+    while start < source.len() {
+        resources.checkpoint()?;
+        let mut end = start
+            .saturating_add(GRAPH_LABEL_COPY_CHUNK_BYTES)
+            .min(source.len());
+        while !source.is_char_boundary(end) {
+            end -= 1;
+        }
+        output.push_str(&source[start..end]);
+        start = end;
+    }
+    Ok(())
+}
+
+fn checked_label_metric_add(
+    resources: &ResourceContext,
+    limit: AsciiResourceLimitId,
+    left: usize,
+    right: usize,
+) -> crate::Result<usize> {
+    left.checked_add(right)
+        .ok_or_else(|| resources.overflow(limit))
 }
 
 fn required_label_plan(
@@ -535,7 +1096,10 @@ fn graph_label_metrics(
 
 #[cfg(test)]
 mod tests {
-    use super::{GraphLabel, GraphNodeLabelPlan};
+    use super::{
+        DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan, GraphLabel, GraphNodeLabelPlan,
+        PreparedGraphNodeText,
+    };
     use crate::graph::model::{
         AsciiGraphNode, GraphNodeCompartments, GraphNodeSemantics, GraphNodeShape, GraphNodeStyle,
     };
@@ -637,6 +1201,90 @@ mod tests {
 
         assert_eq!(unicode.width(), 3);
         assert_eq!(cjk.width(), 4);
+    }
+
+    #[test]
+    fn deferred_joined_label_accepts_exact_projection_bounds_and_rejects_n_minus_one() {
+        fn project(
+            policy: AsciiResourcePolicy,
+        ) -> crate::Result<(PreparedGraphNodeText, usize, usize, usize)> {
+            let resources = ResourceContext::new(policy);
+            let section = DeferredGraphLabelSectionPlan::try_joined(
+                [" A ", " B "],
+                None,
+                "state",
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )?
+            .expect("non-empty fragments should produce a joined section");
+            let plan = DeferredGraphNodeLabelPlan::single(
+                section,
+                None,
+                "state",
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )?;
+            let document_cells = plan.document_cells();
+            let output_bytes = plan.materialized_bytes();
+            let source_work = plan.source_materialization_work_units();
+            resources.check_usage(source_work, document_cells)?;
+            resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+            resources.charge_layout_work(source_work)?;
+            let prepared = plan.materialize_after_admission(&resources)?;
+            Ok((
+                prepared,
+                resources.layout_work_used(),
+                document_cells,
+                output_bytes,
+            ))
+        }
+
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let (prepared, exact_work, exact_document_cells, exact_output_bytes) =
+            project(unbounded).expect("unbounded deferred projection should succeed");
+        assert_eq!(prepared.label(), " A \n B ");
+        assert!(prepared.compartments().is_none());
+        let node = AsciiGraphNode::new_with_prepared_text(
+            "node".to_string(),
+            prepared,
+            GraphNodeShape::Rect,
+            GraphNodeStyle::default(),
+            GraphNodeSemantics::default(),
+        );
+        let plan = node
+            .prepared_label_plan()
+            .expect("the node should own its prepared label plan");
+        let replay_resources = ResourceContext::new(unbounded);
+        let materialized = plan
+            .materialize(&node, &replay_resources)
+            .expect("the retained joined plan should replay without rescanning");
+        assert_eq!(materialized.lines(), ["A", "B"]);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact work limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_document_cells)
+            .expect("exact document limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes)
+            .expect("exact output limit should be valid");
+        project(exact_policy).expect("exact deferred projection bounds should pass");
+
+        for (limit, exact) in [
+            (AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work),
+            (AsciiResourceLimitId::MaxDocumentCells, exact_document_cells),
+            (AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes),
+        ] {
+            let below = exact_policy
+                .with_limit(limit, exact - 1)
+                .expect("max-minus-one limit should be valid");
+            let error =
+                project(below).expect_err("max-minus-one deferred projection bound should reject");
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit && details.max == exact - 1
+            ));
+        }
     }
 
     #[test]
@@ -743,15 +1391,13 @@ mod tests {
     }
 
     fn compartmented_node(title: &str, body: &str) -> AsciiGraphNode {
-        AsciiGraphNode {
-            id: "node".to_string(),
-            label: title.to_string(),
-            shape: GraphNodeShape::StateWithTitle,
-            style: GraphNodeStyle::default(),
-            semantics: GraphNodeSemantics {
-                compartments: Some(GraphNodeCompartments::new(title, body)),
-                ..GraphNodeSemantics::default()
-            },
-        }
+        AsciiGraphNode::new_with_compartments(
+            "node".to_string(),
+            title.to_string(),
+            Some(GraphNodeCompartments::new(title, body)),
+            GraphNodeShape::StateWithTitle,
+            GraphNodeStyle::default(),
+            GraphNodeSemantics::default(),
+        )
     }
 }
