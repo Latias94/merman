@@ -311,9 +311,11 @@ fn renderer_from_config(
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
 ) -> Result<ConfiguredRenderer, CliError> {
+    let theme_resources = ThemeResourcePolicy::for_profile(resources.profile());
     let mut environment = SvgEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
         .with_resource_policy(resources.render_policy())
+        .with_theme_resource_ceiling(theme_resources.clone())
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
             TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
         ));
@@ -335,8 +337,7 @@ fn renderer_from_config(
         site_config.set_value("handDrawnSeed", serde_json::json!(seed));
     }
 
-    let compiler = DiagramThemeCompiler::new()
-        .with_resource_policy(ThemeResourcePolicy::for_profile(resources.profile()));
+    let compiler = DiagramThemeCompiler::new().with_resource_policy(theme_resources);
     let selected_theme =
         match (render.theme_preset, render.theme_file) {
             (Some(_), Some(_)) => {
@@ -500,6 +501,60 @@ mod tests {
             !svg.svg().contains("$$x^2$$"),
             "math delimiters must be replaced"
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn selected_profile_remains_the_host_ceiling_when_a_theme_is_attached_later() {
+        let resources =
+            ResolvedResourcePolicy::for_profile(merman::resources::ResourceProfile::Constrained);
+        let mut renderer = renderer_for(
+            &ParseCliArgs::default(),
+            &RenderCliArgs::default(),
+            None,
+            &resources,
+        )
+        .expect("CLI renderer without a selected theme");
+        assert!(renderer.theme.is_none());
+
+        let limit = merman::svg::ThemeResourceLimitId::MaxEffectGraphs;
+        let maximum = ThemeResourcePolicy::constrained()
+            .value(limit)
+            .expect("constrained effect-graph ceiling");
+        let mut effects = merman::svg::DiagramEffectSet::default();
+        for ordinal in 0..=maximum {
+            let graph = merman::svg::EffectGraph::new(
+                format!("host-ceiling-{ordinal}"),
+                [merman::svg::EffectPrimitive::GaussianBlur {
+                    input: merman::svg::EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .expect("valid effect graph");
+            effects = effects.with_graph(graph).expect("unique effect graph");
+        }
+        renderer.theme = Some(
+            DiagramThemeCompiler::new()
+                .with_resource_policy(ThemeResourcePolicy::unbounded_for_trusted_input())
+                .compile(merman::svg::DiagramThemeSpec::new().with_effects(effects))
+                .expect("the wider compiler should accept the retained effect graphs"),
+        );
+
+        let error = renderer
+            .renderer
+            .render(renderer.request(
+                "flowchart TD\nA --> B",
+                merman::RenderTarget::Svg(renderer.svg.clone()),
+                merman::OperationControl::new(),
+            ))
+            .expect_err("the selected CLI profile must remain the session host ceiling");
+        let resource = match error {
+            merman::RenderError::ResourceLimitExceeded(resource) => resource,
+            other => panic!("expected the session host ceiling to reject the theme, got {other:?}"),
+        };
+        assert_eq!(resource.id, limit.as_str());
+        assert_eq!(resource.actual, (maximum + 1) as u64);
+        assert_eq!(resource.maximum, maximum as u64);
     }
 
     #[test]
