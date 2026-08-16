@@ -696,6 +696,18 @@ fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::CLASS
+        && target == ThemeTarget::Edge
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && facet == FamilyThemeRuleFacet::StrokeWidth
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -1240,6 +1252,57 @@ mod tests {
                         .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn class_owns_only_static_default_edge_stroke_width() {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default()
+                    .with_stroke_width(2.5)
+                    .expect("valid Class relation width"),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+
+            let routes = compile_rule_routes(DiagramFamilyId::CLASS, 0, &rule);
+            assert_eq!(routes.len(), 1);
+            assert_eq!(
+                routes[0].disposition(),
+                FamilyThemeDisposition::TypedAdapter
+            );
+        }
+
+        for rule in [
+            ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default()
+                    .with_stroke_width(2.5)
+                    .expect("valid active Class relation width"),
+            )
+            .with_variant(ThemeVariant::Active),
+            ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default()
+                    .with_stroke_width(2.5)
+                    .expect("valid ordinal Class relation width"),
+            )
+            .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+            ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default()
+                    .with_stroke_dasharray([4.0, 2.0])
+                    .expect("valid Class relation dasharray"),
+            ),
+        ] {
+            assert!(
+                compile_rule_routes(DiagramFamilyId::CLASS, 0, &rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
         }
     }
 

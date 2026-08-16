@@ -12,6 +12,7 @@ use rustc_hash::FxHashMap;
 pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
+    pub(super) theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
 }
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
@@ -31,6 +32,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(super) timing: RenderTiming,
     pub(super) edge_paths_class: &'static str,
+    pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
 }
 
 pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
@@ -43,6 +45,7 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
     let ClassSplitEdgeGroupsRenderState {
         content_bounds,
         detail,
+        theme_receipt,
     } = state;
 
     render_class_edge_groups(
@@ -50,6 +53,7 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
             out,
             content_bounds,
             detail,
+            theme_receipt,
         },
         &ClassEdgeGroupsRenderContext {
             edges: ctx.edges,
@@ -70,6 +74,7 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
             hand_drawn_seed: ctx.hand_drawn_seed.clone(),
             timing: ctx.timing,
             edge_paths_class: ctx.edge_paths_class,
+            relation_theme: ctx.relation_theme,
         },
     )
 }

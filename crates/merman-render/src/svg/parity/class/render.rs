@@ -12,6 +12,8 @@ use super::*;
 pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
+    relation_theme: &crate::class::ClassRelationThemePlan,
+    theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -20,6 +22,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     render_class_diagram_svg_model_inner(
         layout,
         model,
+        relation_theme,
+        theme_evidence,
         effective_config.as_value(),
         Some(effective_config),
         diagram_title,
@@ -31,6 +35,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 fn render_class_diagram_svg_model_inner(
     layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
+    relation_theme: &crate::class::ClassRelationThemePlan,
+    theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &serde_json::Value,
     borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
     diagram_title: Option<&str>,
@@ -42,6 +48,8 @@ fn render_class_diagram_svg_model_inner(
     let mut timings = RenderTimings::default();
 
     let mut detail = ClassRenderDetails::default();
+    let mut relation_theme_receipt =
+        crate::class::ClassRelationThemeReceipt::new(model.relations.len());
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = model.diagram_type.as_str();
@@ -157,6 +165,7 @@ fn render_class_diagram_svg_model_inner(
         } else {
             "edgePaths"
         },
+        relation_theme,
     };
 
     // The layout-owned render tree preserves the exact recursive Dagre graph that produced these
@@ -190,6 +199,7 @@ fn render_class_diagram_svg_model_inner(
             },
             &nodes_ctx,
             &group_ctx,
+            &mut relation_theme_receipt,
         )?;
     } else {
         out.push_str(r#"<g class="root">"#);
@@ -204,6 +214,7 @@ fn render_class_diagram_svg_model_inner(
             },
             &nodes_ctx,
             &group_ctx,
+            &mut relation_theme_receipt,
         )?;
         out.push_str("</g>"); // root
         out.push_str("</g>"); // wrapper
@@ -278,5 +289,11 @@ fn render_class_diagram_svg_model_inner(
         timings.total = s.elapsed();
         emit_class_render_timing(&timings, &detail, layout);
     }
-    root_document.complete(out)
+    let rooted_svg = root_document.complete(out)?;
+    if !theme_evidence.record_terminal(relation_theme_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Class relation theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }

@@ -1,8 +1,11 @@
 use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
-use super::bounds::{include_path_bounds, include_path_d, include_xywh};
+use super::bounds::{
+    include_class_marker_paint_bounds, include_path_bounds_with_outset, include_path_d_with_outset,
+    include_xywh,
+};
 use super::context::ClassRenderDetails;
-use super::defs::class_marker_name;
+use super::defs::{class_marker_name, class_marker_paint_spec};
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_math_html_label, render_class_html_label,
     write_class_svg_edge_text, write_class_svg_edge_text_markdown,
@@ -27,6 +30,7 @@ pub(super) struct ClassEdgeGroupsRenderState<'a, O: SvgOutput> {
     pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
     pub detail: &'a mut ClassRenderDetails,
+    pub theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
 }
 
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
@@ -48,6 +52,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
     pub edge_paths_class: &'static str,
+    pub relation_theme: &'a crate::class::ClassRelationThemePlan,
 }
 
 fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
@@ -173,6 +178,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         out,
         content_bounds,
         detail,
+        theme_receipt,
     } = state;
 
     let mut edge_points_json_buf = String::new();
@@ -207,11 +213,19 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         }
 
         let curve_start = ctx.timing.start();
-        let relation = if e.id.starts_with("edgeNote") {
+        let is_note_edge = e.id.starts_with("edgeNote");
+        let relation = if is_note_edge {
             None
         } else {
             ctx.relations_by_id.get(e.id.as_str()).copied()
         };
+        let is_relation = relation.is_some();
+        let themed_stroke_width = relation.and(ctx.relation_theme.stroke_width());
+        let stroke_outset = themed_stroke_width.map_or(0.0, |width| f64::from(width) / 2.0);
+        let start_marker_paint =
+            relation.and_then(|rel| class_marker_paint_spec(rel.relation.type1, true));
+        let end_marker_paint =
+            relation.and_then(|rel| class_marker_paint_spec(rel.relation.type2, false));
         class_line_with_marker_offset_points_into(
             &edge_raw_points,
             relation,
@@ -255,12 +269,66 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
             );
         }
         let path_bounds_start = ctx.timing.start();
+        // RoughJS replaces the stable curve endpoints with jittered path data. Use the rendered
+        // path bbox plus a rotation-independent marker radius to cover its actual first/final
+        // marker anchors without maintaining a second SVG path interpreter. Classic and ELK paths
+        // retain one stable endpoint pair and can use the tighter rotated marker boxes below.
+        let rough_marker_outset = if rough_d.is_some() {
+            themed_stroke_width.map_or(0.0, |width| {
+                [start_marker_paint, end_marker_paint]
+                    .into_iter()
+                    .flatten()
+                    .map(|marker| marker.conservative_radius(f64::from(width)))
+                    .fold(0.0, f64::max)
+            })
+        } else {
+            0.0
+        };
+        let path_paint_outset = stroke_outset.max(rough_marker_outset);
         if rough_d.is_none()
             && let Some(pb) = d_pb.as_ref()
         {
-            include_path_bounds(content_bounds, pb, ctx.bounds_dx, ctx.bounds_dy);
+            include_path_bounds_with_outset(
+                content_bounds,
+                pb,
+                ctx.bounds_dx,
+                ctx.bounds_dy,
+                path_paint_outset,
+            );
         } else {
-            include_path_d(content_bounds, render_d, ctx.bounds_dx, ctx.bounds_dy);
+            include_path_d_with_outset(
+                content_bounds,
+                render_d,
+                ctx.bounds_dx,
+                ctx.bounds_dy,
+                path_paint_outset,
+            );
+        }
+        if rough_d.is_none()
+            && let Some(width) = themed_stroke_width.map(f64::from)
+        {
+            if let Some(marker) = start_marker_paint {
+                include_class_marker_paint_bounds(
+                    content_bounds,
+                    edge_curve_source,
+                    true,
+                    marker,
+                    width,
+                    ctx.bounds_dx,
+                    ctx.bounds_dy,
+                );
+            }
+            if let Some(marker) = end_marker_paint {
+                include_class_marker_paint_bounds(
+                    content_bounds,
+                    edge_curve_source,
+                    false,
+                    marker,
+                    width,
+                    ctx.bounds_dx,
+                    ctx.bounds_dy,
+                );
+            }
         }
         if let Some(s) = path_bounds_start {
             detail.path_bounds += s.elapsed();
@@ -288,9 +356,9 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
 
         edge_class_buf.clear();
         edge_class_buf.push_str("edge-thickness-normal ");
-        if e.id.starts_with("edgeNote") {
+        if is_note_edge {
             edge_class_buf.push_str(class_note_edge_pattern());
-        } else if let Some(rel) = ctx.relations_by_id.get(e.id.as_str()) {
+        } else if let Some(rel) = relation {
             edge_class_buf.push_str(class_edge_pattern(rel.relation.line_type));
         } else {
             edge_class_buf.push_str("edge-pattern-solid");
@@ -318,9 +386,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
             escape_attr_display(&edge_points_b64_buf),
         );
         let _ = write!(out, r#" data-look="{}""#, escape_attr_display(ctx.look));
-        if !e.id.starts_with("edgeNote")
-            && let Some(rel) = ctx.relations_by_id.get(e.id.as_str())
-        {
+        if let Some(rel) = relation {
             if let Some(name) = class_marker_name(rel.relation.type1, true) {
                 out.push_str(r#" marker-start="url(#"#);
                 out.push_str(ctx.marker_url_prefix);
@@ -334,13 +400,25 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
                 out.push_str(r#")""#);
             }
         }
-        let _ = write!(
-            out,
-            r#" style="{}""#,
-            class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn")
-        );
+        let base_style = class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn");
+        match themed_stroke_width {
+            Some(width) => {
+                let _ = write!(
+                    out,
+                    r#" style="{}stroke-width:{}px !important""#,
+                    base_style,
+                    fmt(f64::from(width)),
+                );
+            }
+            None => {
+                let _ = write!(out, r#" style="{}""#, base_style);
+            }
+        }
         out.push_str("/>");
         out.checkpoint()?;
+        if is_relation {
+            theme_receipt.record_checkpointed_relation(themed_stroke_width.is_some());
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;

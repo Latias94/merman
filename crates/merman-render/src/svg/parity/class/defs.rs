@@ -1,4 +1,177 @@
+use super::super::path_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 use super::super::*;
+
+const CLASS_DIAMOND_MARKER_PATH: &str = "M 18,7 L9,13 L1,7 L9,1 Z";
+const CLASS_EXTENSION_START_MARKER_PATH: &str = "M 1,7 L18,13 V 1 Z";
+const CLASS_EXTENSION_END_MARKER_PATH: &str = "M 1,1 V 13 L18,7 Z";
+const CLASS_DEPENDENCY_START_MARKER_PATH: &str = "M 5,7 L9,13 L1,7 L9,1 Z";
+const CLASS_DEPENDENCY_END_MARKER_PATH: &str = "M 18,7 L9,13 L14,7 L9,1 Z";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClassMarkerCoordinateUnits {
+    StrokeWidth,
+    UserSpaceOnUse,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ClassMarkerPaintShape {
+    Path(&'static str),
+    Circle { cx: f64, cy: f64, radius: f64 },
+}
+
+/// Paint geometry for the ordinary marker referenced by a Class relation path.
+///
+/// The margin marker variants are emitted for Mermaid DOM parity but relation paths currently
+/// reference the ordinary marker ids. Most ordinary markers use SVG's default
+/// `markerUnits="strokeWidth"`; `extensionStart` is the upstream exception and uses
+/// `userSpaceOnUse` when the complete marker set is emitted.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ClassMarkerPaintSpec {
+    ref_x: f64,
+    ref_y: f64,
+    units: ClassMarkerCoordinateUnits,
+    shape: ClassMarkerPaintShape,
+}
+
+impl ClassMarkerPaintSpec {
+    pub(super) fn coordinate_scale(self, relation_stroke_width: f64) -> f64 {
+        match self.units {
+            ClassMarkerCoordinateUnits::StrokeWidth => relation_stroke_width.max(0.0),
+            ClassMarkerCoordinateUnits::UserSpaceOnUse => 1.0,
+        }
+    }
+
+    pub(super) fn reference_point(self) -> (f64, f64) {
+        (self.ref_x, self.ref_y)
+    }
+
+    pub(super) fn local_paint_bounds(self) -> SvgPathBounds {
+        let (mut bounds, stroke_outset) = match self.shape {
+            ClassMarkerPaintShape::Path(d) => {
+                // Marker CSS uses stroke-width 1 and the SVG defaults retain miter joins with a
+                // miter limit of 4. One full stroke times that limit conservatively covers the
+                // complete join extent for every path marker corner before viewport clipping.
+                (
+                    svg_path_bounds_from_d(d)
+                        .expect("static Class marker paths must have bounded SVG geometry"),
+                    4.0,
+                )
+            }
+            ClassMarkerPaintShape::Circle { cx, cy, radius } => (
+                SvgPathBounds {
+                    min_x: cx - radius,
+                    min_y: cy - radius,
+                    max_x: cx + radius,
+                    max_y: cy + radius,
+                },
+                0.5,
+            ),
+        };
+        bounds.min_x -= stroke_outset;
+        bounds.min_y -= stroke_outset;
+        bounds.max_x += stroke_outset;
+        bounds.max_y += stroke_outset;
+        bounds
+    }
+
+    pub(super) fn conservative_radius(self, relation_stroke_width: f64) -> f64 {
+        let bounds = self.local_paint_bounds();
+        let (ref_x, ref_y) = self.reference_point();
+        let radius = [
+            (bounds.min_x, bounds.min_y),
+            (bounds.min_x, bounds.max_y),
+            (bounds.max_x, bounds.min_y),
+            (bounds.max_x, bounds.max_y),
+        ]
+        .into_iter()
+        .map(|(x, y)| (x - ref_x).hypot(y - ref_y))
+        .fold(0.0, f64::max);
+        radius * self.coordinate_scale(relation_stroke_width)
+    }
+}
+
+pub(super) fn class_marker_paint_spec(ty: i32, is_start: bool) -> Option<ClassMarkerPaintSpec> {
+    use ClassMarkerCoordinateUnits::{StrokeWidth, UserSpaceOnUse};
+
+    let (ref_x, ref_y, units, shape) = match (ty, is_start) {
+        (0, true) => (
+            18.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
+        ),
+        (0, false) => (
+            1.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
+        ),
+        (1, true) => (
+            18.0,
+            7.0,
+            UserSpaceOnUse,
+            ClassMarkerPaintShape::Path(CLASS_EXTENSION_START_MARKER_PATH),
+        ),
+        (1, false) => (
+            1.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Path(CLASS_EXTENSION_END_MARKER_PATH),
+        ),
+        (2, true) => (
+            18.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
+        ),
+        (2, false) => (
+            1.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Path(CLASS_DIAMOND_MARKER_PATH),
+        ),
+        (3, true) => (
+            6.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Path(CLASS_DEPENDENCY_START_MARKER_PATH),
+        ),
+        (3, false) => (
+            13.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Path(CLASS_DEPENDENCY_END_MARKER_PATH),
+        ),
+        (4, true) => (
+            13.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Circle {
+                cx: 7.0,
+                cy: 7.0,
+                radius: 6.0,
+            },
+        ),
+        (4, false) => (
+            1.0,
+            7.0,
+            StrokeWidth,
+            ClassMarkerPaintShape::Circle {
+                cx: 7.0,
+                cy: 7.0,
+                radius: 6.0,
+            },
+        ),
+        _ => return None,
+    };
+
+    Some(ClassMarkerPaintSpec {
+        ref_x,
+        ref_y,
+        units,
+        shape,
+    })
+}
 
 pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str> {
     // Mermaid class diagram relationType constants.
@@ -194,7 +367,7 @@ pub(super) fn class_markers(
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+            shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
         },
     )?;
     marker(
@@ -209,7 +382,7 @@ pub(super) fn class_markers(
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+            shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
         },
     )?;
     if include_margin_markers {
@@ -225,7 +398,7 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
             },
         )?;
         marker(
@@ -240,7 +413,7 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
             },
         )?;
     }
@@ -263,7 +436,7 @@ pub(super) fn class_markers(
             marker_units: extension_start_marker_units,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 1,7 L18,13 V 1 Z"),
+            shape: MarkerShape::Path(CLASS_EXTENSION_START_MARKER_PATH),
         },
     )?;
     marker(
@@ -278,7 +451,7 @@ pub(super) fn class_markers(
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 1,1 V 13 L18,7 Z"),
+            shape: MarkerShape::Path(CLASS_EXTENSION_END_MARKER_PATH),
         },
     )?;
     if include_margin_markers {
@@ -326,7 +499,7 @@ pub(super) fn class_markers(
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+            shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
         },
     )?;
     marker(
@@ -341,7 +514,7 @@ pub(super) fn class_markers(
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+            shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
         },
     )?;
     if include_margin_markers {
@@ -357,7 +530,7 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::PathWithViewBox("M 18,7 L9,13 L1,7 L9,1 Z", "0 0 15 15"),
+                shape: MarkerShape::PathWithViewBox(CLASS_DIAMOND_MARKER_PATH, "0 0 15 15"),
             },
         )?;
         marker(
@@ -372,7 +545,7 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
             },
         )?;
     }
@@ -389,7 +562,7 @@ pub(super) fn class_markers(
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
+            shape: MarkerShape::Path(CLASS_DEPENDENCY_START_MARKER_PATH),
         },
     )?;
     marker(
@@ -404,7 +577,7 @@ pub(super) fn class_markers(
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
+            shape: MarkerShape::Path(CLASS_DEPENDENCY_END_MARKER_PATH),
         },
     )?;
     if include_margin_markers {
@@ -420,7 +593,7 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
+                shape: MarkerShape::Path(CLASS_DEPENDENCY_START_MARKER_PATH),
             },
         )?;
         marker(
@@ -435,7 +608,7 @@ pub(super) fn class_markers(
                 marker_units: Some("userSpaceOnUse"),
                 view_box: None,
                 wrap_defs: true,
-                shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
+                shape: MarkerShape::Path(CLASS_DEPENDENCY_END_MARKER_PATH),
             },
         )?;
     }
@@ -546,6 +719,36 @@ mod tests {
     use super::*;
     use std::fmt;
     use std::ops::Range;
+
+    #[test]
+    fn relation_marker_paint_specs_match_the_emitted_coordinate_contract() {
+        let mut svg = String::new();
+        class_markers(&mut svg, "diagram", "class", true).expect("render Class markers");
+
+        for (ty, is_start) in (0..=4).flat_map(|ty| [(ty, true), (ty, false)]) {
+            let marker_name = class_marker_name(ty, is_start).expect("Class marker name");
+            let marker = class_marker_paint_spec(ty, is_start).expect("Class marker paint spec");
+            let marker_id = format!(r#"id="diagram_class-{marker_name}""#);
+            let marker_start = svg.find(&marker_id).expect("emitted Class marker");
+            let marker_opening = &svg[marker_start..];
+            let marker_opening = &marker_opening[..marker_opening
+                .find('>')
+                .expect("complete Class marker opening tag")];
+            let (ref_x, ref_y) = marker.reference_point();
+
+            assert!(marker_opening.contains(&format!(r#"refX="{ref_x}""#)));
+            assert!(marker_opening.contains(&format!(r#"refY="{ref_y}""#)));
+            assert_eq!(
+                marker_opening.contains(r#"markerUnits="userSpaceOnUse""#),
+                marker.units == ClassMarkerCoordinateUnits::UserSpaceOnUse,
+                "marker={marker_name} opening={marker_opening}"
+            );
+            assert!(
+                marker.local_paint_bounds().min_x.is_finite(),
+                "marker={marker_name} must have finite paint geometry"
+            );
+        }
+    }
 
     #[derive(Default)]
     struct RejectAfterFirstWrite {

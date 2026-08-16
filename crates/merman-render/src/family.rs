@@ -765,6 +765,20 @@ impl FamilyThemeEvidence {
             .collect()
     }
 
+    fn merge_accounted_from(&mut self, mut other: Self) {
+        debug_assert_eq!(self.required, other.required);
+        for key in other.applied {
+            let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();
+            self.mark_applied_with_capabilities(key, capabilities);
+        }
+        for key in other.not_applicable {
+            self.mark_not_applicable(key);
+        }
+        for residual in other.residuals {
+            self.mark_residual(residual.key, residual.reason);
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn applied(&self) -> &[FamilyThemeMechanismKey] {
         &self.applied
@@ -886,6 +900,16 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
+    fn merge_class_evidence(&mut self, evidence: FamilyThemeEvidence) {
+        debug_assert_eq!(self.family_id, DiagramFamilyId::CLASS);
+        self.theme_evidence.merge_accounted_from(evidence);
+        self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref()) {
+            FamilyStylePayload::NotApplicable
+        } else {
+            FamilyStylePayload::Evaluated
+        };
+    }
+
     fn reconcile_state_effect_evidence(
         &mut self,
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
@@ -949,7 +973,10 @@ impl ResolvedFamilyStylePlan {
         }
         let waits_for_svg_evidence = matches!(
             self.family_id,
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::SEQUENCE
+            DiagramFamilyId::FLOWCHART
+                | DiagramFamilyId::SWIMLANE
+                | DiagramFamilyId::SEQUENCE
+                | DiagramFamilyId::CLASS
         ) && self
             .resolved_theme
             .as_deref()
@@ -1127,6 +1154,10 @@ impl FamilyRenderContext {
         self.style_plan.merge_sequence_evidence(evidence);
     }
 
+    fn merge_class_evidence(&mut self, evidence: FamilyThemeEvidence) {
+        self.style_plan.merge_class_evidence(evidence);
+    }
+
     fn ensure_portable(&self) -> Result<()> {
         let portability = self
             .session
@@ -1215,6 +1246,27 @@ impl<L> FlowchartFamilyArtifact<L> {
 }
 
 #[derive(Debug)]
+pub(crate) struct ClassFamilyArtifact {
+    pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
+    relation_theme: crate::class::ClassRelationThemePlan,
+    theme_evidence: crate::class::ClassThemeEvidenceRecorder,
+}
+
+impl ClassFamilyArtifact {
+    pub(crate) const fn pair(&self) -> &FamilyPair<ClassDiagram, ClassDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn relation_theme(&self) -> &crate::class::ClassRelationThemePlan {
+        &self.relation_theme
+    }
+
+    pub(crate) const fn theme_evidence(&self) -> &crate::class::ClassThemeEvidenceRecorder {
+        &self.theme_evidence
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct StateFamilyArtifact {
     pair: FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
     label_sidecar: crate::state::StateLabelSidecar,
@@ -1269,7 +1321,7 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Class(Box<FamilyPair<ClassDiagram, ClassDiagramLayout>>),
+    Class(Box<ClassFamilyArtifact>),
     C4(Box<FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>>),
     Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
     Wardley(Box<FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>>),
@@ -1531,6 +1583,20 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn class_theme_evidence(
+        &self,
+        theme: Option<&ResolvedDiagramTheme>,
+    ) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Class(artifact) => Some(
+                artifact
+                    .theme_evidence()
+                    .finish(theme, artifact.relation_theme()),
+            ),
+            _ => None,
+        }
+    }
+
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
@@ -1545,7 +1611,7 @@ impl BuiltinFamilyArtifact {
             Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
-            Self::Class(pair) => pair.compatibility_json(metadata),
+            Self::Class(artifact) => artifact.pair.compatibility_json(metadata),
             Self::C4(pair) => pair.compatibility_json(metadata),
             Self::Cynefin(pair) => pair.compatibility_json(metadata),
             Self::Wardley(pair) => pair.compatibility_json(metadata),
@@ -1584,7 +1650,7 @@ impl BuiltinFamilyArtifact {
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
-            Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
+            Self::Class(artifact) => LayoutProjection::ClassDiagram(artifact.pair.layout()),
             Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
             Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
@@ -2177,6 +2243,9 @@ impl FamilyRenderArtifact {
         let sequence_theme_evidence = self
             .family
             .sequence_theme_evidence(self.context.resolved_theme());
+        let class_theme_evidence = self
+            .family
+            .class_theme_evidence(self.context.resolved_theme());
         let state_filter_receipt = match &self.family {
             BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
             _ => None,
@@ -2193,6 +2262,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = sequence_theme_evidence {
             context.merge_sequence_evidence(evidence);
+        }
+        if let Some(evidence) = class_theme_evidence {
+            context.merge_class_evidence(evidence);
         }
         context.observe_output_visibility(debug);
         if let Some(emitted) = state_filter_receipt {
@@ -2340,17 +2412,30 @@ fn prepare_class_family(
     diagram_type: &str,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    Ok(BuiltinFamilyArtifact::Class(prepare_pair(
-        model,
-        |model| {
-            crate::layout_class_typed_by_engine(
-                diagram_type,
-                model,
-                &meta.effective_config,
-                execution,
-            )
+    let relation_count = model.relations.len();
+    let node_count = model.classes.len();
+    let relation_theme = crate::class::ClassRelationThemePlan::resolve(
+        execution.resolved_theme(),
+        relation_count,
+        node_count,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::layout_class_typed_by_engine(
+        diagram_type,
+        &model,
+        &meta.effective_config,
+        execution,
+    )?;
+    Ok(BuiltinFamilyArtifact::Class(Box::new(
+        ClassFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            relation_theme,
+            theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
+                relation_count,
+                node_count,
+            ),
         },
-    )?))
+    )))
 }
 
 #[inline(never)]
@@ -2364,7 +2449,7 @@ fn prepare_class_render(
         unreachable!("Class render dispatch requires a Class semantic model")
     };
     context.observe_compatibility(&meta);
-    context.ensure_portable()?;
+    context.ensure_portable_before_svg()?;
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, context.execution());
     let family = prepare_class_family(model, &meta, diagram_type, &execution)?;

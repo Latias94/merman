@@ -23,8 +23,12 @@ use std::sync::Arc;
 
 pub(crate) mod config;
 use self::config::{ClassConfigView, ClassLayoutSettings};
+mod theme;
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
+pub(crate) use theme::{
+    ClassRelationThemePlan, ClassRelationThemeReceipt, ClassThemeEvidenceRecorder,
+};
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;

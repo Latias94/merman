@@ -61,6 +61,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
     state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
@@ -210,6 +211,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                     content_bounds,
                     detail,
                     edge_ctx,
+                    theme_receipt,
                     &edges,
                     origin.0,
                     origin.1,
@@ -269,6 +271,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
     state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
 ) -> Result<()> {
     let ClassNodesRenderState {
         out,
@@ -375,6 +378,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         content_bounds,
         detail,
         edge_ctx,
+        theme_receipt,
         &edges,
         0.0,
         0.0,
@@ -573,6 +577,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
     edges: &[LayoutEdge],
     root_dx: f64,
     root_dy: f64,
@@ -606,12 +611,14 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         hand_drawn_seed: edge_ctx.hand_drawn_seed.clone(),
         timing: edge_ctx.timing,
         edge_paths_class: edge_ctx.edge_paths_class,
+        relation_theme: edge_ctx.relation_theme,
     };
     render_class_split_edge_groups(
         out,
         ClassSplitEdgeGroupsRenderState {
             content_bounds,
             detail,
+            theme_receipt,
         },
         &local_ctx,
         if in_namespace_root { root_dx } else { 0.0 },

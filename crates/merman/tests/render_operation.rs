@@ -417,6 +417,66 @@ fn themed_state_svg_reports_verified_coarse_theme_evidence() {
 
 #[cfg(feature = "svg")]
 #[test]
+fn standalone_class_svg_separates_verified_relation_width_from_font_portability() {
+    let styles = merman::svg::ThemeRuleSet::default().with_rule(
+        merman::svg::ThemeRule::new(
+            merman::svg::ThemeTarget::Edge,
+            merman::svg::ThemeStylePatch::default()
+                .with_stroke_width(5.0)
+                .expect("valid Class relation width"),
+        )
+        .for_family(merman::DiagramFamilyId::CLASS),
+    );
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(merman::svg::DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Class relation theme");
+    let request = merman::SvgRequest {
+        pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
+        ..merman::SvgRequest::default()
+    };
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "classDiagram\nclass A\nclass B\nA --> B\n",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme),
+        )
+        .expect("best-effort standalone Class SVG should retain both evidence axes");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a standalone Class SVG output");
+    };
+
+    assert_eq!(
+        output.evidence().family_id(),
+        merman::DiagramFamilyId::CLASS
+    );
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
+    );
+    assert!(output.svg().contains("stroke-width:5px !important"));
+    let admission = output
+        .admission()
+        .expect("best-effort Class SVG must retain target-owned admission");
+    assert_eq!(
+        admission.status(),
+        merman::TargetAdmissionStatus::HostDependent
+    );
+    assert!(
+        admission
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::SvgFontsNotSelfContained)
+    );
+    assert_eq!(
+        admission.artifact_digest(),
+        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
 fn custom_postprocessing_is_visible_in_coarse_theme_evidence() {
     let theme = portable_state_theme();
     let request = merman::SvgRequest {

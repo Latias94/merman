@@ -70,6 +70,23 @@ fn flowchart_node_theme(style: ThemeStylePatch) -> DiagramTheme {
         .expect("compile Flowchart Node theme")
 }
 
+fn class_relation_theme(
+    style: ThemeStylePatch,
+    variant: Option<crate::diagram_theme::ThemeVariant>,
+) -> DiagramTheme {
+    let mut rule = ThemeRule::new(ThemeTarget::Edge, style).for_family(DiagramFamilyId::CLASS);
+    if let Some(variant) = variant {
+        rule = rule.with_variant(variant);
+    }
+    class_rule_theme(rule)
+}
+
+fn class_rule_theme(rule: ThemeRule) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Class theme rule")
+}
+
 fn flowchart_edge_stroke_theme(family: DiagramFamilyId, paint: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -3119,6 +3136,614 @@ fn flowchart_start_node_proves_direct_typed_paint_emission() {
         rendered.style_report().verification(),
         FamilyStyleVerification::Verified
     );
+}
+
+#[test]
+fn class_relation_stroke_width_is_emitted_and_verified_after_terminal_svg() {
+    const SOURCE: &str = r#"classDiagram
+class A
+class B
+class C
+class D
+A <|-- B
+C <|.. D
+note for A "note"
+"#;
+
+    for variant in [None, Some(crate::diagram_theme::ThemeVariant::Default)] {
+        let theme = class_relation_theme(
+            ThemeStylePatch::default()
+                .with_stroke_width(6.0)
+                .expect("valid Class relation width"),
+            variant,
+        );
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+            .unwrap()
+            .expect("Class source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Class render session"),
+        )
+        .expect("Class direct relation width should wait for SVG evidence")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("terminal Class relation width should satisfy strict portability");
+
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Class SVG");
+        let paths = document
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .collect::<Vec<_>>();
+        assert_eq!(paths.len(), 3, "expected two relations and one note edge");
+        let relation_paths = paths
+            .iter()
+            .filter(|path| {
+                !path
+                    .attribute("data-id")
+                    .is_some_and(|id| id.starts_with("edgeNote"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(relation_paths.len(), 2);
+        assert!(relation_paths.iter().all(|path| {
+            path.attribute("style")
+                .is_some_and(|style| style.contains("stroke-width:6px !important"))
+        }));
+        assert!(relation_paths.iter().any(|path| {
+            path.attribute("class")
+                .is_some_and(|classes| classes.contains("edge-pattern-solid"))
+        }));
+        assert!(relation_paths.iter().any(|path| {
+            path.attribute("class")
+                .is_some_and(|classes| classes.contains("edge-pattern-dashed"))
+        }));
+        let note_path = paths
+            .iter()
+            .find(|path| {
+                path.attribute("data-id")
+                    .is_some_and(|id| id.starts_with("edgeNote"))
+            })
+            .expect("Class note edge path");
+        assert!(
+            !note_path
+                .attribute("style")
+                .is_some_and(|style| style.contains("stroke-width:6px"))
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+    }
+}
+
+#[test]
+fn class_relation_stroke_width_clear_and_mixed_facets_fail_closed() {
+    const SOURCE: &str = "classDiagram\nclass A\nclass B\nA --> B\n";
+
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.width = Specified::Clear;
+    let mixed = ThemeStylePatch {
+        geometry: ThemeGeometryPatch {
+            radius: Specified::Value(8.0),
+        },
+        ..ThemeStylePatch::default()
+            .with_stroke_width(6.0)
+            .expect("valid Class relation width")
+    };
+
+    for (style, expects_width) in [(clear, false), (mixed, true)] {
+        let theme = class_relation_theme(style, None);
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+                .unwrap()
+                .expect("Class source should produce a render model")
+        };
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort Class render session"),
+        )
+        .expect("prepare best-effort Class relation theme")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort Class output should retain explicit residual evidence");
+
+        assert_eq!(
+            rendered.svg().contains("stroke-width:6px !important"),
+            expects_width
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(rendered.style_report().theme_residuals().len(), 1);
+        assert_eq!(
+            rendered.style_report().theme_residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry
+        );
+
+        let artifact = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Class render session"),
+        )
+        .expect("Class strict verification must wait for terminal SVG evidence");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("Clear or mixed unsupported Class facets must fail closed"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::CLASS, 1))
+        );
+    }
+}
+
+#[test]
+fn class_relation_theme_is_byte_stable_without_a_selected_width() {
+    const SOURCE: &str = r#"classDiagram
+class A
+class B
+class C
+class D
+A <|-- B
+C <|.. D
+note for A "note"
+"#;
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile empty Class theme");
+
+    let render = |engine: Engine, session: RenderSession| {
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+            .unwrap()
+            .expect("Class source should produce a render model");
+        prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare Class byte-stability fixture")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Class byte-stability fixture")
+    };
+    let unthemed = render(
+        Engine::new(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin unthemed Class session"),
+    );
+    let themed = render(
+        empty_theme.install_parse_compatibility(Engine::new()),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&empty_theme)
+            .expect("begin empty-theme Class session"),
+    );
+
+    assert_eq!(themed.svg().as_bytes(), unthemed.svg().as_bytes());
+    assert_eq!(
+        themed.style_report().verification(),
+        FamilyStyleVerification::NotApplicable
+    );
+}
+
+#[test]
+fn class_relation_stroke_width_includes_start_and_end_marker_paint_bounds() {
+    const SOURCE: &str = r#"classDiagram
+direction LR
+A o-- B
+C --* D
+E <|.. F
+G ..> H
+"#;
+    let theme = class_relation_theme(
+        ThemeStylePatch::default()
+            .with_stroke_width(160.0)
+            .expect("valid wide Class relation stroke"),
+        None,
+    );
+    let render = |engine: Engine, session: RenderSession| {
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+            .unwrap()
+            .expect("Class source should produce a render model");
+        prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare Class paint-bounds fixture")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Class paint-bounds fixture")
+    };
+    let baseline = render(
+        Engine::new(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin unthemed Class session"),
+    );
+    let themed = render(
+        theme.install_parse_compatibility(Engine::new()),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Class paint-bounds session"),
+    );
+    let view_box = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).expect("valid Class SVG");
+        document
+            .root_element()
+            .attribute("viewBox")
+            .expect("Class root viewBox")
+            .split_ascii_whitespace()
+            .map(|part| part.parse::<f64>().expect("numeric viewBox component"))
+            .collect::<Vec<_>>()
+    };
+    let baseline = view_box(baseline.svg());
+    let themed = view_box(themed.svg());
+
+    assert_eq!(baseline.len(), 4);
+    assert_eq!(themed.len(), 4);
+    assert!(
+        themed[2] > baseline[2] + 1_000.0,
+        "baseline={baseline:?} themed={themed:?}"
+    );
+    assert!(
+        themed[3] > baseline[3] + 1_000.0,
+        "baseline={baseline:?} themed={themed:?}"
+    );
+}
+
+#[test]
+fn class_relation_theme_is_not_applicable_without_relations() {
+    let theme = class_relation_theme(
+        ThemeStylePatch::default()
+            .with_stroke_width(6.0)
+            .expect("valid Class relation width"),
+        None,
+    );
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync("classDiagram\nclass A\n", ParseOptions::strict())
+        .unwrap()
+        .expect("Class source should produce a render model");
+    let rendered = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Class no-relation session"),
+    )
+    .expect("prepare Class no-relation fixture")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("a Class Edge rule is not applicable without relations");
+
+    assert!(
+        rendered
+            .style_report()
+            .theme_applied_mechanisms()
+            .is_empty()
+    );
+    assert_eq!(
+        rendered.style_report().theme_not_applicable_mechanisms(),
+        &[FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Edge,
+        }]
+    );
+    assert!(rendered.style_report().theme_residuals().is_empty());
+    assert_eq!(
+        rendered.style_report().verification(),
+        FamilyStyleVerification::Verified
+    );
+}
+
+#[test]
+fn class_ordinal_relation_rules_use_concrete_one_based_applicability() {
+    const ONE_RELATION: &str = "classDiagram\nclass A\nclass B\nA --> B\n";
+    const TWO_RELATIONS: &str = "classDiagram\nclass A\nclass B\nclass C\nA --> B\nB --> C\n";
+    let theme_for = |selector| {
+        class_rule_theme(
+            ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default()
+                    .with_stroke_width(6.0)
+                    .expect("valid ordinal Class relation width"),
+            )
+            .with_ordinal(selector)
+            .for_family(DiagramFamilyId::CLASS),
+        )
+    };
+
+    for (selector, source, applies) in [
+        (OrdinalSelector::exact(1).unwrap(), ONE_RELATION, true),
+        (OrdinalSelector::exact(2).unwrap(), ONE_RELATION, false),
+        (OrdinalSelector::cycle(2, 1).unwrap(), TWO_RELATIONS, true),
+    ] {
+        let theme = theme_for(selector);
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Class ordinal source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort Class ordinal session"),
+        )
+        .expect("prepare Class ordinal fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render best-effort Class ordinal fixture");
+
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        if applies {
+            assert_eq!(rendered.style_report().theme_residuals().len(), 1);
+            assert_eq!(
+                rendered.style_report().theme_residuals()[0].reason(),
+                FamilyThemeResidualReason::UnsupportedGeometry
+            );
+        } else {
+            assert!(rendered.style_report().theme_residuals().is_empty());
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Edge,
+                }]
+            );
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+        }
+    }
+
+    let theme = theme_for(OrdinalSelector::exact(1).unwrap());
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(ONE_RELATION, ParseOptions::strict())
+        .unwrap()
+        .expect("Class exact ordinal source should produce a render model");
+    let artifact = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Class exact ordinal session"),
+    )
+    .expect("strict ordinal verification must wait for Class SVG evidence");
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("an applicable unsupported Class ordinal must fail strict portability"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::CLASS, 1))
+    );
+}
+
+#[test]
+fn class_node_unsupported_rules_use_node_not_relation_applicability() {
+    let theme = class_rule_theme(
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch {
+                geometry: ThemeGeometryPatch {
+                    radius: Specified::Value(8.0),
+                },
+                ..ThemeStylePatch::default()
+            },
+        )
+        .for_family(DiagramFamilyId::CLASS),
+    );
+    let parse = |source| {
+        theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Class Node source should produce a render model")
+    };
+
+    let rendered = prepare(
+        parse("classDiagram\nclass A\n"),
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin best-effort Class Node session"),
+    )
+    .expect("prepare Class Node fixture")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render best-effort Class Node fixture");
+    assert!(
+        rendered
+            .style_report()
+            .theme_applied_mechanisms()
+            .is_empty()
+    );
+    assert_eq!(rendered.style_report().theme_residuals().len(), 1);
+    assert_eq!(
+        rendered.style_report().theme_residuals()[0].reason(),
+        FamilyThemeResidualReason::UnsupportedGeometry
+    );
+
+    let artifact = prepare(
+        parse("classDiagram\nclass A\n"),
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Class Node session"),
+    )
+    .expect("strict Node verification must wait for Class SVG evidence");
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("an applicable unsupported Class Node rule must fail strict portability"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::CLASS, 1))
+    );
+
+    let empty = prepare(
+        parse("classDiagram\n"),
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict empty Class Node session"),
+    )
+    .expect("prepare empty Class Node fixture")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("a Class Node rule must be NotApplicable without nodes");
+    assert_eq!(
+        empty.style_report().theme_not_applicable_mechanisms(),
+        &[FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
+        }]
+    );
+    assert_eq!(
+        empty.style_report().verification(),
+        FamilyStyleVerification::Verified
+    );
+
+    let radius_rule = |radius| {
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch {
+                geometry: ThemeGeometryPatch {
+                    radius: Specified::Value(radius),
+                },
+                ..ThemeStylePatch::default()
+            },
+        )
+        .for_family(DiagramFamilyId::CLASS)
+    };
+    let superseded_theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(radius_rule(4.0))
+                    .with_rule(radius_rule(8.0)),
+            ),
+        )
+        .expect("compile superseded Class Node rules");
+    let parsed = superseded_theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync("classDiagram\nclass A\n", ParseOptions::strict())
+        .unwrap()
+        .expect("superseded Class Node source should produce a render model");
+    let rendered = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&superseded_theme)
+            .expect("begin superseded Class Node session"),
+    )
+    .expect("prepare superseded Class Node fixture")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render superseded Class Node fixture");
+    assert_eq!(
+        rendered.style_report().theme_not_applicable_mechanisms(),
+        &[FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
+        }]
+    );
+    assert_eq!(rendered.style_report().theme_residuals().len(), 1);
+    assert_eq!(
+        rendered.style_report().theme_residuals()[0].key(),
+        &FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::Node,
+        }
+    );
+}
+
+#[test]
+fn class_mixed_direct_width_and_legacy_paint_is_not_reported_as_applied() {
+    let theme = class_rule_theme(
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#2563eb").unwrap())
+                .with_stroke_width(6.0)
+                .expect("valid mixed Class relation style"),
+        )
+        .for_family(DiagramFamilyId::CLASS),
+    );
+    const SOURCE: &str = "classDiagram\nclass A\nclass B\nA --> B\n";
+    let parse = || {
+        theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+            .unwrap()
+            .expect("mixed Class relation source should produce a render model")
+    };
+    let rendered = prepare(
+        parse(),
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin best-effort mixed Class session"),
+    )
+    .expect("prepare mixed Class relation fixture")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render best-effort mixed Class relation fixture");
+
+    assert!(rendered.svg().contains("stroke-width:6px !important"));
+    assert!(
+        rendered
+            .style_report()
+            .theme_applied_mechanisms()
+            .is_empty()
+    );
+    assert!(rendered.style_report().theme_residuals().is_empty());
+    assert!(rendered.style_report().compatibility_residual_count() > 0);
+
+    let error = match prepare(
+        parse(),
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict mixed Class session"),
+    ) {
+        Ok(_) => panic!("legacy Class paint must reject before false Applied evidence"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        Error::LegacyFamilyThemeCompatibility {
+            family_id: DiagramFamilyId::CLASS,
+            ..
+        }
+    ));
 }
 
 #[test]

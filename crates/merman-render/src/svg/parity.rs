@@ -629,14 +629,18 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        BuiltinFamilyArtifact::Class(pair) => class::render_class_diagram_svg_model_with_config(
-            pair.layout(),
-            pair.semantic(),
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
+        BuiltinFamilyArtifact::Class(artifact) => {
+            class::render_class_diagram_svg_model_with_config(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.relation_theme(),
+                artifact.theme_evidence(),
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         BuiltinFamilyArtifact::Sequence(pair) => {
             sequence::render_sequence_diagram_svg_model_with_config(
                 pair.layout(),
