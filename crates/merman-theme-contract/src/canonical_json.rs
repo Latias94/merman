@@ -40,9 +40,8 @@ impl CanonicalJsonError {
     }
 }
 
-// Callers must first validate contract-owned wire values against the RFC 8785 I-JSON constraints.
-// This stays private until those wire types exist, so arbitrary Serialize implementations cannot
-// become part of the persisted theme contract.
+// This stays private so arbitrary Serialize implementations cannot become part of the persisted
+// theme contract. The encoder itself rejects values outside RFC 8785 and I-JSON.
 pub(crate) fn canonical_json_bytes<T>(value: &T) -> Result<Vec<u8>, CanonicalJsonError>
 where
     T: Serialize,
