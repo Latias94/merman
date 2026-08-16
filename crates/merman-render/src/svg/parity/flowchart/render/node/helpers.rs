@@ -1,6 +1,7 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
 use crate::svg::icon_registry::mermaid_unknown_icon_svg;
+use crate::svg::parity::flowchart::document_ids::FlowchartDocumentId;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
@@ -55,7 +56,7 @@ fn is_self_loop_label_node_id(id: &str) -> bool {
 pub(super) fn try_render_self_loop_label_placeholder(
     out: &mut impl crate::svg::parity::SvgOutput,
     node_id: &str,
-    dom_id: &str,
+    dom_id: FlowchartDocumentId<'_>,
     x: f64,
     y: f64,
     html_labels: bool,
@@ -67,7 +68,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
     let _ = write!(
         out,
         r#"<g class="label edgeLabel" id="{}" data-id="{}" data-et="edge-label" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
-        escape_xml_display(dom_id),
+        dom_id,
         escape_xml_display(node_id),
         fmt_display(x),
         fmt_display(y)
@@ -124,7 +125,7 @@ fn write_class_attr(out: &mut impl crate::svg::parity::SvgOutput, classes: NodeW
 }
 
 pub(super) struct NodeWrapperAttrs<'a> {
-    pub(super) dom_id: &'a str,
+    pub(super) dom_id: FlowchartDocumentId<'a>,
     pub(super) data_id: &'a str,
     pub(super) classes: NodeWrapperClasses<'a>,
     pub(super) wrapped_in_a: bool,
@@ -184,7 +185,7 @@ pub(super) fn open_node_wrapper(
         out.push_str(r#"<g class=""#);
         write_class_attr(out, classes);
         out.push_str(r#"" id=""#);
-        escape_xml_into(out, dom_id);
+        let _ = write!(out, "{dom_id}");
         out.push_str(r#"" data-id=""#);
         escape_xml_into(out, data_id);
         out.push_str(r#"" data-et="node""#);
@@ -192,7 +193,7 @@ pub(super) fn open_node_wrapper(
         out.push_str(r#"<g class=""#);
         write_class_attr(out, classes);
         out.push_str(r#"" id=""#);
-        escape_xml_into(out, dom_id);
+        let _ = write!(out, "{dom_id}");
         out.push_str(r#"" transform="translate("#);
         crate::svg::parity::util::fmt_into(out, x);
         out.push(',');

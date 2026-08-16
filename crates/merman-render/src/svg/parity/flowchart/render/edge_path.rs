@@ -204,8 +204,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     Ok(())
 }
 
-struct FlowchartEdgeSvgEmission<'a> {
-    edge_dom_id: &'a str,
+struct FlowchartEdgeSvgEmission<'a, EdgeDomId> {
+    edge_dom_id: EdgeDomId,
     edge: &'a crate::flowchart::FlowEdge,
     d: &'a str,
     data_points_b64: &'a str,
@@ -242,7 +242,10 @@ impl FlowchartEdgePathEmissionReceipt {
     }
 }
 
-impl FlowchartEdgeSvgEmission<'_> {
+impl<EdgeDomId> FlowchartEdgeSvgEmission<'_, EdgeDomId>
+where
+    EdgeDomId: fmt::Display,
+{
     fn append_to(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
@@ -325,9 +328,7 @@ impl FlowchartEdgeSvgEmission<'_> {
         write!(
             out,
             r#"<path d="{}" id="{}" class="{}" style=""#,
-            self.d,
-            escape_xml_display(self.edge_dom_id),
-            self.class_attr,
+            self.d, self.edge_dom_id, self.class_attr,
         )
     }
 

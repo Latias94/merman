@@ -637,7 +637,7 @@ mod tests {
 
 fn push_flowchart_shadow_defs(
     out: &mut impl crate::svg::parity::SvgOutput,
-    document_ids: &FlowchartDocumentIds,
+    document_ids: &FlowchartDocumentIds<'_>,
     effective_config_value: &serde_json::Value,
 ) {
     let flood_color = effective_config_value
@@ -649,16 +649,16 @@ fn push_flowchart_shadow_defs(
     let _ = write!(
         out,
         r#"<defs><filter id="{}" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
-        escape_xml_display(document_ids.drop_shadow()),
+        document_ids.drop_shadow(),
         flood_color,
-        escape_xml_display(document_ids.drop_shadow_small()),
+        document_ids.drop_shadow_small(),
         flood_color
     );
 }
 
 fn push_flowchart_gradient(
     out: &mut impl crate::svg::parity::SvgOutput,
-    document_ids: &FlowchartDocumentIds,
+    document_ids: &FlowchartDocumentIds<'_>,
     effective_config_value: &serde_json::Value,
 ) {
     if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
@@ -688,7 +688,7 @@ fn push_flowchart_gradient(
     let _ = write!(
         out,
         r#"<linearGradient id="{}" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
-        escape_xml_display(document_ids.root_gradient()),
+        document_ids.root_gradient(),
         gradient_start.as_str(),
         gradient_stop.as_str()
     );

@@ -215,7 +215,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         out,
         r#"<g class="{}" id="{}" data-id="{}" data-et="cluster""#,
         escape_xml_display(&classes),
-        escape_xml_display(lane_dom_id),
+        lane_dom_id,
         escape_xml_display(&lane.id),
     );
     if subgraph.is_some() {

@@ -80,19 +80,65 @@ fn flowchart_classdef_cssom_string(
     style
 }
 
-pub(in crate::svg::parity) fn write_flowchart_css(
+struct ScopedFlowchartDropShadow<'a, DropShadowId, DropShadowSmallId> {
+    source: &'a str,
+    drop_shadow_id: DropShadowId,
+    drop_shadow_small_id: DropShadowSmallId,
+}
+
+impl<DropShadowId, DropShadowSmallId> std::fmt::Display
+    for ScopedFlowchartDropShadow<'_, DropShadowId, DropShadowSmallId>
+where
+    DropShadowId: std::fmt::Display,
+    DropShadowSmallId: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const PREFIX: &str = "url(#drop-shadow";
+        const SMALL_SUFFIX: &str = "-small)";
+
+        let mut remaining = self.source;
+        loop {
+            let Some(offset) = remaining.find(PREFIX) else {
+                return f.write_str(remaining);
+            };
+
+            f.write_str(&remaining[..offset])?;
+            let suffix = &remaining[offset + PREFIX.len()..];
+            if let Some(next) = suffix.strip_prefix(SMALL_SUFFIX) {
+                f.write_str("url(#")?;
+                std::fmt::Display::fmt(&self.drop_shadow_small_id, f)?;
+                f.write_str(")")?;
+                remaining = next;
+            } else if let Some(next) = suffix.strip_prefix(')') {
+                f.write_str("url(#")?;
+                std::fmt::Display::fmt(&self.drop_shadow_id, f)?;
+                f.write_str(")")?;
+                remaining = next;
+            } else {
+                // Preserve near-matches byte-for-byte and continue after the common prefix. Each
+                // input byte therefore belongs to at most one subsequent `find` range.
+                f.write_str(PREFIX)?;
+                remaining = suffix;
+            }
+        }
+    }
+}
+
+pub(in crate::svg::parity) fn write_flowchart_css<DropShadowId, DropShadowSmallId>(
     out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: &str,
-    drop_shadow_id: &str,
-    drop_shadow_small_id: &str,
+    drop_shadow_id: DropShadowId,
+    drop_shadow_small_id: DropShadowSmallId,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
-) -> Result<()> {
+) -> Result<()>
+where
+    DropShadowId: std::fmt::Display,
+    DropShadowSmallId: std::fmt::Display,
+{
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let drop_shadow_id = escape_xml(drop_shadow_id);
-    let drop_shadow_small_id = escape_xml(drop_shadow_small_id);
     let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
@@ -113,12 +159,11 @@ pub(in crate::svg::parity) fn write_flowchart_css(
     let cluster_border = theme.cluster_border.as_str();
 
     let label_bkg = css_rgba_fade(edge_label_background, 0.5)?;
-    let scoped_drop_shadow = drop_shadow
-        .replace(
-            "url(#drop-shadow-small)",
-            &format!("url(#{drop_shadow_small_id})"),
-        )
-        .replace("url(#drop-shadow)", &format!("url(#{drop_shadow_id})"));
+    let scoped_drop_shadow = ScopedFlowchartDropShadow {
+        source: drop_shadow,
+        drop_shadow_id,
+        drop_shadow_small_id,
+    };
 
     let _ = write!(
         &mut *out,
@@ -385,6 +430,38 @@ mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use serde_json::json;
+
+    fn scoped_drop_shadow(source: &str) -> String {
+        ScopedFlowchartDropShadow {
+            source,
+            drop_shadow_id: "scope-filter-drop-shadow",
+            drop_shadow_small_id: "scope-filter-drop-shadow-small",
+        }
+        .to_string()
+    }
+
+    #[test]
+    fn scoped_drop_shadow_rewrites_repeated_exact_tokens_in_one_pass_order() {
+        let source = "url(#drop-shadow)|url(#drop-shadow-small)|url(#drop-shadow)|".repeat(64);
+        let expected = "url(#scope-filter-drop-shadow)|url(#scope-filter-drop-shadow-small)|url(#scope-filter-drop-shadow)|"
+            .repeat(64);
+
+        assert_eq!(scoped_drop_shadow(&source), expected);
+    }
+
+    #[test]
+    fn scoped_drop_shadow_preserves_near_matches_byte_for_byte() {
+        let source = concat!(
+            "url(#drop-shadowx) ",
+            "url(#drop-shadow-smallx) ",
+            "url(#drop-shadow-small ) ",
+            "url(#drop-shadow ",
+            "url(#drop-shadow-SMALL) ",
+            "URL(#drop-shadow)"
+        );
+
+        assert_eq!(scoped_drop_shadow(source), source);
+    }
 
     #[test]
     fn bounded_flowchart_css_stops_before_class_catalog_after_prefix_rejection() {

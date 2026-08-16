@@ -375,6 +375,117 @@ fn flowchart_root_normalizes_diagram_id_before_scoping_accessibility_ids() {
 }
 
 #[test]
+fn flowchart_accessibility_ids_close_for_title_only_and_description_only() {
+    let render = |source: &str| {
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin Flowchart accessibility session");
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+                .expect("parse Flowchart accessibility fixture")
+                .expect("detect Flowchart accessibility fixture");
+        render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            &SvgRenderOptions {
+                diagram_id: Some("aria.scope:v1".to_string()),
+                ..SvgRenderOptions::default()
+            },
+        )
+        .expect("render Flowchart accessibility fixture")
+    };
+    let scope = "aria.scope:v1-merman-flowchart-document";
+    let title_id = format!("{scope}-a11y-title");
+    let description_id = format!("{scope}-a11y-description");
+
+    let title_svg = render("flowchart TD\naccTitle: Title only\nA --> B\n");
+    let title_document = roxmltree::Document::parse(&title_svg).expect("valid title-only SVG");
+    assert_eq!(
+        title_document.root_element().attribute("aria-labelledby"),
+        Some(title_id.as_str())
+    );
+    assert_eq!(
+        title_document.root_element().attribute("aria-describedby"),
+        None
+    );
+    assert_eq!(
+        title_document
+            .descendants()
+            .find(|node| node.has_tag_name("title"))
+            .and_then(|node| node.attribute("id")),
+        Some(title_id.as_str())
+    );
+
+    let description_svg = render("flowchart TD\naccDescr: Description only\nA --> B\n");
+    let description_document =
+        roxmltree::Document::parse(&description_svg).expect("valid description-only SVG");
+    assert_eq!(
+        description_document
+            .root_element()
+            .attribute("aria-describedby"),
+        Some(description_id.as_str())
+    );
+    assert_eq!(
+        description_document
+            .root_element()
+            .attribute("aria-labelledby"),
+        None
+    );
+    assert_eq!(
+        description_document
+            .descendants()
+            .find(|node| node.has_tag_name("desc"))
+            .and_then(|node| node.attribute("id")),
+        Some(description_id.as_str())
+    );
+}
+
+#[test]
+fn flowchart_shadow_css_references_the_emitted_document_filters() {
+    let source = "flowchart TD\nA --> B\n";
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo",
+        "themeVariables": {
+            "dropShadow": "url(#drop-shadow) url(#drop-shadow-small)"
+        }
+    })));
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin Flowchart shadow-closure session");
+    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
+        .expect("parse Flowchart shadow-closure fixture")
+        .expect("detect Flowchart shadow-closure fixture");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions {
+            diagram_id: Some("shadow.scope:v1".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render Flowchart shadow-closure fixture");
+
+    let scope = "shadow.scope:v1-merman-flowchart-document";
+    let drop_shadow = format!("{scope}-filter-drop-shadow");
+    let drop_shadow_small = format!("{scope}-filter-drop-shadow-small");
+    assert!(svg.contains(&format!(r#"id="{drop_shadow}""#)), "{svg}");
+    assert!(
+        svg.contains(&format!(r#"id="{drop_shadow_small}""#)),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(&format!(
+            "filter:url(#{drop_shadow}) url(#{drop_shadow_small});"
+        )),
+        "{svg}"
+    );
+    assert!(!svg.contains("url(#drop-shadow)"), "{svg}");
+    assert!(!svg.contains("url(#drop-shadow-small)"), "{svg}");
+}
+
+#[test]
 fn flowchart_edge_and_cluster_with_the_same_raw_id_use_distinct_document_ids() {
     let svg = render_flowchart_svg_from_text("flowchart TD\nsubgraph L_A_B_0\n  A --> B\nend\n");
 

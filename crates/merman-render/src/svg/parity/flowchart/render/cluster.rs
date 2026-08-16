@@ -266,7 +266,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             out,
             r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}">"#,
             escape_xml_display(&class_attr),
-            escape_xml_display(cluster_dom_id),
+            cluster_dom_id,
             escape_xml_display(&cluster.id),
             escape_xml_display(data_look),
         );
@@ -352,7 +352,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         out,
         r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}">"#,
         escape_xml_display(&class_attr),
-        escape_xml_display(cluster_dom_id),
+        cluster_dom_id,
         escape_xml_display(&cluster.id),
         escape_xml_display(data_look),
     );

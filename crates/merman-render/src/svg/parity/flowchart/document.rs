@@ -1,5 +1,5 @@
 use super::super::root_svg;
-use super::super::util::{escape_attr_into, escape_xml_into};
+use super::super::util::escape_xml_into;
 use super::document_ids::FlowchartDocumentIds;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
@@ -7,7 +7,7 @@ pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub diagram_id: &'a str,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
-    pub document_ids: &'a FlowchartDocumentIds,
+    pub document_ids: &'a FlowchartDocumentIds<'a>,
     pub use_max_width: bool,
     pub diagram_padding: f64,
     pub bbox_min_x: f64,
@@ -22,10 +22,9 @@ pub(super) struct FlowchartSvgDocument<'a> {
     use_max_width: bool,
     root_viewport: root_svg::RootViewportContext<'a>,
     root_spec: root_svg::RootViewportSpec,
+    document_ids: &'a FlowchartDocumentIds<'a>,
     acc_title: Option<&'a str>,
     acc_descr: Option<&'a str>,
-    aria_labelledby: Option<String>,
-    aria_describedby: Option<String>,
 }
 
 pub(super) fn prepare_flowchart_svg_document(
@@ -54,20 +53,15 @@ pub(super) fn prepare_flowchart_svg_document(
         .as_deref()
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty());
-    let aria_labelledby = acc_title.map(|_| request.document_ids.accessibility_title().to_string());
-    let aria_describedby =
-        acc_descr.map(|_| request.document_ids.accessibility_description().to_string());
-
     FlowchartSvgDocument {
         diagram_id: request.diagram_id,
         diagram_type: request.diagram_type,
         use_max_width: request.use_max_width,
         root_viewport,
         root_spec,
+        document_ids: request.document_ids,
         acc_title,
         acc_descr,
-        aria_labelledby,
-        aria_describedby,
     }
 }
 
@@ -76,10 +70,18 @@ impl FlowchartSvgDocument<'_> {
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
     ) -> crate::Result<root_svg::RootDocument> {
+        // RootChrome currently borrows complete attribute values. Materialize at most these two
+        // document-level ids after the bounded sink exists; per-owner ids stay streaming views.
+        let aria_labelledby = self
+            .acc_title
+            .map(|_| self.document_ids.accessibility_title().to_string());
+        let aria_describedby = self
+            .acc_descr
+            .map(|_| self.document_ids.accessibility_description().to_string());
         let mut root_chrome = root_svg::RootChrome::new(self.diagram_id, self.diagram_type);
         root_chrome.class = Some("flowchart");
-        root_chrome.aria_labelledby = self.aria_labelledby.as_deref();
-        root_chrome.aria_describedby = self.aria_describedby.as_deref();
+        root_chrome.aria_labelledby = aria_labelledby.as_deref();
+        root_chrome.aria_describedby = aria_describedby.as_deref();
         root_chrome.dom.trailing_newline = false;
         if !self.use_max_width {
             root_chrome.dom.style_viewbox_order =
@@ -94,17 +96,21 @@ impl FlowchartSvgDocument<'_> {
     }
 
     pub(super) fn push_accessibility_metadata(&self, out: &mut impl crate::svg::parity::SvgOutput) {
-        if let (Some(id), Some(title)) = (self.aria_labelledby.as_deref(), self.acc_title) {
-            out.push_str(r#"<title id=""#);
-            escape_attr_into(out, id);
-            out.push_str(r#"">"#);
+        if let Some(title) = self.acc_title {
+            let _ = write!(
+                out,
+                r#"<title id="{}">"#,
+                self.document_ids.accessibility_title()
+            );
             escape_xml_into(out, title);
             out.push_str("</title>");
         }
-        if let (Some(id), Some(descr)) = (self.aria_describedby.as_deref(), self.acc_descr) {
-            out.push_str(r#"<desc id=""#);
-            escape_attr_into(out, id);
-            out.push_str(r#"">"#);
+        if let Some(descr) = self.acc_descr {
+            let _ = write!(
+                out,
+                r#"<desc id="{}">"#,
+                self.document_ids.accessibility_description()
+            );
             escape_xml_into(out, descr);
             out.push_str("</desc>");
         }

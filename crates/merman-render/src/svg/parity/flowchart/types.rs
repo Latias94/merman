@@ -35,7 +35,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
     pub(in crate::svg::parity::flowchart) document_ids:
-        &'a super::document_ids::FlowchartDocumentIds,
+        &'a super::document_ids::FlowchartDocumentIds<'a>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
