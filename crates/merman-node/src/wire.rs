@@ -2,12 +2,14 @@ use std::borrow::Cow;
 #[cfg(not(target_arch = "wasm32"))]
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingDiagnosticErrorDetails,
-    BindingEngine, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
-    BindingJsSafeResourceErrorDetails, BindingOperationRequest, BindingPayloadSchemaKey,
-    BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey,
+    ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingCancellationErrorDetails,
+    BindingDiagnosticErrorDetails, BindingEngine, BindingError, BindingErrorKind,
+    BindingIconRegistryErrorDetails, BindingJsSafeResourceErrorDetails, BindingOperationRequest,
+    BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST,
+    CapabilityKey, OperationControl, OperationKey, OperationPhase,
     RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
     TargetKey, ValidatedArtifactContract,
 };
@@ -329,6 +331,13 @@ struct NodeOperationRequest {
     uri: Option<String>,
     #[serde(default, deserialize_with = "deserialize_present_string")]
     options_json: Option<String>,
+    operation_control: Option<NodeOperationControlRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NodeOperationControlRequest {
+    timeout_ms: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -383,6 +392,8 @@ struct ErrorDetails<'a> {
     resource: Option<BindingJsSafeResourceErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostic: Option<&'a BindingDiagnosticErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cancellation: Option<BindingCancellationErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
@@ -488,20 +499,85 @@ fn metadata_wire_inner(id: &str) -> Result<String, BindingError> {
     Ok(text)
 }
 
+#[cfg(test)]
 pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String {
-    match binding_boundary(|| execute_wire_inner(engine, request_json)) {
+    execute_wire_with_control(engine, request_json, admitted_operation_control(None))
+}
+
+#[cfg(test)]
+pub(crate) fn execute_wire_with_control(
+    engine: &BindingEngine,
+    request_json: &str,
+    control: OperationControl,
+) -> String {
+    execute_wire_with_admitted_control(engine, request_json, control, None)
+}
+
+pub(crate) fn execute_wire_with_admitted_control(
+    engine: &BindingEngine,
+    request_json: &str,
+    control: OperationControl,
+    admitted_timeout_ms: Option<u32>,
+) -> String {
+    match binding_boundary(|| {
+        execute_wire_inner(engine, request_json, control, admitted_timeout_ms)
+    }) {
         Ok(response) => response,
         Err(error) => error_envelope(&error),
     }
 }
 
-fn execute_wire_inner(engine: &BindingEngine, request_json: &str) -> Result<String, BindingError> {
-    let request = parse_operation_request(request_json)?;
+pub(crate) fn admitted_operation_control(timeout_ms: Option<u32>) -> OperationControl {
+    timeout_ms.map_or_else(OperationControl::new, |timeout_ms| {
+        OperationControl::new().with_deadline(Duration::from_millis(u64::from(timeout_ms)))
+    })
+}
+
+fn execute_wire_inner(
+    engine: &BindingEngine,
+    request_json: &str,
+    control: OperationControl,
+    admitted_timeout_ms: Option<u32>,
+) -> Result<String, BindingError> {
+    control
+        .checkpoint_at(OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
+    let request = parse_operation_request(request_json);
+    control
+        .checkpoint_at(OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
+    let request = request?;
+    let request_timeout_ms = request
+        .operation_control
+        .as_ref()
+        .map(|operation_control| operation_control.timeout_ms);
+    match (request_timeout_ms, admitted_timeout_ms) {
+        (Some(requested), Some(admitted)) if requested != admitted => {
+            return Err(BindingError::invalid_argument(
+                "Node operation-control timeout does not match transport admission",
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(BindingError::invalid_argument(
+                "Node transport admitted a timeout missing from the operation request",
+            ));
+        }
+        (Some(_), None) => {
+            return Err(BindingError::invalid_argument(
+                "Node operation request timeout is missing transport admission",
+            ));
+        }
+        (Some(_), Some(_)) | (None, None) => {}
+    }
+    control
+        .checkpoint_at(OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
 
     let result = engine.execute(
         BindingOperationRequest::new(&request.operation_id, request.source.as_bytes())
             .with_optional_uri(request.uri.as_deref().map(str::as_bytes))
-            .with_options_json(request.options_json.as_deref().map_or(b"", str::as_bytes)),
+            .with_options_json(request.options_json.as_deref().map_or(b"", str::as_bytes))
+            .with_control(control),
     )?;
     success_envelope(result)
 }
@@ -675,8 +751,11 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
             fields.capability_id_utf8_bytes,
         )?;
     }
-    let resource = error.resource_details().map(|details| details.js_safe_json());
+    let resource = error
+        .resource_details()
+        .map(|details| details.js_safe_json());
     let diagnostic = error.diagnostic_details();
+    let cancellation = error.cancellation_details();
     if diagnostic
         .and_then(|details| details.span)
         .is_some_and(|span| {
@@ -687,13 +766,16 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
         return Err("error diagnostic span exceeds the JSON-safe integer range".to_owned());
     }
     let message = bounded_text(error.message(), fields.error_message_utf8_bytes);
-    let details =
-        (resource.is_some() || diagnostic.is_some() || error.icon_registry_details().is_some())
-            .then_some(ErrorDetails {
-                resource,
-                diagnostic,
-                icon_registry: error.icon_registry_details(),
-            });
+    let details = (resource.is_some()
+        || diagnostic.is_some()
+        || cancellation.is_some()
+        || error.icon_registry_details().is_some())
+    .then_some(ErrorDetails {
+        resource,
+        diagnostic,
+        cancellation,
+        icon_registry: error.icon_registry_details(),
+    });
     let envelope = ErrorEnvelope {
         version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,
@@ -1224,8 +1306,9 @@ fn producer_error(message: String) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::{
-        NodeDocumentLimits, NodeTransportKind, create_engine, deserialize_bounded_json,
-        error_envelope, execute_wire, metadata_wire, node_artifact_contract, node_wire_contract,
+        NodeDocumentLimits, NodeTransportKind, admitted_operation_control, create_engine,
+        deserialize_bounded_json, error_envelope, execute_wire, execute_wire_with_admitted_control,
+        execute_wire_with_control, metadata_wire, node_artifact_contract, node_wire_contract,
         parse_operation_request, runtime_catalog_wire, scan_bounded_json_text,
         transport_identity_wire, validate_bounded_json_text, validate_runtime_catalog,
     };
@@ -1392,6 +1475,18 @@ mod tests {
             "uri": null
         });
         assert!(parse_operation_request(&serde_json::to_string(&plus_one).unwrap()).is_err());
+        assert!(
+            parse_operation_request(
+                r#"{"operation_id":"svg","source":"x","uri":null,"operation_control":{"timeout_ms":-1}}"#,
+            )
+            .is_err()
+        );
+        assert!(
+            parse_operation_request(
+                r#"{"operation_id":"svg","source":"x","uri":null,"operation_control":{"timeout_ms":1,"future":true}}"#,
+            )
+            .is_err()
+        );
         assert!(
             parse_operation_request(
                 r#"{"operation_id":"svg","source":"x","uri":null,"options_json":"{"}"}"#,
@@ -1588,6 +1683,113 @@ mod tests {
         assert_eq!(diagnostic["span"]["kind"], "exact");
         assert_eq!(diagnostic["field"], "edge");
         assert_eq!(diagnostic["diagram_type"], "flowchart");
+    }
+
+    #[test]
+    fn operation_control_preserves_requested_and_deadline_cancellation_details() {
+        let engine = create_engine("").unwrap();
+        let deadline: serde_json::Value = serde_json::from_str(
+            &execute_wire_with_admitted_control(
+                &engine,
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"operation_control":{"timeout_ms":0}}"#,
+                admitted_operation_control(Some(0)),
+                Some(0),
+            ),
+        )
+        .expect("deadline error envelope");
+        assert_eq!(deadline["error"]["code_name"], "MERMAN_CANCELLED");
+        assert_eq!(
+            deadline["error"]["details"]["cancellation"]["reason"],
+            "deadline_exceeded"
+        );
+        assert_eq!(
+            deadline["error"]["details"]["cancellation"]["phase"],
+            "admission"
+        );
+
+        let requested = merman_bindings_core::OperationControl::new();
+        requested.cancel();
+        let cancelled: serde_json::Value = serde_json::from_str(&execute_wire_with_control(
+            &engine,
+            r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null}"#,
+            requested,
+        ))
+        .expect("requested cancellation envelope");
+        assert_eq!(cancelled["error"]["code_name"], "MERMAN_CANCELLED");
+        assert_eq!(
+            cancelled["error"]["details"]["cancellation"]["reason"],
+            "requested"
+        );
+        assert_eq!(
+            cancelled["error"]["details"]["cancellation"]["phase"],
+            "admission"
+        );
+        assert!(cancelled["error"]["details"].get("resource").is_none());
+    }
+
+    #[test]
+    fn admitted_timeout_must_match_the_wire_request_after_deadline_priority() {
+        let engine = create_engine("").unwrap();
+        let matching: serde_json::Value = serde_json::from_str(
+            &execute_wire_with_admitted_control(
+                &engine,
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"operation_control":{"timeout_ms":60000}}"#,
+                admitted_operation_control(Some(60_000)),
+                Some(60_000),
+            ),
+        )
+        .expect("matching timeout response");
+        assert_eq!(matching["ok"], true);
+
+        let request_only: serde_json::Value = serde_json::from_str(&execute_wire(
+            &engine,
+            r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"operation_control":{"timeout_ms":60000}}"#,
+        ))
+        .expect("request-only timeout response");
+        assert_eq!(
+            request_only["error"]["code_name"],
+            "MERMAN_INVALID_ARGUMENT"
+        );
+
+        for (request, admitted) in [
+            (
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"operation_control":{"timeout_ms":60000}}"#,
+                59_999,
+            ),
+            (
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null}"#,
+                60_000,
+            ),
+        ] {
+            let rejected: serde_json::Value =
+                serde_json::from_str(&execute_wire_with_admitted_control(
+                    &engine,
+                    request,
+                    admitted_operation_control(Some(admitted)),
+                    Some(admitted),
+                ))
+                .expect("timeout mismatch response");
+            assert_eq!(rejected["error"]["code_name"], "MERMAN_INVALID_ARGUMENT");
+        }
+
+        let expired: serde_json::Value = serde_json::from_str(
+            &execute_wire_with_admitted_control(
+                &engine,
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"operation_control":{"timeout_ms":1}}"#,
+                admitted_operation_control(Some(0)),
+                Some(0),
+            ),
+        )
+        .expect("expired timeout response");
+        assert_eq!(expired["error"]["code_name"], "MERMAN_CANCELLED");
+        assert_eq!(
+            expired["error"]["details"]["cancellation"]["reason"],
+            "deadline_exceeded"
+        );
+        assert_eq!(
+            expired["error"]["details"]["cancellation"]["phase"],
+            "admission"
+        );
     }
 
     #[test]

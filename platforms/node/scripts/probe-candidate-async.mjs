@@ -43,6 +43,28 @@ try {
   try {
     const result = decodeWireResponse(await engine.execute(options.requestJson), expectation);
     JSON.parse(result.data);
+    const baseRequest = JSON.parse(options.requestJson);
+    const deadlineRequestJson = JSON.stringify({
+      ...baseRequest,
+      operation_control: { timeout_ms: 0 },
+    });
+    assertCancellationResponse(
+      await executeCandidate(
+        engine,
+        options.candidate,
+        deadlineRequestJson,
+        { timeoutMs: 0 },
+      ),
+      expectation,
+      "deadline_exceeded",
+      `${options.candidate} deadline`,
+      "admission",
+    );
+
+    if (options.candidate === "napi") {
+      await assertNapiCancellationBridge(engine, expectation);
+    }
+
     engine.dispose();
     disposed = true;
     for (const [method, invoke] of [
@@ -69,6 +91,82 @@ try {
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
+}
+
+function executeCandidate(engine, candidate, requestJson, { signal, timeoutMs } = {}) {
+  if (candidate === "napi") return engine.execute(requestJson, signal, timeoutMs);
+  if (signal !== undefined) {
+    throw new Error("The Node-targeted WASM candidate cannot observe a mid-call AbortSignal.");
+  }
+  return engine.execute(requestJson, timeoutMs);
+}
+
+function operationError(
+  responseJson,
+  expectation,
+  label,
+  { allowedCancellationReasons = [] } = {},
+) {
+  let cause;
+  try {
+    decodeWireResponse(responseJson, expectation, { allowedCancellationReasons });
+  } catch (error) {
+    cause = error;
+  }
+  if (cause instanceof MermanOperationError) return cause;
+  if (cause !== undefined) throw cause;
+  throw new Error(`${label} unexpectedly succeeded.`);
+}
+
+function assertCancellationResponse(
+  responseJson,
+  expectation,
+  expectedReason,
+  label,
+  expectedPhase = null,
+) {
+  const cause = operationError(responseJson, expectation, label, {
+    allowedCancellationReasons: [expectedReason],
+  });
+  const phase = cause.cancellationDetails?.phase;
+  if (
+    cause.codeName !== "MERMAN_CANCELLED" ||
+    cause.cancellationDetails?.reason !== expectedReason ||
+    typeof phase !== "string" ||
+    phase.length === 0 ||
+    (expectedPhase !== null && phase !== expectedPhase)
+  ) {
+    throw new Error(`${label} did not preserve canonical cancellation details.`);
+  }
+  return cause.cancellationDetails;
+}
+
+async function assertNapiCancellationBridge(engine, expectation) {
+  // This real-addon smoke proves the AbortSignal-to-OperationControl bridge and canonical error
+  // envelope. The deterministic after-start lifecycle case belongs to the public API contract
+  // test; guessing libuv worker start from a timer would make this build probe flaky.
+  const requestJson = JSON.stringify({
+    operation_id: "semantic-json",
+    source: largeFlowchartSource(8_000),
+    uri: null,
+  });
+  const controller = new AbortController();
+  const pending = engine.execute(requestJson, controller.signal);
+  controller.abort();
+  assertCancellationResponse(
+    await pending,
+    expectation,
+    "requested",
+    "napi AbortSignal bridge",
+  );
+}
+
+function largeFlowchartSource(edgeCount) {
+  const lines = ["flowchart TD"];
+  for (let index = 0; index < edgeCount; index += 1) {
+    lines.push(`N${index} --> N${index + 1}`);
+  }
+  return lines.join("\n");
 }
 
 async function assertDisposedFailure(candidate, method, invoke) {

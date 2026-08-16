@@ -293,11 +293,9 @@ async function probeQueueLifecycle(input) {
     input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
   );
-  const executingController = new AbortController();
   const queuedController = new AbortController();
   const executing = abortEngine.renderSvg(source, {
     optionsJson,
-    signal: executingController.signal,
   });
   const queuedAbort = abortEngine.renderSvg(source, {
     optionsJson,
@@ -305,24 +303,25 @@ async function probeQueueLifecycle(input) {
   });
   const executionResult = lifecycleSettlement(executing);
   const queuedAbortResult = lifecycleSettlement(queuedAbort);
-  executingController.abort();
+  const disposeAfterExecuting = executing.then(
+    () => abortEngine.dispose(),
+    () => abortEngine.dispose(),
+  );
   queuedController.abort();
   const [executionSettlement, queuedAbortSettlement, abortDisposeSettlement] = await Promise.all([
     executionResult,
     queuedAbortResult,
-    lifecycleSettlement(executing.finally(() => abortEngine.dispose())),
+    lifecycleSettlement(disposeAfterExecuting),
   ]);
   const queuedAbortPassed =
     queuedAbortSettlement.status === "rejected" &&
     queuedAbortSettlement.error.name === "AbortError";
-  const executionPassed = executionSettlement.status === "fulfilled";
   const abortDisposed = abortDisposeSettlement.status === "fulfilled";
 
   return {
     saturation_passed: saturationPassed,
     dispose_passed: disposePassed,
     queued_abort_passed: queuedAbortPassed && abortDisposed,
-    non_preemptive_abort_passed: executionPassed && abortDisposed,
     evidence: {
       saturation: {
         active: activeSettlement,

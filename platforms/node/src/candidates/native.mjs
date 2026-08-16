@@ -28,6 +28,7 @@ export async function loadNativeTransport(optionsJson, loaderOptions = {}) {
     transport = wrapCandidateEngine(
       new NativeEngine(optionsJson),
       "The target-specific Merman addon",
+      { forwardsAbortSignal: true },
     );
   } catch (cause) {
     throw decodeWireCreationError(cause, "The target-specific Merman addon");

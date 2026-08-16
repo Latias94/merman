@@ -35,10 +35,15 @@ surface.
 - `packages/node` contains the public ESM loader, JavaScript engine, declarations, and user README.
 - Generated `@mermanjs/node-<platform>` packages contain the native binary for one supported host.
 - The Node-targeted WASM implementation is an internal comparison transport and is never selected
-  by the public loader.
+  by the public loader. It supports operation deadlines, but its single-threaded execution cannot
+  observe a mid-call JavaScript `AbortSignal`.
 
 Install only `@mermanjs/node`; its exact-version optional dependencies keep the selected platform
 package aligned with the loader.
+
+Native cancellation is cooperative after JavaScript queue admission. The bridge does not forcibly
+remove work already submitted to libuv; the Promise settles when that worker observes cancellation
+at transport admission or a later renderer checkpoint, preserving the canonical typed envelope.
 
 ## Develop and verify
 

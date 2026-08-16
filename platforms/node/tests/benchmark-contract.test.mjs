@@ -301,7 +301,6 @@ function queueLifecycleEvidence() {
     saturation_passed: true,
     dispose_passed: true,
     queued_abort_passed: true,
-    non_preemptive_abort_passed: true,
     process_shutdown_passed: true,
     evidence: {
       saturation: {

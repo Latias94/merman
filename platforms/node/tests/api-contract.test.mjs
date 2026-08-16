@@ -9,6 +9,7 @@ import {
   createNodeEngine,
   normalizeBindingOptions,
 } from "../src/engine.mjs";
+import { BoundedExecutor } from "../src/bounded-executor.mjs";
 import * as publicApi from "../src/index.mjs";
 import {
   MermanDisposedError,
@@ -143,6 +144,24 @@ function failure({ kind, capabilityId = null }) {
         kind === "unknown-operation"
           ? "unknown operation `bitmap`"
           : `operation requires missing capability \`${capabilityId}\``,
+    },
+  });
+}
+
+function cancellationFailure(reason = "requested", phase = "future_phase") {
+  return JSON.stringify({
+    version: 1,
+    ok: false,
+    error: {
+      code: 12,
+      code_name: "MERMAN_CANCELLED",
+      kind: "generic",
+      capability_id: null,
+      details: {
+        cancellation: { reason, phase, future_context: true },
+        future_details: true,
+      },
+      message: `operation cancelled during ${phase}: ${reason}`,
     },
   });
 }
@@ -508,13 +527,16 @@ test("runtime catalog output contracts fail closed on ID and nested-shape drift"
 function transportFactory(overrides = {}) {
   const calls = [];
   const createdWith = [];
+  const transportCalls = [];
   const transport = {
-    async execute(requestJson) {
+    async execute(requestJson, signal, timeoutMs) {
       calls.push(JSON.parse(requestJson));
+      transportCalls.push({ kind: "async", signal, timeoutMs });
       return success();
     },
-    executeSync(requestJson) {
+    executeSync(requestJson, timeoutMs) {
       calls.push(JSON.parse(requestJson));
+      transportCalls.push({ kind: "sync", timeoutMs });
       return success();
     },
     runtimeCatalogJson() {
@@ -534,6 +556,7 @@ function transportFactory(overrides = {}) {
       return transport;
     },
     transport,
+    transportCalls,
   };
 }
 
@@ -584,6 +607,70 @@ test("generic operations preserve request-local options JSON", async () => {
     },
   ]);
   await engine.dispose();
+});
+
+test("operation deadlines use the additive request control field", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  const request = { operationId: "svg", source: "flowchart TD\nA --> B" };
+
+  await engine.executeOperation(request, { timeoutMs: 25 });
+  engine.executeOperationSync(request, { timeoutMs: 0 });
+
+  assert.deepEqual(factory.calls, [
+    {
+      operation_id: "svg",
+      source: "flowchart TD\nA --> B",
+      uri: null,
+      operation_control: { timeout_ms: 25 },
+    },
+    {
+      operation_id: "svg",
+      source: "flowchart TD\nA --> B",
+      uri: null,
+      operation_control: { timeout_ms: 0 },
+    },
+  ]);
+  assert.deepEqual(factory.transportCalls, [
+    { kind: "async", signal: undefined, timeoutMs: 25 },
+    { kind: "sync", timeoutMs: 0 },
+  ]);
+  for (const timeoutMs of [-1, 0.5, 0x1_0000_0000, Number.POSITIVE_INFINITY, "1"]) {
+    assert.throws(
+      () => engine.executeOperation(request, { timeoutMs }),
+      /timeoutMs must be an integer from 0 through 4294967295/i,
+    );
+  }
+  await engine.dispose();
+});
+
+test("already-aborted operations stop before request materialization", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  const controller = new AbortController();
+  controller.abort();
+  let sourceRead = false;
+  const request = {
+    operationId: "svg",
+    get source() {
+      sourceRead = true;
+      throw new Error("source should not be materialized");
+    },
+  };
+
+  await assert.rejects(
+    engine.executeOperation(request, { signal: controller.signal }),
+    (error) => error?.name === "AbortError",
+  );
+  assert.equal(sourceRead, false);
+  assert.equal(factory.calls.length, 0);
+  await engine.dispose();
+
+  await assert.rejects(
+    engine.executeOperation(request, { signal: controller.signal }),
+    MermanDisposedError,
+  );
+  assert.equal(sourceRead, false);
 });
 
 test("operation URI policy normalizes empty values and rejects forbidden identifiers", async () => {
@@ -1462,6 +1549,8 @@ test("public TypeScript declarations cover the generic operation API", () => {
     assert.equal(typeof MermanEngine.prototype[method], "function", method);
     assert.match(declarations, new RegExp(`\\b${method}\\s*\\(`));
   }
+  assert.match(declarations, /\btimeoutMs\??:\s*number/);
+  assert.match(declarations, /\bcancellationDetails\b/);
   assert.equal(publicApi.MermanEngine, MermanEngine);
   assert.equal(publicApi.MermanInvalidTransportError, MermanInvalidTransportError);
   assert.equal("MermanNodeEngine" in publicApi, false);
@@ -1568,7 +1657,10 @@ test("capability-gated errors survive while advertised-operation contradictions 
     { kind: "missing-capability", capabilityId: "png", operationId: "png" },
   ]) {
     const factory = transportFactory({
-      async execute() {
+      async execute(requestJson) {
+        if (JSON.parse(requestJson).operation_control !== undefined) {
+          return cancellationFailure("deadline_exceeded", "admission");
+        }
         return failure({ kind: expected.kind, capabilityId: expected.capabilityId });
       },
     });
@@ -1586,6 +1678,22 @@ test("capability-gated errors survive while advertised-operation contradictions 
         return true;
       },
     );
+    await assert.rejects(
+      engine.executeOperation(
+        {
+          operationId: expected.operationId,
+          source: "flowchart TD\nA",
+        },
+        { timeoutMs: 0 },
+      ),
+      (error) => {
+        assert.ok(error instanceof MermanOperationError);
+        assert.equal(error.codeName, "MERMAN_CANCELLED");
+        assert.equal(error.cancellationDetails.reason, "deadline_exceeded");
+        assert.equal(error.cancellationDetails.phase, "admission");
+        return true;
+      },
+    );
     await engine.dispose();
   }
 
@@ -1600,6 +1708,56 @@ test("capability-gated errors survive while advertised-operation contradictions 
     MermanInvalidTransportError,
   );
   await engine.dispose();
+});
+
+test("cancellation responses must match this invocation control", async () => {
+  for (const {
+    label,
+    operationId = "svg",
+    responseReason,
+    signal,
+    timeoutMs,
+  } of [
+    {
+      label: "no operation control",
+      operationId: "png",
+      responseReason: "requested",
+    },
+    {
+      label: "an untriggered signal",
+      responseReason: "requested",
+      signal: new AbortController().signal,
+    },
+    {
+      label: "a signal-only deadline response",
+      responseReason: "deadline_exceeded",
+      signal: new AbortController().signal,
+    },
+    {
+      label: "a timeout-only requested response",
+      responseReason: "requested",
+      timeoutMs: 1_000,
+    },
+  ]) {
+    const factory = transportFactory({
+      async execute() {
+        return cancellationFailure(responseReason, "admission");
+      },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    await assert.rejects(
+      engine.executeOperation(
+        { operationId, source: "flowchart TD\nA" },
+        { signal, timeoutMs },
+      ),
+      (error) => {
+        assert.ok(error instanceof MermanInvalidTransportError, label);
+        assert.match(error.message, /without a matching invocation control/i);
+        return true;
+      },
+    );
+    await engine.dispose();
+  }
 });
 
 test("generic execution covers the complete 13-operation matrix", async () => {
@@ -1763,44 +1921,112 @@ test("queue admission is bounded and dispose drains only executing work", async 
   assert.equal(engine.dispose(), disposing);
 });
 
-test("AbortSignal cancels queued work but never claims to preempt executing work", async () => {
-  const started = deferred();
+test(
+  "AbortSignal keeps queued cancellation and cooperatively cancels executing work",
+  { timeout: 2_000 },
+  async () => {
+    const started = deferred();
+    const executingAbort = new AbortController();
+    let executions = 0;
+    const factory = transportFactory({
+      async execute(_requestJson, signal) {
+        executions += 1;
+        if (executions === 1) {
+          assert.ok(signal instanceof AbortSignal);
+          assert.notEqual(signal, executingAbort.signal);
+          started.resolve();
+          await new Promise((resolve) => {
+            signal.addEventListener("abort", resolve, { once: true });
+          });
+          return cancellationFailure();
+        }
+        return success();
+      },
+    });
+    const engine = await createNodeEngine(
+      { concurrency: 1, maxQueue: 1 },
+      { loadTransport: factory.loadTransport },
+    );
+
+    const active = engine.renderSvg("flowchart TD\nA", {
+      signal: executingAbort.signal,
+    });
+    await started.promise;
+
+    const queuedAbort = new AbortController();
+    const queued = engine.renderSvg("flowchart TD\nB", {
+      signal: queuedAbort.signal,
+    });
+    queuedAbort.abort();
+    await assert.rejects(queued, (error) => error?.name === "AbortError");
+
+    const replacement = engine.renderSvg("flowchart TD\nC");
+    executingAbort.abort();
+    await assert.rejects(active, (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.equal(error.codeName, "MERMAN_CANCELLED");
+      assert.equal(error.cancellationDetails.reason, "requested");
+      assert.equal(error.cancellationDetails.phase, "future_phase");
+      assert.equal(error.cancellationDetails.future_context, true);
+      return true;
+    });
+    assert.equal(await replacement, "<svg />");
+    assert.equal(executions, 2);
+    await engine.dispose();
+  },
+);
+
+test("queued cancellation closes the listener-registration race", async () => {
   const release = deferred();
-  let executions = 0;
-  const factory = transportFactory({
-    async execute() {
-      executions += 1;
-      started.resolve();
-      await release.promise;
-      return success();
+  const executor = new BoundedExecutor({ concurrency: 1, maxQueue: 1 });
+  const active = executor.submit(() => release.promise);
+  let abortedReads = 0;
+  const signal = {
+    get aborted() {
+      abortedReads += 1;
+      return abortedReads > 1;
     },
-  });
-  const engine = await createNodeEngine(
-    { concurrency: 1, maxQueue: 1 },
-    { loadTransport: factory.loadTransport },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+
+  await assert.rejects(
+    executor.submit(() => Promise.resolve(), { signal }),
+    (error) => error?.name === "AbortError",
   );
-
-  const executingAbort = new AbortController();
-  const active = engine.renderSvg("flowchart TD\nA", {
-    signal: executingAbort.signal,
-  });
-  await started.promise;
-  executingAbort.abort();
-
-  const queuedAbort = new AbortController();
-  const queued = engine.renderSvg("flowchart TD\nB", {
-    signal: queuedAbort.signal,
-  });
-  queuedAbort.abort();
-  await assert.rejects(queued, (error) => error?.name === "AbortError");
-
-  const replacement = engine.renderSvg("flowchart TD\nC");
   release.resolve();
-  assert.equal(await active, "<svg />");
-  assert.equal(await replacement, "<svg />");
-  assert.equal(executions, 2);
-  await engine.dispose();
+  await active;
+  await executor.dispose();
 });
+
+test(
+  "executing cancellation closes the transport-registration race",
+  { timeout: 2_000 },
+  async () => {
+    const controller = new AbortController();
+    const factory = transportFactory({
+      async execute(_requestJson, signal) {
+        controller.abort();
+        await new Promise((resolve) => {
+          signal.addEventListener("abort", resolve, { once: true });
+        });
+        return cancellationFailure();
+      },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+    await assert.rejects(
+      engine.renderSvg("flowchart TD\nA", { signal: controller.signal }),
+      (error) => {
+        assert.ok(error instanceof MermanOperationError);
+        assert.equal(error.codeName, "MERMAN_CANCELLED");
+        assert.equal(error.cancellationDetails.reason, "requested");
+        return true;
+      },
+    );
+    await engine.dispose();
+  },
+);
 
 test("renderSvgSync is explicit and refuses lifecycle races", async () => {
   const factory = transportFactory();
