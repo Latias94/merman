@@ -79,23 +79,27 @@ monotonic deadline belong to the renderer/request operation. Resource exhaustion
 remain distinct errors and neither returns partial output.
 
 ```rust
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 let control = OperationControl::new();
 let host_control = control.clone();
-let output = Renderer::new().render(RenderRequest::svg(
-    "flowchart TD\nA --> B",
-    control,
-    SvgRequest::default(),
-))?;
+let render_thread = std::thread::spawn(move || {
+    Renderer::new().render(RenderRequest::svg(
+        "flowchart TD\nA --> B",
+        control,
+        SvgRequest::default(),
+    ))
+});
 
-let RenderOutput::Svg(Some(svg)) = output else {
-    return Err("no Mermaid diagram found".into());
-};
-println!("{}", svg.svg());
-
-// Another thread or task may call this while the synchronous render is running.
+// A host event, stale-revision check, or another thread may cancel the in-flight render.
 host_control.cancel();
+
+match render_thread.join().expect("render thread panicked") {
+    Err(RenderError::Cancelled(_)) => {}
+    Ok(RenderOutput::Svg(Some(svg))) => println!("{}", svg.svg()),
+    Ok(_) => return Err("no Mermaid diagram found".into()),
+    Err(error) => return Err(error.into()),
+}
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
