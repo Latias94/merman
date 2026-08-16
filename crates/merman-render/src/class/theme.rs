@@ -6,7 +6,10 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget,
     ThemeVariant,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
+};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -147,7 +150,7 @@ impl ClassRelationThemePlan {
         selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        let property = style_property_for_facet(facet);
+        let property = resolved_style_property_for_facet(facet);
         match selector {
             FamilyThemeSelectorShape::Static {
                 variant: None | Some(ThemeVariant::Default),
@@ -259,7 +262,7 @@ impl ClassThemeEvidenceRecorder {
                             FamilyThemeDisposition::Unsupported => {
                                 observation
                                     .residual
-                                    .get_or_insert(unsupported_reason_for_facet(facet));
+                                    .get_or_insert(unsupported_residual_for_facet(facet));
                             }
                             FamilyThemeDisposition::TypedAdapter
                             | FamilyThemeDisposition::LegacyCompatibility => {
@@ -296,7 +299,7 @@ impl ClassThemeEvidenceRecorder {
                         (FamilyThemeDisposition::Unsupported, facet) => {
                             observation
                                 .residual
-                                .get_or_insert(unsupported_reason_for_facet(facet));
+                                .get_or_insert(unsupported_residual_for_facet(facet));
                         }
                         (FamilyThemeDisposition::LegacyCompatibility, _) => {
                             observation.incomplete = true;
@@ -360,43 +363,6 @@ struct ClassRuleObservation {
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     width_verified: bool,
-}
-
-fn style_property_for_facet(facet: FamilyThemeRuleFacet) -> ResolvedStyleProperty {
-    match facet {
-        FamilyThemeRuleFacet::Fill(_) => ResolvedStyleProperty::Fill,
-        FamilyThemeRuleFacet::Stroke(_) => ResolvedStyleProperty::Stroke,
-        FamilyThemeRuleFacet::StrokeWidth => ResolvedStyleProperty::StrokeWidth,
-        FamilyThemeRuleFacet::StrokeDasharray => ResolvedStyleProperty::StrokeDasharray,
-        FamilyThemeRuleFacet::StrokeLinecap => ResolvedStyleProperty::StrokeLinecap,
-        FamilyThemeRuleFacet::StrokeLinejoin => ResolvedStyleProperty::StrokeLinejoin,
-        FamilyThemeRuleFacet::Opacity => ResolvedStyleProperty::Opacity,
-        FamilyThemeRuleFacet::FillOpacity => ResolvedStyleProperty::FillOpacity,
-        FamilyThemeRuleFacet::StrokeOpacity => ResolvedStyleProperty::StrokeOpacity,
-        FamilyThemeRuleFacet::Radius => ResolvedStyleProperty::Radius,
-        FamilyThemeRuleFacet::Padding => ResolvedStyleProperty::Padding,
-        FamilyThemeRuleFacet::Typography(property) => ResolvedStyleProperty::Typography(property),
-        FamilyThemeRuleFacet::Effect => ResolvedStyleProperty::Effect,
-    }
-}
-
-fn unsupported_reason_for_facet(facet: FamilyThemeRuleFacet) -> FamilyThemeResidualReason {
-    match facet {
-        FamilyThemeRuleFacet::Typography(_) => FamilyThemeResidualReason::UnsupportedTypography,
-        FamilyThemeRuleFacet::Effect => FamilyThemeResidualReason::UnsupportedEffect,
-        FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_) => {
-            FamilyThemeResidualReason::UnsupportedPaint
-        }
-        FamilyThemeRuleFacet::StrokeWidth
-        | FamilyThemeRuleFacet::StrokeDasharray
-        | FamilyThemeRuleFacet::StrokeLinecap
-        | FamilyThemeRuleFacet::StrokeLinejoin
-        | FamilyThemeRuleFacet::Opacity
-        | FamilyThemeRuleFacet::FillOpacity
-        | FamilyThemeRuleFacet::StrokeOpacity
-        | FamilyThemeRuleFacet::Radius
-        | FamilyThemeRuleFacet::Padding => FamilyThemeResidualReason::UnsupportedGeometry,
-    }
 }
 
 #[cfg(test)]

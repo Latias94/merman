@@ -1,6 +1,10 @@
 mod capability;
+mod evidence_support;
 
 pub use capability::{RenderCapabilityPlan, plan_render};
+pub(crate) use evidence_support::{
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
+};
 
 use crate::diagram_theme::{
     FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,

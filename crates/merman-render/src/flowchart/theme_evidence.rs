@@ -8,7 +8,10 @@ use crate::diagram_theme::{
     SourceStyleResidual, Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty,
     ThemeVariant,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeResidualReason,
+    unsupported_residual_for_facet as unsupported_reason_for_facet,
+};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 #[derive(Debug)]
@@ -1155,25 +1158,6 @@ fn record_incomplete_cluster_facet(
                 .entry(rule_index)
                 .or_insert(unsupported_reason_for_facet(facet));
         }
-    }
-}
-
-fn unsupported_reason_for_facet(facet: FamilyThemeRuleFacet) -> FamilyThemeResidualReason {
-    match facet {
-        FamilyThemeRuleFacet::Typography(_) => FamilyThemeResidualReason::UnsupportedTypography,
-        FamilyThemeRuleFacet::Effect => FamilyThemeResidualReason::UnsupportedEffect,
-        FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_) => {
-            FamilyThemeResidualReason::UnsupportedPaint
-        }
-        FamilyThemeRuleFacet::StrokeWidth
-        | FamilyThemeRuleFacet::StrokeDasharray
-        | FamilyThemeRuleFacet::StrokeLinecap
-        | FamilyThemeRuleFacet::StrokeLinejoin
-        | FamilyThemeRuleFacet::Opacity
-        | FamilyThemeRuleFacet::FillOpacity
-        | FamilyThemeRuleFacet::StrokeOpacity
-        | FamilyThemeRuleFacet::Radius
-        | FamilyThemeRuleFacet::Padding => FamilyThemeResidualReason::UnsupportedGeometry,
     }
 }
 
