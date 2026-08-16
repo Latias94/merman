@@ -2269,6 +2269,7 @@ fn sequence_explicit_config_typography_reaches_measurement_and_terminal_writers(
         "fontFamily": "Courier New",
         "fontSize": 23,
         "fontWeight": 700,
+        "themeVariables": {"fontFamily": "Excalifont"},
     })));
     let source = r#"sequenceDiagram
 autonumber

@@ -147,12 +147,6 @@ impl SvgEnvironment {
                 .map_err(RenderError::from),
         }
     }
-
-    const fn portability_requirement(
-        &self,
-    ) -> merman_render::diagram_theme::ThemePortabilityRequirement {
-        self.backend.theme_portability_requirement()
-    }
 }
 
 #[cfg(feature = "svg")]
@@ -318,6 +312,7 @@ pub enum TargetAdmissionReason {
     HostDependentTextLayout,
     PreparedTextEvidenceInvalid,
     SvgFontsNotSelfContained,
+    SvgTerminalValidationFailed,
     PreparedTextEvidenceMismatch,
     PreparedTextTerminalProofIncomplete,
     FontResolutionIncomplete,
@@ -337,6 +332,7 @@ impl TargetAdmissionReason {
         Self::HostDependentTextLayout,
         Self::PreparedTextEvidenceInvalid,
         Self::SvgFontsNotSelfContained,
+        Self::SvgTerminalValidationFailed,
         Self::PreparedTextEvidenceMismatch,
         Self::PreparedTextTerminalProofIncomplete,
         Self::FontResolutionIncomplete,
@@ -355,6 +351,7 @@ impl TargetAdmissionReason {
             Self::HostDependentTextLayout => "host_dependent_text_layout",
             Self::PreparedTextEvidenceInvalid => "prepared_text_evidence_invalid",
             Self::SvgFontsNotSelfContained => "svg_fonts_not_self_contained",
+            Self::SvgTerminalValidationFailed => "svg_terminal_validation_failed",
             Self::PreparedTextEvidenceMismatch => "prepared_text_evidence_mismatch",
             Self::PreparedTextTerminalProofIncomplete => "prepared_text_terminal_proof_incomplete",
             Self::FontResolutionIncomplete => "font_resolution_incomplete",
@@ -380,6 +377,7 @@ pub struct DocumentPortabilityReport {
     theme_evidence: ThemeEvidenceSummary,
     resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
     font_catalog_fingerprint: merman_render::diagram_theme::FontCatalogFingerprint,
+    resource_closure_complete: bool,
     prepared_text_evidence_valid: bool,
     rejected: bool,
     host_dependent: bool,
@@ -407,7 +405,7 @@ impl DocumentPortabilityReport {
     }
 
     pub const fn resource_closure_complete(&self) -> bool {
-        true
+        self.resource_closure_complete
     }
 
     pub const fn prepared_text_evidence_valid(&self) -> bool {
@@ -424,7 +422,7 @@ impl DocumentPortabilityReport {
     /// [`Self::is_host_dependent`] and the target admission receipt when deciding whether an
     /// artifact is portable.
     pub const fn is_evidence_valid(&self) -> bool {
-        self.prepared_text_evidence_valid && !self.rejected
+        self.resource_closure_complete && self.prepared_text_evidence_valid && !self.rejected
     }
 
     pub fn reasons(&self) -> &[TargetAdmissionReason] {
@@ -912,7 +910,7 @@ fn summarize_theme_evidence(
 pub struct SvgOutput {
     svg: String,
     evidence: RenderEvidence,
-    admission: Option<TargetAdmissionReceipt>,
+    admission: TargetAdmissionReceipt,
 }
 
 /// Completed graphical document retained as the single source for every terminal target.
@@ -925,7 +923,7 @@ pub struct SvgOutput {
 #[cfg(feature = "svg")]
 #[derive(Debug, PartialEq, Eq)]
 pub struct RenderedDocument {
-    svg: merman_render::svg::ResvgCompatibleSvg,
+    svg: merman_render::svg::StandaloneSvgArtifact,
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
     standalone_svg_admission: TargetAdmissionReceipt,
@@ -1030,10 +1028,11 @@ impl RenderedDocument {
         svg: merman_render::svg::ResvgCompatibleSvg,
         family: merman_render::family::FamilyRenderReport,
     ) -> Self {
+        let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
         let evidence = Arc::new(RenderEvidence::from_family(family));
         let portability = document_portability_report(&svg, &evidence);
         let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
-        let native_svg = merman_render::__private::native_export_svg(&svg);
+        let native_svg = svg.native_export_svg();
         let native_svg_digest = if native_svg == svg.as_str() {
             public_svg_digest
         } else {
@@ -1066,8 +1065,11 @@ impl RenderedDocument {
     }
 
     /// Borrows the immutable terminal SVG together with its retained export resources and proofs.
-    pub const fn sealed_svg(&self) -> &merman_render::svg::ResvgCompatibleSvg {
-        &self.svg
+    pub fn sealed_svg(&self) -> &merman_render::svg::ResvgCompatibleSvg {
+        match self.svg.as_resvg_compatible() {
+            Some(svg) => svg,
+            None => unreachable!("rendered documents are always finalized through resvg-safe"),
+        }
     }
 
     pub fn evidence(&self) -> &RenderEvidence {
@@ -1099,28 +1101,13 @@ impl RenderedDocument {
         &self.standalone_svg_admission
     }
 
-    fn into_admitted_svg_output(self) -> Result<SvgOutput, RenderError> {
-        enforce_portability_requirement(&self.evidence, &self.standalone_svg_admission)?;
-        let Self {
-            svg,
-            evidence,
-            portability: _,
-            standalone_svg_admission,
-        } = self;
-        Ok(SvgOutput {
-            svg: svg.into_string(),
-            evidence: (*evidence).clone(),
-            admission: Some(standalone_svg_admission),
-        })
-    }
-
     #[cfg(feature = "png")]
     pub fn prepare_png_export(
         &self,
         options: &merman_export::RasterOptions,
         control: OperationControl,
     ) -> Result<PreparedPngExport<'_>, RenderError> {
-        let export = merman_export::prepare_raster_controlled(&self.svg, options, control)
+        let export = merman_export::prepare_raster_controlled(self.sealed_svg(), options, control)
             .map_err(map_export_error)?;
         let report = export.report_for_output(merman_export::RasterOutputKind::Png);
         Ok(PreparedPngExport {
@@ -1147,7 +1134,7 @@ impl RenderedDocument {
         options: &merman_export::RasterOptions,
         control: OperationControl,
     ) -> Result<PreparedJpegExport<'_>, RenderError> {
-        let export = merman_export::prepare_raster_controlled(&self.svg, options, control)
+        let export = merman_export::prepare_raster_controlled(self.sealed_svg(), options, control)
             .map_err(map_export_error)?;
         let report = export.report_for_output(merman_export::RasterOutputKind::Jpeg);
         Ok(PreparedJpegExport {
@@ -1203,7 +1190,7 @@ impl RenderedDocument {
         options: &merman_export::PdfOptions,
         control: OperationControl,
     ) -> Result<PreparedPdfExport<'_>, RenderError> {
-        let export = merman_export::prepare_pdf_controlled(&self.svg, options, control)
+        let export = merman_export::prepare_pdf_controlled(self.sealed_svg(), options, control)
             .map_err(map_export_error)?;
         let report = export.report();
         Ok(PreparedPdfExport {
@@ -1248,14 +1235,6 @@ impl RenderedDocument {
 
 #[cfg(feature = "svg")]
 impl SvgOutput {
-    fn new(svg: String, family: merman_render::family::FamilyRenderReport) -> Self {
-        Self {
-            svg,
-            evidence: RenderEvidence::from_family(family),
-            admission: None,
-        }
-    }
-
     pub fn svg(&self) -> &str {
         &self.svg
     }
@@ -1264,13 +1243,14 @@ impl SvgOutput {
         &self.evidence
     }
 
-    /// Returns target-owned admission when this SVG request required terminal portability proof.
+    /// Returns the target-owned admission bound to these exact SVG bytes.
     ///
-    /// `BestEffort` keeps the caller-selected parity/output pipeline and therefore does not claim a
-    /// standalone terminal receipt. `RequirePortable` either returns an output with a Portable
-    /// receipt or fails with [`RenderError::TargetAdmission`] carrying the rejected receipt.
+    /// Every successful standalone SVG has a receipt. The `Option` wrapper remains for source
+    /// compatibility with the alpha facade: successful outputs currently always return `Some`.
+    /// `BestEffort` returns non-portable evidence to the caller, while `RequirePortable` rejects it
+    /// with [`RenderError::TargetAdmission`]. Neither policy changes the selected SVG pipeline.
     pub const fn admission(&self) -> Option<&TargetAdmissionReceipt> {
-        self.admission.as_ref()
+        Some(&self.admission)
     }
 
     /// Returns SVG text and evidence, deliberately discarding any target-admission receipt.
@@ -1860,7 +1840,7 @@ fn target_admission_receipt_digest(
 
 #[cfg(feature = "svg")]
 fn standalone_target_evidence_digest(
-    svg: &merman_render::svg::ResvgCompatibleSvg,
+    svg: &merman_render::svg::StandaloneSvgArtifact,
     evidence: &RenderEvidence,
     status: TargetAdmissionStatus,
     reasons: &[TargetAdmissionReason],
@@ -1869,60 +1849,64 @@ fn standalone_target_evidence_digest(
     render_digest(TARGET_EVIDENCE_DIGEST_DOMAIN, |hasher| {
         update_target_admission_digest(hasher, RenderArtifactKind::Svg, status, reasons);
         update_digest_field(hasher, font_source.id().as_bytes());
-        let report = svg.finalization_report();
-        let preset = match report.preset() {
-            merman_render::svg::SvgPipelinePreset::Parity => "parity",
-            merman_render::svg::SvgPipelinePreset::Readable => "readable",
-            merman_render::svg::SvgPipelinePreset::ResvgSafe => "resvg-safe",
-        };
-        update_digest_field(hasher, preset.as_bytes());
-        update_digest_sequence(
+        update_digest_field(
             hasher,
-            b"postprocessors",
-            report.postprocessor_names().iter().map(String::as_str),
-            |hasher, name| update_digest_field(hasher, name.as_bytes()),
+            svg_pipeline_preset_id(svg.selected_pipeline()).as_bytes(),
         );
-        update_digest_bool(hasher, report.drop_native_duplicate_fallbacks());
-        let reference_plan = report.reference_plan();
-        update_digest_usize(hasher, reference_plan.expanded_elements());
-        update_digest_usize(hasher, reference_plan.max_tree_depth());
-        update_digest_sequence(
-            hasher,
-            b"raw-element-occurrences",
-            reference_plan.raw_element_occurrences().iter().copied(),
-            update_digest_usize,
-        );
-        let closure = report.resource_closure();
-        update_digest_sequence(
-            hasher,
-            b"available-fragment-ids",
-            closure.available_fragment_ids().iter().map(String::as_str),
-            |hasher, id| update_digest_field(hasher, id.as_bytes()),
-        );
-        update_digest_sequence(
-            hasher,
-            b"referenced-fragment-ids",
-            closure.referenced_fragment_ids().iter().map(String::as_str),
-            |hasher, id| update_digest_field(hasher, id.as_bytes()),
-        );
-        update_digest_sequence(
-            hasher,
-            b"stylesheet-fragment-ids",
-            closure.stylesheet_fragment_ids().iter().map(String::as_str),
-            |hasher, id| update_digest_field(hasher, id.as_bytes()),
-        );
-        update_digest_usize(hasher, closure.inline_data_resource_count());
-        update_digest_usize(hasher, report.text_element_count());
-        update_digest_bool(
-            hasher,
-            merman_render::__private::prepared_text_evidence_valid(svg),
-        );
-        update_digest_bool(
-            hasher,
-            merman_render::__private::svg_text_fonts_are_self_contained(report),
-        );
+        update_digest_field(hasher, svg.terminal_status().id().as_bytes());
+        update_digest_bool(hasher, svg.finalization_report().is_some());
+        if let Some(report) = svg.finalization_report() {
+            update_digest_sequence(
+                hasher,
+                b"postprocessors",
+                report.postprocessor_names().iter().map(String::as_str),
+                |hasher, name| update_digest_field(hasher, name.as_bytes()),
+            );
+            update_digest_bool(hasher, report.drop_native_duplicate_fallbacks());
+            let reference_plan = report.reference_plan();
+            update_digest_usize(hasher, reference_plan.expanded_elements());
+            update_digest_usize(hasher, reference_plan.max_tree_depth());
+            update_digest_sequence(
+                hasher,
+                b"raw-element-occurrences",
+                reference_plan.raw_element_occurrences().iter().copied(),
+                update_digest_usize,
+            );
+            let closure = report.resource_closure();
+            update_digest_sequence(
+                hasher,
+                b"available-fragment-ids",
+                closure.available_fragment_ids().iter().map(String::as_str),
+                |hasher, id| update_digest_field(hasher, id.as_bytes()),
+            );
+            update_digest_sequence(
+                hasher,
+                b"referenced-fragment-ids",
+                closure.referenced_fragment_ids().iter().map(String::as_str),
+                |hasher, id| update_digest_field(hasher, id.as_bytes()),
+            );
+            update_digest_sequence(
+                hasher,
+                b"stylesheet-fragment-ids",
+                closure.stylesheet_fragment_ids().iter().map(String::as_str),
+                |hasher, id| update_digest_field(hasher, id.as_bytes()),
+            );
+            update_digest_usize(hasher, closure.inline_data_resource_count());
+            update_digest_usize(hasher, report.text_element_count());
+        }
+        update_digest_bool(hasher, svg.prepared_text_evidence_valid());
+        update_digest_bool(hasher, svg.text_fonts_are_self_contained());
         update_native_filter_digest(hasher, evidence.native_filter_receipt());
     })
+}
+
+#[cfg(feature = "svg")]
+const fn svg_pipeline_preset_id(preset: merman_render::svg::SvgPipelinePreset) -> &'static str {
+    match preset {
+        merman_render::svg::SvgPipelinePreset::Parity => "parity",
+        merman_render::svg::SvgPipelinePreset::Readable => "readable",
+        merman_render::svg::SvgPipelinePreset::ResvgSafe => "resvg-safe",
+    }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2087,12 +2071,17 @@ fn classify_common_document_evidence(
 
 #[cfg(feature = "svg")]
 fn document_portability_report(
-    svg: &merman_render::svg::ResvgCompatibleSvg,
+    svg: &merman_render::svg::StandaloneSvgArtifact,
     evidence: &RenderEvidence,
 ) -> DocumentPortabilityReport {
     let mut reasons = Vec::new();
     let (mut rejected, host_dependent) = classify_common_document_evidence(evidence, &mut reasons);
-    let prepared_text_evidence_valid = merman_render::__private::prepared_text_evidence_valid(svg);
+    let resource_closure_complete = svg.finalization_report().is_some();
+    if !resource_closure_complete {
+        rejected = true;
+        reasons.push(TargetAdmissionReason::SvgTerminalValidationFailed);
+    }
+    let prepared_text_evidence_valid = svg.prepared_text_evidence_valid();
     if !prepared_text_evidence_valid {
         rejected = true;
         reasons.push(TargetAdmissionReason::PreparedTextEvidenceInvalid);
@@ -2103,6 +2092,7 @@ fn document_portability_report(
         theme_evidence: evidence.theme_evidence(),
         resource_fingerprint: svg.resource_fingerprint(),
         font_catalog_fingerprint: evidence.font_catalog_fingerprint(),
+        resource_closure_complete,
         prepared_text_evidence_valid,
         rejected,
         host_dependent,
@@ -2147,7 +2137,7 @@ const fn target_font_source(embedded: bool, system: bool) -> TargetFontSource {
 
 #[cfg(feature = "svg")]
 fn standalone_svg_admission(
-    svg: &merman_render::svg::ResvgCompatibleSvg,
+    svg: &merman_render::svg::StandaloneSvgArtifact,
     evidence: &RenderEvidence,
     document: &DocumentPortabilityReport,
     document_digest: [u8; 32],
@@ -2155,7 +2145,7 @@ fn standalone_svg_admission(
 ) -> TargetAdmissionReceipt {
     let mut reasons = Vec::new();
     let (rejected, mut host_dependent) = inherit_document_portability(document, &mut reasons);
-    if !merman_render::__private::svg_text_fonts_are_self_contained(svg.finalization_report()) {
+    if !svg.text_fonts_are_self_contained() {
         host_dependent = true;
         reasons.push(TargetAdmissionReason::SvgFontsNotSelfContained);
     }
@@ -2793,34 +2783,48 @@ fn render_svg_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgOutput>, RenderError> {
-    if request.environment.portability_requirement()
-        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
-    {
-        let Some((svg, family, _operation)) = prepare_resvg_target(semantic, &request)? else {
-            unreachable!("semantic artifact always produces a finalized SVG or an error")
-        };
-        return RenderedDocument::new(svg, family)
-            .into_admitted_svg_output()
-            .map(Some);
-    }
-
-    let (parsed, operation) = semantic.into_parts();
-    let session = request.environment.begin_session_in_context(
-        operation.theme.as_ref(),
-        operation.context.clone(),
-        operation.control.clone(),
-    )?;
-    let artifact =
-        merman_render::family::prepare(parsed, &request.layout, session).map_err(map_svg_error)?;
-    let rendered = artifact
-        .render_svg(&request.options, &request.debug)
+    let (rendered, _operation) = prepare_rendered_family_svg(semantic, &request)?;
+    let finalized = rendered
+        .finalize_standalone(request.pipeline.as_ref())
         .map_err(map_svg_error)?;
-    let rendered = match request.pipeline.as_ref() {
-        Some(pipeline) => rendered.apply_pipeline(pipeline).map_err(map_svg_error)?,
-        None => rendered,
+    let (svg, family) = finalized.into_completion().into_output_and_report();
+    finish_standalone_svg_target(svg, family).map(Some)
+}
+
+#[cfg(feature = "svg")]
+fn finish_standalone_svg_target(
+    svg: merman_render::svg::StandaloneSvgArtifact,
+    family: merman_render::family::FamilyRenderReport,
+) -> Result<SvgOutput, RenderError> {
+    let evidence = RenderEvidence::from_family(family);
+    let portability = document_portability_report(&svg, &evidence);
+    let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
+    let native_svg = svg.native_export_svg();
+    let native_svg_digest = if native_svg == svg.as_str() {
+        public_svg_digest
+    } else {
+        artifact_digest(native_svg.as_bytes())
     };
-    let (svg, family) = rendered.into_completion().into_output_and_report();
-    Ok(Some(SvgOutput::new(svg, family)))
+    let document_digest = document_digest(
+        public_svg_digest,
+        native_svg_digest,
+        svg.resource_fingerprint(),
+        &evidence,
+        &portability,
+    );
+    let admission = standalone_svg_admission(
+        &svg,
+        &evidence,
+        &portability,
+        document_digest,
+        public_svg_digest,
+    );
+    enforce_portability_requirement(&evidence, &admission)?;
+    Ok(SvgOutput {
+        svg: svg.into_string(),
+        evidence,
+        admission,
+    })
 }
 
 #[cfg(feature = "svg")]
@@ -2869,6 +2873,27 @@ fn prepare_resvg_target(
     )>,
     RenderError,
 > {
+    let (rendered, operation) = prepare_rendered_family_svg(semantic, request)?;
+    let pipeline = request
+        .pipeline
+        .clone()
+        .unwrap_or_else(SvgPipeline::resvg_safe)
+        .into_resvg_safe();
+    rendered
+        .finalize_resvg(&pipeline)
+        .map(|sealed| {
+            let (svg, family) = sealed.into_completion().into_output_and_report();
+            (svg, family, operation)
+        })
+        .map(Some)
+        .map_err(map_svg_error)
+}
+
+#[cfg(feature = "svg")]
+fn prepare_rendered_family_svg(
+    semantic: SemanticArtifact,
+    request: &SvgRequest,
+) -> Result<(merman_render::family::RenderedFamilySvg, OperationExecution), RenderError> {
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
         operation.theme.as_ref(),
@@ -2877,21 +2902,10 @@ fn prepare_resvg_target(
     )?;
     let artifact =
         merman_render::family::prepare(parsed, &request.layout, session).map_err(map_svg_error)?;
-    let pipeline = request
-        .pipeline
-        .clone()
-        .unwrap_or_else(SvgPipeline::resvg_safe)
-        .into_resvg_safe();
-    artifact
+    let rendered = artifact
         .render_svg(&request.options, &request.debug)
-        .map_err(map_svg_error)?
-        .finalize_resvg(&pipeline)
-        .map(|sealed| {
-            let (svg, family) = sealed.into_completion().into_output_and_report();
-            (svg, family, operation)
-        })
-        .map(Some)
-        .map_err(map_svg_error)
+        .map_err(map_svg_error)?;
+    Ok((rendered, operation))
 }
 
 #[cfg(feature = "svg")]
@@ -3057,6 +3071,7 @@ mod tests {
                 TargetAdmissionReason::HostDependentTextLayout,
                 TargetAdmissionReason::PreparedTextEvidenceInvalid,
                 TargetAdmissionReason::SvgFontsNotSelfContained,
+                TargetAdmissionReason::SvgTerminalValidationFailed,
                 TargetAdmissionReason::PreparedTextEvidenceMismatch,
                 TargetAdmissionReason::PreparedTextTerminalProofIncomplete,
                 TargetAdmissionReason::FontResolutionIncomplete,
@@ -3085,7 +3100,7 @@ mod tests {
         let receipt = document.standalone_svg_admission();
         let digest = |font_source| {
             standalone_target_evidence_digest(
-                document.sealed_svg(),
+                &document.svg,
                 document.evidence(),
                 receipt.status(),
                 receipt.reasons(),

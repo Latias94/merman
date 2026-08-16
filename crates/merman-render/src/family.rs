@@ -7,7 +7,8 @@ use crate::environment::{RenderSession, RenderSessionReport};
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
-    ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
+    ResvgCompatibleSvg, StandaloneSvgArtifact, SvgDebugOptions, SvgPipeline, SvgPipelinePreset,
+    SvgPostprocessMetadata, SvgRenderOptions,
 };
 use crate::text::PreparedTextEvidenceLease;
 use crate::wardley::WardleyDiagramLayout;
@@ -1857,7 +1858,15 @@ impl RenderedFamilySvg {
     }
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
-    pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
+    pub fn apply_pipeline(self, pipeline: &SvgPipeline) -> Result<Self> {
+        self.apply_pipeline_with_portability(pipeline, true)
+    }
+
+    fn apply_pipeline_with_portability(
+        mut self,
+        pipeline: &SvgPipeline,
+        enforce_portability: bool,
+    ) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata();
         let preserves_prepared_text =
@@ -1894,16 +1903,18 @@ impl RenderedFamilySvg {
             self.root_theme = self.root_theme.invalidate_for_output_mutation();
             self.style_report = self.style_report.invalidate_for_output_mutation();
         }
-        ensure_root_theme_portable(
-            &self.root_theme,
-            self.session
-                .theme_portability_requirement()
-                .unwrap_or(ThemePortabilityRequirement::BestEffort),
-        )?;
-        if self.session.theme_portability_requirement()
-            == Some(ThemePortabilityRequirement::RequirePortable)
-        {
-            self.style_report.ensure_portable()?;
+        if enforce_portability {
+            ensure_root_theme_portable(
+                &self.root_theme,
+                self.session
+                    .theme_portability_requirement()
+                    .unwrap_or(ThemePortabilityRequirement::BestEffort),
+            )?;
+            if self.session.theme_portability_requirement()
+                == Some(ThemePortabilityRequirement::RequirePortable)
+            {
+                self.style_report.ensure_portable()?;
+            }
         }
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(self)
@@ -1911,6 +1922,14 @@ impl RenderedFamilySvg {
 
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
+        self.finalize_resvg_with_portability(pipeline, true)
+    }
+
+    fn finalize_resvg_with_portability(
+        self,
+        pipeline: &SvgPipeline,
+        enforce_portability: bool,
+    ) -> Result<RenderedResvgCompatibleSvg> {
         self.session.checkpoint(OperationPhase::Export)?;
         let portability = self
             .session
@@ -1954,15 +1973,59 @@ impl RenderedFamilySvg {
         } else {
             self.style_report.invalidate_for_output_mutation()
         };
-        ensure_root_theme_portable(&root_theme, portability)?;
-        if portability == ThemePortabilityRequirement::RequirePortable {
-            style_report.ensure_portable()?;
+        if enforce_portability {
+            ensure_root_theme_portable(&root_theme, portability)?;
+            if portability == ThemePortabilityRequirement::RequirePortable {
+                style_report.ensure_portable()?;
+            }
         }
         self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
             root_theme,
             style_report,
+            session: self.session,
+        })
+    }
+
+    /// Completes the exact artifact selected for the standalone SVG target.
+    ///
+    /// Resvg-safe output retains the full renderer-owned terminal capability. Other pipelines are
+    /// validated in place instead of being normalized into a different artifact.
+    pub fn finalize_standalone(
+        self,
+        pipeline: Option<&SvgPipeline>,
+    ) -> Result<RenderedStandaloneSvg> {
+        match pipeline {
+            Some(pipeline) if pipeline.preset() == SvgPipelinePreset::ResvgSafe => {
+                let finalized = self.finalize_resvg_with_portability(pipeline, false)?;
+                Ok(finalized.into_standalone())
+            }
+            Some(pipeline) => self
+                .apply_pipeline_with_portability(pipeline, false)?
+                .finalize_observed_standalone(pipeline),
+            None => {
+                let pipeline = SvgPipeline::parity();
+                self.finalize_observed_standalone(&pipeline)
+            }
+        }
+    }
+
+    fn finalize_observed_standalone(self, pipeline: &SvgPipeline) -> Result<RenderedStandaloneSvg> {
+        self.session.checkpoint(OperationPhase::Postprocess)?;
+        let artifact = StandaloneSvgArtifact::observe_exact(
+            self.svg,
+            self.prepared_text_svg,
+            self.prepared_text_ledger,
+            self.prepared_text_evidence_valid,
+            pipeline,
+            &self.session,
+        )?;
+        self.session.checkpoint(OperationPhase::Postprocess)?;
+        Ok(RenderedStandaloneSvg {
+            artifact,
+            root_theme: self.root_theme,
+            style_report: self.style_report,
             session: self.session,
         })
     }
@@ -2020,6 +2083,40 @@ impl RenderedResvgCompatibleSvg {
     pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {
         FamilyRenderCompletion {
             output: self.svg,
+            report: FamilyRenderReport::freeze(self.root_theme, self.style_report, self.session),
+        }
+    }
+
+    fn into_standalone(self) -> RenderedStandaloneSvg {
+        RenderedStandaloneSvg {
+            artifact: StandaloneSvgArtifact::from_resvg_compatible(self.svg),
+            root_theme: self.root_theme,
+            style_report: self.style_report,
+            session: self.session,
+        }
+    }
+}
+
+/// Renderer-owned family output paired with the exact standalone SVG terminal artifact.
+pub struct RenderedStandaloneSvg {
+    artifact: StandaloneSvgArtifact,
+    root_theme: RootThemeReport,
+    style_report: FamilyStyleReport,
+    session: RenderSession,
+}
+
+impl RenderedStandaloneSvg {
+    pub fn artifact(&self) -> &StandaloneSvgArtifact {
+        &self.artifact
+    }
+
+    pub const fn family_id(&self) -> DiagramFamilyId {
+        self.style_report.family_id()
+    }
+
+    pub fn into_completion(self) -> FamilyRenderCompletion<StandaloneSvgArtifact> {
+        FamilyRenderCompletion {
+            output: self.artifact,
             report: FamilyRenderReport::freeze(self.root_theme, self.style_report, self.session),
         }
     }

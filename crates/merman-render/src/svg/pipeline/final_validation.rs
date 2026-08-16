@@ -691,6 +691,11 @@ fn validate_element(
             "active element <{element_name}> survived terminal sanitization"
         )));
     }
+    if is_svg_element && element_name.eq_ignore_ascii_case("foreignObject") {
+        return Err(validation_error(
+            "a <foreignObject> element is not supported by the standalone portable SVG contract",
+        ));
+    }
 
     let is_use = is_svg_element && element_name.eq_ignore_ascii_case("use");
     let is_fe_image = is_svg_element && element_name.eq_ignore_ascii_case("feImage");
@@ -1382,6 +1387,16 @@ mod tests {
             let error = validate(&svg).unwrap_err();
             assert!(error.to_string().contains("active element"), "{error}");
         }
+    }
+
+    #[test]
+    fn rejects_foreign_object_from_the_portable_terminal_contract() {
+        let error = validate(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml">label</div></foreignObject></svg>"#,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("foreignObject"), "{error}");
     }
 
     #[test]

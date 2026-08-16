@@ -6,6 +6,7 @@ mod policy;
 mod prepared_text;
 mod preset;
 mod resource_closure;
+mod standalone;
 
 pub(crate) use builtin::GitGraphBranchLabelBaselinePostprocessor;
 pub(crate) use builtin::set_root_background_color;
@@ -21,6 +22,7 @@ pub use policy::SvgOutputPolicy;
 pub(crate) use prepared_text::partition_prepared_text_label_ids;
 pub use preset::SvgPipelinePreset;
 pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
+pub use standalone::{StandaloneSvgArtifact, StandaloneSvgTerminalStatus};
 
 use crate::environment::RenderSession;
 use crate::resources::ResourceLimitPhase;
@@ -100,8 +102,9 @@ impl SvgReferencePlan {
 
 /// Immutable evidence produced by the terminal SVG finalizer.
 ///
-/// Raw SVG drafts do not carry this report. It is created only after the resvg-safe pipeline has
-/// completed XML, CSS, reference, and resource validation.
+/// Raw SVG drafts do not carry this report. It is created only after the exact selected artifact
+/// has completed XML, CSS, reference, and resource validation. The retained preset identifies the
+/// pipeline that produced those exact bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SvgFinalizationReport {
     preset: SvgPipelinePreset,
@@ -687,6 +690,28 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn exact_parity_artifact_is_compatible_when_its_bytes_satisfy_the_terminal_contract() {
+        let session = render_session();
+        let artifact = StandaloneSvgArtifact::observe_exact(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><path d="M0 0h1v1z"/></svg>"#.to_owned(),
+            None,
+            PreparedTextEvidenceLease::default(),
+            true,
+            &SvgPipeline::parity(),
+            &session,
+        )
+        .unwrap();
+
+        assert_eq!(
+            artifact.terminal_status(),
+            StandaloneSvgTerminalStatus::Compatible
+        );
+        assert_eq!(artifact.selected_pipeline(), SvgPipelinePreset::Parity);
+        assert!(artifact.finalization_report().is_some());
+        assert!(artifact.text_fonts_are_self_contained());
     }
 
     #[test]

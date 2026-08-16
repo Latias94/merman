@@ -2,8 +2,9 @@
 
 use merman::svg::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
-    FontStack, Specified, TextStylePatch, ThemeAssets, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    FontEmbeddingRequirement, FontStack, Specified, SvgPipeline, TextStylePatch, ThemeAssets,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeVariant,
 };
 use merman::{
     DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
@@ -78,12 +79,17 @@ fn edge_label_typography_theme_with_font_stack(
         .for_family(family),
     );
     DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(styles).with_assets(
-            ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
-                FontAssetSpec::new("excalifont", latin),
-                FontAssetSpec::new("xiaolai", cjk),
-            ])),
-        ))
+        .compile(
+            DiagramThemeSpec::new().with_styles(styles).with_assets(
+                ThemeAssets::default().with_font_catalog(
+                    FontCatalogSpec::new([
+                        FontAssetSpec::new("excalifont", latin),
+                        FontAssetSpec::new("xiaolai", cjk),
+                    ])
+                    .with_embedding_requirement(FontEmbeddingRequirement::FullFont),
+                ),
+            ),
+        )
         .expect("compile EdgeLabel typography theme")
 }
 
@@ -96,6 +102,7 @@ fn svg_request(strict: bool) -> SvgRequest {
     };
     SvgRequest {
         environment,
+        pipeline: strict.then(SvgPipeline::resvg_safe),
         ..SvgRequest::default()
     }
 }

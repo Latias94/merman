@@ -34,8 +34,9 @@ pub use parity::*;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
-    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
-    SvgFinalizationReport, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
-    SvgPostprocessMetadata, SvgPostprocessor, SvgReferencePlan, SvgResourceClosure,
-    SvgResourceFingerprint, finalize_resvg_svg,
+    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StandaloneSvgArtifact,
+    StandaloneSvgTerminalStatus, StripForeignObjectPostprocessor, SvgFinalizationReport,
+    SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
+    SvgPostprocessor, SvgReferencePlan, SvgResourceClosure, SvgResourceFingerprint,
+    finalize_resvg_svg,
 };
