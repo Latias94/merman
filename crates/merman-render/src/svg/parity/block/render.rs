@@ -1,8 +1,28 @@
 use super::super::*;
 use crate::block::{BlockRectangleKind, BlockShapeBoundary, block_label_is_effectively_empty};
-use crate::model::LayoutPoint;
+use crate::model::{LayoutEdge, LayoutPoint};
 
 // Block diagram SVG renderer implementation (split from parity.rs).
+
+struct BlockLayoutEdgeIndex<'a> {
+    by_id: std::collections::HashMap<&'a str, &'a LayoutEdge>,
+}
+
+impl<'a> BlockLayoutEdgeIndex<'a> {
+    fn new(edges: &'a [LayoutEdge]) -> Self {
+        let mut by_id = std::collections::HashMap::with_capacity(edges.len());
+        for edge in edges {
+            // Preserve the renderer's historical `iter().find()` first-match behavior for
+            // malformed layouts with duplicate edge ids.
+            let _ = by_id.entry(edge.id.as_str()).or_insert(edge);
+        }
+        Self { by_id }
+    }
+
+    fn get(&self, id: &str) -> Option<&'a LayoutEdge> {
+        self.by_id.get(id).copied()
+    }
+}
 
 fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
     let _ = write!(out, "{key}:{}!important;", escape_xml_display(value));
@@ -90,6 +110,7 @@ pub(crate) fn render_block_diagram_svg_model(
         .iter()
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
+    let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
 
     fn marker_id(diagram_id: &str, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
@@ -232,7 +253,7 @@ pub(crate) fn render_block_diagram_svg_model(
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
     ) -> Result<()> {
-        let id = escape_xml(diagram_id);
+        let id = crate::svg::escape_css_identifier(diagram_id);
         for class_def in class_defs.values() {
             let class = escape_xml(&class_def.id);
             let mut shape_declarations = important_declarations(&class_def.styles);
@@ -276,7 +297,7 @@ pub(crate) fn render_block_diagram_svg_model(
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
     ) -> Result<()> {
-        let id = escape_xml(diagram_id);
+        let id = crate::svg::escape_css_identifier(diagram_id);
         let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
         let font_size = theme.common.font_size_px;
@@ -667,7 +688,7 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     for e in &model.edges {
-        let Some(le) = layout.edges.iter().find(|x| x.id == e.id) else {
+        let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
         let mut edge_points = match (
@@ -724,7 +745,7 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     for e in &model.edges {
-        let Some(le) = layout.edges.iter().find(|x| x.id == e.id) else {
+        let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
         let Some(lbl) = le.label.as_ref().filter(|_| !e.label.trim().is_empty()) else {
@@ -766,6 +787,45 @@ mod tests {
   classDef branded fill:#696,stroke:#333
   class A branded
 "#;
+
+    fn layout_edge(id: &str) -> LayoutEdge {
+        LayoutEdge {
+            id: id.to_string(),
+            from: "from".to_string(),
+            to: "to".to_string(),
+            from_cluster: None,
+            to_cluster: None,
+            points: Vec::new(),
+            label: None,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        }
+    }
+
+    #[test]
+    fn block_layout_edge_index_preserves_first_match_and_missing_behavior() {
+        let edges = [
+            layout_edge("duplicate"),
+            layout_edge("other"),
+            layout_edge("duplicate"),
+        ];
+        let index = BlockLayoutEdgeIndex::new(&edges);
+
+        assert!(std::ptr::eq(
+            index.get("duplicate").expect("duplicate edge lookup"),
+            &edges[0],
+        ));
+        assert!(std::ptr::eq(
+            index.get("other").expect("unique edge lookup"),
+            &edges[1],
+        ));
+        assert!(index.get("missing").is_none());
+    }
 
     fn render_block_direct_with_policy(
         policy: RenderResourcePolicy,
