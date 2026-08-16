@@ -91,6 +91,12 @@ pressure.
 
 ## U30 Structural Closeout Disposition
 
+Core Sequence lexing now has one state-machine owner. `sequence/lexer/scanner.rs` owns lexical
+modes, actor-boundary state, scan dispatch, token-state transitions, and editor-lexeme journaling;
+`sequence/lexer.rs` retains the token/error contract and the stable `Iterator` adapter. The
+scanner-internal `sequence/lexer/actor.rs` owns only actor and signal lexical syntax, so adding a
+lexical mode or changing journal emission no longer requires widening the token-iteration facade.
+
 The changed integration tests are now partitioned by semantic owner. Flowchart and Sequence keep
 private parent modules for shared parser/options helpers, while the former multi-family
 `new_family_models` target delegates to TreeView, Mindmap, Timeline, Gantt, Journey, Kanban,
