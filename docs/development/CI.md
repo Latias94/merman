@@ -124,9 +124,15 @@ regression without mutation. Only scheduled and manually dispatched fuzz runs pe
 discovery.
 
 The performance workflow selects regression and frontmatter descriptors into one measurement
-matrix. Each descriptor uses the same base/head runner, receipt, artifact, summary, and outcome
-consumer. Its standalone contracts run for pull requests only when the shared CI classifier selects
-the performance owner or an explicit `perf`, `perf-ascii`, or `perf-frontmatter` label requests a
+matrix. `tools/bench/performance_lanes.json` owns the lane recipes, labels, scheduled set, and manual
+selection groups; `tools/bench/performance_workflow.py` validates that registry and writes the
+matrix consumed by GitHub Actions. Contract tests exercise the same structured interface instead
+of parsing workflow YAML or shell text. Corpus, runner/recipe, statistics, report-consumer, and
+workflow contracts live in focused test modules behind the legacy aggregate command. Workflow
+syntax and expression checks remain owned by actionlint; security checks remain owned by zizmor.
+Each descriptor uses the same base/head runner, receipt, artifact, summary, and outcome consumer.
+Its standalone contracts run for pull requests only when the shared CI classifier selects the
+performance owner or an explicit `perf`, `perf-ascii`, or `perf-frontmatter` label requests a
 measurement. Pull requests remain read-only and write only to the job summary; schedules run both
 self-comparison descriptors plus the independent external-renderer reference lane.
 

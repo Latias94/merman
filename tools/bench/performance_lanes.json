@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "scheduled_lanes": [
+    "regression",
+    "frontmatter"
+  ],
+  "dispatch_runs": {
+    "contracts": [],
+    "ascii": [
+      "ascii"
+    ],
+    "frontmatter": [
+      "frontmatter"
+    ],
+    "regression": [
+      "regression"
+    ],
+    "reference": [],
+    "full": [
+      "regression",
+      "ascii",
+      "frontmatter"
+    ]
+  },
+  "lanes": [
+    {
+      "id": "regression",
+      "pull_request_label": "perf",
+      "suite": "canary",
+      "group": "",
+      "package": "merman",
+      "bench": "pipeline",
+      "corpus": "tools/bench/corpus.json",
+      "features": "svg",
+      "default_features": true,
+      "artifact": "perf-regression",
+      "title": "Merman Performance Regression",
+      "marker": "<!-- merman-perf -->"
+    },
+    {
+      "id": "ascii",
+      "pull_request_label": "perf-ascii",
+      "suite": "comparable",
+      "group": "ascii_end_to_end",
+      "package": "merman",
+      "bench": "ascii_pipeline",
+      "corpus": "tools/bench/ascii_corpus.json",
+      "features": "ascii",
+      "default_features": false,
+      "artifact": "perf-ascii",
+      "title": "Merman ASCII Performance Regression",
+      "marker": "<!-- merman-perf-ascii -->"
+    },
+    {
+      "id": "frontmatter",
+      "pull_request_label": "perf-frontmatter",
+      "suite": "frontmatter",
+      "group": "frontmatter_preprocess",
+      "package": "merman",
+      "bench": "pipeline",
+      "corpus": "tools/bench/corpus.json",
+      "features": "svg",
+      "default_features": true,
+      "artifact": "perf-frontmatter",
+      "title": "Merman Frontmatter Performance Regression",
+      "marker": "<!-- merman-perf-frontmatter -->"
+    }
+  ]
+}
