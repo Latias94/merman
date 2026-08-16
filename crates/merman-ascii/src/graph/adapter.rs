@@ -2,7 +2,7 @@ use super::model::{
     AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphEdgeStroke,
     GraphNodeSemantics,
 };
-use super::shape::resolve_flowchart_node_shape;
+use super::shape::{ResolvedGraphNodeShape, resolve_flowchart_node_shape};
 use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
@@ -10,7 +10,8 @@ use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
-    NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_trimmed_text,
+    NormalizedTextPlan, NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_text,
+    try_plan_normalized_trimmed_text,
 };
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
@@ -41,6 +42,7 @@ pub(crate) fn from_flowchart_model_with_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
+    execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
     resources.transaction(|resources| {
         from_flowchart_model_transactional(model, options, resources, execution)
     })
@@ -78,6 +80,15 @@ fn from_flowchart_model_transactional(
         execution,
     )?;
 
+    let FlowchartProjectionPlan {
+        nodes,
+        edge_labels,
+        groups,
+    } = projection_plan;
+    debug_assert_eq!(model.nodes.len(), nodes.len());
+    debug_assert_eq!(model.edges.len(), edge_labels.len());
+    debug_assert_eq!(memberships.canonical_group_indices().len(), groups.len());
+
     let mut graph = AsciiGraph::new(direction);
     graph.wrap_node_labels_at(wrap_width);
     graph.try_reserve_projection(
@@ -86,32 +97,27 @@ fn from_flowchart_model_transactional(
         memberships.canonical_group_indices().len(),
     )?;
 
-    for (index, node) in model.nodes.iter().enumerate() {
+    for (index, (node, node_plan)) in model.nodes.iter().zip(nodes).enumerate() {
         checkpoint_projection(execution, index)?;
-        if memberships.is_group_id(&node.id) {
+        let Some(node_plan) = node_plan else {
             continue;
-        }
-        let resolved_shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
+        };
         let id = try_clone_projection_string(&node.id)?;
-        let label = try_clone_projection_string(
-            resolved_shape.projected_label(node.label.as_deref().unwrap_or(&node.id)),
-        )?;
+        let label = node_plan
+            .label
+            .materialize_after_admission_with_checkpoint(|iteration| {
+                checkpoint_projection(execution, iteration)
+            })?;
         graph.add_node_with_semantics(
             id,
             label,
-            resolved_shape.shape,
+            node_plan.shape.shape,
             resolve_node_style(model, node),
             GraphNodeSemantics::default(),
         );
     }
 
-    debug_assert_eq!(model.edges.len(), projection_plan.edge_labels.len());
-    for (index, (edge, label_plan)) in model
-        .edges
-        .iter()
-        .zip(&projection_plan.edge_labels)
-        .enumerate()
-    {
+    for (index, (edge, label_plan)) in model.edges.iter().zip(edge_labels).enumerate() {
         checkpoint_projection(execution, index)?;
         let from = try_clone_projection_string(&edge.from)?;
         let to = try_clone_projection_string(&edge.to)?;
@@ -121,11 +127,8 @@ fn from_flowchart_model_transactional(
             GraphEdgeAttrs {
                 id: Some(try_clone_projection_string(&edge.id)?),
                 is_user_defined_id: edge.is_user_defined_id,
-                label: edge
-                    .label
-                    .as_ref()
-                    .zip(*label_plan)
-                    .map(|(_, plan)| {
+                label: label_plan
+                    .map(|plan| {
                         plan.materialize_after_admission_with_checkpoint(|iteration| {
                             checkpoint_projection(execution, iteration)
                         })
@@ -140,9 +143,13 @@ fn from_flowchart_model_transactional(
         );
     }
 
-    for (index, (canonical_index, canonical_members)) in memberships.canonical_groups().enumerate()
+    for (index, (group_plan, (canonical_index, canonical_members))) in groups
+        .into_iter()
+        .zip(memberships.canonical_groups())
+        .enumerate()
     {
         checkpoint_projection(execution, index)?;
+        debug_assert_eq!(group_plan.canonical_index, canonical_index);
         let subgraph = &model.subgraphs[canonical_index];
         let mut members = Vec::new();
         members
@@ -154,13 +161,12 @@ fn from_flowchart_model_transactional(
         }
         graph.add_group_with_style(
             try_clone_projection_string(&subgraph.id)?,
-            try_clone_projection_string(&subgraph.title)?,
-            subgraph
-                .dir
-                .as_deref()
-                .filter(|_| subgraph.has_explicit_dir)
-                .map(parse_direction)
-                .transpose()?,
+            group_plan
+                .title
+                .materialize_after_admission_with_checkpoint(|iteration| {
+                    checkpoint_projection(execution, iteration)
+                })?,
+            group_plan.direction,
             members,
             resolve_group_style(model, subgraph),
         );
@@ -171,14 +177,6 @@ fn from_flowchart_model_transactional(
 
 fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
     execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)
-}
-
-fn projection_scratch_resources(
-    resources: &ResourceContext,
-    execution: AsciiExecution<'_>,
-) -> ResourceContext {
-    let scratch = ResourceContext::new(resources.policy());
-    execution.resource_context(&scratch, merman_core::OperationPhase::Semantic)
 }
 
 fn parse_flow_edge_marker(marker: CoreFlowEdgeMarker) -> GraphEdgeMarker {
@@ -218,7 +216,6 @@ fn preflight_flowchart_projection<'a>(
         checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, &node.id)?;
-        charge_text_layout(resources, node.label.as_deref().unwrap_or(&node.id))?;
         if let Some(shape) = node.layout_shape.as_deref() {
             charge_text_layout(resources, shape)?;
         }
@@ -243,9 +240,6 @@ fn preflight_flowchart_projection<'a>(
         if let Some(stroke) = edge.stroke.as_deref() {
             charge_text_layout(resources, stroke)?;
         }
-        if let Some(label) = edge.label.as_deref() {
-            charge_text_layout(resources, label)?;
-        }
         for (declaration_index, declaration) in edge.classes.iter().chain(&edge.style).enumerate() {
             checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
@@ -257,7 +251,6 @@ fn preflight_flowchart_projection<'a>(
         checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, &subgraph.id)?;
-        charge_text_layout(resources, &subgraph.title)?;
         for (member_index, member) in subgraph.nodes.iter().enumerate() {
             checkpoint_projection(execution, member_index)?;
             resources.charge_layout_work(1)?;
@@ -504,7 +497,65 @@ fn preflight_subgraph_nesting(
 
 #[derive(Debug)]
 struct FlowchartProjectionPlan<'a> {
+    nodes: Vec<Option<FlowchartNodeProjectionPlan<'a>>>,
     edge_labels: Vec<Option<NormalizedTrimmedTextPlan<'a>>>,
+    groups: Vec<FlowchartGroupProjectionPlan<'a>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlowchartNodeProjectionPlan<'a> {
+    label: NormalizedTextPlan<'a>,
+    shape: ResolvedGraphNodeShape,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlowchartGroupProjectionPlan<'a> {
+    canonical_index: usize,
+    title: NormalizedTextPlan<'a>,
+    direction: Option<GraphDirection>,
+}
+
+#[derive(Debug, Default)]
+struct ProjectionMaterializationAdmission {
+    work_units: usize,
+    document_cells: usize,
+    output_bytes: usize,
+}
+
+impl ProjectionMaterializationAdmission {
+    fn include_copy(&mut self, value: &str, resources: &ResourceContext) -> Result<()> {
+        self.work_units = resources.checked_work_add(self.work_units, value.len())?;
+        Ok(())
+    }
+
+    fn include_visible_text(
+        &mut self,
+        plan: NormalizedTextPlan<'_>,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.work_units =
+            resources.checked_work_add(self.work_units, plan.materialization_work_units())?;
+        let metrics = plan.metrics();
+        self.document_cells = checked_projection_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.document_cells,
+            metrics.document_cells,
+        )?;
+        self.output_bytes = checked_projection_metric_add(
+            resources,
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.output_bytes,
+            metrics.materialized_bytes,
+        )?;
+        Ok(())
+    }
+
+    fn admit(self, resources: &ResourceContext) -> Result<()> {
+        resources.check_usage(self.work_units, self.document_cells)?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, self.output_bytes)?;
+        resources.charge_usage(self.work_units, self.document_cells)
+    }
 }
 
 impl<'a> FlowchartProjectionPlan<'a> {
@@ -516,66 +567,30 @@ impl<'a> FlowchartProjectionPlan<'a> {
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
-        let mut work_units = 0usize;
-        let mut document_cells = 0usize;
-        let mut output_bytes = 0usize;
+        let plan_entries = resources.checked_work_add(
+            resources.checked_work_add(model.nodes.len(), model.edges.len())?,
+            memberships.canonical_group_indices().len(),
+        )?;
+        resources.charge_layout_work(plan_entries)?;
+
+        let mut admission = ProjectionMaterializationAdmission::default();
+        let mut nodes = Vec::new();
+        nodes
+            .try_reserve_exact(model.nodes.len())
+            .map_err(|_| projection_allocation_failed())?;
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_projection(execution, index)?;
             if memberships.is_group_id(&node.id) {
+                nodes.push(None);
                 continue;
             }
-            let resolved_shape =
-                resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
-            let projected_label =
-                resolved_shape.projected_label(node.label.as_deref().unwrap_or(&node.id));
-            work_units = resources.checked_work_add(work_units, node.id.len())?;
-            work_units = resources.checked_work_add(work_units, projected_label.len())?;
+            let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
+            let projected_label = shape.projected_label(node.label.as_deref().unwrap_or(&node.id));
+            let label = try_plan_normalized_text(projected_label, width_profile, resources)?;
+            admission.include_copy(&node.id, resources)?;
+            admission.include_visible_text(label, resources)?;
+            nodes.push(Some(FlowchartNodeProjectionPlan { label, shape }));
         }
-        for (index, edge) in model.edges.iter().enumerate() {
-            checkpoint_projection(execution, index)?;
-            work_units = resources.checked_work_add(work_units, edge.from.len())?;
-            work_units = resources.checked_work_add(work_units, edge.to.len())?;
-            work_units = resources.checked_work_add(work_units, edge.id.len())?;
-            if let Some(label) = edge.label.as_deref() {
-                let scratch = projection_scratch_resources(resources, execution);
-                let label_plan = try_plan_normalized_trimmed_text(label, width_profile, &scratch)?;
-                work_units = resources.checked_work_add(
-                    work_units,
-                    resources.checked_work_mul(scratch.layout_work_used(), 2)?,
-                )?;
-                if let Some(label_plan) = label_plan {
-                    work_units = resources
-                        .checked_work_add(work_units, label_plan.materialization_work_units())?;
-                    let metrics = label_plan.metrics();
-                    document_cells = checked_projection_metric_add(
-                        resources,
-                        AsciiResourceLimitId::MaxDocumentCells,
-                        document_cells,
-                        metrics.document_cells,
-                    )?;
-                    output_bytes = checked_projection_metric_add(
-                        resources,
-                        AsciiResourceLimitId::MaxOutputBytes,
-                        output_bytes,
-                        metrics.materialized_bytes,
-                    )?;
-                }
-            }
-        }
-        work_units = resources.checked_work_add(work_units, model.edges.len())?;
-        for (index, subgraph) in model.subgraphs.iter().enumerate() {
-            checkpoint_projection(execution, index)?;
-            work_units = resources.checked_work_add(work_units, subgraph.id.len())?;
-            work_units = resources.checked_work_add(work_units, subgraph.title.len())?;
-            for (member_index, member) in subgraph.nodes.iter().enumerate() {
-                checkpoint_projection(execution, member_index)?;
-                work_units = resources.checked_work_add(work_units, member.len())?;
-            }
-        }
-
-        resources.check_usage(work_units, document_cells)?;
-        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
-        resources.charge_usage(work_units, document_cells)?;
 
         let mut edge_labels = Vec::new();
         edge_labels
@@ -583,17 +598,55 @@ impl<'a> FlowchartProjectionPlan<'a> {
             .map_err(|_| projection_allocation_failed())?;
         for (index, edge) in model.edges.iter().enumerate() {
             checkpoint_projection(execution, index)?;
+            admission.include_copy(&edge.from, resources)?;
+            admission.include_copy(&edge.to, resources)?;
+            admission.include_copy(&edge.id, resources)?;
             let label_plan = match edge.label.as_deref() {
-                Some(label) => {
-                    let scratch = projection_scratch_resources(resources, execution);
-                    try_plan_normalized_trimmed_text(label, width_profile, &scratch)?
-                }
+                Some(label) => try_plan_normalized_trimmed_text(label, width_profile, resources)?,
                 None => None,
             };
+            if let Some(label_plan) = label_plan {
+                admission.include_visible_text(label_plan, resources)?;
+            }
             edge_labels.push(label_plan);
         }
 
-        Ok(Self { edge_labels })
+        let mut groups = Vec::new();
+        groups
+            .try_reserve_exact(memberships.canonical_group_indices().len())
+            .map_err(|_| projection_allocation_failed())?;
+        for (index, (canonical_index, canonical_members)) in
+            memberships.canonical_groups().enumerate()
+        {
+            checkpoint_projection(execution, index)?;
+            let subgraph = &model.subgraphs[canonical_index];
+            admission.include_copy(&subgraph.id, resources)?;
+            let title = try_plan_normalized_text(&subgraph.title, width_profile, resources)?;
+            admission.include_visible_text(title, resources)?;
+            for (member_index, member) in canonical_members.iter().enumerate() {
+                checkpoint_projection(execution, member_index)?;
+                admission.include_copy(member, resources)?;
+            }
+            let direction = subgraph
+                .dir
+                .as_deref()
+                .filter(|_| subgraph.has_explicit_dir)
+                .map(parse_direction)
+                .transpose()?;
+            groups.push(FlowchartGroupProjectionPlan {
+                canonical_index,
+                title,
+                direction,
+            });
+        }
+
+        admission.admit(resources)?;
+
+        Ok(Self {
+            nodes,
+            edge_labels,
+            groups,
+        })
     }
 }
 
@@ -804,20 +857,56 @@ mod tests {
     fn flowchart_projection_admits_exact_and_rejects_n_minus_one_atomically() {
         const PRIOR_WORK: usize = 11;
         const PRIOR_DOCUMENT_CELLS: usize = 2;
-        const EXPECTED_LAYOUT_WORK: usize = 208;
-        const EXPECTED_DOCUMENT_CELLS: usize = 9;
-        const EXPECTED_OUTPUT_BYTES: usize = 8;
+        const EXPECTED_DOCUMENT_CELLS: usize = 28;
+        const EXPECTED_OUTPUT_BYTES: usize = 32;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut edge = flow_edge("A", "B");
         edge.label = Some("  边\u{7}  ".to_string());
         let mut model = model_with_edge(edge);
-        model.nodes[0].label = Some("节点".to_string());
+        model.nodes[0].label = Some("节点\u{1b}".to_string());
         model.nodes[1].label = Some("🧭".to_string());
+        model.subgraphs.push(FlowSubgraph {
+            id: "G".to_string(),
+            title: "组\u{7}".to_string(),
+            dir: None,
+            has_explicit_dir: false,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["A".to_string()],
+        });
+
+        let assert_visible_text = |graph: &AsciiGraph| {
+            assert_eq!(graph.nodes[0].label, "节点\\u{1B}");
+            assert_eq!(graph.nodes[1].label, "🧭");
+            assert_eq!(graph.edges[0].label.as_deref(), Some("边\\u{7}"));
+            assert_eq!(graph.groups[0].title, "组\\u{7}");
+        };
+
+        let mut measuring_resources = ResourceContext::new(unbounded);
+        measuring_resources
+            .charge_layout_work(PRIOR_WORK)
+            .expect("prior layout work should fit the measuring policy");
+        measuring_resources
+            .charge_document_cells(PRIOR_DOCUMENT_CELLS)
+            .expect("prior document cells should fit the measuring policy");
+        let measured = from_flowchart_model(
+            &model,
+            &AsciiRenderOptions::default(),
+            &mut measuring_resources,
+        )
+        .expect("unbounded projection measurement should succeed");
+        assert_visible_text(&measured);
+        let expected_layout_work = measuring_resources.layout_work_used();
+        assert_eq!(
+            measuring_resources.document_cells_used(),
+            EXPECTED_DOCUMENT_CELLS
+        );
 
         let exact_limits = [
             (
                 AsciiResourceLimitId::MaxLayoutWorkUnits,
-                EXPECTED_LAYOUT_WORK,
+                expected_layout_work,
                 "layout work",
             ),
             (
@@ -842,11 +931,13 @@ mod tests {
             exact_resources
                 .charge_document_cells(PRIOR_DOCUMENT_CELLS)
                 .expect("prior document cells should fit the exact policy");
-            from_flowchart_model(&model, &AsciiRenderOptions::default(), &mut exact_resources)
-                .unwrap_or_else(|error| {
-                    panic!("exact {description} limit should admit: {error:?}")
-                });
-            assert_eq!(exact_resources.layout_work_used(), EXPECTED_LAYOUT_WORK);
+            let graph =
+                from_flowchart_model(&model, &AsciiRenderOptions::default(), &mut exact_resources)
+                    .unwrap_or_else(|error| {
+                        panic!("exact {description} limit should admit: {error:?}")
+                    });
+            assert_visible_text(&graph);
+            assert_eq!(exact_resources.layout_work_used(), expected_layout_work);
             assert_eq!(
                 exact_resources.document_cells_used(),
                 EXPECTED_DOCUMENT_CELLS
@@ -886,20 +977,20 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_label_scratch_prefers_semantic_cancellation_to_resource_rejection() {
+    fn flowchart_label_plan_uses_the_shared_controlled_ledger() {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
             .expect("minimum layout-work limit should be valid");
-        let resources = ResourceContext::new(policy);
+        let mut resources = ResourceContext::new(policy);
         let control = OperationControl::new();
         control.cancel();
         let execution = AsciiExecution::new(&control, &policy);
-        let scratch = projection_scratch_resources(&resources, execution);
+        execution.rebind_resource_context(&mut resources, OperationPhase::Semantic);
 
         let error = try_plan_normalized_trimmed_text(
             "long edge label",
             TerminalWidthProfile::Unicode,
-            &scratch,
+            &resources,
         )
         .expect_err("cancelled label planning must not report the competing work limit");
 
@@ -908,8 +999,8 @@ mod tests {
             AsciiError::Cancelled(cancelled)
                 if cancelled.phase == OperationPhase::Semantic
         ));
-        assert_eq!(scratch.layout_work_used(), 0);
-        assert_eq!(scratch.document_cells_used(), 0);
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
     }
 
     #[test]

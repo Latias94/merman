@@ -11,7 +11,7 @@ pub(crate) struct NormalizedTrimmedTextMetrics {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NormalizedTrimmedTextPlan<'a> {
+pub(crate) struct NormalizedTextPlan<'a> {
     source: &'a str,
     start: usize,
     end: usize,
@@ -19,7 +19,9 @@ pub(crate) struct NormalizedTrimmedTextPlan<'a> {
     materialization_work_units: usize,
 }
 
-impl NormalizedTrimmedTextPlan<'_> {
+pub(crate) type NormalizedTrimmedTextPlan<'a> = NormalizedTextPlan<'a>;
+
+impl NormalizedTextPlan<'_> {
     pub(crate) const fn metrics(self) -> NormalizedTrimmedTextMetrics {
         self.metrics
     }
@@ -71,6 +73,47 @@ impl NormalizedTrimmedTextPlan<'_> {
     }
 }
 
+/// Plans terminal normalization for a complete borrowed string without retaining its expansion.
+pub(crate) fn try_plan_normalized_text<'a>(
+    value: &'a str,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<NormalizedTextPlan<'a>> {
+    let mut materialized_bytes = 0usize;
+    let mut document_cells = 0usize;
+
+    resources.charge_layout_work(1)?;
+    visit_normalized_segments(value, |segment| {
+        segment.check_grapheme_budget(resources)?;
+        resources.charge_layout_work(segment.layout_work())?;
+        let mut buffer = [0u8; 10];
+        let text = segment.text(&mut buffer);
+        resources.charge_layout_work(text.len().max(1))?;
+        materialized_bytes = materialized_bytes
+            .checked_add(text.len())
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        document_cells = checked_document_add(
+            resources,
+            document_cells,
+            segment.display_width(width_profile),
+        )?;
+        Ok::<(), AsciiError>(())
+    })?;
+
+    let materialization_work_units =
+        resources.checked_work_add(value.len().max(1), materialized_bytes)?;
+    Ok(NormalizedTextPlan {
+        source: value,
+        start: 0,
+        end: materialized_bytes,
+        metrics: NormalizedTrimmedTextMetrics {
+            materialized_bytes,
+            document_cells,
+        },
+        materialization_work_units,
+    })
+}
+
 /// Plans terminal normalization and `str::trim` semantics without retaining the normalized text.
 pub(crate) fn try_plan_normalized_trimmed_text<'a>(
     value: &'a str,
@@ -110,7 +153,7 @@ pub(crate) fn try_plan_normalized_trimmed_text<'a>(
     let document_cells = measure_normalized_range(value, start, end, width_profile, resources)?;
     let materialization_work_units =
         resources.checked_work_add(value.len().max(1), retained_bytes)?;
-    Ok(Some(NormalizedTrimmedTextPlan {
+    Ok(Some(NormalizedTextPlan {
         source: value,
         start,
         end,

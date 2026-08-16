@@ -33,8 +33,8 @@ pub(crate) use label::{
     try_plan_normalized_label_lines,
 };
 pub(crate) use layout::{
-    NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
-    try_plan_normalized_trimmed_text, try_repeat_layout_char,
+    NormalizedTextPlan, NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
+    try_plan_normalized_text, try_plan_normalized_trimmed_text, try_repeat_layout_char,
 };
 pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub(crate) use normalization::{terminal_text_is_blank, terminal_text_requires_normalization};
