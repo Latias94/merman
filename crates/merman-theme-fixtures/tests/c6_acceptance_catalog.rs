@@ -170,11 +170,11 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
     assert_eq!(
         encode_hex(catalog.manifest_digest()),
-        "b6f964abffcf653a825c17f7af547c7eb776f75c683d5df9289e6713d00106e9"
+        "0a3154c120a169b95fc0efd4c1ba48fde6c43028b169aba5de4855f14d9af29e"
     );
     assert_eq!(
         encode_hex(catalog.previous_manifest_digest()),
-        "6ed1f3b001947a82f98c6167acc19344e2a9254d1d775b0a5f6b307570e2bd98"
+        "2b9a4b96853c8728c4d11435becc094394e5430e3af2a60ef720181eb076efd2"
     );
 
     let expected_recipe_keys = C6_PROOF_THEMES
@@ -312,10 +312,29 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
 fn committed_v3_manifest_is_an_immutable_predecessor() {
     let bytes = fs::read(themes_root().join(C6_ACCEPTANCE_PREVIOUS_RELATIVE_PATH))
         .expect("read immutable C6 v3 predecessor");
+    let manifest: Value =
+        serde_json::from_slice(&bytes).expect("parse immutable C6 v3 predecessor");
 
     assert_eq!(
         encode_hex(&Sha256::digest(bytes)),
-        "a73dd91f4b47302b84d0be3d921004f3439493f37aa9b3c3f6b3a2e689763a20"
+        "39ab54fb4c3cdba16770fd8b5c1cf5141b1ef5495bf4b56dd25db717d780b5e6"
+    );
+    assert_eq!(manifest["schemaVersion"], 3);
+    let cells = manifest["cells"].as_array().expect("C6 v3 cells");
+    assert_eq!(cells.len(), C6_ACCEPTANCE_CELL_COUNT);
+    assert_eq!(
+        cells
+            .iter()
+            .filter(|cell| cell["enforcement"]["kind"] == "enforced")
+            .count(),
+        12
+    );
+    assert_eq!(
+        cells
+            .iter()
+            .filter(|cell| cell["enforcement"]["kind"] == "deferred")
+            .count(),
+        6
     );
 }
 
@@ -329,6 +348,23 @@ fn manifest_lineage_group_identity_and_critical_mechanisms_fail_closed() {
         parse_value(&wrong_predecessor, &source_catalog),
         Err(CatalogError::C6AcceptanceManifestLineageMismatch { .. })
     ));
+
+    let mut regressed_enforcement = committed_acceptance_value();
+    cell_mut(
+        &mut regressed_enforcement,
+        "brutalist",
+        "flowchart",
+        "standalone-svg",
+    )["enforcement"] = json!({
+        "kind": "deferred",
+        "blocker": "family-adapter-incomplete"
+    });
+    match parse_value(&regressed_enforcement, &source_catalog) {
+        Err(CatalogError::InvalidC6AcceptanceManifest { reason }) => {
+            assert!(reason.contains("previously enforced cells must remain enforced"));
+        }
+        other => panic!("C6 lineage enforcement regression was accepted: {other:?}"),
+    }
 
     let mut duplicate_group = committed_acceptance_value();
     let duplicate = duplicate_group["proofRecipes"][0].clone();

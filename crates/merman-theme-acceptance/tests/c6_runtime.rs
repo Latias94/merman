@@ -2,6 +2,10 @@ use std::path::Path;
 
 use merman_theme_fixtures::{C6AcceptanceCatalog, ThemeFixtureCatalog};
 
+fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 #[test]
 fn enforced_c6_cells_are_proved_by_runtime_artifacts() {
     let themes_root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -38,11 +42,16 @@ fn exact_native_ledger_is_the_only_c6a_eligibility_issuer_input() {
 
     assert_eq!(receipt.verified_cell_count(), 18);
     assert_eq!(receipt.render_group_count(), 9);
+    assert_eq!(acceptance.schema_version(), 4);
     assert_eq!(receipt.manifest_revision(), acceptance.manifest_revision());
     assert_eq!(receipt.manifest_digest(), acceptance.manifest_digest());
     assert_eq!(
         receipt.previous_manifest_digest(),
         acceptance.previous_manifest_digest()
+    );
+    assert_eq!(
+        encode_hex(receipt.previous_manifest_digest()),
+        "2b9a4b96853c8728c4d11435becc094394e5430e3af2a60ef720181eb076efd2"
     );
     assert_ne!(receipt.execution_digest(), &[0; 32]);
     assert_ne!(receipt.proof_recipe_revisions_digest(), &[0; 32]);

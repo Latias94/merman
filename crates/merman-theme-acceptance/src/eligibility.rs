@@ -458,6 +458,22 @@ mod tests {
         .expect("parse C6 acceptance manifest")
     }
 
+    fn cell_mut<'a>(
+        value: &'a mut Value,
+        theme: &str,
+        family: &str,
+        target: &str,
+    ) -> &'a mut Value {
+        value["cells"]
+            .as_array_mut()
+            .expect("C6 acceptance cells")
+            .iter_mut()
+            .find(|cell| {
+                cell["theme"] == theme && cell["family"] == family && cell["target"] == target
+            })
+            .expect("requested C6 acceptance cell")
+    }
+
     fn assert_invariant(error: C6RuntimeError, expected: &'static str) {
         match error {
             C6RuntimeError::EligibilityInvariant { field } => assert_eq!(field, expected),
@@ -487,7 +503,7 @@ mod tests {
         );
 
         let mut deferred = acceptance_value();
-        deferred["cells"][0]["enforcement"] = json!({
+        cell_mut(&mut deferred, "spotless", "sequence", "standalone-svg")["enforcement"] = json!({
             "kind": "deferred",
             "blocker": "family-adapter-incomplete"
         });

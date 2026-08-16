@@ -388,11 +388,11 @@ impl C6AcceptanceCatalog {
             .join(C6_ACCEPTANCE_PREVIOUS_RELATIVE_PATH);
         let json =
             fs::read_to_string(&path).map_err(|source| CatalogError::ReadFile { path, source })?;
-        let (previous_digest, previous_keys) = parse_v3_predecessor(&json)?;
-        if previous_digest != self.previous_manifest_digest {
+        let predecessor = parse_v3_predecessor(&json)?;
+        if predecessor.digest != self.previous_manifest_digest {
             return Err(CatalogError::C6AcceptanceManifestLineageMismatch {
                 declared: encode_hex(&self.previous_manifest_digest),
-                actual: encode_hex(&previous_digest),
+                actual: encode_hex(&predecessor.digest),
             });
         }
         let current_keys = self
@@ -401,13 +401,32 @@ impl C6AcceptanceCatalog {
             .keys()
             .copied()
             .collect::<BTreeSet<_>>();
-        if !previous_keys.is_subset(&current_keys) {
+        if !predecessor.cell_keys.is_subset(&current_keys) {
             return Err(CatalogError::C6AcceptanceCellSetMismatch {
-                missing: previous_keys
+                missing: predecessor
+                    .cell_keys
                     .difference(&current_keys)
                     .map(|key| key.label())
                     .collect(),
                 unexpected: Vec::new(),
+            });
+        }
+        let current_enforced_keys = self
+            .enforced_tranche
+            .cell_index
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let regressed_cells = predecessor
+            .enforced_cell_keys
+            .difference(&current_enforced_keys)
+            .map(|key| key.label())
+            .collect::<Vec<_>>();
+        if !regressed_cells.is_empty() {
+            return Err(CatalogError::InvalidC6AcceptanceManifest {
+                reason: format!(
+                    "previously enforced cells must remain enforced: {regressed_cells:?}"
+                ),
             });
         }
         Ok(())
@@ -658,7 +677,13 @@ fn validate_critical_mechanisms(
     })
 }
 
-fn parse_v3_predecessor(json: &str) -> Result<([u8; 32], BTreeSet<C6CellKey>), CatalogError> {
+struct C6PredecessorManifest {
+    digest: [u8; 32],
+    cell_keys: BTreeSet<C6CellKey>,
+    enforced_cell_keys: BTreeSet<C6CellKey>,
+}
+
+fn parse_v3_predecessor(json: &str) -> Result<C6PredecessorManifest, CatalogError> {
     let wire: C6AcceptanceCatalogV3Wire =
         serde_json::from_str(json).map_err(CatalogError::InvalidC6AcceptanceJson)?;
     if wire.schema_version != 3 {
@@ -667,15 +692,25 @@ fn parse_v3_predecessor(json: &str) -> Result<([u8; 32], BTreeSet<C6CellKey>), C
         ));
     }
     let (specification, enforced_tranche) = convert_cells(wire.cells)?;
-    let keys = specification
+    let cell_keys = specification
         .cell_index
         .keys()
         .copied()
         .collect::<BTreeSet<_>>();
-    Ok((
-        canonical_manifest_digest_v3(wire.schema_version, &specification, &enforced_tranche),
-        keys,
-    ))
+    let enforced_cell_keys = enforced_tranche
+        .cell_index
+        .keys()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    Ok(C6PredecessorManifest {
+        digest: canonical_manifest_digest_v3(
+            wire.schema_version,
+            &specification,
+            &enforced_tranche,
+        ),
+        cell_keys,
+        enforced_cell_keys,
+    })
 }
 
 fn convert_expectation(

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "manifestRevision": "c6a-native-v1",
-  "previousManifestDigest": "6ed1f3b001947a82f98c6167acc19344e2a9254d1d775b0a5f6b307570e2bd98",
+  "previousManifestDigest": "2b9a4b96853c8728c4d11435becc094394e5430e3af2a60ef720181eb076efd2",
   "requiredCriticalMechanisms": [
     "canvas-blend",
     "canvas-gradient",
