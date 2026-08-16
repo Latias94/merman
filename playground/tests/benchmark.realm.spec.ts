@@ -8,6 +8,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
+import { CANONICAL_BENCHMARK_SCREEN_AVAILABLE_WIDTH } from "../src/benchmark/input.ts";
 
 const RUN_TOKEN = "r".repeat(43);
 const PLAYGROUND_ROOT = path.resolve(
@@ -585,7 +586,7 @@ async function sampleSession(
   }
 ): Promise<WireResponse> {
   return page.evaluate(
-    async ({ input, runToken }) => {
+    async ({ input, runToken, screenAvailableWidth }) => {
       const harness = (
         window as unknown as {
           __benchmarkSession: {
@@ -623,13 +624,18 @@ async function sampleSession(
                 theme: "default",
                 diagramFont: "trebuchet",
                 externalRequirements: input.externalRequirements,
+                screenAvailableWidth,
                 viewport: { width: 800, height: 600 },
               },
             }
           : identity
       );
     },
-    { input, runToken: RUN_TOKEN }
+    {
+      input,
+      runToken: RUN_TOKEN,
+      screenAvailableWidth: CANONICAL_BENCHMARK_SCREEN_AVAILABLE_WIDTH,
+    }
   );
 }
 
