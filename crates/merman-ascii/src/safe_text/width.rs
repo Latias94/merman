@@ -39,6 +39,7 @@ impl<'a> SafeText<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn as_str(&self) -> &str {
         self.value.as_ref()
     }

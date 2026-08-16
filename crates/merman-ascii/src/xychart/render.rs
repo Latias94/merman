@@ -116,13 +116,11 @@ impl ChartDocumentPlan {
         self,
         materialized_extent: LogicalExtent,
         resources: &mut ResourceContext,
-        before_materialize: impl FnOnce(),
         materialize: impl FnOnce(&mut ResourceContext) -> Result<ChartDocument>,
     ) -> Result<ChartDocument> {
         let plan = self;
         resources.transaction(|resources| {
             resources.charge_usage(0, plan.document_cells)?;
-            before_materialize();
             // Materialization builds complete StyledLine values and therefore performs its own
             // document-cell charges. Keep those charges in a disposable document scope: the
             // plan's exact aggregate was admitted above and is committed only once.
@@ -194,7 +192,7 @@ pub(crate) fn render_xychart_diagram_with_execution(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    render_xychart_diagram_controlled(model, options, execution, || {})
+    render_xychart_diagram_controlled(model, options, execution)
 }
 
 #[cfg(test)]
@@ -203,29 +201,13 @@ pub(crate) fn render_xychart_diagram_with_resources(
     options: &AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> Result<String> {
-    render_xychart_diagram_controlled(model, options, AsciiExecution::for_test(&resources), || {})
-}
-
-#[cfg(test)]
-fn render_xychart_diagram_with_materializer(
-    model: &XyChartDiagramRenderModel,
-    options: &AsciiRenderOptions,
-    resources: AsciiResourcePolicy,
-    before_document_materialize: impl FnOnce(),
-) -> Result<String> {
-    render_xychart_diagram_controlled(
-        model,
-        options,
-        AsciiExecution::for_test(&resources),
-        before_document_materialize,
-    )
+    render_xychart_diagram_controlled(model, options, AsciiExecution::for_test(&resources))
 }
 
 fn render_xychart_diagram_controlled(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
-    before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
     options.validate()?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
@@ -281,7 +263,6 @@ fn render_xychart_diagram_controlled(
             &mut resources,
             execution,
             &mut checkpoints,
-            before_document_materialize,
         );
     }
 
@@ -293,7 +274,6 @@ fn render_xychart_diagram_controlled(
         &mut resources,
         execution,
         &mut checkpoints,
-        before_document_materialize,
     )
 }
 
@@ -326,7 +306,6 @@ fn render_vertical(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
     checkpoints: &mut XyChartCheckpointCursor<'_>,
-    before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
     let ChartRenderContext {
         y_range,
@@ -417,130 +396,123 @@ fn render_vertical(
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
     let mut emit_resources =
         execution.resource_context(resources, merman_core::OperationPhase::Emit);
-    let out = document_plan.materialize(
-        materialized_extent,
-        &mut emit_resources,
-        before_document_materialize,
-        |resources| {
-            let mut plot_resources = resources
-                .with_operation_phase(merman_core::OperationPhase::Layout)
-                .scoped();
-            let mut plot = build_vertical_plot(
-                plan,
-                chars,
-                plot_area,
-                plot_extent,
-                &mut plot_resources,
-                checkpoints,
+    let out = document_plan.materialize(materialized_extent, &mut emit_resources, |resources| {
+        let mut plot_resources = resources
+            .with_operation_phase(merman_core::OperationPhase::Layout)
+            .scoped();
+        let mut plot = build_vertical_plot(
+            plan,
+            chars,
+            plot_area,
+            plot_extent,
+            &mut plot_resources,
+            checkpoints,
+        )?;
+        let mut out = ChartDocument::default();
+        push_title_lines(&mut out, model, options, resources)?;
+        push_legend_line(&mut out, plan, chars, options, resources)?;
+        if requires_disclosure {
+            push_value_disclosure_lines(
+                &mut out, model, plan, chars, disclosure, options, resources,
             )?;
-            let mut out = ChartDocument::default();
-            push_title_lines(&mut out, model, options, resources)?;
-            push_legend_line(&mut out, plan, chars, options, resources)?;
-            if requires_disclosure {
-                push_value_disclosure_lines(
-                    &mut out, model, plan, chars, disclosure, options, resources,
-                )?;
-            }
+        }
 
-            if model.display.show_data_label && uses_compact_bar_data_labels(model) {
-                if model.display.show_data_label_outside_bar {
-                    if let Some(labels) = outside_data_labels.as_deref()
-                        && let Some(line) = vertical_data_label_line(
-                            labels,
-                            plot_prefix_width,
-                            plot_area,
-                            resources,
-                            checkpoints,
-                        )?
-                    {
-                        out.push(line, resources)?;
-                    }
-                } else {
-                    apply_vertical_bar_data_labels(
-                        &mut plot,
-                        plan,
-                        plot_area,
-                        &mut plot_resources,
-                        checkpoints,
-                    )?;
-                }
-            }
-
-            for (idx, row) in plot.rows.into_iter().enumerate() {
-                checkpoints.tick(merman_core::OperationPhase::Emit)?;
-                let label = &tick_labels[idx];
-                let mut line = new_chart_line(options, resources);
-                push_axis_prefix(
-                    &mut line,
-                    label,
-                    gutter,
-                    show_y_labels,
-                    y_axis_mark,
-                    reserve_axis_slot,
-                    resources,
-                )?;
-                let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
-                line.try_push_line_with_checkpoint(&row, &plot_resources, &mut checkpoint)?;
-                out.push(line, resources)?;
-            }
-
-            if show_y_labels || baseline_mark.is_some() {
-                let mut axis_line = new_chart_line(options, resources);
-                push_axis_baseline_prefix(
-                    &mut axis_line,
-                    min_label.as_deref().unwrap_or_default(),
-                    gutter,
-                    show_y_labels,
-                    baseline_mark,
-                    reserve_axis_slot,
-                    resources,
-                )?;
-                if model.display.x_axis.show_axis_line {
-                    resources.charge_layout_work(plot.width)?;
-                    axis_line.try_push_role_repeat(
-                        chars.horizontal_axis,
-                        plot.width,
-                        AsciiColorRole::ChartAxis,
-                    )?;
-                } else if model.display.x_axis.show_tick {
-                    resources.charge_layout_work(plot.width)?;
-                    axis_line.try_push_spaces(plot.width)?;
-                }
-                if model.display.x_axis.show_tick {
-                    overlay_vertical_category_ticks(
-                        &mut axis_line,
+        if model.display.show_data_label && uses_compact_bar_data_labels(model) {
+            if model.display.show_data_label_outside_bar {
+                if let Some(labels) = outside_data_labels.as_deref()
+                    && let Some(line) = vertical_data_label_line(
+                        labels,
                         plot_prefix_width,
-                        categories.len(),
                         plot_area,
-                        chars.horizontal_tick,
                         resources,
                         checkpoints,
-                    )?;
+                    )?
+                {
+                    out.push(line, resources)?;
                 }
-                out.push(axis_line, resources)?;
-            }
-
-            if axis_labels_visible(model.display.x_axis) {
-                charge_category_text(categories, resources)?;
-                let labels = plot_area.category_axis_labels(categories, resources, checkpoints)?;
-                let mut category_line = new_chart_line(options, resources);
-                resources.charge_layout_work(plot_prefix_width)?;
-                category_line.try_push_spaces(plot_prefix_width)?;
-                category_line.try_push_role_text_with_unstyled_trailing_spaces(
-                    &labels,
-                    AsciiColorRole::Text,
+            } else {
+                apply_vertical_bar_data_labels(
+                    &mut plot,
+                    plan,
+                    plot_area,
+                    &mut plot_resources,
+                    checkpoints,
                 )?;
-                out.push(category_line, resources)?;
             }
+        }
 
-            if model.display.x_axis.show_title
-                && let Some(title) = nonempty_axis_title(&model.x_axis)
-            {
-                push_title_display_line(&mut out, TitleOwner::XAxis, title, options, resources)?;
+        for (idx, row) in plot.rows.into_iter().enumerate() {
+            checkpoints.tick(merman_core::OperationPhase::Emit)?;
+            let label = &tick_labels[idx];
+            let mut line = new_chart_line(options, resources);
+            push_axis_prefix(
+                &mut line,
+                label,
+                gutter,
+                show_y_labels,
+                y_axis_mark,
+                reserve_axis_slot,
+                resources,
+            )?;
+            let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+            line.try_push_line_with_checkpoint(&row, &plot_resources, &mut checkpoint)?;
+            out.push(line, resources)?;
+        }
+
+        if show_y_labels || baseline_mark.is_some() {
+            let mut axis_line = new_chart_line(options, resources);
+            push_axis_baseline_prefix(
+                &mut axis_line,
+                min_label.as_deref().unwrap_or_default(),
+                gutter,
+                show_y_labels,
+                baseline_mark,
+                reserve_axis_slot,
+                resources,
+            )?;
+            if model.display.x_axis.show_axis_line {
+                resources.charge_layout_work(plot.width)?;
+                axis_line.try_push_role_repeat(
+                    chars.horizontal_axis,
+                    plot.width,
+                    AsciiColorRole::ChartAxis,
+                )?;
+            } else if model.display.x_axis.show_tick {
+                resources.charge_layout_work(plot.width)?;
+                axis_line.try_push_spaces(plot.width)?;
             }
-            Ok(out)
-        },
-    )?;
+            if model.display.x_axis.show_tick {
+                overlay_vertical_category_ticks(
+                    &mut axis_line,
+                    plot_prefix_width,
+                    categories.len(),
+                    plot_area,
+                    chars.horizontal_tick,
+                    resources,
+                    checkpoints,
+                )?;
+            }
+            out.push(axis_line, resources)?;
+        }
+
+        if axis_labels_visible(model.display.x_axis) {
+            charge_category_text(categories, resources)?;
+            let labels = plot_area.category_axis_labels(categories, resources, checkpoints)?;
+            let mut category_line = new_chart_line(options, resources);
+            resources.charge_layout_work(plot_prefix_width)?;
+            category_line.try_push_spaces(plot_prefix_width)?;
+            category_line
+                .try_push_role_text_with_unstyled_trailing_spaces(&labels, AsciiColorRole::Text)?;
+            out.push(category_line, resources)?;
+        }
+
+        if model.display.x_axis.show_title
+            && let Some(title) = nonempty_axis_title(&model.x_axis)
+        {
+            push_title_display_line(&mut out, TitleOwner::XAxis, title, options, resources)?;
+        }
+        Ok(out)
+    })?;
 
     finish_chart_lines_controlled(out, options, &mut emit_resources, execution)
 }
@@ -552,7 +524,6 @@ fn render_horizontal(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
     checkpoints: &mut XyChartCheckpointCursor<'_>,
-    before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
     let ChartRenderContext {
         y_range,
@@ -619,139 +590,130 @@ fn render_horizontal(
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
     let mut emit_resources =
         execution.resource_context(resources, merman_core::OperationPhase::Emit);
-    let out = document_plan.materialize(
-        materialized_extent,
-        &mut emit_resources,
-        before_document_materialize,
-        |resources| {
-            let mut plot_resources = resources
-                .with_operation_phase(merman_core::OperationPhase::Layout)
-                .scoped();
-            let plot_rows = build_horizontal_plot_rows(
-                plan,
-                chars,
-                plot_area,
-                plot_extent,
-                compact_bar_values.as_ref(),
-                &mut plot_resources,
-                checkpoints,
+    let out = document_plan.materialize(materialized_extent, &mut emit_resources, |resources| {
+        let mut plot_resources = resources
+            .with_operation_phase(merman_core::OperationPhase::Layout)
+            .scoped();
+        let plot_rows = build_horizontal_plot_rows(
+            plan,
+            chars,
+            plot_area,
+            plot_extent,
+            compact_bar_values.as_ref(),
+            &mut plot_resources,
+            checkpoints,
+        )?;
+        let mut out = ChartDocument::default();
+        push_title_lines(&mut out, model, options, resources)?;
+        push_legend_line(&mut out, plan, chars, options, resources)?;
+        if requires_disclosure {
+            push_value_disclosure_lines(
+                &mut out, model, plan, chars, disclosure, options, resources,
             )?;
-            let mut out = ChartDocument::default();
-            push_title_lines(&mut out, model, options, resources)?;
-            push_legend_line(&mut out, plan, chars, options, resources)?;
-            if requires_disclosure {
-                push_value_disclosure_lines(
-                    &mut out, model, plan, chars, disclosure, options, resources,
-                )?;
-            }
+        }
 
-            for plot_row in &plot_rows {
-                checkpoints.tick(merman_core::OperationPhase::Emit)?;
-                resources.charge_layout_work(1)?;
-                let category = plot_row
-                    .show_category_label
-                    .then(|| categories.get(plot_row.category_index))
-                    .flatten()
-                    .map(String::as_str)
-                    .unwrap_or_default();
-                let mut line = new_chart_line(options, resources);
-                push_axis_prefix(
-                    &mut line,
-                    category,
-                    gutter,
-                    show_x_labels,
-                    x_axis_mark,
-                    reserve_axis_slot,
-                    resources,
-                )?;
-                let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
-                line.try_push_line_with_checkpoint(
-                    &plot_row.line,
-                    &plot_resources,
-                    &mut checkpoint,
-                )?;
-                if model.display.show_data_label
-                    && uses_compact_bar_data_labels(model)
-                    && let (Some(value), Some(label)) =
-                        (plot_row.bar_value, plot_row.bar_label.as_deref())
-                {
-                    let written_inside = if model.display.show_data_label_outside_bar {
-                        false
-                    } else {
-                        write_horizontal_inside_data_label(
-                            &mut line,
-                            plot_prefix_width,
-                            label,
-                            value,
-                            y_range,
-                            plot_area,
-                            resources,
-                        )?
-                    };
-                    if !written_inside {
-                        push_horizontal_outside_data_label(&mut line, label, resources)?;
-                    }
-                }
-                out.push(line, resources)?;
-            }
-
-            if axis_labels_visible(model.display.y_axis) || baseline_mark.is_some() {
-                let mut axis_line = new_chart_line(options, resources);
-                push_axis_baseline_prefix(
-                    &mut axis_line,
-                    "",
-                    gutter,
-                    show_x_labels,
-                    baseline_mark,
-                    reserve_axis_slot,
-                    resources,
-                )?;
-                if model.display.y_axis.show_axis_line {
-                    resources.charge_layout_work(plot_area.horizontal_width)?;
-                    axis_line.try_push_role_repeat(
-                        chars.horizontal_axis,
-                        plot_area.horizontal_width,
-                        AsciiColorRole::ChartAxis,
-                    )?;
-                } else if model.display.y_axis.show_tick {
-                    resources.charge_layout_work(plot_area.horizontal_width)?;
-                    axis_line.try_push_spaces(plot_area.horizontal_width)?;
-                }
-                if model.display.y_axis.show_tick {
-                    overlay_horizontal_value_ticks(
-                        &mut axis_line,
-                        plot_prefix_width,
-                        plot_area,
-                        chars.horizontal_tick,
-                        resources,
-                        checkpoints,
-                    )?;
-                }
-                out.push(axis_line, resources)?;
-            }
-
-            if axis_labels_visible(model.display.y_axis) {
-                let tick_labels = horizontal_tick_label_line(y_range, plot_area, resources)?;
-                let mut tick_line = new_chart_line(options, resources);
-                resources.charge_layout_work(plot_prefix_width)?;
-                tick_line.try_push_spaces(plot_prefix_width)?;
-                let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
-                tick_line.try_push_line_with_checkpoint(
-                    &tick_labels,
-                    &plot_resources,
-                    &mut checkpoint,
-                )?;
-                out.push(tick_line, resources)?;
-            }
-
-            if model.display.x_axis.show_title
-                && let Some(title) = nonempty_axis_title(&model.x_axis)
+        for plot_row in &plot_rows {
+            checkpoints.tick(merman_core::OperationPhase::Emit)?;
+            resources.charge_layout_work(1)?;
+            let category = plot_row
+                .show_category_label
+                .then(|| categories.get(plot_row.category_index))
+                .flatten()
+                .map(String::as_str)
+                .unwrap_or_default();
+            let mut line = new_chart_line(options, resources);
+            push_axis_prefix(
+                &mut line,
+                category,
+                gutter,
+                show_x_labels,
+                x_axis_mark,
+                reserve_axis_slot,
+                resources,
+            )?;
+            let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+            line.try_push_line_with_checkpoint(&plot_row.line, &plot_resources, &mut checkpoint)?;
+            if model.display.show_data_label
+                && uses_compact_bar_data_labels(model)
+                && let (Some(value), Some(label)) =
+                    (plot_row.bar_value, plot_row.bar_label.as_deref())
             {
-                push_title_display_line(&mut out, TitleOwner::XAxis, title, options, resources)?;
+                let written_inside = if model.display.show_data_label_outside_bar {
+                    false
+                } else {
+                    write_horizontal_inside_data_label(
+                        &mut line,
+                        plot_prefix_width,
+                        label,
+                        value,
+                        y_range,
+                        plot_area,
+                        resources,
+                    )?
+                };
+                if !written_inside {
+                    push_horizontal_outside_data_label(&mut line, label, resources)?;
+                }
             }
-            Ok(out)
-        },
-    )?;
+            out.push(line, resources)?;
+        }
+
+        if axis_labels_visible(model.display.y_axis) || baseline_mark.is_some() {
+            let mut axis_line = new_chart_line(options, resources);
+            push_axis_baseline_prefix(
+                &mut axis_line,
+                "",
+                gutter,
+                show_x_labels,
+                baseline_mark,
+                reserve_axis_slot,
+                resources,
+            )?;
+            if model.display.y_axis.show_axis_line {
+                resources.charge_layout_work(plot_area.horizontal_width)?;
+                axis_line.try_push_role_repeat(
+                    chars.horizontal_axis,
+                    plot_area.horizontal_width,
+                    AsciiColorRole::ChartAxis,
+                )?;
+            } else if model.display.y_axis.show_tick {
+                resources.charge_layout_work(plot_area.horizontal_width)?;
+                axis_line.try_push_spaces(plot_area.horizontal_width)?;
+            }
+            if model.display.y_axis.show_tick {
+                overlay_horizontal_value_ticks(
+                    &mut axis_line,
+                    plot_prefix_width,
+                    plot_area,
+                    chars.horizontal_tick,
+                    resources,
+                    checkpoints,
+                )?;
+            }
+            out.push(axis_line, resources)?;
+        }
+
+        if axis_labels_visible(model.display.y_axis) {
+            let tick_labels = horizontal_tick_label_line(y_range, plot_area, resources)?;
+            let mut tick_line = new_chart_line(options, resources);
+            resources.charge_layout_work(plot_prefix_width)?;
+            tick_line.try_push_spaces(plot_prefix_width)?;
+            let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+            tick_line.try_push_line_with_checkpoint(
+                &tick_labels,
+                &plot_resources,
+                &mut checkpoint,
+            )?;
+            out.push(tick_line, resources)?;
+        }
+
+        if model.display.x_axis.show_title
+            && let Some(title) = nonempty_axis_title(&model.x_axis)
+        {
+            push_title_display_line(&mut out, TitleOwner::XAxis, title, options, resources)?;
+        }
+        Ok(out)
+    })?;
 
     finish_chart_lines_controlled(out, options, &mut emit_resources, execution)
 }
@@ -1887,7 +1849,7 @@ fn charge_category_text(
 mod tests {
     use super::{
         ChartDocument, finish_chart_lines_controlled, horizontal_tick_label_line_for_labels,
-        render_xychart_diagram_with_materializer, render_xychart_diagram_with_resources,
+        render_xychart_diagram_with_resources,
     };
     use crate::operation::AsciiExecution;
     use crate::resource::ResourceContext;
@@ -1902,7 +1864,6 @@ mod tests {
         XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
     };
     use merman_core::{CancelReason, OperationControl, OperationPhase};
-    use std::cell::Cell;
 
     fn render_xychart_diagram(
         model: &XyChartDiagramRenderModel,
@@ -2192,7 +2153,7 @@ mod tests {
     }
 
     #[test]
-    fn xychart_complete_document_extent_is_admitted_before_row_materialization() {
+    fn xychart_complete_document_extent_uses_exact_grid_boundary() {
         let model = disclosure_budget_model();
         let options = compact_options(AsciiColorMode::Plain);
         let rendered = render_xychart_diagram(&model, &options)
@@ -2207,22 +2168,13 @@ mod tests {
         let exact_cells = max_width * line_count + retained_plot_cells;
         assert!(exact_cells > 100);
 
-        let exact_probe = Cell::new(false);
         let exact = resources_with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells);
-        render_xychart_diagram_with_materializer(&model, &options, exact, || exact_probe.set(true))
+        render_xychart_diagram_with_resources(&model, &options, exact)
             .expect("the exact complete document extent should render");
-        assert!(
-            exact_probe.get(),
-            "exact admission did not materialize rows"
-        );
 
-        let below_probe = Cell::new(false);
         let below = resources_with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells - 1);
-        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-            below_probe.set(true)
-        })
-        .expect_err("N-1 must fail before materializing any chart row");
-        assert!(!below_probe.get(), "N-1 overflow materialized chart rows");
+        let error = render_xychart_diagram_with_resources(&model, &options, below)
+            .expect_err("N-1 must reject the complete document extent");
         assert_resource_error(
             error,
             AsciiResourceLimitId::MaxGridCells,
@@ -2264,25 +2216,17 @@ mod tests {
     }
 
     #[test]
-    fn xychart_document_cells_are_admitted_before_materialization() {
+    fn xychart_document_cells_use_exact_boundary() {
         let model = compact_vertical_model(Some("12345678"));
         let options = compact_options(AsciiColorMode::Plain);
-        let probe = Cell::new(false);
         let rejected = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, 123);
-        let error = render_xychart_diagram_with_materializer(&model, &options, rejected, || {
-            probe.set(true)
-        })
-        .expect_err("N-1 document cells must fail before row materialization");
-        assert!(!probe.get(), "document admission materialized chart rows");
+        let error = render_xychart_diagram_with_resources(&model, &options, rejected)
+            .expect_err("N-1 document cells must fail");
         assert_resource_error(error, AsciiResourceLimitId::MaxDocumentCells, 124, 123);
 
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, 124);
-        render_xychart_diagram_with_materializer(&model, &options, exact, || probe.set(true))
+        render_xychart_diagram_with_resources(&model, &options, exact)
             .expect("the exact planned document-cell budget should render");
-        assert!(
-            probe.get(),
-            "exact document admission did not materialize rows"
-        );
     }
 
     #[test]
@@ -2300,19 +2244,14 @@ mod tests {
             .expect("the fixture grid should fit");
 
         let error = plan
-            .materialize(
-                materialized_extent,
-                &mut resources,
-                || {},
-                |resources| {
-                    resources.charge_layout_work(5)?;
-                    resources.charge_document_cells(3)?;
-                    Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "xychart",
-                        feature: "test materialization failure",
-                    })
-                },
-            )
+            .materialize(materialized_extent, &mut resources, |resources| {
+                resources.charge_layout_work(5)?;
+                resources.charge_document_cells(3)?;
+                Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "xychart",
+                    feature: "test materialization failure",
+                })
+            })
             .expect_err("the injected materialization failure should escape");
 
         assert!(matches!(error, AsciiError::UnsupportedFeature { .. }));
@@ -2383,28 +2322,14 @@ mod tests {
             .sum::<usize>();
         assert_eq!(exact_cells, 316);
 
-        let exact_probe = Cell::new(false);
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-        let rendered = render_xychart_diagram_with_materializer(&model, &options, exact, || {
-            exact_probe.set(true)
-        })
-        .expect("the exact sum of the short and extended rows should render");
+        let rendered = render_xychart_diagram_with_resources(&model, &options, exact)
+            .expect("the exact sum of the short and extended rows should render");
         assert!(rendered.contains("123456"));
-        assert!(
-            exact_probe.get(),
-            "exact horizontal document admission did not materialize rows"
-        );
 
-        let below_probe = Cell::new(false);
         let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-            below_probe.set(true)
-        })
-        .expect_err("N-1 horizontal document cells must fail before materialization");
-        assert!(
-            !below_probe.get(),
-            "N-1 horizontal document admission materialized rows"
-        );
+        let error = render_xychart_diagram_with_resources(&model, &options, below)
+            .expect_err("N-1 horizontal document cells must fail");
         assert_resource_error(
             error,
             AsciiResourceLimitId::MaxDocumentCells,
@@ -2463,19 +2388,13 @@ mod tests {
         );
         assert_eq!(exact_cells, 102);
 
-        let exact_probe = Cell::new(false);
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-        render_xychart_diagram_with_materializer(&model, &options, exact, || exact_probe.set(true))
+        render_xychart_diagram_with_resources(&model, &options, exact)
             .expect("the exact retained vertical document should render");
-        assert!(exact_probe.get());
 
-        let below_probe = Cell::new(false);
         let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-            below_probe.set(true)
-        })
-        .expect_err("N-1 retained vertical cells must fail before materialization");
-        assert!(!below_probe.get());
+        let error = render_xychart_diagram_with_resources(&model, &options, below)
+            .expect_err("N-1 retained vertical cells must fail");
         assert_resource_error(
             error,
             AsciiResourceLimitId::MaxDocumentCells,
@@ -2496,19 +2415,13 @@ mod tests {
             .map(|line| display_width_with_profile(line, options.terminal_width_profile))
             .sum::<usize>();
 
-        let exact_probe = Cell::new(false);
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-        render_xychart_diagram_with_materializer(&model, &options, exact, || exact_probe.set(true))
+        render_xychart_diagram_with_resources(&model, &options, exact)
             .expect("the exact retained category-row budget should render");
-        assert!(exact_probe.get());
 
-        let below_probe = Cell::new(false);
         let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-            below_probe.set(true)
-        })
-        .expect_err("N-1 retained category cells must fail before materialization");
-        assert!(!below_probe.get());
+        let error = render_xychart_diagram_with_resources(&model, &options, below)
+            .expect_err("N-1 retained category cells must fail");
         assert_resource_error(
             error,
             AsciiResourceLimitId::MaxDocumentCells,
@@ -2547,22 +2460,14 @@ mod tests {
             AsciiColorMode::Html,
         ] {
             let options = compact_options(color_mode).with_xychart_category_band_width(3);
-            let exact_probe = Cell::new(false);
             let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-            render_xychart_diagram_with_materializer(&model, &options, exact, || {
-                exact_probe.set(true)
-            })
-            .expect("the exact retained tick-only baseline budget should render");
-            assert!(exact_probe.get());
+            render_xychart_diagram_with_resources(&model, &options, exact)
+                .expect("the exact retained tick-only baseline budget should render");
 
-            let below_probe = Cell::new(false);
             let below =
                 resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-            let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-                below_probe.set(true)
-            })
-            .expect_err("N-1 tick-only baseline cells must fail before materialization");
-            assert!(!below_probe.get());
+            let error = render_xychart_diagram_with_resources(&model, &options, below)
+                .expect_err("N-1 tick-only baseline cells must fail");
             assert_resource_error(
                 error,
                 AsciiResourceLimitId::MaxDocumentCells,
@@ -2597,22 +2502,14 @@ mod tests {
             AsciiColorMode::Html,
         ] {
             let options = compact_options(color_mode).with_xychart_category_band_width(3);
-            let exact_probe = Cell::new(false);
             let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-            render_xychart_diagram_with_materializer(&model, &options, exact, || {
-                exact_probe.set(true)
-            })
-            .expect("the exact retained label-only baseline budget should render");
-            assert!(exact_probe.get());
+            render_xychart_diagram_with_resources(&model, &options, exact)
+                .expect("the exact retained label-only baseline budget should render");
 
-            let below_probe = Cell::new(false);
             let below =
                 resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-            let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-                below_probe.set(true)
-            })
-            .expect_err("N-1 label-only baseline cells must fail before materialization");
-            assert!(!below_probe.get());
+            let error = render_xychart_diagram_with_resources(&model, &options, below)
+                .expect_err("N-1 label-only baseline cells must fail");
             assert_resource_error(
                 error,
                 AsciiResourceLimitId::MaxDocumentCells,
@@ -2635,19 +2532,13 @@ mod tests {
             .map(|line| display_width_with_profile(line, options.terminal_width_profile))
             .sum::<usize>();
 
-        let exact_probe = Cell::new(false);
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-        render_xychart_diagram_with_materializer(&model, &options, exact, || exact_probe.set(true))
+        render_xychart_diagram_with_resources(&model, &options, exact)
             .expect("the exact retained outside-label budget should render");
-        assert!(exact_probe.get());
 
-        let below_probe = Cell::new(false);
         let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-            below_probe.set(true)
-        })
-        .expect_err("N-1 retained outside-label cells must fail before materialization");
-        assert!(!below_probe.get());
+        let error = render_xychart_diagram_with_resources(&model, &options, below)
+            .expect_err("N-1 retained outside-label cells must fail");
         assert_resource_error(
             error,
             AsciiResourceLimitId::MaxDocumentCells,
@@ -2666,22 +2557,14 @@ mod tests {
             (AsciiColorMode::TrueColor, 89usize),
         ] {
             let options = compact_options(color_mode).with_xychart_category_band_width(3);
-            let exact_probe = Cell::new(false);
             let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-            render_xychart_diagram_with_materializer(&model, &options, exact, || {
-                exact_probe.set(true)
-            })
-            .expect("the exact inside-label document budget should render");
-            assert!(exact_probe.get());
+            render_xychart_diagram_with_resources(&model, &options, exact)
+                .expect("the exact inside-label document budget should render");
 
-            let below_probe = Cell::new(false);
             let below =
                 resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-            let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-                below_probe.set(true)
-            })
-            .expect_err("N-1 inside-label cells must fail before materialization");
-            assert!(!below_probe.get());
+            let error = render_xychart_diagram_with_resources(&model, &options, below)
+                .expect_err("N-1 inside-label cells must fail");
             assert_resource_error(
                 error,
                 AsciiResourceLimitId::MaxDocumentCells,
@@ -2717,19 +2600,13 @@ mod tests {
             .map(|line| display_width_with_profile(line, options.terminal_width_profile))
             .sum::<usize>();
 
-        let exact_probe = Cell::new(false);
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-        render_xychart_diagram_with_materializer(&model, &options, exact, || exact_probe.set(true))
+        render_xychart_diagram_with_resources(&model, &options, exact)
             .expect("the exact last-writer document budget should render");
-        assert!(exact_probe.get());
 
-        let below_probe = Cell::new(false);
         let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-            below_probe.set(true)
-        })
-        .expect_err("N-1 overlapping-label cells must fail before materialization");
-        assert!(!below_probe.get());
+        let error = render_xychart_diagram_with_resources(&model, &options, below)
+            .expect_err("N-1 overlapping-label cells must fail");
         assert_resource_error(
             error,
             AsciiResourceLimitId::MaxDocumentCells,
@@ -2755,19 +2632,13 @@ mod tests {
             .map(|line| display_width_with_profile(line, options.terminal_width_profile))
             .sum::<usize>();
 
-        let exact_probe = Cell::new(false);
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-        render_xychart_diagram_with_materializer(&model, &options, exact, || exact_probe.set(true))
+        render_xychart_diagram_with_resources(&model, &options, exact)
             .expect("the exact Plain prefix budget should render");
-        assert!(exact_probe.get());
 
-        let below_probe = Cell::new(false);
         let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-            below_probe.set(true)
-        })
-        .expect_err("N-1 Plain prefix cells must fail before materialization");
-        assert!(!below_probe.get());
+        let error = render_xychart_diagram_with_resources(&model, &options, below)
+            .expect_err("N-1 Plain prefix cells must fail");
         assert_resource_error(
             error,
             AsciiResourceLimitId::MaxDocumentCells,
@@ -2806,22 +2677,14 @@ mod tests {
             AsciiColorMode::Html,
         ] {
             let options = compact_options(color_mode);
-            let exact_probe = Cell::new(false);
             let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
-            render_xychart_diagram_with_materializer(&model, &options, exact, || {
-                exact_probe.set(true)
-            })
-            .expect("the exact empty-baseline document budget should render");
-            assert!(exact_probe.get());
+            render_xychart_diagram_with_resources(&model, &options, exact)
+                .expect("the exact empty-baseline document budget should render");
 
-            let below_probe = Cell::new(false);
             let below =
                 resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
-            let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
-                below_probe.set(true)
-            })
-            .expect_err("N-1 empty-baseline cells must fail before materialization");
-            assert!(!below_probe.get());
+            let error = render_xychart_diagram_with_resources(&model, &options, below)
+                .expect_err("N-1 empty-baseline cells must fail");
             assert_resource_error(
                 error,
                 AsciiResourceLimitId::MaxDocumentCells,

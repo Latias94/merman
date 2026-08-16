@@ -5,8 +5,10 @@ use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 #[cfg(test)]
 use crate::resource::{AsciiResourcePolicy, CheckedOutput};
+#[cfg(test)]
+use crate::safe_text::SafeText;
 use crate::safe_text::{
-    DeferredTextLine, SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
+    DeferredTextLine, SafeLine, terminal_char_display_width, terminal_line_display_width,
     visit_quoted_terminal_text, visit_safe_line_graphemes,
 };
 use crate::terminal::{
@@ -967,6 +969,7 @@ pub(crate) fn wrap_display_lines_with_profile(
     lines
 }
 
+#[cfg(test)]
 pub(crate) fn normalize_optional_text(text: Option<&str>) -> Option<String> {
     let normalized = SafeText::new(text?);
     let trimmed = normalized.as_str().trim();

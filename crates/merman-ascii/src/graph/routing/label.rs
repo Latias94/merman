@@ -181,33 +181,10 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
         self,
         resources: &ResourceContext,
     ) -> Result<RoutedLabelCatalog> {
-        self.materialize_with_callback(resources, || {})
+        resources.transaction(|resources| self.materialize_transactional(resources))
     }
 
-    #[cfg(test)]
-    fn materialize_with_probe(
-        self,
-        resources: &ResourceContext,
-        materialized: &std::cell::Cell<bool>,
-    ) -> Result<RoutedLabelCatalog> {
-        self.materialize_with_callback(resources, || materialized.set(true))
-    }
-
-    fn materialize_with_callback(
-        self,
-        resources: &ResourceContext,
-        before_materialize: impl FnOnce(),
-    ) -> Result<RoutedLabelCatalog> {
-        resources.transaction(|resources| {
-            self.materialize_with_callback_transactional(resources, before_materialize)
-        })
-    }
-
-    fn materialize_with_callback_transactional(
-        self,
-        resources: &ResourceContext,
-        before_materialize: impl FnOnce(),
-    ) -> Result<RoutedLabelCatalog> {
+    fn materialize_transactional(self, resources: &ResourceContext) -> Result<RoutedLabelCatalog> {
         let mut work_units = self.labels.len();
         let mut document_cells = 0usize;
         let mut materialized_bytes = 0usize;
@@ -224,7 +201,6 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
         resources.check_usage(work_units, document_cells)?;
         resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
         resources.charge_usage(work_units, document_cells)?;
-        before_materialize();
         self.materialize_after_admission()
     }
 
@@ -517,7 +493,6 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use crate::terminal::TerminalCellText;
     use merman_core::resources::ResourceProfile;
-    use std::cell::Cell;
 
     fn edge(label: &str, from: &str, to: &str) -> AsciiGraphEdge {
         AsciiGraphEdge {
@@ -659,11 +634,11 @@ mod tests {
             .flatten()
             .map(|plan| plan.normalized.metrics().materialized_bytes)
             .sum::<usize>();
-        let measured_probe = Cell::new(false);
-        measured_plan
-            .materialize_with_probe(&measured_resources, &measured_probe)
+        let measured_catalog = measured_plan
+            .materialize(&measured_resources)
             .expect("unbounded catalog materialization should succeed");
-        assert!(measured_probe.get());
+        assert_eq!(measured_catalog.labels.len(), edges.len());
+        assert!(measured_catalog.labels.iter().all(Option::is_some));
         let exact_work = measured_resources.layout_work_used();
         let exact_document_cells = measured_resources.document_cells_used();
         assert!(exact_work > 1);
@@ -685,11 +660,10 @@ mod tests {
             &exact_resources,
         )
         .expect("exact catalog planning should succeed");
-        let exact_probe = Cell::new(false);
-        exact_plan
-            .materialize_with_probe(&exact_resources, &exact_probe)
+        let exact_catalog = exact_plan
+            .materialize(&exact_resources)
             .expect("exact catalog materialization should succeed");
-        assert!(exact_probe.get());
+        assert_eq!(exact_catalog.labels, measured_catalog.labels);
 
         let below_work_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
@@ -704,11 +678,9 @@ mod tests {
         .expect("planning should fit before the final work debit");
         let work_before = below_work_resources.layout_work_used();
         let document_cells_before = below_work_resources.document_cells_used();
-        let below_work_probe = Cell::new(false);
         let error = below_work_plan
-            .materialize_with_probe(&below_work_resources, &below_work_probe)
+            .materialize(&below_work_resources)
             .expect_err("max-minus-one work limit should reject before materialization");
-        assert!(!below_work_probe.get());
         assert!(matches!(
             error,
             crate::AsciiError::ResourceLimitExceeded(details)
@@ -736,11 +708,9 @@ mod tests {
         .expect("document planning should be non-materializing");
         let work_before = below_document_resources.layout_work_used();
         let document_cells_before = below_document_resources.document_cells_used();
-        let below_document_probe = Cell::new(false);
         let error = below_document_plan
-            .materialize_with_probe(&below_document_resources, &below_document_probe)
+            .materialize(&below_document_resources)
             .expect_err("max-minus-one document limit should reject before materialization");
-        assert!(!below_document_probe.get());
         assert!(matches!(
             error,
             crate::AsciiError::ResourceLimitExceeded(details)
@@ -765,11 +735,9 @@ mod tests {
         .expect("output planning should be non-materializing");
         let work_before = below_output_resources.layout_work_used();
         let document_cells_before = below_output_resources.document_cells_used();
-        let below_output_probe = Cell::new(false);
         let error = below_output_plan
-            .materialize_with_probe(&below_output_resources, &below_output_probe)
+            .materialize(&below_output_resources)
             .expect_err("max-minus-one output limit should reject before materialization");
-        assert!(!below_output_probe.get());
         assert!(matches!(
             error,
             crate::AsciiError::ResourceLimitExceeded(details)

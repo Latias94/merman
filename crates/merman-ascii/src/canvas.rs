@@ -553,7 +553,7 @@ impl Canvas {
         execution: AsciiExecution<'_>,
     ) -> crate::Result<String> {
         debug_assert_eq!(self.resources.policy(), *execution.resources());
-        self.finish_with_options_internal_and_execution(options, false, Some(execution))
+        self.finish_with_options_controlled(options, false, execution)
     }
 
     #[cfg(test)]
@@ -697,13 +697,15 @@ impl Canvas {
 
     #[cfg(test)]
     fn finish_plain(self, trim: bool) -> crate::Result<String> {
+        let policy = self.resources.policy();
+        let execution = AsciiExecution::for_test(&policy);
         let resources = self.resources.clone();
         resources.transaction(|_| {
             self.finish_encoded(
                 AsciiColorMode::Plain,
                 AsciiColorTheme::default(),
                 trim,
-                None,
+                execution,
             )
         })
     }
@@ -714,38 +716,19 @@ impl Canvas {
         options: &AsciiRenderOptions,
         trim: bool,
     ) -> crate::Result<String> {
-        self.finish_with_options_internal_and_execution(options, trim, None)
+        let policy = self.resources.policy();
+        self.finish_with_options_controlled(options, trim, AsciiExecution::for_test(&policy))
     }
 
-    fn finish_with_options_internal_and_execution(
+    fn finish_with_options_controlled(
         self,
         options: &AsciiRenderOptions,
         trim: bool,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> crate::Result<String> {
         let resources = self.resources.clone();
         resources.transaction(|_| {
             self.finish_encoded(options.color_mode, options.color_theme, trim, execution)
-        })
-    }
-
-    #[cfg(test)]
-    fn finish_with_options_internal_and_probe(
-        self,
-        options: &AsciiRenderOptions,
-        trim: bool,
-        execution: Option<AsciiExecution<'_>>,
-        before_materialize: impl FnOnce(),
-    ) -> crate::Result<String> {
-        let resources = self.resources.clone();
-        resources.transaction(|_| {
-            self.finish_encoded_with_probe(
-                options.color_mode,
-                options.color_theme,
-                trim,
-                execution,
-                before_materialize,
-            )
         })
     }
 
@@ -754,29 +737,12 @@ impl Canvas {
         color_mode: AsciiColorMode,
         color_theme: AsciiColorTheme,
         trim: bool,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> crate::Result<String> {
         let Some(encoded_bytes) = self.admit_encoded(color_mode, color_theme, trim, execution)?
         else {
             return Ok(String::new());
         };
-        self.materialize_encoded(color_mode, color_theme, trim, execution, encoded_bytes)
-    }
-
-    #[cfg(test)]
-    fn finish_encoded_with_probe(
-        self,
-        color_mode: AsciiColorMode,
-        color_theme: AsciiColorTheme,
-        trim: bool,
-        execution: Option<AsciiExecution<'_>>,
-        before_materialize: impl FnOnce(),
-    ) -> crate::Result<String> {
-        let Some(encoded_bytes) = self.admit_encoded(color_mode, color_theme, trim, execution)?
-        else {
-            return Ok(String::new());
-        };
-        before_materialize();
         self.materialize_encoded(color_mode, color_theme, trim, execution, encoded_bytes)
     }
 
@@ -785,7 +751,7 @@ impl Canvas {
         color_mode: AsciiColorMode,
         color_theme: AsciiColorTheme,
         trim: bool,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> crate::Result<Option<usize>> {
         self.check_document_cells(color_mode, trim, execution)?;
         if self.width == 0 || self.height == 0 {
@@ -796,9 +762,7 @@ impl Canvas {
         let mut counted = CountingTerminalOutput::new(policy);
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut counted)?;
         let encoded_bytes = counted.bytes();
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         policy.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
         Ok(Some(encoded_bytes))
     }
@@ -808,12 +772,10 @@ impl Canvas {
         color_mode: AsciiColorMode,
         color_theme: AsciiColorTheme,
         trim: bool,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
         encoded_bytes: usize,
     ) -> crate::Result<String> {
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let mut output = CheckedOutput::new(self.resources.policy());
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut output)?;
         let output = output.finish();
@@ -827,7 +789,7 @@ impl Canvas {
         &self,
         color_mode: AsciiColorMode,
         trim: bool,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> crate::Result<()> {
         if self.width == 0 || self.height == 0 {
             return Ok(());
@@ -837,9 +799,7 @@ impl Canvas {
         let mut trim_pass_work = 0usize;
         let preserve_roles = color_mode != AsciiColorMode::Plain;
         for row_start in (0..self.cells.len()).step_by(self.width) {
-            if let Some(execution) = execution {
-                execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            }
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             let (row_end, inspected) = if trim {
                 let row = admit_trimmed_row(
                     &self.cells[row_start..row_start + self.width],
@@ -868,13 +828,9 @@ impl Canvas {
         let remaining_work = self
             .resources
             .checked_work_add(encoder_work, remaining_trim_work)?;
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         self.resources.check_usage(remaining_work, document_cells)?;
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         self.resources.charge_usage(remaining_work, document_cells)
     }
 
@@ -883,14 +839,12 @@ impl Canvas {
         color_mode: AsciiColorMode,
         color_theme: AsciiColorTheme,
         trim: bool,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
         output: &mut impl TerminalOutputSink,
     ) -> crate::Result<()> {
         let preserve_roles = color_mode != AsciiColorMode::Plain;
         for row_start in (0..self.cells.len()).step_by(self.width) {
-            if let Some(execution) = execution {
-                execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            }
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             let row_end = if trim {
                 row_start
                     + controlled_trimmed_row(
@@ -989,14 +943,12 @@ fn admit_trimmed_row(
     cells: &[TerminalCell],
     preserve_roles: bool,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<TrimmedRow> {
     let mut end = cells.len();
     let mut inspected = 0usize;
     while let Some(cell) = end.checked_sub(1).and_then(|index| cells.get(index)) {
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         inspected += 1;
         if !cell.is_trimmable_blank(preserve_roles) {
@@ -1010,14 +962,12 @@ fn admit_trimmed_row(
 fn controlled_trimmed_row(
     cells: &[TerminalCell],
     preserve_roles: bool,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<TrimmedRow> {
     let mut end = cells.len();
     let mut inspected = 0usize;
     while let Some(cell) = end.checked_sub(1).and_then(|index| cells.get(index)) {
-        if let Some(execution) = execution {
-            execution.checkpoint_loop(merman_core::OperationPhase::Emit, inspected)?;
-        }
+        execution.checkpoint_loop(merman_core::OperationPhase::Emit, inspected)?;
         inspected += 1;
         if !cell.is_trimmable_blank(preserve_roles) {
             break;
@@ -1042,14 +992,7 @@ pub(crate) fn finish_styled_lines_with_resources_with_execution(
     execution: AsciiExecution<'_>,
 ) -> crate::Result<String> {
     debug_assert_eq!(resources.policy(), *execution.resources());
-    finish_styled_line_iter(
-        lines.iter(),
-        options,
-        trim,
-        resources,
-        None,
-        Some(execution),
-    )
+    finish_styled_line_iter(lines.iter(), options, trim, resources, None, execution)
 }
 
 #[cfg(test)]
@@ -1062,7 +1005,15 @@ pub(crate) fn finish_styled_line_iter_with_resources<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    finish_styled_line_iter(lines, options, trim, resources, None, None)
+    let policy = resources.policy();
+    finish_styled_line_iter(
+        lines,
+        options,
+        trim,
+        resources,
+        None,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 #[cfg(test)]
@@ -1076,7 +1027,15 @@ pub(crate) fn finish_styled_line_iter_with_deferred_resources<'a, 'text, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    finish_styled_line_iter(lines, options, trim, resources, Some(deferred), None)
+    let policy = resources.policy();
+    finish_styled_line_iter(
+        lines,
+        options,
+        trim,
+        resources,
+        Some(deferred),
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 pub(crate) fn finish_styled_line_iter_with_deferred_resources_with_execution<'a, 'text, I>(
@@ -1091,14 +1050,7 @@ where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
     debug_assert_eq!(resources.policy(), *execution.resources());
-    finish_styled_line_iter(
-        lines,
-        options,
-        trim,
-        resources,
-        Some(deferred),
-        Some(execution),
-    )
+    finish_styled_line_iter(lines, options, trim, resources, Some(deferred), execution)
 }
 
 #[cfg(test)]
@@ -1113,13 +1065,14 @@ pub(crate) fn finish_styled_line_iter_with_deferred_probe<'a, 'text, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
+    let policy = resources.policy();
     finish_styled_line_iter_with_probe(
         lines,
         options,
         trim,
         resources,
         Some(deferred),
-        None,
+        AsciiExecution::for_test(&policy),
         before_materialize,
     )
 }
@@ -1130,7 +1083,7 @@ fn finish_styled_line_iter<'a, I>(
     trim: bool,
     resources: &mut ResourceContext,
     deferred: Option<&DeferredTextRegistry<'_>>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<String>
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
@@ -1161,7 +1114,7 @@ fn finish_styled_line_iter_with_probe<'a, I>(
     trim: bool,
     resources: &mut ResourceContext,
     deferred: Option<&DeferredTextRegistry<'_>>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
     before_materialize: impl FnOnce(),
 ) -> crate::Result<String>
 where
@@ -1193,7 +1146,7 @@ fn admit_styled_line_iter<'a, I>(
     trim: bool,
     resources: &ResourceContext,
     deferred: Option<&DeferredTextRegistry<'_>>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<Option<usize>>
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
@@ -1201,9 +1154,7 @@ where
     let mut line_count = 0usize;
     let mut width = 0usize;
     for line in lines.clone() {
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         line_count = resources.checked_grid_add(line_count, 1)?;
         width = width.max(line.len());
     }
@@ -1219,9 +1170,7 @@ where
     let mut trim_pass_work = 0usize;
     let preserve_color = options.color_mode != AsciiColorMode::Plain;
     for line in lines.clone() {
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let (row_end, inspected) = if trim {
             let row = admit_trimmed_row(
                 line.surface_cells(),
@@ -1241,9 +1190,7 @@ where
         trim_pass_work = document_resources.checked_work_add(trim_pass_work, inspected)?;
         if let Some(deferred) = deferred {
             for cell in &line.surface_cells()[..row_end] {
-                if let Some(execution) = execution {
-                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
-                }
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 if let Some(id) = cell.deferred_text_id() {
                     encoder_pass_work = document_resources
                         .checked_work_add(encoder_pass_work, deferred.replay_work_units(id)?)?;
@@ -1256,13 +1203,9 @@ where
     // materialization scans together with the two encoder passes before either pass starts.
     let remaining_trim_work = document_resources.checked_work_mul(trim_pass_work, 2)?;
     let remaining_work = document_resources.checked_work_add(encoder_work, remaining_trim_work)?;
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    }
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     document_resources.check_usage(remaining_work, document_cells)?;
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    }
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     document_resources.charge_usage(remaining_work, document_cells)?;
 
     let policy = resources.policy();
@@ -1277,9 +1220,7 @@ where
         &mut counted,
     )?;
     let encoded_bytes = counted.bytes();
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    }
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     policy.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
     Ok(Some(encoded_bytes))
 }
@@ -1290,15 +1231,13 @@ fn materialize_styled_line_iter<'a, I>(
     trim: bool,
     resources: &ResourceContext,
     deferred: Option<&DeferredTextRegistry<'_>>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
     encoded_bytes: usize,
 ) -> crate::Result<String>
 where
     I: Iterator<Item = &'a crate::text::StyledLine>,
 {
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    }
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     let mut output = CheckedOutput::new(resources.policy());
     encode_styled_line_iter_to_sink(
         lines,
@@ -1322,7 +1261,7 @@ fn encode_styled_line_iter_to_sink<'a, I>(
     trim: bool,
     deferred: Option<&DeferredTextRegistry<'_>>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
     output: &mut impl TerminalOutputSink,
 ) -> crate::Result<()>
 where
@@ -1331,9 +1270,7 @@ where
     match options.color_mode {
         AsciiColorMode::Plain => {
             for line in lines {
-                if let Some(execution) = execution {
-                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
-                }
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 let row_end = if trim {
                     controlled_trimmed_row(line.surface_cells(), false, execution)?.end
                 } else {
@@ -1346,9 +1283,7 @@ where
         AsciiColorMode::Ansi16 | AsciiColorMode::Ansi256 | AsciiColorMode::TrueColor => {
             let mode = options.color_mode;
             for line in lines {
-                if let Some(execution) = execution {
-                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
-                }
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 let row_end = if trim {
                     controlled_trimmed_row(line.surface_cells(), true, execution)?.end
                 } else {
@@ -1371,9 +1306,7 @@ where
         }
         AsciiColorMode::Html => {
             for line in lines {
-                if let Some(execution) = execution {
-                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
-                }
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 let row_end = if trim {
                     controlled_trimmed_row(line.surface_cells(), true, execution)?.end
                 } else {
@@ -1401,7 +1334,7 @@ fn encode_styled_line_plain(
     row_end: usize,
     deferred: Option<&DeferredTextRegistry<'_>>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -1424,7 +1357,7 @@ fn encode_styled_line_ansi(
     style: SurfaceEncodingStyle,
     deferred: Option<&DeferredTextRegistry<'_>>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -1444,7 +1377,7 @@ fn encode_styled_line_html(
     theme: AsciiColorTheme,
     deferred: Option<&DeferredTextRegistry<'_>>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -1473,7 +1406,7 @@ fn encode_surface_row(
     style: SurfaceEncodingStyle,
     deferred: Option<&DeferredTextRegistry<'_>>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<()> {
     let SurfaceEncodingStyle { mode, theme } = style;
     if mode == AsciiColorMode::Plain {
@@ -1574,13 +1507,12 @@ fn missing_deferred_text_resolver() -> crate::AsciiError {
 
 fn visit_primary_cells(
     cells: &[TerminalCell],
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
     mut visit: impl FnMut(TerminalCell) -> crate::Result<()>,
 ) -> crate::Result<()> {
     let mut offset = 0usize;
-    let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| match execution {
-        Some(execution) => execution.checkpoint(merman_core::OperationPhase::Emit),
-        None => Ok(()),
+    let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| {
+        execution.checkpoint(merman_core::OperationPhase::Emit)
     });
     while let Some(cell) = cells.get(offset).copied() {
         checkpoints.force()?;
@@ -2025,7 +1957,7 @@ mod tests {
     }
 
     #[test]
-    fn every_encoder_counts_fixed_output_before_materializing() {
+    fn every_canvas_encoder_enforces_exact_output_boundary() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
         let cases = [
@@ -2056,24 +1988,18 @@ mod tests {
             };
 
             let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
-            let exact_probe = std::cell::Cell::new(false);
             assert_eq!(
                 build(exact)
-                    .finish_with_options_internal_and_probe(&base, true, None, || {
-                        exact_probe.set(true)
-                    })
+                    .finish_trimmed_with_options(&base)
                     .expect("exact output byte limit should fit"),
                 expected,
                 "mode={mode:?}"
             );
-            assert!(exact_probe.get(), "mode={mode:?}");
 
             let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
-            let below_probe = std::cell::Cell::new(false);
             let error = build(below)
-                .finish_with_options_internal_and_probe(&base, true, None, || below_probe.set(true))
+                .finish_trimmed_with_options(&base)
                 .expect_err("output byte limit below the encoded size must fail");
-            assert!(!below_probe.get(), "mode={mode:?}");
             assert!(matches!(
                 error,
                 crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
@@ -2087,7 +2013,7 @@ mod tests {
     }
 
     #[test]
-    fn styled_line_encoder_counts_fixed_output_before_materializing() {
+    fn styled_line_encoder_enforces_exact_output_boundary() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
         let cases = [
@@ -2122,38 +2048,28 @@ mod tests {
             let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
             let exact_line = build_line(exact);
             let mut exact_resources = ResourceContext::new(exact);
-            let exact_probe = std::cell::Cell::new(false);
             assert_eq!(
-                finish_styled_line_iter_with_probe(
+                finish_styled_line_iter_with_resources(
                     std::iter::once(&exact_line),
                     &base,
                     true,
                     &mut exact_resources,
-                    None,
-                    None,
-                    || exact_probe.set(true),
                 )
                 .expect("exact output byte limit should fit"),
                 expected,
                 "mode={mode:?}"
             );
-            assert!(exact_probe.get(), "mode={mode:?}");
 
             let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
             let below_line = build_line(below);
             let mut below_resources = ResourceContext::new(below);
-            let below_probe = std::cell::Cell::new(false);
-            let error = finish_styled_line_iter_with_probe(
+            let error = finish_styled_line_iter_with_resources(
                 std::iter::once(&below_line),
                 &base,
                 true,
                 &mut below_resources,
-                None,
-                None,
-                || below_probe.set(true),
             )
             .expect_err("output byte limit below the encoded size must fail");
-            assert!(!below_probe.get(), "mode={mode:?}");
             assert!(matches!(
                 error,
                 crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
@@ -2167,7 +2083,7 @@ mod tests {
     }
 
     #[test]
-    fn deferred_styled_line_encoder_counts_exact_output_before_materializing() {
+    fn deferred_styled_line_encoder_enforces_exact_output_boundary() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
         let cases = [
@@ -2213,39 +2129,31 @@ mod tests {
 
             let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
             let (exact_line, exact_deferred, mut exact_resources) = build(exact);
-            let exact_probe = std::cell::Cell::new(false);
             assert_eq!(
-                finish_styled_line_iter_with_probe(
+                finish_styled_line_iter_with_deferred_resources(
                     std::iter::once(&exact_line),
                     &base,
                     true,
                     &mut exact_resources,
-                    Some(&exact_deferred),
-                    None,
-                    || exact_probe.set(true),
+                    &exact_deferred,
                 )
                 .expect("exact output byte limit should fit deferred text"),
                 expected,
                 "mode={mode:?}"
             );
-            assert!(exact_probe.get(), "mode={mode:?}");
 
             let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
             let (below_line, below_deferred, mut below_resources) = build(below);
             let work_before = below_resources.layout_work_used();
             let document_before = below_resources.document_cells_used();
-            let below_probe = std::cell::Cell::new(false);
-            let error = finish_styled_line_iter_with_probe(
+            let error = finish_styled_line_iter_with_deferred_resources(
                 std::iter::once(&below_line),
                 &base,
                 true,
                 &mut below_resources,
-                Some(&below_deferred),
-                None,
-                || below_probe.set(true),
+                &below_deferred,
             )
             .expect_err("output byte limit below the encoded size must reject deferred text");
-            assert!(!below_probe.get(), "mode={mode:?}");
             assert_eq!(below_resources.layout_work_used(), work_before);
             assert_eq!(below_resources.document_cells_used(), document_before);
             assert!(matches!(
@@ -2282,14 +2190,12 @@ mod tests {
             .expect("wide deferred text should fit the line");
 
         assert_eq!(
-            finish_styled_line_iter_with_probe(
+            finish_styled_line_iter_with_deferred_resources(
                 std::iter::once(&line),
                 &options,
                 true,
                 &mut resources,
-                Some(&deferred),
-                None,
-                || {},
+                &deferred,
             )
             .expect("wide deferred text should encode"),
             expected
@@ -2359,14 +2265,13 @@ mod tests {
             control.cancel_after_checkpoints(7);
             let execution = AsciiExecution::new(&control, &policy);
 
-            let error = finish_styled_line_iter_with_probe(
+            let error = finish_styled_line_iter(
                 std::iter::once(&line),
                 &options,
                 true,
                 &mut resources,
                 None,
-                Some(execution),
-                || {},
+                execution,
             )
             .expect_err("colored emission must observe cancellation inside the row");
 
@@ -2418,16 +2323,8 @@ mod tests {
         });
         let execution = AsciiExecution::new(&control, &policy);
 
-        let error = finish_styled_line_iter_with_probe(
-            lines,
-            &options,
-            true,
-            &mut resources,
-            None,
-            Some(execution),
-            || {},
-        )
-        .expect_err("line counting must observe cancellation before later output admission");
+        let error = finish_styled_line_iter(lines, &options, true, &mut resources, None, execution)
+            .expect_err("line counting must observe cancellation before later output admission");
 
         assert!(matches!(
             error,
@@ -2464,14 +2361,13 @@ mod tests {
         control.cancel_after_checkpoints(3);
         let execution = AsciiExecution::new(&control, &policy);
 
-        let error = finish_styled_line_iter_with_probe(
+        let error = finish_styled_line_iter(
             std::iter::once(&line),
             &options,
             true,
             &mut resources,
             None,
-            Some(execution),
-            || {},
+            execution,
         )
         .expect_err("a long final trim scan must remain cooperatively cancellable");
 
@@ -2617,16 +2513,8 @@ mod tests {
         });
         let execution = AsciiExecution::new(&control, &policy);
 
-        let error = finish_styled_line_iter_with_probe(
-            lines,
-            &options,
-            true,
-            &mut resources,
-            None,
-            Some(execution),
-            || {},
-        )
-        .expect_err("count encoding must prefer cancellation to the output ceiling");
+        let error = finish_styled_line_iter(lines, &options, true, &mut resources, None, execution)
+            .expect_err("count encoding must prefer cancellation to the output ceiling");
 
         assert!(matches!(
             error,
@@ -2664,7 +2552,7 @@ mod tests {
             true,
             &mut resources,
             None,
-            Some(execution),
+            execution,
             || control.cancel(),
         )
         .expect_err("final materialization must observe cancellation before publishing output");
@@ -2695,14 +2583,13 @@ mod tests {
         control.cancel_after_checkpoints(1);
         let execution = AsciiExecution::new(&control, &policy);
 
-        let error = finish_styled_line_iter_with_probe(
+        let error = finish_styled_line_iter(
             std::iter::once(&line),
             &options,
             true,
             &mut resources,
             None,
-            Some(execution),
-            || {},
+            execution,
         )
         .expect_err("requested cancellation must win over the work ceiling");
 
@@ -2740,35 +2627,25 @@ mod tests {
             let options = AsciiRenderOptions::unicode().with_color_mode(mode);
             let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
             let mut exact_resources = ResourceContext::new(exact);
-            let exact_probe = std::cell::Cell::new(false);
-            finish_styled_line_iter_with_probe(
+            finish_styled_line_iter_with_resources(
                 std::iter::once(&line),
                 &options,
                 true,
                 &mut exact_resources,
-                None,
-                None,
-                || exact_probe.set(true),
             )
             .unwrap_or_else(|error| {
                 panic!("mode={mode:?} exact document admission failed: {error}")
             });
-            assert!(exact_probe.get(), "mode={mode:?}");
 
             let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
             let mut below_resources = ResourceContext::new(below);
-            let below_probe = std::cell::Cell::new(false);
-            let error = finish_styled_line_iter_with_probe(
+            let error = finish_styled_line_iter_with_resources(
                 std::iter::once(&line),
                 &options,
                 true,
                 &mut below_resources,
-                None,
-                None,
-                || below_probe.set(true),
             )
-            .expect_err("N-1 document cells must fail before materialization");
-            assert!(!below_probe.get(), "mode={mode:?}");
+            .expect_err("N-1 document cells must fail");
             assert!(matches!(
                 error,
                 crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
