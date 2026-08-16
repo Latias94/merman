@@ -23,8 +23,9 @@ pub use merman_ascii::{
 /// Terminal-safe projection for ASCII target errors and shared facade diagnostics.
 ///
 /// The canonical [`crate::RenderError`] remains the operation error contract. This type exists
-/// for hosts that also need to project ASCII target-local failures. Parse and runtime-policy
-/// failures use the target-neutral [`crate::TerminalDiagnostic`] owner.
+/// for hosts that also need to project ASCII target-local failures. Parse failures use
+/// [`crate::TerminalDiagnostic`]; runtime-policy failures use
+/// [`crate::TerminalRuntimePolicyError`] so capability classification remains explicit.
 #[non_exhaustive]
 pub enum AsciiDiagnostic {
     Parse(crate::TerminalDiagnostic),
@@ -80,7 +81,12 @@ impl std::error::Error for AsciiDiagnostic {}
 
 impl From<merman_core::Error> for AsciiDiagnostic {
     fn from(error: merman_core::Error) -> Self {
-        Self::Parse(crate::TerminalDiagnostic::from(error))
+        match error {
+            merman_core::Error::RuntimePolicy(error) => {
+                Self::RuntimePolicy(crate::TerminalRuntimePolicyError::from(error))
+            }
+            error => Self::Parse(crate::TerminalDiagnostic::from(error)),
+        }
     }
 }
 
@@ -212,5 +218,23 @@ mod tests {
             assert_eq!(details.field.as_deref(), field);
             assert_eq!(details.diagram_type.as_deref(), diagram_type);
         }
+    }
+
+    #[test]
+    fn core_runtime_policy_errors_keep_their_capability_classification() {
+        let error = AsciiDiagnostic::from(merman_core::Error::RuntimePolicy(
+            merman_core::runtime::RuntimePolicyError::MissingCapability(
+                merman_core::runtime::RuntimeCapability::SystemRandom,
+            ),
+        ));
+
+        assert!(matches!(error, AsciiDiagnostic::RuntimePolicy(_)));
+        assert_eq!(
+            error
+                .terminal_diagnostic_details()
+                .expect("runtime-policy failures expose diagnostic details")
+                .code,
+            "merman.runtime_policy"
+        );
     }
 }

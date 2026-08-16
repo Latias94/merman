@@ -459,6 +459,29 @@ mod tests {
     }
 
     #[test]
+    fn nested_runtime_policy_errors_preserve_missing_capability_binding_classification() {
+        let error = classify_render_error(
+            merman::RenderError::from(merman::Error::RuntimePolicy(
+                merman::runtime::RuntimePolicyError::MissingCapability(
+                    merman::runtime::RuntimeCapability::SystemRandom,
+                ),
+            )),
+            merman::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+        assert_eq!(error.capability_id(), Some("system-random"));
+        assert_eq!(
+            error
+                .diagnostic_details()
+                .expect("runtime-policy errors expose diagnostic details")
+                .code,
+            "merman.runtime_policy"
+        );
+    }
+
+    #[test]
     fn shared_parse_options_are_stored_as_operation_options() {
         let options =
             crate::common::parse_options(br#"{ "parse": { "suppress_errors": true } }"#).unwrap();

@@ -303,7 +303,13 @@ pub enum RenderError {
 
 impl From<merman_core::Error> for RenderError {
     fn from(error: merman_core::Error) -> Self {
-        Self::Parse(TerminalDiagnostic::from(error))
+        match error {
+            merman_core::Error::OperationCancelled(error) => Self::Cancelled(error),
+            merman_core::Error::RuntimePolicy(error) => {
+                Self::RuntimePolicy(TerminalRuntimePolicyError::from(error))
+            }
+            error => Self::Parse(TerminalDiagnostic::from(error)),
+        }
     }
 }
 

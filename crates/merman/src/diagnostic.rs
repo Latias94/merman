@@ -1,8 +1,9 @@
-//! Target-neutral, terminal-safe projection for parser diagnostics.
+//! Target-neutral, terminal-safe projection for parser and runtime-policy diagnostics.
 //!
-//! Core parser errors retain authored context for programmatic consumers. This module owns the
-//! bounded display boundary used by render targets, bindings, and command-line hosts so those
-//! consumers do not need an ASCII feature merely to report an error safely.
+//! Core parser errors retain authored context and runtime-policy errors may retain host-adapter
+//! messages. This module owns the bounded display boundary used by render targets, bindings, and
+//! command-line hosts so those consumers do not need an ASCII feature merely to report an error
+//! safely.
 
 use std::borrow::Cow;
 use std::convert::Infallible;
@@ -570,6 +571,19 @@ mod tests {
             Some(merman_core::runtime::RuntimeCapability::SystemRandom)
         );
         assert!(std::error::Error::source(&missing).is_none());
+
+        let nested = crate::RenderError::from(merman_core::Error::RuntimePolicy(
+            merman_core::runtime::RuntimePolicyError::MissingCapability(
+                merman_core::runtime::RuntimeCapability::SystemRandom,
+            ),
+        ));
+        let crate::RenderError::RuntimePolicy(nested) = nested else {
+            panic!("nested core runtime-policy errors must not become parse errors");
+        };
+        assert_eq!(
+            nested.missing_capability(),
+            Some(merman_core::runtime::RuntimeCapability::SystemRandom)
+        );
     }
 
     #[cfg(feature = "ascii")]
