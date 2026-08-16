@@ -631,6 +631,97 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn render_svg_json_rejects_oversized_font_input_before_base64_decoding() {
+        let oversized_base64 = "A".repeat(600 * 1024);
+        let options = json!({
+            "theme": {
+                "spec": {
+                    "assets": {
+                        "fonts": [{
+                            "id": "oversized-font",
+                            "format": "truetype",
+                            "data_base64": oversized_base64
+                        }]
+                    }
+                }
+            }
+        });
+        let options_json = options.to_string();
+        let preflight_error = typst_options_json(options_json.as_bytes())
+            .expect_err("Typst options preflight must reject before typed font decoding");
+        assert_eq!(
+            preflight_error.status(),
+            merman_bindings_core::BindingStatus::ResourceLimitExceeded
+        );
+        let preflight_resource = preflight_error
+            .resource_details()
+            .expect("Typst options preflight rejection must remain structured");
+        assert_eq!(preflight_resource.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(preflight_resource.profile, "constrained");
+
+        let payload: Value = serde_json::from_slice(&render_svg_json(
+            b"flowchart TD\nA --> B",
+            options_json.as_bytes(),
+        ))
+        .expect("valid JSON payload");
+
+        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+        assert_eq!(
+            payload["details"]["resource"]["limit_id"],
+            "max_theme_encoded_bytes"
+        );
+        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn render_svg_json_reports_effect_graph_compile_limits() {
+        let effects = (0..9)
+            .map(|index| {
+                json!({
+                    "kind": "graph",
+                    "id": format!("effect-{index}"),
+                    "primitives": [{
+                        "kind": "gaussian-blur",
+                        "std_deviation": 1.0
+                    }]
+                })
+            })
+            .collect::<Vec<_>>();
+        let options = json!({ "theme": { "spec": { "effects": effects } } });
+        let options_json = options.to_string();
+        let normalized = typst_options_json(options_json.as_bytes())
+            .expect("Typst options normalization should admit the encoded effect input");
+        let compile_error = typst_artifact_contract()
+            .create_engine(&normalized)
+            .err()
+            .expect("the constrained Typst engine must reject excess effect graphs");
+        assert_eq!(
+            compile_error.status(),
+            merman_bindings_core::BindingStatus::ResourceLimitExceeded
+        );
+        let compile_resource = compile_error
+            .resource_details()
+            .expect("Typst compile rejection must remain structured");
+        assert_eq!(compile_resource.limit_id, "max_effect_graphs");
+        assert_eq!(compile_resource.profile, "constrained");
+
+        let payload: Value = serde_json::from_slice(&render_svg_json(
+            b"flowchart TD\nA --> B",
+            options_json.as_bytes(),
+        ))
+        .expect("valid JSON payload");
+
+        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+        assert_eq!(
+            payload["details"]["resource"]["limit_id"],
+            "max_effect_graphs"
+        );
+        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn render_svg_json_returns_a_structured_error_envelope() {
         let payload: Value =
             serde_json::from_slice(&render_svg_json(b"", b"")).expect("valid JSON payload");

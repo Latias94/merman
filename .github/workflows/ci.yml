@@ -661,7 +661,7 @@ jobs:
         run: |
           cargo test --locked -p merman-typst-plugin --no-default-features
           cargo test --locked -p merman-typst-plugin --no-default-features \
-            --features merman-bindings-core/svg,merman-bindings-core/math,merman-bindings-core/native-runtime
+            --features analysis,layout-cytoscape,layout-elk,svg
 
       - name: Check exact Typst WASM size budget
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
