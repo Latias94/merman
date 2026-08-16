@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { zlibSync } from "fflate";
+import { unzlibSync, zlibSync } from "fflate";
 
 import {
   copyShareUrl,
@@ -25,7 +25,6 @@ const COMPLETE_SNAPSHOT: WorkspaceSnapshot = {
   diagramFont: "arial",
   presentationProfileId: "future-profile",
   presentationThemePresetId: "future-theme",
-  renderViewportMode: "host",
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -34,6 +33,7 @@ test("round-trips one complete workspace snapshot through the s2 envelope", () =
   const hash = encodeShareHash(COMPLETE_SNAPSHOT);
   assert.match(hash, /^#s2:[A-Za-z0-9_-]+$/u);
   assert.deepEqual(decodeShareHash(hash), COMPLETE_SNAPSHOT);
+  assert.equal(Object.hasOwn(decodeS2Payload(hash), "renderViewportMode"), false);
 });
 
 test("keeps the complete v2 defaults immutable and independent from caller defaults", () => {
@@ -43,7 +43,6 @@ test("keeps the complete v2 defaults immutable and independent from caller defau
   const callerDefaults = {
     ...DEFAULT_WORKSPACE_SNAPSHOT,
     diagramTheme: "forest" as const,
-    renderViewportMode: "host" as const,
   };
   assert.deepEqual(
     decodeShareHash(s2Payload({}), callerDefaults),
@@ -119,6 +118,33 @@ test("inherits caller defaults when every optional presentation field is absent"
       defaults
     ),
     { ...defaults, code: "flowchart TD\nA", diagramTheme: "forest" }
+  );
+});
+
+test("ignores validated Host viewport state in legacy Base64 and s2 payloads", () => {
+  const expected = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    code: "flowchart TD\nA",
+  };
+
+  assert.deepEqual(
+    decodeShareHash(
+      encodedPayload({
+        code: expected.code,
+        theme: "default",
+        renderViewportMode: "host",
+      }),
+    ),
+    expected,
+  );
+  assert.deepEqual(
+    decodeShareHash(
+      s2Payload({
+        code: expected.code,
+        renderViewportMode: "host",
+      }),
+    ),
+    expected,
   );
 });
 
@@ -325,11 +351,26 @@ function legacySnapshotHash(snapshot: WorkspaceSnapshot): string {
     config: snapshot.mermaidConfig,
     presentationThemePresetId: snapshot.presentationThemePresetId,
     presentationProfileId: snapshot.presentationProfileId,
-    renderViewportMode: snapshot.renderViewportMode,
+    renderViewportMode: "host",
     svgPipeline: snapshot.svgPipeline,
     textMeasurementMode: snapshot.textMeasurementMode,
     diagramFont: snapshot.diagramFont,
   });
+}
+
+function decodeS2Payload(hash: string): Record<string, unknown> {
+  const encoded = hash.slice("#s2:".length);
+  const normalized = encoded.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(
+    normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="),
+  );
+  const compressed = Uint8Array.from(binary, (character) =>
+    character.charCodeAt(0),
+  );
+  return JSON.parse(new TextDecoder().decode(unzlibSync(compressed))) as Record<
+    string,
+    unknown
+  >;
 }
 
 function s2Payload(payload: Record<string, unknown>): string {

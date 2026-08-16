@@ -107,29 +107,32 @@ The visible interactive render timer measures the actual source. There is no hid
 render. The preview separately records when a validated artifact reaches its presentation
 boundary; this feedback is not represented as a formal cross-engine benchmark.
 
-Interactive rendering has two explicit viewport modes. Canonical freezes `800x600` CSS pixels for
-reproducible comparison. Host measures the stable, unsplit Preview allocation and freezes one
-rounded, realm-bounded size plus `screenAvailableWidth` into both the Merman layout environment and
-Mermaid realm. The opaque Mermaid realm installs the controlled screen width before loading the
-engine. Hidden or zero-sized panels retain the last valid Host size; first use reports a measuring
-state and renders with the Canonical fallback. Benchmark viewport inputs remain Canonical regardless
-of the interactive selection.
+Interactive rendering owns one canonical layout environment: `800x600` CSS pixels with
+`screenAvailableWidth=800`. The same frozen values enter the Merman layout environment and Mermaid
+realm, and the opaque Mermaid realm installs the controlled screen width before loading the engine.
+Preview allocation, resizing, pan, pinch, zoom, fit, and SVG Bounds visibility are presentation
+state only; they do not participate in operation identity. Benchmark keeps an independent copy of
+the same canonical values.
 
 Sharing has two explicit promises. A `#s2:` workspace link contains the versioned, bounded,
-compressed render-affecting workspace and lets Host sizing resolve on the recipient's device. An
-issue-reproduction link adds an independently versioned `rv=1` query describing the workspace pane,
-editor tab, Preview mode, and—when Host is selected—the validated width, height, and
-`screenAvailableWidth` lock. Startup applies the complete workspace and view before React mounts.
-An invalid or future view layer is rejected atomically while a valid workspace remains usable with
-local navigation defaults and live Host sizing. Copying either link is clipboard-only. A loaded
-lock continues to win while ResizeObserver updates a separate live cache; `Use live Host size`
-removes only the view query and adopts that cache without rewriting the workspace fragment.
+compressed render-affecting workspace. An issue-reproduction link adds an independently versioned
+`rv=1` query describing the workspace pane, editor tab, Preview mode, and SVG Bounds preference.
+Startup applies the complete workspace and view before React mounts. An invalid or future view
+layer is rejected atomically while a valid workspace remains usable with local navigation defaults.
+Legacy Host-bearing Base64, `#s2:`, and `rv=1` links validate their bounded fields, restore the
+supported workspace/view state, ignore the removed Host geometry, and render canonically. Copying
+either link is clipboard-only.
 
 Renderer geometry, operation viewport, responsive presentation, and export dimensions remain
-separate owners. Preview CSS uses contain-style sizing around the validated artifact and preserves
-a valid renderer `viewBox` byte-for-byte. An SVG without `viewBox` may use only preview-local
-intrinsic width and height; the Playground does not synthesize browser bounds, expose arbitrary
-`viewBox` editing, mutate export geometry, or claim to repair renderer-owned title clipping.
+separate owners. Visual and Compare use the full available surface as an effectively unbounded
+camera canvas without adding a paper background, padding, rounding, or shadow around the diagram.
+The responsive presentation clone preserves a valid renderer `viewBox` byte-for-byte. An SVG
+without `viewBox` may use only preview-local intrinsic width and height. The clone suppresses the
+known Merman default white root background so the grid remains the presentation canvas; the frozen
+artifact, exports, and non-default root backgrounds remain unchanged. SVG Bounds is a
+pointer-transparent presentation outline on the mounted root; it does not synthesize browser
+bounds, expose arbitrary `viewBox` editing, mutate export geometry, or claim to repair
+renderer-owned title clipping.
 
 ## Export Workbench
 
@@ -167,8 +170,8 @@ claim parent publication safety. Report schema `7` carries one parent-clock vect
 dispatch through response delivery, envelope validation, and strict SVG projection, and records the
 controlled `screenAvailableWidth` input alongside the viewport. Parent-side first/warm publishable-SVG
 totals are the primary cross-engine metrics. The benchmark owns a fixed `800x600` viewport and an
-independent fixed `800` CSS-pixel `screenAvailableWidth`; neither value is read from interactive
-Host mode or the browser device.
+independent fixed `800` CSS-pixel `screenAvailableWidth`; neither value is read from the Preview
+canvas or the browser device.
 
 One immutable sample plan owns setup, warmups, measured cold/warm blocks, balanced AB/BA order,
 realm reuse, exact work budgets, and aggregation eligibility; the controller interprets that plan

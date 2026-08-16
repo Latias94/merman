@@ -77,8 +77,7 @@ The coordinator freezes:
 - config JSON;
 - theme and diagram font;
 - text-measurement mode and SVG pipeline;
-- selected Canonical/Host viewport mode and one resolved viewport;
-- controlled `screenAvailableWidth` for the frozen layout environment;
+- one canonical `800x600` viewport and controlled `screenAvailableWidth=800`;
 - diagnostics/Compare flags;
 - exact Merman package version.
 
@@ -87,25 +86,25 @@ latest-wins even when non-abortable work completes out of order. Parse/layout di
 engine render failures remain request artifacts; they do not change the Merman runtime lifecycle.
 Benchmark pauses coordinator scheduling and resumes exactly the latest input after cleanup.
 
-Canonical mode sends `800x600` to both engines. Host mode measures the stable Preview allocation
-before the side-by-side split, then sends the same rounded dimensions and controlled
-`screenAvailableWidth` to Merman and the Mermaid realm. The realm installs `screen.availWidth`
-before Mermaid loads. An issue-reproduction lock wins effective operation capture while a separate
-live Host cache continues to follow ResizeObserver; returning to live Host adopts that cache in one
-new operation. Pane width, zoom, and pan remain presentation-only. A hidden panel cannot publish
-zero-sized geometry, and the Benchmark never inherits Host mode.
+Every interactive operation sends `800x600` and `screenAvailableWidth=800` to both engines. The
+Mermaid realm installs the controlled screen width before Mermaid loads. Pane allocation, canvas
+resize, zoom, pan, pinch, fit, and SVG Bounds visibility remain presentation-only and cannot enqueue
+a render. The Benchmark owns its canonical input independently.
 
 The Share menu separates portable workspace links from issue-reproduction links. Workspace links
 carry render intent but never device pixels. Issue links additionally restore the workspace pane,
-editor tab, Preview mode, and the complete validated Host environment when Host is selected.
-Canonical issue links need no Host lock, and Host issue sharing remains disabled while the Preview
-size is still measuring. Neither copy action mutates the current URL or active operation.
+editor tab, Preview mode, and SVG Bounds preference. New links contain no host dimensions or camera
+coordinates; legacy Host-bearing links restore supported fields and degrade to canonical rendering.
+Neither copy action mutates the current URL or active operation.
 
-Preview presentation preserves each engine's valid SVG `viewBox` byte-for-byte and applies
-contain-style CSS around it. A missing-`viewBox` artifact may retain preview-local intrinsic
-dimensions, but browser bounds are never promoted into renderer geometry. Browser-dependent title
-or root-viewBox clipping visible in pinned Mermaid therefore remains visible in both panes; the
-Playground does not hide it with a Merman-only bounds workaround.
+Preview presentation preserves each engine's valid SVG `viewBox` byte-for-byte while the diagram
+floats directly on a full-surface grid canvas. The responsive clone suppresses Merman's known
+default white root background without changing the frozen artifact, exports, or non-default root
+backgrounds. A missing-`viewBox` artifact may retain preview-local
+intrinsic dimensions, but browser bounds are never promoted into renderer geometry. The optional
+SVG Bounds outline follows the mounted root and affects neither fit nor export. Browser-dependent
+title or root-viewBox clipping visible in pinned Mermaid therefore remains visible in both panes;
+the Playground does not hide it with a Merman-only bounds workaround.
 
 Each Compare pane has one export launcher. The workbench keeps the engine identity visible and
 does not retarget when a newer render completes. Mermaid raster output uses the pane's validated

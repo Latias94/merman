@@ -274,8 +274,6 @@ export function createRenderCoordinator({
       compareEnabled,
       diagnosticsEnabled,
       layoutEnvironment: renderViewport.layoutEnvironment,
-      renderViewportMode: renderViewport.mode,
-      renderViewportStatus: renderViewport.status,
       versions: {
         merman: facade.packageVersion,
         mermaid: MERMAID_JS_VERSION,

@@ -307,7 +307,7 @@ test("responsive preview preserves renderer viewBox ownership", async ({ page })
       "/src/lib/" + "svg-geometry.ts"
     );
     const sources = [
-      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="5 6 120 40"><text>bounded</text></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="5 6 120 40" style="background-color: white"><text>bounded</text></svg>',
       '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text>intrinsic</text></svg>',
     ];
 
@@ -317,6 +317,7 @@ test("responsive preview preserves renderer viewBox ownership", async ({ page })
       if (!preview) throw new Error("Expected prepared preview geometry.");
       const root = preview.takeNode();
       return {
+        backgroundColor: (root as SVGElement).style.backgroundColor,
         sourceUnchanged: artifact.svg === source,
         viewBox: root.getAttribute("viewBox"),
         width: root.getAttribute("width"),
@@ -327,12 +328,14 @@ test("responsive preview preserves renderer viewBox ownership", async ({ page })
 
   expect(result).toEqual([
     {
+      backgroundColor: "",
       sourceUnchanged: true,
       viewBox: "5 6 120 40",
       width: "100%",
       height: "100%",
     },
     {
+      backgroundColor: "",
       sourceUnchanged: true,
       viewBox: null,
       width: "120",

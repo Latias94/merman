@@ -40,20 +40,21 @@ export const WORKSPACE_V2_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
   diagramTheme: "default",
   presentationThemePresetId: null,
   presentationProfileId: null,
-  renderViewportMode: "canonical",
   svgPipeline: "parity",
   textMeasurementMode: "browser",
   diagramFont: "trebuchet",
 });
 
 const MAX_LEGACY_ENCODED_HASH_CHARS = SHARE_LIMITS.jsonBytes * 4 + 4;
+// Decoder-only compatibility for Host-bearing links created on the open branch.
+const LEGACY_RENDER_VIEWPORT_KEY = "renderViewportMode";
 const WORKSPACE_V2_KEYS = new Set([
   "code",
   "theme",
   "config",
   "presentationThemePresetId",
   "presentationProfileId",
-  "renderViewportMode",
+  LEGACY_RENDER_VIEWPORT_KEY,
   "svgPipeline",
   "textMeasurementMode",
   "diagramFont",
@@ -163,9 +164,6 @@ function encodeWorkspaceV2Payload(
   ) {
     payload.presentationProfileId = data.presentationProfileId;
   }
-  if (data.renderViewportMode !== WORKSPACE_V2_DEFAULTS.renderViewportMode) {
-    payload.renderViewportMode = data.renderViewportMode;
-  }
   if (data.svgPipeline !== WORKSPACE_V2_DEFAULTS.svgPipeline) {
     payload.svgPipeline = data.svgPipeline;
   }
@@ -232,12 +230,6 @@ function decodeWorkspaceV2Record(
     WORKSPACE_V2_DEFAULTS.diagramFont,
     isDiagramFontValue
   );
-  const renderViewportMode = optionalEnum(
-    value,
-    "renderViewportMode",
-    WORKSPACE_V2_DEFAULTS.renderViewportMode,
-    isRenderViewportMode
-  );
   const presentation = decodeCurrentPresentation(value, WORKSPACE_V2_DEFAULTS);
   if (
     code === null ||
@@ -245,7 +237,7 @@ function decodeWorkspaceV2Record(
     mermaidConfig === null ||
     textMeasurementMode === null ||
     diagramFont === null ||
-    renderViewportMode === null ||
+    !hasValidLegacyRenderViewportMode(value) ||
     presentation === null
   ) {
     return null;
@@ -258,7 +250,6 @@ function decodeWorkspaceV2Record(
     ...presentation,
     textMeasurementMode,
     diagramFont,
-    renderViewportMode,
   };
 }
 
@@ -299,17 +290,11 @@ function decodeLegacyWorkspaceHash(
       defaults.diagramFont,
       isDiagramFontValue
     );
-    const renderViewportMode = optionalEnum(
-      value,
-      "renderViewportMode",
-      defaults.renderViewportMode,
-      isRenderViewportMode
-    );
     if (
       config === null ||
       textMeasurementMode === null ||
       diagramFont === null ||
-      renderViewportMode === null
+      !hasValidLegacyRenderViewportMode(value)
     ) {
       return null;
     }
@@ -333,7 +318,6 @@ function decodeLegacyWorkspaceHash(
       ...presentation,
       textMeasurementMode,
       diagramFont,
-      renderViewportMode,
     };
   } catch {
     return null;
@@ -492,8 +476,7 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
     isOptionalId(value.presentationProfileId) &&
     isMermanSvgPipeline(value.svgPipeline) &&
     isTextMeasurementMode(value.textMeasurementMode) &&
-    isDiagramFontValue(value.diagramFont) &&
-    isRenderViewportMode(value.renderViewportMode)
+    isDiagramFontValue(value.diagramFont)
   );
 }
 
@@ -534,17 +517,19 @@ function isDiagramFontValue(
   return typeof value === "string" && isDiagramFont(value);
 }
 
-function isRenderViewportMode(
-  value: unknown
-): value is WorkspaceSnapshot["renderViewportMode"] {
-  return value === "canonical" || value === "host";
+function hasValidLegacyRenderViewportMode(
+  value: Record<string, unknown>,
+): boolean {
+  if (!Object.hasOwn(value, LEGACY_RENDER_VIEWPORT_KEY)) return true;
+  const mode = value[LEGACY_RENDER_VIEWPORT_KEY];
+  return mode === "canonical" || mode === "host";
 }
 
 function isBoundedString(value: unknown, maxBytes: number): value is string {
   return typeof value === "string" && !exceedsUtf8ByteBudget(value, maxBytes);
 }
 
-function browserShareEnvironment(): ShareCommandEnvironment {
+export function browserShareEnvironment(): ShareCommandEnvironment {
   return {
     origin: window.location.origin,
     pathname: window.location.pathname,

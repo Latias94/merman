@@ -23,6 +23,7 @@ import {
   useSvgViewportController,
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
+import type { MermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
@@ -65,19 +66,24 @@ export function CompareView({
   merman,
   mermaid,
   actions,
+  canvasTone,
   isDarkMode,
+  showSvgBounds,
   t,
 }: {
   merman: ComparePaneModel;
   mermaid: ComparePaneModel;
   actions: ComparePaneActions;
+  canvasTone: MermaidCanvasTone;
   isDarkMode: boolean;
+  showSvgBounds: boolean;
   t: (key: string) => string;
 }) {
   return (
     <div
-      className="h-full overflow-auto overscroll-contain p-2 sm:p-3"
+      className="preview-canvas h-full overflow-auto overscroll-contain p-2 sm:p-3"
       data-merman-compare-scroll-owner="true"
+      data-preview-canvas-tone={canvasTone}
     >
       <div className="grid min-h-full grid-cols-1 gap-3 xl:grid-cols-2">
         {[merman, mermaid].map((pane) => (
@@ -85,7 +91,9 @@ export function CompareView({
             key={pane.artifact.key}
             model={pane}
             actions={actions}
+            canvasTone={canvasTone}
             isDarkMode={isDarkMode}
+            showSvgBounds={showSvgBounds}
             t={t}
           />
         ))}
@@ -97,12 +105,16 @@ export function CompareView({
 function ComparePane({
   model,
   actions,
+  canvasTone,
   isDarkMode,
+  showSvgBounds,
   t,
 }: {
   model: ComparePaneModel;
   actions: ComparePaneActions;
+  canvasTone: MermaidCanvasTone;
   isDarkMode: boolean;
+  showSvgBounds: boolean;
   t: (key: string) => string;
 }) {
   const { artifact } = model;
@@ -153,9 +165,9 @@ function ComparePane({
           ownedFocus.current = false;
         }
       }}
-      className="flex min-h-[320px] min-w-0 flex-col overflow-hidden rounded-md border bg-background outline-none focus-visible:ring-2 focus-visible:ring-ring xl:min-h-0"
+      className="preview-canvas-frame flex min-h-[320px] min-w-0 flex-col overflow-hidden rounded-md border outline-none xl:min-h-0"
     >
-      <div className="border-b bg-muted/30 px-3 py-2">
+      <div className="preview-canvas-toolbar border-b px-3 py-2">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="max-w-full truncate text-sm font-medium">
@@ -173,7 +185,7 @@ function ComparePane({
           <p
             id={statusId}
             aria-live="polite"
-            className="shrink-0 text-xs text-muted-foreground"
+            className="preview-canvas-status-muted shrink-0 text-xs"
             role="status"
           >
             {status.label}
@@ -246,6 +258,7 @@ function ComparePane({
       >
         <ComparePaneBody
           artifact={artifact}
+          canvasTone={canvasTone}
           controller={controller}
           displayMode={svgDisplayMode}
           isDarkMode={isDarkMode}
@@ -256,6 +269,7 @@ function ComparePane({
             paneRef.current?.focus({ preventScroll: true });
             actions.onRetry();
           }}
+          showSvgBounds={showSvgBounds}
           t={t}
         />
       </div>
@@ -286,19 +300,23 @@ function compareArtifactStatus(
 
 function ComparePaneBody({
   artifact,
+  canvasTone,
   controller,
   displayMode,
   isDarkMode,
   onPresentationReady,
   onRetry,
+  showSvgBounds,
   t,
 }: {
   artifact: CompareArtifact;
+  canvasTone: MermaidCanvasTone;
   controller: SvgViewportController;
   displayMode: SvgDisplayMode;
   isDarkMode: boolean;
   onPresentationReady(at: number): void;
   onRetry(): void;
+  showSvgBounds: boolean;
   t: (key: string) => string;
 }) {
   if (artifact.loading && !artifact.svgArtifact) {
@@ -331,10 +349,12 @@ function ComparePaneBody({
   return (
     <SvgViewport
       artifact={artifact.svgArtifact}
+      canvasTone={canvasTone}
       presentationKey={artifact.publicationId}
       controller={controller}
       navigationEnabled={!artifact.loading && !artifact.stale}
       onPresentationReady={onPresentationReady}
+      showSvgBounds={showSvgBounds}
       renderMountError={(mountError) => (
         <CompareFailure
           detail={mountError.stack ?? null}
@@ -346,7 +366,7 @@ function ComparePaneBody({
         />
       )}
       empty={
-        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <div className="preview-canvas-status-muted flex h-full items-center justify-center text-sm">
           {t("preview.empty")}
         </div>
       }
@@ -371,7 +391,7 @@ function CompareFailure({
 }) {
   return (
     <div
-      className="flex h-full items-center justify-center p-5"
+      className="preview-canvas-status flex h-full items-center justify-center p-5"
       data-merman-render-error="true"
       data-merman-error-engine={engine}
       data-merman-error-stage={stage ?? undefined}
@@ -381,17 +401,17 @@ function CompareFailure({
         <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-full bg-destructive/10">
           <AlertCircle className="size-5 text-destructive" />
         </div>
-        <h3 className="mb-1 font-medium text-foreground">
+        <h3 className="mb-1 font-medium">
           {engine} · {t("preview.error")}
         </h3>
         {stage && (
-          <p className="mb-2 font-mono text-xs text-muted-foreground">{stage}</p>
+          <p className="preview-canvas-status-muted mb-2 font-mono text-xs">{stage}</p>
         )}
-        <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
+        <p className="preview-canvas-status-muted rounded-md bg-black/5 p-3 font-mono text-sm dark:bg-white/5">
           {message}
         </p>
         {detail && (
-          <details className="mt-3 text-left text-xs text-muted-foreground">
+          <details className="preview-canvas-status-muted mt-3 text-left text-xs">
             <summary className="cursor-pointer select-none text-center">
               {t("preview.errorDetails")}
             </summary>
@@ -474,8 +494,8 @@ function CenteredMessage({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-full flex-1 items-center justify-center">
-      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+    <div className="preview-canvas-status flex h-full flex-1 items-center justify-center">
+      <div className="preview-canvas-status-muted flex flex-col items-center gap-3">
         {icon}
         <span className="text-sm">{children}</span>
       </div>

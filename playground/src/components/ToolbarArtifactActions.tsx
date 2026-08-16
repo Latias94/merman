@@ -42,10 +42,6 @@ import { copyWorkspaceShareUrl } from "@/src/lib/share";
 import { copyIssueShareUrl } from "@/src/lib/share-view";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
 import {
-  validateLockedRenderEnvironment,
-  type LockedRenderEnvironment,
-} from "@/src/runtime/render-viewport";
-import {
   selectCompletedRenderBatch,
   selectCurrentDiagramType,
   useRenderCoordinator,
@@ -53,7 +49,6 @@ import {
 import {
   selectWorkspaceSnapshot,
   useAppStore,
-  type AppState,
 } from "@/src/store";
 
 export function useToolbarArtifactActions() {
@@ -166,17 +161,12 @@ export function useToolbarArtifactActions() {
       toast.error(t("share.copyFailed"));
       return;
     }
-    const lockedEnvironment = captureIssueEnvironmentLock(state);
-    if (snapshot.renderViewportMode === "host" && !lockedEnvironment) {
-      toast.error(t("share.issueLinkUnavailable"));
-      return;
-    }
     try {
       await copyIssueShareUrl(snapshot, {
         workspacePane: state.workspacePane,
         editorMode: state.editorMode,
         previewMode: state.previewMode,
-        lockedEnvironment,
+        showSvgBounds: state.showSvgBounds,
       });
       toast.success(t("share.copied"));
     } catch {
@@ -209,31 +199,6 @@ export function useToolbarArtifactActions() {
     handleOpenExport,
     handleOpenMermaidLive,
   };
-}
-
-function captureIssueEnvironmentLock(
-  state: Pick<
-    AppState,
-    | "renderViewportMode"
-    | "liveHostRenderViewport"
-    | "sharedRenderEnvironmentLock"
-  >,
-): Readonly<LockedRenderEnvironment> | null {
-  if (state.renderViewportMode !== "host") return null;
-  const candidate =
-    state.sharedRenderEnvironmentLock ??
-    (state.liveHostRenderViewport
-      ? {
-          ...state.liveHostRenderViewport,
-          screenAvailableWidth: Math.round(window.screen.availWidth),
-        }
-      : null);
-  if (!candidate) return null;
-  try {
-    return validateLockedRenderEnvironment(candidate);
-  } catch {
-    return null;
-  }
 }
 
 type ToolbarArtifactActionsOwner = ReturnType<
@@ -347,33 +312,6 @@ function ShareMenu({
   owner: ToolbarArtifactActionsOwner;
 }) {
   const { t } = useTranslation();
-  const {
-    liveHostRenderViewport,
-    renderViewportMode,
-    sharedRenderEnvironmentLock,
-  } = useAppStore(
-    useShallow((state) => ({
-      liveHostRenderViewport: state.liveHostRenderViewport,
-      renderViewportMode: state.renderViewportMode,
-      sharedRenderEnvironmentLock: state.sharedRenderEnvironmentLock,
-    })),
-  );
-  const issueShareLock = captureIssueEnvironmentLock({
-    liveHostRenderViewport,
-    renderViewportMode,
-    sharedRenderEnvironmentLock,
-  });
-  const issueShareAvailable =
-    renderViewportMode === "canonical" || issueShareLock !== null;
-  const issueShareDescription =
-    renderViewportMode === "canonical"
-      ? t("share.issueLinkCanonicalDesc")
-      : issueShareLock
-        ? t("share.issueLinkHostDesc", {
-            width: issueShareLock.width,
-            height: issueShareLock.height,
-          })
-        : t("share.issueLinkMeasuringDesc");
   const workspaceDescriptionId = useId();
   const issueDescriptionId = useId();
 
@@ -431,7 +369,6 @@ function ShareMenu({
             aria-label={t("share.issueLink")}
             aria-describedby={issueDescriptionId}
             className="items-start py-2"
-            disabled={!issueShareAvailable}
             onClick={owner.handleCopyIssueLink}
           >
             <Copy className="mt-0.5 size-4" />
@@ -441,7 +378,7 @@ function ShareMenu({
                 id={issueDescriptionId}
                 className="mt-0.5 block text-xs leading-snug text-muted-foreground"
               >
-                {issueShareDescription}
+                {t("share.issueLinkDesc")}
               </span>
             </span>
           </DropdownMenuItem>

@@ -56,7 +56,6 @@ test("applies one complete workspace snapshot with one coherent notification", (
     diagramTheme: "forest",
     presentationProfileId: "future-profile",
     presentationThemePresetId: "future-theme",
-    renderViewportMode: "host",
     svgPipeline: "readable",
     textMeasurementMode: "headless",
     diagramFont: "arial",
@@ -73,71 +72,16 @@ test("applies one complete workspace snapshot with one coherent notification", (
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), next);
 });
 
-test("stores viewport intent but keeps measured Host pixels transient", () => {
-  useAppStore.setState({
-    liveHostRenderViewport: null,
-    renderViewportMode: "canonical",
-  });
+test("stores one Preview-owned SVG Bounds preference outside workspace snapshots", () => {
+  useAppStore.setState({ showSvgBounds: false });
 
-  useAppStore.getState().setRenderViewportMode("host");
-  useAppStore
-    .getState()
-    .setLiveHostRenderViewport({ width: 959.6, height: 539.5 });
-  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
-    width: 960,
-    height: 540,
-  });
+  useAppStore.getState().setShowSvgBounds(true);
 
-  useAppStore
-    .getState()
-    .setLiveHostRenderViewport({ width: 0, height: 0 });
-  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
-    width: 960,
-    height: 540,
-  });
-  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).renderViewportMode, "host");
-  assert.equal("liveHostRenderViewport" in selectWorkspaceSnapshot(useAppStore.getState()), false);
+  assert.equal(useAppStore.getState().showSvgBounds, true);
+  assert.equal("showSvgBounds" in selectWorkspaceSnapshot(useAppStore.getState()), false);
 });
 
-test("a shared lock keeps winning while live Host measurement stays current", () => {
-  useAppStore.setState({
-    liveHostRenderViewport: { width: 800, height: 600 },
-    sharedRenderEnvironmentLock: {
-      width: 640,
-      height: 480,
-      screenAvailableWidth: 1512,
-    },
-  });
-
-  useAppStore
-    .getState()
-    .setLiveHostRenderViewport({ width: 1024, height: 768 });
-  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
-    width: 1024,
-    height: 768,
-  });
-  assert.deepEqual(useAppStore.getState().sharedRenderEnvironmentLock, {
-    width: 640,
-    height: 480,
-    screenAvailableWidth: 1512,
-  });
-
-  let notifications = 0;
-  const unsubscribe = useAppStore.subscribe(() => {
-    notifications += 1;
-  });
-  useAppStore.getState().clearSharedRenderEnvironmentLock();
-  unsubscribe();
-
-  assert.equal(notifications, 1);
-  assert.equal(useAppStore.getState().sharedRenderEnvironmentLock, null);
-  assert.deepEqual(useAppStore.getState().liveHostRenderViewport, {
-    width: 1024,
-    height: 768,
-  });
-});
-
-test("applies startup workspace, view, lock, and warning in one store transition", () => {
+test("applies startup workspace, view, Bounds preference, and warning in one store transition", () => {
   const hydration: StartupShareHydration = {
     workspace: {
       code: "flowchart TD\nA --> B",
@@ -146,7 +90,6 @@ test("applies startup workspace, view, lock, and warning in one store transition
       diagramFont: "arial",
       presentationProfileId: "future-profile",
       presentationThemePresetId: "future-theme",
-      renderViewportMode: "host",
       svgPipeline: "readable",
       textMeasurementMode: "headless",
     },
@@ -154,11 +97,7 @@ test("applies startup workspace, view, lock, and warning in one store transition
       workspacePane: "preview",
       editorMode: "config",
       previewMode: "compare",
-      lockedEnvironment: {
-        width: 640,
-        height: 480,
-        screenAvailableWidth: 1512,
-      },
+      showSvgBounds: true,
     },
     warning: {
       code: "share-view-not-restored",
@@ -172,7 +111,7 @@ test("applies startup workspace, view, lock, and warning in one store transition
       workspacePane: state.workspacePane,
       editorMode: state.editorMode,
       previewMode: state.previewMode,
-      sharedRenderEnvironmentLock: state.sharedRenderEnvironmentLock,
+      showSvgBounds: state.showSvgBounds,
       shareViewWarning: state.shareViewWarning,
     });
   });
@@ -186,7 +125,7 @@ test("applies startup workspace, view, lock, and warning in one store transition
       workspacePane: hydration.view.workspacePane,
       editorMode: hydration.view.editorMode,
       previewMode: hydration.view.previewMode,
-      sharedRenderEnvironmentLock: hydration.view.lockedEnvironment,
+      showSvgBounds: hydration.view.showSvgBounds,
       shareViewWarning: hydration.warning,
     },
   ]);

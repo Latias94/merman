@@ -15,6 +15,7 @@ import {
   prepareSvgForResponsivePreview,
   type SvgDimensions,
 } from "@/src/lib/svg-geometry";
+import type { MermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 
 interface Point {
@@ -169,12 +170,14 @@ interface PreparedSvgPresentation {
 
 interface SvgViewportProps {
   artifact: NavigableInlineSvg | null;
+  canvasTone: MermaidCanvasTone;
   presentationKey: number | null;
   controller: SvgViewportController;
   empty?: ReactNode;
   navigationEnabled?: boolean;
   onPresentationReady?: (at: number) => void;
   renderMountError?: (error: Error) => ReactNode;
+  showSvgBounds: boolean;
 }
 
 const PAN_ACTIVATION_DISTANCE = 6;
@@ -183,12 +186,14 @@ const NAVIGATION_ARIA_DISABLED_STATE = new WeakMap<Element, string | null>();
 
 export function SvgViewport({
   artifact,
+  canvasTone,
   presentationKey,
   controller,
   empty,
   navigationEnabled = true,
   onPresentationReady,
   renderMountError,
+  showSvgBounds,
 }: SvgViewportProps) {
   const prepared = useMemo<PreparedSvgPresentation>(() => {
     if (!artifact) return { error: null, preview: null };
@@ -859,10 +864,11 @@ export function SvgViewport({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full cursor-grab touch-none select-none overflow-hidden"
+      className="preview-canvas relative h-full w-full cursor-grab touch-none select-none overflow-hidden"
       data-dragging="false"
       data-auto-fit="true"
       data-merman-svg-viewport="true"
+      data-preview-canvas-tone={canvasTone}
       data-zoom="1"
       onAuxClickCapture={handleAnchorClickCapture}
       onClickCapture={handleAnchorClickCapture}
@@ -898,9 +904,16 @@ export function SvgViewport({
           >
             <div
               ref={contentRef}
-              className="preview-container inline-flex rounded-lg bg-white p-4 shadow-sm"
+              className="preview-container relative inline-flex"
             >
               <div ref={shadowHostRef} className="block shrink-0" />
+              {showSvgBounds && (
+                <div
+                  aria-hidden="true"
+                  className="preview-svg-bounds"
+                  data-merman-svg-bounds="true"
+                />
+              )}
             </div>
           </div>
         </div>

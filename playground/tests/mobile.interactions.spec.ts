@@ -60,6 +60,15 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
     )
     .toBeGreaterThan(0);
 
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await boundsToggle.scrollIntoViewIfNeeded();
+  await expect(boundsToggle).toBeVisible();
+  await expect(boundsToggle).toHaveAccessibleName("Show SVG Bounds");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "false");
+  await boundsToggle.tap();
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
+
   const viewport = primaryViewport(page);
   await waitForAnimationFrames(viewport, 2);
   const initialZoom = await viewportZoom(viewport);
@@ -94,7 +103,7 @@ test("mid-width layouts retain every toolbar action through compact controls", a
   errors.assertNone();
 });
 
-test("landscape issue sharing keeps both link promises and live recovery reachable", async ({
+test("landscape issue sharing keeps both link actions and SVG Bounds reachable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 844, height: 390 });
@@ -108,17 +117,12 @@ test("landscape issue sharing keeps both link promises and live recovery reachab
       {
         ...DEFAULT_WORKSPACE_SNAPSHOT,
         code: "flowchart TD\n  Mobile --> Shared",
-        renderViewportMode: "host",
       },
       {
         workspacePane: "preview",
         editorMode: "code",
         previewMode: "compare",
-        lockedEnvironment: {
-          width: 640,
-          height: 360,
-          screenAvailableWidth: 1512,
-        },
+        showSvgBounds: true,
       },
       { origin: "https://example.test", pathname: "/" },
     ),
@@ -127,6 +131,11 @@ test("landscape issue sharing keeps both link promises and live recovery reachab
     waitUntil: "domcontentloaded",
   });
   await waitForPreviewSvg(page);
+
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await expectInsideViewport(page, boundsToggle);
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
 
   const share = page.getByRole("button", { name: "Share", exact: true });
   await expectInsideViewport(page, share);
@@ -142,13 +151,6 @@ test("landscape issue sharing keeps both link promises and live recovery reachab
   ).toBeVisible();
   await page.keyboard.press("Escape");
 
-  const useLive = page.getByRole("button", { name: "Use live Host size" });
-  await expectInsideViewport(page, useLive);
-  await useLive.tap();
-  await expect(page.getByTestId("render-viewport-control")).toHaveAttribute(
-    "data-viewport-status",
-    "host",
-  );
   await expectNoDocumentOverflow(page);
   errors.assertNone();
 });
@@ -269,7 +271,7 @@ test("export workbench stays reachable in portrait and safe-area landscape", asy
   errors.assertNone();
 });
 
-test("landscape touch gestures and preview modes remain operable", async ({
+test("WebKit mobile smoke: landscape canvas keeps Bounds and pointer handlers operable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 568, height: 320 });
@@ -281,6 +283,12 @@ test("landscape touch gestures and preview modes remain operable", async ({
   await expectHeaderControlsInsideViewport(page);
 
   const viewport = primaryViewport(page);
+  await expect(viewport).toHaveAttribute("data-preview-canvas-tone", /^(light|dark)$/u);
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await expectInsideViewport(page, boundsToggle);
+  await boundsToggle.tap();
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
   const positionLayer = viewport.locator(
     '[data-merman-viewport-position-layer="true"]',
   );
@@ -300,13 +308,16 @@ test("landscape touch gestures and preview modes remain operable", async ({
     )
     .not.toBe(transformBefore);
 
-  const diagnostics = page.getByRole("tab", {
-    name: "Diagnostics",
-    exact: true,
-  });
-  await diagnostics.tap();
-  await expect(diagnostics).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tab", { name: "Parse JSON" })).toBeVisible();
+  const zoomBeforePinch = await viewportZoom(viewport);
+  await dispatchTouch(viewport, "pointerdown", 72, startX - 30, startY);
+  await dispatchTouch(viewport, "pointerdown", 73, startX + 30, startY, false);
+  await dispatchTouch(viewport, "pointermove", 72, startX - 60, startY);
+  await dispatchTouch(viewport, "pointermove", 73, startX + 60, startY, false);
+  await dispatchTouch(viewport, "pointerup", 72, startX - 60, startY);
+  await dispatchTouch(viewport, "pointerup", 73, startX + 60, startY, false);
+  await expect.poll(() => viewportZoom(viewport)).toBeGreaterThan(zoomBeforePinch);
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
+  await expectNoDocumentOverflow(page);
   errors.assertNone();
 });
 

@@ -6,39 +6,36 @@ import {
   createIssueShareUrl,
   decodeShareView,
   hydrateStartupShareLocation,
-  removeShareViewFromCurrentUrl,
   SHARE_VIEW_DEFAULTS,
-  SHARE_VIEW_LIMITS,
   type ShareViewDescriptor,
   type StartupShareHydration,
 } from "./share-view.ts";
-import { encodeShareHash, type ShareCommandEnvironment } from "./share.ts";
+import {
+  encodeShareHash,
+  type ShareCommandEnvironment,
+} from "./share.ts";
 import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
+import { REALM_BUDGETS } from "../runtime/realm/channel-protocol.ts";
 
-const HOST_WORKSPACE: WorkspaceSnapshot = {
+const WORKSPACE: WorkspaceSnapshot = {
   code: "flowchart TD\nA --> B",
   mermaidConfig: '{"look":"neo"}',
   diagramTheme: "forest",
   diagramFont: "arial",
   presentationProfileId: "future-profile",
   presentationThemePresetId: "future-theme",
-  renderViewportMode: "host",
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
 
-const LOCKED_VIEW: ShareViewDescriptor = {
+const VIEW: ShareViewDescriptor = {
   workspacePane: "preview",
   editorMode: "config",
   previewMode: "compare",
-  lockedEnvironment: {
-    width: 640,
-    height: 480,
-    screenAvailableWidth: 1512,
-  },
+  showSvgBounds: true,
 };
 
-test("distinguishes an absent view from a valid rv=1 descriptor", () => {
+test("distinguishes an absent view from current and pre-Bounds rv=1 descriptors", () => {
   assert.deepEqual(decodeShareView("?utm_source=issue"), {
     status: "absent",
     view: null,
@@ -46,49 +43,64 @@ test("distinguishes an absent view from a valid rv=1 descriptor", () => {
   });
   assert.deepEqual(
     decodeShareView(
-      "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare"
+      "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare",
     ),
     {
       status: "valid",
-      view: { ...LOCKED_VIEW, lockedEnvironment: null },
+      view: { ...VIEW, showSvgBounds: false },
       warning: null,
-    }
+    },
   );
 });
 
-test("round-trips one complete locked Host view in a canonical issue URL", () => {
-  const currentLocation = {
+test("round-trips pane, editor, Preview mode, and SVG Bounds without Host keys", () => {
+  const url = createIssueShareUrl(WORKSPACE, VIEW, {
     origin: "https://example.test",
     pathname: "/merman/",
-    search: "?utm_source=current&rv=99",
-  };
-  const url = createIssueShareUrl(HOST_WORKSPACE, LOCKED_VIEW, currentLocation);
+  });
   const parsed = new URL(url);
 
-  assert.equal(parsed.origin, currentLocation.origin);
-  assert.equal(parsed.pathname, currentLocation.pathname);
-  assert.equal(parsed.searchParams.get("utm_source"), null);
-  assert.equal(parsed.hash, encodeShareHash(HOST_WORKSPACE));
+  assert.equal(parsed.hash, encodeShareHash(WORKSPACE));
   assert.deepEqual(decodeShareView(parsed.search), {
     status: "valid",
-    view: LOCKED_VIEW,
+    view: VIEW,
     warning: null,
   });
-  assert.equal(parsed.searchParams.has("renderViewportMode"), false);
+  for (const key of [
+    "renderViewportMode",
+    "hostWidth",
+    "hostHeight",
+    "screenAvailableWidth",
+  ]) {
+    assert.equal(parsed.searchParams.has(key), false, key);
+  }
 });
 
-test("rejects an invalid or future view atomically with one warning signal", () => {
-  const tooWide = SHARE_VIEW_LIMITS.screenAvailableWidth + 1;
+test("validates and ignores a complete legacy rv=1 Host lock without warning", () => {
+  assert.deepEqual(
+    decodeShareView(
+      "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640&hostHeight=480&screenAvailableWidth=1512",
+    ),
+    {
+      status: "valid",
+      view: { ...VIEW, showSvgBounds: false },
+      warning: null,
+    },
+  );
+});
+
+test("rejects malformed or future view state atomically", () => {
+  const tooWide = REALM_BUDGETS.maxScreenAvailableWidth + 1;
   const invalidQueries = [
     "?rv=2&workspacePane=preview&editorMode=config&previewMode=compare",
     "?rv=1&workspacePane=preview&editorMode=config",
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&showSvgBounds=maybe",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=-1&hostHeight=480&screenAvailableWidth=1512",
-    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=Infinity&hostHeight=480&screenAvailableWidth=1512",
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=4097&hostHeight=480&screenAvailableWidth=1512",
     `?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640&hostHeight=480&screenAvailableWidth=${tooWide}`,
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&previewMode=svg",
-    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&renderViewportMode=host",
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&renderViewportMode=fluid",
   ];
 
   for (const query of invalidQueries) {
@@ -99,48 +111,7 @@ test("rejects an invalid or future view atomically with one warning signal", () 
   }
 });
 
-test("does not permit a Host lock when the shared workspace is canonical", () => {
-  assert.throws(
-    () =>
-      createIssueShareUrl(
-        { ...HOST_WORKSPACE, renderViewportMode: "canonical" },
-        LOCKED_VIEW,
-        { origin: "https://example.test", pathname: "/merman/" }
-      ),
-    /must match the workspace viewport mode/u
-  );
-});
-
-test("requires every Host issue link to carry a complete environment lock", () => {
-  assert.throws(
-    () =>
-      createIssueShareUrl(
-        HOST_WORKSPACE,
-        { ...LOCKED_VIEW, lockedEnvironment: null },
-        { origin: "https://example.test", pathname: "/merman/" }
-      ),
-    /must match the workspace viewport mode/u
-  );
-});
-
-test("creates a canonical issue view without inventing a Host lock", () => {
-  const view = { ...LOCKED_VIEW, lockedEnvironment: null };
-  const url = new URL(
-    createIssueShareUrl(
-      { ...HOST_WORKSPACE, renderViewportMode: "canonical" },
-      view,
-      { origin: "https://example.test", pathname: "/merman/" }
-    )
-  );
-  assert.deepEqual(decodeShareView(url.search), {
-    status: "valid",
-    view,
-    warning: null,
-  });
-  assert.equal(url.searchParams.has("hostWidth"), false);
-});
-
-test("issue copying writes only the selected canonical URL", async () => {
+test("issue copying is a pure clipboard command", async () => {
   const copied: string[] = [];
   let historyUpdates = 0;
   const environment = {
@@ -154,37 +125,18 @@ test("issue copying writes only the selected canonical URL", async () => {
     },
   } satisfies ShareCommandEnvironment & { replaceUrl(value: string): void };
 
-  await copyIssueShareUrl(HOST_WORKSPACE, LOCKED_VIEW, environment);
-  assert.deepEqual(copied, [
-    createIssueShareUrl(HOST_WORKSPACE, LOCKED_VIEW, environment),
-  ]);
+  await copyIssueShareUrl(WORKSPACE, VIEW, environment);
+
+  assert.deepEqual(copied, [createIssueShareUrl(WORKSPACE, VIEW, environment)]);
   assert.equal(historyUpdates, 0);
 });
 
-test("returning to local view removes only share-view parameters once", () => {
-  const replacements: string[] = [];
-
-  removeShareViewFromCurrentUrl({
-    pathname: "/merman/",
-    search:
-      "?utm_source=issue&rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640&hostHeight=480&screenAvailableWidth=1512",
-    hash: encodeShareHash(HOST_WORKSPACE),
-    replaceUrl(value) {
-      replacements.push(value);
-    },
-  });
-
-  assert.deepEqual(replacements, [
-    `/merman/?utm_source=issue${encodeShareHash(HOST_WORKSPACE)}`,
-  ]);
-});
-
-test("hydrates workspace, view, and lock through one pre-mount apply call", () => {
+test("hydrates workspace and current view through one pre-mount apply call", () => {
   const issueUrl = new URL(
-    createIssueShareUrl(HOST_WORKSPACE, LOCKED_VIEW, {
+    createIssueShareUrl(WORKSPACE, VIEW, {
       origin: "https://example.test",
       pathname: "/merman/",
-    })
+    }),
   );
   const applied: StartupShareHydration[] = [];
 
@@ -195,71 +147,70 @@ test("hydrates workspace, view, and lock through one pre-mount apply call", () =
   assert.equal(result.status, "applied");
   assert.deepEqual(applied, [
     {
-      workspace: HOST_WORKSPACE,
-      view: LOCKED_VIEW,
+      workspace: WORKSPACE,
+      view: VIEW,
       warning: null,
     },
   ]);
 });
 
-test("keeps a valid workspace but defaults the complete invalid view layer", () => {
+test("hydrates a legacy Host issue link canonically without an avoidable warning", () => {
   const applied: StartupShareHydration[] = [];
   const result = hydrateStartupShareLocation(
     {
-      hash: encodeShareHash(HOST_WORKSPACE),
+      hash: encodeShareHash(WORKSPACE),
       search:
-        "?rv=2&workspacePane=preview&editorMode=config&previewMode=compare",
+        "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&hostWidth=640&hostHeight=480&screenAvailableWidth=1512",
     },
-    (hydration) => applied.push(hydration)
-  );
-
-  assert.equal(result.status, "applied");
-  assert.equal(result.warning?.code, "share-view-not-restored");
-  assert.deepEqual(applied, [
-    {
-      workspace: HOST_WORKSPACE,
-      view: SHARE_VIEW_DEFAULTS,
-      warning: result.warning,
-    },
-  ]);
-});
-
-test("rejects an explicit Host issue view without a lock", () => {
-  const applied: StartupShareHydration[] = [];
-  const result = hydrateStartupShareLocation(
-    {
-      hash: encodeShareHash(HOST_WORKSPACE),
-      search:
-        "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare",
-    },
-    (hydration) => applied.push(hydration)
-  );
-
-  assert.equal(result.status, "applied");
-  assert.equal(result.warning?.code, "share-view-not-restored");
-  assert.deepEqual(applied, [
-    {
-      workspace: HOST_WORKSPACE,
-      view: SHARE_VIEW_DEFAULTS,
-      warning: result.warning,
-    },
-  ]);
-});
-
-test("keeps an absent issue view as a portable live-Host workspace", () => {
-  const applied: StartupShareHydration[] = [];
-  const result = hydrateStartupShareLocation(
-    {
-      hash: encodeShareHash(HOST_WORKSPACE),
-      search: "?utm_source=workspace",
-    },
-    (hydration) => applied.push(hydration)
+    (hydration) => applied.push(hydration),
   );
 
   assert.deepEqual(result, { status: "applied", warning: null });
   assert.deepEqual(applied, [
     {
-      workspace: HOST_WORKSPACE,
+      workspace: WORKSPACE,
+      view: { ...VIEW, showSvgBounds: false },
+      warning: null,
+    },
+  ]);
+});
+
+test("keeps a valid workspace but defaults one invalid view layer", () => {
+  const applied: StartupShareHydration[] = [];
+  const result = hydrateStartupShareLocation(
+    {
+      hash: encodeShareHash(WORKSPACE),
+      search:
+        "?rv=2&workspacePane=preview&editorMode=config&previewMode=compare",
+    },
+    (hydration) => applied.push(hydration),
+  );
+
+  assert.equal(result.status, "applied");
+  assert.equal(result.warning?.code, "share-view-not-restored");
+  assert.deepEqual(applied, [
+    {
+      workspace: WORKSPACE,
+      view: SHARE_VIEW_DEFAULTS,
+      warning: result.warning,
+    },
+  ]);
+});
+
+test("keeps an absent issue view as the local default", () => {
+  const applied: StartupShareHydration[] = [];
+  const result = hydrateStartupShareLocation(
+    {
+      hash: encodeShareHash(WORKSPACE),
+      search: "?utm_source=workspace",
+    },
+    (hydration) => applied.push(hydration),
+  );
+
+  assert.deepEqual(result, { status: "applied", warning: null });
+  assert.deepEqual(applied, [
+    {
+      workspace: WORKSPACE,
       view: SHARE_VIEW_DEFAULTS,
       warning: null,
     },
@@ -271,11 +222,12 @@ test("writes nothing when the workspace fragment is invalid", () => {
   const result = hydrateStartupShareLocation(
     {
       hash: "#s2:not-zlib",
-      search: "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare",
+      search:
+        "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare",
     },
     () => {
       applyCalls += 1;
-    }
+    },
   );
 
   assert.deepEqual(result, { status: "ignored", warning: null });

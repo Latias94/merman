@@ -68,6 +68,7 @@ export function prepareSvgForResponsivePreview(
   if (!parsed) return null;
   const root = ownerDocument.importNode(parsed.root, true) as Element;
 
+  removeDefaultPreviewBackground(root);
   const dimensions = resolveSvgDimensions(root);
   const hasViewBox = parseViewBox(root.getAttribute("viewBox")) !== null;
   let rootSizing: PreparedSvgPreview["rootSizing"] = "unknown";
@@ -195,6 +196,13 @@ function appendRootStyle(root: Element, declarations: string): void {
   const existing = root.getAttribute("style")?.trim();
   const prefix = existing ? `${existing.replace(/;+$/u, "")};` : "";
   root.setAttribute("style", `${prefix}${declarations}`);
+}
+
+function removeDefaultPreviewBackground(root: Element): void {
+  const style = (root as SVGElement).style;
+  if (style?.backgroundColor.trim().toLowerCase() === "white") {
+    style.removeProperty("background-color");
+  }
 }
 
 function setRootBackground(root: Element, color: string): void {

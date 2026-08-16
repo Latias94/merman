@@ -13,12 +13,6 @@ import type {
   MermanSvgPipeline,
   MermanTextMeasurementMode,
 } from "../runtime/merman-core.ts";
-import type { RealmViewport } from "../runtime/realm/channel-protocol.ts";
-import {
-  resolveRenderViewport,
-  type LockedRenderEnvironment,
-  type RenderViewportMode,
-} from "../runtime/render-viewport.ts";
 
 export type Theme = ThemeName;
 export type UITheme = "light" | "dark" | "system";
@@ -47,10 +41,6 @@ export interface AppState {
   setPresentationThemePresetId: (presetId: string | null) => void;
   presentationProfileId: string | null;
   setPresentationProfileId: (profileId: string | null) => void;
-  renderViewportMode: RenderViewportMode;
-  setRenderViewportMode: (mode: RenderViewportMode) => void;
-  liveHostRenderViewport: Readonly<RealmViewport> | null;
-  setLiveHostRenderViewport: (viewport: RealmViewport) => void;
   svgPipeline: SvgPipeline;
   setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
@@ -58,8 +48,6 @@ export interface AppState {
   diagramFont: DiagramFont;
   setDiagramFont: (font: DiagramFont) => void;
   applyWorkspaceSnapshot: (snapshot: WorkspaceSnapshot) => void;
-  sharedRenderEnvironmentLock: Readonly<LockedRenderEnvironment> | null;
-  clearSharedRenderEnvironmentLock: () => void;
   shareViewWarning: Readonly<ShareViewWarning> | null;
   applyStartupShareHydration: (hydration: StartupShareHydration) => void;
 
@@ -73,6 +61,8 @@ export interface AppState {
   setWorkspacePane: (pane: WorkspacePane) => void;
   previewMode: PreviewMode;
   setPreviewMode: (mode: PreviewMode) => void;
+  showSvgBounds: boolean;
+  setShowSvgBounds: (show: boolean) => void;
 }
 
 export function selectWorkspaceSnapshot(
@@ -84,7 +74,6 @@ export function selectWorkspaceSnapshot(
     diagramTheme: state.diagramTheme,
     presentationThemePresetId: state.presentationThemePresetId,
     presentationProfileId: state.presentationProfileId,
-    renderViewportMode: state.renderViewportMode,
     svgPipeline: state.svgPipeline,
     textMeasurementMode: state.textMeasurementMode,
     diagramFont: state.diagramFont,
@@ -159,22 +148,6 @@ export const useAppStore = create<AppState>((set) => ({
   presentationProfileId: DEFAULT_WORKSPACE_SNAPSHOT.presentationProfileId,
   setPresentationProfileId: (presentationProfileId) =>
     set({ presentationProfileId }),
-  renderViewportMode: DEFAULT_WORKSPACE_SNAPSHOT.renderViewportMode,
-  setRenderViewportMode: (renderViewportMode) => set({ renderViewportMode }),
-  liveHostRenderViewport: null,
-  setLiveHostRenderViewport: (candidate) =>
-    set((state) => {
-      const resolved = resolveRenderViewport("host", candidate);
-      if (resolved.status !== "host") return state;
-      const previous = state.liveHostRenderViewport;
-      if (
-        previous?.width === resolved.viewport.width &&
-        previous.height === resolved.viewport.height
-      ) {
-        return state;
-      }
-      return { liveHostRenderViewport: resolved.viewport };
-    }),
   svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
   setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
   textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,
@@ -182,13 +155,6 @@ export const useAppStore = create<AppState>((set) => ({
   diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
   setDiagramFont: (diagramFont) => set({ diagramFont }),
   applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot }),
-  sharedRenderEnvironmentLock: null,
-  clearSharedRenderEnvironmentLock: () =>
-    set((state) =>
-      state.sharedRenderEnvironmentLock
-        ? { sharedRenderEnvironmentLock: null }
-        : state,
-    ),
   shareViewWarning: null,
   applyStartupShareHydration: ({ workspace, view, warning }) =>
     set({
@@ -196,7 +162,7 @@ export const useAppStore = create<AppState>((set) => ({
       workspacePane: view.workspacePane,
       editorMode: view.editorMode,
       previewMode: view.previewMode,
-      sharedRenderEnvironmentLock: view.lockedEnvironment,
+      showSvgBounds: view.showSvgBounds,
       shareViewWarning: warning,
     }),
 
@@ -215,6 +181,8 @@ export const useAppStore = create<AppState>((set) => ({
   setWorkspacePane: (workspacePane) => set({ workspacePane }),
   previewMode: "svg",
   setPreviewMode: (previewMode) => set({ previewMode }),
+  showSvgBounds: false,
+  setShowSvgBounds: (showSvgBounds) => set({ showSvgBounds }),
 }));
 
 applyResolvedTheme(initialResolvedTheme);

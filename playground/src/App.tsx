@@ -20,7 +20,6 @@ import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
 import { CodeEditor } from "./components/Editor";
 import { Preview } from "./components/Preview";
-import { RenderViewportControl } from "./components/RenderViewportControl";
 import { ExportWorkbench } from "./components/ExportDialog";
 import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import { useAppStore, type WorkspacePane } from "./store";
@@ -122,7 +121,7 @@ export default function App() {
                   onFocusCapture={() => setWorkspacePane("preview")}
                   onPointerDownCapture={() => setWorkspacePane("preview")}
                 >
-                  <PreviewPanel t={t} />
+                  <PreviewPanel />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
@@ -201,17 +200,9 @@ function EditorPanel({
   );
 }
 
-function PreviewPanel({ t }: { t(key: string): string }) {
+function PreviewPanel() {
   return (
-    <div className="h-full min-h-0 flex flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 sm:px-4">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("preview.title")}
-        </span>
-        <RenderViewportControl />
-      </div>
-      <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
-    </div>
+    <Preview className="h-full min-h-0" />
   );
 }
 

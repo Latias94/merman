@@ -93,6 +93,99 @@ test("SVG mount failures stay inside the preview pane", async ({ page }) => {
   errors.assertNone();
 });
 
+test("Visual and Compare use full-surface canvas while SVG Bounds stays presentation-only", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const viewport = page.locator('[data-merman-svg-viewport="true"]').first();
+  expect(await viewport.boundingBox()).toEqual(
+    await page.locator("#preview-mode-panel").boundingBox(),
+  );
+  await expect(viewport).toHaveAttribute(
+    "data-preview-canvas-tone",
+    /^(light|dark)$/u,
+  );
+  await expect(viewport).not.toHaveCSS("background-image", "none");
+  const content = viewport.locator(".preview-container");
+  await expect(content).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(content).toHaveCSS("padding", "0px");
+  await expect(content).toHaveCSS("border-radius", "0px");
+  await expect(content).toHaveCSS("box-shadow", "none");
+
+  const initialZoom = Number(await viewport.getAttribute("data-zoom"));
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect
+    .poll(async () => Number(await viewport.getAttribute("data-zoom")))
+    .toBeGreaterThan(initialZoom);
+  const zoomBeforeBounds = await viewport.getAttribute("data-zoom");
+  const artifactHost = viewport.locator(".preview-container > div").first();
+  await artifactHost.evaluate((host) => {
+    const svg = host.shadowRoot?.querySelector("svg");
+    if (!svg) throw new Error("Missing mounted SVG artifact.");
+    svg.setAttribute("data-test-bounds-artifact", "stable");
+  });
+  const artifactMarker = () =>
+    artifactHost.evaluate(
+      (host) =>
+        host.shadowRoot
+          ?.querySelector("svg")
+          ?.getAttribute("data-test-bounds-artifact") ?? null,
+    );
+
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await expect(boundsToggle).toHaveAccessibleName("Show SVG Bounds");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "false");
+  await boundsToggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  const outline = viewport.locator('[data-merman-svg-bounds="true"]');
+  await expect(outline).toHaveCount(1);
+  await expect(outline).toHaveCSS("pointer-events", "none");
+  expect(await outline.boundingBox()).toEqual(await content.boundingBox());
+  expect(await artifactMarker()).toBe("stable");
+  await expect(viewport).toHaveAttribute("data-zoom", zoomBeforeBounds ?? "");
+
+  await page.keyboard.press("Space");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "false");
+  await expect(outline).toHaveCount(0);
+  expect(await artifactMarker()).toBe("stable");
+  await expect(viewport).toHaveAttribute("data-zoom", zoomBeforeBounds ?? "");
+
+  await page.keyboard.press("Enter");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const compareCanvas = page.locator(
+    '[data-merman-compare-scroll-owner="true"]',
+  );
+  await expect(compareCanvas).toHaveAttribute(
+    "data-preview-canvas-tone",
+    /^(light|dark)$/u,
+  );
+  await expect(compareCanvas).not.toHaveCSS("background-image", "none");
+  const compareViewports = page.locator('[data-merman-svg-viewport="true"]');
+  await expect(compareViewports).toHaveCount(2);
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
+  await expect
+    .poll(() =>
+      compareViewports.evaluateAll((elements) =>
+        elements.every((element) => {
+          const content = element.querySelector(".preview-container");
+          return (
+            content instanceof HTMLElement &&
+            getComputedStyle(element).backgroundImage !== "none" &&
+            getComputedStyle(content).backgroundColor === "rgba(0, 0, 0, 0)"
+          );
+        }),
+      ),
+    )
+    .toBe(true);
+
+  errors.assertNone();
+});
+
 test("Event Model keeps Mermaid HTML labels readable in a dark Playground", async ({
   page,
 }) => {
@@ -453,6 +546,8 @@ test("a 100-million-unit SVG stays bounded in preview and export", async ({
   await expect.poll(() => previewSvgWidth(page)).toBeGreaterThan(fittedWidth * 1.1);
   await page.getByRole("button", { name: "Fit to view", exact: true }).click();
   await expect.poll(() => previewSvgWidth(page)).toBeLessThanOrEqual(fittedWidth + 1);
+  await page.getByTestId("svg-bounds-toggle").click();
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
 
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await page.getByRole("menuitem", { name: "Export image…" }).click();
@@ -461,9 +556,11 @@ test("a 100-million-unit SVG stays bounded in preview and export", async ({
   const svgDownloadPromise = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "Download", exact: true }).click();
   const svgDownload = await svgDownloadPromise;
-  expect(await downloadText(svgDownload)).toContain(
-    'viewBox="0 0 100000000 1000000"'
-  );
+  const exportedSvg = await downloadText(svgDownload);
+  expect(exportedSvg).toContain('viewBox="0 0 100000000 1000000"');
+  expect(exportedSvg).not.toContain("data-merman-svg-bounds");
+  expect(exportedSvg).not.toContain("data-merman-svg-viewport");
+  expect(exportedSvg).not.toContain("preview-canvas");
 
   await dialog.getByRole("button", { name: "PNG", exact: true }).click();
   await expect(dialog.getByRole("status")).toHaveText("Ready");

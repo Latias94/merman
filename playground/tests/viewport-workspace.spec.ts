@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { createIssueShareUrl } from "../src/lib/share-view.ts";
 import { encodeShareHash } from "../src/lib/share.ts";
+import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport.ts";
 
 import {
   monitorBrowserErrors,
@@ -419,7 +420,6 @@ test("a current share hash is restored before the first visible publication", as
     diagramTheme: "forest",
     presentationThemePresetId: null,
     presentationProfileId: null,
-    renderViewportMode: "canonical",
     svgPipeline: "parity",
     textMeasurementMode: "browser",
     diagramFont: "arial",
@@ -447,43 +447,20 @@ test("a current share hash is restored before the first visible publication", as
   errors.assertNone();
 });
 
-test("an issue link restores the first locked publication and can return to live Host", async ({
+test("a current issue link restores workspace, view, and SVG Bounds", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
   await page.addInitScript(() => {
     if (window.top !== window) return;
     window.localStorage.setItem("merman-language", "en");
-    const publications: Array<{ status: string | null; text: string }> = [];
-    const originalReplaceChildren = ShadowRoot.prototype.replaceChildren;
-    ShadowRoot.prototype.replaceChildren = function (...nodes) {
-      originalReplaceChildren.apply(this, nodes);
-      const text = this.querySelector("svg")?.textContent;
-      if (text) {
-        publications.push({
-          status: document
-            .querySelector('[data-testid="render-viewport-control"]')
-            ?.getAttribute("data-viewport-status") ?? null,
-          text,
-        });
-      }
-    };
-    (
-      window as typeof window & {
-        __MERMAN_SHARED_PUBLICATIONS__?: Array<{
-          status: string | null;
-          text: string;
-        }>;
-      }
-    ).__MERMAN_SHARED_PUBLICATIONS__ = publications;
   });
   const workspace = {
-    code: "flowchart TD\n  LockedFirst --> SharedEnvironment",
+    code: "flowchart TD\n  IssueFirst --> SharedView",
     mermaidConfig: "{}",
     diagramTheme: "forest" as const,
     presentationThemePresetId: null,
     presentationProfileId: null,
-    renderViewportMode: "host" as const,
     svgPipeline: "parity" as const,
     textMeasurementMode: "browser" as const,
     diagramFont: "arial" as const,
@@ -495,14 +472,13 @@ test("an issue link restores the first locked publication and can return to live
         workspacePane: "preview",
         editorMode: "config",
         previewMode: "compare",
-        lockedEnvironment: {
-          width: 640,
-          height: 480,
-          screenAvailableWidth: 1512,
-        },
+        showSvgBounds: true,
       },
       { origin: "https://example.test", pathname: "/" },
     ),
+  );
+  expect(shared.search).toBe(
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&showSvgBounds=true",
   );
 
   await page.goto(`./${shared.search}${shared.hash}`, {
@@ -510,10 +486,6 @@ test("an issue link restores the first locked publication and can return to live
   });
   await waitForPreviewSvg(page);
 
-  const control = page.getByTestId("render-viewport-control");
-  await expect(control).toHaveAttribute("data-viewport-status", "host-locked");
-  await expect(control).toHaveAttribute("data-viewport-width", "640");
-  await expect(control).toHaveAttribute("data-viewport-height", "480");
   await expect(page.getByRole("tab", { name: "Config", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -522,64 +494,75 @@ test("an issue link restores the first locked publication and can return to live
     "aria-selected",
     "true",
   );
-  const publications = await page.evaluate(
-    () =>
-      (
-        window as typeof window & {
-          __MERMAN_SHARED_PUBLICATIONS__?: Array<{
-            status: string | null;
-            text: string;
-          }>;
-        }
-      ).__MERMAN_SHARED_PUBLICATIONS__ ?? [],
-  );
-  expect(publications[0]?.text).toContain("LockedFirst");
-  expect(publications[0]?.status).toBe("host-locked");
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
+  await expect(page.getByTestId("share-view-warning")).toHaveCount(0);
+  expect(await previewSvgText(page)).toContain("IssueFirst");
 
-  await page.getByRole("button", { name: "Use live Host size" }).click();
-  await expect(control).toHaveAttribute("data-viewport-status", "host");
-  await expect.poll(() => new URL(page.url()).searchParams.has("rv")).toBe(false);
+  expect(new URL(page.url()).search).toBe(shared.search);
   expect(new URL(page.url()).hash).toBe(shared.hash);
   errors.assertNone();
 });
 
-test("an invalid issue view keeps the workspace and exposes one accessible warning", async ({
+test("a legacy Host issue URL restores supported fields canonically without rewriting history", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
   await page.addInitScript(() => {
+    if (window.top !== window) return;
     window.localStorage.setItem("merman-language", "en");
   });
-  const hash = encodeShareHash({
-    code: "flowchart TD\n  Workspace --> StillUsable",
-    mermaidConfig: "{}",
-    diagramTheme: "default",
-    presentationThemePresetId: null,
-    presentationProfileId: null,
+  const hash = legacyWorkspaceHash({
+    code: "flowchart TD\n  LegacyHost --> CanonicalCanvas",
+    theme: "forest",
+    config: "{}",
     renderViewportMode: "host",
-    svgPipeline: "parity",
     textMeasurementMode: "browser",
-    diagramFont: "trebuchet",
+    diagramFont: "arial",
   });
-  await page.goto(
-    `./?rv=99&workspacePane=preview&editorMode=config&previewMode=compare${hash}`,
-    { waitUntil: "domcontentloaded" },
-  );
+  const search =
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare" +
+    "&renderViewportMode=host&hostWidth=640&hostHeight=480" +
+    "&screenAvailableWidth=1512";
+  await page.goto(`./${search}${hash}`, { waitUntil: "domcontentloaded" });
   await waitForPreviewSvg(page);
 
-  const warning = page.getByTestId("share-view-warning");
-  await expect(warning).toHaveCount(1);
-  await expect(warning).toHaveAttribute("role", "alert");
-  await expect(warning).toContainText(
-    "Issue reproduction context could not be restored",
+  await expect(page.getByTestId("share-view-warning")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Config", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
   );
-  expect(await previewSvgText(page)).toContain("StillUsable");
-  await expect(page.getByTestId("render-viewport-control")).not.toHaveAttribute(
-    "data-viewport-status",
-    "host-locked",
+  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
   );
+  await expect(page.getByTestId("svg-bounds-toggle")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(0);
+  await expect.poll(() => compareRealmUsesCanonicalViewport(page)).toBe(true);
+  expect(await previewSvgText(page)).toContain("LegacyHost");
+  expect(new URL(page.url()).search).toBe(search);
+  expect(new URL(page.url()).hash).toBe(hash);
   errors.assertNone();
 });
+
+function legacyWorkspaceHash(payload: Record<string, unknown>): string {
+  return `#${btoa(encodeURIComponent(JSON.stringify(payload)))}`;
+}
+
+async function compareRealmUsesCanonicalViewport(page: Page): Promise<boolean> {
+  return page.evaluate((expected) => {
+    const realm = document.querySelector('iframe[data-merman-realm="compare"]');
+    return (
+      realm instanceof HTMLIFrameElement &&
+      realm.clientWidth === expected.width &&
+      realm.clientHeight === expected.height
+    );
+  }, CANONICAL_RENDER_VIEWPORT);
+}
 
 function primaryViewport(page: Page): Locator {
   return page.locator('[data-merman-svg-viewport="true"]').first();
