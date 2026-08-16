@@ -41,7 +41,9 @@ impl ThemeContractVersion {
     }
 }
 
-const AUTHORING_VERSION_REGISTRY: &[ThemeContractVersion] = &[ThemeContractVersion::new(1, 1, 1)];
+pub(crate) const THEME_CONTRACT_V1: ThemeContractVersion = ThemeContractVersion::new(1, 1, 1);
+
+const AUTHORING_VERSION_REGISTRY: &[ThemeContractVersion] = &[THEME_CONTRACT_V1];
 
 /// Returns the immutable registry of complete authoring-version tuples.
 ///

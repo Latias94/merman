@@ -1,13 +1,43 @@
 use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+/// The stable category of a canonical JSON failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub(crate) enum CanonicalJsonError {
-    #[error("canonical JSON rejected the input: {message}")]
-    InvalidInput { message: String },
-    #[error("canonical JSON serialization failed: {message}")]
-    Serialization { message: String },
+pub enum CanonicalJsonErrorKind {
+    /// The typed wire contained a value forbidden by RFC 8785 or I-JSON.
+    InvalidInput,
+    /// The typed wire could not be serialized.
+    Serialization,
+}
+
+/// An error produced while serializing a contract-owned typed wire as canonical JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{message}")]
+pub struct CanonicalJsonError {
+    kind: CanonicalJsonErrorKind,
+    message: String,
+}
+
+impl CanonicalJsonError {
+    pub(crate) fn invalid_input(message: impl Into<String>) -> Self {
+        Self {
+            kind: CanonicalJsonErrorKind::InvalidInput,
+            message: format!("canonical JSON rejected the input: {}", message.into()),
+        }
+    }
+
+    fn serialization(message: impl Into<String>) -> Self {
+        Self {
+            kind: CanonicalJsonErrorKind::Serialization,
+            message: format!("canonical JSON serialization failed: {}", message.into()),
+        }
+    }
+
+    /// Returns the stable failure category without exposing encoder-specific text.
+    pub const fn kind(&self) -> CanonicalJsonErrorKind {
+        self.kind
+    }
 }
 
 // Callers must first validate contract-owned wire values against the RFC 8785 I-JSON constraints.
@@ -20,9 +50,9 @@ where
     serde_json_canonicalizer::to_vec(value).map_err(|error| {
         let message = error.to_string();
         if error.io_error_kind() == Some(std::io::ErrorKind::InvalidInput) {
-            CanonicalJsonError::InvalidInput { message }
+            CanonicalJsonError::invalid_input(message)
         } else {
-            CanonicalJsonError::Serialization { message }
+            CanonicalJsonError::serialization(message)
         }
     })
 }
@@ -107,10 +137,12 @@ mod tests {
     #[test]
     fn typed_canonicalization_rejects_non_finite_numbers() {
         for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert!(matches!(
-                canonical_json_bytes(&value),
-                Err(CanonicalJsonError::InvalidInput { .. })
-            ));
+            assert_eq!(
+                canonical_json_bytes(&value)
+                    .expect_err("non-finite numbers must fail")
+                    .kind(),
+                CanonicalJsonErrorKind::InvalidInput
+            );
         }
     }
 }
