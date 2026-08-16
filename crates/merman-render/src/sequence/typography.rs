@@ -82,7 +82,8 @@ impl SequenceTypographyRole {
 
 #[derive(Debug)]
 pub(crate) struct SequenceResolvedTypography {
-    text_style: TextStyle,
+    measurement_style: TextStyle,
+    terminal_text_style: TextStyle,
     prepared_typography: ThemeTextStyle,
     font_stack: ParsedCssFontStack,
     resolved_style: Option<ResolvedThemeStyle>,
@@ -141,10 +142,13 @@ impl SequenceResolvedTypography {
                 typed_properties.insert(property);
             }
         }
-        let font_stack = cssom_effective_font_stack(&mut text_style, inherited_font_family);
-        let prepared_typography = prepared_typography(&text_style, &font_stack);
+        let measurement_style = text_style;
+        let (terminal_text_style, font_stack) =
+            cssom_effective_text_style(&measurement_style, inherited_font_family);
+        let prepared_typography = prepared_typography(&terminal_text_style, &font_stack);
         Ok(Self {
-            text_style,
+            measurement_style,
+            terminal_text_style,
             prepared_typography,
             font_stack,
             resolved_style,
@@ -153,8 +157,8 @@ impl SequenceResolvedTypography {
         })
     }
 
-    pub(crate) const fn text_style(&self) -> &TextStyle {
-        &self.text_style
+    pub(crate) const fn measurement_style(&self) -> &TextStyle {
+        &self.measurement_style
     }
 
     pub(crate) const fn prepared_typography(&self) -> &ThemeTextStyle {
@@ -186,7 +190,7 @@ impl SequenceResolvedTypography {
             return base.to_string();
         }
         let mut style = base.trim().trim_end_matches(';').to_string();
-        append_typography_declarations(&mut style, &self.text_style);
+        append_typography_declarations(&mut style, &self.terminal_text_style);
         style.push(';');
         style
     }
@@ -202,7 +206,7 @@ impl SequenceResolvedTypography {
     pub(crate) fn css_declarations(&self) -> Option<String> {
         self.requires_resolved_emission().then(|| {
             let mut declarations = String::new();
-            append_typography_declarations(&mut declarations, &self.text_style);
+            append_typography_declarations(&mut declarations, &self.terminal_text_style);
             declarations.push(';');
             declarations
         })
@@ -211,7 +215,7 @@ impl SequenceResolvedTypography {
     pub(crate) fn fixed_size_terminal_style(&self) -> Option<String> {
         self.requires_resolved_emission().then(|| {
             let mut declarations = String::new();
-            append_font_source_declarations(&mut declarations, &self.text_style);
+            append_font_source_declarations(&mut declarations, &self.terminal_text_style);
             declarations.push(';');
             declarations
         })
@@ -347,22 +351,23 @@ fn apply_direct_property(
     }
 }
 
-fn cssom_effective_font_stack(
-    text_style: &mut TextStyle,
+fn cssom_effective_text_style(
+    measurement_style: &TextStyle,
     inherited_font_family: &str,
-) -> ParsedCssFontStack {
-    if let Some(font_stack) = text_style
+) -> (TextStyle, ParsedCssFontStack) {
+    let mut terminal_text_style = measurement_style.clone();
+    if let Some(font_stack) = measurement_style
         .font_family
         .as_deref()
         .and_then(parse_css_font_stack)
     {
-        return font_stack;
+        return (terminal_text_style, font_stack);
     }
 
     let font_stack = parse_css_font_stack(inherited_font_family)
         .expect("normalized Mermaid font-family CSS must remain parseable");
-    text_style.font_family = Some(inherited_font_family.to_string());
-    font_stack
+    terminal_text_style.font_family = Some(inherited_font_family.to_string());
+    (terminal_text_style, font_stack)
 }
 
 fn prepared_typography(text_style: &TextStyle, font_stack: &ParsedCssFontStack) -> ThemeTextStyle {
@@ -425,28 +430,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cssom_rejected_role_font_falls_back_to_the_inherited_theme_stack() {
-        let mut style = TextStyle {
+    fn cssom_rejected_measurement_font_only_falls_back_for_terminal_text() {
+        let measurement_style = TextStyle {
             font_family: Some("Legacy Root;".to_string()),
             ..TextStyle::default()
         };
 
-        let stack = cssom_effective_font_stack(&mut style, "Theme Sans,sans-serif");
+        let (terminal_style, stack) =
+            cssom_effective_text_style(&measurement_style, "Theme Sans,sans-serif");
 
-        assert_eq!(style.font_family.as_deref(), Some("Theme Sans,sans-serif"));
+        assert_eq!(
+            measurement_style.font_family.as_deref(),
+            Some("Legacy Root;")
+        );
+        assert_eq!(
+            terminal_style.font_family.as_deref(),
+            Some("Theme Sans,sans-serif")
+        );
         assert_eq!(stack.families(), ["Theme Sans", "sans-serif"]);
     }
 
     #[test]
-    fn cssom_valid_role_font_remains_above_the_inherited_theme_stack() {
-        let mut style = TextStyle {
+    fn cssom_valid_measurement_font_is_shared_with_terminal_text() {
+        let measurement_style = TextStyle {
             font_family: Some("Root Sans,serif".to_string()),
             ..TextStyle::default()
         };
 
-        let stack = cssom_effective_font_stack(&mut style, "Theme Sans,sans-serif");
+        let (terminal_style, stack) =
+            cssom_effective_text_style(&measurement_style, "Theme Sans,sans-serif");
 
-        assert_eq!(style.font_family.as_deref(), Some("Root Sans,serif"));
+        assert_eq!(
+            terminal_style.font_family.as_deref(),
+            Some("Root Sans,serif")
+        );
         assert_eq!(stack.families(), ["Root Sans", "serif"]);
     }
 }

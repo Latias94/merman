@@ -2384,7 +2384,7 @@ end"#;
 }
 
 #[test]
-fn sequence_cssom_rejected_root_font_uses_public_theme_font_end_to_end() {
+fn sequence_cssom_rejected_root_font_keeps_measurement_and_terminal_ownership_separate() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": {"fontFamily": "Excalifont"},
     })));
@@ -2422,7 +2422,11 @@ end"#;
     for text_fragment in ["CSSOM Actor", "CSSOM Message", "CSSOM Note", "CSSOM Loop"] {
         let matching = requests
             .iter()
-            .filter(|exchange| exchange.request.text.contains(text_fragment))
+            .filter(|exchange| {
+                exchange.request.text.contains(text_fragment)
+                    && exchange.request.operation
+                        == TextMeasurementOperation::MermaidCalculateTextDimensions
+            })
             .collect::<Vec<_>>();
         assert!(
             !matching.is_empty(),
@@ -2435,9 +2439,10 @@ end"#;
         assert!(
             !configured.is_empty()
                 && configured.iter().all(|exchange| {
-                    exchange.request.font_family.as_deref() == Some("Excalifont")
+                    exchange.request.font_family.as_deref()
+                        == Some("\"trebuchet ms\", verdana, arial, sans-serif;")
                 }),
-            "configured layout measurement must use the CSSOM-effective theme font for {text_fragment:?}: {matching:#?}"
+            "Mermaid calculateTextDimensions must preserve the source declaration and its CSSOM fallback for {text_fragment:?}: {matching:#?}"
         );
     }
 
@@ -2486,7 +2491,7 @@ end"#;
         assert_eq!(
             inline_style_value(style, "font-family"),
             Some("Excalifont"),
-            "prepared terminal text must use the same CSSOM-effective font as layout"
+            "prepared terminal text must use the CSSOM-effective inherited theme font"
         );
     }
 }

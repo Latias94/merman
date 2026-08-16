@@ -72,7 +72,7 @@ impl SequenceBlockLabelBoxMetrics {
                 continue;
             }
             let (width, height) =
-                measure_svg_like_with_html_br(measurer, label, typography.text_style());
+                measure_svg_like_with_html_br(measurer, label, typography.measurement_style());
             measured_width = measured_width.max(width);
             measured_height = measured_height.max(height);
             measured_any = true;

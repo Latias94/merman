@@ -101,10 +101,10 @@ impl SequenceRenderSettings {
         &mut self,
         typography: &crate::sequence::SequenceTypographyPlan,
     ) {
-        self.actor_text_style = typography.actor().text_style().clone();
-        self.message_text_style = typography.message().text_style().clone();
-        self.loop_text_style = typography.loop_label().text_style().clone();
-        self.note_text_style = typography.note().text_style().clone();
+        self.actor_text_style = typography.actor().measurement_style().clone();
+        self.message_text_style = typography.message().measurement_style().clone();
+        self.loop_text_style = typography.loop_label().measurement_style().clone();
+        self.note_text_style = typography.note().measurement_style().clone();
     }
 }
 
