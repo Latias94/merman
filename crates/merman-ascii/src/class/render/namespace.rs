@@ -26,7 +26,7 @@ struct NamespaceRenderContext<'model, 'render> {
     render_plan: &'render NamespaceRenderPlan<'model>,
     scope_index: &'render NamespaceScopeIndex<'model>,
     note_by_id: ClassNoteIndex<'model>,
-    execution: Option<AsciiExecution<'render>>,
+    execution: AsciiExecution<'render>,
 }
 
 #[derive(Debug)]
@@ -46,7 +46,7 @@ impl<'a> NamespaceRenderPlan<'a> {
     fn new(
         model: &'a ClassDiagram,
         resources: &ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         resources.transaction(|resources| Self::new_in_transaction(model, resources, execution))
     }
@@ -54,7 +54,7 @@ impl<'a> NamespaceRenderPlan<'a> {
     fn new_in_transaction(
         model: &'a ClassDiagram,
         resources: &ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         checkpoint_layout(execution)?;
         let namespace_count = model.namespaces.len();
@@ -188,7 +188,7 @@ impl<'a> NamespaceScopeIndex<'a> {
         model: &'a ClassDiagram,
         namespace_facade_aliases: &NamespaceFacadeAliases,
         resources: &ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         resources.transaction(|resources| {
             Self::new_in_transaction(model, namespace_facade_aliases, resources, execution)
@@ -199,7 +199,7 @@ impl<'a> NamespaceScopeIndex<'a> {
         model: &'a ClassDiagram,
         namespace_facade_aliases: &NamespaceFacadeAliases,
         resources: &ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         checkpoint_layout(execution)?;
         let namespace_capacity = model.namespaces.len();
@@ -287,7 +287,7 @@ impl<'a> NamespaceScopeIndex<'a> {
         right: Option<&'a str>,
         parent: &HashMap<&'a str, Option<&'a str>>,
         max_hops: usize,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<Option<&'a str>> {
         let mut left = left;
         let mut right = right;
@@ -320,7 +320,7 @@ impl<'a> NamespaceScopeIndex<'a> {
         mut scope: Option<&'a str>,
         parent: &HashMap<&'a str, Option<&'a str>>,
         max_hops: usize,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<usize> {
         for depth in 0..max_hops {
             checkpoint_layout(execution)?;
@@ -357,7 +357,7 @@ impl<'a> NamespaceScopeIndex<'a> {
         endpoint_id: &'a str,
         scope: Option<&'a str>,
         resources: &ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<ScopedEndpoint<'a>> {
         checkpoint_layout(execution)?;
         resources.charge_layout_work(1)?;
@@ -404,7 +404,7 @@ fn route_layout_for_scope<'a>(
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<super::RelationLayout<'a>> {
     resources.transaction(|resources| {
         let top = scope_index.endpoint_for_scope(layout.top_id, scope, resources, execution)?;
@@ -557,7 +557,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     namespace_facade_aliases: &'a NamespaceFacadeAliases,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     checkpoint_layout(execution)?;
     let render_plan = NamespaceRenderPlan::new(model, resources, execution)?;
@@ -645,23 +645,13 @@ pub(super) fn render_namespaced_class_diagram<'a>(
                 execution,
             );
         }
-        return match execution {
-            Some(execution) => {
-                relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
-                    &boxes,
-                    settings.options,
-                    resources,
-                    deferred_text,
-                    execution,
-                )
-            }
-            None => relation_graph::render_stacked_boxes_with_deferred_options(
-                &boxes,
-                settings.options,
-                resources,
-                deferred_text,
-            ),
-        };
+        return relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
+            &boxes,
+            settings.options,
+            resources,
+            deferred_text,
+            execution,
+        );
     }
 
     let box_by_id = RenderedClassBoxIndex::new(&boxes, resources)?;
@@ -1036,7 +1026,7 @@ pub(super) fn render_namespace_container_box<'a>(
     settings: ClassRenderSettings<'_>,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<RenderedClassBox> {
     checkpoint_layout(execution)?;
     if settings.direction.is_horizontal() && children.len() > 1 {
@@ -1262,11 +1252,8 @@ fn namespace_title<'a>(namespace: &'a Namespace, resources: &ResourceContext) ->
     }
 }
 
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(OperationPhase::Layout)?;
-    }
-    Ok(())
+fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
+    execution.checkpoint(OperationPhase::Layout)
 }
 
 pub(super) fn namespace_facade_aliases(model: &ClassDiagram) -> &NamespaceFacadeAliases {
@@ -1331,7 +1318,7 @@ mod tests {
                 let plan = NamespaceRenderPlan::new(
                     &model,
                     &measured,
-                    Some(AsciiExecution::for_test(&unbounded)),
+                    AsciiExecution::for_test(&unbounded),
                 )
                 .expect("deep namespace planning should not depend on the thread stack");
                 let exact_work = PLAN_DEPTH * 5;
@@ -1353,12 +1340,8 @@ mod tests {
                     .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
                     .expect("exact namespace-plan work limit should be valid");
                 let exact = ResourceContext::new(exact_policy);
-                NamespaceRenderPlan::new(
-                    &model,
-                    &exact,
-                    Some(AsciiExecution::for_test(&exact_policy)),
-                )
-                .expect("exact namespace-plan work should build");
+                NamespaceRenderPlan::new(&model, &exact, AsciiExecution::for_test(&exact_policy))
+                    .expect("exact namespace-plan work should build");
                 assert_eq!(exact.layout_work_used(), exact_work);
 
                 let below_policy = unbounded
@@ -1368,7 +1351,7 @@ mod tests {
                 let error = NamespaceRenderPlan::new(
                     &model,
                     &below,
-                    Some(AsciiExecution::for_test(&below_policy)),
+                    AsciiExecution::for_test(&below_policy),
                 )
                 .expect_err("max-minus-one namespace-plan work must reject");
                 assert!(matches!(
@@ -1406,8 +1389,13 @@ mod tests {
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let measured = ResourceContext::new(unbounded);
-        NamespaceScopeIndex::new(&model, aliases, &measured, None)
-            .expect("unbounded namespace index should build");
+        NamespaceScopeIndex::new(
+            &model,
+            aliases,
+            &measured,
+            AsciiExecution::for_test(&unbounded),
+        )
+        .expect("unbounded namespace index should build");
         let exact_work = measured.layout_work_used();
         assert!(exact_work > 1);
 
@@ -1415,8 +1403,13 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact namespace-index work limit should be valid");
         let exact = ResourceContext::new(exact_policy);
-        NamespaceScopeIndex::new(&model, aliases, &exact, None)
-            .expect("exact namespace-index work should build");
+        NamespaceScopeIndex::new(
+            &model,
+            aliases,
+            &exact,
+            AsciiExecution::for_test(&exact_policy),
+        )
+        .expect("exact namespace-index work should build");
         assert_eq!(exact.layout_work_used(), exact_work);
 
         let below_policy = unbounded
@@ -1427,8 +1420,13 @@ mod tests {
             .charge_layout_work(1)
             .expect("test checkpoint should be admitted");
         let checkpoint = below.layout_work_used();
-        let error = NamespaceScopeIndex::new(&model, aliases, &below, None)
-            .expect_err("max-minus-one namespace-index work must reject");
+        let error = NamespaceScopeIndex::new(
+            &model,
+            aliases,
+            &below,
+            AsciiExecution::for_test(&below_policy),
+        )
+        .expect_err("max-minus-one namespace-index work must reject");
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
@@ -1455,12 +1453,18 @@ mod tests {
             .expect("Right namespace should exist")
             .parent = Some("Left".to_string());
         let aliases = namespace_facade_aliases(&model);
-        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+        let policy = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
-        ));
+        );
+        let resources = ResourceContext::new(policy);
 
-        let error = NamespaceScopeIndex::new(&model, aliases, &resources, None)
-            .expect_err("cyclic namespace parents must reject while building the scope index");
+        let error = NamespaceScopeIndex::new(
+            &model,
+            aliases,
+            &resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .expect_err("cyclic namespace parents must reject while building the scope index");
         assert!(matches!(
             error,
             AsciiError::UnsupportedFeature {

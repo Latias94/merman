@@ -2,7 +2,7 @@
 use super::render_lines_with_options;
 use super::{
     RelationGraphBox, RelationGraphLine, grid_overflow, layout_allocation_failed,
-    render_lines_with_deferred_options, render_lines_with_deferred_options_with_execution,
+    render_lines_with_deferred_options_with_execution,
 };
 use crate::Result;
 use crate::operation::AsciiExecution;
@@ -14,16 +14,6 @@ use crate::text::StyledLine;
 #[cfg(test)]
 pub(crate) fn render_stacked_boxes(boxes: &[RelationGraphBox]) -> String {
     boxes.iter().map(render_box).collect::<Vec<_>>().join("\n")
-}
-
-pub(crate) fn render_stacked_boxes_with_deferred_options(
-    boxes: &[RelationGraphBox],
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    deferred: &DeferredTextRegistry<'_>,
-) -> Result<String> {
-    let lines = stacked_box_lines(boxes, options.terminal_width_profile, resources)?;
-    render_lines_with_deferred_options(&lines, options, resources, deferred)
 }
 
 pub(crate) fn render_stacked_boxes_with_deferred_options_with_execution(

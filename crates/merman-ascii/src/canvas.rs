@@ -1026,6 +1026,7 @@ where
     finish_styled_line_iter(lines, options, trim, resources, None, None)
 }
 
+#[cfg(test)]
 pub(crate) fn finish_styled_line_iter_with_deferred_resources<'a, 'text, I>(
     lines: I,
     options: &AsciiRenderOptions,

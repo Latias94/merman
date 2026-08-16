@@ -25,11 +25,11 @@ pub(crate) use self::document::{
     LayeredRelationPaintPlan, RelationBoxStripPlan, RelationRegionPlan, RelationRenderPlan,
     RelationSummaryPaintPlan, render_relation_document_with_summary,
 };
-pub(crate) use self::encode::{
-    render_lines_with_deferred_options, render_lines_with_deferred_options_with_execution,
-};
+pub(crate) use self::encode::render_lines_with_deferred_options_with_execution;
 #[cfg(test)]
-pub(crate) use self::encode::{render_lines_with_deferred_probe, render_lines_with_options};
+pub(crate) use self::encode::{
+    render_lines_with_deferred_options, render_lines_with_deferred_probe, render_lines_with_options,
+};
 pub(crate) use self::horizontal::*;
 // Keep the inferred `source_port`/`target_port` return type reachable to
 // sibling family modules even though callers do not name it directly.
@@ -62,7 +62,6 @@ pub(crate) use self::self_loop::{
 };
 pub(crate) use self::stack::{
     RelationParallelPlan, RelationStackPlan, centered_row_blocks_extent,
-    render_stacked_boxes_with_deferred_options,
     render_stacked_boxes_with_deferred_options_with_execution, stacked_box_extent,
     stacked_box_lines, stacked_box_lines_ordered,
 };
@@ -157,23 +156,6 @@ where
     Ok(edges)
 }
 
-pub(crate) fn render_relation_components_with_deferred<'text, R, A>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    adapter: &A,
-    deferred: &mut DeferredTextRegistry<'text>,
-) -> Result<String>
-where
-    A: RelationComponentAdapter<'text, R>,
-{
-    let lines = materialize_relation_component_lines(
-        boxes, relations, options, resources, adapter, deferred,
-    )?;
-    render_lines_with_deferred_options(&lines, options, resources, deferred)
-}
-
 pub(crate) fn render_relation_components_with_deferred_with_execution<'text, R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -195,6 +177,7 @@ where
     )
 }
 
+#[cfg(test)]
 pub(crate) fn render_relation_component_lines<'plan, 'text, R, A>(
     boxes: &'plan [RelationGraphBox],
     relations: &'plan [R],
@@ -271,6 +254,7 @@ where
     RelationRenderPlan::try_new(regions, resources)
 }
 
+#[cfg(test)]
 fn materialize_relation_component_lines<'plan, 'text, R, A>(
     boxes: &'plan [RelationGraphBox],
     relations: &'plan [R],

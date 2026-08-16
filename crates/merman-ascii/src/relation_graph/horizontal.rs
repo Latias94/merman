@@ -267,23 +267,6 @@ impl HorizontalEdgePlan {
     }
 }
 
-pub(crate) fn render_horizontal_relation_components<'text, R, A>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
-    direction: RelationGraphHorizontalDirection,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    adapter: &A,
-    deferred: &mut DeferredTextRegistry<'text>,
-) -> Result<Vec<RelationGraphLine>>
-where
-    A: RelationComponentAdapter<'text, R>,
-{
-    render_horizontal_relation_components_impl(
-        boxes, relations, direction, options, resources, adapter, deferred,
-    )
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_horizontal_relation_components_with_execution<'text, R, A>(
     boxes: &[RelationGraphBox],

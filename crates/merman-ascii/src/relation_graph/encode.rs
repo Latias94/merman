@@ -2,10 +2,9 @@ use super::RelationGraphLine;
 use crate::Result;
 #[cfg(test)]
 use crate::canvas::finish_styled_line_iter_with_deferred_probe;
-use crate::canvas::{
-    finish_styled_line_iter_with_deferred_resources,
-    finish_styled_line_iter_with_deferred_resources_with_execution,
-};
+#[cfg(test)]
+use crate::canvas::finish_styled_line_iter_with_deferred_resources;
+use crate::canvas::finish_styled_line_iter_with_deferred_resources_with_execution;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
@@ -30,6 +29,7 @@ pub(crate) fn render_lines_with_options(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn render_lines_with_deferred_options(
     lines: &[RelationGraphLine],
     options: &AsciiRenderOptions,

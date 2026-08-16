@@ -400,9 +400,7 @@ fn render_class_diagram_impl(
     let base_resources = ResourceContext::new(*execution.resources());
     let mut resources =
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
-    let execution_context = execution;
-    let execution = Some(execution);
-    checkpoint(execution, merman_core::OperationPhase::Semantic)?;
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     preflight_class_text(model, &mut resources)?;
     charge_class_model_work(model, &mut resources)?;
     validate_unique_class_render_ids(model, &mut resources)?;
@@ -416,8 +414,8 @@ fn render_class_diagram_impl(
     let mut deferred_text = DeferredTextRegistry::new();
     validate_class_namespace_ownership(model, &mut resources)?;
     let namespace_facade_aliases = namespace_facade_aliases(model);
-    checkpoint(execution, merman_core::OperationPhase::Layout)?;
-    resources = execution_context.resource_context(&resources, merman_core::OperationPhase::Layout);
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
     validate_class_references(model, namespace_facade_aliases, &mut resources)?;
     if has_renderable_namespaces(model) {
         let rendered = render_namespaced_class_diagram(
@@ -428,7 +426,7 @@ fn render_class_diagram_impl(
             &mut resources,
             execution,
         )?;
-        checkpoint(execution, merman_core::OperationPhase::Emit)?;
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         return Ok(rendered);
     }
 
@@ -447,23 +445,13 @@ fn render_class_diagram_impl(
                 feature: "relationships with missing endpoint classes",
             });
         }
-        return match execution {
-            Some(execution) => {
-                relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
-                    &boxes,
-                    options,
-                    &mut resources,
-                    &deferred_text,
-                    execution,
-                )
-            }
-            None => relation_graph::render_stacked_boxes_with_deferred_options(
-                &boxes,
-                options,
-                &mut resources,
-                &deferred_text,
-            ),
-        };
+        return relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
+            &boxes,
+            options,
+            &mut resources,
+            &deferred_text,
+            execution,
+        );
     }
     let box_by_id = RenderedClassBoxIndex::new(&boxes, &mut resources)?;
 
@@ -477,7 +465,7 @@ fn render_class_diagram_impl(
         .try_reserve_exact(layout_capacity)
         .map_err(|_| layout_allocation_failed())?;
     for relation in &model.relations {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         layouts.push(relation_layout(
             model,
             relation,
@@ -529,23 +517,13 @@ fn render_class_diagram_impl(
                 execution,
             );
         }
-        return match execution {
-            Some(execution) => {
-                relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
-                    &boxes,
-                    options,
-                    &mut resources,
-                    &deferred_text,
-                    execution,
-                )
-            }
-            None => relation_graph::render_stacked_boxes_with_deferred_options(
-                &boxes,
-                options,
-                &mut resources,
-                &deferred_text,
-            ),
-        };
+        return relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
+            &boxes,
+            options,
+            &mut resources,
+            &deferred_text,
+            execution,
+        );
     }
 
     if direction.is_horizontal() {
@@ -575,15 +553,8 @@ fn render_class_diagram_impl(
         &mut deferred_text,
         execution,
     )?;
-    checkpoint(execution, merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     Ok(rendered)
-}
-
-fn checkpoint(
-    execution: Option<AsciiExecution<'_>>,
-    phase: merman_core::OperationPhase,
-) -> Result<()> {
-    execution.map_or(Ok(()), |execution| execution.checkpoint(phase))
 }
 
 fn validate_unique_class_render_ids(
@@ -689,7 +660,7 @@ fn render_class_boxes<'a>(
     namespace_facade_aliases: &NamespaceFacadeAliases,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RenderedClassBox>> {
     let capacity = model
         .classes
@@ -707,7 +678,7 @@ fn render_class_boxes<'a>(
         .values()
         .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
     {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_class_box(
             class,
             settings.options,
@@ -717,7 +688,7 @@ fn render_class_boxes<'a>(
         )?);
     }
     for interface in &model.interfaces {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_interface_box(
             interface,
             settings.options,
@@ -727,7 +698,7 @@ fn render_class_boxes<'a>(
         )?);
     }
     for note in &model.notes {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_note_box(
             note,
             settings.options,
@@ -737,7 +708,7 @@ fn render_class_boxes<'a>(
         )?);
     }
     for namespace in model.namespaces.values() {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_namespace_container_box(
             namespace,
             Vec::new(),
@@ -757,31 +728,21 @@ fn render_class_components<'text>(
     charset: ClassCharset,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'text>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
     };
-    match execution {
-        Some(execution) => relation_graph::render_relation_components_with_deferred_with_execution(
-            boxes,
-            layouts,
-            options,
-            resources,
-            &adapter,
-            deferred_text,
-            execution,
-        ),
-        None => relation_graph::render_relation_components_with_deferred(
-            boxes,
-            layouts,
-            options,
-            resources,
-            &adapter,
-            deferred_text,
-        ),
-    }
+    relation_graph::render_relation_components_with_deferred_with_execution(
+        boxes,
+        layouts,
+        options,
+        resources,
+        &adapter,
+        deferred_text,
+        execution,
+    )
 }
 
 fn render_class_component_lines<'text>(
@@ -791,40 +752,21 @@ fn render_class_component_lines<'text>(
     settings: ClassRenderSettings<'_>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'text>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter {
         charset: settings.charset,
         width_profile: settings.options.terminal_width_profile,
     };
-    match execution {
-        Some(execution) => relation_graph::render_relation_component_lines_with_execution(
-            boxes,
-            layouts,
-            settings.options,
-            resources,
-            &adapter,
-            deferred_text,
-            execution,
-        ),
-        None => relation_graph::render_relation_component_lines(
-            boxes,
-            layouts,
-            settings.options,
-            resources,
-            &adapter,
-            deferred_text,
-        ),
-    }
-}
-
-fn render_class_document_lines(
-    lines: Vec<RelationGraphLine>,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    deferred_text: &DeferredTextRegistry<'_>,
-) -> Result<String> {
-    relation_graph::render_lines_with_deferred_options(&lines, options, resources, deferred_text)
+    relation_graph::render_relation_component_lines_with_execution(
+        boxes,
+        layouts,
+        settings.options,
+        resources,
+        &adapter,
+        deferred_text,
+        execution,
+    )
 }
 
 fn render_class_document_lines_with_execution(
@@ -832,18 +774,15 @@ fn render_class_document_lines_with_execution(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     deferred_text: &DeferredTextRegistry<'_>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    match execution {
-        Some(execution) => relation_graph::render_lines_with_deferred_options_with_execution(
-            &lines,
-            options,
-            resources,
-            deferred_text,
-            execution,
-        ),
-        None => render_class_document_lines(lines, options, resources, deferred_text),
-    }
+    relation_graph::render_lines_with_deferred_options_with_execution(
+        &lines,
+        options,
+        resources,
+        deferred_text,
+        execution,
+    )
 }
 
 fn render_horizontal_class_component_lines<'text>(
@@ -852,33 +791,22 @@ fn render_horizontal_class_component_lines<'text>(
     settings: ClassRenderSettings<'_>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'text>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter {
         charset: settings.charset,
         width_profile: settings.options.terminal_width_profile,
     };
-    match execution {
-        Some(execution) => relation_graph::render_horizontal_relation_components_with_execution(
-            boxes,
-            layouts,
-            settings.direction.horizontal_direction(),
-            settings.options,
-            resources,
-            &adapter,
-            deferred_text,
-            execution,
-        ),
-        None => relation_graph::render_horizontal_relation_components(
-            boxes,
-            layouts,
-            settings.direction.horizontal_direction(),
-            settings.options,
-            resources,
-            &adapter,
-            deferred_text,
-        ),
-    }
+    relation_graph::render_horizontal_relation_components_with_execution(
+        boxes,
+        layouts,
+        settings.direction.horizontal_direction(),
+        settings.options,
+        resources,
+        &adapter,
+        deferred_text,
+        execution,
+    )
 }
 
 fn render_class_box<'a>(
@@ -2811,6 +2739,7 @@ mod tests {
         materialized: &Cell<bool>,
     ) -> (Result<String>, (usize, usize), (usize, usize)) {
         let mut resources = ResourceContext::new(policy);
+        let execution = AsciiExecution::for_test(&policy);
         let charset = ClassCharset::for_options(options);
         let direction = ClassDirection::try_from_model(&model.direction)
             .expect("class summary direction should be valid");
@@ -2827,7 +2756,7 @@ mod tests {
             aliases,
             &mut deferred,
             &mut resources,
-            None,
+            execution,
         )
         .expect("class summary boxes should plan");
         let mut layouts = Vec::new();
