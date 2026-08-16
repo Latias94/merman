@@ -8,7 +8,7 @@ use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, ResourceContext};
-use crate::terminal::{TerminalCellText, primary_width};
+use crate::terminal::{SurfaceCellCheckpoints, TerminalCellText, primary_width_with_checkpoints};
 use crate::text::display_width_with_profile;
 use merman_core::OperationPhase;
 
@@ -104,17 +104,19 @@ fn write_plain_sequence_line(
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
     let mut offset = 0usize;
+    let mut surface_checkpoints = SurfaceCellCheckpoints::cadenced(|| checkpoints.before_charge());
     while let Some(cell) = line.surface_cells().get(offset).copied() {
-        checkpoints.before_charge()?;
+        surface_checkpoints.force()?;
         if let Some(text) = cell.try_output_text(line.surface_arena())? {
             match text {
                 TerminalCellText::Scalar(ch) => output.push_char(ch)?,
                 TerminalCellText::Grapheme(grapheme) => output.push_str(grapheme)?,
             }
         }
-        offset = offset
-            .checked_add(primary_width(line.surface_cells(), offset).max(1))
-            .ok_or_else(allocation_failed)?;
+        let width =
+            primary_width_with_checkpoints(line.surface_cells(), offset, &mut surface_checkpoints)?
+                .max(1);
+        offset = offset.checked_add(width).ok_or_else(allocation_failed)?;
     }
     Ok(())
 }

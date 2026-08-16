@@ -157,10 +157,19 @@ fn push_text_with_resources(
 
 pub(crate) fn visit_html_escaped_text(
     value: &str,
+    visit: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    visit_html_escaped_text_with_checkpoint(value, || Ok(()), visit)
+}
+
+pub(super) fn visit_html_escaped_text_with_checkpoint(
+    value: &str,
+    mut checkpoint: impl FnMut() -> Result<()>,
     mut visit: impl FnMut(&str) -> Result<()>,
 ) -> Result<()> {
     // HTML escaping classifies syntax scalars without participating in terminal layout.
     for ch in value.chars() {
+        checkpoint()?;
         if let Some(escaped) = html_escape(ch) {
             visit(escaped)?;
         } else {
@@ -174,20 +183,21 @@ pub(crate) fn visit_html_escaped_text(
 fn visit_html_escaped_text_with_resources(
     value: &str,
     resources: &ResourceContext,
-    mut visit: impl FnMut(&str) -> Result<()>,
+    visit: impl FnMut(&str) -> Result<()>,
 ) -> Result<()> {
-    for (index, ch) in value.chars().enumerate() {
-        if index.is_multiple_of(ENCODE_CHECKPOINT_INTERVAL) {
-            resources.checkpoint()?;
-        }
-        if let Some(escaped) = html_escape(ch) {
-            visit(escaped)?;
-        } else {
-            let mut buffer = [0u8; 4];
-            visit(ch.encode_utf8(&mut buffer))?;
-        }
-    }
-    Ok(())
+    let mut scalars_until_checkpoint = 0usize;
+    visit_html_escaped_text_with_checkpoint(
+        value,
+        || {
+            if scalars_until_checkpoint == 0 {
+                scalars_until_checkpoint = ENCODE_CHECKPOINT_INTERVAL;
+                resources.checkpoint()?;
+            }
+            scalars_until_checkpoint -= 1;
+            Ok(())
+        },
+        visit,
+    )
 }
 
 fn html_escape(ch: char) -> Option<&'static str> {

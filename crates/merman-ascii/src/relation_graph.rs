@@ -720,13 +720,6 @@ fn try_share_relation_box_lines(relation_box: &RelationGraphBox) -> Result<Vec<R
     Ok(lines)
 }
 
-pub(crate) fn find_box<'a>(
-    boxes: &'a [RelationGraphBox],
-    id: &str,
-) -> Option<&'a RelationGraphBox> {
-    boxes.iter().find(|relation_box| relation_box.id() == id)
-}
-
 pub(crate) fn find_box_ref<'a>(
     boxes: &[&'a RelationGraphBox],
     id: &str,

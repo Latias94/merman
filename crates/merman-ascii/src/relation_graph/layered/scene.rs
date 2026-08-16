@@ -175,7 +175,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         resources: &ResourceContext,
     ) -> Result<Canvas> {
         resources.checkpoint()?;
-        let mut canvas = Canvas::try_with_resources(
+        let mut canvas = Canvas::try_with_controlled_resources(
             self.width(),
             self.height(),
             options.terminal_width_profile,

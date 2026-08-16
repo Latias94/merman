@@ -219,7 +219,7 @@ impl HorizontalRelationPaintPlan<'_> {
     ) -> Result<Vec<RelationGraphLine>> {
         let mut checkpoints = RelationResourceCheckpointCursor::new();
         resources.checkpoint()?;
-        let mut canvas = Canvas::try_with_resources(
+        let mut canvas = Canvas::try_with_controlled_resources(
             self.extent.width(),
             self.extent.height(),
             options.terminal_width_profile,

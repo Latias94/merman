@@ -11,9 +11,11 @@ use crate::safe_text::{
 };
 pub(crate) use crate::terminal::CanvasColor;
 use crate::terminal::{
-    CanvasStyle, GlyphArena, ResolvedCanvasStyle, TerminalCell, TerminalCellText, owner_index,
-    primary_width, style_at, try_write_primary_cell_from_surface,
-    try_write_primary_deferred_style_with_policy, try_write_primary_grapheme_style_with_policy,
+    CanvasStyle, GlyphArena, ResolvedCanvasStyle, SurfaceCellCheckpoints, TerminalCell,
+    TerminalCellText, owner_index, primary_width_with_checkpoints, style_at,
+    try_write_primary_cell_from_surface_with_resources_and_checkpoint,
+    try_write_primary_deferred_style_with_resources_and_checkpoints,
+    try_write_primary_grapheme_style_with_resources_and_checkpoint,
 };
 
 const CANVAS_INITIALIZATION_CHUNK_CELLS: usize = 4_096;
@@ -174,6 +176,7 @@ impl Canvas {
         Self::try_with_resources(width, height, width_profile, &resources)
     }
 
+    #[cfg(test)]
     pub(crate) fn try_with_resources(
         width: usize,
         height: usize,
@@ -192,9 +195,24 @@ impl Canvas {
         execution: AsciiExecution<'_>,
     ) -> crate::Result<Self> {
         let extent = resources.grid_extent(width, height)?;
-        Self::from_extent_with_execution(extent, width_profile, resources.scoped(), execution)
+        Self::from_extent_with_checkpoint(extent, width_profile, resources.scoped(), || {
+            execution.checkpoint(merman_core::OperationPhase::Emit)
+        })
     }
 
+    pub(crate) fn try_with_controlled_resources(
+        width: usize,
+        height: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let extent = resources.grid_extent(width, height)?;
+        Self::from_extent_with_checkpoint(extent, width_profile, resources.scoped(), || {
+            resources.checkpoint()
+        })
+    }
+
+    #[cfg(test)]
     fn from_extent(
         extent: LogicalExtent,
         width_profile: TerminalWidthProfile,
@@ -217,13 +235,13 @@ impl Canvas {
         })
     }
 
-    fn from_extent_with_execution(
+    fn from_extent_with_checkpoint(
         extent: LogicalExtent,
         width_profile: TerminalWidthProfile,
         resources: ResourceContext,
-        execution: AsciiExecution<'_>,
+        mut checkpoint: impl FnMut() -> crate::Result<()>,
     ) -> crate::Result<Self> {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        checkpoint()?;
         let mut cells = Vec::new();
         cells.try_reserve_exact(extent.cells()).map_err(|_| {
             crate::AsciiError::AllocationFailed {
@@ -231,7 +249,7 @@ impl Canvas {
             }
         })?;
         while cells.len() < extent.cells() {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            checkpoint()?;
             let remaining = extent.cells() - cells.len();
             let next_len = cells.len() + remaining.min(CANVAS_INITIALIZATION_CHUNK_CELLS);
             cells.resize(next_len, TerminalCell::blank());
@@ -421,6 +439,8 @@ impl Canvas {
         })?;
         let style = CanvasStyle::foreground(CanvasColor::Role(role));
         let mut offset = 0usize;
+        let resources = self.resources.clone();
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
         for glyph in text.glyphs() {
             let target_x = x.checked_add(offset).ok_or_else(|| {
                 self.resources
@@ -430,12 +450,13 @@ impl Canvas {
                 self.resources
                     .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
             })?;
-            try_write_primary_deferred_style_with_policy(
+            try_write_primary_deferred_style_with_resources_and_checkpoints(
                 &mut self.cells,
                 target_index,
                 glyph.id(),
                 glyph.width(),
                 style,
+                &mut checkpoints,
             )?;
             offset = offset.checked_add(glyph.width()).ok_or_else(|| {
                 self.resources
@@ -468,37 +489,39 @@ impl Canvas {
         text: &str,
         style: CanvasStyle,
     ) -> crate::Result<()> {
-        let policy = self.resources.policy();
+        let resources = self.resources.clone();
         let canvas_width = self.width;
         let canvas_height = self.height;
         let mut offset = 0;
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
         visit_safe_line_graphemes(
             &mut self.resources,
             text,
             self.width_profile,
             |grapheme, width| {
                 let target_x = x.checked_add(offset).ok_or_else(|| {
-                    policy.overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+                    resources.overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
                 })?;
                 let target_end = target_x.checked_add(width).ok_or_else(|| {
-                    policy.overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+                    resources.overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
                 })?;
                 if target_end > canvas_width || y >= canvas_height {
                     return Ok(false);
                 }
                 let index = y * canvas_width + target_x;
-                let wrote = try_write_primary_grapheme_style_with_policy(
+                let wrote = try_write_primary_grapheme_style_with_resources_and_checkpoint(
                     &mut self.cells,
                     &mut self.arena,
                     index,
                     grapheme,
                     width,
                     style,
-                    policy,
+                    &resources,
+                    &mut checkpoints,
                 )?;
                 if wrote {
                     offset = offset.checked_add(width).ok_or_else(|| {
-                        policy.overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+                        resources.overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
                     })?;
                 }
                 Ok(wrote)
@@ -566,6 +589,8 @@ impl Canvas {
                 .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
         })?;
         let mut offset = 0;
+        let resources = self.resources.clone();
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
         while offset < cells.len() {
             let cell = cells[offset];
             if cell.is_continuation() {
@@ -573,7 +598,7 @@ impl Canvas {
                 continue;
             }
 
-            let width = primary_width(cells, offset).max(1);
+            let width = primary_width_with_checkpoints(cells, offset, &mut checkpoints)?.max(1);
             let target_x = x.checked_add(offset).ok_or_else(|| {
                 self.resources
                     .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
@@ -583,14 +608,15 @@ impl Canvas {
                     .resources
                     .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells));
             };
-            try_write_primary_cell_from_surface(
+            try_write_primary_cell_from_surface_with_resources_and_checkpoint(
                 &mut self.cells,
                 &mut self.arena,
                 target_index,
                 cell,
                 width,
                 arena,
-                self.resources.policy(),
+                &resources,
+                &mut checkpoints,
             )?;
             offset += width;
         }
@@ -617,6 +643,14 @@ impl Canvas {
         self,
         trim_trailing_cells: bool,
     ) -> crate::Result<Vec<crate::text::StyledLine>> {
+        let resources = self.resources.clone();
+        resources.transaction(|_| self.into_styled_lines_inner(trim_trailing_cells))
+    }
+
+    fn into_styled_lines_inner(
+        self,
+        trim_trailing_cells: bool,
+    ) -> crate::Result<Vec<crate::text::StyledLine>> {
         if self.width == 0 || self.height == 0 {
             return Ok(Vec::new());
         }
@@ -637,7 +671,6 @@ impl Canvas {
             .checked_grid_add(self.cells.len(), output_cells)?;
         self.resources.grid_extent(concurrent_cells, 1)?;
         self.resources.charge_document_cells(output_cells)?;
-        self.resources.charge_layout_work(output_cells.max(1))?;
 
         let mut lines = Vec::new();
         lines.try_reserve_exact(self.height).map_err(|_| {
@@ -873,9 +906,12 @@ impl Canvas {
                 output,
                 &self.cells[row_start..row_end],
                 &self.arena,
-                color_mode,
-                color_theme,
+                SurfaceEncodingStyle {
+                    mode: color_mode,
+                    theme: color_theme,
+                },
                 None,
+                &self.resources,
                 execution,
             )?;
             output.push_char('\n')?;
@@ -910,14 +946,17 @@ impl Canvas {
     ) -> crate::Result<()> {
         let mut buffer = [0; 4];
         let grapheme = ch.encode_utf8(&mut buffer);
-        let result = try_write_primary_grapheme_style_with_policy(
+        let resources = self.resources.clone();
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
+        let result = try_write_primary_grapheme_style_with_resources_and_checkpoint(
             &mut self.cells,
             &mut self.arena,
             index,
             grapheme,
             1,
             style,
-            self.resources.policy(),
+            &resources,
+            &mut checkpoints,
         );
         match result {
             Ok(wrote) => {
@@ -1233,6 +1272,7 @@ where
         options,
         trim,
         deferred,
+        resources,
         execution,
         &mut counted,
     )?;
@@ -1260,7 +1300,15 @@ where
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
     }
     let mut output = CheckedOutput::new(resources.policy());
-    encode_styled_line_iter_to_sink(lines, options, trim, deferred, execution, &mut output)?;
+    encode_styled_line_iter_to_sink(
+        lines,
+        options,
+        trim,
+        deferred,
+        resources,
+        execution,
+        &mut output,
+    )?;
     let output = output.finish();
     if output.len() != encoded_bytes {
         return Err(invalid_encoded_output_plan());
@@ -1273,6 +1321,7 @@ fn encode_styled_line_iter_to_sink<'a, I>(
     options: &AsciiRenderOptions,
     trim: bool,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    resources: &ResourceContext,
     execution: Option<AsciiExecution<'_>>,
     output: &mut impl TerminalOutputSink,
 ) -> crate::Result<()>
@@ -1290,7 +1339,7 @@ where
                 } else {
                     line.len()
                 };
-                encode_styled_line_plain(output, line, row_end, deferred, execution)?;
+                encode_styled_line_plain(output, line, row_end, deferred, resources, execution)?;
                 output.push_char('\n')?;
             }
         }
@@ -1309,9 +1358,12 @@ where
                     output,
                     line,
                     row_end,
-                    options.color_theme,
-                    mode,
+                    SurfaceEncodingStyle {
+                        mode,
+                        theme: options.color_theme,
+                    },
                     deferred,
+                    resources,
                     execution,
                 )?;
                 output.push_char('\n')?;
@@ -1333,6 +1385,7 @@ where
                     row_end,
                     options.color_theme,
                     deferred,
+                    resources,
                     execution,
                 )?;
                 output.push_char('\n')?;
@@ -1347,15 +1400,19 @@ fn encode_styled_line_plain(
     line: &crate::text::StyledLine,
     row_end: usize,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    resources: &ResourceContext,
     execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
         &line.surface_cells()[..row_end],
         line.surface_arena(),
-        AsciiColorMode::Plain,
-        AsciiColorTheme::default(),
+        SurfaceEncodingStyle {
+            mode: AsciiColorMode::Plain,
+            theme: AsciiColorTheme::default(),
+        },
         deferred,
+        resources,
         execution,
     )
 }
@@ -1364,18 +1421,18 @@ fn encode_styled_line_ansi(
     output: &mut impl TerminalOutputSink,
     line: &crate::text::StyledLine,
     row_end: usize,
-    theme: AsciiColorTheme,
-    mode: AsciiColorMode,
+    style: SurfaceEncodingStyle,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    resources: &ResourceContext,
     execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
         &line.surface_cells()[..row_end],
         line.surface_arena(),
-        mode,
-        theme,
+        style,
         deferred,
+        resources,
         execution,
     )
 }
@@ -1386,33 +1443,44 @@ fn encode_styled_line_html(
     row_end: usize,
     theme: AsciiColorTheme,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    resources: &ResourceContext,
     execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
         &line.surface_cells()[..row_end],
         line.surface_arena(),
-        AsciiColorMode::Html,
-        theme,
+        SurfaceEncodingStyle {
+            mode: AsciiColorMode::Html,
+            theme,
+        },
         deferred,
+        resources,
         execution,
     )
+}
+
+#[derive(Clone, Copy)]
+struct SurfaceEncodingStyle {
+    mode: AsciiColorMode,
+    theme: AsciiColorTheme,
 }
 
 fn encode_surface_row(
     output: &mut impl TerminalOutputSink,
     cells: &[TerminalCell],
     arena: &GlyphArena,
-    mode: AsciiColorMode,
-    theme: AsciiColorTheme,
+    style: SurfaceEncodingStyle,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    resources: &ResourceContext,
     execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
+    let SurfaceEncodingStyle { mode, theme } = style;
     if mode == AsciiColorMode::Plain {
         return visit_primary_cells(cells, execution, |cell| {
             if let Some(id) = cell.deferred_text_id() {
                 let deferred = deferred.ok_or_else(missing_deferred_text_resolver)?;
-                push_deferred_terminal_text(output, deferred, id, mode)?;
+                push_deferred_terminal_text(output, deferred, id, mode, resources)?;
                 return Ok(());
             }
             if let Some(text) = cell.try_output_text(arena)? {
@@ -1452,7 +1520,7 @@ fn encode_surface_row(
             }
             if let Some(id) = cell.deferred_text_id() {
                 let deferred = deferred.ok_or_else(missing_deferred_text_resolver)?;
-                push_deferred_terminal_text(output, deferred, id, mode)?;
+                push_deferred_terminal_text(output, deferred, id, mode, resources)?;
             } else {
                 let text = cell
                     .try_output_text(arena)?
@@ -1483,24 +1551,18 @@ fn push_deferred_terminal_text(
     deferred: &DeferredTextRegistry<'_>,
     id: crate::terminal::DeferredTextId,
     mode: AsciiColorMode,
+    resources: &ResourceContext,
 ) -> crate::Result<()> {
     if output.count_only() {
         return output
             .push_encoded_bytes(deferred.encoded_bytes(id, mode == AsciiColorMode::Html)?);
     }
-    deferred.try_visit(id, &mut |text| push_terminal_fragment(output, text, mode))
-}
-
-fn push_terminal_fragment(
-    output: &mut impl TerminalOutputSink,
-    text: &str,
-    mode: AsciiColorMode,
-) -> crate::Result<()> {
-    if mode == AsciiColorMode::Html {
-        visit_html_escaped_text(text, |fragment| output.push_str(fragment))
-    } else {
-        output.push_str(text)
-    }
+    deferred.try_visit_with_resources(
+        id,
+        mode == AsciiColorMode::Html,
+        resources,
+        &mut |fragment| output.push_str(fragment),
+    )
 }
 
 fn missing_deferred_text_resolver() -> crate::AsciiError {
@@ -1516,11 +1578,13 @@ fn visit_primary_cells(
     mut visit: impl FnMut(TerminalCell) -> crate::Result<()>,
 ) -> crate::Result<()> {
     let mut offset = 0usize;
+    let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| match execution {
+        Some(execution) => execution.checkpoint(merman_core::OperationPhase::Emit),
+        None => Ok(()),
+    });
     while let Some(cell) = cells.get(offset).copied() {
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        }
-        let width = primary_width(cells, offset);
+        checkpoints.force()?;
+        let width = primary_width_with_checkpoints(cells, offset, &mut checkpoints)?;
         if width == 0 {
             return Err(crate::AsciiError::allocation_failed(
                 AsciiResourceLimitPhase::Document.as_str(),
@@ -1846,6 +1910,25 @@ mod tests {
     }
 
     #[test]
+    fn styled_line_extraction_charges_fixed_passes_and_complex_glyph_replay() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut canvas =
+            Canvas::try_with_resources(2, 1, TerminalWidthProfile::Unicode, &resources)
+                .expect("canvas should allocate");
+        canvas.write_text(0, 0, "e\u{301}B");
+        let before_work = resources.layout_work_used();
+
+        canvas
+            .into_styled_lines_preserving_extent()
+            .expect("surface compaction should fit");
+
+        assert_eq!(
+            resources.layout_work_used() - before_work,
+            2 * crate::terminal::SURFACE_COMPACTION_FIXED_WORK_PASSES + 1
+        );
+    }
+
+    #[test]
     fn canvas_checks_raw_control_grapheme_bytes_before_visible_escape() {
         let policy = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1);
         let mut canvas = Canvas::try_with_policy(8, 1, TerminalWidthProfile::Unicode, policy)
@@ -1905,7 +1988,7 @@ mod tests {
         fn paint_one(resources: &ResourceContext) -> crate::Result<()> {
             let mut canvas =
                 Canvas::try_with_resources(1, 1, TerminalWidthProfile::Unicode, resources)?;
-            canvas.write_text_role(0, 0, "A", AsciiColorRole::Text)?;
+            canvas.write_text_role(0, 0, "e\u{301}", AsciiColorRole::Text)?;
             canvas.into_styled_lines_trimmed()?;
             Ok(())
         }

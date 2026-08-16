@@ -604,8 +604,10 @@ mod tests {
                     && cancelled.reason == CancelReason::Requested
         ));
         assert_eq!(line.get(0), Some('A'));
-        assert_eq!(line.get(63), Some('A'));
-        assert_eq!(line.get(64), Some(' '));
+        assert!(
+            (1..WIDTH).any(|index| line.get(index) == Some(' ')),
+            "cancellation should stop before the complete line is painted"
+        );
         assert_eq!(resources.document_cells_used(), 0);
     }
 

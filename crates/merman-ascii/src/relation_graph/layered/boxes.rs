@@ -1,4 +1,4 @@
-use super::super::{RelationGraphBox, find_box, find_box_ref};
+use super::super::{RelationGraphBox, RelationResourceCheckpointCursor, find_box_ref};
 use super::lanes::parallel_lane_margin;
 use crate::AsciiError;
 use crate::canvas::Canvas;
@@ -201,114 +201,232 @@ impl<'a> RelationGraphComponent<'a> {
     }
 }
 
+fn index_relation_boxes<'a>(
+    boxes: impl IntoIterator<Item = &'a RelationGraphBox>,
+    capacity: usize,
+    resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
+) -> Result<HashMap<&'a str, usize>, LayeredRelationPlanningError> {
+    let mut index_by_id = HashMap::new();
+    index_by_id
+        .try_reserve(capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    for (index, relation_box) in boxes.into_iter().enumerate() {
+        checkpoints.tick(resources)?;
+        index_by_id.entry(relation_box.id()).or_insert(index);
+    }
+    Ok(index_by_id)
+}
+
+fn relation_component_admission_work(
+    box_count: usize,
+    edge_count: usize,
+    resources: &ResourceContext,
+) -> Result<usize, LayeredRelationPlanningError> {
+    // Five complete box-indexed passes cover id indexing, adjacency allocation, component
+    // membership, component allocation, and final box materialization. Seven edge-indexed passes
+    // cover endpoint indexing, adjacency materialization, component seeding, both undirected
+    // adjacency visits, component counting, and final edge materialization. At most two edge
+    // endpoints per edge become distinct BFS vertices.
+    let box_passes = resources.checked_work_mul(box_count, 5)?;
+    let edge_passes = resources.checked_work_mul(edge_count, 7)?;
+    let endpoint_count = resources.checked_work_mul(edge_count, 2)?;
+    let incident_vertex_bound = box_count.min(endpoint_count);
+    Ok(resources.checked_work_add(
+        resources.checked_work_add(box_passes, edge_passes)?,
+        incident_vertex_bound,
+    )?)
+}
+
 pub(crate) fn relation_components<'a>(
     boxes: &'a [RelationGraphBox],
     edges: &[LayeredRelationEdge],
     resources: &mut ResourceContext,
 ) -> std::result::Result<Vec<RelationGraphComponent<'a>>, LayeredRelationPlanningError> {
-    charge_work_product(resources, edges.len(), boxes.len().max(1))?;
-    let mut incident_ids = HashSet::new();
-    incident_ids
-        .try_reserve(
-            edges
-                .len()
-                .checked_mul(2)
-                .ok_or_else(|| work_overflow(resources))?,
-        )
+    let admission_work = relation_component_admission_work(boxes.len(), edges.len(), resources)?;
+    resources.charge_layout_work(admission_work)?;
+
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
+    let box_index_by_id =
+        index_relation_boxes(boxes.iter(), boxes.len(), resources, &mut checkpoints)?;
+
+    let mut degrees = Vec::new();
+    degrees
+        .try_reserve_exact(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
-    let mut neighbors = HashMap::<&str, Vec<&str>>::new();
-    neighbors
-        .try_reserve(
-            edges
-                .len()
-                .checked_mul(2)
-                .ok_or_else(|| work_overflow(resources))?,
-        )
+    degrees.resize(boxes.len(), 0usize);
+    let mut edge_endpoints = Vec::new();
+    edge_endpoints
+        .try_reserve_exact(edges.len())
         .map_err(|_| layout_allocation_failed())?;
     for edge in edges {
-        if find_box(boxes, edge.source_id()).is_none()
-            || find_box(boxes, edge.target_id()).is_none()
-        {
-            return Err(LayeredRelationError::MissingEndpoint.into());
+        checkpoints.tick(resources)?;
+        let source_index = box_index_by_id
+            .get(edge.source_id())
+            .copied()
+            .ok_or(LayeredRelationError::MissingEndpoint)?;
+        let target_index = box_index_by_id
+            .get(edge.target_id())
+            .copied()
+            .ok_or(LayeredRelationError::MissingEndpoint)?;
+        degrees[source_index] = degrees[source_index]
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
+        degrees[target_index] = degrees[target_index]
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
+        edge_endpoints.push((source_index, target_index));
+    }
+
+    let mut neighbors = Vec::new();
+    neighbors
+        .try_reserve_exact(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for degree in degrees {
+        checkpoints.tick(resources)?;
+        let mut adjacent = Vec::new();
+        adjacent
+            .try_reserve_exact(degree)
+            .map_err(|_| layout_allocation_failed())?;
+        neighbors.push(adjacent);
+    }
+    for &(source_index, target_index) in &edge_endpoints {
+        checkpoints.tick(resources)?;
+        neighbors
+            .get_mut(source_index)
+            .ok_or(LayeredRelationError::MissingEndpoint)?
+            .push(target_index);
+        neighbors
+            .get_mut(target_index)
+            .ok_or(LayeredRelationError::MissingEndpoint)?
+            .push(source_index);
+    }
+
+    let mut component_by_box_index = Vec::new();
+    component_by_box_index
+        .try_reserve_exact(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    component_by_box_index.resize(boxes.len(), None);
+    let mut queue = VecDeque::new();
+    queue
+        .try_reserve(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    let mut connected_component_count = 0usize;
+
+    for &(source_index, _) in &edge_endpoints {
+        checkpoints.tick(resources)?;
+        if component_by_box_index[source_index].is_some() {
+            continue;
         }
 
-        incident_ids.insert(edge.source_id());
-        incident_ids.insert(edge.target_id());
-        try_push_adjacency(&mut neighbors, edge.source_id(), edge.target_id())?;
-        try_push_adjacency(&mut neighbors, edge.target_id(), edge.source_id())?;
+        let component_index = connected_component_count;
+        connected_component_count = connected_component_count
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
+        component_by_box_index[source_index] = Some(component_index);
+        queue.push_back(source_index);
+
+        while let Some(box_index) = queue.pop_front() {
+            checkpoints.tick(resources)?;
+            for &neighbor_index in neighbors
+                .get(box_index)
+                .ok_or(LayeredRelationError::MissingEndpoint)?
+            {
+                checkpoints.tick(resources)?;
+                if component_by_box_index[neighbor_index].is_none() {
+                    component_by_box_index[neighbor_index] = Some(component_index);
+                    queue.push_back(neighbor_index);
+                }
+            }
+        }
+    }
+
+    let mut box_component_indices = Vec::new();
+    box_component_indices
+        .try_reserve_exact(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    let mut component_box_counts = Vec::new();
+    component_box_counts
+        .try_reserve_exact(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    component_box_counts.resize(connected_component_count, 0usize);
+    for relation_box in boxes {
+        checkpoints.tick(resources)?;
+        let indexed_box = box_index_by_id
+            .get(relation_box.id())
+            .copied()
+            .ok_or(LayeredRelationError::MissingEndpoint)?;
+        let component_index = match component_by_box_index[indexed_box] {
+            Some(component_index) => component_index,
+            None => {
+                let component_index = component_box_counts.len();
+                component_box_counts.push(0);
+                component_index
+            }
+        };
+        component_box_counts[component_index] = component_box_counts[component_index]
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
+        box_component_indices.push(component_index);
+    }
+
+    let mut component_edge_counts = Vec::new();
+    component_edge_counts
+        .try_reserve_exact(component_box_counts.len())
+        .map_err(|_| layout_allocation_failed())?;
+    component_edge_counts.resize(component_box_counts.len(), 0usize);
+    for &(source_index, target_index) in &edge_endpoints {
+        checkpoints.tick(resources)?;
+        let source_component =
+            component_by_box_index[source_index].ok_or(LayeredRelationError::MissingEndpoint)?;
+        let target_component =
+            component_by_box_index[target_index].ok_or(LayeredRelationError::MissingEndpoint)?;
+        if source_component != target_component {
+            return Err(LayeredRelationError::MissingEndpoint.into());
+        }
+        component_edge_counts[source_component] = component_edge_counts[source_component]
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
     }
 
     let mut components = Vec::new();
     components
-        .try_reserve_exact(boxes.len())
+        .try_reserve_exact(component_box_counts.len())
         .map_err(|_| layout_allocation_failed())?;
-    let mut visited = HashSet::new();
-    visited
-        .try_reserve(boxes.len())
-        .map_err(|_| layout_allocation_failed())?;
-
-    for edge in edges {
-        let start_id = edge.source_id();
-        if visited.contains(start_id) {
-            continue;
-        }
-
-        let mut component_ids = HashSet::new();
-        component_ids
-            .try_reserve(boxes.len())
-            .map_err(|_| layout_allocation_failed())?;
-        let mut queue = VecDeque::new();
-        queue
-            .try_reserve(boxes.len())
-            .map_err(|_| layout_allocation_failed())?;
-        visited.insert(start_id);
-        component_ids.insert(start_id);
-        queue.push_back(start_id);
-
-        while let Some(id) = queue.pop_front() {
-            resources.charge_layout_work(1)?;
-            for neighbor_id in neighbors.get(id).into_iter().flatten() {
-                resources.charge_layout_work(1)?;
-                if visited.insert(*neighbor_id) {
-                    component_ids.insert(*neighbor_id);
-                    queue.push_back(*neighbor_id);
-                }
-            }
-        }
-
+    for (box_count, edge_count) in component_box_counts.into_iter().zip(component_edge_counts) {
+        checkpoints.tick(resources)?;
         let mut component_boxes = Vec::new();
         component_boxes
-            .try_reserve_exact(component_ids.len())
+            .try_reserve_exact(box_count)
             .map_err(|_| layout_allocation_failed())?;
-        component_boxes.extend(
-            boxes
-                .iter()
-                .filter(|relation_box| component_ids.contains(relation_box.id())),
-        );
         let mut component_edge_indices = Vec::new();
         component_edge_indices
-            .try_reserve_exact(edges.len())
+            .try_reserve_exact(edge_count)
             .map_err(|_| layout_allocation_failed())?;
-        component_edge_indices.extend(edges.iter().enumerate().filter_map(|(index, edge)| {
-            (component_ids.contains(edge.source_id()) && component_ids.contains(edge.target_id()))
-                .then_some(index)
-        }));
-
         components.push(RelationGraphComponent {
             boxes: component_boxes,
             edge_indices: component_edge_indices,
         });
     }
 
-    components.extend(
-        boxes
-            .iter()
-            .filter(|relation_box| !incident_ids.contains(relation_box.id()))
-            .map(|relation_box| RelationGraphComponent {
-                boxes: vec![relation_box],
-                edge_indices: Vec::new(),
-            }),
-    );
+    for (relation_box, component_index) in boxes.iter().zip(box_component_indices) {
+        checkpoints.tick(resources)?;
+        components
+            .get_mut(component_index)
+            .ok_or(LayeredRelationError::MissingEndpoint)?
+            .boxes
+            .push(relation_box);
+    }
+    for (edge_index, &(source_index, _)) in edge_endpoints.iter().enumerate() {
+        checkpoints.tick(resources)?;
+        let component_index =
+            component_by_box_index[source_index].ok_or(LayeredRelationError::MissingEndpoint)?;
+        components
+            .get_mut(component_index)
+            .ok_or(LayeredRelationError::MissingEndpoint)?
+            .edge_indices
+            .push(edge_index);
+    }
 
     Ok(components)
 }
@@ -361,54 +479,111 @@ fn layered_relation_levels(
     edges: &[LayeredRelationEdge],
     resources: &mut ResourceContext,
 ) -> std::result::Result<HashMap<String, usize>, LayeredRelationPlanningError> {
-    charge_work_product(resources, edges.len(), boxes.len().max(1))?;
+    // The fixed admission covers id indexing, endpoint indexing, adjacency allocation and
+    // materialization, initial queue construction, and final level-map materialization. Queue and
+    // adjacency traversal remain exact incremental charges because a node may be relaxed more than
+    // once while discovering a longer path.
+    let box_work = resources.checked_work_mul(boxes.len(), 4)?;
+    let edge_work = resources.checked_work_mul(edges.len(), 2)?;
+    resources.charge_layout_work(resources.checked_work_add(box_work, edge_work)?)?;
+
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
+    let box_index_by_id = index_relation_boxes(
+        boxes.iter().copied(),
+        boxes.len(),
+        resources,
+        &mut checkpoints,
+    )?;
     let mut incident = HashSet::new();
     incident
         .try_reserve(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
-    let mut outgoing = HashMap::<&str, Vec<&str>>::new();
-    outgoing
-        .try_reserve(boxes.len())
+    let mut out_degrees = Vec::new();
+    out_degrees
+        .try_reserve_exact(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
-
+    out_degrees.resize(boxes.len(), 0usize);
+    let mut edge_endpoints = Vec::new();
+    edge_endpoints
+        .try_reserve_exact(edges.len())
+        .map_err(|_| layout_allocation_failed())?;
     for edge in edges {
-        if find_box_ref(boxes, edge.source_id()).is_none()
-            || find_box_ref(boxes, edge.target_id()).is_none()
-        {
-            return Err(LayeredRelationError::MissingEndpoint.into());
-        }
-
-        incident.insert(edge.source_id().to_string());
-        incident.insert(edge.target_id().to_string());
-        try_push_adjacency(&mut outgoing, edge.source_id(), edge.target_id())?;
+        checkpoints.tick(resources)?;
+        let source_index = box_index_by_id
+            .get(edge.source_id())
+            .copied()
+            .ok_or(LayeredRelationError::MissingEndpoint)?;
+        let target_index = box_index_by_id
+            .get(edge.target_id())
+            .copied()
+            .ok_or(LayeredRelationError::MissingEndpoint)?;
+        incident.insert(source_index);
+        incident.insert(target_index);
+        out_degrees[source_index] = out_degrees[source_index]
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
+        edge_endpoints.push((source_index, target_index));
     }
 
     if incident.len() != boxes.len() {
         return Err(LayeredRelationError::UnrelatedBoxes.into());
     }
 
-    let mut levels = HashMap::<String, usize>::new();
-    levels
+    let mut outgoing = Vec::new();
+    outgoing
         .try_reserve(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
+    for degree in out_degrees {
+        checkpoints.tick(resources)?;
+        let mut children = Vec::new();
+        children
+            .try_reserve_exact(degree)
+            .map_err(|_| layout_allocation_failed())?;
+        outgoing.push(children);
+    }
+    for &(source_index, target_index) in &edge_endpoints {
+        checkpoints.tick(resources)?;
+        outgoing
+            .get_mut(source_index)
+            .ok_or(LayeredRelationError::MissingEndpoint)?
+            .push(target_index);
+    }
+
+    let mut level_by_box_index = Vec::new();
+    level_by_box_index
+        .try_reserve_exact(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    level_by_box_index.resize(boxes.len(), 0usize);
     let mut queue = VecDeque::new();
     queue
         .try_reserve(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
-    for relation_box in boxes {
-        let id = relation_box.id().to_string();
-        levels.insert(id.clone(), 0);
-        queue.push_back(id);
+    let mut in_queue = Vec::new();
+    in_queue
+        .try_reserve_exact(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    in_queue.resize(boxes.len(), true);
+    for box_index in 0..boxes.len() {
+        checkpoints.tick(resources)?;
+        queue.push_back(box_index);
     }
 
     let level_cap = boxes.len().saturating_sub(1);
-    while let Some(id) = queue.pop_front() {
+    while let Some(box_index) = queue.pop_front() {
+        checkpoints.tick(resources)?;
         resources.charge_layout_work(1)?;
-        let current_level = levels.get(&id).copied().unwrap_or(0);
-        let Some(children) = outgoing.get(id.as_str()) else {
-            continue;
-        };
-        for &child_id in children {
+        *in_queue
+            .get_mut(box_index)
+            .ok_or(LayeredRelationError::MissingEndpoint)? = false;
+        let current_level = level_by_box_index
+            .get(box_index)
+            .copied()
+            .ok_or(LayeredRelationError::MissingEndpoint)?;
+        for &child_index in outgoing
+            .get(box_index)
+            .ok_or(LayeredRelationError::MissingEndpoint)?
+        {
+            checkpoints.tick(resources)?;
             resources.charge_layout_work(1)?;
             let next_level = current_level
                 .checked_add(1)
@@ -417,15 +592,33 @@ fn layered_relation_levels(
             if next_level > level_cap {
                 continue;
             }
-            let should_update = match levels.get(child_id) {
-                Some(existing_level) => *existing_level < next_level,
-                None => true,
-            };
-            if should_update {
-                levels.insert(child_id.to_string(), next_level);
-                queue.push_back(child_id.to_string());
+            let child_level = level_by_box_index
+                .get_mut(child_index)
+                .ok_or(LayeredRelationError::MissingEndpoint)?;
+            if *child_level < next_level {
+                *child_level = next_level;
+                let child_in_queue = in_queue
+                    .get_mut(child_index)
+                    .ok_or(LayeredRelationError::MissingEndpoint)?;
+                if !*child_in_queue {
+                    queue.push_back(child_index);
+                    *child_in_queue = true;
+                }
             }
         }
+    }
+
+    let mut levels = HashMap::<String, usize>::new();
+    levels
+        .try_reserve(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for (box_index, relation_box) in boxes.iter().enumerate() {
+        checkpoints.tick(resources)?;
+        let level = level_by_box_index
+            .get(box_index)
+            .copied()
+            .ok_or(LayeredRelationError::MissingEndpoint)?;
+        levels.insert(relation_box.id().to_string(), level);
     }
 
     Ok(levels)
@@ -440,7 +633,8 @@ fn choose_ordered_layered_groups<'a>(
     (Vec<Vec<&'a RelationGraphBox>>, LayeredRelationLayoutKind),
     LayeredRelationPlanningError,
 > {
-    let base = initial_layered_groups(boxes, levels, resources)?;
+    let mut checkpoints = RelationResourceCheckpointCursor::new();
+    let base = initial_layered_groups(boxes, levels, resources, &mut checkpoints)?;
     let max_sweeps = level_sweep_candidate_count(base.len(), resources)?;
     let mut seen = HashSet::new();
     let candidate_capacity = max_sweeps
@@ -452,23 +646,38 @@ fn choose_ordered_layered_groups<'a>(
     let mut best: Option<(usize, Vec<Vec<&RelationGraphBox>>)> = None;
 
     if let Some(level_groups) = score_ordered_layered_group_candidate(
-        &base, edges, levels, &mut seen, &mut best, resources,
+        &base,
+        edges,
+        levels,
+        &mut seen,
+        &mut best,
+        resources,
+        &mut checkpoints,
     )? {
         return Ok((level_groups, LayeredRelationLayoutKind::Standard));
     }
 
     for first_sweep in [LayeredRelationSweep::Downward, LayeredRelationSweep::Upward] {
-        let mut groups = try_clone_level_groups(&base)?;
+        checkpoints.tick(resources)?;
+        let mut groups = try_clone_level_groups(&base, resources, &mut checkpoints)?;
         for index in 0..max_sweeps {
+            checkpoints.tick(resources)?;
             groups = apply_layered_relation_sweep(
                 groups,
                 first_sweep.alternating(index),
                 edges,
                 levels,
                 resources,
+                &mut checkpoints,
             )?;
             if let Some(level_groups) = score_ordered_layered_group_candidate(
-                &groups, edges, levels, &mut seen, &mut best, resources,
+                &groups,
+                edges,
+                levels,
+                &mut seen,
+                &mut best,
+                resources,
+                &mut checkpoints,
             )? {
                 return Ok((level_groups, LayeredRelationLayoutKind::Standard));
             }
@@ -602,27 +811,34 @@ fn score_ordered_layered_group_candidate<'a>(
     seen: &mut HashSet<Vec<Vec<&'a str>>>,
     best: &mut Option<(usize, Vec<Vec<&'a RelationGraphBox>>)>,
     resources: &mut ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<Option<Vec<Vec<&'a RelationGraphBox>>>, LayeredRelationPlanningError> {
-    let node_count = candidate.iter().try_fold(0usize, |total, group| {
-        total
-            .checked_add(group.len())
-            .ok_or_else(|| work_overflow(resources))
-    })?;
-    resources.charge_layout_work(node_count.max(1))?;
-    if !seen.insert(layered_group_candidate_key(candidate)?) {
+    if !seen.insert(layered_group_candidate_key(
+        candidate,
+        resources,
+        checkpoints,
+    )?) {
         return Ok(None);
     }
 
-    let crossings = crossing_layered_relation_count(edges, levels, candidate, resources)?;
+    let crossings =
+        crossing_layered_relation_count(edges, levels, candidate, resources, checkpoints)?;
     if crossings == 0 {
-        return Ok(Some(try_clone_level_groups(candidate)?));
+        return Ok(Some(try_clone_level_groups(
+            candidate,
+            resources,
+            checkpoints,
+        )?));
     }
 
     let should_replace = best
         .as_ref()
         .is_none_or(|(best_crossings, _)| crossings < *best_crossings);
     if should_replace {
-        *best = Some((crossings, try_clone_level_groups(candidate)?));
+        *best = Some((
+            crossings,
+            try_clone_level_groups(candidate, resources, checkpoints)?,
+        ));
     }
 
     Ok(None)
@@ -630,15 +846,23 @@ fn score_ordered_layered_group_candidate<'a>(
 
 fn layered_group_candidate_key<'a>(
     level_groups: &[Vec<&'a RelationGraphBox>],
+    resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<Vec<Vec<&'a str>>, LayeredRelationPlanningError> {
+    let node_count = layered_group_node_count(level_groups, resources, checkpoints)?;
+    charge_layered_group_copy_work(level_groups.len(), node_count, resources)?;
     let mut key = Vec::new();
     key.try_reserve_exact(level_groups.len())
         .map_err(|_| layout_allocation_failed())?;
     for group in level_groups {
+        checkpoints.tick(resources)?;
         let mut ids = Vec::new();
         ids.try_reserve_exact(group.len())
             .map_err(|_| layout_allocation_failed())?;
-        ids.extend(group.iter().map(|relation_box| relation_box.id()));
+        for relation_box in group {
+            checkpoints.tick(resources)?;
+            ids.push(relation_box.id());
+        }
         key.push(ids);
     }
     Ok(key)
@@ -646,20 +870,54 @@ fn layered_group_candidate_key<'a>(
 
 fn try_clone_level_groups<'a>(
     level_groups: &[Vec<&'a RelationGraphBox>],
+    resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationPlanningError> {
+    let node_count = layered_group_node_count(level_groups, resources, checkpoints)?;
+    charge_layered_group_copy_work(level_groups.len(), node_count, resources)?;
     let mut cloned = Vec::new();
     cloned
         .try_reserve_exact(level_groups.len())
         .map_err(|_| layout_allocation_failed())?;
     for group in level_groups {
+        checkpoints.tick(resources)?;
         let mut cloned_group = Vec::new();
         cloned_group
             .try_reserve_exact(group.len())
             .map_err(|_| layout_allocation_failed())?;
-        cloned_group.extend(group.iter().copied());
+        for relation_box in group {
+            checkpoints.tick(resources)?;
+            cloned_group.push(*relation_box);
+        }
         cloned.push(cloned_group);
     }
     Ok(cloned)
+}
+
+fn layered_group_node_count(
+    level_groups: &[Vec<&RelationGraphBox>],
+    resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
+) -> Result<usize, LayeredRelationPlanningError> {
+    resources.charge_layout_work(level_groups.len())?;
+    let mut node_count = 0usize;
+    for group in level_groups {
+        checkpoints.tick(resources)?;
+        node_count = node_count
+            .checked_add(group.len())
+            .ok_or_else(|| work_overflow(resources))?;
+    }
+    Ok(node_count)
+}
+
+fn charge_layered_group_copy_work(
+    group_count: usize,
+    node_count: usize,
+    resources: &ResourceContext,
+) -> Result<(), LayeredRelationPlanningError> {
+    let copy_work = resources.checked_work_add(group_count, node_count)?;
+    resources.charge_layout_work(copy_work)?;
+    Ok(())
 }
 
 fn level_sweep_candidate_count(
@@ -701,21 +959,48 @@ fn apply_layered_relation_sweep<'a>(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
     resources: &mut ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationPlanningError> {
     let node_count = level_groups.iter().try_fold(0usize, |total, group| {
         total
             .checked_add(group.len())
             .ok_or_else(|| work_overflow(resources))
     })?;
-    charge_work_product(resources, node_count.max(1), edges.len().max(1))?;
+    let level_work = level_groups.len();
+    let node_map_work = resources.checked_work_mul(node_count, 2)?;
+    let edge_scan_work = resources.checked_work_mul(node_count, edges.len())?;
+    let barycenter_work = edges.len();
+    let sort_work =
+        resources.checked_work_mul(node_count, comparison_sort_levels(node_count, resources)?)?;
+    let work = resources.checked_work_add(
+        resources.checked_work_add(level_work, node_map_work)?,
+        resources.checked_work_add(
+            edge_scan_work,
+            resources.checked_work_add(barycenter_work, sort_work)?,
+        )?,
+    )?;
+    resources.charge_layout_work(work.max(1))?;
     match sweep {
         LayeredRelationSweep::Downward => {
-            order_layered_groups_downward(level_groups, edges, levels, resources)
+            order_layered_groups_downward(level_groups, edges, levels, resources, checkpoints)
         }
         LayeredRelationSweep::Upward => {
-            order_layered_groups_upward(level_groups, edges, levels, resources)
+            order_layered_groups_upward(level_groups, edges, levels, resources, checkpoints)
         }
     }
+}
+
+fn comparison_sort_levels(
+    len: usize,
+    resources: &ResourceContext,
+) -> Result<usize, LayeredRelationPlanningError> {
+    if len <= 1 {
+        return Ok(0);
+    }
+    usize::try_from(len.ilog2())
+        .ok()
+        .and_then(|levels| levels.checked_add(1))
+        .ok_or_else(|| work_overflow(resources).into())
 }
 
 fn crossing_layered_relation_count(
@@ -723,41 +1008,50 @@ fn crossing_layered_relation_count(
     levels: &HashMap<String, usize>,
     level_groups: &[Vec<&RelationGraphBox>],
     resources: &mut ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<usize, LayeredRelationPlanningError> {
     let pair_count = edges
         .len()
         .checked_mul(edges.len().saturating_sub(1))
         .and_then(|value| value.checked_div(2))
         .ok_or_else(|| work_overflow(resources))?;
-    resources.charge_layout_work(pair_count.max(1))?;
     let node_count = level_groups.iter().try_fold(0usize, |total, group| {
         total
             .checked_add(group.len())
             .ok_or_else(|| work_overflow(resources))
     })?;
+    let work = resources.checked_work_add(
+        resources.checked_work_add(level_groups.len(), node_count)?,
+        resources.checked_work_add(edges.len(), pair_count)?,
+    )?;
+    resources.charge_layout_work(work.max(1))?;
     let mut order_by_id = HashMap::new();
     order_by_id
         .try_reserve(node_count)
         .map_err(|_| layout_allocation_failed())?;
     for group in level_groups {
+        checkpoints.tick(resources)?;
         for (index, relation_box) in group.iter().enumerate() {
+            checkpoints.tick(resources)?;
             order_by_id.insert(relation_box.id(), index);
         }
     }
 
     let mut crossings = 0usize;
     for (left_index, left) in edges.iter().enumerate() {
+        checkpoints.tick(resources)?;
         let left_from_level = levels.get(left.source_id()).copied().unwrap_or(0);
         let left_to_level = levels.get(left.target_id()).copied().unwrap_or(0);
+        let left_from_order = order_by_id.get(left.source_id()).copied().unwrap_or(0);
+        let left_to_order = order_by_id.get(left.target_id()).copied().unwrap_or(0);
         for right in edges.iter().skip(left_index + 1) {
+            checkpoints.tick(resources)?;
             if levels.get(right.source_id()).copied().unwrap_or(0) != left_from_level
                 || levels.get(right.target_id()).copied().unwrap_or(0) != left_to_level
             {
                 continue;
             }
 
-            let left_from_order = order_by_id.get(left.source_id()).copied().unwrap_or(0);
-            let left_to_order = order_by_id.get(left.target_id()).copied().unwrap_or(0);
             let right_from_order = order_by_id.get(right.source_id()).copied().unwrap_or(0);
             let right_to_order = order_by_id.get(right.target_id()).copied().unwrap_or(0);
 
@@ -780,12 +1074,21 @@ fn initial_layered_groups<'a>(
     boxes: &[&'a RelationGraphBox],
     levels: &HashMap<String, usize>,
     resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationPlanningError> {
-    let max_level = levels.values().copied().max().unwrap_or(0);
+    resources.charge_layout_work(levels.len())?;
+    let mut max_level = 0usize;
+    for level in levels.values().copied() {
+        checkpoints.tick(resources)?;
+        max_level = max_level.max(level);
+    }
     let level_count = max_level
         .checked_add(1)
         .ok_or_else(|| nesting_overflow(resources))?;
     resources.check_nesting_depth(max_level)?;
+    let box_work = resources.checked_work_mul(boxes.len(), 2)?;
+    let level_work = resources.checked_work_mul(level_count, 2)?;
+    resources.charge_layout_work(resources.checked_work_add(box_work, level_work)?)?;
     let mut level_groups = Vec::new();
     level_groups
         .try_reserve_exact(level_count)
@@ -794,8 +1097,12 @@ fn initial_layered_groups<'a>(
     level_sizes
         .try_reserve_exact(level_count)
         .map_err(|_| layout_allocation_failed())?;
-    level_sizes.resize(level_count, 0);
+    for _ in 0..level_count {
+        checkpoints.tick(resources)?;
+        level_sizes.push(0);
+    }
     for relation_box in boxes {
+        checkpoints.tick(resources)?;
         if let Some(level) = levels.get(relation_box.id()).copied() {
             level_sizes[level] = level_sizes[level]
                 .checked_add(1)
@@ -803,6 +1110,7 @@ fn initial_layered_groups<'a>(
         }
     }
     for level_size in level_sizes {
+        checkpoints.tick(resources)?;
         let mut group = Vec::new();
         group
             .try_reserve_exact(level_size)
@@ -810,6 +1118,7 @@ fn initial_layered_groups<'a>(
         level_groups.push(group);
     }
     for relation_box in boxes {
+        checkpoints.tick(resources)?;
         if let Some(level) = levels.get(relation_box.id()).copied() {
             level_groups[level].push(*relation_box);
         }
@@ -823,9 +1132,11 @@ fn order_layered_groups_downward<'a>(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
     resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationPlanningError> {
     let max_level = level_groups.len().saturating_sub(1);
     for level in 1..=max_level {
+        checkpoints.tick(resources)?;
         let (previous_levels, current_levels) = level_groups.split_at_mut(level);
         let previous_group = &previous_levels[level - 1];
         let current_group = &mut current_levels[0];
@@ -834,6 +1145,7 @@ fn order_layered_groups_downward<'a>(
             .try_reserve(previous_group.len())
             .map_err(|_| layout_allocation_failed())?;
         for (index, relation_box) in previous_group.iter().enumerate() {
+            checkpoints.tick(resources)?;
             previous_order.insert(relation_box.id(), index);
         }
         let mut original_order = HashMap::new();
@@ -845,25 +1157,30 @@ fn order_layered_groups_downward<'a>(
             .try_reserve(current_group.len())
             .map_err(|_| layout_allocation_failed())?;
         for (index, relation_box) in current_group.iter().enumerate() {
+            checkpoints.tick(resources)?;
             original_order.insert(relation_box.id(), index);
             let mut neighbor_orders = Vec::new();
             neighbor_orders
                 .try_reserve_exact(edges.len())
                 .map_err(|_| layout_allocation_failed())?;
-            for edge in edges.iter().filter(|edge| {
-                edge.target_id() == relation_box.id()
-                    && levels.get(edge.source_id()).copied() == Some(level - 1)
-            }) {
+            for edge in edges {
+                checkpoints.tick(resources)?;
+                if edge.target_id() != relation_box.id()
+                    || levels.get(edge.source_id()).copied() != Some(level - 1)
+                {
+                    continue;
+                }
                 if let Some(order) = previous_order.get(edge.source_id()).copied() {
                     neighbor_orders.push(order);
                 }
             }
             neighbor_order.insert(
                 relation_box.id(),
-                barycenter_order(&neighbor_orders, resources)?,
+                barycenter_order(&neighbor_orders, resources, checkpoints)?,
             );
         }
 
+        resources.checkpoint()?;
         current_group.sort_by_key(|relation_box| {
             (
                 neighbor_order
@@ -876,6 +1193,7 @@ fn order_layered_groups_downward<'a>(
                     .unwrap_or(usize::MAX),
             )
         });
+        resources.checkpoint()?;
     }
 
     Ok(level_groups)
@@ -886,9 +1204,11 @@ fn order_layered_groups_upward<'a>(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
     resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationPlanningError> {
     let max_level = level_groups.len().saturating_sub(1);
     for level in (0..max_level).rev() {
+        checkpoints.tick(resources)?;
         let (through_current, next_levels) = level_groups.split_at_mut(level + 1);
         let current_group = &mut through_current[level];
         let next_group = &next_levels[0];
@@ -897,6 +1217,7 @@ fn order_layered_groups_upward<'a>(
             .try_reserve(next_group.len())
             .map_err(|_| layout_allocation_failed())?;
         for (index, relation_box) in next_group.iter().enumerate() {
+            checkpoints.tick(resources)?;
             next_order.insert(relation_box.id(), index);
         }
         let mut original_order = HashMap::new();
@@ -908,25 +1229,30 @@ fn order_layered_groups_upward<'a>(
             .try_reserve(current_group.len())
             .map_err(|_| layout_allocation_failed())?;
         for (index, relation_box) in current_group.iter().enumerate() {
+            checkpoints.tick(resources)?;
             original_order.insert(relation_box.id(), index);
             let mut neighbor_orders = Vec::new();
             neighbor_orders
                 .try_reserve_exact(edges.len())
                 .map_err(|_| layout_allocation_failed())?;
-            for edge in edges.iter().filter(|edge| {
-                edge.source_id() == relation_box.id()
-                    && levels.get(edge.target_id()).copied() == Some(level + 1)
-            }) {
+            for edge in edges {
+                checkpoints.tick(resources)?;
+                if edge.source_id() != relation_box.id()
+                    || levels.get(edge.target_id()).copied() != Some(level + 1)
+                {
+                    continue;
+                }
                 if let Some(order) = next_order.get(edge.target_id()).copied() {
                     neighbor_orders.push(order);
                 }
             }
             neighbor_order.insert(
                 relation_box.id(),
-                barycenter_order(&neighbor_orders, resources)?,
+                barycenter_order(&neighbor_orders, resources, checkpoints)?,
             );
         }
 
+        resources.checkpoint()?;
         current_group.sort_by_key(|relation_box| {
             (
                 neighbor_order
@@ -939,6 +1265,7 @@ fn order_layered_groups_upward<'a>(
                     .unwrap_or(usize::MAX),
             )
         });
+        resources.checkpoint()?;
     }
 
     Ok(level_groups)
@@ -947,16 +1274,19 @@ fn order_layered_groups_upward<'a>(
 fn barycenter_order(
     neighbor_orders: &[usize],
     resources: &ResourceContext,
+    checkpoints: &mut RelationResourceCheckpointCursor,
 ) -> Result<usize, LayeredRelationPlanningError> {
     if neighbor_orders.is_empty() {
         return Ok(usize::MAX);
     }
 
-    let sum = neighbor_orders.iter().try_fold(0usize, |total, order| {
-        total
+    let mut sum = 0usize;
+    for order in neighbor_orders {
+        checkpoints.tick(resources)?;
+        sum = sum
             .checked_add(*order)
-            .ok_or_else(|| work_overflow(resources))
-    })?;
+            .ok_or_else(|| work_overflow(resources))?;
+    }
     let whole = sum / neighbor_orders.len();
     let remainder = sum % neighbor_orders.len();
     whole
@@ -1226,15 +1556,6 @@ fn relation_edge_crosses_level_gap(
     min_level <= level && level < max_level
 }
 
-fn charge_work_product(
-    resources: &mut ResourceContext,
-    left: usize,
-    right: usize,
-) -> Result<(), LayeredRelationPlanningError> {
-    resources.charge_layout_work_product(left, right)?;
-    Ok(())
-}
-
 fn grid_overflow(resources: &ResourceContext) -> AsciiError {
     resources.grid_overflow()
 }
@@ -1251,23 +1572,12 @@ fn layout_allocation_failed() -> AsciiError {
     AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
 }
 
-fn try_push_adjacency<'a>(
-    adjacency: &mut HashMap<&'a str, Vec<&'a str>>,
-    source: &'a str,
-    target: &'a str,
-) -> std::result::Result<(), LayeredRelationPlanningError> {
-    let neighbors = adjacency.entry(source).or_default();
-    neighbors
-        .try_reserve(1)
-        .map_err(|_| layout_allocation_failed())?;
-    neighbors.push(target);
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AsciiResourcePolicy;
+    use crate::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn score_ordered_layered_group_candidate_skips_duplicate_orders() {
@@ -1281,6 +1591,7 @@ mod tests {
         let mut seen = HashSet::new();
         let mut best = None;
         let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
 
         let first = score_ordered_layered_group_candidate(
             &candidate,
@@ -1289,6 +1600,7 @@ mod tests {
             &mut seen,
             &mut best,
             &mut resources,
+            &mut checkpoints,
         )
         .expect("candidate scoring should fit");
         let duplicate = score_ordered_layered_group_candidate(
@@ -1298,11 +1610,203 @@ mod tests {
             &mut seen,
             &mut best,
             &mut resources,
+            &mut checkpoints,
         )
         .expect("duplicate scoring should fit");
 
         assert!(first.is_some());
         assert!(duplicate.is_none());
         assert_eq!(seen.len(), 1);
+    }
+
+    #[test]
+    fn relation_component_indexing_obeys_conservative_work_admission() {
+        let boxes = [
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+            RelationGraphBox::new("d".to_string(), vec!["D".to_string()], 1),
+            RelationGraphBox::new("isolated".to_string(), vec!["I".to_string()], 1),
+        ];
+        let edges = vec![
+            LayeredRelationEdge::new("a", "b", 0, 0),
+            LayeredRelationEdge::new("c", "d", 0, 0),
+        ];
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut measured = ResourceContext::new(unbounded);
+
+        let components = relation_components(&boxes, &edges, &mut measured)
+            .expect("indexed components should materialize");
+        let admitted_work = measured.layout_work_used();
+        assert_eq!(
+            admitted_work,
+            relation_component_admission_work(boxes.len(), edges.len(), &measured)
+                .expect("component work formula should fit")
+        );
+        assert_eq!(components.len(), 3);
+
+        let admitted_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, admitted_work)
+            .expect("admitted component work limit should be valid");
+        let mut admitted = ResourceContext::new(admitted_policy);
+        relation_components(&boxes, &edges, &mut admitted)
+            .expect("admitted component work limit should succeed");
+        assert_eq!(admitted.layout_work_used(), admitted_work);
+
+        let below_policy = unbounded
+            .with_limit(
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                admitted_work
+                    .checked_sub(1)
+                    .expect("component work is non-zero"),
+            )
+            .expect("below-admission component work limit should be valid");
+        let mut below = ResourceContext::new(below_policy);
+        let error = relation_components(&boxes, &edges, &mut below)
+            .expect_err("below-admission component work must fail before materialization");
+        assert!(matches!(
+            error,
+            LayeredRelationPlanningError::Resource(AsciiError::ResourceLimitExceeded(details))
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+        ));
+        assert_eq!(below.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn layered_group_clone_admits_copy_before_materialization() {
+        let boxes = (0..96)
+            .map(|index| RelationGraphBox::new(format!("n{index}"), vec![format!("N{index}")], 1))
+            .collect::<Vec<_>>();
+        let groups = vec![boxes.iter().collect::<Vec<_>>()];
+        let admitted_work = groups
+            .len()
+            .checked_mul(2)
+            .and_then(|work| work.checked_add(boxes.len()))
+            .expect("test work should fit");
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, admitted_work - 1)
+            .expect("below-admission work limit should be valid");
+        let resources = ResourceContext::new(policy);
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
+
+        let error = try_clone_level_groups(&groups, &resources, &mut checkpoints)
+            .expect_err("copy work must be admitted before the clone is allocated");
+
+        assert!(matches!(
+            error,
+            LayeredRelationPlanningError::Resource(AsciiError::ResourceLimitExceeded(details))
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+        ));
+        assert_eq!(resources.layout_work_used(), groups.len());
+    }
+
+    #[test]
+    fn initial_layered_grouping_observes_cancellation_inside_level_scan() {
+        let boxes = (0..96)
+            .map(|index| RelationGraphBox::new(format!("n{index}"), vec![format!("N{index}")], 1))
+            .collect::<Vec<_>>();
+        let box_refs = boxes.iter().collect::<Vec<_>>();
+        let levels = boxes
+            .iter()
+            .enumerate()
+            .map(|(index, relation_box)| (relation_box.id().to_string(), index))
+            .collect::<HashMap<_, _>>();
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        let ledger = ResourceContext::new(policy);
+        let resources = ledger.controlled(control, OperationPhase::Layout);
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
+
+        let error = initial_layered_groups(&box_refs, &levels, &resources, &mut checkpoints)
+            .expect_err("large initial grouping should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            LayeredRelationPlanningError::Resource(AsciiError::Cancelled(cancelled))
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn crossing_pair_scan_observes_cancellation_inside_the_inner_loop() {
+        let boxes = [
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let level_groups = vec![vec![&boxes[0]], vec![&boxes[1]]];
+        let levels = HashMap::from([("a".to_string(), 0), ("b".to_string(), 1)]);
+        let edges = (0..20)
+            .map(|_| LayeredRelationEdge::new("a", "b", 0, 0))
+            .collect::<Vec<_>>();
+        let policy = AsciiResourcePolicy::default();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        let ledger = ResourceContext::new(policy);
+        let mut resources = ledger.controlled(control, OperationPhase::Layout);
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
+
+        let error = crossing_layered_relation_count(
+            &edges,
+            &levels,
+            &level_groups,
+            &mut resources,
+            &mut checkpoints,
+        )
+        .expect_err("pair scan should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            LayeredRelationPlanningError::Resource(AsciiError::Cancelled(cancelled))
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn layered_sweep_observes_cancellation_inside_edge_scans() {
+        let boxes = (0..72)
+            .map(|index| RelationGraphBox::new(format!("n{index}"), vec![format!("N{index}")], 1))
+            .collect::<Vec<_>>();
+        let mut levels = HashMap::new();
+        levels.insert("n0".to_string(), 0);
+        let mut second_level = Vec::new();
+        second_level
+            .try_reserve_exact(boxes.len() - 1)
+            .expect("test level allocation should fit");
+        let mut edges = Vec::new();
+        edges
+            .try_reserve_exact(boxes.len() - 1)
+            .expect("test edge allocation should fit");
+        for relation_box in boxes.iter().skip(1) {
+            levels.insert(relation_box.id().to_string(), 1);
+            second_level.push(relation_box);
+            edges.push(LayeredRelationEdge::new("n0", relation_box.id(), 0, 0));
+        }
+        let groups = vec![vec![&boxes[0]], second_level];
+        let policy = AsciiResourcePolicy::default();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        let ledger = ResourceContext::new(policy);
+        let mut resources = ledger.controlled(control, OperationPhase::Layout);
+        let mut checkpoints = RelationResourceCheckpointCursor::new();
+
+        let error = apply_layered_relation_sweep(
+            groups,
+            LayeredRelationSweep::Downward,
+            &edges,
+            &levels,
+            &mut resources,
+            &mut checkpoints,
+        )
+        .expect_err("layered sweep should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            LayeredRelationPlanningError::Resource(AsciiError::Cancelled(cancelled))
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
     }
 }

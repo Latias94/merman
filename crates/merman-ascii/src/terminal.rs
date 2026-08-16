@@ -12,14 +12,61 @@ const STALE_GLYPH_COMPACTION_THRESHOLD: usize = 64;
 const SURFACE_CHECKPOINT_PRIMARY_CELLS: usize = 64;
 
 // Conservative full-cell pass counts charged to max layout work before each bounded operation.
-const CELL_COMPACTION_WORK_PASSES: usize = 3;
-const SURFACE_COMPACTION_WORK_PASSES: usize = 1 + CELL_COMPACTION_WORK_PASSES;
-const SURFACE_APPEND_CELL_WORK_PASSES: usize = 2;
+// Cell compaction scans the surface three times and may replay one distinct complex glyph per
+// cell; surface compaction additionally copies the cell buffer once.
+const CELL_COMPACTION_FIXED_WORK_PASSES: usize = 3;
+const CELL_COMPACTION_WORK_PASSES: usize = CELL_COMPACTION_FIXED_WORK_PASSES + 1;
+pub(crate) const SURFACE_COMPACTION_WORK_PASSES: usize = 1 + CELL_COMPACTION_WORK_PASSES;
+#[cfg(test)]
+pub(crate) const SURFACE_COMPACTION_FIXED_WORK_PASSES: usize =
+    1 + CELL_COMPACTION_FIXED_WORK_PASSES;
 const OVERWRITE_COMPACTION_WORK_PASSES: usize = 8;
 #[cfg(test)]
 const CELL_MIRROR_WORK_PASSES: usize = 2;
 #[cfg(test)]
 const SURFACE_MIRROR_WORK_PASSES: usize = CELL_MIRROR_WORK_PASSES + CELL_COMPACTION_WORK_PASSES;
+
+pub(crate) struct SurfaceCellCheckpoints<F> {
+    checkpoint: F,
+    cells_until_checkpoint: usize,
+    interval: usize,
+}
+
+impl<F> SurfaceCellCheckpoints<F>
+where
+    F: FnMut() -> Result<()>,
+{
+    pub(crate) fn new(checkpoint: F) -> Self {
+        Self {
+            checkpoint,
+            cells_until_checkpoint: 0,
+            interval: 1,
+        }
+    }
+
+    pub(crate) fn cadenced(checkpoint: F) -> Self {
+        Self {
+            checkpoint,
+            cells_until_checkpoint: 0,
+            interval: SURFACE_CHECKPOINT_PRIMARY_CELLS,
+        }
+    }
+
+    fn checkpoint_cell(&mut self) -> Result<()> {
+        if self.cells_until_checkpoint == 0 {
+            (self.checkpoint)()?;
+            self.cells_until_checkpoint = self.interval;
+        }
+        self.cells_until_checkpoint -= 1;
+        Ok(())
+    }
+
+    pub(crate) fn force(&mut self) -> Result<()> {
+        (self.checkpoint)()?;
+        self.cells_until_checkpoint = self.interval;
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CanvasColor {
@@ -138,6 +185,7 @@ impl PartialEq for GlyphArena {
 impl Eq for GlyphArena {}
 
 impl GlyphArena {
+    #[cfg(test)]
     fn try_import_referenced_cells_where(
         &mut self,
         source: &Self,
@@ -195,7 +243,7 @@ impl GlyphArena {
 
         let mut cells_until_checkpoint = 0usize;
         for (index, cell) in cells.iter().copied().enumerate() {
-            checkpoint_primary_cell(cell, &mut cells_until_checkpoint, &mut checkpoint)?;
+            checkpoint_surface_cell(&mut cells_until_checkpoint, &mut checkpoint)?;
             let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
                 continue;
             };
@@ -255,6 +303,7 @@ impl GlyphArena {
         self.try_import_referenced_cells_where(source, cells, policy, |_, _| Ok(true))
     }
 
+    #[cfg(test)]
     fn try_import_referenced_cells_with_checkpoint(
         &mut self,
         source: &Self,
@@ -308,6 +357,7 @@ impl GlyphArena {
         Ok(remapped)
     }
 
+    #[cfg(test)]
     fn try_compact_cells_from_source(
         source: &Self,
         cells: &mut [TerminalCell],
@@ -316,6 +366,7 @@ impl GlyphArena {
         Self::try_compact_cells_from_source_with_checkpoint(source, cells, policy, || Ok(()))
     }
 
+    #[cfg(test)]
     fn try_compact_cells_from_source_with_checkpoint(
         source: &Self,
         cells: &mut [TerminalCell],
@@ -324,6 +375,16 @@ impl GlyphArena {
     ) -> Result<Self> {
         checkpoint()?;
         check_cell_work(policy, cells.len(), CELL_COMPACTION_WORK_PASSES)?;
+        Self::try_compact_cells_from_source_after_admission(source, cells, policy, checkpoint)
+    }
+
+    #[cfg(test)]
+    fn try_compact_cells_from_source_after_admission(
+        source: &Self,
+        cells: &mut [TerminalCell],
+        policy: AsciiResourcePolicy,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<Self> {
         let mut arena = Self::default();
         let source_to_target = arena.try_import_referenced_cells_with_checkpoint(
             source,
@@ -342,20 +403,40 @@ impl GlyphArena {
         resources: &ResourceContext,
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<Self> {
-        checkpoint()?;
-        resources.charge_layout_work_product(cells.len(), CELL_COMPACTION_WORK_PASSES)?;
+        resources.transaction(|resources| {
+            checkpoint()?;
+            let work_upper_bound =
+                resources.checked_work_mul(cells.len(), CELL_COMPACTION_WORK_PASSES)?;
+            resources.check_usage(work_upper_bound, 0)?;
+            Self::try_compact_cells_from_source_with_resources_after_admission(
+                source, cells, resources, checkpoint,
+            )
+        })
+    }
+
+    fn try_compact_cells_from_source_with_resources_after_admission(
+        source: &Self,
+        cells: &mut [TerminalCell],
+        resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<Self> {
+        resources.charge_layout_work(cells.len())?;
         let mut arena = Self::default();
-        let source_to_target = arena.try_import_referenced_cells_with_checkpoint(
+        let source_to_target = arena.try_import_referenced_cells_with_admission_and_checkpoint(
             source,
             cells,
             resources.policy(),
+            |referenced_entries| resources.charge_layout_work(referenced_entries),
             &mut checkpoint,
         )?;
+        resources.charge_layout_work(cells.len())?;
         validate_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
+        resources.charge_layout_work(cells.len())?;
         apply_validated_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
         Ok(arena)
     }
 
+    #[cfg(test)]
     pub(crate) fn try_compact_in_place(
         &mut self,
         cells: &mut [TerminalCell],
@@ -378,6 +459,7 @@ impl GlyphArena {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn try_compact_surface(
         source: &Self,
         cells: &[TerminalCell],
@@ -393,6 +475,39 @@ impl GlyphArena {
         let arena = Self::try_compact_cells_from_source(source, &mut compacted_cells, policy)?;
         let cells = compacted_cells;
         Ok((cells, arena))
+    }
+
+    pub(crate) fn try_compact_surface_with_resources(
+        source: &Self,
+        cells: &[TerminalCell],
+        resources: &ResourceContext,
+    ) -> Result<(Vec<TerminalCell>, Self)> {
+        resources.transaction(|resources| {
+            resources.checkpoint()?;
+            let concurrent_cells = resources.checked_grid_add(cells.len(), cells.len())?;
+            resources.check(AsciiResourceLimitId::MaxGridCells, concurrent_cells)?;
+            let work_upper_bound =
+                resources.checked_work_mul(cells.len(), SURFACE_COMPACTION_WORK_PASSES)?;
+            resources.check_usage(work_upper_bound, 0)?;
+            resources.charge_layout_work(cells.len())?;
+
+            let mut compacted_cells = Vec::new();
+            compacted_cells
+                .try_reserve_exact(cells.len())
+                .map_err(|_| document_allocation_failed())?;
+            for chunk in cells.chunks(SURFACE_CHECKPOINT_PRIMARY_CELLS) {
+                resources.checkpoint()?;
+                compacted_cells.extend_from_slice(chunk);
+            }
+
+            let arena = Self::try_compact_cells_from_source_with_resources_after_admission(
+                source,
+                &mut compacted_cells,
+                resources,
+                || resources.checkpoint(),
+            )?;
+            Ok((compacted_cells, arena))
+        })
     }
 
     fn try_store(&mut self, grapheme: &str, policy: AsciiResourcePolicy) -> Result<TerminalGlyph> {
@@ -694,6 +809,7 @@ fn try_push_primary_grapheme_style(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn try_push_primary_grapheme_style_with_policy(
     cells: &mut Vec<TerminalCell>,
     arena: &mut GlyphArena,
@@ -766,6 +882,7 @@ pub(crate) fn try_push_primary_grapheme_style_with_resources_and_checkpoint(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn try_push_primary_deferred_style_with_policy(
     cells: &mut Vec<TerminalCell>,
     id: DeferredTextId,
@@ -789,35 +906,56 @@ pub(crate) fn try_push_primary_deferred_style_with_policy(
     push_terminal_glyph_prepared(cells, TerminalGlyph::Deferred(id), width, style)
 }
 
-pub(crate) fn try_write_primary_deferred_style_with_policy(
+pub(crate) fn try_push_primary_deferred_style_with_resources_and_checkpoints(
+    cells: &mut Vec<TerminalCell>,
+    id: DeferredTextId,
+    width: usize,
+    style: CanvasStyle,
+    resources: &ResourceContext,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
+) -> Result<()> {
+    if width == 0 {
+        return Ok(());
+    }
+    checkpoints.force()?;
+    let final_len = cells
+        .len()
+        .checked_add(width)
+        .ok_or_else(document_allocation_failed)?;
+    check_document_cell_extent(resources.policy(), final_len)?;
+    check_primary_cell_extent(resources.policy(), final_len)?;
+    validate_continuation_width(width)?;
+    cells
+        .try_reserve(width)
+        .map_err(|_| document_allocation_failed())?;
+    cells.push(TerminalCell::try_with_glyph_width_style(
+        TerminalGlyph::Deferred(id),
+        width,
+        style,
+    )?);
+    for owner_back in 1..width {
+        checkpoints.checkpoint_cell()?;
+        cells.push(TerminalCell::try_continuation_with_owner_back(owner_back)?);
+    }
+    Ok(())
+}
+
+pub(crate) fn try_write_primary_deferred_style_with_resources_and_checkpoints(
     cells: &mut [TerminalCell],
     index: usize,
     id: DeferredTextId,
     width: usize,
     style: CanvasStyle,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
 ) -> Result<bool> {
-    write_terminal_glyph(cells, index, TerminalGlyph::Deferred(id), width, style)
-}
-
-pub(crate) fn try_append_cells_from_surface(
-    cells: &mut Vec<TerminalCell>,
-    arena: &mut GlyphArena,
-    source_cells: &[TerminalCell],
-    source_arena: &GlyphArena,
-    policy: AsciiResourcePolicy,
-) -> Result<()> {
-    check_cell_work(policy, source_cells.len(), 1)?;
-    try_append_cells_from_surface_after_admission(
+    checkpoints.force()?;
+    write_terminal_glyph_with_checkpoints(
         cells,
-        arena,
-        source_cells,
-        source_arena,
-        policy,
-        |referenced_entries| {
-            let work = surface_append_work(policy, source_cells.len(), referenced_entries)?;
-            policy.check(AsciiResourceLimitId::MaxLayoutWorkUnits, work)
-        },
-        || Ok(()),
+        index,
+        TerminalGlyph::Deferred(id),
+        width,
+        style,
+        checkpoints,
     )
 }
 
@@ -875,21 +1013,10 @@ fn try_append_cells_from_surface_after_admission(
     )?;
     let mut cells_until_checkpoint = 0usize;
     for source_cell in source_cells.iter().copied() {
-        checkpoint_primary_cell(source_cell, &mut cells_until_checkpoint, &mut checkpoint)?;
+        checkpoint_surface_cell(&mut cells_until_checkpoint, &mut checkpoint)?;
         cells.push(try_remap_cell(source_cell, &source_to_target)?);
     }
     Ok(())
-}
-
-fn surface_append_work(
-    policy: AsciiResourcePolicy,
-    source_cells: usize,
-    referenced_entries: usize,
-) -> Result<usize> {
-    source_cells
-        .checked_mul(SURFACE_APPEND_CELL_WORK_PASSES)
-        .and_then(|work| work.checked_add(referenced_entries))
-        .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits))
 }
 
 #[cfg(test)]
@@ -912,6 +1039,7 @@ fn try_write_primary_grapheme_style(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn try_write_primary_grapheme_style_with_policy(
     cells: &mut [TerminalCell],
     arena: &mut GlyphArena,
@@ -961,39 +1089,64 @@ pub(crate) fn try_write_primary_grapheme_style_with_resources_and_checkpoint(
     width: usize,
     style: CanvasStyle,
     resources: &ResourceContext,
-    checkpoint: impl FnMut() -> Result<()>,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
 ) -> Result<bool> {
+    checkpoints.force()?;
     if !can_write(cells, index, width) {
         return Ok(false);
     }
     validate_continuation_width(width)?;
-    let stale_entries = overwritten_arena_entries(cells, index, width)?;
+    let stale_entries =
+        overwritten_arena_entries_with_checkpoints(cells, index, width, checkpoints)?;
     let Some(stale_entries_after_write) = arena.stale_entries_after_overwrite(stale_entries) else {
         return try_write_grapheme_after_compaction_with_resources(
-            cells, arena, index, grapheme, width, style, resources, checkpoint,
+            cells,
+            arena,
+            index,
+            grapheme,
+            width,
+            style,
+            resources,
+            checkpoints,
         );
     };
     if stale_entries_after_write >= STALE_GLYPH_COMPACTION_THRESHOLD {
         return try_write_grapheme_after_compaction_with_resources(
-            cells, arena, index, grapheme, width, style, resources, checkpoint,
+            cells,
+            arena,
+            index,
+            grapheme,
+            width,
+            style,
+            resources,
+            checkpoints,
         );
     }
     let glyph = match arena.try_store(grapheme, resources.policy()) {
         Ok(glyph) => glyph,
         Err(error) if is_retained_glyph_budget_error(&error) => {
             return try_write_grapheme_after_compaction_with_resources(
-                cells, arena, index, grapheme, width, style, resources, checkpoint,
+                cells,
+                arena,
+                index,
+                grapheme,
+                width,
+                style,
+                resources,
+                checkpoints,
             );
         }
         Err(error) => return Err(error),
     };
-    let wrote = write_terminal_glyph(cells, index, glyph, width, style)?;
+    let wrote =
+        write_terminal_glyph_with_checkpoints(cells, index, glyph, width, style, checkpoints)?;
     if wrote {
         arena.stale_entries_since_compaction = stale_entries_after_write;
     }
     Ok(wrote)
 }
 
+#[cfg(test)]
 fn try_write_grapheme_after_compaction(
     cells: &mut [TerminalCell],
     arena: &mut GlyphArena,
@@ -1036,9 +1189,9 @@ fn try_write_grapheme_after_compaction_with_resources(
     width: usize,
     style: CanvasStyle,
     resources: &ResourceContext,
-    mut checkpoint: impl FnMut() -> Result<()>,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
 ) -> Result<bool> {
-    checkpoint()?;
+    checkpoints.force()?;
     let end = index
         .checked_add(width)
         .filter(|end| *end <= cells.len())
@@ -1050,27 +1203,29 @@ fn try_write_grapheme_after_compaction_with_resources(
         cells,
         resources.policy(),
         |owner, cells| cell_survives_overwrite(cells, owner, index, end),
-        &mut checkpoint,
+        || checkpoints.force(),
     )?;
     let glyph = compacted_arena.try_store(grapheme, resources.policy())?;
-    validate_surviving_cell_remap_with_checkpoint(
+    validate_surviving_cell_remap_with_checkpoint(cells, index, end, &source_to_target, || {
+        checkpoints.force()
+    })?;
+
+    for position in index..end {
+        clear_owner_at_with_checkpoints(cells, position, checkpoints)?;
+    }
+    apply_validated_cell_remap_with_checkpoint(cells, &source_to_target, || checkpoints.force())?;
+    *arena = compacted_arena;
+    write_terminal_glyph_to_cleared_range_with_checkpoints(
         cells,
         index,
-        end,
-        &source_to_target,
-        &mut checkpoint,
-    )?;
-
-    let mut positions_until_checkpoint = 0usize;
-    for position in index..end {
-        checkpoint_surface_item(&mut positions_until_checkpoint, &mut checkpoint)?;
-        clear_owner_at(cells, position);
-    }
-    apply_validated_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
-    *arena = compacted_arena;
-    write_terminal_glyph_to_cleared_range(cells, index, glyph, width, style)
+        glyph,
+        width,
+        style,
+        checkpoints,
+    )
 }
 
+#[cfg(test)]
 fn overwritten_arena_entries(cells: &[TerminalCell], index: usize, width: usize) -> Result<usize> {
     let end = index
         .checked_add(width)
@@ -1079,6 +1234,36 @@ fn overwritten_arena_entries(cells: &[TerminalCell], index: usize, width: usize)
     let mut last_owner = None;
     let mut count = 0usize;
     for position in index..end {
+        let Some(owner) = owner_index(cells, position) else {
+            continue;
+        };
+        if last_owner == Some(owner) {
+            continue;
+        }
+        last_owner = Some(owner);
+        if matches!(cells[owner].glyph, TerminalGlyph::Arena(_, _)) {
+            count = count
+                .checked_add(1)
+                .ok_or_else(document_allocation_failed)?;
+        }
+    }
+    Ok(count)
+}
+
+fn overwritten_arena_entries_with_checkpoints(
+    cells: &[TerminalCell],
+    index: usize,
+    width: usize,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
+) -> Result<usize> {
+    let end = index
+        .checked_add(width)
+        .filter(|end| *end <= cells.len())
+        .ok_or_else(document_allocation_failed)?;
+    let mut last_owner = None;
+    let mut count = 0usize;
+    for position in index..end {
+        checkpoints.checkpoint_cell()?;
         let Some(owner) = owner_index(cells, position) else {
             continue;
         };
@@ -1107,6 +1292,7 @@ fn cell_survives_overwrite(
     Ok(owner_end <= overwrite_start || owner >= overwrite_end)
 }
 
+#[cfg(test)]
 fn validate_surviving_cell_remap(
     cells: &[TerminalCell],
     overwrite_start: usize,
@@ -1131,7 +1317,7 @@ fn validate_surviving_cell_remap_with_checkpoint(
 ) -> Result<()> {
     let mut cells_until_checkpoint = 0usize;
     for (owner, cell) in cells.iter().copied().enumerate() {
-        checkpoint_primary_cell(cell, &mut cells_until_checkpoint, &mut checkpoint)?;
+        checkpoint_surface_cell(&mut cells_until_checkpoint, &mut checkpoint)?;
         let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
             continue;
         };
@@ -1151,7 +1337,7 @@ fn validate_cell_remap_with_checkpoint(
 ) -> Result<()> {
     let mut cells_until_checkpoint = 0usize;
     for cell in cells.iter().copied() {
-        checkpoint_primary_cell(cell, &mut cells_until_checkpoint, &mut checkpoint)?;
+        checkpoint_surface_cell(&mut cells_until_checkpoint, &mut checkpoint)?;
         if let TerminalGlyph::Arena(source_id, _) = cell.glyph
             && !source_to_target.contains_key(&source_id)
         {
@@ -1161,6 +1347,7 @@ fn validate_cell_remap_with_checkpoint(
     Ok(())
 }
 
+#[cfg(test)]
 fn apply_validated_cell_remap(
     cells: &mut [TerminalCell],
     source_to_target: &HashMap<GlyphId, GlyphId>,
@@ -1176,7 +1363,7 @@ fn apply_validated_cell_remap_with_checkpoint(
     // The validation pass makes missing ids impossible without allocating a full staged surface.
     let mut cells_until_checkpoint = 0usize;
     for cell in cells.iter_mut() {
-        checkpoint_primary_cell(*cell, &mut cells_until_checkpoint, &mut checkpoint)?;
+        checkpoint_surface_cell(&mut cells_until_checkpoint, &mut checkpoint)?;
         let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
             continue;
         };
@@ -1189,14 +1376,10 @@ fn apply_validated_cell_remap_with_checkpoint(
     Ok(())
 }
 
-fn checkpoint_primary_cell(
-    cell: TerminalCell,
+fn checkpoint_surface_cell(
     cells_until_checkpoint: &mut usize,
     checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<()> {
-    if cell.is_continuation() {
-        return Ok(());
-    }
     checkpoint_surface_item(cells_until_checkpoint, checkpoint)
 }
 
@@ -1228,6 +1411,7 @@ fn try_remap_cell(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn try_write_primary_cell_from_surface(
     cells: &mut [TerminalCell],
     arena: &mut GlyphArena,
@@ -1286,18 +1470,19 @@ pub(crate) fn try_write_primary_cell_from_surface_with_resources_and_checkpoint(
     width: usize,
     source_arena: &GlyphArena,
     resources: &ResourceContext,
-    checkpoint: impl FnMut() -> Result<()>,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
 ) -> Result<bool> {
     if source_cell.is_continuation() {
         return Ok(false);
     }
     if let Some(id) = source_cell.deferred_text_id() {
-        return write_terminal_glyph(
+        return write_terminal_glyph_with_checkpoints(
             cells,
             index,
             TerminalGlyph::Deferred(id),
             width,
             source_cell.raw_style(),
+            checkpoints,
         );
     }
     let Some(text) = source_cell.try_output_text(source_arena)? else {
@@ -1314,7 +1499,7 @@ pub(crate) fn try_write_primary_cell_from_surface_with_resources_and_checkpoint(
                 width,
                 source_cell.raw_style(),
                 resources,
-                checkpoint,
+                checkpoints,
             )
         }
         TerminalCellText::Grapheme(grapheme) => {
@@ -1326,15 +1511,31 @@ pub(crate) fn try_write_primary_cell_from_surface_with_resources_and_checkpoint(
                 width,
                 source_cell.raw_style(),
                 resources,
-                checkpoint,
+                checkpoints,
             )
         }
     }
 }
 
 pub(crate) fn primary_width(cells: &[TerminalCell], index: usize) -> usize {
+    primary_width_with_checkpoint(cells, index, || Ok(())).unwrap_or(0)
+}
+
+pub(crate) fn primary_width_with_checkpoints(
+    cells: &[TerminalCell],
+    index: usize,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
+) -> Result<usize> {
+    primary_width_with_checkpoint(cells, index, || checkpoints.checkpoint_cell())
+}
+
+fn primary_width_with_checkpoint(
+    cells: &[TerminalCell],
+    index: usize,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<usize> {
     let Some(cell) = cells.get(index).copied() else {
-        return 0;
+        return Ok(0);
     };
     let width = match cell.primary_width_hint() {
         Some(width) => width,
@@ -1345,19 +1546,22 @@ pub(crate) fn primary_width(cells: &[TerminalCell], index: usize) -> usize {
                 .and_then(|position| cells.get(position))
                 .is_some_and(|cell| cell.owner_back() == Some(width))
             {
+                checkpoint()?;
                 width += 1;
             }
             width
         }
-        None => return 0,
+        None => return Ok(0),
     };
     debug_assert!(
-        (1..width).all(|offset| cells
-            .get(index + offset)
-            .is_some_and(|cell| cell.owner_back() == Some(offset))),
-        "primary width hint must match its continuation ownership"
+        width == 1
+            || index
+                .checked_add(width - 1)
+                .and_then(|position| cells.get(position))
+                .is_some_and(|cell| cell.owner_back() == Some(width - 1)),
+        "primary width hint must end at its final continuation"
     );
-    width
+    Ok(width)
 }
 
 pub(crate) fn owner_index(cells: &[TerminalCell], index: usize) -> Option<usize> {
@@ -1453,6 +1657,7 @@ fn can_write(cells: &[TerminalCell], index: usize, width: usize) -> bool {
             .is_some_and(|end| end <= cells.len())
 }
 
+#[cfg(test)]
 fn write_terminal_glyph(
     cells: &mut [TerminalCell],
     index: usize,
@@ -1483,6 +1688,40 @@ fn write_terminal_glyph(
     Ok(true)
 }
 
+fn write_terminal_glyph_with_checkpoints(
+    cells: &mut [TerminalCell],
+    index: usize,
+    glyph: TerminalGlyph,
+    width: usize,
+    style: CanvasStyle,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
+) -> Result<bool> {
+    if !can_write(cells, index, width) {
+        return Ok(false);
+    }
+    validate_continuation_width(width)?;
+
+    let end = index
+        .checked_add(width)
+        .filter(|end| *end <= cells.len())
+        .ok_or_else(document_allocation_failed)?;
+    for position in index..end {
+        clear_owner_at_with_checkpoints(cells, position, checkpoints)?;
+    }
+
+    checkpoints.checkpoint_cell()?;
+    cells[index] = TerminalCell::try_with_glyph_width_style(glyph, width, style)?;
+    for owner_back in 1..width {
+        checkpoints.checkpoint_cell()?;
+        let position = index
+            .checked_add(owner_back)
+            .ok_or_else(document_allocation_failed)?;
+        cells[position] = TerminalCell::try_continuation_with_owner_back(owner_back)?;
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
 fn write_terminal_glyph_to_cleared_range(
     cells: &mut [TerminalCell],
     index: usize,
@@ -1505,6 +1744,32 @@ fn write_terminal_glyph_to_cleared_range(
     Ok(true)
 }
 
+fn write_terminal_glyph_to_cleared_range_with_checkpoints(
+    cells: &mut [TerminalCell],
+    index: usize,
+    glyph: TerminalGlyph,
+    width: usize,
+    style: CanvasStyle,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
+) -> Result<bool> {
+    if !can_write(cells, index, width) {
+        return Ok(false);
+    }
+    validate_continuation_width(width)?;
+
+    checkpoints.checkpoint_cell()?;
+    cells[index] = TerminalCell::try_with_glyph_width_style(glyph, width, style)?;
+    for owner_back in 1..width {
+        checkpoints.checkpoint_cell()?;
+        let position = index
+            .checked_add(owner_back)
+            .ok_or_else(document_allocation_failed)?;
+        cells[position] = TerminalCell::try_continuation_with_owner_back(owner_back)?;
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
 fn clear_owner_at(cells: &mut [TerminalCell], index: usize) {
     let Some(owner) = owner_index(cells, index) else {
         return;
@@ -1512,6 +1777,23 @@ fn clear_owner_at(cells: &mut [TerminalCell], index: usize) {
     let width = primary_width(cells, owner).max(1);
     let end = owner.saturating_add(width).min(cells.len());
     cells[owner..end].fill(TerminalCell::blank());
+}
+
+fn clear_owner_at_with_checkpoints(
+    cells: &mut [TerminalCell],
+    index: usize,
+    checkpoints: &mut SurfaceCellCheckpoints<impl FnMut() -> Result<()>>,
+) -> Result<()> {
+    let Some(owner) = owner_index(cells, index) else {
+        return Ok(());
+    };
+    let width = primary_width_with_checkpoints(cells, owner, checkpoints)?.max(1);
+    let end = owner.saturating_add(width).min(cells.len());
+    for cell in &mut cells[owner..end] {
+        checkpoints.checkpoint_cell()?;
+        *cell = TerminalCell::blank();
+    }
+    Ok(())
 }
 
 fn validate_continuation_width(width: usize) -> Result<()> {
@@ -1556,6 +1838,7 @@ fn check_primary_cell_extent(policy: AsciiResourcePolicy, cells: usize) -> Resul
     policy.check(AsciiResourceLimitId::MaxGridCells, cells)
 }
 
+#[cfg(test)]
 fn check_cell_work(policy: AsciiResourcePolicy, cells: usize, passes: usize) -> Result<()> {
     let work_units = cells
         .checked_mul(passes)
@@ -1601,6 +1884,7 @@ fn unbounded_test_policy() -> AsciiResourcePolicy {
 mod tests {
     use super::*;
     use crate::resource::AsciiResourceLimitExceeded;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::mem::size_of;
 
     #[test]
@@ -1626,6 +1910,7 @@ mod tests {
 
         assert_eq!(source.len(), WIDTH);
         assert_eq!(primary_width(&source, 0), WIDTH);
+        assert_eq!(source[0].primary_width_hint(), None);
         assert_eq!(source[WIDTH - 1].owner_back(), Some(WIDTH - 1));
 
         let mut target = vec![TerminalCell::blank(); WIDTH];
@@ -1643,6 +1928,115 @@ mod tests {
         );
         assert_eq!(primary_width(&target, 0), WIDTH);
         assert_eq!(target[0].deferred_text_id(), Some(id));
+    }
+
+    #[test]
+    fn wide_deferred_push_checks_cancellation_inside_continuation_cells() {
+        const WIDTH: usize = SURFACE_CHECKPOINT_PRIMARY_CELLS * 4;
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let resources =
+            ResourceContext::new(unbounded_test_policy()).controlled(control, OperationPhase::Emit);
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
+        let mut cells = Vec::new();
+        let id = DeferredTextId::try_from_index(0).expect("test deferred id should fit");
+
+        let error = try_push_primary_deferred_style_with_resources_and_checkpoints(
+            &mut cells,
+            id,
+            WIDTH,
+            CanvasStyle::default(),
+            &resources,
+            &mut checkpoints,
+        )
+        .expect_err("wide continuation appends must observe cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(details)
+                if details.phase == OperationPhase::Emit
+                    && details.reason == CancelReason::Requested
+        ));
+        assert!(
+            !cells.is_empty() && cells.len() < WIDTH,
+            "cancellation should retain only the bounded partial append"
+        );
+    }
+
+    #[test]
+    fn wide_deferred_write_checks_cancellation_inside_continuation_cells() {
+        const WIDTH: usize = SURFACE_CHECKPOINT_PRIMARY_CELLS * 4;
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let resources =
+            ResourceContext::new(unbounded_test_policy()).controlled(control, OperationPhase::Emit);
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
+        let mut cells = vec![TerminalCell::blank(); WIDTH];
+        let id = DeferredTextId::try_from_index(0).expect("test deferred id should fit");
+
+        let error = try_write_primary_deferred_style_with_resources_and_checkpoints(
+            &mut cells,
+            0,
+            id,
+            WIDTH,
+            CanvasStyle::default(),
+            &mut checkpoints,
+        )
+        .expect_err("wide continuation writes must observe cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(details)
+                if details.phase == OperationPhase::Emit
+                    && details.reason == CancelReason::Requested
+        ));
+        assert!(
+            cells.iter().any(|cell| *cell == TerminalCell::blank()),
+            "cancellation should occur before the complete wide glyph is written"
+        );
+    }
+
+    #[test]
+    fn surface_compaction_admits_its_full_upper_bound_before_copying() {
+        const CELLS: usize = 2;
+
+        let mut source_cells = vec![TerminalCell::blank(); CELLS];
+        let mut source_arena = GlyphArena::default();
+        try_write_primary_grapheme_style_with_policy(
+            &mut source_cells,
+            &mut source_arena,
+            0,
+            "e\u{301}",
+            1,
+            CanvasStyle::default(),
+            unbounded_test_policy(),
+        )
+        .expect("complex source glyph should fit");
+        let upper_bound = CELLS * SURFACE_COMPACTION_WORK_PASSES;
+        let policy = unbounded_test_policy()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, upper_bound - 1)
+            .expect("valid test override");
+        let resources = ResourceContext::new(policy);
+
+        let error = GlyphArena::try_compact_surface_with_resources(
+            &source_arena,
+            &source_cells,
+            &resources,
+        )
+        .expect_err("the complete compaction upper bound must be admitted before copying");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxLayoutWorkUnits,
+                actual,
+                max,
+                ..
+            }) if actual == upper_bound && max == upper_bound - 1
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
     }
 
     #[test]

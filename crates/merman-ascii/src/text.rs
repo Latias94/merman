@@ -9,18 +9,17 @@ use crate::safe_text::{
     DeferredTextLine, SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
     visit_quoted_terminal_text, visit_safe_line_graphemes,
 };
-#[cfg(test)]
-use crate::terminal::try_mirror_surface;
 use crate::terminal::{
-    CanvasColor, CanvasStyle, GlyphArena, TerminalCell, is_retained_glyph_budget_error,
-    owner_index, primary_width, style_at, try_append_cells_from_surface,
-    try_append_cells_from_surface_with_checkpoint, try_push_primary_deferred_style_with_policy,
-    try_push_primary_grapheme_style_with_policy,
+    CanvasColor, CanvasStyle, GlyphArena, SurfaceCellCheckpoints, TerminalCell,
+    is_retained_glyph_budget_error, owner_index, primary_width_with_checkpoints, style_at,
+    try_append_cells_from_surface_with_checkpoint,
+    try_push_primary_deferred_style_with_resources_and_checkpoints,
     try_push_primary_grapheme_style_with_resources_and_checkpoint,
     try_write_primary_cell_from_surface_with_resources_and_checkpoint,
-    try_write_primary_grapheme_style_with_policy,
     try_write_primary_grapheme_style_with_resources_and_checkpoint,
 };
+#[cfg(test)]
+use crate::terminal::{primary_width, try_mirror_surface};
 
 pub(crate) type StyledCell = TerminalCell;
 
@@ -81,7 +80,8 @@ impl StyledLine {
     ) -> Result<Self> {
         let line_resources = resources.clone();
         line_resources.charge_document_cells(cells.len())?;
-        let (cells, arena) = GlyphArena::try_compact_surface(arena, cells, resources.policy())?;
+        let (cells, arena) =
+            GlyphArena::try_compact_surface_with_resources(arena, cells, resources)?;
         Ok(Self {
             cells,
             arena,
@@ -290,13 +290,19 @@ impl StyledLine {
     }
 
     pub(crate) fn try_push_plain_text(&mut self, text: &str) -> Result<()> {
+        let work_resources = self.resources.clone();
         let mut resources = self.resources.scoped();
         let result = visit_safe_line_graphemes(
             &mut resources,
             text,
             self.width_profile,
             |grapheme, width| {
-                self.try_push_measured_grapheme(grapheme, width, CanvasStyle::default())?;
+                self.try_push_measured_grapheme_with_resources(
+                    grapheme,
+                    width,
+                    CanvasStyle::default(),
+                    &work_resources,
+                )?;
                 Ok(true)
             },
         );
@@ -307,7 +313,8 @@ impl StyledLine {
     }
 
     pub(crate) fn try_push_spaces(&mut self, count: usize) -> Result<()> {
-        self.try_push_spaces_with_checkpoint(count, || Ok(()))
+        let resources = self.resources.clone();
+        self.try_push_spaces_with_checkpoint(count, || resources.checkpoint())
     }
 
     pub(crate) fn try_push_spaces_with_checkpoint(
@@ -346,35 +353,8 @@ impl StyledLine {
     }
 
     pub(crate) fn try_push_line(&mut self, line: &StyledLine) -> Result<()> {
-        if self.width_profile != line.width_profile {
-            return self.record_error(width_profile_mismatch());
-        }
-        self.resources.charge_document_cells(line.cells.len())?;
-        match try_append_cells_from_surface(
-            &mut self.cells,
-            &mut self.arena,
-            &line.cells,
-            &line.arena,
-            self.resources.policy(),
-        ) {
-            Ok(()) => Ok(()),
-            Err(error) if is_retained_glyph_budget_error(&error) => {
-                if let Err(compaction_error) = self.try_compact_arena() {
-                    return self.record_error(compaction_error);
-                }
-                match try_append_cells_from_surface(
-                    &mut self.cells,
-                    &mut self.arena,
-                    &line.cells,
-                    &line.arena,
-                    self.resources.policy(),
-                ) {
-                    Ok(()) => Ok(()),
-                    Err(error) => self.record_error(error),
-                }
-            }
-            Err(error) => self.record_error(error),
-        }
+        let resources = self.resources.clone();
+        self.try_push_line_with_checkpoint(line, &resources, || resources.checkpoint())
     }
 
     pub(crate) fn try_push_line_with_checkpoint(
@@ -437,13 +417,19 @@ impl StyledLine {
 
     pub(crate) fn try_push_role_text(&mut self, text: &str, role: AsciiColorRole) -> Result<()> {
         let style = CanvasStyle::foreground(CanvasColor::Role(role));
+        let work_resources = self.resources.clone();
         let mut resources = self.resources.scoped();
         let result = visit_safe_line_graphemes(
             &mut resources,
             text,
             self.width_profile,
             |grapheme, width| {
-                self.try_push_measured_grapheme(grapheme, width, style)?;
+                self.try_push_measured_grapheme_with_resources(
+                    grapheme,
+                    width,
+                    style,
+                    &work_resources,
+                )?;
                 Ok(true)
             },
         );
@@ -492,34 +478,37 @@ impl StyledLine {
         text: &DeferredTextLine,
         role: AsciiColorRole,
     ) -> Result<()> {
+        let initial_len = self.cells.len();
         let final_len = self
             .cells
             .len()
             .checked_add(text.width())
             .ok_or_else(document_allocation_failed)?;
-        if let Err(error) = self.resources.check_usage(0, text.width()) {
-            return self.record_error(error);
-        }
-        if let Err(error) = self
-            .resources
-            .check(AsciiResourceLimitId::MaxGridCells, final_len)
-        {
-            return self.record_error(error);
-        }
         let style = CanvasStyle::foreground(CanvasColor::Role(role));
-        for glyph in text.glyphs() {
-            let result = try_push_primary_deferred_style_with_policy(
-                &mut self.cells,
-                glyph.id(),
-                glyph.width(),
-                style,
-                self.resources.policy(),
-            );
-            if let Err(error) = result {
-                return self.record_error(error);
+        let resources = self.resources.clone();
+        let result = resources.transaction(|resources| {
+            resources.check_usage(0, text.width())?;
+            resources.check(AsciiResourceLimitId::MaxGridCells, final_len)?;
+            let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
+            for glyph in text.glyphs() {
+                try_push_primary_deferred_style_with_resources_and_checkpoints(
+                    &mut self.cells,
+                    glyph.id(),
+                    glyph.width(),
+                    style,
+                    resources,
+                    &mut checkpoints,
+                )?;
+            }
+            resources.charge_usage(0, text.width())
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.cells.truncate(initial_len);
+                self.record_error(error)
             }
         }
-        self.resources.charge_usage(0, text.width())
     }
 
     pub(crate) fn try_push_role_quoted_text(
@@ -572,7 +561,9 @@ impl StyledLine {
         let background = style_at(&self.cells, index).background;
         let mut buffer = [0; 4];
         let grapheme = ch.encode_utf8(&mut buffer);
-        let result = try_write_primary_grapheme_style_with_policy(
+        let resources = self.resources.clone();
+        let mut checkpoints = SurfaceCellCheckpoints::cadenced(|| resources.checkpoint());
+        let result = try_write_primary_grapheme_style_with_resources_and_checkpoint(
             &mut self.cells,
             &mut self.arena,
             index,
@@ -582,7 +573,8 @@ impl StyledLine {
                 foreground: Some(CanvasColor::Role(role)),
                 background,
             },
-            self.resources.policy(),
+            &resources,
+            &mut checkpoints,
         );
         match result {
             Ok(_) => Ok(()),
@@ -616,59 +608,10 @@ impl StyledLine {
         text: &str,
         role: AsciiColorRole,
     ) -> Result<()> {
-        let mut resources = self.resources.scoped();
-        let mut write_width = 0usize;
-        let measured =
-            visit_safe_line_graphemes(&mut resources, text, self.width_profile, |_, width| {
-                write_width = write_width
-                    .checked_add(width)
-                    .ok_or_else(document_allocation_failed)?;
-                Ok(true)
-            });
-        if let Err(error) = measured {
-            return self.record_error(error);
-        }
-        if !write_span_fits(self.cells.len(), start, write_width) {
-            return self.record_error(terminal_surface_does_not_fit());
-        }
-
-        let mut offset = 0usize;
-        let written = visit_safe_line_graphemes(
-            &mut resources,
-            text,
-            self.width_profile,
-            |grapheme, width| {
-                if width == 0 {
-                    return Ok(true);
-                }
-                let index = start
-                    .checked_add(offset)
-                    .ok_or_else(document_allocation_failed)?;
-                let background = style_at(&self.cells, index).background;
-                if !try_write_primary_grapheme_style_with_policy(
-                    &mut self.cells,
-                    &mut self.arena,
-                    index,
-                    grapheme,
-                    width,
-                    CanvasStyle {
-                        foreground: Some(CanvasColor::Role(role)),
-                        background,
-                    },
-                    self.resources.policy(),
-                )? {
-                    return Err(terminal_surface_does_not_fit());
-                }
-                offset = offset
-                    .checked_add(width)
-                    .ok_or_else(document_allocation_failed)?;
-                Ok(true)
-            },
-        );
-        if let Err(error) = written {
-            return self.record_error(error);
-        }
-        Ok(())
+        let resources = self.resources.clone();
+        self.try_write_text_role_with_checkpoint(start, text, role, &resources, || {
+            resources.checkpoint()
+        })
     }
 
     pub(crate) fn try_write_text_role_with_checkpoint(
@@ -697,12 +640,12 @@ impl StyledLine {
         }
 
         let mut offset = 0usize;
+        let mut surface_checkpoints = SurfaceCellCheckpoints::new(&mut checkpoint);
         let written = visit_safe_line_graphemes(
             &mut resources,
             text,
             self.width_profile,
             |grapheme, width| {
-                checkpoint()?;
                 if width == 0 {
                     return Ok(true);
                 }
@@ -721,7 +664,7 @@ impl StyledLine {
                         background,
                     },
                     work_resources,
-                    &mut checkpoint,
+                    &mut surface_checkpoints,
                 )? {
                     return Err(terminal_surface_does_not_fit());
                 }
@@ -776,19 +719,19 @@ impl StyledLine {
             return self.record_error(terminal_surface_does_not_fit());
         }
         let mut offset = 0usize;
-        let mut cells_until_checkpoint = 0usize;
+        let mut surface_checkpoints = SurfaceCellCheckpoints::new(&mut checkpoint);
         while offset < line.cells.len() {
             let cell = line.cells[offset];
             if cell.is_continuation() {
                 offset += 1;
                 continue;
             }
-            if let Err(error) =
-                checkpoint_primary_cell(&mut cells_until_checkpoint, &mut checkpoint)
-            {
-                return self.record_error(error);
-            }
-            let width = primary_width(&line.cells, offset).max(1);
+            let width =
+                match primary_width_with_checkpoints(&line.cells, offset, &mut surface_checkpoints)
+                {
+                    Ok(width) => width.max(1),
+                    Err(error) => return self.record_error(error),
+                };
             let index = match start.checked_add(offset) {
                 Some(index) => index,
                 None => return self.record_error(document_allocation_failed()),
@@ -801,7 +744,7 @@ impl StyledLine {
                 width,
                 &line.arena,
                 work_resources,
-                &mut checkpoint,
+                &mut surface_checkpoints,
             ) {
                 Ok(true) => {}
                 Ok(false) => return self.record_error(terminal_surface_does_not_fit()),
@@ -905,14 +848,26 @@ impl StyledLine {
         width: usize,
         style: CanvasStyle,
     ) -> Result<()> {
+        let resources = self.resources.clone();
+        self.try_push_measured_grapheme_with_resources(grapheme, width, style, &resources)
+    }
+
+    fn try_push_measured_grapheme_with_resources(
+        &mut self,
+        grapheme: &str,
+        width: usize,
+        style: CanvasStyle,
+        resources: &ResourceContext,
+    ) -> Result<()> {
         self.resources.charge_document_cells(width)?;
-        let result = try_push_primary_grapheme_style_with_policy(
+        let result = try_push_primary_grapheme_style_with_resources_and_checkpoint(
             &mut self.cells,
             &mut self.arena,
             grapheme,
             width,
             style,
-            self.resources.policy(),
+            resources,
+            || resources.checkpoint(),
         );
         match result {
             Ok(()) => Ok(()),
@@ -922,11 +877,6 @@ impl StyledLine {
 
     fn record_error<T>(&mut self, error: AsciiError) -> Result<T> {
         Err(error)
-    }
-
-    fn try_compact_arena(&mut self) -> Result<()> {
-        self.arena
-            .try_compact_in_place(&mut self.cells, self.resources.policy())
     }
 }
 
@@ -1332,7 +1282,7 @@ mod tests {
     }
 
     #[test]
-    fn checkpointed_surface_append_charges_both_passes_against_used_work() {
+    fn default_surface_append_charges_both_passes_against_used_work() {
         let source = StyledLine::plain_text_with_profile("X", TerminalWidthProfile::Unicode);
 
         let exact_policy = AsciiResourcePolicy::default()
@@ -1345,7 +1295,7 @@ mod tests {
         let mut exact_target =
             StyledLine::with_resources(TerminalWidthProfile::Unicode, &exact_resources);
         exact_target
-            .try_push_line_with_checkpoint(&source, &exact_resources, || Ok(()))
+            .try_push_line(&source)
             .expect("one existing unit plus both one-cell append passes should fit exactly");
         assert_eq!(exact_resources.layout_work_used(), 3);
 
@@ -1361,9 +1311,7 @@ mod tests {
             StyledLine::with_resources(TerminalWidthProfile::Unicode, &below_resources);
         let owner = below_resources.clone();
         let error = owner
-            .transaction(|_| {
-                below_target.try_push_line_with_checkpoint(&source, &below_resources, || Ok(()))
-            })
+            .transaction(|_| below_target.try_push_line(&source))
             .expect_err("N-1 cumulative work must reject before copying the source surface");
 
         assert!(matches!(
