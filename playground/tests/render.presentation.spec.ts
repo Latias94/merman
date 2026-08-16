@@ -98,7 +98,10 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
 }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  await waitForPreviewSvg(page);
+  await renderSource(
+    page,
+    `${fontOnlyConfig("default")}\nflowchart LR\n  A --> B`,
+  );
 
   const viewport = page.locator('[data-merman-svg-viewport="true"]').first();
   expect(await viewport.boundingBox()).toEqual(
@@ -106,7 +109,7 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
   );
   await expect(viewport).toHaveAttribute(
     "data-preview-canvas-tone",
-    /^(light|dark)$/u,
+    "light",
   );
   await expect(viewport).toHaveAttribute(
     "data-svg-presentation-mode",
@@ -115,6 +118,7 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
   await expect(viewport).not.toHaveCSS("background-image", "none");
   const content = viewport.locator(".preview-container");
   await expect(content).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(content).toHaveCSS("background-image", "none");
   await expect(content).toHaveCSS("padding", "0px");
   await expect(content).toHaveCSS("border-radius", "0px");
   await expect(content).toHaveCSS("box-shadow", "none");
@@ -157,6 +161,10 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
     "viewbox",
   );
   await expect(viewport).toHaveCSS("background-image", "none");
+  await expect(content).not.toHaveCSS("background-image", "none");
+  const lightTransparencyGrid = await content.evaluate(
+    (element) => getComputedStyle(element).backgroundImage,
+  );
   await expect(content).toHaveCSS("outline-style", "solid");
   await expect(content).not.toHaveCSS("box-shadow", "none");
   expect(await artifactMarker()).toBe("stable");
@@ -183,13 +191,23 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
 
   await page.keyboard.press("Enter");
   await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await renderSource(
+    page,
+    `${fontOnlyConfig("dark")}\nflowchart LR\n  A --> B`,
+  );
+  await expect(viewport).toHaveAttribute("data-preview-canvas-tone", "dark");
+  const darkTransparencyGrid = await content.evaluate(
+    (element) => getComputedStyle(element).backgroundImage,
+  );
+  expect(darkTransparencyGrid).not.toBe("none");
+  expect(darkTransparencyGrid).not.toBe(lightTransparencyGrid);
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
   const compareCanvas = page.locator(
     '[data-merman-compare-scroll-owner="true"]',
   );
   await expect(compareCanvas).toHaveAttribute(
     "data-preview-canvas-tone",
-    /^(light|dark)$/u,
+    "dark",
   );
   await expect(compareCanvas).toHaveAttribute(
     "data-svg-presentation-mode",
@@ -217,6 +235,7 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
           return (
             content instanceof HTMLElement &&
             getComputedStyle(element).backgroundImage === "none" &&
+            getComputedStyle(content).backgroundImage !== "none" &&
             getComputedStyle(content).outlineStyle === "solid"
           );
         }),
