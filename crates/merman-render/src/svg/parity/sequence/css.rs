@@ -5,6 +5,7 @@ pub(super) struct SequenceThemeCssAdapter<'a> {
     pub(super) actor_fill: Option<&'a str>,
     pub(super) actor_stroke: Option<&'a str>,
     pub(super) lifeline_stroke: Option<&'a str>,
+    pub(super) lifeline_stroke_width: Option<f32>,
     pub(super) message_stroke: Option<&'a str>,
     pub(super) note_fill: Option<&'a str>,
     pub(super) note_stroke: Option<&'a str>,
@@ -261,6 +262,14 @@ pub(super) fn write_sequence_css_with_theme_adapter(
             &mut out,
             r#"#{} .actor-line{{stroke:{};}}"#,
             id, typed_lifeline_stroke
+        );
+    }
+    if let Some(typed_lifeline_stroke_width) = typed.lifeline_stroke_width {
+        let _ = write!(
+            &mut out,
+            r#"#{} .actor-line{{stroke-width:{}px;}}"#,
+            id,
+            fmt(f64::from(typed_lifeline_stroke_width))
         );
     }
     if let Some(typed_message_stroke) = typed.message_stroke {
@@ -561,12 +570,14 @@ mod tests {
             &json!({"themeVariables": {"actorLineColor": "#444444"}}),
             SequenceThemeCssAdapter {
                 lifeline_stroke: Some("#2563eb"),
+                lifeline_stroke_width: Some(2.0),
                 ..SequenceThemeCssAdapter::default()
             },
         );
 
         assert!(css.contains(r#"#seq .actor-line{stroke:#444444;}"#));
         assert!(css.contains(r#"#seq .actor-line{stroke:#2563eb;}"#));
+        assert!(css.contains(r#"#seq .actor-line{stroke-width:2px;}"#));
         assert!(!css.contains(r#"#seq .actor{stroke:#2563eb;}"#));
         assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;}"#));
         assert!(!css.contains(r#"#seq .note{stroke:#2563eb;}"#));

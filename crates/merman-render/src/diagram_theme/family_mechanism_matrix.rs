@@ -656,7 +656,7 @@ fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            )
+            ) | FamilyThemeRuleFacet::StrokeWidth
         )
     {
         return FamilyThemeDisposition::TypedAdapter;
@@ -1636,7 +1636,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_lifeline_owns_unqualified_scalar_fill_and_stroke() {
+    fn sequence_lifeline_owns_unqualified_scalar_fill_stroke_and_width() {
         for paint in [
             CanvasPaint::Transparent,
             CanvasPaint::solid("#123456").expect("valid Lifeline paint"),
@@ -1668,6 +1668,29 @@ mod tests {
                     })
             );
         }
+
+        let stroke_width = ThemeRule::new(
+            ThemeTarget::Lifeline,
+            ThemeStylePatch::default()
+                .with_stroke_width(2.0)
+                .expect("valid Lifeline stroke width"),
+        );
+        assert_eq!(
+            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &stroke_width)[0].disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+
+        let explicit_default = ThemeRule::new(
+            ThemeTarget::Lifeline,
+            ThemeStylePatch::default()
+                .with_stroke_width(2.0)
+                .expect("valid Lifeline stroke width"),
+        )
+        .with_variant(ThemeVariant::Default);
+        assert_eq!(
+            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)[0].disposition(),
+            FamilyThemeDisposition::Unsupported
+        );
 
         for paint_kind in [
             FamilyThemePaintKind::Clear,

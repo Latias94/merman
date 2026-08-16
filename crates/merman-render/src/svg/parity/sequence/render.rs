@@ -245,6 +245,7 @@ fn render_sequence_diagram_svg_inner(
             actor_fill: actor_theme.typed_fill.as_deref(),
             actor_stroke: actor_theme.typed_stroke.as_deref(),
             lifeline_stroke: lifeline_theme.typed_stroke.as_deref(),
+            lifeline_stroke_width: lifeline_theme.typed_stroke_width,
             message_stroke: message_theme.typed_stroke.as_deref(),
             note_fill: note_theme.typed_fill.as_deref(),
             note_stroke: note_theme.typed_stroke.as_deref(),
@@ -261,6 +262,7 @@ fn render_sequence_diagram_svg_inner(
     prepared.theme_evidence().record_lifeline_emission(
         crate::sequence::SequenceLifelineThemeEmission::from_terminal_writer(
             lifeline_theme.typed_stroke.as_deref(),
+            lifeline_theme.typed_stroke_width,
             lifeline_theme.selected_property,
             lifeline_stroke_overridden,
             lifeline_theme.receipt,
@@ -455,6 +457,7 @@ struct SequenceActorThemeResolution {
 #[derive(Default)]
 struct SequenceLifelineThemeResolution {
     typed_stroke: Option<String>,
+    typed_stroke_width: Option<f32>,
     selected_property: Option<crate::diagram_theme::ResolvedStyleProperty>,
     receipt: crate::sequence::SequenceLifelineThemeReceipt,
 }
@@ -671,6 +674,7 @@ fn resolve_sequence_lifeline_theme(
     let mut has_rule_routes = false;
     let mut has_typed_fill = false;
     let mut has_typed_stroke = false;
+    let mut has_typed_stroke_width = false;
     for route in theme.family_mechanism_routes().iter().copied() {
         let FamilyThemeMechanism::RuleFacet {
             target: ThemeTarget::Lifeline,
@@ -697,6 +701,11 @@ fn resolve_sequence_lifeline_theme(
                         kind,
                         FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                     );
+            }
+            FamilyThemeRuleFacet::StrokeWidth => {
+                has_rule_routes = true;
+                has_typed_stroke_width =
+                    route.disposition() == FamilyThemeDisposition::TypedAdapter;
             }
             _ => {}
         }
@@ -727,8 +736,12 @@ fn resolve_sequence_lifeline_theme(
             _ => None,
         })
         .flatten();
+    let typed_stroke_width = has_typed_stroke_width
+        .then(|| style.stroke_width())
+        .flatten();
     Ok(SequenceLifelineThemeResolution {
         typed_stroke,
+        typed_stroke_width,
         selected_property,
         receipt,
     })

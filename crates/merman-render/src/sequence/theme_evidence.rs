@@ -119,6 +119,7 @@ impl SequenceLifelineThemeReceipt {
 #[derive(Debug, Clone, Default)]
 struct SequenceLifelineThemeState {
     paint_emitted: bool,
+    stroke_width_emitted: bool,
     paint_overridden: bool,
     selected_property: Option<ResolvedStyleProperty>,
     receipt: SequenceLifelineThemeReceipt,
@@ -127,6 +128,7 @@ struct SequenceLifelineThemeState {
 impl SequenceLifelineThemeState {
     fn merge(&mut self, emission: SequenceLifelineThemeEmission) {
         self.paint_emitted |= emission.paint_emitted;
+        self.stroke_width_emitted |= emission.stroke_width_emitted;
         self.paint_overridden |= emission.paint_overridden;
         if let Some(selected_property) = emission.selected_property {
             debug_assert!(
@@ -140,10 +142,11 @@ impl SequenceLifelineThemeState {
     }
 }
 
-/// Complete writer-owned emission facts for the Sequence Lifeline paint tranche.
+/// Complete writer-owned emission facts for the Sequence Lifeline style tranche.
 #[derive(Debug)]
 pub(crate) struct SequenceLifelineThemeEmission {
     paint_emitted: bool,
+    stroke_width_emitted: bool,
     paint_overridden: bool,
     selected_property: Option<ResolvedStyleProperty>,
     receipt: SequenceLifelineThemeReceipt,
@@ -152,6 +155,7 @@ pub(crate) struct SequenceLifelineThemeEmission {
 impl SequenceLifelineThemeEmission {
     pub(crate) fn from_terminal_writer(
         typed_stroke: Option<&str>,
+        typed_stroke_width: Option<f32>,
         selected_property: Option<ResolvedStyleProperty>,
         paint_overridden: bool,
         receipt: SequenceLifelineThemeReceipt,
@@ -160,6 +164,7 @@ impl SequenceLifelineThemeEmission {
         let complete_line_emission = has_lines && receipt.emitted_lines == receipt.line_candidates;
         Self {
             paint_emitted: complete_line_emission && typed_stroke.is_some(),
+            stroke_width_emitted: complete_line_emission && typed_stroke_width.is_some(),
             paint_overridden: has_lines && paint_overridden,
             selected_property,
             receipt,
@@ -582,6 +587,15 @@ fn observe_lifeline_rule(
             }
             observation.capabilities.insert(capability_for_paint(kind));
         }
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::StrokeWidth) => {
+            if !lifeline.stroke_width_emitted {
+                observation.incomplete = true;
+                return;
+            }
+            observation
+                .capabilities
+                .insert(ThemeCapability::BorderStyling);
+        }
         (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
         (FamilyThemeDisposition::Unsupported, facet) => {
             observation
@@ -768,7 +782,10 @@ impl SequenceThemeEvidenceRecorder {
                 rule_index,
                 target: ThemeTarget::Lifeline,
                 selector: FamilyThemeSelectorShape::Static { variant: None },
-                facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
+                facet:
+                    FamilyThemeRuleFacet::Fill(_)
+                    | FamilyThemeRuleFacet::Stroke(_)
+                    | FamilyThemeRuleFacet::StrokeWidth,
             } = route.mechanism()
             {
                 lifeline_rules.entry(rule_index).or_default();
@@ -1411,6 +1428,7 @@ mod tests {
             let recorder = SequenceThemeEvidenceRecorder::default();
             recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
                 Some("#2563eb"),
+                None,
                 Some(ResolvedStyleProperty::Stroke),
                 false,
                 receipt,
@@ -1418,6 +1436,66 @@ mod tests {
 
             let evidence = recorder.finish(Some(&resolved));
             assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn lifeline_stroke_width_requires_complete_actor_line_receipt() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Lifeline,
+                            ThemeStylePatch::default()
+                                .with_stroke_width(2.0)
+                                .expect("valid Lifeline stroke width"),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Lifeline width theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+
+        for (line_candidates, emitted_lines, paint_overridden, expected_applied) in [
+            (1, 0, false, false),
+            (2, 1, false, false),
+            (2, 2, true, true),
+        ] {
+            let mut receipt = SequenceLifelineThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Lifeline,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..line_candidates {
+                receipt.record_line_candidate();
+            }
+            for _ in 0..emitted_lines {
+                receipt.record_line_emission();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+                None,
+                Some(2.0),
+                None,
+                paint_overridden,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert_eq!(evidence.applied().len(), usize::from(expected_applied));
+            assert_eq!(
+                evidence.applied_capabilities(),
+                if expected_applied {
+                    BTreeSet::from([ThemeCapability::BorderStyling])
+                } else {
+                    BTreeSet::new()
+                }
+            );
             assert!(evidence.not_applicable_mechanisms().is_empty());
             assert!(evidence.residuals().is_empty());
         }
@@ -1452,6 +1530,7 @@ mod tests {
         let recorder = SequenceThemeEvidenceRecorder::default();
         recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
             Some("#2563eb"),
+            None,
             Some(ResolvedStyleProperty::Stroke),
             false,
             receipt,

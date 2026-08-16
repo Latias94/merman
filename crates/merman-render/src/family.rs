@@ -8468,6 +8468,63 @@ style Empty font-weight:banana
     }
 
     #[test]
+    fn require_portable_accepts_sequence_lifeline_stroke_width_after_actor_line_emission() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Lifeline,
+                            ThemeStylePatch::default()
+                                .with_stroke_width(2.0)
+                                .expect("valid Lifeline stroke width"),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Lifeline width theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence Lifeline width session"),
+        )
+        .expect("Sequence Lifeline width theme should prepare")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("every actor Lifeline width should be proven by its terminal writer");
+
+        assert!(
+            rendered
+                .svg()
+                .contains("#merman .actor-line{stroke-width:2px;}")
+        );
+        assert_eq!(rendered.svg().matches(r#"data-et="life-line""#).count(), 2);
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Lifeline,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
     fn sequence_lifeline_stroke_wins_over_fill_independent_of_rule_order() {
         for stroke_first in [false, true] {
             let fill_rule = ThemeRule::new(
