@@ -2414,8 +2414,7 @@ Note over Alice,Bob: Config Note Weight"#;
         .expect("parse measured Sequence note source")
         .expect("detect measured Sequence note source");
     assert_eq!(
-        measurement_parsed.metadata().effective_config.as_value()["themeVariables"]
-            ["noteFontWeight"],
+        measurement_parsed.metadata().effective_config.as_value()["themeVariables"]["noteFontWeight"],
         serde_json::json!(600),
         "the explicit legacy init value must survive the configured Mermaid secure allowlist"
     );
