@@ -8,7 +8,7 @@ use merman::{
     resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(feature = "svg")]
 use sha2::{Digest as _, Sha256};
 
 #[cfg(feature = "svg")]
@@ -676,6 +676,118 @@ fn host_display_measurements_make_document_and_svg_target_host_dependent() {
             .reasons()
             .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
     );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn require_portable_svg_target_rejects_actual_host_display_measurements() {
+    let identity = merman::svg::TextMeasurementProfileIdentity::new(
+        merman::svg::MeasurementProfileId::new("merman.test-strict-svg-host")
+            .expect("test profile id"),
+        "render-operation-test@1",
+    )
+    .expect("test profile identity");
+    let measurement = merman::svg::TextMeasurementPolicy::host_display(
+        identity,
+        Arc::new(FixedHostTextMeasurer),
+        merman::svg::TextMeasurementPhase::ALL,
+    );
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic()
+            .with_text_measurement_policy(measurement)
+            .with_theme_portability_requirement(
+                merman::svg::ThemePortabilityRequirement::RequirePortable,
+            ),
+        ..merman::SvgRequest::default()
+    };
+
+    let error = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Start] --> B[Done]",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(flowchart_paint_theme()),
+        )
+        .expect_err("strict SVG admission must reject actual host measurement provenance");
+    let RenderError::TargetAdmission(error) = error else {
+        panic!("strict SVG rejection must retain target evidence: {error}");
+    };
+    assert_eq!(
+        error.receipt().artifact_kind(),
+        merman::RenderArtifactKind::Svg
+    );
+    assert_eq!(
+        error.receipt().status(),
+        merman::TargetAdmissionStatus::HostDependent
+    );
+    assert!(
+        error
+            .receipt()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::HostDependentTextLayout)
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn require_portable_svg_output_retains_the_exact_target_receipt() {
+    let font_bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let font_catalog = merman::svg::FontCatalogSpec::new([merman::svg::FontAssetSpec::new(
+        "strict-svg-excalifont",
+        font_bytes,
+    )])
+    .with_available_sources([merman::svg::FontSource::Embedded])
+    .with_embedding_requirement(merman::svg::FontEmbeddingRequirement::FullFont);
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new()
+                .with_assets(merman::svg::ThemeAssets::default().with_font_catalog(font_catalog))
+                .with_canvas(
+                    merman::svg::CanvasSpec::solid("#f7f3e8").expect("valid Sequence canvas"),
+                ),
+        )
+        .expect("compile Sequence full-font theme");
+    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "themeVariables": {"fontFamily": "Excalifont"}
+        })),
+    ));
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..merman::SvgRequest::default()
+    };
+
+    let output = renderer
+        .render(
+            RenderRequest::svg(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Portable message",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme),
+        )
+        .expect("portable standalone SVG should pass strict target admission");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a strict standalone SVG output");
+    };
+    let admission = output
+        .admission()
+        .expect("strict SVG output must retain target-owned admission");
+    assert_eq!(admission.artifact_kind(), merman::RenderArtifactKind::Svg);
+    assert_eq!(admission.status(), merman::TargetAdmissionStatus::Portable);
+    assert_eq!(
+        admission.artifact_digest(),
+        <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+    );
+    assert_ne!(admission.receipt_digest(), [0; 32]);
 }
 
 #[cfg(feature = "png")]

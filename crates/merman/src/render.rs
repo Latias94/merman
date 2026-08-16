@@ -147,6 +147,12 @@ impl SvgEnvironment {
                 .map_err(RenderError::from),
         }
     }
+
+    const fn portability_requirement(
+        &self,
+    ) -> merman_render::diagram_theme::ThemePortabilityRequirement {
+        self.backend.theme_portability_requirement()
+    }
 }
 
 #[cfg(feature = "svg")]
@@ -906,6 +912,7 @@ fn summarize_theme_evidence(
 pub struct SvgOutput {
     svg: String,
     evidence: RenderEvidence,
+    admission: Option<TargetAdmissionReceipt>,
 }
 
 /// Completed graphical document retained as the single source for every terminal target.
@@ -1092,6 +1099,21 @@ impl RenderedDocument {
         &self.standalone_svg_admission
     }
 
+    fn into_admitted_svg_output(self) -> Result<SvgOutput, RenderError> {
+        enforce_portability_requirement(&self.evidence, &self.standalone_svg_admission)?;
+        let Self {
+            svg,
+            evidence,
+            portability: _,
+            standalone_svg_admission,
+        } = self;
+        Ok(SvgOutput {
+            svg: svg.into_string(),
+            evidence: (*evidence).clone(),
+            admission: Some(standalone_svg_admission),
+        })
+    }
+
     #[cfg(feature = "png")]
     pub fn prepare_png_export(
         &self,
@@ -1230,6 +1252,7 @@ impl SvgOutput {
         Self {
             svg,
             evidence: RenderEvidence::from_family(family),
+            admission: None,
         }
     }
 
@@ -1241,6 +1264,16 @@ impl SvgOutput {
         &self.evidence
     }
 
+    /// Returns target-owned admission when this SVG request required terminal portability proof.
+    ///
+    /// `BestEffort` keeps the caller-selected parity/output pipeline and therefore does not claim a
+    /// standalone terminal receipt. `RequirePortable` either returns an output with a Portable
+    /// receipt or fails with [`RenderError::TargetAdmission`] carrying the rejected receipt.
+    pub const fn admission(&self) -> Option<&TargetAdmissionReceipt> {
+        self.admission.as_ref()
+    }
+
+    /// Returns SVG text and evidence, deliberately discarding any target-admission receipt.
     pub fn into_parts(self) -> (String, RenderEvidence) {
         (self.svg, self.evidence)
     }
@@ -2760,6 +2793,17 @@ fn render_svg_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgOutput>, RenderError> {
+    if request.environment.portability_requirement()
+        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
+    {
+        let Some((svg, family, _operation)) = prepare_resvg_target(semantic, &request)? else {
+            unreachable!("semantic artifact always produces a finalized SVG or an error")
+        };
+        return RenderedDocument::new(svg, family)
+            .into_admitted_svg_output()
+            .map(Some);
+    }
+
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
         operation.theme.as_ref(),
