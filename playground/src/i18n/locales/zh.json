@@ -85,8 +85,11 @@
   },
   "share": {
     "title": "分享",
-    "copyLink": "复制链接",
-    "copyLinkDesc": "通过 URL 分享图表",
+    "workspaceLink": "复制工作区链接",
+    "workspaceLinkDesc": "在接收设备上恢复渲染工作区。",
+    "issueLink": "复制问题复现链接",
+    "issueLinkDesc": "恢复当前页面、编辑器标签、预览模式、SVG 展示方式和边界偏好。",
+    "issueViewNotRestored": "无法恢复问题复现上下文。已使用本地视图默认值。",
     "copied": "已复制！",
     "copyFailed": "复制失败",
     "openMermaidLive": "在 Mermaid Live 打开",
@@ -314,12 +317,12 @@
     "reset": "重置视图",
     "resetZoom": "重置缩放",
     "fitToView": "适应视图",
-    "viewportMode": "渲染视口",
-    "viewportCanonical": "标准",
-    "viewportHost": "宿主",
-    "viewportSize": "{{width}} × {{height}}",
-    "viewportMeasuring": "正在测量预览区域；暂用 {{width}} × {{height}}",
-    "viewportMeasuringShort": "测量中…"
+    "presentationMode": "SVG 展示方式",
+    "infiniteCanvas": "无限画布",
+    "infiniteCanvasShort": "画布",
+    "viewBoxFrame": "ViewBox 画框",
+    "viewBoxFrameShort": "ViewBox",
+    "svgBounds": "显示 SVG 边界"
   },
   "status": {
     "diagramType": "类型",

@@ -6,7 +6,6 @@ import type {
   MermanSvgPipeline,
   MermanTextMeasurementMode,
 } from "../runtime/merman-core.ts";
-import type { RenderViewportMode } from "../runtime/render-viewport.ts";
 
 export interface WorkspaceSnapshot {
   readonly code: string;
@@ -14,7 +13,6 @@ export interface WorkspaceSnapshot {
   readonly diagramTheme: ThemeName;
   readonly presentationThemePresetId: string | null;
   readonly presentationProfileId: string | null;
-  readonly renderViewportMode: RenderViewportMode;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
   readonly diagramFont: DiagramFont;
@@ -31,7 +29,6 @@ export const DEFAULT_WORKSPACE_SNAPSHOT: Readonly<WorkspaceSnapshot> =
     diagramTheme: "default",
     presentationThemePresetId: null,
     presentationProfileId: null,
-    renderViewportMode: "canonical",
     svgPipeline: "parity",
     textMeasurementMode: "browser",
     diagramFont: "trebuchet",

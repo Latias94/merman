@@ -297,6 +297,53 @@ test("preview preserves safe HTML-compatible SVG through inert DOM parsing", asy
   ]);
 });
 
+test("responsive preview preserves renderer viewBox ownership", async ({ page }) => {
+  await page.goto(sourceOrigin);
+  const result = await page.evaluate(async () => {
+    const { projectNavigableInlineSvg } = await import(
+      "/src/runtime/" + "render-artifact.ts"
+    );
+    const { prepareSvgForResponsivePreview } = await import(
+      "/src/lib/" + "svg-geometry.ts"
+    );
+    const sources = [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="5 6 120 40" style="background-color: white"><text>bounded</text></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text>intrinsic</text></svg>',
+    ];
+
+    return sources.map((source) => {
+      const artifact = projectNavigableInlineSvg(source);
+      const preview = prepareSvgForResponsivePreview(artifact, document);
+      if (!preview) throw new Error("Expected prepared preview geometry.");
+      const root = preview.takeNode();
+      return {
+        backgroundColor: (root as SVGElement).style.backgroundColor,
+        sourceUnchanged: artifact.svg === source,
+        viewBox: root.getAttribute("viewBox"),
+        width: root.getAttribute("width"),
+        height: root.getAttribute("height"),
+      };
+    });
+  });
+
+  expect(result).toEqual([
+    {
+      backgroundColor: "",
+      sourceUnchanged: true,
+      viewBox: "5 6 120 40",
+      width: "100%",
+      height: "100%",
+    },
+    {
+      backgroundColor: "",
+      sourceUnchanged: true,
+      viewBox: null,
+      width: "120",
+      height: "40",
+    },
+  ]);
+});
+
 test("preview hardens external anchors without mutating the export source", async ({
   page,
 }) => {

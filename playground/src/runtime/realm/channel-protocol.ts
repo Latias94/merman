@@ -19,7 +19,7 @@ import {
 export { utf8ByteLength } from "../../lib/utf8.ts";
 export type { RealmEngineArtifactId } from "./generated/opaque-realm-plan.generated.ts";
 
-export const REALM_PROTOCOL_VERSION = 2 as const;
+export const REALM_PROTOCOL_VERSION = 3 as const;
 
 export const REALM_BUDGETS = Object.freeze({
   // Engine artifacts are generated, hash-bound program inputs. They are kept
@@ -38,6 +38,7 @@ export const REALM_BUDGETS = Object.freeze({
   runTimeoutMs: 10 * 60_000,
   maxViewportDimension: 4096,
   maxViewportPixels: 4096 * 4096,
+  maxScreenAvailableWidth: 16_384,
 });
 
 export const BENCHMARK_BUDGETS = Object.freeze({
@@ -110,6 +111,7 @@ export interface CompareRenderPayload {
   readonly diagramFont: DiagramFont;
   readonly externalRequirements: MermaidExternalRequirements;
   readonly source: string;
+  readonly screenAvailableWidth: number;
   readonly theme: string;
   readonly viewport: RealmViewport;
 }
@@ -489,6 +491,7 @@ export function validateCompareRenderPayload(
     "theme",
     "diagramFont",
     "externalRequirements",
+    "screenAvailableWidth",
     "viewport",
   ]);
 
@@ -539,6 +542,9 @@ export function validateCompareRenderPayload(
     theme,
     diagramFont: diagramFont as DiagramFont,
     externalRequirements: normalizedRequirements,
+    screenAvailableWidth: validateScreenAvailableWidth(
+      payload.screenAvailableWidth,
+    ),
     viewport: validateRealmViewport(payload.viewport),
   };
 }
@@ -714,6 +720,19 @@ export function validateRealmViewport(value: unknown): RealmViewport {
     throw new RealmProtocolError("Realm viewport exceeds its layout budget.");
   }
   return { width, height };
+}
+
+export function validateScreenAvailableWidth(value: unknown): number {
+  const width = expectPositiveFinite(value, "screen available width");
+  if (
+    !Number.isSafeInteger(width) ||
+    width > REALM_BUDGETS.maxScreenAvailableWidth
+  ) {
+    throw new RealmProtocolError(
+      "Realm screen available width exceeds its layout budget.",
+    );
+  }
+  return width;
 }
 
 function assertEnvelope(

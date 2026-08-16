@@ -3,8 +3,8 @@ import {
   MERMAID_JS_VERSION,
   mermaidExternalRequirementsFor,
 } from "../runtime/mermaid-requirements.ts";
-import { CANONICAL_RENDER_VIEWPORT } from "../runtime/render-viewport.ts";
 import { createBrowserBenchmarkRuntime } from "./browser.ts";
+import { createCanonicalBenchmarkPayload } from "./input.ts";
 import {
   BENCHMARK_CORPUS_MERMAN_VERSION,
   createBenchmarkCorpusCatalog,
@@ -63,14 +63,13 @@ const orchestrator = createBenchmarkCorpusOrchestrator({
   controller: benchmarkController,
   prepareFixture(fixture) {
     return {
-      payload: {
+      payload: createCanonicalBenchmarkPayload({
         source: fixture.source,
         configJson: DEFAULT_MERMAID_CONFIG,
         theme: "default",
         diagramFont: "trebuchet",
         externalRequirements: mermaidExternalRequirementsFor(fixture.detection),
-        viewport: CANONICAL_RENDER_VIEWPORT,
-      },
+      }),
       detection: fixture.detection,
     };
   },

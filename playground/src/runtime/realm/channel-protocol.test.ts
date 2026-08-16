@@ -264,6 +264,22 @@ test("protocol budgets reject one byte beyond each public limit", () => {
   );
 });
 
+test("compare input validates the controlled browser screen width", () => {
+  assert.equal(
+    validateCompareRenderRequest(renderRequest(), IDENTITY, 1).payload
+      .screenAvailableWidth,
+    1512,
+  );
+  for (const screenAvailableWidth of [0, -1, Number.NaN, 16_385]) {
+    const request = renderRequest() as ReturnType<typeof renderRequest>;
+    request.payload.screenAvailableWidth = screenAvailableWidth;
+    assert.throws(
+      () => validateCompareRenderRequest(request, IDENTITY, 1),
+      RealmProtocolError,
+    );
+  }
+});
+
 test("realm initialization reserves a separate verified-engine budget", () => {
   const generatedEngine = "e".repeat(REALM_BUDGETS.messageBytes + 1);
   assert.throws(
@@ -371,6 +387,7 @@ function renderRequest(
       theme: "default",
       diagramFont: "trebuchet",
       externalRequirements: { externalDiagrams: [], layoutModules: [] },
+      screenAvailableWidth: 1512,
       viewport: { width: 800, height: 600 },
     },
   };

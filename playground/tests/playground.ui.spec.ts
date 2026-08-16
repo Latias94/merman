@@ -238,9 +238,8 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   );
   await expect(dialog.getByRole("status")).toHaveText("Ready");
   const widthInput = dialog.getByRole("textbox", { name: /^Width/u });
-  const lastSuccessfulPreview = await dialog
-    .getByRole("img", { name: "Export preview" })
-    .getAttribute("src");
+  const exportPreview = dialog.getByRole("img", { name: "Export preview" });
+  await expect(exportPreview).toBeVisible();
   await widthInput.fill("");
   await expect(dialog.getByRole("alert")).toContainText(
     "Width must be a positive integer",
@@ -248,12 +247,10 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   await expect(
     dialog.getByRole("button", { name: "Download", exact: true }),
   ).toBeDisabled();
-  await expect(dialog.getByRole("img", { name: "Export preview" })).toHaveAttribute(
-    "src",
-    lastSuccessfulPreview ?? "",
-  );
+  await expect(exportPreview).toHaveCount(0);
   await widthInput.fill("320");
   await expect(dialog.getByRole("status")).toHaveText("Ready");
+  await expect(exportPreview).toBeVisible();
 
   await dialog.getByRole("button", { name: "JPEG", exact: true }).click();
   await expect(

@@ -35,16 +35,17 @@ top document
   |
   +-- Render Coordinator ---------> latest coherent batch
   |
-  +-- Compare realm controller ---> same-origin Mermaid iframe
+  +-- Compare realm controller ---> opaque-origin Mermaid iframe
                                       |
                                       +-- local Mermaid/ZenUML/ELK imports
                                       +-- operation queue
                                       +-- SVG safety validation
 ```
 
-The main document does not import, register, initialize, or render Mermaid. A same-origin iframe
-owns one Mermaid realm and receives a transferred `MessagePort` after exact origin/Window
-handshake. The channel validates an unpredictable token, protocol version, realm id, sequence,
+The main document does not import, register, initialize, or render Mermaid. A generated
+`sandbox="allow-scripts"` iframe with an opaque origin owns one Mermaid realm and receives a
+transferred `MessagePort` after the parent authenticates the exact child Window. The channel
+validates an unpredictable token, protocol version, realm id, sequence,
 message/source/config/result budgets, and request identity. The parent validates returned SVG again
 before DOM insertion.
 
@@ -76,7 +77,7 @@ The coordinator freezes:
 - config JSON;
 - theme and diagram font;
 - text-measurement mode and SVG pipeline;
-- selected Canonical/Host viewport mode and one resolved viewport;
+- one canonical `800x600` viewport and controlled `screenAvailableWidth=800`;
 - diagnostics/Compare flags;
 - exact Merman package version.
 
@@ -85,12 +86,27 @@ latest-wins even when non-abortable work completes out of order. Parse/layout di
 engine render failures remain request artifacts; they do not change the Merman runtime lifecycle.
 Benchmark pauses coordinator scheduling and resumes exactly the latest input after cleanup.
 
-Canonical mode sends `800x600` to both engines. Host mode measures the stable Preview allocation
-before the side-by-side split, then sends the same rounded dimensions to Merman and the Mermaid
-realm. Pane width, zoom, and pan remain presentation-only. A hidden panel cannot publish zero-sized
-geometry, and the Benchmark never inherits Host mode. Browser-dependent title or root-viewBox
-clipping visible in pinned Mermaid remains visible in both panes; the Playground does not hide it
-with a Merman-only bounds workaround.
+Every interactive operation sends `800x600` and `screenAvailableWidth=800` to both engines. The
+Mermaid realm installs the controlled screen width before Mermaid loads. Pane allocation, canvas
+resize, zoom, pan, pinch, fit, Infinite Canvas/ViewBox Frame selection, and SVG Bounds visibility
+remain presentation-only and cannot enqueue a render. The Benchmark owns its canonical input
+independently.
+
+The Share menu separates portable workspace links from issue-reproduction links. Workspace links
+carry render intent but never device pixels. Issue links additionally restore the workspace pane,
+editor tab, Preview mode, SVG presentation mode, and SVG Bounds preference. New links contain no
+host dimensions or camera coordinates; legacy Host-bearing links restore supported fields and
+degrade to canonical rendering. Neither copy action mutates the current URL or active operation.
+
+Preview presentation preserves each engine's valid SVG `viewBox` byte-for-byte. Infinite Canvas
+floats the diagram on a full-surface grid; ViewBox Frame removes the grid and gives the exact mounted
+SVG viewport a finite outline and shadow. Both modes share the same artifact and camera state. The
+responsive clone suppresses Merman's known default white root background without changing the
+frozen artifact, exports, or non-default root backgrounds. A missing-`viewBox` artifact may retain
+preview-local intrinsic dimensions, but browser bounds are never promoted into renderer geometry.
+The optional SVG Bounds outline follows the mounted root and affects neither fit nor export.
+Browser-dependent title or root-viewBox clipping visible in pinned Mermaid therefore remains
+visible in both panes; the Playground does not hide it with a Merman-only bounds workaround.
 
 Each Compare pane has one export launcher. The workbench keeps the engine identity visible and
 does not retarget when a newer render completes. Mermaid raster output uses the pane's validated
@@ -99,9 +115,9 @@ and download use the same encoded Blob.
 
 ## Security And Resource Lifecycle
 
-Mermaid, ZenUML, ELK, and all adapters are lockfile-pinned, production-bundled, and same-origin.
-There is no runtime CDN import. The realm is attached and sized for real layout measurement, but it
-is capability-isolated from application state.
+Mermaid, ZenUML, ELK, and all adapters are lockfile-pinned and production-bundled. There is no
+runtime CDN import. Their digest-bound engine artifact is transferred into the opaque realm, which
+is attached and sized for real layout measurement but capability-isolated from application state.
 
 Compare owns its iframe, port, handshake listeners, pending request, timeout, and operation queue.
 It disposes them on replacement, HMR, non-persisted exit, BFCache suspension, or protocol poison.
