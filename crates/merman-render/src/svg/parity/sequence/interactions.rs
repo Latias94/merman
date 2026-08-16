@@ -21,7 +21,10 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) settings: &'a SequenceRenderSettings,
+    pub(super) typography: &'a crate::sequence::SequenceTypographyPlan,
+    pub(super) block_label_box_metrics: crate::sequence::SequenceBlockLabelBoxMetrics,
     pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
 }
 
 pub(super) fn render_sequence_interaction_overlays(
@@ -58,19 +61,24 @@ pub(super) fn render_sequence_interaction_overlays(
         default_frame_x2: frame_x2,
         block_widths_by_id: ctx.block_widths_by_id,
         actor_nodes_by_id: &actor_nodes_by_id,
-        label_box_width: ctx.settings.label_box_width,
+        label_box_width: ctx.block_label_box_metrics.width(),
+        label_box_height: ctx.block_label_box_metrics.terminal_height(),
         wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
+        loop_typography: ctx.typography.loop_label(),
+        typography_receipt: ctx.typography_receipt,
         sanitize_config: ctx.sanitize_config,
         math_renderer: ctx.math_renderer,
     };
     let note_ctx = SequenceNoteRenderContext {
         nodes_by_id: ctx.nodes_by_id,
         measurer: ctx.measurer,
-        actor_label_font_size: ctx.settings.actor_label_font_size,
+        legacy_label_font_size: ctx.settings.actor_label_font_size,
         wrap_padding: ctx.settings.wrap_padding,
         note_text_style: &ctx.settings.note_text_style,
+        note_typography: ctx.typography.note(),
+        typography_receipt: ctx.typography_receipt,
         sanitize_config: ctx.sanitize_config,
         math_renderer: ctx.math_renderer,
     };

@@ -11,9 +11,11 @@ use rustc_hash::FxHashMap;
 pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) actor_label_font_size: f64,
+    pub(super) legacy_label_font_size: f64,
     pub(super) wrap_padding: f64,
     pub(super) note_text_style: &'a TextStyle,
+    pub(super) note_typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
@@ -37,7 +39,7 @@ pub(super) fn render_sequence_note(
     let (x, y) = node_left_top(n);
     let cx = x + (n.width / 2.0);
     let text_y = y + 5.0;
-    let line_step = sequence_text_line_step_px(ctx.actor_label_font_size);
+    let line_step = sequence_text_line_step_px(ctx.note_text_style.font_size);
     let _ = write!(out, r#"<g data-et="note" data-id="i{}">"#, escape_attr(id));
     let _ = write!(
         &mut *out,
@@ -56,6 +58,8 @@ pub(super) fn render_sequence_note(
         ctx.math_renderer,
         SequenceMathHeightMode::Draw,
     ) {
+        ctx.typography_receipt
+            .record_candidate(crate::sequence::SequenceTypographyRole::Note);
         write_sequence_katex_foreign_object(
             out,
             &katex,
@@ -81,7 +85,9 @@ pub(super) fn render_sequence_note(
             cx,
             text_y,
             line_step,
-            ctx.actor_label_font_size,
+            ctx.legacy_label_font_size,
+            Some(ctx.note_typography),
+            Some(ctx.typography_receipt),
         );
     } else {
         render_sequence_note_lines(
@@ -90,7 +96,9 @@ pub(super) fn render_sequence_note(
             cx,
             text_y,
             line_step,
-            ctx.actor_label_font_size,
+            ctx.legacy_label_font_size,
+            Some(ctx.note_typography),
+            Some(ctx.typography_receipt),
         );
     }
     out.push_str("</g>");
@@ -102,7 +110,9 @@ fn render_sequence_note_lines<'a>(
     cx: f64,
     text_y: f64,
     line_step: f64,
-    actor_label_font_size: f64,
+    legacy_label_font_size: f64,
+    typography: Option<&crate::sequence::SequenceResolvedTypography>,
+    typography_receipt: Option<&crate::sequence::SequenceTypographyThemeReceipt>,
 ) {
     for (i, line) in lines.into_iter().enumerate() {
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
@@ -112,14 +122,24 @@ fn render_sequence_note_lines<'a>(
             decoded.as_ref()
         };
         let y = text_y + (i as f64) * line_step;
+        let legacy_style = format!(
+            "font-size: {}px; font-weight: 400;",
+            fmt(legacy_label_font_size)
+        );
+        let style = typography.map_or(legacy_style.clone(), |typography| {
+            typography.terminal_style("", legacy_style)
+        });
         let _ = write!(
             &mut *out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="font-size: {fs}px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="{style}"><tspan x="{x}">{text}</tspan></text>"#,
             x = fmt(cx),
             y = fmt(y),
-            fs = fmt(actor_label_font_size),
+            style = escape_attr_display(&style),
             text = escape_xml(text)
         );
+        if let Some(receipt) = typography_receipt {
+            receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Note);
+        }
     }
 }
 
@@ -128,7 +148,16 @@ mod tests {
     #[test]
     fn empty_note_rows_render_the_upstream_zero_width_space() {
         let mut out = String::new();
-        super::render_sequence_note_lines(&mut out, ["first", "", "last"], 50.0, 10.0, 19.0, 16.0);
+        super::render_sequence_note_lines(
+            &mut out,
+            ["first", "", "last"],
+            50.0,
+            10.0,
+            19.0,
+            16.0,
+            None,
+            None,
+        );
 
         assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
     }

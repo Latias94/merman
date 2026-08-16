@@ -42,12 +42,14 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) message_align: &'a str,
     pub(super) diagram_id: &'a str,
     pub(super) actor_height: f64,
-    pub(super) actor_label_font_size: f64,
+    pub(super) legacy_label_font_size: f64,
     pub(super) sequence_width: f64,
     pub(super) activation_width: f64,
     pub(super) wrap_padding: f64,
     pub(super) right_angles: bool,
-    pub(super) loop_text_style: &'a TextStyle,
+    pub(super) message_text_style: &'a TextStyle,
+    pub(super) message_typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
 }
 
 fn marker_attr(attr_name: &str, diagram_id: &str, local_id: &str) -> String {
@@ -364,7 +366,7 @@ pub(super) fn render_sequence_messages(
 
         let text = msg.message_text();
         if let Some(lbl) = &edge.label {
-            let line_step = sequence_text_line_step_px(ctx.actor_label_font_size);
+            let line_step = sequence_text_line_step_px(ctx.message_text_style.font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             // Mermaid aligns message label text based on `sequence.messageAlign`.
             let label_start_x = p0.x.min(p1.x);
@@ -376,11 +378,13 @@ pub(super) fn render_sequence_messages(
             if let Some(katex) = sequence_katex_label(
                 text,
                 ctx.measurer,
-                ctx.loop_text_style,
+                ctx.message_text_style,
                 ctx.sanitize_config,
                 ctx.math_renderer,
                 SequenceMathHeightMode::Draw,
             ) {
+                ctx.typography_receipt
+                    .record_candidate(crate::sequence::SequenceTypographyRole::Message);
                 let center_x = (p0.x + p1.x) / 2.0;
                 write_sequence_katex_foreign_object(
                     out,
@@ -398,7 +402,7 @@ pub(super) fn render_sequence_messages(
                 let raw_lines = crate::sequence::wrap_sequence_label_like_mermaid_lines(
                     text,
                     ctx.measurer,
-                    ctx.loop_text_style,
+                    ctx.message_text_style,
                     wrap_w,
                 );
                 render_sequence_message_text_lines(
@@ -408,7 +412,9 @@ pub(super) fn render_sequence_messages(
                     label_x,
                     label_anchor,
                     line_step,
-                    ctx.actor_label_font_size,
+                    ctx.legacy_label_font_size,
+                    ctx.message_typography,
+                    ctx.typography_receipt,
                 )?;
             } else {
                 render_sequence_message_text_lines(
@@ -418,7 +424,9 @@ pub(super) fn render_sequence_messages(
                     label_x,
                     label_anchor,
                     line_step,
-                    ctx.actor_label_font_size,
+                    ctx.legacy_label_font_size,
+                    ctx.message_typography,
+                    ctx.typography_receipt,
                 )?;
             }
         }
@@ -525,6 +533,13 @@ pub(super) fn render_sequence_messages(
             };
             let x = sequence_number_x;
             let y = p0.y;
+            // Autonumbers keep Mermaid's size ladder, so they borrow only the resolved font
+            // source attributes and do not participate in MessageLabel typography evidence.
+            let sequence_number_style = ctx
+                .message_typography
+                .fixed_size_terminal_style()
+                .map(|style| format!(r#" style="{}""#, escape_attr_display(&style)))
+                .unwrap_or_default();
             let _ = write!(
                 out,
                 r#"<line x1="{x}" y1="{y}" x2="{x}" y2="{y}" stroke-width="0" marker-start="{marker_start}"/>"#,
@@ -534,9 +549,10 @@ pub(super) fn render_sequence_messages(
             );
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="{font_size}" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
+                r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="{font_size}" text-anchor="middle" class="sequenceNumber"{style}>{n}</text>"#,
                 x = fmt(x),
                 y = fmt(y + 4.0),
+                style = sequence_number_style,
                 n = sequence_number_text,
             );
             sequence_number = round_sequence_number(sequence_number + sequence_number_step);
@@ -569,7 +585,9 @@ fn render_sequence_message_text_lines<'a>(
     label_x: f64,
     label_anchor: &str,
     line_step: f64,
-    actor_label_font_size: f64,
+    legacy_label_font_size: f64,
+    typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) -> crate::Result<()> {
     for (i, raw) in raw_lines.into_iter().enumerate() {
         let y = label_y + (i as f64) * line_step;
@@ -579,16 +597,22 @@ fn render_sequence_message_text_lines<'a>(
         } else {
             decoded.as_ref()
         };
+        let legacy_style = format!(
+            "font-size: {}px; font-weight: 400;",
+            fmt(legacy_label_font_size)
+        );
+        let style = typography.terminal_style("", legacy_style);
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="{style}">{text}</text>"#,
             x = fmt(label_x.round()),
             y = fmt(y),
             anchor = label_anchor,
-            fs = fmt(actor_label_font_size),
+            style = escape_attr_display(&style),
             text = escape_xml(line)
         );
         out.checkpoint()?;
+        typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Message);
     }
 
     Ok(())
@@ -603,8 +627,30 @@ mod tests {
         ThemeStylePatch, ThemeTarget, ThemeVariant,
     };
     use crate::model::{LayoutEdge, LayoutPoint};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use std::fmt;
     use std::ops::Range;
+
+    fn default_sequence_typography(
+        config: &merman_core::MermaidConfig,
+        style: &TextStyle,
+    ) -> (
+        crate::sequence::SequenceTypographyPlan,
+        crate::sequence::SequenceTypographyThemeReceipt,
+    ) {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = crate::sequence::SequenceTypographyPlan::resolve(
+            config,
+            None,
+            &meter,
+            style.clone(),
+            style.clone(),
+            style.clone(),
+        )
+        .expect("resolve default Sequence typography");
+        let receipt = crate::sequence::SequenceTypographyThemeReceipt::from_plan(&plan);
+        (plan, receipt)
+    }
 
     #[derive(Default)]
     struct RejectAfterFirstWrite {
@@ -696,7 +742,9 @@ mod tests {
         let edges_by_id = FxHashMap::default();
         let sanitize_config = merman_core::MermaidConfig::default();
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-        let loop_text_style = TextStyle::default();
+        let message_text_style = TextStyle::default();
+        let (typography, typography_receipt) =
+            default_sequence_typography(&sanitize_config, &message_text_style);
         let ctx = SequenceMessageRenderContext {
             model: &model,
             nodes_by_id: &nodes_by_id,
@@ -707,12 +755,14 @@ mod tests {
             message_align: "center",
             diagram_id: "sequence-sink-failure",
             actor_height: 65.0,
-            actor_label_font_size: 16.0,
+            legacy_label_font_size: 16.0,
             sequence_width: 150.0,
             activation_width: 10.0,
             wrap_padding: 10.0,
             right_angles: false,
-            loop_text_style: &loop_text_style,
+            message_text_style: &message_text_style,
+            message_typography: typography.message(),
+            typography_receipt: &typography_receipt,
         };
         let mut out = RejectAfterFirstWrite::default();
 
@@ -797,7 +847,9 @@ mod tests {
             let nodes_by_id = FxHashMap::default();
             let sanitize_config = merman_core::MermaidConfig::default();
             let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-            let loop_text_style = TextStyle::default();
+            let message_text_style = TextStyle::default();
+            let (typography, typography_receipt) =
+                default_sequence_typography(&sanitize_config, &message_text_style);
             let ctx = SequenceMessageRenderContext {
                 model: &model,
                 nodes_by_id: &nodes_by_id,
@@ -808,12 +860,14 @@ mod tests {
                 message_align: "center",
                 diagram_id: "sequence-incomplete-layout",
                 actor_height: 65.0,
-                actor_label_font_size: 16.0,
+                legacy_label_font_size: 16.0,
                 sequence_width: 150.0,
                 activation_width: 10.0,
                 wrap_padding: 10.0,
                 right_angles: false,
-                loop_text_style: &loop_text_style,
+                message_text_style: &message_text_style,
+                message_typography: typography.message(),
+                typography_receipt: &typography_receipt,
             };
             let mut receipt = crate::sequence::SequenceMessageThemeReceipt::default();
             receipt.record_static_style(&resolved.style(

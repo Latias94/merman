@@ -10,6 +10,10 @@ pub(super) struct SequenceThemeCssAdapter<'a> {
     pub(super) note_stroke: Option<&'a str>,
     pub(super) activation_fill: Option<&'a str>,
     pub(super) activation_stroke: Option<&'a str>,
+    pub(super) actor_typography: Option<&'a crate::sequence::SequenceResolvedTypography>,
+    pub(super) message_typography: Option<&'a crate::sequence::SequenceResolvedTypography>,
+    pub(super) note_typography: Option<&'a crate::sequence::SequenceResolvedTypography>,
+    pub(super) loop_typography: Option<&'a crate::sequence::SequenceResolvedTypography>,
 }
 
 #[cfg(test)]
@@ -53,7 +57,7 @@ pub(super) fn write_sequence_css_with_theme_adapter(
 ) {
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
-    let id = escape_xml_display(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
     let font = theme.common.font_family_css.as_str();
     let text_color = theme.common.text_color.as_str();
@@ -300,6 +304,30 @@ pub(super) fn write_sequence_css_with_theme_adapter(
             id, id, id, typed_activation_stroke
         );
     }
+    write_sequence_role_typography_css(
+        &mut out,
+        &id,
+        "text.actor,text.actor>tspan",
+        typed.actor_typography,
+    );
+    write_sequence_role_typography_css(
+        &mut out,
+        &id,
+        ".messageText,.messageText>tspan",
+        typed.message_typography,
+    );
+    write_sequence_role_typography_css(
+        &mut out,
+        &id,
+        ".noteText,.noteText>tspan",
+        typed.note_typography,
+    );
+    write_sequence_role_typography_css(
+        &mut out,
+        &id,
+        ".loopText,.loopText>tspan,.sectionTitle,.sectionTitle>tspan,.labelText,.labelText>tspan",
+        typed.loop_typography,
+    );
     let _ = write!(
         &mut out,
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
@@ -310,6 +338,23 @@ pub(super) fn write_sequence_css_with_theme_adapter(
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
         id, font
     );
+}
+
+fn write_sequence_role_typography_css(
+    out: &mut impl std::fmt::Write,
+    diagram_id: &impl std::fmt::Display,
+    selectors: &str,
+    typography: Option<&crate::sequence::SequenceResolvedTypography>,
+) {
+    let Some(declarations) = typography.and_then(|typography| typography.css_declarations()) else {
+        return;
+    };
+    let scoped = selectors
+        .split(',')
+        .map(|selector| format!("#{diagram_id} {selector}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let _ = write!(out, "{scoped}{{{declarations}}}");
 }
 
 #[cfg(test)]
@@ -365,6 +410,14 @@ mod tests {
             r#"#seq{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:#333;}"#
         ));
         assert!(css.contains(r#"#seq svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;}#seq p{margin:0;}"#));
+    }
+
+    #[test]
+    fn sequence_css_escapes_the_diagram_id_as_a_css_identifier() {
+        let css = sequence_css("seq:prod", 16.0, &json!({}));
+
+        assert!(css.contains(r"#seq\:prod .messageLine0"), "{css}");
+        assert!(!css.contains("#seq:prod"), "{css}");
     }
 
     #[test]

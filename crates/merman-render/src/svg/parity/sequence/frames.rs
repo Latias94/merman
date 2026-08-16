@@ -8,7 +8,9 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     out: &mut impl SvgOutput,
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    actor_label_font_size: f64,
+    actor_text_style: &TextStyle,
+    actor_typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
     box_margin: f64,
     box_text_margin: f64,
     rect_default_fill: &str,
@@ -22,7 +24,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     let max_box_title_height = if has_box_titles {
         // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
         // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
-        let line_h = sequence_text_dimensions_height_px(actor_label_font_size);
+        let line_h = sequence_text_dimensions_height_px(actor_text_style.font_size);
         model
             .boxes
             .iter()
@@ -91,13 +93,19 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
             // In upstream, `box.y` is the `verticalPos` passed to `addActorRenderingData`, i.e. 0.
             let box_y = min_top_y - (box_margin + max_box_title_height);
             let text_y = box_y + box_text_margin + max_box_title_height / 2.0;
+            let style = actor_typography.terminal_style(
+                "text-anchor: middle",
+                "text-anchor: middle; font-size: 16px; font-weight: 400;".to_string(),
+            );
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{text}</tspan></text>"#,
+                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="{style}"><tspan x="{x}" dy="0">{text}</tspan></text>"#,
                 x = fmt(cx),
                 y = fmt(text_y),
+                style = escape_attr_display(&style),
                 text = escape_xml_display(name)
             );
+            typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
         }
         out.push_str("</g>");
     }

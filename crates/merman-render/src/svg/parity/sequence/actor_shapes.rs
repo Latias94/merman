@@ -8,6 +8,8 @@ pub(super) struct ActorLabelContext<'a> {
     wrap_width_px: f64,
     measurer: &'a dyn TextMeasurer,
     style: &'a TextStyle,
+    typography: &'a crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     config: &'a merman_core::MermaidConfig,
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
@@ -17,6 +19,8 @@ impl<'a> ActorLabelContext<'a> {
         wrap_width_px: f64,
         measurer: &'a dyn TextMeasurer,
         style: &'a TextStyle,
+        typography: &'a crate::sequence::SequenceResolvedTypography,
+        typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
         config: &'a merman_core::MermaidConfig,
         math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     ) -> Self {
@@ -24,6 +28,8 @@ impl<'a> ActorLabelContext<'a> {
             wrap_width_px,
             measurer,
             style,
+            typography,
+            typography_receipt,
             config,
             math_renderer,
         }
@@ -341,6 +347,8 @@ fn write_actor_label(
         ctx.math_renderer,
         SequenceMathHeightMode::Actor,
     ) {
+        ctx.typography_receipt
+            .record_candidate(crate::sequence::SequenceTypographyRole::Actor);
         let x = cx - katex.width / 2.0;
         let y = cy - katex.height / 2.0;
         out.push_str("<switch>");
@@ -355,7 +363,17 @@ fn write_actor_label(
         );
         let raw_lines = crate::text::split_html_br_lines(rendered_label);
         let line_count = raw_lines.len();
-        write_actor_label_lines(out, cx, cy, raw_lines, line_count, ctx.style);
+        write_actor_label_lines(
+            out,
+            cx,
+            cy,
+            raw_lines,
+            line_count,
+            ctx.style,
+            ctx.typography,
+            ctx.typography_receipt,
+            false,
+        );
         out.push_str("</switch>");
         return;
     }
@@ -371,11 +389,24 @@ fn write_actor_label(
             raw_lines.iter().copied(),
             raw_lines.len(),
             ctx.style,
+            ctx.typography,
+            ctx.typography_receipt,
+            true,
         );
     } else {
         let raw_lines = crate::text::split_html_br_lines(label);
         let line_count = raw_lines.len();
-        write_actor_label_lines(out, cx, cy, raw_lines, line_count, ctx.style);
+        write_actor_label_lines(
+            out,
+            cx,
+            cy,
+            raw_lines,
+            line_count,
+            ctx.style,
+            ctx.typography,
+            ctx.typography_receipt,
+            true,
+        );
     }
 }
 
@@ -386,6 +417,9 @@ fn write_actor_label_lines<'a>(
     raw_lines: impl IntoIterator<Item = &'a str>,
     line_count: usize,
     style: &TextStyle,
+    typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
+    record_receipt: bool,
 ) {
     let n = line_count.max(1) as f64;
     for (i, raw) in raw_lines.into_iter().enumerate() {
@@ -395,14 +429,22 @@ fn write_actor_label_lines<'a>(
         } else {
             (i as f64 - (n - 1.0) / 2.0) * style.font_size
         };
+        let legacy_style = format!(
+            "text-anchor: middle; font-size: {}px; font-weight: 400;",
+            fmt(style.font_size)
+        );
+        let inline_style = typography.terminal_style("text-anchor: middle", legacy_style);
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: {fs}px; font-weight: 400;"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="{style}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
             x = fmt(cx),
             y = fmt(cy),
-            fs = fmt(style.font_size),
+            style = escape_attr_display(&inline_style),
             dy = fmt(dy),
             text = escape_xml_display(decoded.as_ref())
         );
+        if record_receipt {
+            typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+        }
     }
 }

@@ -661,6 +661,27 @@ fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::SEQUENCE
+        && matches!(
+            target,
+            ThemeTarget::ActorLabel
+                | ThemeTarget::MessageLabel
+                | ThemeTarget::NoteLabel
+                | ThemeTarget::LoopLabel
+        )
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Typography(
+                ThemeTypographyProperty::FontStack
+                    | ThemeTypographyProperty::FontSize
+                    | ThemeTypographyProperty::FontWeight
+                    | ThemeTypographyProperty::FontStyle
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::FLOWCHART
         && target == ThemeTarget::Cluster
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
@@ -1366,6 +1387,75 @@ mod tests {
                     .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
             );
         }
+    }
+
+    #[test]
+    fn sequence_owns_only_static_unqualified_role_typography() {
+        let supported_properties = [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+            ThemeTypographyProperty::FontWeight,
+            ThemeTypographyProperty::FontStyle,
+        ];
+        let targets = [
+            ThemeTarget::ActorLabel,
+            ThemeTarget::MessageLabel,
+            ThemeTarget::NoteLabel,
+            ThemeTarget::LoopLabel,
+        ];
+
+        for target in targets {
+            for property in supported_properties {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::SEQUENCE,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        FamilyThemeRuleFacet::Typography(property),
+                    ),
+                    FamilyThemeDisposition::TypedAdapter,
+                    "{target:?}/{property:?} should be a direct Sequence role route"
+                );
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::SEQUENCE,
+                        target,
+                        FamilyThemeSelectorShape::Static {
+                            variant: Some(ThemeVariant::Default),
+                        },
+                        FamilyThemeRuleFacet::Typography(property),
+                    ),
+                    FamilyThemeDisposition::Unsupported,
+                    "explicit variants remain outside the first role-typography tranche"
+                );
+            }
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::SEQUENCE,
+                    target,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Typography(ThemeTypographyProperty::LineHeight),
+                ),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
+
+        let base = TextStyle::default()
+            .with_font_size_px(18.0)
+            .expect("valid base font size")
+            .with_font_weight(600)
+            .expect("valid base font weight");
+        let base_routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &base);
+        assert!(base_routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+        }));
+        assert!(base_routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
     }
 
     #[test]

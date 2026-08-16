@@ -2596,7 +2596,8 @@ fn prepare_non_class_render(
                 crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
-                    effective_config,
+                    &meta.effective_config,
+                    execution.resolved_theme(),
                     execution.prepared_text_layout(),
                     execution.text_measurer(),
                     execution.math_renderer(),

@@ -12,6 +12,8 @@ pub(super) fn render_sequence_actor_man_tops(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,
     diagram_id: &str,
+    typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
     // Actor-man variants (actor/boundary/control/entity) are emitted after `<defs>`.
     for (actor_idx, actor_id) in model.actor_order.iter().enumerate() {
@@ -35,6 +37,8 @@ pub(super) fn render_sequence_actor_man_tops(
             actor_idx,
             actor_height,
             diagram_id,
+            typography,
+            typography_receipt,
         );
     }
 }
@@ -46,6 +50,8 @@ pub(super) fn render_sequence_actor_man_bottoms(
     actor_height: f64,
     label_box_height: f64,
     diagram_id: &str,
+    typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
     // Actor-man footers (actor/boundary/control/entity) are emitted after messages.
     let last_idx = model.actor_order.len().saturating_sub(1);
@@ -78,6 +84,8 @@ pub(super) fn render_sequence_actor_man_bottoms(
                 label_box_height,
             },
             diagram_id,
+            typography,
+            typography_receipt,
         );
     }
 }

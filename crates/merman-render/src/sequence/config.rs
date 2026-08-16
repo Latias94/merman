@@ -50,6 +50,25 @@ impl<'a> SequenceConfigView<'a> {
         crate::config::config_string(self.sequence_config, &[key])
     }
 
+    fn root_font_weight(&self, key: &str) -> Option<String> {
+        self.effective_config
+            .get(key)
+            .and_then(sequence_font_weight_value)
+    }
+
+    fn sequence_font_weight(&self, key: &str) -> Option<String> {
+        self.sequence_config
+            .get(key)
+            .and_then(sequence_font_weight_value)
+    }
+
+    pub(crate) fn theme_variable_font_weight(&self, key: &str) -> Option<String> {
+        self.effective_config
+            .get("themeVariables")
+            .and_then(|theme_variables| theme_variables.get(key))
+            .and_then(sequence_font_weight_value)
+    }
+
     fn sequence_compat_f64(&self, key: &str, default: f64) -> f64 {
         crate::config::config_f64(self.sequence_config, &[key]).unwrap_or(default)
     }
@@ -79,7 +98,7 @@ impl<'a> SequenceConfigView<'a> {
             .unwrap_or(16.0);
         let font_weight = root_font_weight
             .clone()
-            .or_else(|| self.sequence_string(weight_key));
+            .or_else(|| self.sequence_font_weight(weight_key));
 
         TextStyle {
             font_family,
@@ -110,6 +129,7 @@ pub(super) struct SequenceLayoutSettings {
     pub(super) actor_text_style: TextStyle,
     pub(super) note_text_style: TextStyle,
     pub(super) msg_text_style: TextStyle,
+    pub(super) loop_text_style: TextStyle,
 }
 
 impl SequenceLayoutSettings {
@@ -137,7 +157,7 @@ impl SequenceLayoutSettings {
         // the global `fontFamily` / `fontSize` / `fontWeight` are present.
         let root_font_family = config.root_string("fontFamily");
         let root_font_size = config.root_compat_f64("fontSize");
-        let root_font_weight = config.root_string("fontWeight");
+        let root_font_weight = config.root_font_weight("fontWeight");
         let actor_text_style = config.layout_text_style(
             &root_font_family,
             root_font_size,
@@ -182,9 +202,29 @@ impl SequenceLayoutSettings {
             activation_width,
             actor_text_style,
             note_text_style,
+            loop_text_style: msg_text_style.clone(),
             msg_text_style,
         }
     }
+
+    pub(super) fn apply_typography_plan(
+        &mut self,
+        typography: &super::typography::SequenceTypographyPlan,
+    ) {
+        self.actor_text_style = typography.actor().text_style().clone();
+        self.note_text_style = typography.note().text_style().clone();
+        self.msg_text_style = typography.message().text_style().clone();
+        self.loop_text_style = typography.loop_label().text_style().clone();
+    }
+}
+
+fn sequence_font_weight_value(value: &Value) -> Option<String> {
+    value.as_str().map(str::to_string).or_else(|| {
+        value
+            .as_u64()
+            .filter(|weight| (1..=1000).contains(weight))
+            .map(|weight| weight.to_string())
+    })
 }
 
 #[cfg(test)]
@@ -198,7 +238,7 @@ mod tests {
             "look": "neo",
             "fontFamily": "Global, Arial",
             "fontSize": "22",
-            "fontWeight": "700",
+            "fontWeight": 700,
             "sequence": {
                 "width": "240",
                 "height": "80",

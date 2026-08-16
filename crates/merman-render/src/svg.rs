@@ -7,12 +7,14 @@
 
 #![forbid(unsafe_code)]
 
+mod css_identifier;
 mod fallback;
 mod icon_registry;
 mod parity;
 mod pipeline;
 pub(crate) mod scanner;
 
+pub(crate) use css_identifier::escape_css_identifier;
 pub(crate) use parity::FlowchartEdgeStylePlan;
 #[cfg(feature = "layout-cytoscape")]
 pub(crate) use parity::render_architecture_family_artifact;

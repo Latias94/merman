@@ -9,7 +9,6 @@ pub(super) struct SequenceRenderSettings {
     pub(super) box_text_margin: f64,
     pub(super) message_align: String,
     pub(super) label_box_height: f64,
-    pub(super) label_box_width: f64,
     pub(super) right_angles: bool,
     pub(super) wrap_padding: f64,
     pub(super) sequence_width: f64,
@@ -17,6 +16,8 @@ pub(super) struct SequenceRenderSettings {
     pub(super) actor_label_font_size: f64,
     pub(super) actor_wrap_width: f64,
     pub(super) rect_default_fill: String,
+    pub(super) actor_text_style: TextStyle,
+    pub(super) message_text_style: TextStyle,
     pub(super) loop_text_style: TextStyle,
     pub(super) note_text_style: TextStyle,
 }
@@ -38,9 +39,6 @@ impl SequenceRenderSettings {
             .sequence_string("messageAlign")
             .unwrap_or_else(|| "center".to_string());
         let label_box_height = config.sequence_json_number_min("labelBoxHeight", 20.0, 0.0);
-        let label_box_width = config
-            .sequence_json_number_min("labelBoxWidth", 50.0, 0.0)
-            .max(50.0);
         let right_angles = config.sequence_bool("rightAngles", false);
         let wrap_padding = config.sequence_json_number_min("wrapPadding", 10.0, 0.0);
         let sequence_width = config.sequence_json_number_min("width", 150.0, 1.0);
@@ -85,7 +83,6 @@ impl SequenceRenderSettings {
             box_text_margin,
             message_align,
             label_box_height,
-            label_box_width,
             right_angles,
             wrap_padding,
             sequence_width,
@@ -93,9 +90,21 @@ impl SequenceRenderSettings {
             actor_label_font_size,
             actor_wrap_width,
             rect_default_fill,
+            actor_text_style: loop_text_style.clone(),
+            message_text_style: loop_text_style.clone(),
             loop_text_style,
             note_text_style,
         }
+    }
+
+    pub(super) fn apply_typography_plan(
+        &mut self,
+        typography: &crate::sequence::SequenceTypographyPlan,
+    ) {
+        self.actor_text_style = typography.actor().text_style().clone();
+        self.message_text_style = typography.message().text_style().clone();
+        self.loop_text_style = typography.loop_label().text_style().clone();
+        self.note_text_style = typography.note().text_style().clone();
     }
 }
 

@@ -19,7 +19,9 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) actor_height: f64,
     pub(super) label_box_height: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) loop_text_style: &'a TextStyle,
+    pub(super) actor_text_style: &'a TextStyle,
+    pub(super) actor_typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
 }
 
 pub(super) fn render_sequence_bottom_actors(
@@ -29,7 +31,9 @@ pub(super) fn render_sequence_bottom_actors(
     let label_ctx = ActorLabelContext::new(
         ctx.actor_wrap_width,
         ctx.measurer,
-        ctx.loop_text_style,
+        ctx.actor_text_style,
+        ctx.actor_typography,
+        ctx.typography_receipt,
         ctx.sanitize_config,
         ctx.math_renderer,
     );
@@ -82,7 +86,9 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
     let label_ctx = ActorLabelContext::new(
         ctx.actor_wrap_width,
         ctx.measurer,
-        ctx.loop_text_style,
+        ctx.actor_text_style,
+        ctx.actor_typography,
+        ctx.typography_receipt,
         ctx.sanitize_config,
         ctx.math_renderer,
     );

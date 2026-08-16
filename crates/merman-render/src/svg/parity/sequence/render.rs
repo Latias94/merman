@@ -107,7 +107,10 @@ fn render_sequence_diagram_svg_inner(
     let effective_title =
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
-    let settings = SequenceRenderSettings::from_effective_config(effective_config);
+    let mut settings = SequenceRenderSettings::from_effective_config(effective_config);
+    settings.apply_typography_plan(prepared.typography());
+    let typography_receipt =
+        crate::sequence::SequenceTypographyThemeReceipt::from_plan(prepared.typography());
     let actor_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.actorBkg",
@@ -199,7 +202,9 @@ fn render_sequence_diagram_svg_inner(
         &mut out,
         model,
         &nodes_by_id,
-        settings.actor_label_font_size,
+        &settings.actor_text_style,
+        prepared.typography().actor(),
+        &typography_receipt,
         settings.box_margin,
         settings.box_text_margin,
         &settings.rect_default_fill,
@@ -216,7 +221,9 @@ fn render_sequence_diagram_svg_inner(
         actor_height: settings.actor_height,
         label_box_height: settings.label_box_height,
         measurer,
-        loop_text_style: &settings.loop_text_style,
+        actor_text_style: &settings.actor_text_style,
+        actor_typography: prepared.typography().actor(),
+        typography_receipt: &typography_receipt,
     };
 
     if settings.mirror_actors {
@@ -243,6 +250,10 @@ fn render_sequence_diagram_svg_inner(
             note_stroke: note_theme.typed_stroke.as_deref(),
             activation_fill: activation_theme.typed_fill.as_deref(),
             activation_stroke: activation_theme.typed_stroke.as_deref(),
+            actor_typography: Some(prepared.typography().actor()),
+            message_typography: Some(prepared.typography().message()),
+            note_typography: Some(prepared.typography().note()),
+            loop_typography: Some(prepared.typography().loop_label()),
         },
     );
     out.push_str("</style><g/>");
@@ -298,6 +309,8 @@ fn render_sequence_diagram_svg_inner(
         &nodes_by_id,
         settings.actor_height,
         diagram_id,
+        prepared.typography().actor(),
+        &typography_receipt,
     );
     out.checkpoint()?;
 
@@ -318,7 +331,10 @@ fn render_sequence_diagram_svg_inner(
         sanitize_config,
         math_renderer: options.math_renderer(),
         settings: &settings,
+        typography: prepared.typography(),
+        block_label_box_metrics: prepared.block_label_box_metrics(),
         measurer,
+        typography_receipt: &typography_receipt,
     };
     render_sequence_interaction_overlays(
         &mut out,
@@ -359,12 +375,14 @@ fn render_sequence_diagram_svg_inner(
         message_align: settings.message_align.as_str(),
         diagram_id,
         actor_height: settings.actor_height,
-        actor_label_font_size: settings.actor_label_font_size,
+        legacy_label_font_size: settings.actor_label_font_size,
         sequence_width: settings.sequence_width,
         activation_width: settings.activation_width,
         wrap_padding: settings.wrap_padding,
         right_angles: settings.right_angles,
-        loop_text_style: &settings.loop_text_style,
+        message_text_style: &settings.message_text_style,
+        message_typography: prepared.typography().message(),
+        typography_receipt: &typography_receipt,
     };
     render_sequence_messages(&mut out, &message_ctx, &mut message_theme.receipt)?;
     prepared.theme_evidence().record_message_emission(
@@ -383,6 +401,9 @@ fn render_sequence_diagram_svg_inner(
         settings.force_menus,
         settings.mirror_actors,
         settings.actor_height,
+        prepared.actor_popup_widths(),
+        prepared.typography().actor(),
+        &typography_receipt,
     );
     out.checkpoint()?;
 
@@ -394,9 +415,15 @@ fn render_sequence_diagram_svg_inner(
             settings.actor_height,
             settings.label_box_height,
             diagram_id,
+            prepared.typography().actor(),
+            &typography_receipt,
         );
         out.checkpoint()?;
     }
+
+    prepared
+        .theme_evidence()
+        .record_typography_emission(typography_receipt);
 
     if let Some(title) = effective_title {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.

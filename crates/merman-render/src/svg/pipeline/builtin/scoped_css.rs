@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use super::css_override::{CssOverridePolicy, strip_css_important};
 use super::util::{escape_xml_attr, find_matching_brace, find_tag_end};
+use crate::svg::escape_css_identifier;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone)]
@@ -97,7 +98,7 @@ fn scope_css(css: &str, svg_id: Option<&str>) -> String {
     let Some(svg_id) = svg_id.filter(|id| !id.trim().is_empty()) else {
         return css.to_string();
     };
-    let scope = format!("#{}", css_escape_id(svg_id));
+    let scope = format!("#{}", escape_css_identifier(svg_id));
     scope_css_block(css, &scope)
 }
 
@@ -356,20 +357,6 @@ fn is_already_namespaced(selector: &str, scope: &str) -> bool {
 
 fn is_css_whitespace(ch: char) -> bool {
     matches!(ch, ' ' | '\n' | '\r' | '\t' | '\u{000C}')
-}
-
-fn css_escape_id(id: &str) -> String {
-    let mut out = String::with_capacity(id.len());
-    for ch in id.chars() {
-        let ok = ch.is_ascii_alphanumeric() || ch == '-' || ch == '_';
-        if ok {
-            out.push(ch);
-        } else {
-            out.push('\\');
-            out.push(ch);
-        }
-    }
-    out
 }
 
 #[allow(dead_code)]

@@ -2,7 +2,14 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec,
+    FontCatalogSpec, FontStack, FontStyle, InsetsPx, Specified,
+    TextStylePatch as ThemeTextStylePatch, ThemeAssets, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+};
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
@@ -493,6 +500,103 @@ fn parse_sequence_for_render(engine: &Engine, text: &str) -> ParsedDiagramRender
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected")
+}
+
+fn sequence_role_typography_theme() -> DiagramTheme {
+    let font_bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let role = |target, size, weight, style| {
+        let typography = ThemeTextStylePatch {
+            font_stack: Specified::Value(
+                FontStack::single("Excalifont").expect("valid role font stack"),
+            ),
+            font_size_px: Specified::Value(size),
+            font_weight: Specified::Value(weight),
+            font_style: Specified::Value(style),
+            ..ThemeTextStylePatch::default()
+        };
+        ThemeRule::new(
+            target,
+            ThemeStylePatch {
+                typography,
+                ..ThemeStylePatch::default()
+            },
+        )
+        .for_family(DiagramFamilyId::SEQUENCE)
+    };
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(role(ThemeTarget::ActorLabel, 17.0, 500, FontStyle::Italic))
+                        .with_rule(role(
+                            ThemeTarget::MessageLabel,
+                            18.0,
+                            600,
+                            FontStyle::Oblique,
+                        ))
+                        .with_rule(role(ThemeTarget::NoteLabel, 19.0, 700, FontStyle::Italic))
+                        .with_rule(role(ThemeTarget::LoopLabel, 20.0, 800, FontStyle::Oblique)),
+                )
+                .with_assets(
+                    ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
+                        FontAssetSpec::new("excalifont", font_bytes),
+                    ])),
+                ),
+        )
+        .expect("compile Sequence role typography theme")
+}
+
+fn inline_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+    style.split(';').find_map(|declaration| {
+        let (name, value) = declaration.split_once(':')?;
+        if !name.trim().eq_ignore_ascii_case(property) {
+            return None;
+        }
+        let value = value.trim();
+        let value = value.strip_suffix("!important").unwrap_or(value).trim();
+        Some(
+            value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+                .unwrap_or(value),
+        )
+    })
+}
+
+fn assert_sequence_role_text_style(
+    document: &roxmltree::Document<'_>,
+    class_name: &str,
+    text_fragment: &str,
+    family: &str,
+    size: &str,
+    weight: &str,
+    style: &str,
+) {
+    let text = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == class_name)
+                })
+                && node
+                    .descendants()
+                    .filter(|descendant| descendant.is_text())
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains(text_fragment))
+        })
+        .unwrap_or_else(|| panic!("missing {class_name} text containing {text_fragment:?}"));
+    let inline = text.attribute("style").expect("role text inline style");
+    assert_eq!(inline_style_value(inline, "font-family"), Some(family));
+    assert_eq!(inline_style_value(inline, "font-size"), Some(size));
+    assert_eq!(inline_style_value(inline, "font-weight"), Some(weight));
+    assert_eq!(inline_style_value(inline, "font-style"), Some(style));
 }
 
 fn layout_sequence_from_environment(
@@ -1934,6 +2038,861 @@ end"##,
     assert!(
         svg.contains(r#"g rect.rect{filter:"#) && svg.contains(r#"stroke:#070809;"#),
         "expected Sequence rect node border theme color in CSS: {svg}"
+    );
+}
+
+#[test]
+fn sequence_role_typography_is_shared_by_layout_preparation_and_terminal_svg() {
+    let theme = sequence_role_typography_theme();
+    let source = r#"sequenceDiagram
+autonumber
+box Team Role
+participant Alice as Alice Role
+participant Bob as Bob Role
+end
+link Alice: A Very Long Actor Popup Role Label @ https://example.test/role
+Alice->>Bob: Message Role
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    let measurement_parsed =
+        merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse themed Sequence source")
+            .expect("detect themed Sequence source");
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-role-typography").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session_with_theme(&theme)
+        .expect("begin Sequence role typography measurement session");
+    let _measurement_artifact = family::prepare(
+        measurement_parsed,
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare Sequence role typography measurement artifact");
+    let requests = host.snapshot();
+    for (text_fragment, size, weight, style) in [
+        ("Team Role", 17.0, "500", "italic"),
+        ("Alice Role", 17.0, "500", "italic"),
+        ("A Very Long Actor Popup Role Label", 17.0, "500", "italic"),
+        ("Message Role", 18.0, "600", "oblique"),
+        ("Note Role", 19.0, "700", "italic"),
+        ("Loop Role", 20.0, "800", "oblique"),
+    ] {
+        assert!(
+            requests.iter().any(|exchange| {
+                let request = &exchange.request;
+                request.text.contains(text_fragment)
+                    && request.font_family.as_deref() == Some("Excalifont")
+                    && request.font_size_bits == f64::to_bits(size)
+                    && request.font_weight.as_deref() == Some(weight)
+                    && request.font_style.as_deref() == Some(style)
+            }),
+            "layout measurement must consume the resolved {text_fragment:?} role typography"
+        );
+    }
+
+    let render_parsed =
+        merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse portable themed Sequence source")
+            .expect("detect portable themed Sequence source");
+    let render_session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin portable Sequence role typography session");
+    let rendered = family::prepare(render_parsed, &LayoutOptions::default(), render_session)
+        .expect("prepare portable Sequence role typography")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("terminal Sequence labels should seal every role typography rule");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Sequence SVG");
+
+    assert_sequence_role_text_style(
+        &document,
+        "actor-box",
+        "Alice Role",
+        "Excalifont",
+        "17px",
+        "500",
+        "italic",
+    );
+    assert_sequence_role_text_style(
+        &document,
+        "text",
+        "Team Role",
+        "Excalifont",
+        "17px",
+        "500",
+        "italic",
+    );
+    assert_sequence_role_text_style(
+        &document,
+        "messageText",
+        "Message Role",
+        "Excalifont",
+        "18px",
+        "600",
+        "oblique",
+    );
+    assert_sequence_role_text_style(
+        &document,
+        "noteText",
+        "Note Role",
+        "Excalifont",
+        "19px",
+        "700",
+        "italic",
+    );
+    assert_sequence_role_text_style(
+        &document,
+        "loopText",
+        "Loop Role",
+        "Excalifont",
+        "20px",
+        "800",
+        "oblique",
+    );
+    assert_sequence_role_text_style(
+        &document,
+        "actor",
+        "A Very Long Actor Popup Role Label",
+        "Excalifont",
+        "17px",
+        "500",
+        "italic",
+    );
+
+    let popup_panel = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "actorPopupMenuPanel")
+                })
+        })
+        .expect("actor popup panel");
+    let panel_x = popup_panel
+        .attribute("x")
+        .and_then(|value| value.parse::<f64>().ok())
+        .expect("numeric actor popup x");
+    let panel_width = popup_panel
+        .attribute("width")
+        .and_then(|value| value.parse::<f64>().ok())
+        .expect("numeric actor popup width");
+    assert!(
+        panel_width > 150.0,
+        "ActorLabel measurement must widen the popup beyond the default actor width: {panel_width}"
+    );
+    let (view_box, _) = root_view_box_and_max_width(rendered.svg());
+    assert!(
+        panel_x + panel_width <= view_box[0] + view_box[2],
+        "actor popup must remain inside the measured root viewBox"
+    );
+
+    let sequence_number = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("sequenceNumber"))
+        .expect("autonumber terminal label");
+    let inline = sequence_number
+        .attribute("style")
+        .expect("autonumber role typography style");
+    assert_eq!(
+        inline_style_value(inline, "font-family"),
+        Some("Excalifont")
+    );
+    assert_eq!(inline_style_value(inline, "font-weight"), Some("600"));
+    assert_eq!(inline_style_value(inline, "font-style"), Some("oblique"));
+    assert_eq!(sequence_number.attribute("font-size"), Some("12px"));
+}
+
+#[test]
+fn sequence_explicit_root_font_size_wins_over_role_typography() {
+    let theme = sequence_role_typography_theme();
+    let source = r#"%%{init: {"fontSize": 23}}%%
+sequenceDiagram
+participant Alice as Alice Role
+participant Bob as Bob Role
+Alice->>Bob: Message Role
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse configured themed Sequence source")
+        .expect("detect configured themed Sequence source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin configured portable Sequence role typography session");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare configured Sequence role typography")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("explicit font size should leave the remaining direct role facets portable");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid configured SVG");
+
+    for (class_name, text_fragment, weight, style) in [
+        ("actor-box", "Alice Role", "500", "italic"),
+        ("messageText", "Message Role", "600", "oblique"),
+        ("noteText", "Note Role", "700", "italic"),
+        ("loopText", "Loop Role", "800", "oblique"),
+    ] {
+        assert_sequence_role_text_style(
+            &document,
+            class_name,
+            text_fragment,
+            "Excalifont",
+            "23px",
+            weight,
+            style,
+        );
+    }
+}
+
+#[test]
+fn sequence_explicit_config_typography_reaches_measurement_and_terminal_writers() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "Courier New",
+        "fontSize": 23,
+        "fontWeight": 700,
+    })));
+    let source = r#"sequenceDiagram
+autonumber
+box Config Team
+participant Alice as Config Actor
+participant Bob
+end
+Alice->>Bob: Config Message
+Note over Alice,Bob: Config Note
+loop Config Loop
+Bob-->>Alice: Reply
+end"#;
+    let measurement_parsed = parse_sequence_for_render(&engine, source);
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-config-typography").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session()
+        .expect("begin configured Sequence measurement session");
+    let _measurement_artifact = family::prepare(
+        measurement_parsed,
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare configured Sequence measurement artifact");
+    let requests = host.snapshot();
+    for text_fragment in [
+        "Config Team",
+        "Config Actor",
+        "Config Message",
+        "Config Note",
+        "Config Loop",
+    ] {
+        assert!(
+            requests.iter().any(|exchange| {
+                let request = &exchange.request;
+                request.text.contains(text_fragment)
+                    && request.font_family.as_deref() == Some("Courier New")
+                    && request.font_size_bits == f64::to_bits(23.0)
+                    && request.font_weight.as_deref() == Some("700")
+            }),
+            "layout measurement must consume explicit config typography for {text_fragment:?}"
+        );
+    }
+
+    let rendered = family::prepare(
+        parse_sequence_for_render(&engine, source),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin configured Sequence render session"),
+    )
+    .expect("prepare configured Sequence render")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render configured Sequence SVG");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid config-only SVG");
+    for (class_name, text_fragment) in [
+        ("text", "Config Team"),
+        ("actor-box", "Config Actor"),
+        ("messageText", "Config Message"),
+        ("noteText", "Config Note"),
+        ("loopText", "Config Loop"),
+    ] {
+        assert_sequence_role_text_style(
+            &document,
+            class_name,
+            text_fragment,
+            "Courier New",
+            "23px",
+            "700",
+            "normal",
+        );
+    }
+
+    let sequence_number = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("sequenceNumber"))
+        .expect("configured autonumber terminal label");
+    let inline = sequence_number
+        .attribute("style")
+        .expect("configured autonumber role typography style");
+    assert_eq!(
+        inline_style_value(inline, "font-family"),
+        Some("Courier New")
+    );
+    assert_eq!(inline_style_value(inline, "font-weight"), Some("700"));
+    assert_eq!(inline_style_value(inline, "font-style"), Some("normal"));
+    assert_eq!(sequence_number.attribute("font-size"), Some("12px"));
+}
+
+#[test]
+fn sequence_config_owned_note_weight_is_reasserted_after_legacy_tspan_css() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NoteLabel,
+                        ThemeStylePatch {
+                            typography: ThemeTextStylePatch {
+                                font_weight: Specified::Value(700),
+                                ..ThemeTextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile Sequence NoteLabel weight theme");
+    let source = r#"%%{init: {"themeVariables": {"noteFontWeight": 600}}}%%
+sequenceDiagram
+participant Alice
+participant Bob
+Note over Alice,Bob: Config Note Weight"#;
+    let engine = merman_render::__private::install_parse_compatibility(
+        &theme,
+        legacy_init_theme_compat_engine(),
+    );
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-note-theme-variable-weight").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse measured Sequence note source")
+        .expect("detect measured Sequence note source");
+    assert_eq!(
+        measurement_parsed.metadata().effective_config.as_value()["themeVariables"]
+            ["noteFontWeight"],
+        serde_json::json!(600),
+        "the explicit legacy init value must survive the configured Mermaid secure allowlist"
+    );
+    assert!(
+        merman_core::__private::config_path_overrides_typed_default(
+            &measurement_parsed.metadata().effective_config,
+            "themeVariables.noteFontWeight",
+        ),
+        "the surviving legacy init value must outrank the typed NoteLabel default"
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session_with_theme(&theme)
+        .expect("begin measured Sequence note session");
+    let _measurement_artifact = family::prepare(
+        measurement_parsed,
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare measured Sequence note");
+    assert!(
+        host.snapshot().iter().any(|exchange| {
+            exchange.request.text.contains("Config Note Weight")
+                && exchange.request.font_weight.as_deref() == Some("600")
+        }),
+        "themeVariables.noteFontWeight must own NoteLabel layout measurement"
+    );
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse configured Sequence note source")
+        .expect("detect configured Sequence note source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin configured Sequence note session");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare configured Sequence note")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render configured Sequence note");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid configured note SVG");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Sequence stylesheet");
+    let selector = "#merman .noteText,#merman .noteText>tspan{";
+    let role_rule = css
+        .rfind(selector)
+        .and_then(|start| css[start + selector.len()..].split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("post-legacy NoteLabel typography rule");
+    assert!(
+        role_rule.contains("font-weight:600"),
+        "config-owned NoteLabel weight must be reasserted after legacy child CSS: {role_rule}"
+    );
+
+    let note = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("noteText")
+                && node
+                    .descendants()
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains("Config Note Weight"))
+        })
+        .expect("terminal configured note label");
+    assert_eq!(
+        note.attribute("style")
+            .and_then(|style| inline_style_value(style, "font-weight")),
+        Some("600")
+    );
+}
+
+#[test]
+fn sequence_typed_message_css_escapes_the_diagram_id_selector() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Message,
+                        ThemeStylePatch::default().with_stroke(
+                            CanvasPaint::solid("#2563eb").expect("valid Message stroke"),
+                        ),
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile Sequence Message theme");
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse Sequence Message source")
+        .expect("detect Sequence Message source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict Sequence Message session");
+    let options = SvgRenderOptions {
+        diagram_id: Some("seq:prod".to_string()),
+        ..SvgRenderOptions::default()
+    };
+
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence Message theme")
+        .render_svg(&options, &SvgDebugOptions::default())
+        .expect("render Sequence Message theme");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Sequence SVG");
+    assert_eq!(document.root_element().attribute("id"), Some("seq:prod"));
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Sequence stylesheet");
+    assert!(
+        css.contains(r"#seq\:prod .messageLine0,#seq\:prod .messageLine1{stroke:#2563eb;}"),
+        "{css}"
+    );
+    assert!(!css.contains("#seq:prod"), "{css}");
+}
+
+#[test]
+fn sequence_clear_typography_uses_the_computed_family_base_everywhere() {
+    let base_typography = ThemeTextStyle::default()
+        .with_font_size_px(21.0)
+        .expect("valid Sequence family base font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default()
+                        .with_family_style(DiagramFamilyId::SEQUENCE, base_typography),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::MessageLabel,
+                            ThemeStylePatch {
+                                typography: ThemeTextStylePatch {
+                                    font_size_px: Specified::Clear,
+                                    ..ThemeTextStylePatch::default()
+                                },
+                                ..ThemeStylePatch::default()
+                            },
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+        )
+        .expect("compile Sequence MessageLabel clear theme");
+    let source = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Clear Message"#;
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-computed-clear-typography").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session_with_theme(&theme)
+        .expect("begin Sequence clear measurement session");
+    let _measurement_artifact = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse measured Sequence clear source")
+            .expect("detect measured Sequence clear source"),
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare measured Sequence clear artifact");
+    assert!(
+        host.snapshot().iter().any(|exchange| {
+            exchange.request.text.contains("Clear Message")
+                && exchange.request.font_size_bits == f64::to_bits(21.0)
+        }),
+        "MessageLabel Clear must measure with the computed Sequence family base"
+    );
+
+    let render_session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .expect("begin Sequence clear session");
+    let rendered = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse rendered Sequence clear source")
+            .expect("detect rendered Sequence clear source"),
+        &LayoutOptions::default(),
+        render_session,
+    )
+    .expect("prepare Sequence clear artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render Sequence clear typography");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid clear typography SVG");
+    let message = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("messageText")
+                && node
+                    .descendants()
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains("Clear Message"))
+        })
+        .expect("terminal cleared message label");
+    assert_eq!(
+        message
+            .attribute("style")
+            .and_then(|style| inline_style_value(style, "font-size")),
+        Some("21px")
+    );
+}
+
+#[test]
+fn sequence_loop_keyword_typography_expands_the_measured_label_box() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::LoopLabel,
+                        ThemeStylePatch {
+                            typography: ThemeTextStylePatch {
+                                font_size_px: Specified::Value(96.0),
+                                ..ThemeTextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile large Sequence LoopLabel theme");
+    let source = r#"sequenceDiagram
+participant Alice
+participant Bob
+critical Establish connection
+Alice->>Bob: Connect
+option Retry later
+Bob-->>Alice: Retry
+end"#;
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-loop-control-label-box").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        measurement_identity,
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session_with_theme(&theme)
+        .expect("begin measured Sequence LoopLabel session");
+    let _measurement_artifact = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse measured Sequence LoopLabel source")
+            .expect("detect measured Sequence LoopLabel source"),
+        &LayoutOptions::default(),
+        measurement_session,
+    )
+    .expect("prepare measured Sequence LoopLabel artifact");
+    assert!(
+        host.snapshot().iter().any(|exchange| {
+            exchange.request.text == "critical"
+                && exchange.request.font_size_bits == f64::to_bits(96.0)
+        }),
+        "the terminal control keyword must participate in LoopLabel layout measurement"
+    );
+
+    let render_session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin portable large Sequence LoopLabel session");
+    let rendered = family::prepare(
+        engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse rendered Sequence LoopLabel source")
+            .expect("detect rendered Sequence LoopLabel source"),
+        &LayoutOptions::default(),
+        render_session,
+    )
+    .expect("prepare portable large Sequence LoopLabel artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("measured LoopLabel control keyword must seal as portable");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid LoopLabel SVG");
+    let control_structure = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-et") == Some("control-structure")
+                && node.descendants().any(|descendant| {
+                    descendant.has_tag_name("text")
+                        && descendant.attribute("class") == Some("labelText")
+                        && descendant.text() == Some("critical")
+                })
+        })
+        .expect("critical control structure");
+    let label = control_structure
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("labelText"))
+        .expect("critical terminal label");
+    assert_eq!(
+        label
+            .attribute("style")
+            .and_then(|style| inline_style_value(style, "font-size")),
+        Some("96px")
+    );
+    let points = control_structure
+        .descendants()
+        .find(|node| node.has_tag_name("polygon") && node.attribute("class") == Some("labelBox"))
+        .and_then(|node| node.attribute("points"))
+        .expect("critical label box points")
+        .split_whitespace()
+        .map(|point| {
+            let (x, y) = point.split_once(',').expect("label box coordinate pair");
+            (
+                x.parse::<f64>().expect("numeric label box x"),
+                y.parse::<f64>().expect("numeric label box y"),
+            )
+        })
+        .collect::<Vec<_>>();
+    let min_x = points.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
+    let max_x = points
+        .iter()
+        .map(|(x, _)| *x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_y = points.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
+    let max_y = points
+        .iter()
+        .map(|(_, y)| *y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        max_x - min_x > 50.0,
+        "large LoopLabel typography must widen the control label box"
+    );
+    assert!(
+        max_y - min_y > 20.0,
+        "large LoopLabel typography must increase the control label box height"
+    );
+    let (view_box, _) = root_view_box_and_max_width(rendered.svg());
+    assert!(
+        max_x <= view_box[0] + view_box[2],
+        "the measured control label box must remain inside the root viewBox"
+    );
+}
+
+#[test]
+fn sequence_explicit_default_role_typography_remains_a_portability_residual() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::ActorLabel,
+                        ThemeStylePatch {
+                            typography: ThemeTextStylePatch {
+                                font_weight: Specified::Value(700),
+                                ..ThemeTextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile explicit-default Sequence ActorLabel theme");
+    let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse explicit-default Sequence source")
+        .expect("detect explicit-default Sequence source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict explicit-default Sequence session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare explicit-default Sequence theme");
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => {
+            panic!("explicit Default role typography must fail closed until directly supported")
+        }
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            error,
+            merman_render::Error::UnverifiedFamilyTheme {
+                family_id: DiagramFamilyId::SEQUENCE,
+                residual_count: 1,
+            }
+        ),
+        "unexpected explicit-default Sequence typography error: {error:?}"
+    );
+}
+
+#[test]
+fn sequence_lifeline_stroke_does_not_hide_unsupported_sibling_facets() {
+    let mut style = ThemeStylePatch::default()
+        .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke"))
+        .with_padding(InsetsPx::all(4.0));
+    style.geometry.radius = Specified::Value(6.0);
+    style.paint.opacity = Specified::Value(0.75);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::Lifeline, style).for_family(DiagramFamilyId::SEQUENCE),
+            )),
+        )
+        .expect("compile mixed Sequence Lifeline theme");
+    let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
+
+    let rendered = family::prepare(
+        merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse mixed Sequence Lifeline source")
+            .expect("detect mixed Sequence Lifeline source"),
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin mixed Sequence Lifeline session"),
+    )
+    .expect("prepare mixed Sequence Lifeline theme")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("best-effort rendering keeps the directly supported Lifeline stroke");
+    assert!(
+        rendered.svg().contains(".actor-line{stroke:#2563eb;"),
+        "the typed Lifeline stroke should still reach terminal CSS: {}",
+        rendered.svg()
+    );
+
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse strict mixed Sequence Lifeline source")
+        .expect("detect strict mixed Sequence Lifeline source");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict mixed Sequence Lifeline session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare strict mixed Sequence Lifeline theme");
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("unsupported Lifeline radius, padding, and opacity must fail closed"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            error,
+            merman_render::Error::UnverifiedFamilyTheme {
+                family_id: DiagramFamilyId::SEQUENCE,
+                residual_count: 1,
+            }
+        ),
+        "unexpected mixed Sequence Lifeline portability error: {error:?}"
     );
 }
 

@@ -34,12 +34,12 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
-    pub(super) message_font_size: f64,
 }
 
 pub(super) struct SequenceActorLayoutPlan<'a> {
     pub(super) actor_index: HashMap<&'a str, usize>,
     pub(super) actor_widths: Vec<f64>,
+    pub(super) actor_popup_widths: HashMap<String, f64>,
     pub(super) actor_base_heights: Vec<f64>,
     pub(super) actor_box: Vec<Option<usize>>,
     pub(super) actor_left_x: Vec<f64>,
@@ -78,6 +78,7 @@ pub(super) fn plan_sequence_actors<'a>(
     let max_box_title_height = max_box_title_height(&ctx, has_box_titles);
     let (actor_widths, actor_base_heights) = measure_actor_boxes(&ctx)?;
     let actor_index = actor_index(ctx.model);
+    let actor_popup_widths = actor_popup_widths(&ctx, &actor_index, &actor_widths);
     let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index);
     let actor_margins = actor_margins(&actor_widths, &actor_to_message_width, ctx.actor_margin);
     let box_margins = box_margins(
@@ -107,6 +108,7 @@ pub(super) fn plan_sequence_actors<'a>(
     Ok(SequenceActorLayoutPlan {
         actor_index,
         actor_widths,
+        actor_popup_widths,
         actor_base_heights,
         actor_box,
         actor_left_x,
@@ -119,6 +121,38 @@ pub(super) fn plan_sequence_actors<'a>(
     })
 }
 
+fn actor_popup_widths(
+    ctx: &SequenceActorLayoutPlanContext<'_>,
+    actor_index: &HashMap<&str, usize>,
+    actor_widths: &[f64],
+) -> HashMap<String, f64> {
+    let horizontal_padding = 2.0 * ctx.wrap_padding + 2.0 * ctx.box_margin;
+    ctx.model
+        .actor_order
+        .iter()
+        .filter_map(|actor_id| {
+            let actor = ctx.model.actors.get(actor_id)?;
+            if actor.links.is_empty() {
+                return None;
+            }
+            let actor_width = actor_index
+                .get(actor_id.as_str())
+                .and_then(|index| actor_widths.get(*index))
+                .copied()
+                .unwrap_or(ctx.actor_width_min);
+            let required_width = actor
+                .links
+                .keys()
+                .map(|label| {
+                    measure_svg_like_with_html_br(ctx.measurer, label, ctx.actor_text_style).0
+                        + horizontal_padding
+                })
+                .fold(0.0_f64, f64::max);
+            Some((actor_id.clone(), actor_width.max(required_width)))
+        })
+        .collect()
+}
+
 fn max_box_title_height(ctx: &SequenceActorLayoutPlanContext<'_>, has_box_titles: bool) -> f64 {
     if !has_box_titles {
         return 0.0;
@@ -128,8 +162,9 @@ fn max_box_title_height(ctx: &SequenceActorLayoutPlanContext<'_>, has_box_titles
     // across boxes in `box.textMaxHeight` (used for bumping actor `starty` when any title exists).
     //
     // In Mermaid 11.12.2 with 16px fonts, this height comes out as 17px (not the larger SVG
-    // `getBBox()` height used elsewhere). Keep this model-level constant to match upstream DOM.
-    let line_h = sequence_text_dimensions_height_px(ctx.message_font_size);
+    // `getBBox()` height used elsewhere). Sequence maps box titles to ActorLabel, so the same
+    // resolved actor size must drive both this layout offset and the terminal `class="text"` row.
+    let line_h = sequence_text_dimensions_height_px(ctx.actor_font_size);
     ctx.model
         .boxes
         .iter()
@@ -371,7 +406,7 @@ fn box_margins(
         let (text_w, _text_h) = measure_sequence_label_for_layout(
             ctx.measurer,
             name,
-            ctx.msg_text_style,
+            ctx.actor_text_style,
             ctx.math_config,
             ctx.math_renderer,
             SequenceMathHeightMode::Bound,

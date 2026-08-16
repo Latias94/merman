@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
@@ -22,6 +23,7 @@ struct SequenceThemeEvidenceState {
     message: SequenceMessageThemeState,
     note: SequenceStaticRectThemeState,
     activation: SequenceStaticRectThemeState,
+    typography: Option<SequenceTypographyThemeReceipt>,
 }
 
 /// Winner facts produced by the terminal Sequence Actor writer.
@@ -106,13 +108,11 @@ impl SequenceLifelineThemeReceipt {
     fn route_won(
         &self,
         rule_index: usize,
-        selector: FamilyThemeSelectorShape,
+        _selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-            && self
-                .static_winners
-                .contains(&(rule_index, style_property_for_facet(facet)))
+        self.static_winners
+            .contains(&(rule_index, style_property_for_facet(facet)))
     }
 }
 
@@ -203,13 +203,11 @@ impl SequenceMessageThemeReceipt {
     fn route_won(
         &self,
         rule_index: usize,
-        selector: FamilyThemeSelectorShape,
+        _selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-            && self
-                .static_winners
-                .contains(&(rule_index, style_property_for_facet(facet)))
+        self.static_winners
+            .contains(&(rule_index, style_property_for_facet(facet)))
     }
 }
 
@@ -343,6 +341,98 @@ impl SequenceStaticRectThemeEmission {
             stroke_overridden: has_surfaces && stroke_overridden,
             receipt,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SequenceRoleTypographyReceipt {
+    static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+    config_overrides: BTreeSet<crate::diagram_theme::ThemeTypographyProperty>,
+    label_candidates: Cell<usize>,
+    emitted_labels: Cell<usize>,
+}
+
+impl SequenceRoleTypographyReceipt {
+    fn from_resolved(typography: &crate::sequence::SequenceResolvedTypography) -> Self {
+        let mut static_winners = BTreeSet::new();
+        if let Some(style) = typography.resolved_style() {
+            record_style_winners(&mut static_winners, style);
+        }
+        Self {
+            static_winners,
+            config_overrides: typography.config_overrides().clone(),
+            label_candidates: Cell::new(0),
+            emitted_labels: Cell::new(0),
+        }
+    }
+
+    fn record_candidate(&self) {
+        self.label_candidates
+            .set(self.label_candidates.get().saturating_add(1));
+    }
+
+    fn record_emission(&self) {
+        self.emitted_labels
+            .set(self.emitted_labels.get().saturating_add(1));
+    }
+
+    fn route_won(
+        &self,
+        rule_index: usize,
+        _selector: FamilyThemeSelectorShape,
+        facet: FamilyThemeRuleFacet,
+    ) -> bool {
+        self.static_winners
+            .contains(&(rule_index, style_property_for_facet(facet)))
+    }
+
+    fn complete(&self) -> bool {
+        self.label_candidates.get() != 0 && self.label_candidates.get() == self.emitted_labels.get()
+    }
+}
+
+/// One operation-local receipt shared by every Sequence role-label terminal writer.
+#[derive(Debug, Clone)]
+pub(crate) struct SequenceTypographyThemeReceipt {
+    actor: SequenceRoleTypographyReceipt,
+    message: SequenceRoleTypographyReceipt,
+    note: SequenceRoleTypographyReceipt,
+    loop_label: SequenceRoleTypographyReceipt,
+}
+
+impl SequenceTypographyThemeReceipt {
+    pub(crate) fn from_plan(plan: &crate::sequence::SequenceTypographyPlan) -> Self {
+        Self {
+            actor: SequenceRoleTypographyReceipt::from_resolved(plan.actor()),
+            message: SequenceRoleTypographyReceipt::from_resolved(plan.message()),
+            note: SequenceRoleTypographyReceipt::from_resolved(plan.note()),
+            loop_label: SequenceRoleTypographyReceipt::from_resolved(plan.loop_label()),
+        }
+    }
+
+    fn role(
+        &self,
+        role: crate::sequence::SequenceTypographyRole,
+    ) -> &SequenceRoleTypographyReceipt {
+        match role {
+            crate::sequence::SequenceTypographyRole::Actor => &self.actor,
+            crate::sequence::SequenceTypographyRole::Message => &self.message,
+            crate::sequence::SequenceTypographyRole::Note => &self.note,
+            crate::sequence::SequenceTypographyRole::Loop => &self.loop_label,
+        }
+    }
+
+    pub(crate) fn record_candidate(&self, role: crate::sequence::SequenceTypographyRole) {
+        self.role(role).record_candidate();
+    }
+
+    pub(crate) fn record_emission(&self, role: crate::sequence::SequenceTypographyRole) {
+        self.role(role).record_emission();
+    }
+
+    pub(crate) fn record_terminal_text(&self, role: crate::sequence::SequenceTypographyRole) {
+        self.record_candidate(role);
+        self.record_emission(role);
     }
 }
 
@@ -502,6 +592,56 @@ fn observe_lifeline_rule(
     }
 }
 
+fn observe_typography_rule(
+    role: &SequenceRoleTypographyReceipt,
+    observation: &mut SequenceRuleObservation,
+    disposition: FamilyThemeDisposition,
+    rule_index: usize,
+    selector: FamilyThemeSelectorShape,
+    facet: FamilyThemeRuleFacet,
+) {
+    if role.label_candidates.get() == 0 {
+        return;
+    }
+    if !role.route_won(rule_index, selector, facet) {
+        if matches!(
+            (disposition, selector),
+            (
+                FamilyThemeDisposition::Unsupported,
+                FamilyThemeSelectorShape::Ordinal { .. }
+            )
+        ) {
+            observation.applicable = true;
+            observation
+                .residual
+                .get_or_insert(unsupported_reason_for_facet(facet));
+        }
+        return;
+    }
+    observation.applicable = true;
+    if let FamilyThemeRuleFacet::Typography(property) = facet
+        && role.config_overrides.contains(&property)
+    {
+        return;
+    }
+    match (disposition, facet) {
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Typography(_)) => {
+            if role.complete() {
+                observation.capabilities.insert(ThemeCapability::Typography);
+            } else {
+                observation.incomplete = true;
+            }
+        }
+        (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
+        (FamilyThemeDisposition::Unsupported, facet) => {
+            observation
+                .residual
+                .get_or_insert(unsupported_reason_for_facet(facet));
+        }
+        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
+    }
+}
+
 fn capability_for_paint(kind: FamilyThemePaintKind) -> ThemeCapability {
     match kind {
         FamilyThemePaintKind::Transparent => ThemeCapability::TransparentPaint,
@@ -579,6 +719,18 @@ impl SequenceThemeEvidenceRecorder {
         state.activation.merge(emission);
     }
 
+    pub(crate) fn record_typography_emission(&self, receipt: SequenceTypographyThemeReceipt) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        debug_assert!(
+            state.typography.is_none(),
+            "Sequence role typography is sealed once per terminal SVG"
+        );
+        state.typography = Some(receipt);
+    }
+
     pub(crate) fn finish(&self, theme: Option<&ResolvedDiagramTheme>) -> FamilyThemeEvidence {
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
         let state = self
@@ -595,6 +747,8 @@ impl SequenceThemeEvidenceRecorder {
         let mut message_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut note_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut activation_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
+        let mut typography_rules =
+            BTreeMap::<ThemeTarget, BTreeMap<usize, SequenceRuleObservation>>::new();
 
         // Seed every Actor rule plus every static unqualified Message signal paint and directly
         // owned Note/Activation rule before checking winners.
@@ -646,6 +800,17 @@ impl SequenceThemeEvidenceRecorder {
             {
                 activation_rules.entry(rule_index).or_default();
             }
+            if let FamilyThemeMechanism::RuleFacet {
+                rule_index, target, ..
+            } = route.mechanism()
+                && crate::sequence::SequenceTypographyRole::from_target(target).is_some()
+            {
+                typography_rules
+                    .entry(target)
+                    .or_default()
+                    .entry(rule_index)
+                    .or_default();
+            }
         }
 
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -669,6 +834,39 @@ impl SequenceThemeEvidenceRecorder {
                         }
                         FamilyThemeDisposition::LegacyCompatibility => {}
                     }
+                }
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target:
+                        target @ (ThemeTarget::ActorLabel
+                        | ThemeTarget::MessageLabel
+                        | ThemeTarget::NoteLabel
+                        | ThemeTarget::LoopLabel),
+                    selector,
+                    facet,
+                } => {
+                    let Some(role) = crate::sequence::SequenceTypographyRole::from_target(target)
+                    else {
+                        continue;
+                    };
+                    let Some(receipt) = state.typography.as_ref().map(|receipt| receipt.role(role))
+                    else {
+                        continue;
+                    };
+                    let Some(observation) = typography_rules
+                        .get_mut(&target)
+                        .and_then(|rules| rules.get_mut(&rule_index))
+                    else {
+                        continue;
+                    };
+                    observe_typography_rule(
+                        receipt,
+                        observation,
+                        route.disposition(),
+                        rule_index,
+                        selector,
+                        facet,
+                    );
                 }
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
@@ -896,7 +1094,38 @@ impl SequenceThemeEvidenceRecorder {
             &state.activation,
             activation_rules,
         );
+        finish_typography_rules(&mut evidence, state.typography.as_ref(), typography_rules);
         evidence
+    }
+}
+
+fn finish_typography_rules(
+    evidence: &mut FamilyThemeEvidence,
+    receipt: Option<&SequenceTypographyThemeReceipt>,
+    rules_by_target: BTreeMap<ThemeTarget, BTreeMap<usize, SequenceRuleObservation>>,
+) {
+    for (target, rules) in rules_by_target {
+        let role = crate::sequence::SequenceTypographyRole::from_target(target)
+            .expect("Sequence typography rules are keyed only by role targets");
+        let candidate_count =
+            receipt.map_or(0, |receipt| receipt.role(role).label_candidates.get());
+        for (rule_index, observation) in rules {
+            let key = crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                index: rule_index,
+                target,
+            };
+            if candidate_count == 0 || !observation.applicable {
+                evidence.mark_not_applicable(key);
+            } else if let Some(reason) = observation.residual {
+                evidence.mark_residual(key, reason);
+            } else if observation.incomplete {
+                // The rule reached a terminal label candidate without a complete writer seal.
+            } else if observation.capabilities.is_empty() {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_applied_with_capabilities(key, observation.capabilities);
+            }
+        }
     }
 }
 
@@ -1195,10 +1424,12 @@ mod tests {
     }
 
     #[test]
-    fn lifeline_mixed_typed_paint_and_unsupported_geometry_remains_residual() {
+    fn lifeline_mixed_typed_paint_and_unsupported_sibling_facets_remains_residual() {
         let mut style = ThemeStylePatch::default()
             .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke"));
         style.geometry.radius = Specified::Value(6.0);
+        style.spacing.padding = Specified::Value(crate::diagram_theme::InsetsPx::all(4.0));
+        style.paint.opacity = Specified::Value(0.75);
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(

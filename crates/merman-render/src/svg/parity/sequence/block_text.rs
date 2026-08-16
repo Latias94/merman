@@ -7,6 +7,8 @@ use crate::sequence::{
 pub(super) struct LoopTextRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) style: &'a TextStyle,
+    typography: &'a crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     config: &'a merman_core::MermaidConfig,
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
@@ -23,12 +25,16 @@ impl<'a> LoopTextRenderContext<'a> {
     pub(super) fn new(
         measurer: &'a dyn TextMeasurer,
         style: &'a TextStyle,
+        typography: &'a crate::sequence::SequenceResolvedTypography,
+        typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
         config: &'a merman_core::MermaidConfig,
         math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     ) -> Self {
         Self {
             measurer,
             style,
+            typography,
+            typography_receipt,
             config,
             math_renderer,
         }
@@ -92,6 +98,8 @@ pub(super) fn write_loop_text_lines(
     text: &str,
 ) {
     if let Some(katex) = ctx.katex_label(text) {
+        ctx.typography_receipt
+            .record_candidate(crate::sequence::SequenceTypographyRole::Loop);
         let x = (placement.x - katex.width / 2.0).round();
         write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
         return;
@@ -101,25 +109,32 @@ pub(super) fn write_loop_text_lines(
     let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, placement.max_width);
     for (i, line) in lines.into_iter().enumerate() {
         let y = placement.y0 + (i as f64) * line_step;
+        let legacy_style = format!(
+            "font-size: {}px; font-weight: 400;",
+            fmt(ctx.style.font_size)
+        );
+        let style = ctx.typography.terminal_style("", legacy_style);
         if placement.use_tspan {
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="{style}"><tspan x="{x}">{text}</tspan></text>"#,
                 x = fmt(placement.x),
                 y = fmt(y),
-                fs = fmt(ctx.style.font_size),
+                style = escape_attr_display(&style),
                 text = escape_xml(&line)
             );
         } else {
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="{style}">{text}</text>"#,
                 x = fmt(placement.x),
                 y = fmt(y),
-                fs = fmt(ctx.style.font_size),
+                style = escape_attr_display(&style),
                 text = escape_xml(&line)
             );
         }
+        ctx.typography_receipt
+            .record_terminal_text(crate::sequence::SequenceTypographyRole::Loop);
     }
 }
 
@@ -133,6 +148,8 @@ pub(super) fn write_section_title_lines(
     text: &str,
 ) {
     if let Some(katex) = ctx.katex_label(text) {
+        ctx.typography_receipt
+            .record_candidate(crate::sequence::SequenceTypographyRole::Loop);
         let x = (x - katex.width / 2.0).round();
         let y = (section_start_y - katex.height).round();
         write_sequence_katex_foreign_object(out, &katex, x, y);
@@ -143,13 +160,20 @@ pub(super) fn write_section_title_lines(
     let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
     for (i, line) in lines.into_iter().enumerate() {
         let y = y0 + (i as f64) * line_step;
+        let legacy_style = format!(
+            "font-size: {}px; font-weight: 400;",
+            fmt(ctx.style.font_size)
+        );
+        let style = ctx.typography.terminal_style("", legacy_style);
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" class="sectionTitle" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" text-anchor="middle" class="sectionTitle" style="{style}">{text}</text>"#,
             x = fmt(x),
             y = fmt(y),
-            fs = fmt(ctx.style.font_size),
+            style = escape_attr_display(&style),
             text = escape_xml(&line)
         );
+        ctx.typography_receipt
+            .record_terminal_text(crate::sequence::SequenceTypographyRole::Loop);
     }
 }

@@ -15,9 +15,12 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
     pub(super) actor_nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) label_box_width: f64,
+    pub(super) label_box_height: f64,
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
+    pub(super) loop_typography: &'a crate::sequence::SequenceResolvedTypography,
+    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
@@ -36,6 +39,8 @@ impl<'a> SequenceBlockRenderContext<'a> {
         LoopTextRenderContext::new(
             self.measurer,
             self.loop_text_style,
+            self.loop_typography,
+            self.typography_receipt,
             self.sanitize_config,
             self.math_renderer,
         )
@@ -99,13 +104,16 @@ pub(super) fn write_block_label_box(
     frame_x1: f64,
     frame_y1: f64,
     label_box_width: f64,
+    label_box_height: f64,
     label: &str,
+    typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
     let x1 = frame_x1;
     let y1 = frame_y1;
     let x2 = x1 + label_box_width;
-    let y2 = y1 + 13.0;
-    let y3 = y1 + 20.0;
+    let y3 = y1 + label_box_height;
+    let y2 = (y3 - 7.0).max(y1);
     let x3 = x2 - 8.4;
     let _ = write!(
         out,
@@ -118,14 +126,17 @@ pub(super) fn write_block_label_box(
         y3 = fmt(y3)
     );
     let label_cx = (x1 + label_box_width / 2.0).round();
-    let label_cy = y1 + 13.0;
+    let label_cy = y1 + (label_box_height / 2.0).max(13.0);
+    let style = typography.terminal_style("", "font-size: 16px; font-weight: 400;".to_string());
     let _ = write!(
         out,
-        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">{label}</text>"#,
+        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="{style}">{label}</text>"#,
         x = fmt(label_cx),
         y = fmt(label_cy),
+        style = escape_attr_display(&style),
         label = escape_xml(label)
     );
+    typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Loop);
 }
 
 pub(super) fn render_simple_sequence_block(
@@ -144,6 +155,7 @@ pub(super) fn render_simple_sequence_block(
         .geometry
         .frame_x(ctx.actor_nodes_by_id)
         .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
 
     let frame_y1 = layout.start_y;
     let frame_y2 = layout.stop_y;
@@ -155,7 +167,10 @@ pub(super) fn render_simple_sequence_block(
         frame_x1,
         frame_y1,
         ctx.label_box_width,
+        ctx.label_box_height,
         block.block_label,
+        ctx.loop_typography,
+        ctx.typography_receipt,
     );
     let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
@@ -223,6 +238,7 @@ pub(super) fn render_sectioned_sequence_block(
         ctx.default_frame_x2,
         f64::INFINITY,
     ));
+    let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
 
     let frame_y1 = layout.start_y;
     let frame_y2 = layout.stop_y;
@@ -248,7 +264,16 @@ pub(super) fn render_sectioned_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, block_label);
+    write_block_label_box(
+        out,
+        frame_x1,
+        frame_y1,
+        ctx.label_box_width,
+        ctx.label_box_height,
+        block_label,
+        ctx.loop_typography,
+        ctx.typography_receipt,
+    );
 
     // section labels
     let label_box_right = frame_x1 + ctx.label_box_width;
@@ -324,6 +349,7 @@ pub(super) fn render_critical_sequence_block(
         // Mermaid's `critical` w/ `option` sections widens the frame to the left.
         frame_x1 = frame_x1.min(min_left - 9.0);
     }
+    let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
 
     let frame_y1 = layout.start_y;
     let frame_y2 = layout.stop_y;
@@ -347,7 +373,16 @@ pub(super) fn render_critical_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, "critical");
+    write_block_label_box(
+        out,
+        frame_x1,
+        frame_y1,
+        ctx.label_box_width,
+        ctx.label_box_height,
+        "critical",
+        ctx.loop_typography,
+        ctx.typography_receipt,
+    );
 
     // section labels
     let label_box_right = frame_x1 + ctx.label_box_width;

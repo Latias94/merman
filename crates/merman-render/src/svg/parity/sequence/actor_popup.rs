@@ -12,6 +12,9 @@ pub(super) fn render_sequence_actor_popup_menus(
     force_menus: bool,
     mirror_actors: bool,
     actor_height: f64,
+    actor_popup_widths: &std::collections::HashMap<String, f64>,
+    actor_typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
     // Mermaid emits actor popup menus (links/link directives) as root-level
     // `<g class="actorPopupMenu">` groups after messages.
@@ -52,6 +55,7 @@ pub(super) fn render_sequence_actor_popup_menus(
             continue;
         };
         let (x, _y) = node_left_top(n);
+        let panel_width = actor_popup_widths.get(actor_id).copied().unwrap_or(n.width);
 
         let mut link_y: f64 = 20.0;
         let panel_height = crate::sequence::sequence_actor_popup_panel_height(actor.links.len());
@@ -68,7 +72,7 @@ pub(super) fn render_sequence_actor_popup_menus(
             class = escape_attr(&popup_panel_class),
             x = fmt(x),
             y = fmt(actor_height),
-            w = fmt(n.width),
+            w = fmt(panel_width),
             h = fmt(panel_height),
             fill = escape_xml_display(popup_fill),
         );
@@ -90,25 +94,32 @@ pub(super) fn render_sequence_actor_popup_menus(
             };
             let text_x = x + 10.0;
             let text_y = actor_height + link_y + 10.0;
+            let style = actor_typography.terminal_style(
+                "text-anchor: start",
+                "text-anchor: start; font-size: 16px; font-weight: 400;".to_string(),
+            );
             if let Some(href) = href {
                 let _ = write!(
                     out,
-                    r##"<a xlink:href="{href}"{target}><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    r##"<a xlink:href="{href}"{target}><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="{style}"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
                     href = href.as_serialized_str(),
                     target = target_attr,
                     x = fmt(text_x),
                     y = fmt(text_y),
+                    style = escape_attr_display(&style),
                     label = escape_xml(label)
                 );
             } else {
                 let _ = write!(
                     out,
-                    r##"<a><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    r##"<a><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="{style}"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
                     x = fmt(text_x),
                     y = fmt(text_y),
+                    style = escape_attr_display(&style),
                     label = escape_xml(label)
                 );
             }
+            typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
             link_y += 30.0;
         }
 

@@ -19,6 +19,8 @@ struct ActorManGlyphContext<'a> {
     width: f64,
     height: f64,
     diagram_id: &'a str,
+    typography: &'a crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
 }
 
 fn actor_man_participant_data_attrs(ctx: &ActorManGlyphContext<'_>) -> String {
@@ -42,6 +44,8 @@ pub(super) fn write_actor_man_top_glyph(
     idx: usize,
     actor_height: f64,
     diagram_id: &str,
+    typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -62,6 +66,8 @@ pub(super) fn write_actor_man_top_glyph(
                 width: n.width,
                 height: actor_height,
                 diagram_id,
+                typography,
+                typography_receipt,
             },
         ),
         "boundary" => {
@@ -82,6 +88,8 @@ pub(super) fn write_actor_man_top_glyph(
                     width: n.width,
                     height: actor_height,
                     diagram_id,
+                    typography,
+                    typography_receipt,
                 },
             );
         }
@@ -103,6 +111,8 @@ pub(super) fn write_actor_man_top_glyph(
                     width: n.width,
                     height: actor_height,
                     diagram_id,
+                    typography,
+                    typography_receipt,
                 },
             );
         }
@@ -124,6 +134,8 @@ pub(super) fn write_actor_man_top_glyph(
                     width: n.width,
                     height: actor_height,
                     diagram_id,
+                    typography,
+                    typography_receipt,
                 },
             );
         }
@@ -141,6 +153,8 @@ pub(super) fn write_actor_man_bottom_glyph(
     idx: usize,
     metrics: ActorManBottomGlyphMetrics,
     diagram_id: &str,
+    typography: &crate::sequence::SequenceResolvedTypography,
+    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -161,6 +175,8 @@ pub(super) fn write_actor_man_bottom_glyph(
                 width: n.width,
                 height: metrics.actor_height,
                 diagram_id,
+                typography,
+                typography_receipt,
             },
         ),
         "boundary" => {
@@ -181,6 +197,8 @@ pub(super) fn write_actor_man_bottom_glyph(
                     width: n.width,
                     height: footer_h,
                     diagram_id,
+                    typography,
+                    typography_receipt,
                 },
             );
         }
@@ -203,6 +221,8 @@ pub(super) fn write_actor_man_bottom_glyph(
                     width: n.width,
                     height: footer_h,
                     diagram_id,
+                    typography,
+                    typography_receipt,
                 },
             );
         }
@@ -225,6 +245,8 @@ pub(super) fn write_actor_man_bottom_glyph(
                     width: n.width,
                     height: footer_h,
                     diagram_id,
+                    typography,
+                    typography_receipt,
                 },
             );
         }
@@ -241,9 +263,10 @@ fn write_stick_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<
     let arms_x2 = ctx.cx + 18.0;
     let leg_y = torso_bottom + 15.0;
     let data_attrs = actor_man_participant_data_attrs(ctx);
+    let label_style = actor_man_label_style(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}"{data_attrs}><line id="actor-man-torso{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}"/><line id="actor-man-arms{idx}" x1="{ax1}" y1="{ay}" x2="{ax2}" y2="{ay}"/><line x1="{ax1}" y1="{ly}" x2="{cx}" y2="{y2}"/><line x1="{cx}" y1="{y2}" x2="{lx2}" y2="{ly}"/><circle cx="{cx}" cy="{cy}" r="15" width="{w}" height="{h}"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}"{data_attrs}><line id="actor-man-torso{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}"/><line id="actor-man-arms{idx}" x1="{ax1}" y1="{ay}" x2="{ax2}" y2="{ay}"/><line x1="{ax1}" y1="{ly}" x2="{cx}" y2="{y2}"/><line x1="{cx}" y1="{y2}" x2="{lx2}" y2="{ly}"/><circle cx="{cx}" cy="{cy}" r="15" width="{w}" height="{h}"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="{label_style}"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,
@@ -260,17 +283,21 @@ fn write_stick_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<
         w = fmt(ctx.width),
         h = fmt(ctx.height),
         ty = fmt(ctx.label_y),
+        label_style = escape_attr_display(&label_style),
         label = escape_xml(ctx.label)
     );
+    ctx.typography_receipt
+        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
 }
 
 fn write_boundary_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
     let radius = 22.0;
     let x_left = ctx.cx - radius * 2.5;
     let data_attrs = actor_man_participant_data_attrs(ctx);
+    let label_style = actor_man_label_style(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0,21)"{data_attrs}><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="22"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0,21)"{data_attrs}><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="22"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="{label_style}"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,
@@ -283,8 +310,11 @@ fn write_boundary_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphConte
         cx = fmt(ctx.cx),
         cy = fmt(ctx.cy),
         ty = fmt(ctx.label_y),
+        label_style = escape_attr_display(&label_style),
         label = escape_xml(ctx.label)
     );
+    ctx.typography_receipt
+        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
 }
 
 fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
@@ -292,9 +322,10 @@ fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContex
     let marker_id = scoped_svg_id(ctx.diagram_id, "filled-head-control");
     let marker_url = scoped_svg_url(ctx.diagram_id, "filled-head-control");
     let data_attrs = actor_man_participant_data_attrs(ctx);
+    let label_style = actor_man_label_style(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}" style="stroke: rgb(147, 112, 219); fill: rgb(236, 236, 255);"{data_attrs}><defs><marker id="{marker_id}" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5" stroke-width="1.2"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="22" filter=""/><line marker-end="{marker_url}" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}" style="stroke: rgb(147, 112, 219); fill: rgb(236, 236, 255);"{data_attrs}><defs><marker id="{marker_id}" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5" stroke-width="1.2"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="22" filter=""/><line marker-end="{marker_url}" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="{label_style}"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,
@@ -304,8 +335,11 @@ fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContex
         cy = fmt(ctx.cy),
         ly = fmt(ctx.cy - r),
         ty = fmt(ctx.label_y),
+        label_style = escape_attr_display(&label_style),
         label = escape_xml(ctx.label)
     );
+    ctx.typography_receipt
+        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
 }
 
 fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
@@ -316,9 +350,10 @@ fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext
         6.0
     };
     let data_attrs = actor_man_participant_data_attrs(ctx);
+    let label_style = actor_man_label_style(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor {placement_class}" name="{name}" transform="translate(0, {transform_y})"{data_attrs}><circle cx="{cx}" cy="{cy}" r="22" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor {placement_class}" name="{name}" transform="translate(0, {transform_y})"{data_attrs}><circle cx="{cx}" cy="{cy}" r="22" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="{label_style}"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,
@@ -331,6 +366,16 @@ fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext
         x2 = fmt(ctx.cx + r),
         y = fmt(ctx.cy + r),
         ty = fmt(ctx.label_y),
+        label_style = escape_attr_display(&label_style),
         label = escape_xml(ctx.label)
     );
+    ctx.typography_receipt
+        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+}
+
+fn actor_man_label_style(ctx: &ActorManGlyphContext<'_>) -> String {
+    ctx.typography.terminal_style(
+        "text-anchor: middle",
+        "text-anchor: middle; font-size: 16px; font-weight: 400;".to_string(),
+    )
 }

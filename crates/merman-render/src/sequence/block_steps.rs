@@ -18,6 +18,98 @@ use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use std::collections::HashMap;
 
+const SEQUENCE_BLOCK_CONTROL_LABELS: [&str; 6] = ["loop", "alt", "opt", "par", "critical", "break"];
+const LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT: f64 = 20.0;
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SequenceBlockLabelBoxMetrics {
+    width: f64,
+    layout_height: f64,
+    terminal_height: f64,
+    typography_expanded: bool,
+}
+
+impl SequenceBlockLabelBoxMetrics {
+    pub(crate) fn resolve(
+        model: &SequenceDiagramRenderModel,
+        configured_width: f64,
+        configured_height: f64,
+        text_margin: f64,
+        measurer: &dyn TextMeasurer,
+        typography: &super::typography::SequenceResolvedTypography,
+    ) -> Self {
+        let legacy = Self {
+            width: configured_width,
+            layout_height: configured_height,
+            terminal_height: LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT,
+            typography_expanded: false,
+        };
+        if !typography.requires_resolved_emission() {
+            return legacy;
+        }
+
+        let mut present = [false; SEQUENCE_BLOCK_CONTROL_LABELS.len()];
+        for message in &model.messages {
+            let index = match message.message_type {
+                10 => Some(0),
+                12 => Some(1),
+                15 => Some(2),
+                19 | 32 => Some(3),
+                27 => Some(4),
+                30 => Some(5),
+                _ => None,
+            };
+            if let Some(index) = index {
+                present[index] = true;
+            }
+        }
+
+        let mut measured_width: f64 = 0.0;
+        let mut measured_height: f64 = 0.0;
+        let mut measured_any = false;
+        for (label, is_present) in SEQUENCE_BLOCK_CONTROL_LABELS.iter().zip(present) {
+            if !is_present {
+                continue;
+            }
+            let (width, height) =
+                measure_svg_like_with_html_br(measurer, label, typography.text_style());
+            measured_width = measured_width.max(width);
+            measured_height = measured_height.max(height);
+            measured_any = true;
+        }
+        if !measured_any {
+            return legacy;
+        }
+
+        let text_padding = 2.0 * text_margin.max(0.0);
+        let height = configured_height
+            .max(LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT)
+            .max(measured_height + text_padding);
+        Self {
+            width: configured_width.max(0.0).max(measured_width + text_padding),
+            layout_height: height,
+            terminal_height: height,
+            typography_expanded: true,
+        }
+    }
+
+    pub(crate) const fn width(self) -> f64 {
+        self.width
+    }
+
+    pub(crate) const fn layout_height(self) -> f64 {
+        self.layout_height
+    }
+
+    pub(crate) const fn terminal_height(self) -> f64 {
+        self.terminal_height
+    }
+
+    pub(crate) const fn typography_expanded(self) -> bool {
+        self.typography_expanded
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct BlockStepPlanContext<'a> {
     pub(super) model: &'a SequenceDiagramRenderModel,
@@ -37,6 +129,7 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
+    pub(super) loop_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
@@ -111,7 +204,7 @@ fn block_label_step(
     if let Some((_, height)) = measure_sequence_math_label(
         frame_ctx.measurer,
         &label,
-        frame_ctx.msg_text_style,
+        frame_ctx.loop_text_style,
         frame_ctx.math_config,
         frame_ctx.math_renderer,
         SequenceMathHeightMode::Bound,
@@ -123,7 +216,7 @@ fn block_label_step(
         Some(width) => wrap_sequence_label_like_mermaid_lines(
             &label,
             frame_ctx.measurer,
-            frame_ctx.msg_text_style,
+            frame_ctx.loop_text_style,
             sequence_block_label_wrap_width(width, step_ctx.wrap_padding),
         )
         .join("<br/>"),
@@ -132,7 +225,7 @@ fn block_label_step(
     let (_, height) = measure_svg_like_with_html_br(
         frame_ctx.measurer,
         &measured_label,
-        frame_ctx.msg_text_style,
+        frame_ctx.loop_text_style,
     );
     step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height)
 }
@@ -152,6 +245,7 @@ struct BlockFrameWidthContext<'a> {
     measurer: &'a dyn TextMeasurer,
     msg_text_style: &'a TextStyle,
     note_text_style: &'a TextStyle,
+    loop_text_style: &'a TextStyle,
     math_config: &'a MermaidConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     message_metrics: SequenceMessageMetricView<'a>,
@@ -180,6 +274,7 @@ impl<'a> BlockStepPlanContext<'a> {
             measurer: self.measurer,
             msg_text_style: self.msg_text_style,
             note_text_style: self.note_text_style,
+            loop_text_style: self.loop_text_style,
             math_config: self.math_config,
             math_renderer: self.math_renderer,
             message_metrics: self.message_metrics,
@@ -499,6 +594,7 @@ mod tests {
                 measurer: &measurer,
                 msg_text_style: &msg_style,
                 note_text_style: &note_style,
+                loop_text_style: &msg_style,
                 math_config: &math_config,
                 math_renderer: None,
                 message_metrics: SequenceMessageMetricView::empty(),
@@ -662,6 +758,7 @@ mod tests {
                 measurer: &measurer,
                 msg_text_style: &text_style,
                 note_text_style: &text_style,
+                loop_text_style: &text_style,
                 math_config: &math_config,
                 math_renderer: None,
                 message_metrics: SequenceMessageMetricView::empty(),

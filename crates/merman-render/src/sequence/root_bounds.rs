@@ -1,4 +1,4 @@
-use super::constants::sequence_actor_popup_panel_height;
+use super::constants::{SEQUENCE_FRAME_SIDE_PAD_PX, sequence_actor_popup_panel_height};
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::math::MathRenderer;
@@ -19,6 +19,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_left_x: &'a [f64],
     pub(super) actor_widths: &'a [f64],
+    pub(super) actor_popup_widths: &'a HashMap<String, f64>,
     pub(super) actor_box: &'a [Option<usize>],
     pub(super) box_margins: &'a [f64],
     pub(super) actor_width_min: f64,
@@ -35,12 +36,13 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
+    pub(super) block_label_box_metrics: super::SequenceBlockLabelBoxMetrics,
 }
 
 pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds {
     let mut content = sequence_content_bounds(&ctx);
 
-    include_actor_popup_bottoms(&mut content, &ctx);
+    include_actor_popup_bounds(&mut content, &ctx);
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
@@ -75,6 +77,7 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds
     bounds_box.include(content.min_x, content.max_x);
     bounds_box.include_actor_boxes(&ctx);
     include_self_message_bounds(&mut bounds_box, &ctx);
+    include_resolved_block_label_box_bounds(&mut bounds_box, &ctx);
 
     Bounds {
         min_x: bounds_box.start_x - ctx.diagram_margin_x,
@@ -82,6 +85,20 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds
         max_x: bounds_box.stop_x + ctx.diagram_margin_x,
         max_y: bounds_box_stopy + ctx.diagram_margin_y,
     }
+}
+
+fn include_resolved_block_label_box_bounds(
+    bounds_box: &mut ActorHorizontalBounds,
+    ctx: &SequenceRootBoundsContext<'_>,
+) {
+    if !ctx.block_label_box_metrics.typography_expanded() {
+        return;
+    }
+    let Some(rightmost_actor_center) = ctx.actor_centers_x.iter().copied().reduce(f64::max) else {
+        return;
+    };
+    let frame_left = rightmost_actor_center - SEQUENCE_FRAME_SIDE_PAD_PX;
+    bounds_box.include(frame_left, frame_left + ctx.block_label_box_metrics.width());
 }
 
 fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> ContentBounds {
@@ -141,17 +158,25 @@ fn include_footer_row_height(content: &mut ContentBounds, ctx: &SequenceRootBoun
     }
 }
 
-fn include_actor_popup_bottoms(content: &mut ContentBounds, ctx: &SequenceRootBoundsContext<'_>) {
+fn include_actor_popup_bounds(content: &mut ContentBounds, ctx: &SequenceRootBoundsContext<'_>) {
     // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
-    // present, even when they are emitted hidden by default. Account for the menu panel bottom so
-    // root height stays aligned with upstream for link-only fixtures.
-    for actor_id in &ctx.model.actor_order {
+    // present, even when they are emitted hidden by default. Account for the measured menu width
+    // and panel bottom so root bounds follow the same ActorLabel typography as terminal SVG.
+    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
         if actor.links.is_empty() {
             continue;
         }
+        let panel_left = ctx.actor_left_x.get(actor_index).copied().unwrap_or(0.0);
+        let panel_width = ctx
+            .actor_popup_widths
+            .get(actor_id)
+            .copied()
+            .or_else(|| ctx.actor_widths.get(actor_index).copied())
+            .unwrap_or(ctx.actor_width_min);
+        content.include_x(panel_left, panel_left + panel_width);
         let popup_bottom = ctx.actor_height + sequence_actor_popup_panel_height(actor.links.len());
         let popup_content_bottom = if ctx.mirror_actors {
             popup_bottom - ctx.diagram_margin_y - if ctx.has_boxes { ctx.box_margin } else { 0.0 }
