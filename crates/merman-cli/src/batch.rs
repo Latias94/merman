@@ -432,7 +432,7 @@ impl ApprovedLayout {
         for target in stale {
             let requested = target.to_path(&self.root)?;
             let (approved, generation) = acquired
-                .approve_native_stale_artifact(publications, target)?
+                .approve_stale_artifact(publications, target)?
                 .into_parts();
             let approved = RelativeTarget::from_absolute(&self.root, approved)?;
             if &approved != target {
@@ -609,8 +609,17 @@ fn validate_previous_generation(
 
     match approved.owner.dialect() {
         GenerationDialect::NativeBatchV1 => {
-            let previous_namespace = manifest.owner().namespace();
-            let current_namespace = approved.owner.namespace();
+            let previous_namespace = manifest.owner().namespace().ok_or_else(|| {
+                crate::transaction::TransactionError::InvalidState {
+                    evidence: approved.manifest_path.clone(),
+                    reason: "native generation manifest is missing its artifact namespace"
+                        .to_string(),
+                }
+            })?;
+            let current_namespace = approved
+                .owner
+                .namespace()
+                .expect("native batch owners always carry an artifact namespace");
             let extension = previous_namespace.extension().to_str();
             if !previous_namespace.has_same_series_as(current_namespace)
                 || !extension.is_some_and(|extension| {
@@ -629,6 +638,11 @@ fn validate_previous_generation(
             })
         }
         GenerationDialect::Mmdc11_16_0 => Ok(ValidatedPreviousGeneration::Strict),
+        GenerationDialect::RustdocV1 => Err(crate::transaction::TransactionError::InvalidState {
+            evidence: approved.manifest_path.clone(),
+            reason: "Markdown manifest cannot use the Rustdoc transaction dialect".to_string(),
+        }
+        .into()),
     }
 }
 

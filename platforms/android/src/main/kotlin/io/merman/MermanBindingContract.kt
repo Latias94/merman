@@ -111,6 +111,7 @@ internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilit
     MermanBindingCapabilitySpec("parallel-markdown", listOf()),
     MermanBindingCapabilitySpec("pdf", listOf()),
     MermanBindingCapabilitySpec("png", listOf()),
+    MermanBindingCapabilitySpec("rustdoc", listOf("layout-cytoscape", "layout-elk", "markdown", "math")),
     MermanBindingCapabilitySpec("shell-completions", listOf()),
     MermanBindingCapabilitySpec("svg", listOf()),
     MermanBindingCapabilitySpec("system-clock", listOf()),

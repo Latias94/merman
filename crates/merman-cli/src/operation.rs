@@ -25,6 +25,8 @@ impl HostOperation {
             ResolvedInvocation::Batch(args) => Some(args.common.operation_timeout),
             #[cfg(feature = "svg")]
             ResolvedInvocation::Mmdc(args) => Some(args.common.operation_timeout),
+            #[cfg(feature = "rustdoc")]
+            ResolvedInvocation::Rustdoc(_) => Some(None),
             _ => None,
         };
         timeout.map(Self::begin).transpose()

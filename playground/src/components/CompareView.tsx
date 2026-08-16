@@ -5,7 +5,7 @@ import {
   Check,
   Code2,
   Copy,
-  FileCode,
+  Download,
   ImageIcon,
   Loader2,
   RefreshCw,
@@ -55,10 +55,8 @@ export interface ComparePaneActions {
     readonly engine: CompareEngineKey;
     readonly publicationId: RenderPublicationId;
   } | null;
-  exportingPngEngines: ReadonlySet<CompareEngineKey>;
   onCopySvg(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
-  onExportPng(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
-  onExportSvg(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
+  onExport(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
   onPresentationReady(engine: CompareEngineKey, at: number): void;
   onRetry(): void;
 }
@@ -111,7 +109,6 @@ function ComparePane({
   const copied =
     actions.copiedSvgTarget?.engine === artifact.key &&
     actions.copiedSvgTarget.publicationId === artifact.publicationId;
-  const exporting = actions.exportingPngEngines.has(artifact.key);
   const hasSvg = Boolean(artifact.svgArtifact);
   const actionsDisabled =
     artifact.publicationId === null ||
@@ -209,16 +206,15 @@ function ComparePane({
             </CompareIconButton>
             <CompareIconButton
               label={
-                artifact.unavailableLabel ??
-                t("preview.exportSvg")
+                artifact.unavailableLabel ?? t("export.workbenchTitle")
               }
               onClick={() =>
                 artifact.publicationId &&
-                actions.onExportSvg(artifact.key, artifact.publicationId)
+                actions.onExport(artifact.key, artifact.publicationId)
               }
               disabled={actionsDisabled}
             >
-              <FileCode className="size-4" />
+              <Download className="size-4" />
             </CompareIconButton>
             <CompareIconButton
               label={
@@ -235,24 +231,6 @@ function ComparePane({
             >
               {svgDisplayMode === "visual" ? (
                 <Code2 className="size-4" />
-              ) : (
-                <ImageIcon className="size-4" />
-              )}
-            </CompareIconButton>
-            <CompareIconButton
-              label={
-                exporting
-                  ? t("preview.exporting")
-                  : (artifact.unavailableLabel ?? t("preview.exportPng"))
-              }
-              onClick={() =>
-                artifact.publicationId &&
-                actions.onExportPng(artifact.key, artifact.publicationId)
-              }
-              disabled={actionsDisabled || exporting}
-            >
-              {exporting ? (
-                <Loader2 className="size-4 animate-spin" />
               ) : (
                 <ImageIcon className="size-4" />
               )}

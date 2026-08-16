@@ -170,6 +170,7 @@ impl RelativeTarget {
 pub(crate) enum GenerationDialect {
     NativeBatchV1,
     Mmdc11_16_0,
+    RustdocV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -327,7 +328,7 @@ impl ArtifactNamespace {
 pub(crate) struct GenerationOwner {
     dialect: GenerationDialect,
     owner: RelativeTarget,
-    namespace: ArtifactNamespace,
+    namespace: Option<ArtifactNamespace>,
 }
 
 impl GenerationOwner {
@@ -341,12 +342,22 @@ impl GenerationOwner {
         Ok(Self {
             dialect,
             owner,
-            namespace,
+            namespace: Some(namespace),
         })
     }
 
-    pub(crate) fn namespace(&self) -> &ArtifactNamespace {
-        &self.namespace
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc(owner: RelativeTarget) -> Result<Self, TransactionError> {
+        owner.validate()?;
+        Ok(Self {
+            dialect: GenerationDialect::RustdocV1,
+            owner,
+            namespace: None,
+        })
+    }
+
+    pub(crate) fn namespace(&self) -> Option<&ArtifactNamespace> {
+        self.namespace.as_ref()
     }
 
     pub(crate) fn dialect(&self) -> GenerationDialect {
@@ -359,14 +370,34 @@ impl GenerationOwner {
 
     pub(super) fn validate(&self, evidence: &Path) -> Result<(), TransactionError> {
         self.owner.validate()?;
-        self.namespace.validate(evidence)
+        match (self.dialect, &self.namespace) {
+            (GenerationDialect::RustdocV1, None) => Ok(()),
+            (
+                GenerationDialect::NativeBatchV1 | GenerationDialect::Mmdc11_16_0,
+                Some(namespace),
+            ) => namespace.validate(evidence),
+            (GenerationDialect::RustdocV1, Some(_)) => Err(TransactionError::invalid_state(
+                evidence,
+                "Rustdoc transaction owner must not carry a numbered artifact namespace",
+            )),
+            (GenerationDialect::NativeBatchV1 | GenerationDialect::Mmdc11_16_0, None) => {
+                Err(TransactionError::invalid_state(
+                    evidence,
+                    "batch transaction owner is missing its numbered artifact namespace",
+                ))
+            }
+        }
     }
 
     fn encoded(&self) -> Result<GenerationOwnerWire, TransactionError> {
         Ok(GenerationOwnerWire {
             dialect: self.dialect,
             owner: self.owner.encoded()?,
-            namespace: self.namespace.encoded()?,
+            namespace: self
+                .namespace
+                .as_ref()
+                .map(ArtifactNamespace::encoded)
+                .transpose()?,
         })
     }
 
@@ -375,11 +406,18 @@ impl GenerationOwner {
         encoding: PathEncoding,
         evidence: &Path,
     ) -> Result<Self, TransactionError> {
-        Self::new(
-            wire.dialect,
-            RelativeTarget::from_encoded(wire.owner, encoding, evidence)?,
-            ArtifactNamespace::from_encoded(wire.namespace, encoding, evidence)?,
-        )
+        let owner = RelativeTarget::from_encoded(wire.owner, encoding, evidence)?;
+        let namespace = wire
+            .namespace
+            .map(|namespace| ArtifactNamespace::from_encoded(namespace, encoding, evidence))
+            .transpose()?;
+        let result = Self {
+            dialect: wire.dialect,
+            owner,
+            namespace,
+        };
+        result.validate(evidence)?;
+        Ok(result)
     }
 
     #[cfg(test)]
@@ -734,7 +772,8 @@ struct JournalWire {
 struct GenerationOwnerWire {
     dialect: GenerationDialect,
     owner: Vec<String>,
-    namespace: ArtifactNamespaceWire,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    namespace: Option<ArtifactNamespaceWire>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -786,6 +825,13 @@ impl GenerationManifest {
         }
         owner
             .namespace
+            .as_ref()
+            .ok_or_else(|| {
+                TransactionError::invalid_state(
+                    Path::new(".merman-manifest.json"),
+                    "generation manifest owner is missing its numbered artifact namespace",
+                )
+            })?
             .validate_artifacts(&artifacts, Path::new(".merman-manifest.json"))?;
         artifacts.sort();
         if artifacts.windows(2).any(|pair| pair[0] == pair[1]) {

@@ -417,11 +417,18 @@ impl ResourceLimitExceeded {
 }
 
 #[cfg(feature = "svg")]
+impl From<SvgResourceLimitExceeded> for ResourceLimitExceeded {
+    fn from(error: SvgResourceLimitExceeded) -> Self {
+        Self::from_svg(error)
+    }
+}
+
+#[cfg(feature = "svg")]
 fn map_svg_error(error: merman_render::Error) -> RenderError {
     match error {
         merman_render::Error::Cancelled(cancelled) => RenderError::Cancelled(cancelled),
         merman_render::Error::ResourceLimitExceeded(resource) => {
-            RenderError::from(ResourceLimitExceeded::from_svg(resource))
+            RenderError::from(ResourceLimitExceeded::from(resource))
         }
         other => RenderError::Svg(other),
     }

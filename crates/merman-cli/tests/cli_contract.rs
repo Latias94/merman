@@ -41,6 +41,16 @@ fn compiled_help_and_version_are_available() {
                 "compiled help should expose {command}:\n{stdout}"
             );
         }
+        #[cfg(feature = "rustdoc")]
+        assert!(
+            stdout.contains("rustdoc"),
+            "compiled help should expose rustdoc:\n{stdout}"
+        );
+        #[cfg(not(feature = "rustdoc"))]
+        assert!(
+            !stdout.contains("rustdoc"),
+            "a build without the rustdoc feature must not advertise rustdoc:\n{stdout}"
+        );
     }
 
     let output = Command::new(exe)
@@ -135,6 +145,16 @@ fn root_help_groups_commands_by_user_task() {
             "root help should group commands under `{heading}`:\n{stdout}"
         );
     }
+    #[cfg(feature = "rustdoc")]
+    assert!(
+        stdout.contains("Documentation:"),
+        "root help should group the compiled Rustdoc command:\n{stdout}"
+    );
+    #[cfg(not(feature = "rustdoc"))]
+    assert!(
+        !stdout.contains("Documentation:"),
+        "root help must omit an empty Documentation group:\n{stdout}"
+    );
     for flag in ["--input", "--output", "--outputFormat", "--pdfFit"] {
         assert!(
             !stdout.contains(flag),
@@ -1129,7 +1149,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 3);
+    assert_eq!(payload["cli_contract_version"], 4);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -1163,6 +1183,16 @@ fn compiled_capabilities_match_the_full_test_artifact() {
             "missing compiled command {command}: {payload}"
         );
     }
+    #[cfg(feature = "rustdoc")]
+    assert!(
+        command_ids.contains(&"rustdoc"),
+        "missing compiled rustdoc command"
+    );
+    #[cfg(not(feature = "rustdoc"))]
+    assert!(
+        !command_ids.contains(&"rustdoc"),
+        "a build without the rustdoc feature must not report rustdoc"
+    );
 
     let capabilities = payload["capabilities"]
         .as_array()

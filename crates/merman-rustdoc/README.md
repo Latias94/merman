@@ -48,6 +48,55 @@ The source code still contains the original Mermaid fence. Only the rustdoc outp
 
 ![Rendered Mermaid diagram in rustdoc light theme](resources/rustdoc-light.png)
 
+## Choose Between The Two Rustdoc Paths
+
+This macro is the one-step path: `cargo doc` compiles the selected native renderer closure and
+rewrites annotated item documentation during macro expansion. The independent
+[`merman-cli rustdoc`](../merman-cli/README.md#rustdoc-fragments) path moves rendering to an explicit
+authoring/CI step so the documented crate consumes only committed files. Neither integration
+depends on, executes, discovers, or falls back to the other.
+
+The checked-generation form starts with a configuration such as:
+
+```toml
+schema = 1
+
+[[fragments]]
+id = "crate-overview"
+source = "docs/rustdoc-src/crate-overview.md"
+```
+
+Generate and verify the managed bundle, then use standard Rustdoc input:
+
+```sh
+merman-cli rustdoc build --config merman-rustdoc.toml
+merman-cli rustdoc check --config merman-rustdoc.toml --quiet
+cargo doc --no-deps
+```
+
+```rust
+#![doc = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/generated/merman-rustdoc/crate-overview.md"
+))]
+```
+
+| Concern | `merman-cli rustdoc` | `merman-rustdoc` attribute macro |
+| --- | --- | --- |
+| Cargo dependency closure | No Merman renderer dependency in the documented crate | Compiles this proc macro and the selected native renderer closure |
+| Authoring loop | Explicit `build`; CI runs read-only `check` | One-step rendering during `cargo doc` |
+| Rustdoc scope | Crate and item docs through native `include_str!` | Annotated item docs and recursive inline item trees |
+| Generated ownership | Commit and review fragments plus `receipt.json` | Source comments stay unchanged; SVG exists only in generated Rustdoc output |
+| docs.rs | Reads packaged fragments; it does not run the CLI | Enables the optional macro dependency through docs.rs metadata |
+| Failure timing | Authoring build or CI freshness check | Macro expansion during `cargo doc` |
+| Rollback | Restore or regenerate source/config/managed output as one Git change | Revert the annotated Rust source or feature selection |
+
+Choose CLI generation for published crates, crate-level docs, reproducible package contents, or a
+strict Cargo dependency budget. Choose this macro for item-level docs when one-step `cargo doc`
+ergonomics outweigh the compile cost. A generated fragment must be included at most once on one
+rendered page because it contains deterministic SVG DOM IDs. The CLI guide documents package
+inclusion, Git rollback, and migration from this attribute form.
+
 ## Choose The Renderer Closure
 
 The default feature is `complete-svg`: deterministic SVG rendering with Cytoscape layout, ELK layout, and math. It does not enable host clock, time-zone, random, or timing adapters.

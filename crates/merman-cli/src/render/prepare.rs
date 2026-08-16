@@ -77,6 +77,12 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) quiet: bool,
 }
 
+#[cfg(feature = "rustdoc")]
+pub(crate) struct PreparedRustdocRenderers {
+    pub(crate) light: PreparedGraphicalRender,
+    pub(crate) dark: PreparedGraphicalRender,
+}
+
 #[cfg(feature = "svg")]
 pub(super) enum PreparedGraphicalSource {
     Mermaid(Box<crate::config::ConfiguredRenderer>),
@@ -576,6 +582,54 @@ pub(crate) fn prepare_graphical_output(
     ))
 }
 
+#[cfg(feature = "rustdoc")]
+pub(crate) fn prepare_rustdoc_renderers(
+    resources: &ResolvedResourcePolicy,
+    control: &OperationControl,
+) -> Result<PreparedRustdocRenderers, CliError> {
+    Ok(PreparedRustdocRenderers {
+        light: prepare_rustdoc_renderer("default", resources, control)?,
+        dark: prepare_rustdoc_renderer("dark", resources, control)?,
+    })
+}
+
+#[cfg(feature = "rustdoc")]
+fn prepare_rustdoc_renderer(
+    theme: &str,
+    resources: &ResolvedResourcePolicy,
+    control: &OperationControl,
+) -> Result<PreparedGraphicalRender, CliError> {
+    let parse = crate::invocation::ResolvedParseOptions {
+        suppress_errors: false,
+        config_file: None,
+        theme: Some(theme.to_string()),
+        runtime: crate::invocation::ResolvedRuntimeOptions {
+            runtime_policy: merman::runtime::RuntimePolicy::deterministic(),
+        },
+    };
+    let render = crate::invocation::ResolvedRenderOptions {
+        presentation_profile: None,
+        text_measurer: crate::cli::TextMeasurerKind::Vendored,
+        math_renderer: Some(crate::cli::MathRendererKind::Ratex),
+        container_width: None,
+        container_height: None,
+        svg_id: Some("merman-rustdoc".to_string()),
+        hand_drawn_seed: None,
+    };
+    let renderer =
+        crate::config::rustdoc_renderer_for_resolved(&parse, &render, resources, control)?;
+    // Rustdoc admission must inspect raw renderer output before any lossy compatibility pass.
+    let pipeline = SvgPipeline::parity();
+    Ok(PreparedGraphicalRender {
+        source: PreparedGraphicalSource::Mermaid(Box::new(renderer)),
+        pipeline,
+        output: PreparedGraphicalOutput::Svg,
+        admission: BackendAdmission::for_svg(resources)?,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        quiet: true,
+    })
+}
+
 fn read_resolved_input(
     input: &crate::invocation::ResolvedInput,
     suppress_implicit_warning: bool,
@@ -640,6 +694,51 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
             .input_policy()
             .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
     )
+}
+
+#[cfg(all(test, feature = "rustdoc"))]
+mod tests {
+    use super::*;
+    use crate::runtime::SharedWriter;
+
+    fn render(renderer: &PreparedGraphicalRender, source: &str, stderr: &SharedWriter) -> Vec<u8> {
+        crate::render::execute_rustdoc_svg_raw(
+            renderer,
+            source,
+            &merman::OperationControl::new(),
+            stderr,
+        )
+        .expect("Rustdoc SVG render")
+    }
+
+    #[test]
+    fn rustdoc_theme_variants_override_source_theme_directives() {
+        let resources =
+            ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE);
+        let renderers = prepare_rustdoc_renderers(&resources, &merman::OperationControl::new())
+            .expect("Rustdoc renderers");
+        let stderr = SharedWriter::new(Vec::<u8>::new());
+        let plain = "flowchart TD\nA-->B\n";
+        let source_theme = "%%{init: {\"theme\": \"forest\"}}%%\nflowchart TD\nA-->B\n";
+
+        let plain_light = render(&renderers.light, plain, &stderr);
+        let plain_dark = render(&renderers.dark, plain, &stderr);
+        let source_light = render(&renderers.light, source_theme, &stderr);
+        let source_dark = render(&renderers.dark, source_theme, &stderr);
+
+        assert_ne!(
+            plain_light, plain_dark,
+            "Rustdoc variants must remain distinct"
+        );
+        assert_eq!(
+            source_light, plain_light,
+            "source config must not replace the fixed Rustdoc light theme"
+        );
+        assert_eq!(
+            source_dark, plain_dark,
+            "source config must not replace the fixed Rustdoc dark theme"
+        );
+    }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

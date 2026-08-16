@@ -14,6 +14,61 @@ pub(crate) struct MarkdownFenceLocation {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "rustdoc", test))]
+pub(crate) struct MarkdownInclude<'source> {
+    source_span: Range<usize>,
+    path: &'source str,
+    location: MarkdownFenceLocation,
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+impl<'source> MarkdownInclude<'source> {
+    fn new(source_span: Range<usize>, path: &'source str, location: MarkdownFenceLocation) -> Self {
+        Self {
+            source_span,
+            path,
+            location,
+        }
+    }
+
+    pub(crate) fn source_span(&self) -> Range<usize> {
+        self.source_span.clone()
+    }
+
+    pub(crate) fn path(&self) -> &'source str {
+        self.path
+    }
+
+    pub(crate) fn location(&self) -> MarkdownFenceLocation {
+        self.location
+    }
+}
+
+#[derive(Debug, Clone)]
+#[cfg(any(feature = "rustdoc", test))]
+pub(crate) enum MarkdownReplacement<'source> {
+    Chart(MarkdownChart<'source>),
+    Include(MarkdownInclude<'source>),
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+impl MarkdownReplacement<'_> {
+    pub(crate) fn source_span(&self) -> Range<usize> {
+        match self {
+            Self::Chart(chart) => chart.source_span(),
+            Self::Include(include) => include.source_span(),
+        }
+    }
+
+    pub(crate) fn location(&self) -> MarkdownFenceLocation {
+        match self {
+            Self::Chart(chart) => chart.location(),
+            Self::Include(include) => include.location(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct MarkdownChart<'source> {
     source_span: Range<usize>,
     #[cfg(test)]
@@ -72,6 +127,40 @@ pub(crate) struct MarkdownChartLimitExceeded {
     pub(crate) location: MarkdownFenceLocation,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg(any(feature = "rustdoc", test))]
+pub(crate) enum MarkdownReplacementScanError {
+    #[error(
+        "Markdown chart limit {max} exceeded by chart {observed} at line {line}, column {column}"
+    )]
+    ChartLimit {
+        observed: u64,
+        max: u64,
+        line: usize,
+        column: usize,
+    },
+    #[error("unclosed Mermaid fence at line {line}, column {column}")]
+    UnclosedMermaidFence { line: usize, column: usize },
+    #[error("invalid include_mmd! directive at line {line}, column {column}: {message}")]
+    InvalidInclude {
+        line: usize,
+        column: usize,
+        message: String,
+    },
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+impl From<MarkdownChartLimitExceeded> for MarkdownReplacementScanError {
+    fn from(error: MarkdownChartLimitExceeded) -> Self {
+        Self::ChartLimit {
+            observed: error.observed,
+            max: error.max,
+            line: error.location.line,
+            column: error.location.column,
+        }
+    }
+}
+
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -92,6 +181,14 @@ pub(crate) fn scan_native_limited(
     max_charts: Option<u64>,
 ) -> Result<Vec<MarkdownChart<'_>>, MarkdownChartLimitExceeded> {
     native::scan(source, max_charts)
+}
+
+#[cfg(any(feature = "rustdoc", test))]
+pub(crate) fn scan_rustdoc_replacements_limited(
+    source: &str,
+    max_charts: Option<u64>,
+) -> Result<Vec<MarkdownReplacement<'_>>, MarkdownReplacementScanError> {
+    native::scan_rustdoc(source, max_charts)
 }
 
 pub(crate) fn scan_mmdc_11_16_0_limited(
@@ -543,6 +640,88 @@ mod tests {
         assert_eq!(charts[0].source_span().start, "before\n".len());
         assert_eq!(charts[0].source_span().end, source.len());
         assert_eq!(charts[0].definition(), "flowchart LR\nA-->B\n");
+    }
+
+    #[test]
+    fn rustdoc_scan_rejects_unclosed_mermaid_without_changing_batch_compatibility() {
+        let source = "before\n~~~mermaid\nflowchart LR\nA-->B\n";
+
+        let error = scan_rustdoc_replacements_limited(source, None).expect_err("unclosed fence");
+
+        assert_eq!(
+            error,
+            MarkdownReplacementScanError::UnclosedMermaidFence { line: 2, column: 1 }
+        );
+        assert_eq!(
+            scan_native_limited(source, None).expect("batch scan").len(),
+            1
+        );
+    }
+
+    #[test]
+    fn rustdoc_scan_finds_only_standalone_includes_outside_fences() {
+        let source = concat!(
+            "include_mmd!(\"docs/one.mmd\")\r\n",
+            "prose include_mmd!(\"ignored.mmd\")\r\n",
+            "```text\r\n",
+            "include_mmd!(\"also-ignored.mmd\")\r\n",
+            "```\r\n",
+            "```mermaid\r\n",
+            "flowchart LR\r\n",
+            "A-->B\r\n",
+            "```\r\n",
+        );
+
+        let replacements = scan_rustdoc_replacements_limited(source, None).expect("Rustdoc scan");
+
+        assert_eq!(replacements.len(), 2);
+        let MarkdownReplacement::Include(include) = &replacements[0] else {
+            panic!("first replacement should be an include");
+        };
+        assert_eq!(include.path(), "docs/one.mmd");
+        assert_eq!(
+            include.location(),
+            MarkdownFenceLocation { line: 1, column: 1 }
+        );
+        assert_eq!(
+            &source[include.source_span()],
+            "include_mmd!(\"docs/one.mmd\")"
+        );
+        let MarkdownReplacement::Chart(chart) = &replacements[1] else {
+            panic!("second replacement should be a chart");
+        };
+        assert_eq!(chart.definition(), "flowchart LR\r\nA-->B\r\n");
+        assert_eq!(
+            chart.location(),
+            MarkdownFenceLocation { line: 6, column: 1 }
+        );
+    }
+
+    #[test]
+    fn rustdoc_scan_rejects_malformed_complete_include_directives() {
+        for source in [
+            "include_mmd!(docs/one.mmd)\n",
+            "include_mmd!(\"escaped\\\\path.mmd\")\n",
+        ] {
+            let error = scan_rustdoc_replacements_limited(source, None)
+                .expect_err("malformed include must fail closed");
+            assert!(
+                matches!(error, MarkdownReplacementScanError::InvalidInclude { .. }),
+                "{source:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn rustdoc_scan_preserves_include_like_prose_byte_for_byte() {
+        for source in [
+            "include_mmd! is documented here\n",
+            "include_mmd!(\"one.mmd\") trailing prose\n",
+            "include_mmd!(\"unfinished.mmd\"\n",
+        ] {
+            let replacements = scan_rustdoc_replacements_limited(source, None).expect("scan prose");
+            assert!(replacements.is_empty(), "{source:?}: {replacements:?}");
+        }
     }
 
     #[test]

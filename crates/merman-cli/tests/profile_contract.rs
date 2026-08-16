@@ -36,6 +36,7 @@ const ALL_OPTIONAL_COMMANDS: &[&str] = &[
     "lint-rules",
     "mmdc",
     "render",
+    "rustdoc",
 ];
 
 const RELEASE_CAPABILITIES: &[&str] = &[
@@ -51,6 +52,7 @@ const RELEASE_CAPABILITIES: &[&str] = &[
     "parallel-markdown",
     "pdf",
     "png",
+    "rustdoc",
     "shell-completions",
     "svg",
     "system-clock",
@@ -142,6 +144,7 @@ fn selected_case() -> String {
         "cytoscape-layout",
         "elk-layout",
         "math",
+        "rustdoc",
         "completions",
         "svg-completions",
         "system-clock",
@@ -174,6 +177,14 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "cytoscape-layout" => vec!["layout-cytoscape", "svg"],
         "elk-layout" => vec!["layout-elk", "svg"],
         "math" => vec!["math", "svg"],
+        "rustdoc" => vec![
+            "layout-cytoscape",
+            "layout-elk",
+            "markdown",
+            "math",
+            "rustdoc",
+            "svg",
+        ],
         "completions" => vec!["shell-completions"],
         "svg-completions" => vec!["shell-completions", "svg"],
         "system-clock" => vec!["system-clock"],
@@ -212,6 +223,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
         "pdf",
         #[cfg(feature = "png")]
         "png",
+        #[cfg(feature = "rustdoc")]
+        "rustdoc",
         #[cfg(feature = "shell-completions")]
         "shell-completions",
         #[cfg(feature = "svg")]
@@ -250,6 +263,9 @@ fn expected_commands(capabilities: &[&str]) -> Vec<String> {
     if capabilities.contains("shell-completions") {
         commands.insert("completion".to_string());
     }
+    if capabilities.contains("rustdoc") {
+        commands.insert("rustdoc".to_string());
+    }
     commands.into_iter().collect()
 }
 
@@ -278,7 +294,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 3);
+    assert_eq!(payload["cli_contract_version"], 4);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -973,6 +989,34 @@ fn workflow_math() {
     panic!("math matrix case lacks math");
 }
 
+fn workflow_rustdoc() {
+    #[cfg(feature = "rustdoc")]
+    {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("diagram.mmd"), SIMPLE_SOURCE).expect("write Rustdoc source");
+        fs::write(
+            temp.path().join("merman-rustdoc.toml"),
+            "schema = 1\n[[fragments]]\nid = \"overview\"\nsource = \"diagram.mmd\"\n",
+        )
+        .expect("write Rustdoc config");
+
+        let build = run_without_stdin(&["rustdoc", "build", "--quiet"], Some(temp.path()));
+        assert_success(&build, "Rustdoc build");
+        let fragment = fs::read_to_string(
+            temp.path()
+                .join("docs/generated/merman-rustdoc/overview.md"),
+        )
+        .expect("read generated Rustdoc fragment");
+        assert!(fragment.contains("data-merman-rustdoc-theme=\"light\""));
+        assert!(fragment.contains("data-merman-rustdoc-theme=\"dark\""));
+
+        let check = run_without_stdin(&["rustdoc", "check", "--quiet"], Some(temp.path()));
+        assert_success(&check, "Rustdoc check");
+    }
+    #[cfg(not(feature = "rustdoc"))]
+    panic!("Rustdoc matrix case lacks feature rustdoc");
+}
+
 fn workflow_completions() {
     #[cfg(feature = "shell-completions")]
     {
@@ -1160,6 +1204,7 @@ fn workflow_release() {
     workflow_cytoscape();
     workflow_elk();
     workflow_math();
+    workflow_rustdoc();
     workflow_completions();
     for flag in [
         "--system-clock",
@@ -1201,6 +1246,8 @@ fn workflow_auto() {
     workflow_elk();
     #[cfg(feature = "math")]
     workflow_math();
+    #[cfg(feature = "rustdoc")]
+    workflow_rustdoc();
     #[cfg(feature = "shell-completions")]
     workflow_completions();
     #[cfg(feature = "system-clock")]
@@ -1230,6 +1277,7 @@ fn execute_primary_workflow(case: &str) {
         "cytoscape-layout" => workflow_cytoscape(),
         "elk-layout" => workflow_elk(),
         "math" => workflow_math(),
+        "rustdoc" => workflow_rustdoc(),
         "completions" => workflow_completions(),
         "svg-completions" => workflow_completions(),
         "system-clock" => workflow_adapter("--system-clock"),

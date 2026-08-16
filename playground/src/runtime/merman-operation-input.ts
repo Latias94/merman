@@ -7,6 +7,10 @@ import {
   type WorkspaceSnapshot,
 } from "../lib/workspace-snapshot.ts";
 import type { RealmViewport } from "./realm/channel-protocol.ts";
+import type {
+  RenderViewportMode,
+  RenderViewportStatus,
+} from "./render-viewport.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 
 export const MERMAN_SVG_PIPELINES = [
@@ -63,6 +67,8 @@ export interface FrozenRenderOperation
   readonly layoutEnvironment: Readonly<MermanLayoutEnvironment>;
   readonly presentationProfileId: string | null;
   readonly presentationThemePresetId: string | null;
+  readonly renderViewportMode: RenderViewportMode;
+  readonly renderViewportStatus: RenderViewportStatus;
   readonly svgPipeline: MermanSvgPipeline;
   readonly theme: WorkspaceSnapshot["diagramTheme"];
   readonly versions: Readonly<RenderOperationVersions>;
@@ -73,6 +79,8 @@ export interface FreezeRenderOperationInput {
   readonly compareEnabled: boolean;
   readonly diagnosticsEnabled: boolean;
   readonly layoutEnvironment: MermanLayoutEnvironment;
+  readonly renderViewportMode?: RenderViewportMode;
+  readonly renderViewportStatus?: RenderViewportStatus;
   readonly versions: RenderOperationVersions;
   readonly viewport: RealmViewport | null;
   readonly workspace: Readonly<WorkspaceSnapshot>;
@@ -104,6 +112,8 @@ export function freezeRenderOperation({
   compareEnabled,
   diagnosticsEnabled,
   layoutEnvironment,
+  renderViewportMode = "canonical",
+  renderViewportStatus = "canonical",
   versions,
   viewport,
   workspace,
@@ -131,6 +141,8 @@ export function freezeRenderOperation({
     layoutEnvironment: frozenLayout,
     presentationProfileId: workspace.presentationProfileId,
     presentationThemePresetId: workspace.presentationThemePresetId,
+    renderViewportMode,
+    renderViewportStatus,
     svgPipeline: workspace.svgPipeline,
     theme: workspace.diagramTheme,
     versions: Object.freeze({ ...versions }),
@@ -166,6 +178,8 @@ export function sameRenderOperation(
     left.configJson === right.configJson &&
     left.presentationProfileId === right.presentationProfileId &&
     left.presentationThemePresetId === right.presentationThemePresetId &&
+    left.renderViewportMode === right.renderViewportMode &&
+    left.renderViewportStatus === right.renderViewportStatus &&
     left.textMeasurementMode === right.textMeasurementMode &&
     left.diagramFont === right.diagramFont &&
     left.layoutEnvironment.containerWidth ===

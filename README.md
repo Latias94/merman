@@ -162,6 +162,58 @@ not a browser screenshot.
 These examples were rendered headlessly by `merman-cli`, which uses the same Rust parser and
 rendering pipeline. The [Playground] covers all 35 built-in diagram families.
 
+## Rustdoc integrations
+
+Merman supports two independent static-SVG paths for Rustdoc. Neither path loads JavaScript or
+fetches a diagram at page-view time, and neither invokes or falls back to the other.
+
+Use checked CLI generation when the documented crate must have no Merman renderer in its Cargo
+graph. Author Markdown under `docs/rustdoc-src`, declare fragments in `merman-rustdoc.toml`, commit
+the generated bundle, and use Rust's built-in `include_str!`:
+
+```sh
+merman-cli rustdoc build --config merman-rustdoc.toml
+merman-cli rustdoc check --config merman-rustdoc.toml --quiet
+cargo doc --no-deps
+```
+
+```rust
+#![doc = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/generated/merman-rustdoc/crate-overview.md"
+))]
+```
+
+Use the [`merman-rustdoc`] attribute macro when one-step rendering during `cargo doc` is worth
+compiling the selected procedural-macro and renderer closure:
+
+````rust
+#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+/// ```mermaid
+/// flowchart TD
+///   Source --> Rustdoc
+/// ```
+pub fn documented() {}
+````
+
+```sh
+cargo doc --features doc-diagrams
+```
+
+| Concern | `merman-cli rustdoc` | `merman-rustdoc` attribute macro |
+| --- | --- | --- |
+| Cargo dependency closure | No attributable Merman package in the documented crate | Compiles the selected macro and native renderer closure |
+| Authoring loop | Explicit `build`; CI runs read-only `check` | One-step rendering during `cargo doc` |
+| Generated ownership | Commit and review Markdown fragments plus `receipt.json` | SVG exists only in generated Rustdoc output |
+| docs.rs | Reads packaged fragments without running the CLI | Enables the optional documentation feature and expands the macro |
+| Failure timing | Authoring build or CI freshness check | Macro expansion during `cargo doc` |
+| Rollback | Restore or regenerate the managed bundle with the source change | Revert the annotated Rust source or feature selection |
+
+The CLI path supports crate-level and item-level native includes. Include each generated fragment
+at most once on a rendered Rustdoc page because it contains deterministic SVG DOM IDs. See the
+[`merman-cli` Rustdoc guide] and [`merman-rustdoc`] guide for complete configuration, CI, packaging,
+and migration examples.
+
 ## Compatibility
 
 Merman aims for source-backed agreement in parsing, semantic models, layout, configuration,
@@ -223,6 +275,7 @@ project or its maintainers.
 [rendering security guide]: https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md
 [benchmark methodology]: https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md
 [`merman-cli`]: https://github.com/Latias94/merman/tree/main/crates/merman-cli#readme
+[`merman-cli` Rustdoc guide]: https://github.com/Latias94/merman/tree/main/crates/merman-cli#rustdoc-fragments
 [Browser packages]: https://github.com/Latias94/merman/blob/main/platforms/web/README.md
 [Node.js package]: https://github.com/Latias94/merman/tree/main/platforms/node#readme
 [`merman-lsp`]: https://github.com/Latias94/merman/tree/main/crates/merman-lsp#readme

@@ -407,7 +407,7 @@ test("Merman Gantt presents non-overlapping date ticks", async ({ page }) => {
   errors.assertNone();
 });
 
-test("a 100-million-unit SVG stays bounded in preview and exports a planned PNG", async ({
+test("a 100-million-unit SVG stays bounded in preview and export", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
@@ -455,22 +455,26 @@ test("a 100-million-unit SVG stays bounded in preview and exports a planned PNG"
   await expect.poll(() => previewSvgWidth(page)).toBeLessThanOrEqual(fittedWidth + 1);
 
   await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Export image…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Export image" });
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
   const svgDownloadPromise = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: /Export SVG/u }).click();
+  await dialog.getByRole("button", { name: "Download", exact: true }).click();
   const svgDownload = await svgDownloadPromise;
   expect(await downloadText(svgDownload)).toContain(
     'viewBox="0 0 100000000 1000000"'
   );
 
-  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await dialog.getByRole("button", { name: "PNG", exact: true }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: /Export PNG/u }).click();
+  await dialog.getByRole("button", { name: "Download", exact: true }).click();
   const download = await downloadPromise;
   expect(await pngDownloadDimensions(download)).toEqual({
-    width: 8192,
-    height: 82,
+    width: 4096,
+    height: 41,
   });
-  await expect(page.getByText("PNG exported (8192 × 82)")).toBeVisible();
+  await expect(dialog.getByRole("status")).toHaveText("Downloaded");
 
   errors.assertNone();
 });

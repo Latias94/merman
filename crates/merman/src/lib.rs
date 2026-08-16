@@ -78,11 +78,18 @@
 //! target adapters never create a replacement operation or silently replace the caller's
 //! cancellation handle.
 
+#![doc = include_str!(
+    "../docs/generated/merman-rustdoc/crate-overview.md"
+)]
+
 pub use merman_core::*;
 
 pub mod diagnostic;
 #[path = "operation.rs"]
 mod operation_runner;
+#[doc = include_str!(
+    "../docs/generated/merman-rustdoc/render-module.md"
+)]
 pub mod render;
 pub use diagnostic::{
     TerminalDiagnostic, TerminalDiagnosticDetails, TerminalRuntimePolicyError,

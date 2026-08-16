@@ -33,13 +33,14 @@ pub(crate) const HARD_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 pub(crate) const HARD_PER_HOP_TIMEOUT: Duration = Duration::from_secs(300);
 pub(crate) const HARD_WORKFLOW_TIMEOUT: Duration = Duration::from_secs(900);
 
-const CLI_RESOURCE_LIMIT_COUNT: usize = 16;
+const CLI_RESOURCE_LIMIT_COUNT: usize = 17;
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CliResourceLimitId {
     MaxMarkdownDocumentBytes,
     MaxConfigBytes,
+    MaxRustdocInputBytes,
     MaxCssBytes,
     MaxPuppeteerConfigBytes,
     MaxLocalIconBodyBytes,
@@ -61,6 +62,7 @@ impl CliResourceLimitId {
     pub(crate) const ALL: [Self; CLI_RESOURCE_LIMIT_COUNT] = [
         Self::MaxMarkdownDocumentBytes,
         Self::MaxConfigBytes,
+        Self::MaxRustdocInputBytes,
         Self::MaxCssBytes,
         Self::MaxPuppeteerConfigBytes,
         Self::MaxLocalIconBodyBytes,
@@ -141,6 +143,12 @@ cli_limit_descriptors! {
         "max_config_bytes",
         AcquisitionBytes,
         "Maximum UTF-8 bytes in one Mermaid configuration file",
+        None
+    ),
+    MaxRustdocInputBytes => (
+        "max_rustdoc_input_bytes",
+        Bytes,
+        "Maximum aggregate UTF-8 bytes acquired from unique Rustdoc sources and includes",
         None
     ),
     MaxCssBytes => (
@@ -237,6 +245,7 @@ cli_limit_descriptors! {
 const CLI_PROFILE_VALUES: [[Option<u64>; 4]; CLI_RESOURCE_LIMIT_COUNT] = [
     [Some(8 * MIB), Some(4 * MIB), Some(64 * MIB), None],
     [Some(512 * KIB), Some(256 * KIB), Some(4 * MIB), None],
+    [Some(64 * MIB), Some(32 * MIB), Some(256 * MIB), None],
     [Some(MIB), Some(512 * KIB), Some(8 * MIB), None],
     [Some(512 * KIB), Some(256 * KIB), Some(2 * MIB), None],
     [
@@ -707,6 +716,8 @@ pub(crate) enum ByteLedgerKind {
     AggregateIcons,
     #[cfg(any(test, feature = "markdown"))]
     StagedOutput,
+    #[cfg(any(test, feature = "rustdoc"))]
+    RustdocInput,
 }
 
 #[cfg(any(test, feature = "icons", feature = "markdown"))]
@@ -717,6 +728,8 @@ impl ByteLedgerKind {
             Self::AggregateIcons => CliResourceLimitId::MaxAggregateIconBytes,
             #[cfg(any(test, feature = "markdown"))]
             Self::StagedOutput => CliResourceLimitId::MaxStagedBytes,
+            #[cfg(any(test, feature = "rustdoc"))]
+            Self::RustdocInput => CliResourceLimitId::MaxRustdocInputBytes,
         }
     }
 }

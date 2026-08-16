@@ -107,6 +107,33 @@ The visible interactive render timer measures the actual source. There is no hid
 render. The preview separately records when a validated artifact reaches its presentation
 boundary; this feedback is not represented as a formal cross-engine benchmark.
 
+Interactive rendering has two explicit viewport modes. Canonical freezes `800x600` CSS pixels for
+reproducible comparison. Host measures the stable, unsplit Preview allocation and freezes one
+rounded, realm-bounded size into both the Merman layout environment and Mermaid realm. Hidden or
+zero-sized panels retain the last valid Host size; first use reports a measuring state and renders
+with the Canonical fallback. Workspace links persist only the selected mode, never device-specific
+measurements. Benchmark inputs remain Canonical regardless of the interactive selection.
+
+## Export Workbench
+
+One App-owned workbench serves the toolbar and both Compare panes. Opening it freezes the selected
+engine and publication: exact SVG remains the validated published artifact, while Merman raster
+formats lazily render and cache the same frozen operation through the `resvg-safe` pipeline.
+Mermaid raster formats use its validated publication artifact. Later publications never retarget
+an open workbench.
+
+SVG download is byte-exact. PNG supports Original, Transparent, and Custom root backgrounds; JPEG
+supports explicit opaque Original or Custom backgrounds and quality `1..100`. Raster sizing offers
+`1x` through `4x`, width, height, and fit-box modes with a locked aspect ratio. Planning happens
+before Canvas allocation and deterministically caps each side at `4096` pixels and total output at
+`16,777,216` pixels. Root background projection changes only a parsed SVG clone, preserving all
+descendant fills and the publication artifact.
+
+The preview and download share one encoded Blob. Encoding is debounced and serialized so rapid
+recipe edits cannot allocate concurrent high-resolution canvases or publish an older result. One
+controlled dialog owns validation, busy, failure, and success feedback; it uses a full-screen
+safe-area-aware presentation on narrow mobile layouts.
+
 ## Benchmark
 
 Benchmark is a separate product surface with one Window realm per engine. Merman uses a trusted
@@ -235,10 +262,11 @@ The closed lane is protected by:
 - mandatory Chromium desktop coverage for startup, render, Compare, Monaco Worker,
   BFCache/teardown, accessibility, CSP, and benchmark behavior;
 - one focused mandatory startup/render/Compare/theme/focus flow with BFCache Compare-realm cleanup
-  in each of Firefox and WebKit;
+  and JPEG export in each of Firefox and WebKit;
 - an on-demand Chromium mobile-interaction lane for compact controls, dialog scrolling, workspace
-  tabs, touch pan/zoom, shortened visual viewports, and overflow. Real iOS Safari and Android
-  Chrome remain an explicit release residual documented in [MOBILE_QA.md](./MOBILE_QA.md).
+  tabs, touch pan/zoom, Host measurement, export safe areas, shortened visual viewports, and
+  overflow. Real iOS Safari and Android Chrome remain an explicit release residual documented in
+  [MOBILE_QA.md](./MOBILE_QA.md).
 
 Historical `TODO.md`, `MILESTONES.md`, `EVIDENCE_AND_GATES.md`, and journal entries record how the
 lane was built. They are not current runtime or release contracts.

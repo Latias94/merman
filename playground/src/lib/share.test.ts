@@ -22,6 +22,7 @@ const COMPLETE_SNAPSHOT: WorkspaceSnapshot = {
   diagramFont: "arial",
   presentationProfileId: "future-profile",
   presentationThemePresetId: "future-theme",
+  renderViewportMode: "host",
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -117,6 +118,7 @@ test("rejects an invalid required or present optional field as one payload", () 
     { ...valid, svgPipeline: "future-pipeline" },
     { ...valid, textMeasurementMode: "approximate" },
     { ...valid, diagramFont: "comic-sans" },
+    { ...valid, renderViewportMode: "fluid" },
     { ...valid, presentationProfileId: "" },
     { ...valid, presentationThemePresetId: false },
     { ...valid, hostThemePreset: "" },

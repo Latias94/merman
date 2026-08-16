@@ -178,6 +178,15 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
     id: "png",
     implicationIds: <String>{},
   ),
+  "rustdoc": MermanBindingCapabilitySpec(
+    id: "rustdoc",
+    implicationIds: <String>{
+      "layout-cytoscape",
+      "layout-elk",
+      "markdown",
+      "math",
+    },
+  ),
   "shell-completions": MermanBindingCapabilitySpec(
     id: "shell-completions",
     implicationIds: <String>{},

@@ -1,15 +1,9 @@
 import { compareMermaidRealmController } from "./mermaid-realm.ts";
 import { createRenderCoordinator } from "./render-coordinator.ts";
 import type { RenderPublicationId } from "./render-coordinator.ts";
-import {
-  capturePlaygroundLayoutEnvironment,
-  PLAYGROUND_RENDER_VIEWPORT,
-} from "./render-viewport.ts";
 
 export const renderCoordinator = createRenderCoordinator({
   compare: compareMermaidRealmController,
-  compareViewport: PLAYGROUND_RENDER_VIEWPORT,
-  captureLayoutEnvironment: capturePlaygroundLayoutEnvironment,
 });
 
 export const renderCoordinatorStore = renderCoordinator.store;
