@@ -16,6 +16,8 @@ use std::collections::{HashMap, HashSet, hash_map::Entry};
 mod labels;
 mod marker;
 
+const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
+
 pub(super) use labels::allocate_route_label_placements;
 use labels::{label_anchor_contains, resolve_label_anchor, route_label_candidates};
 use marker::marker_candidate_continues_chain;
@@ -354,6 +356,13 @@ impl<'layout> SceneOccupancy<'layout> {
             .map_err(AsciiError::Cancelled)
     }
 
+    fn checkpoint_layout_scan(&self, iteration: usize) -> Result<()> {
+        if iteration > 0 && iteration.is_multiple_of(OCCUPANCY_SCAN_CHECKPOINT_INTERVAL) {
+            self.checkpoint_layout()?;
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(super) fn try_new(
         routes: &[PreparedRoute],
@@ -419,15 +428,26 @@ impl<'layout> SceneOccupancy<'layout> {
         for (_, cell) in plan.active_cells() {
             self.checkpoint_layout()?;
             resources.charge_layout_work(self.protected.len().max(1))?;
-            let crosses_reserved = self.protected.iter().any(|protected| {
+            let mut crosses_reserved = false;
+            for (protected_index, protected) in self.protected.iter().enumerate() {
+                self.checkpoint_layout_scan(protected_index)?;
                 let is_endpoint_port = protected.allows_endpoint_port(&owner.from, cell.coord)
                     || protected.allows_endpoint_port(&owner.to, cell.coord);
                 let is_owned_group_border = protected.kind == ProtectedKind::GroupBorder
                     && protected.group_index.is_some_and(|group_index| {
-                        owner.boundary_group_indices.contains(&group_index)
+                        owner
+                            .boundary_group_indices
+                            .binary_search(&group_index)
+                            .is_ok()
                     });
-                protected.shape.contains(cell.coord) && !is_endpoint_port && !is_owned_group_border
-            });
+                if protected.shape.contains(cell.coord)
+                    && !is_endpoint_port
+                    && !is_owned_group_border
+                {
+                    crosses_reserved = true;
+                    break;
+                }
+            }
             if crosses_reserved {
                 return Ok(None);
             }
@@ -494,7 +514,12 @@ impl<'layout> SceneOccupancy<'layout> {
             )?;
         }
 
-        let cell_count = plan.active_cells().count();
+        self.checkpoint_layout()?;
+        let mut cell_count = 0usize;
+        for (cell_index, _) in plan.active_cells().enumerate() {
+            self.checkpoint_layout_scan(cell_index)?;
+            cell_count = resources.checked_work_add(cell_count, 1)?;
+        }
         let total_cost = resources.checked_work_add(cell_count, shared_cells)?;
         Ok(Some(RouteCandidateScore {
             total_cost,
@@ -513,16 +538,19 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(true);
         }
 
-        let route_bounds = plan.active_cells().fold(None, |bounds, (_, cell)| {
-            let mut bounds = bounds.unwrap_or(RouteBounds {
+        self.checkpoint_layout()?;
+        let mut route_bounds = None;
+        for (cell_index, (_, cell)) in plan.active_cells().enumerate() {
+            self.checkpoint_layout_scan(cell_index)?;
+            let mut bounds = route_bounds.unwrap_or(RouteBounds {
                 min_x: cell.coord.x,
                 max_x: cell.coord.x,
                 min_y: cell.coord.y,
                 max_y: cell.coord.y,
             });
             bounds.include(cell.coord);
-            Some(bounds)
-        });
+            route_bounds = Some(bounds);
+        }
 
         for label in &plan.labels {
             self.checkpoint_layout()?;
@@ -594,11 +622,13 @@ impl<'layout> SceneOccupancy<'layout> {
 
         self.checkpoint_layout()?;
         resources.charge_layout_work(plan.cells.len())?;
-        if plan.active_cells().any(|(_, cell)| {
-            candidate.contains(cell.coord.x, cell.coord.y)
+        for (cell_index, (_, cell)) in plan.active_cells().enumerate() {
+            self.checkpoint_layout_scan(cell_index)?;
+            if candidate.contains(cell.coord.x, cell.coord.y)
                 && !label_anchor_contains(anchor, cell.coord, cell.segment)
-        }) {
-            return Ok(false);
+            {
+                return Ok(false);
+            }
         }
         Ok(true)
     }
@@ -941,11 +971,15 @@ impl<'layout> SceneOccupancy<'layout> {
         };
         self.checkpoint_layout()?;
         resources.charge_layout_work(route_cell.owners.len())?;
-        if !route_cell
-            .owners
-            .iter()
-            .any(|owner| owner.route_index == route_index && owner.cell == candidate.cell)
-        {
+        let mut owns_candidate = false;
+        for (owner_index, owner) in route_cell.owners.iter().enumerate() {
+            self.checkpoint_layout_scan(owner_index)?;
+            if owner.route_index == route_index && owner.cell == candidate.cell {
+                owns_candidate = true;
+                break;
+            }
+        }
+        if !owns_candidate {
             return Ok(MarkerCandidateDisposition::Blocked);
         }
         let Some(claims) = self.terminal_claims.get(&candidate.coord) else {
@@ -964,15 +998,21 @@ impl<'layout> SceneOccupancy<'layout> {
             }
             self.checkpoint_layout()?;
             resources.charge_layout_work(claims.len())?;
-            let compatible = claims.iter().any(|claim| {
-                claim.route_index == owner.route_index
+            let mut compatible = false;
+            for (claim_index, claim) in claims.iter().enumerate() {
+                self.checkpoint_layout_scan(claim_index)?;
+                if claim.route_index == owner.route_index
                     && terminal_claim_is_compatible(
                         routes,
                         claim,
                         endpoint_id,
                         candidate.point_direction,
                     )
-            });
+                {
+                    compatible = true;
+                    break;
+                }
+            }
             if !compatible {
                 return Ok(MarkerCandidateDisposition::Blocked);
             }
@@ -1092,11 +1132,13 @@ impl<'layout> SceneOccupancy<'layout> {
                 if let Some(route_cell) = self.route_cells.get(&coord) {
                     self.checkpoint_layout()?;
                     resources.charge_layout_work(route_cell.owners.len())?;
-                    if route_cell.owners.iter().any(|owner| {
-                        owner.route_index != route_index
+                    for (owner_index, owner) in route_cell.owners.iter().enumerate() {
+                        self.checkpoint_layout_scan(owner_index)?;
+                        if owner.route_index != route_index
                             || !label_anchor_contains(anchor, coord, owner.segment)
-                    }) {
-                        return Ok(false);
+                        {
+                            return Ok(false);
+                        }
                     }
                 }
             }

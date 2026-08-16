@@ -8,6 +8,7 @@ use crate::graph::routing::plan::{MarkerAnchor, MarkerAnchors, PlannedCellId};
 use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
 use crate::{AsciiRenderOptions, TerminalWidthProfile};
 use merman_core::resources::ResourceProfile;
+use merman_core::{CancelReason, OperationControl, OperationPhase};
 
 mod labels;
 mod markers;
@@ -68,6 +69,47 @@ fn edge_style_is_applied_to_route_plan_cells_and_labels() {
         .expect("test route label should fit the unbounded resource policy");
 
     assert_eq!(canvas.get_color(0, 0), Some(CanvasColor::Direct(label)));
+}
+
+#[test]
+fn one_long_route_body_observes_cancellation_between_cells() {
+    const ROUTE_LEN: usize = 256;
+
+    let plan = RoutePlan::new_without_markers_for_test(
+        (0..ROUTE_LEN)
+            .map(|x| planned_cell(x, 0, '-', PlannedRouteCellKind::EdgeLine))
+            .collect(),
+        Vec::new(),
+    );
+    let scene = RouteScene {
+        routes: vec![PreparedRoute::for_test(plan, 0)],
+        extent: (ROUTE_LEN, 1),
+        planned_cell_count: ROUTE_LEN,
+        labels: RoutedLabelCatalog::for_test(Vec::new()),
+    };
+    let mut canvas = RawCanvas::with_width_profile(ROUTE_LEN, 1, TerminalWidthProfile::Unicode);
+    let mut route_cells = RouteCells::new();
+    let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let control = OperationControl::new();
+    // The route-level checkpoint and first cell checkpoint succeed. The next fixed-cadence cell
+    // checkpoint must cancel before the remaining body is painted.
+    control.cancel_after_checkpoints(2);
+
+    let error = {
+        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
+        scene
+            .paint_routes_with_execution(&mut drawing, AsciiExecution::new(&control, &policy))
+            .expect_err("one long route must remain cooperatively cancellable during paint")
+    };
+
+    assert!(matches!(
+        error,
+        AsciiError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Emit
+                && cancelled.reason == CancelReason::Requested
+    ));
+    assert_eq!(canvas.get(63, 0), Some('-'));
+    assert_eq!(canvas.get(64, 0), Some(' '));
 }
 
 #[test]

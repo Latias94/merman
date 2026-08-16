@@ -85,6 +85,27 @@ struct PreparedRoute {
     owner: RouteOwner,
 }
 
+struct RoutePaintCursor<'execution> {
+    execution: AsciiExecution<'execution>,
+    iteration: usize,
+}
+
+impl<'execution> RoutePaintCursor<'execution> {
+    const fn new(execution: AsciiExecution<'execution>) -> Self {
+        Self {
+            execution,
+            iteration: 0,
+        }
+    }
+
+    fn checkpoint(&mut self) -> Result<()> {
+        self.execution
+            .checkpoint_loop(merman_core::OperationPhase::Emit, self.iteration)?;
+        self.iteration = self.iteration.saturating_add(1);
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RouteOwner {
     canonical_edge_index: usize,
@@ -131,12 +152,38 @@ impl PreparedRoute {
         }
     }
 
-    fn paint_body(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
-        paint_route_plan_body(drawing, &self.plan)
+    fn paint_body_with_cursor(
+        &self,
+        drawing: &mut RouteDrawing<'_>,
+        cursor: &mut RoutePaintCursor<'_>,
+    ) -> Result<()> {
+        paint_route_plan_body_with_cursor(drawing, &self.plan, cursor)
     }
 
+    fn paint_markers_with_cursor(
+        &self,
+        drawing: &mut RouteDrawing<'_>,
+        cursor: &mut RoutePaintCursor<'_>,
+    ) -> Result<()> {
+        paint_route_plan_markers_with_cursor(drawing, &self.plan, cursor)
+    }
+
+    #[cfg(test)]
+    fn paint_body(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
+        let policy = crate::resource::AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        let mut cursor = RoutePaintCursor::new(AsciiExecution::for_test(&policy));
+        self.paint_body_with_cursor(drawing, &mut cursor)
+    }
+
+    #[cfg(test)]
     fn paint_markers(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
-        paint_route_plan_markers(drawing, &self.plan)
+        let policy = crate::resource::AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        let mut cursor = RoutePaintCursor::new(AsciiExecution::for_test(&policy));
+        self.paint_markers_with_cursor(drawing, &mut cursor)
     }
 }
 
@@ -171,13 +218,14 @@ impl RouteScene {
         drawing: &mut RouteDrawing<'_>,
         execution: AsciiExecution<'_>,
     ) -> Result<()> {
+        let mut cursor = RoutePaintCursor::new(execution);
         for route in &self.routes {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            route.paint_body(drawing)?;
+            route.paint_body_with_cursor(drawing, &mut cursor)?;
         }
         for route in &self.routes {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            route.paint_markers(drawing)?;
+            route.paint_markers_with_cursor(drawing, &mut cursor)?;
         }
         Ok(())
     }
@@ -633,12 +681,21 @@ fn group_endpoint_layout(group: &GroupLayout, charset: &GraphCharset) -> NodeLay
 
 #[cfg(test)]
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
-    paint_route_plan_body(drawing, plan)?;
-    paint_route_plan_markers(drawing, plan)
+    let policy = crate::resource::AsciiResourcePolicy::for_profile(
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+    );
+    let mut cursor = RoutePaintCursor::new(AsciiExecution::for_test(&policy));
+    paint_route_plan_body_with_cursor(drawing, plan, &mut cursor)?;
+    paint_route_plan_markers_with_cursor(drawing, plan, &mut cursor)
 }
 
-fn paint_route_plan_body(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
+fn paint_route_plan_body_with_cursor(
+    drawing: &mut RouteDrawing<'_>,
+    plan: &RoutePlan,
+    cursor: &mut RoutePaintCursor<'_>,
+) -> Result<()> {
     for (_, cell) in plan.active_cells() {
+        cursor.checkpoint()?;
         match cell.kind {
             PlannedRouteCellKind::EdgeLine => set_edge_cell_with_paint(
                 drawing.canvas,
@@ -667,8 +724,13 @@ fn paint_route_plan_body(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Re
     Ok(())
 }
 
-fn paint_route_plan_markers(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
+fn paint_route_plan_markers_with_cursor(
+    drawing: &mut RouteDrawing<'_>,
+    plan: &RoutePlan,
+    cursor: &mut RoutePaintCursor<'_>,
+) -> Result<()> {
     for (_, cell) in plan.active_cells() {
+        cursor.checkpoint()?;
         if cell.kind == PlannedRouteCellKind::EdgeArrow {
             set_edge_cell_with_paint(
                 drawing.canvas,

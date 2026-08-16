@@ -20,6 +20,91 @@ use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
 type Canvas<'surface> = dyn GraphSurface + 'surface;
 
+struct CooperativeSurface<'canvas, 'surface, 'execution> {
+    inner: &'canvas mut Canvas<'surface>,
+    execution: AsciiExecution<'execution>,
+    iteration: usize,
+}
+
+impl<'canvas, 'surface, 'execution> CooperativeSurface<'canvas, 'surface, 'execution> {
+    fn new(inner: &'canvas mut Canvas<'surface>, execution: AsciiExecution<'execution>) -> Self {
+        Self {
+            inner,
+            execution,
+            iteration: 0,
+        }
+    }
+
+    fn checkpoint(&mut self) -> Result<()> {
+        self.execution
+            .checkpoint_loop(merman_core::OperationPhase::Emit, self.iteration)?;
+        self.iteration = self.iteration.saturating_add(1);
+        Ok(())
+    }
+}
+
+impl GraphSurface for CooperativeSurface<'_, '_, '_> {
+    fn is_identity(&self) -> bool {
+        self.inner.is_identity()
+    }
+
+    fn get(&self, x: usize, y: usize) -> Option<char> {
+        self.inner.get(x, y)
+    }
+
+    fn set(&mut self, x: usize, y: usize, ch: char) -> Result<()> {
+        self.checkpoint()?;
+        self.inner.set(x, y, ch)
+    }
+
+    fn set_role(&mut self, x: usize, y: usize, ch: char, role: AsciiColorRole) -> Result<()> {
+        self.checkpoint()?;
+        self.inner.set_role(x, y, ch, role)
+    }
+
+    fn set_color(&mut self, x: usize, y: usize, ch: char, color: crate::AsciiRgb) -> Result<()> {
+        self.checkpoint()?;
+        self.inner.set_color(x, y, ch, color)
+    }
+
+    fn set_canvas_color(
+        &mut self,
+        x: usize,
+        y: usize,
+        ch: char,
+        color: crate::canvas::CanvasColor,
+    ) -> Result<()> {
+        self.checkpoint()?;
+        self.inner.set_canvas_color(x, y, ch, color)
+    }
+
+    fn set_background_color(&mut self, x: usize, y: usize, color: crate::AsciiRgb) {
+        self.inner.set_background_color(x, y, color);
+    }
+
+    fn write_text_role(
+        &mut self,
+        x: usize,
+        y: usize,
+        text: &str,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        self.checkpoint()?;
+        self.inner.write_text_role(x, y, text, role)
+    }
+
+    fn write_text_color(
+        &mut self,
+        x: usize,
+        y: usize,
+        text: &str,
+        color: crate::AsciiRgb,
+    ) -> Result<()> {
+        self.checkpoint()?;
+        self.inner.write_text_color(x, y, text, color)
+    }
+}
+
 struct PreparedGraphRender {
     charset: GraphCharset,
     graph_layout: GraphLayout,
@@ -184,7 +269,7 @@ fn paint_graph_render_controlled(
         }
         for group in &graph_layout.groups {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            draw_group_frame(&mut surface, group, &charset)?;
+            draw_group_frame_with_execution(&mut surface, group, &charset, execution)?;
         }
         for layout in &graph_layout.nodes {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
@@ -200,6 +285,7 @@ fn paint_graph_render_controlled(
         output_transform,
         width,
         height,
+        execution,
     )?;
 
     {
@@ -221,6 +307,7 @@ fn paint_graph_render_controlled(
         output_transform,
         width,
         height,
+        execution,
     )?;
     route_scene.draw_labels_with_execution(
         &mut canvas,
@@ -230,12 +317,19 @@ fn paint_graph_render_controlled(
     if output_transform.is_identity() {
         for group in &graph_layout.groups {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            draw_group_title(&mut canvas, group)?;
+            draw_group_title_with_execution(&mut canvas, group, execution)?;
         }
     } else {
         for group in &graph_layout.groups {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            draw_transformed_group_title(&mut canvas, group, output_transform, width, height)?;
+            draw_transformed_group_title_with_execution(
+                &mut canvas,
+                group,
+                output_transform,
+                width,
+                height,
+                execution,
+            )?;
         }
     }
 
@@ -261,7 +355,8 @@ fn draw_node_with_execution(
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     paint_node_background_with_execution(canvas, layout, execution)?;
-    draw_node_foreground(canvas, layout, charset, options)
+    let mut surface = CooperativeSurface::new(canvas, execution);
+    draw_node_foreground(&mut surface, layout, charset, options)
 }
 
 fn draw_node_foreground(
@@ -319,6 +414,16 @@ fn draw_group_frame(
         GraphGroupKind::Container => draw_group_box(canvas, group, charset),
         GraphGroupKind::Divider => draw_group_divider(canvas, group, charset),
     }
+}
+
+fn draw_group_frame_with_execution(
+    canvas: &mut Canvas<'_>,
+    group: &GroupLayout,
+    charset: &GraphCharset,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    let mut surface = CooperativeSurface::new(canvas, execution);
+    draw_group_frame(&mut surface, group, charset)
 }
 
 fn paint_node_background_with_execution(
@@ -431,6 +536,15 @@ fn draw_group_title(canvas: &mut Canvas<'_>, group: &GroupLayout) -> Result<()> 
     Ok(())
 }
 
+fn draw_group_title_with_execution(
+    canvas: &mut Canvas<'_>,
+    group: &GroupLayout,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    let mut surface = CooperativeSurface::new(canvas, execution);
+    draw_group_title(&mut surface, group)
+}
+
 fn draw_transformed_group_title(
     canvas: &mut Canvas<'_>,
     group: &GroupLayout,
@@ -462,6 +576,18 @@ fn draw_transformed_group_title(
         )?;
     }
     Ok(())
+}
+
+fn draw_transformed_group_title_with_execution(
+    canvas: &mut Canvas<'_>,
+    group: &GroupLayout,
+    transform: OutputTransform,
+    width: usize,
+    height: usize,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    let mut surface = CooperativeSurface::new(canvas, execution);
+    draw_transformed_group_title(&mut surface, group, transform, width, height)
 }
 
 fn group_title_line_position(
@@ -1307,8 +1433,11 @@ fn redraw_transformed_node_compartments(
     transform: OutputTransform,
     width: usize,
     height: usize,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
+    let mut surface = CooperativeSurface::new(canvas, execution);
     for layout in layouts {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         if layout.shape != GraphNodeShape::StateWithTitle {
             continue;
         }
@@ -1332,21 +1461,21 @@ fn redraw_transformed_node_compartments(
         }
 
         set_node_border(
-            canvas,
+            &mut surface,
             node_left,
             divider_y,
             charset.compartment_left,
             layout.style,
         )?;
         set_node_border(
-            canvas,
+            &mut surface,
             node_right,
             divider_y,
             charset.compartment_right,
             layout.style,
         )?;
         for x in (node_left + 1)..node_right {
-            set_node_border(canvas, x, divider_y, charset.horizontal, layout.style)?;
+            set_node_border(&mut surface, x, divider_y, charset.horizontal, layout.style)?;
         }
     }
     Ok(())
@@ -1358,12 +1487,15 @@ fn redraw_transformed_node_labels(
     transform: OutputTransform,
     width: usize,
     height: usize,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
+    let mut surface = CooperativeSurface::new(canvas, execution);
     for layout in layouts {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         if !node_shape_draws_centered_label(layout.shape) {
             continue;
         }
-        redraw_transformed_node_label(canvas, layout, transform, width, height)?;
+        redraw_transformed_node_label(&mut surface, layout, transform, width, height)?;
     }
     Ok(())
 }
