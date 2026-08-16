@@ -1,5 +1,8 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { createIssueShareUrl } from "../src/lib/share-view.ts";
+import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot.ts";
+
 import {
   expectNoDocumentOverflow,
   monitorBrowserErrors,
@@ -57,6 +60,28 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
     )
     .toBeGreaterThan(0);
 
+  const viewBoxToggle = page.getByRole("button", {
+    name: "ViewBox Frame",
+    exact: true,
+  });
+  await viewBoxToggle.scrollIntoViewIfNeeded();
+  await expectInsideViewport(page, viewBoxToggle);
+  await viewBoxToggle.tap();
+  await expect(viewBoxToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(primaryViewport(page)).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "viewbox",
+  );
+
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await boundsToggle.scrollIntoViewIfNeeded();
+  await expect(boundsToggle).toBeVisible();
+  await expect(boundsToggle).toHaveAccessibleName("Show SVG Bounds");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "false");
+  await boundsToggle.tap();
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
+
   const viewport = primaryViewport(page);
   await waitForAnimationFrames(viewport, 2);
   const initialZoom = await viewportZoom(viewport);
@@ -88,6 +113,65 @@ test("mid-width layouts retain every toolbar action through compact controls", a
     await expectNoDocumentOverflow(page);
   }
 
+  errors.assertNone();
+});
+
+test("landscape issue sharing keeps presentation, Bounds, and link actions reachable", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    window.localStorage.setItem("merman-language", "en");
+  });
+  const errors = monitorBrowserErrors(page);
+  const shared = new URL(
+    createIssueShareUrl(
+      {
+        ...DEFAULT_WORKSPACE_SNAPSHOT,
+        code: "flowchart TD\n  Mobile --> Shared",
+      },
+      {
+        workspacePane: "preview",
+        editorMode: "code",
+        previewMode: "compare",
+        showSvgBounds: true,
+        svgPresentationMode: "viewbox",
+      },
+      { origin: "https://example.test", pathname: "/" },
+    ),
+  );
+  await page.goto(`./${shared.search}${shared.hash}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await waitForPreviewSvg(page);
+
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  const viewBoxToggle = page.getByRole("button", {
+    name: "ViewBox Frame",
+    exact: true,
+  });
+  await expectInsideViewport(page, viewBoxToggle);
+  await expect(viewBoxToggle).toHaveAttribute("aria-pressed", "true");
+  await expectInsideViewport(page, boundsToggle);
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
+
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  await expectInsideViewport(page, share);
+  await share.tap();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy workspace link", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", {
+      name: "Copy issue reproduction link",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await expectNoDocumentOverflow(page);
   errors.assertNone();
 });
 
@@ -152,7 +236,62 @@ test("Pixel portrait and a shortened viewport keep dialogs scrollable and dismis
   errors.assertNone();
 });
 
-test("landscape touch gestures and preview modes remain operable", async ({
+test("export workbench stays reachable in portrait and safe-area landscape", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await page.getByRole("tab", { name: "Preview", exact: true }).tap();
+  await waitForPreviewSvg(page);
+
+  await page.getByRole("button", { name: "Export", exact: true }).tap();
+  await page.getByRole("menuitem", { name: "Export image…" }).tap();
+  const dialog = page.getByRole("dialog", { name: "Export image" });
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) =>
+    Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    ),
+  );
+  const portraitBox = await dialog.boundingBox();
+  expect(portraitBox).not.toBeNull();
+  expect(portraitBox!.x).toBeLessThanOrEqual(1);
+  expect(portraitBox!.y).toBeLessThanOrEqual(1);
+  expect(portraitBox!.width).toBeGreaterThanOrEqual(319);
+  expect(portraitBox!.height).toBeGreaterThanOrEqual(567);
+
+  await dialog.getByRole("button", { name: "PNG", exact: true }).tap();
+  const preview = dialog.getByRole("img", { name: "Export preview" });
+  await preview.scrollIntoViewIfNeeded();
+  await expect(preview).toBeVisible();
+  const download = dialog.getByRole("button", {
+    name: "Download",
+    exact: true,
+  });
+  await expectInsideViewport(page, download);
+  await expectNoDocumentOverflow(page);
+
+  await page.locator("html").evaluate((element) => {
+    element.style.setProperty("--merman-safe-area-inset-left", "44px");
+    element.style.setProperty("--merman-safe-area-inset-right", "12px");
+  });
+  await page.setViewportSize({ width: 844, height: 390 });
+  const formatGroup = dialog.getByRole("group", { name: "File format" });
+  await formatGroup.scrollIntoViewIfNeeded();
+  await expect
+    .poll(async () => (await formatGroup.boundingBox())?.x ?? -1)
+    .toBeGreaterThanOrEqual(44);
+  await expectInsideViewport(
+    page,
+    dialog.getByRole("button", { name: "Close export" }),
+  );
+  await expectInsideViewport(page, download);
+  await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
+test("WebKit mobile smoke: landscape canvas keeps Bounds and pointer handlers operable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 568, height: 320 });
@@ -164,6 +303,12 @@ test("landscape touch gestures and preview modes remain operable", async ({
   await expectHeaderControlsInsideViewport(page);
 
   const viewport = primaryViewport(page);
+  await expect(viewport).toHaveAttribute("data-preview-canvas-tone", /^(light|dark)$/u);
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await expectInsideViewport(page, boundsToggle);
+  await boundsToggle.tap();
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
   const positionLayer = viewport.locator(
     '[data-merman-viewport-position-layer="true"]',
   );
@@ -183,13 +328,16 @@ test("landscape touch gestures and preview modes remain operable", async ({
     )
     .not.toBe(transformBefore);
 
-  const diagnostics = page.getByRole("tab", {
-    name: "Diagnostics",
-    exact: true,
-  });
-  await diagnostics.tap();
-  await expect(diagnostics).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tab", { name: "Parse JSON" })).toBeVisible();
+  const zoomBeforePinch = await viewportZoom(viewport);
+  await dispatchTouch(viewport, "pointerdown", 72, startX - 30, startY);
+  await dispatchTouch(viewport, "pointerdown", 73, startX + 30, startY, false);
+  await dispatchTouch(viewport, "pointermove", 72, startX - 60, startY);
+  await dispatchTouch(viewport, "pointermove", 73, startX + 60, startY, false);
+  await dispatchTouch(viewport, "pointerup", 72, startX - 60, startY);
+  await dispatchTouch(viewport, "pointerup", 73, startX + 60, startY, false);
+  await expect.poll(() => viewportZoom(viewport)).toBeGreaterThan(zoomBeforePinch);
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
+  await expectNoDocumentOverflow(page);
   errors.assertNone();
 });
 
@@ -475,7 +623,7 @@ async function expectHeaderControlsInsideViewport(page: Page): Promise<void> {
     "Theme",
     "Render settings",
     "Export",
-    "Copy Link",
+    "Share",
   ]) {
     await expectInsideViewport(
       page,
@@ -498,6 +646,19 @@ async function exerciseCompactToolbarMenus(page: Page): Promise<void> {
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
   }
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  await share.tap();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy workspace link", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", {
+      name: "Copy issue reproduction link",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(share).toBeFocused();
 }
 
 async function visualViewportHeight(page: Page): Promise<number> {

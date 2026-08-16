@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
+import { AlertTriangle } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -19,6 +20,7 @@ import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
 import { CodeEditor } from "./components/Editor";
 import { Preview } from "./components/Preview";
+import { ExportWorkbench } from "./components/ExportDialog";
 import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
@@ -30,10 +32,17 @@ const ConfigEditor = lazy(() =>
 );
 export default function App() {
   const { t, i18n } = useTranslation();
-  const { editorMode, setEditorMode, workspacePane, setWorkspacePane } = useAppStore(
+  const {
+    editorMode,
+    setEditorMode,
+    shareViewWarning,
+    workspacePane,
+    setWorkspacePane,
+  } = useAppStore(
     useShallow((state) => ({
       editorMode: state.editorMode,
       setEditorMode: state.setEditorMode,
+      shareViewWarning: state.shareViewWarning,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
     }))
@@ -51,63 +60,76 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <RenderCoordinatorBridge />
-      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
-        <Toolbar />
+      <ExportWorkbench>
+        <RenderCoordinatorBridge />
+        <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+          <Toolbar />
 
-        <main className="relative min-h-0 flex-1 overflow-hidden">
-          <div className="flex h-full min-h-0 flex-col overflow-hidden">
-            {isNarrowLayout && (
-              <WorkspaceTabs
-                value={workspacePane}
-                onValueChange={setWorkspacePane}
-                editorLabel={t("layout.editor")}
-                previewLabel={t("layout.preview")}
-              />
-            )}
-            <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
-              <ResizablePanel
-                defaultSize="45%"
-                minSize="25%"
-                maxSize="75%"
-                className="bg-card"
-                id={isNarrowLayout ? "workspace-editor-panel" : undefined}
-                role={isNarrowLayout ? "tabpanel" : undefined}
-                aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
-                hidden={isNarrowLayout && workspacePane !== "editor"}
-                onFocusCapture={() => setWorkspacePane("editor")}
-                onPointerDownCapture={() => setWorkspacePane("editor")}
-              >
-                <EditorPanel
-                  editorMode={editorMode}
-                  setEditorMode={setEditorMode}
-                  t={t}
+          {shareViewWarning && (
+            <div
+              role="alert"
+              data-testid="share-view-warning"
+              className="flex shrink-0 items-start gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100 sm:px-4"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>{t("share.issueViewNotRestored")}</span>
+            </div>
+          )}
+
+          <main className="relative min-h-0 flex-1 overflow-hidden">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              {isNarrowLayout && (
+                <WorkspaceTabs
+                  value={workspacePane}
+                  onValueChange={setWorkspacePane}
+                  editorLabel={t("layout.editor")}
+                  previewLabel={t("layout.preview")}
                 />
-              </ResizablePanel>
+              )}
+              <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
+                <ResizablePanel
+                  defaultSize="45%"
+                  minSize="25%"
+                  maxSize="75%"
+                  className="bg-card"
+                  id={isNarrowLayout ? "workspace-editor-panel" : undefined}
+                  role={isNarrowLayout ? "tabpanel" : undefined}
+                  aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
+                  hidden={isNarrowLayout && workspacePane !== "editor"}
+                  onFocusCapture={() => setWorkspacePane("editor")}
+                  onPointerDownCapture={() => setWorkspacePane("editor")}
+                >
+                  <EditorPanel
+                    editorMode={editorMode}
+                    setEditorMode={setEditorMode}
+                    t={t}
+                  />
+                </ResizablePanel>
 
-              <ResizableHandle
-                withHandle
-                className={isNarrowLayout ? "hidden" : undefined}
-              />
+                <ResizableHandle
+                  withHandle
+                  className={isNarrowLayout ? "hidden" : undefined}
+                />
 
-              <ResizablePanel
-                defaultSize="55%"
-                minSize="25%"
-                id={isNarrowLayout ? "workspace-preview-panel" : undefined}
-                role={isNarrowLayout ? "tabpanel" : undefined}
-                aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
-                hidden={isNarrowLayout && workspacePane !== "preview"}
-                onFocusCapture={() => setWorkspacePane("preview")}
-                onPointerDownCapture={() => setWorkspacePane("preview")}
-              >
-                <PreviewPanel t={t} />
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </div>
-        </main>
+                <ResizablePanel
+                  defaultSize="55%"
+                  minSize="25%"
+                  id={isNarrowLayout ? "workspace-preview-panel" : undefined}
+                  role={isNarrowLayout ? "tabpanel" : undefined}
+                  aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
+                  hidden={isNarrowLayout && workspacePane !== "preview"}
+                  onFocusCapture={() => setWorkspacePane("preview")}
+                  onPointerDownCapture={() => setWorkspacePane("preview")}
+                >
+                  <PreviewPanel />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
+          </main>
 
-        <StatusBar />
-      </div>
+          <StatusBar />
+        </div>
+      </ExportWorkbench>
     </TooltipProvider>
   );
 }
@@ -178,16 +200,9 @@ function EditorPanel({
   );
 }
 
-function PreviewPanel({ t }: { t(key: string): string }) {
+function PreviewPanel() {
   return (
-    <div className="h-full min-h-0 flex flex-col">
-      <div className="flex h-11 shrink-0 items-center border-b bg-muted/20 px-3 sm:px-4">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("preview.title")}
-        </span>
-      </div>
-      <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
-    </div>
+    <Preview className="h-full min-h-0" />
   );
 }
 

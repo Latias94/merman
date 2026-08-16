@@ -1145,6 +1145,7 @@ mod tests {
         "parallel-markdown",
         "pdf",
         "png",
+        "rustdoc",
         "shell-completions",
         "svg",
         "system-clock",

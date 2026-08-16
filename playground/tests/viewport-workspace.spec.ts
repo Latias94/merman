@@ -1,6 +1,8 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { createIssueShareUrl } from "../src/lib/share-view.ts";
 import { encodeShareHash } from "../src/lib/share.ts";
+import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport.ts";
 
 import {
   monitorBrowserErrors,
@@ -396,6 +398,7 @@ test("a current share hash is restored before the first visible publication", as
 }) => {
   const errors = monitorBrowserErrors(page);
   await page.addInitScript(() => {
+    if (window.top !== window) return;
     window.localStorage.setItem("merman-language", "en");
     const publications: string[] = [];
     const originalReplaceChildren = ShadowRoot.prototype.replaceChildren;
@@ -424,7 +427,7 @@ test("a current share hash is restored before the first visible publication", as
   const wasmResponse = page.waitForResponse((response) =>
     /\/assets\/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/u.test(response.url())
   );
-  await page.goto(`./#${hash}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
   await wasmResponse;
   await waitForPreviewSvg(page);
 
@@ -443,6 +446,139 @@ test("a current share hash is restored before the first visible publication", as
   await expect(page.locator("footer")).toContainText(`${code.length} Chars`);
   errors.assertNone();
 });
+
+test("a current issue link restores workspace, view, and SVG Bounds", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    window.localStorage.setItem("merman-language", "en");
+  });
+  const workspace = {
+    code: "flowchart TD\n  IssueFirst --> SharedView",
+    mermaidConfig: "{}",
+    diagramTheme: "forest" as const,
+    presentationThemePresetId: null,
+    presentationProfileId: null,
+    svgPipeline: "parity" as const,
+    textMeasurementMode: "browser" as const,
+    diagramFont: "arial" as const,
+  };
+  const shared = new URL(
+    createIssueShareUrl(
+      workspace,
+      {
+        workspacePane: "preview",
+        editorMode: "config",
+        previewMode: "compare",
+        showSvgBounds: true,
+        svgPresentationMode: "viewbox",
+      },
+      { origin: "https://example.test", pathname: "/" },
+    ),
+  );
+  expect(shared.search).toBe(
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&showSvgBounds=true&svgPresentationMode=viewbox",
+  );
+
+  await page.goto(`./${shared.search}${shared.hash}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await waitForPreviewSvg(page);
+
+  await expect(page.getByRole("tab", { name: "Config", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("button", { name: "ViewBox Frame", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-merman-svg-viewport="true"]')
+        .evaluateAll((elements) =>
+          elements.every(
+            (element) =>
+              element.getAttribute("data-svg-presentation-mode") === "viewbox",
+          ),
+        ),
+    )
+    .toBe(true);
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
+  await expect(page.getByTestId("share-view-warning")).toHaveCount(0);
+  expect(await previewSvgText(page)).toContain("IssueFirst");
+
+  expect(new URL(page.url()).search).toBe(shared.search);
+  expect(new URL(page.url()).hash).toBe(shared.hash);
+  errors.assertNone();
+});
+
+test("a legacy Host issue URL restores supported fields canonically without rewriting history", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    window.localStorage.setItem("merman-language", "en");
+  });
+  const hash = legacyWorkspaceHash({
+    code: "flowchart TD\n  LegacyHost --> CanonicalCanvas",
+    theme: "forest",
+    config: "{}",
+    renderViewportMode: "host",
+    textMeasurementMode: "browser",
+    diagramFont: "arial",
+  });
+  const search =
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare" +
+    "&renderViewportMode=host&hostWidth=640&hostHeight=480" +
+    "&screenAvailableWidth=1512";
+  await page.goto(`./${search}${hash}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+
+  await expect(page.getByTestId("share-view-warning")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Config", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByTestId("svg-bounds-toggle")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(0);
+  await expect.poll(() => compareRealmUsesCanonicalViewport(page)).toBe(true);
+  expect(await previewSvgText(page)).toContain("LegacyHost");
+  expect(new URL(page.url()).search).toBe(search);
+  expect(new URL(page.url()).hash).toBe(hash);
+  errors.assertNone();
+});
+
+function legacyWorkspaceHash(payload: Record<string, unknown>): string {
+  return `#${btoa(encodeURIComponent(JSON.stringify(payload)))}`;
+}
+
+async function compareRealmUsesCanonicalViewport(page: Page): Promise<boolean> {
+  return page.evaluate((expected) => {
+    const realm = document.querySelector('iframe[data-merman-realm="compare"]');
+    return (
+      realm instanceof HTMLIFrameElement &&
+      realm.clientWidth === expected.width &&
+      realm.clientHeight === expected.height
+    );
+  }, CANONICAL_RENDER_VIEWPORT);
+}
 
 function primaryViewport(page: Page): Locator {
   return page.locator('[data-merman-svg-viewport="true"]').first();

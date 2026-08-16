@@ -13,6 +13,10 @@ import {
 } from "../lib/workspace-snapshot.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
 import {
+  captureRenderViewport,
+  type CapturedRenderViewport,
+} from "./render-viewport.ts";
+import {
   createRenderCoordinator,
   type RenderCoordinatorInput,
 } from "./render-coordinator.ts";
@@ -22,7 +26,42 @@ import type {
   MermaidRealmRenderResult,
 } from "./mermaid-realm-controller.ts";
 
-const VIEWPORT = { width: 800, height: 600 };
+test("freezes one canonical environment into Merman and Mermaid inputs", async () => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("canonical"))]);
+  const renderedOperations: FrozenRenderOperation[] = [];
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    render(operation) {
+      renderedOperations.push(operation as FrozenRenderOperation);
+      return facade().render(operation);
+    },
+  };
+  const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setInput(
+    input(
+      "canonical",
+      domainFacade,
+      {},
+      captureRenderViewport(),
+    ),
+  );
+
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const renderedOperation = renderedOperations[0];
+  assert.ok(renderedOperation);
+  assert.equal("renderViewportMode" in renderedOperation, false);
+  assert.equal("renderViewportStatus" in renderedOperation, false);
+  assert.deepEqual(renderedOperation.layoutEnvironment, {
+    containerWidth: 800,
+    containerHeight: 600,
+    screenAvailableWidth: 800,
+  });
+  assert.deepEqual(renderedOperation.viewport, { width: 800, height: 600 });
+  assert.deepEqual(compare.calls[0]?.viewport, { width: 800, height: 600 });
+  assert.equal(compare.calls[0]?.screenAvailableWidth, 800);
+});
 
 test("latest request publishes Merman and Mermaid as one coherent batch", async () => {
   const first = deferred<MermaidRealmRenderResult>();
@@ -30,7 +69,6 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   const compare = fakeCompare([first.promise, second.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -106,7 +144,6 @@ test("request identity includes all presentation axes and stores the same-snapsh
   ];
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
 
@@ -151,7 +188,6 @@ test("deduplicates only when both the operation and facade authority are unchang
   };
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
 
@@ -216,7 +252,6 @@ test("passes one frozen operation to every Merman projection", async () => {
   };
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: false, diagnosticsEnabled: true });
@@ -239,8 +274,7 @@ test("passes one frozen operation to every Merman projection", async () => {
   assert.equal(Reflect.set(state, "publishedAt", 99), false);
 });
 
-test("freezes browser layout geometry into each render snapshot", async () => {
-  let screenAvailableWidth = 1280;
+test("external pane geometry cannot change operation identity or enqueue another render", async () => {
   const renderOperations: FrozenRenderOperation[] = [];
   const domainFacade: MermanDomainFacade = {
     ...facade(),
@@ -258,35 +292,41 @@ test("freezes browser layout geometry into each render snapshot", async () => {
     },
   };
   const coordinator = createRenderCoordinator({
-    captureLayoutEnvironment: () => ({
-      containerWidth: VIEWPORT.width,
-      containerHeight: VIEWPORT.height,
-      screenAvailableWidth,
-    }),
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
 
-  coordinator.setInput(input("layout-environment", domainFacade));
+  coordinator.setInput(
+    input(
+      "layout-environment",
+      domainFacade,
+      {},
+      captureRenderViewport(),
+    ),
+  );
   await waitFor(() => renderOperations.length === 1);
   assert.deepEqual(renderOperations[0].layoutEnvironment, {
     containerWidth: 800,
     containerHeight: 600,
-    screenAvailableWidth: 1280,
+    screenAvailableWidth: 800,
   });
   assert.equal(Object.isFrozen(renderOperations[0].layoutEnvironment), true);
 
-  screenAvailableWidth = 1440;
-  coordinator.setInput(input("layout-environment", domainFacade));
-  await waitFor(() => renderOperations.length === 2);
-  assert.equal(renderOperations[1].layoutEnvironment.screenAvailableWidth, 1440);
+  coordinator.setInput(
+    input(
+      "layout-environment",
+      domainFacade,
+      {},
+      captureRenderViewport(),
+    ),
+  );
+  await Promise.resolve();
+  assert.equal(renderOperations.length, 1);
 });
 
 test("keeps a successful render when SVG plan collection fails", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -313,7 +353,6 @@ test("publishes the producer-owned Merman artifact without reprojecting it", asy
   );
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -340,7 +379,6 @@ test("publishes the producer-owned Merman artifact without reprojecting it", asy
 test("preserves producer SVG validation failures", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -367,7 +405,6 @@ test("preserves producer SVG validation failures", async () => {
 test("publishes ASCII independently when SVG validation fails", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -402,7 +439,6 @@ test("publishes an explicit unsupported ASCII result without invoking the render
   let asciiRenderCalls = 0;
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -436,7 +472,6 @@ test("publishes an explicit unsupported ASCII result without invoking the render
 test("contains ASCII capability failures without failing the SVG publication", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -462,7 +497,6 @@ test("keeps the visible diagram type while a replacement render is updating", as
   const compare = fakeCompare([Promise.resolve(mermaidSuccess("visible"))]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(input("visible"));
@@ -493,7 +527,6 @@ test("rejects a facade artifact that was not created by the projector", async ()
   };
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -521,7 +554,6 @@ test("updating disables old pair and partial replaces the failed pane", async ()
   const compare = fakeCompare([first.promise, second.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -574,7 +606,6 @@ test("treats a Mermaid realm version mismatch as a protocol failure", async () =
   const compare = fakeCompare([realmResult.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -599,7 +630,6 @@ test("marks each presented engine by rebuilding an immutable completed publicati
   const compare = fakeCompare([realmResult.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -641,7 +671,6 @@ test("a completed Mermaid failure replaces stale success without borrowing Merma
   const compare = fakeCompare([first.promise, second.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -679,7 +708,6 @@ test("pause waits for active work and resumes only the latest snapshot", async (
   const compare = fakeCompare([active.promise, resumed.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -706,7 +734,6 @@ test("blank source and suspend reject every late completion", async () => {
   const compare = fakeCompare([active.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -728,7 +755,6 @@ test("request exceptions become typed failures and later work still runs", async
   const compare = fakeCompare([rejected.promise, recovered.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -766,7 +792,6 @@ test("synchronous compare exceptions become protocol failures and later work sti
   };
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -791,7 +816,6 @@ test("superseding Compare work is cancelled before publishing the latest SVG bat
   const compare = fakeCompare([pending.promise]);
   const coordinator = createRenderCoordinator({
     compare,
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
@@ -810,7 +834,6 @@ test("superseding Compare work is cancelled before publishing the latest SVG bat
 test("render failures retain binding details in the completed batch", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(input("broken", bindingFailureFacade()));
@@ -844,7 +867,6 @@ test("normalizes raw Merman Error and object payloads before publication", async
   ] as const) {
     const coordinator = createRenderCoordinator({
       compare: fakeCompare([]),
-      compareViewport: VIEWPORT,
       debounceMs: 0,
     });
     coordinator.setInput(input("broken", rawFailureFacade(failure)));
@@ -864,7 +886,6 @@ test("normalizes raw Merman Error and object payloads before publication", async
 test("normalizes an unprojected ASCII failure without failing the SVG result", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -901,7 +922,6 @@ test("publishes invalid configuration as an ASCII failure before detection", asy
   let asciiCalls = 0;
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
-    compareViewport: VIEWPORT,
     debounceMs: 0,
   });
   coordinator.setInput(
@@ -939,10 +959,12 @@ test("publishes invalid configuration as an ASCII failure before detection", asy
 function input(
   source: string,
   domainFacade: MermanDomainFacade = facade(),
-  workspace: Partial<WorkspaceSnapshot> = {}
+  workspace: Partial<WorkspaceSnapshot> = {},
+  renderViewport: CapturedRenderViewport = captureRenderViewport(),
 ): RenderCoordinatorInput {
   return {
     facade: domainFacade,
+    renderViewport,
     workspace: {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
       code: source,

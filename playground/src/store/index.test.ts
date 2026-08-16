@@ -6,6 +6,7 @@ import {
   useAppStore,
   type WorkspaceSnapshot,
 } from "./index.ts";
+import type { StartupShareHydration } from "../lib/share-view.ts";
 
 test("presentation setters update only their own axis", () => {
   useAppStore.setState({
@@ -69,6 +70,77 @@ test("applies one complete workspace snapshot with one coherent notification", (
 
   assert.deepEqual(notifications, [next]);
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), next);
+});
+
+test("stores Preview-owned SVG presentation preferences outside workspace snapshots", () => {
+  useAppStore.setState({
+    showSvgBounds: false,
+    svgPresentationMode: "infinite",
+  });
+
+  useAppStore.getState().setShowSvgBounds(true);
+  useAppStore.getState().setSvgPresentationMode("viewbox");
+
+  assert.equal(useAppStore.getState().showSvgBounds, true);
+  assert.equal(useAppStore.getState().svgPresentationMode, "viewbox");
+  assert.equal("showSvgBounds" in selectWorkspaceSnapshot(useAppStore.getState()), false);
+  assert.equal(
+    "svgPresentationMode" in selectWorkspaceSnapshot(useAppStore.getState()),
+    false,
+  );
+});
+
+test("applies startup workspace, view preferences, and warning in one store transition", () => {
+  const hydration: StartupShareHydration = {
+    workspace: {
+      code: "flowchart TD\nA --> B",
+      mermaidConfig: '{"look":"neo"}',
+      diagramTheme: "forest",
+      diagramFont: "arial",
+      presentationProfileId: "future-profile",
+      presentationThemePresetId: "future-theme",
+      svgPipeline: "readable",
+      textMeasurementMode: "headless",
+    },
+    view: {
+      workspacePane: "preview",
+      editorMode: "config",
+      previewMode: "compare",
+      showSvgBounds: true,
+      svgPresentationMode: "viewbox",
+    },
+    warning: {
+      code: "share-view-not-restored",
+      message: "warning",
+    },
+  };
+  const notifications: Array<Record<string, unknown>> = [];
+  const unsubscribe = useAppStore.subscribe((state) => {
+    notifications.push({
+      workspace: selectWorkspaceSnapshot(state),
+      workspacePane: state.workspacePane,
+      editorMode: state.editorMode,
+      previewMode: state.previewMode,
+      showSvgBounds: state.showSvgBounds,
+      svgPresentationMode: state.svgPresentationMode,
+      shareViewWarning: state.shareViewWarning,
+    });
+  });
+
+  useAppStore.getState().applyStartupShareHydration(hydration);
+  unsubscribe();
+
+  assert.deepEqual(notifications, [
+    {
+      workspace: hydration.workspace,
+      workspacePane: hydration.view.workspacePane,
+      editorMode: hydration.view.editorMode,
+      previewMode: hydration.view.previewMode,
+      showSvgBounds: hydration.view.showSvgBounds,
+      svgPresentationMode: hydration.view.svgPresentationMode,
+      shareViewWarning: hydration.warning,
+    },
+  ]);
 });
 
 function presentationState() {

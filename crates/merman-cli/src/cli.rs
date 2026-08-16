@@ -44,6 +44,9 @@ pub(crate) enum RawCommand {
     #[cfg(feature = "svg")]
     /// Render through the pinned mmdc-compatible interface.
     Mmdc(MmdcArgs),
+    #[cfg(feature = "rustdoc")]
+    /// Build or check committed static Mermaid fragments for Rustdoc.
+    Rustdoc(RustdocArgs),
     /// Detect the Mermaid diagram type.
     Detect(DetectArgs),
     /// Parse Mermaid source and print the semantic JSON model.
@@ -63,6 +66,39 @@ pub(crate) struct CapabilitiesArgs {
     /// Emit the machine-readable capability document.
     #[arg(long)]
     pub(crate) json: bool,
+}
+
+#[cfg(feature = "rustdoc")]
+#[derive(Debug, ClapArgs)]
+pub(crate) struct RustdocArgs {
+    #[command(subcommand)]
+    pub(crate) command: RustdocCommand,
+}
+
+#[cfg(feature = "rustdoc")]
+#[derive(Debug, Subcommand)]
+pub(crate) enum RustdocCommand {
+    /// Build the complete managed Rustdoc fragment bundle.
+    Build(RustdocCommandArgs),
+    /// Check the managed Rustdoc fragment bundle without writing.
+    Check(RustdocCommandArgs),
+}
+
+#[cfg(feature = "rustdoc")]
+#[derive(Debug, ClapArgs)]
+pub(crate) struct RustdocCommandArgs {
+    /// Rustdoc fragment configuration file.
+    #[arg(
+        long,
+        value_name = "PATH",
+        value_hint = ValueHint::FilePath,
+        default_value = "merman-rustdoc.toml"
+    )]
+    pub(crate) config: PathBuf,
+
+    /// Suppress non-error progress output.
+    #[arg(long)]
+    pub(crate) quiet: bool,
 }
 
 #[derive(Debug, Clone, ClapArgs)]

@@ -530,11 +530,20 @@ struct ElementReference {
     target_kind: ReferenceTargetKind,
 }
 
-struct ReferenceDependencyGraph {
+pub(super) struct ReferenceDependencyGraph {
     // Real document nodes keep their encounter-order indexes. Trailing nodes are transparent
     // candidate groups: they share duplicate-ID edges without contributing an element or depth.
     dependencies: Vec<Vec<(usize, usize)>>,
     real_nodes: usize,
+}
+
+impl ReferenceDependencyGraph {
+    pub(super) fn new(dependencies: Vec<Vec<(usize, usize)>>, real_nodes: usize) -> Self {
+        Self {
+            dependencies,
+            real_nodes,
+        }
+    }
 }
 
 fn append_reference_node(
@@ -799,7 +808,7 @@ fn plan_svg_reference_expansion(nodes: &[ReferenceNode]) -> Result<SvgReferenceP
     };
 
     let mut dependencies = build_svg_reference_dependencies(nodes);
-    let baseline_plan = plan_svg_reference_dependencies(&dependencies)?;
+    let baseline_plan = plan_svg_reference_dependencies(&dependencies).map_err(validation_error)?;
     let application_upper_bound = baseline_plan.expanded_elements();
     for (index, node) in nodes.iter().enumerate() {
         if node.may_repeat_per_element {
@@ -811,7 +820,7 @@ fn plan_svg_reference_expansion(nodes: &[ReferenceNode]) -> Result<SvgReferenceP
         }
     }
 
-    plan_svg_reference_dependencies(&dependencies)
+    plan_svg_reference_dependencies(&dependencies).map_err(validation_error)
 }
 
 fn build_svg_reference_dependencies(nodes: &[ReferenceNode]) -> ReferenceDependencyGraph {
@@ -926,7 +935,9 @@ fn resolve_reference_candidates(
     Some(group_index)
 }
 
-fn plan_svg_reference_dependencies(graph: &ReferenceDependencyGraph) -> Result<SvgReferencePlan> {
+pub(super) fn plan_svg_reference_dependencies(
+    graph: &ReferenceDependencyGraph,
+) -> std::result::Result<SvgReferencePlan, String> {
     let cap = crate::resources::MAX_RESVG_TREE_NODES.saturating_add(1);
     let dependencies = &graph.dependencies;
     let nodes_len = dependencies.len();
@@ -967,9 +978,8 @@ fn plan_svg_reference_dependencies(graph: &ReferenceDependencyGraph) -> Result<S
                     match states[dependency] {
                         0 => stack.push((dependency, false)),
                         1 => {
-                            return Err(validation_error(
-                                "same-document SVG expansion references contain a cycle",
-                            ));
+                            return Err("same-document SVG expansion references contain a cycle"
+                                .to_string());
                         }
                         2 => {}
                         _ => unreachable!("SVG reference traversal state is bounded"),
@@ -977,9 +987,7 @@ fn plan_svg_reference_dependencies(graph: &ReferenceDependencyGraph) -> Result<S
                 }
             }
             1 => {
-                return Err(validation_error(
-                    "same-document SVG expansion references contain a cycle",
-                ));
+                return Err("same-document SVG expansion references contain a cycle".to_string());
             }
             2 => {}
             _ => unreachable!("SVG reference traversal state is bounded"),

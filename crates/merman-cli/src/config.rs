@@ -250,6 +250,38 @@ pub(crate) fn renderer_for_resolved(
     )
 }
 
+#[cfg(feature = "rustdoc")]
+pub(crate) fn rustdoc_renderer_for_resolved(
+    parse: &ResolvedParseOptions,
+    render: &ResolvedRenderOptions,
+    resources: &ResolvedResourcePolicy,
+) -> Result<ConfiguredRenderer, CliError> {
+    let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
+    let mut site_config = site_config_for_resolved(parse, resources)?;
+    let mut secure = merman::generated::default_site_config()
+        .as_value()
+        .get("secure")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| {
+            CliError::Internal(
+                "generated Mermaid site config is missing its secure-key policy".to_string(),
+            )
+        })?;
+    if !secure.iter().any(|value| value.as_str() == Some("theme")) {
+        secure.push(Value::String("theme".to_string()));
+    }
+    site_config.set_value("secure", Value::Array(secure));
+    renderer_from_config(
+        runtime,
+        site_config,
+        parse_options_for_resolved(parse),
+        RendererInputs::from_resolved(render),
+        None,
+        resources,
+    )
+}
+
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy)]
 struct RendererInputs<'a> {

@@ -93,6 +93,191 @@ test("SVG mount failures stay inside the preview pane", async ({ page }) => {
   errors.assertNone();
 });
 
+test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as presentation-only state", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const viewport = page.locator('[data-merman-svg-viewport="true"]').first();
+  expect(await viewport.boundingBox()).toEqual(
+    await page.locator("#preview-mode-panel").boundingBox(),
+  );
+  await expect(viewport).toHaveAttribute(
+    "data-preview-canvas-tone",
+    /^(light|dark)$/u,
+  );
+  await expect(viewport).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "infinite",
+  );
+  await expect(viewport).not.toHaveCSS("background-image", "none");
+  const content = viewport.locator(".preview-container");
+  await expect(content).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(content).toHaveCSS("padding", "0px");
+  await expect(content).toHaveCSS("border-radius", "0px");
+  await expect(content).toHaveCSS("box-shadow", "none");
+
+  const initialZoom = Number(await viewport.getAttribute("data-zoom"));
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect
+    .poll(async () => Number(await viewport.getAttribute("data-zoom")))
+    .toBeGreaterThan(initialZoom);
+  const zoomBeforeBounds = await viewport.getAttribute("data-zoom");
+  const artifactHost = viewport.locator(".preview-container > div").first();
+  await artifactHost.evaluate((host) => {
+    const svg = host.shadowRoot?.querySelector("svg");
+    if (!svg) throw new Error("Missing mounted SVG artifact.");
+    svg.setAttribute("data-test-bounds-artifact", "stable");
+  });
+  const artifactMarker = () =>
+    artifactHost.evaluate(
+      (host) =>
+        host.shadowRoot
+          ?.querySelector("svg")
+          ?.getAttribute("data-test-bounds-artifact") ?? null,
+    );
+
+  const infiniteButton = page.getByRole("button", {
+    name: "Infinite Canvas",
+    exact: true,
+  });
+  const viewBoxButton = page.getByRole("button", {
+    name: "ViewBox Frame",
+    exact: true,
+  });
+  await expect(infiniteButton).toHaveAttribute("aria-pressed", "true");
+  await expect(viewBoxButton).toHaveAttribute("aria-pressed", "false");
+  await viewBoxButton.click();
+  await expect(viewBoxButton).toHaveAttribute("aria-pressed", "true");
+  await expect(infiniteButton).toHaveAttribute("aria-pressed", "false");
+  await expect(viewport).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "viewbox",
+  );
+  await expect(viewport).toHaveCSS("background-image", "none");
+  await expect(content).toHaveCSS("outline-style", "solid");
+  await expect(content).not.toHaveCSS("box-shadow", "none");
+  expect(await artifactMarker()).toBe("stable");
+  await expect(viewport).toHaveAttribute("data-zoom", zoomBeforeBounds ?? "");
+
+  const boundsToggle = page.getByTestId("svg-bounds-toggle");
+  await expect(boundsToggle).toHaveAccessibleName("Show SVG Bounds");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "false");
+  await boundsToggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  const outline = viewport.locator('[data-merman-svg-bounds="true"]');
+  await expect(outline).toHaveCount(1);
+  await expect(outline).toHaveCSS("pointer-events", "none");
+  expect(await outline.boundingBox()).toEqual(await content.boundingBox());
+  expect(await artifactMarker()).toBe("stable");
+  await expect(viewport).toHaveAttribute("data-zoom", zoomBeforeBounds ?? "");
+
+  await page.keyboard.press("Space");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "false");
+  await expect(outline).toHaveCount(0);
+  expect(await artifactMarker()).toBe("stable");
+  await expect(viewport).toHaveAttribute("data-zoom", zoomBeforeBounds ?? "");
+
+  await page.keyboard.press("Enter");
+  await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const compareCanvas = page.locator(
+    '[data-merman-compare-scroll-owner="true"]',
+  );
+  await expect(compareCanvas).toHaveAttribute(
+    "data-preview-canvas-tone",
+    /^(light|dark)$/u,
+  );
+  await expect(compareCanvas).toHaveAttribute(
+    "data-svg-presentation-mode",
+    "viewbox",
+  );
+  await expect(compareCanvas).toHaveCSS("background-image", "none");
+  const compareViewports = page.locator('[data-merman-svg-viewport="true"]');
+  await expect(compareViewports).toHaveCount(2);
+  await expect
+    .poll(() =>
+      compareViewports.evaluateAll((elements) =>
+        elements.every(
+          (element) =>
+            element.getAttribute("data-svg-presentation-mode") === "viewbox",
+        ),
+      ),
+    )
+    .toBe(true);
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(2);
+  await expect
+    .poll(() =>
+      compareViewports.evaluateAll((elements) =>
+        elements.every((element) => {
+          const content = element.querySelector(".preview-container");
+          return (
+            content instanceof HTMLElement &&
+            getComputedStyle(element).backgroundImage === "none" &&
+            getComputedStyle(content).outlineStyle === "solid"
+          );
+        }),
+      ),
+    )
+    .toBe(true);
+
+  errors.assertNone();
+});
+
+test("desktop Preview actions remain reachable at the minimum pane width", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const separator = page.locator('[data-slot="resizable-handle"]');
+  const separatorBox = await separator.boundingBox();
+  expect(separatorBox).not.toBeNull();
+  await page.mouse.move(
+    separatorBox!.x + separatorBox!.width / 2,
+    separatorBox!.y + separatorBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(960, separatorBox!.y + separatorBox!.height / 2, {
+    steps: 8,
+  });
+  await page.mouse.up();
+
+  const previewPanel = page.locator("#preview-mode-panel");
+  await expect
+    .poll(async () => (await previewPanel.boundingBox())?.width ?? 0)
+    .toBeLessThanOrEqual(330);
+  const actions = page.getByTestId("preview-toolbar-actions");
+  await expect
+    .poll(() =>
+      actions.evaluate((element) => element.scrollWidth > element.clientWidth),
+    )
+    .toBe(true);
+
+  const panelBox = await previewPanel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  const buttons = actions.getByRole("button");
+  const buttonCount = await buttons.count();
+  expect(buttonCount).toBeGreaterThan(0);
+  for (let index = 0; index < buttonCount; index += 1) {
+    const button = buttons.nth(index);
+    await button.scrollIntoViewIfNeeded();
+    const buttonBox = await button.boundingBox();
+    expect(buttonBox).not.toBeNull();
+    expect(buttonBox!.x).toBeGreaterThanOrEqual(panelBox!.x - 1);
+    expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(
+      panelBox!.x + panelBox!.width + 1,
+    );
+  }
+
+  errors.assertNone();
+});
+
 test("Event Model keeps Mermaid HTML labels readable in a dark Playground", async ({
   page,
 }) => {
@@ -407,7 +592,7 @@ test("Merman Gantt presents non-overlapping date ticks", async ({ page }) => {
   errors.assertNone();
 });
 
-test("a 100-million-unit SVG stays bounded in preview and exports a planned PNG", async ({
+test("a 100-million-unit SVG stays bounded in preview and export", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
@@ -453,24 +638,32 @@ test("a 100-million-unit SVG stays bounded in preview and exports a planned PNG"
   await expect.poll(() => previewSvgWidth(page)).toBeGreaterThan(fittedWidth * 1.1);
   await page.getByRole("button", { name: "Fit to view", exact: true }).click();
   await expect.poll(() => previewSvgWidth(page)).toBeLessThanOrEqual(fittedWidth + 1);
+  await page.getByTestId("svg-bounds-toggle").click();
+  await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(1);
 
   await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Export image…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Export image" });
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
   const svgDownloadPromise = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: /Export SVG/u }).click();
+  await dialog.getByRole("button", { name: "Download", exact: true }).click();
   const svgDownload = await svgDownloadPromise;
-  expect(await downloadText(svgDownload)).toContain(
-    'viewBox="0 0 100000000 1000000"'
-  );
+  const exportedSvg = await downloadText(svgDownload);
+  expect(exportedSvg).toContain('viewBox="0 0 100000000 1000000"');
+  expect(exportedSvg).not.toContain("data-merman-svg-bounds");
+  expect(exportedSvg).not.toContain("data-merman-svg-viewport");
+  expect(exportedSvg).not.toContain("preview-canvas");
 
-  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await dialog.getByRole("button", { name: "PNG", exact: true }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: /Export PNG/u }).click();
+  await dialog.getByRole("button", { name: "Download", exact: true }).click();
   const download = await downloadPromise;
   expect(await pngDownloadDimensions(download)).toEqual({
-    width: 8192,
-    height: 82,
+    width: 4096,
+    height: 41,
   });
-  await expect(page.getByText("PNG exported (8192 × 82)")).toBeVisible();
+  await expect(dialog.getByRole("status")).toHaveText("Downloaded");
 
   errors.assertNone();
 });

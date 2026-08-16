@@ -13,7 +13,8 @@ installation command.
 | Complete Rust rendering facade | `merman` | crates.io |
 | A command-line renderer, linter, and exporter | `merman-cli` | GitHub Release archive or crates.io |
 | A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
-| Rustdoc Mermaid fences | `merman-rustdoc` | crates.io |
+| Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | GitHub Release archive or crates.io authoring tool |
+| One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
 | Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
 | Python host integration | `merman` | PyPI and release wheels |
@@ -32,6 +33,28 @@ analysis. Math, PNG, JPEG, PDF, and native runtime adapters remain available to 
 builds but are not bundled in the default packages. The C ABI crate has no default features, so
 custom embedders can select semantic-only, SVG-only, export-capable, or complete builds. LSP
 remains a separate executable product and is not linked into any native binding artifact.
+
+## Rustdoc Documentation
+
+Rustdoc support is intentionally two product surfaces, not one package with hidden backend
+selection. `merman-cli rustdoc build/check` owns checked, committed Markdown fragments and a
+portable receipt; consuming crates use native `include_str!`, and docs.rs only reads files already
+inside the uploaded crate. `merman-rustdoc` owns item-level attribute expansion and compiles its
+native renderer while `cargo doc` runs. The CLI never depends on or invokes the macro package, and
+the macro never discovers or invokes the CLI.
+
+| Distribution property | `merman-cli rustdoc` | `merman-rustdoc` |
+| --- | --- | --- |
+| Consumer Cargo graph | No attributable Merman renderer, layout, math, or proc-macro package | Selected proc-macro and renderer closure |
+| Release recipe | `cli-release` includes the `rustdoc` tool leaf | Independent `rustdoc-static-svg` artifact profile |
+| Published inputs | Config, source, generated fragments, and `receipt.json` | Annotated Rust source and optional included `.mmd` files |
+| Hosted documentation | Packaged fragments work offline without executing the CLI | docs.rs must enable the optional documentation feature |
+| Freshness/rollback | CI runs `rustdoc check`; Git owns successful-state rollback | `cargo doc` fails during expansion; Git owns source rollback |
+
+Generated fragments must be included at most once on a rendered page to avoid duplicate static DOM
+IDs. Package preflight must prove every referenced fragment and the receipt are present. The
+[`merman-cli` Rustdoc guide](../../crates/merman-cli/README.md#rustdoc-fragments) and
+[`merman-rustdoc` guide](../../crates/merman-rustdoc/README.md) contain the runnable workflows.
 
 ## Release Delivery
 

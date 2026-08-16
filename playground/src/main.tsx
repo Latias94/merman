@@ -15,12 +15,11 @@ import {
 } from "./runtime/render-coordinator-browser";
 import { configureLocalMonaco } from "./editor/monaco";
 import { installUIThemeLifecycle, useAppStore } from "./store";
-import { decodeShareHash } from "./lib/share";
+import { hydrateStartupShareLocation } from "./lib/share-view";
 
-const sharedWorkspace = decodeShareHash(window.location.hash);
-if (sharedWorkspace) {
-  useAppStore.getState().applyWorkspaceSnapshot(sharedWorkspace);
-}
+hydrateStartupShareLocation(window.location, (hydration) => {
+  useAppStore.getState().applyStartupShareHydration(hydration);
+});
 
 const monacoOwner = configureLocalMonaco();
 const removeThemeLifecycle = installUIThemeLifecycle();

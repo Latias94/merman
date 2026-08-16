@@ -346,7 +346,7 @@ fn normalize_url_attr_for_scheme_check(value: &str) -> String {
     out
 }
 
-fn is_safe_data_image_url(value: &str) -> bool {
+pub(in crate::svg::pipeline) fn is_safe_data_image_url(value: &str) -> bool {
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
     let Ok(url) = data_url::DataUrl::process(decoded.as_ref()) else {
         return false;

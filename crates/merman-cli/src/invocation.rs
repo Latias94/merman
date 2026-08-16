@@ -31,6 +31,8 @@ use crate::cli::{FixArgs, LintArgs, LintRulesArgs};
 use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat, RenderCliArgs};
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
+#[cfg(feature = "rustdoc")]
+use crate::cli::{RustdocArgs, RustdocCommand};
 #[cfg(feature = "ascii")]
 use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::error::CliError;
@@ -80,8 +82,75 @@ pub(crate) enum ResolvedInvocation {
     Batch(ResolvedBatchRender),
     #[cfg(feature = "svg")]
     Mmdc(ResolvedMmdcRender),
+    #[cfg(feature = "rustdoc")]
+    Rustdoc(ResolvedRustdoc),
     #[cfg(feature = "shell-completions")]
     Completion(CompletionArgs),
+}
+
+#[cfg(feature = "rustdoc")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RustdocAction {
+    Build,
+    Check,
+}
+
+#[cfg(feature = "rustdoc")]
+#[derive(Debug)]
+pub(crate) struct ResolvedRustdoc {
+    pub(crate) action: RustdocAction,
+    pub(crate) quiet: bool,
+    pub(crate) resources: ResolvedResourcePolicy,
+    config: ResolvedRustdocConfig,
+}
+
+#[cfg(feature = "rustdoc")]
+#[derive(Debug)]
+enum ResolvedRustdocConfig {
+    Requested(PathBuf),
+    Prepared(crate::rustdoc::config::Config),
+}
+
+#[cfg(feature = "rustdoc")]
+impl ResolvedRustdoc {
+    pub(crate) fn requested_config(&self) -> Result<&Path, CliError> {
+        match &self.config {
+            ResolvedRustdocConfig::Requested(path) => Ok(path),
+            ResolvedRustdocConfig::Prepared(_) => Err(CliError::Internal(
+                "Rustdoc configuration was prepared more than once".to_string(),
+            )),
+        }
+    }
+
+    pub(crate) fn anchor_config(&mut self, cwd: &Path) {
+        if let ResolvedRustdocConfig::Requested(path) = &mut self.config
+            && !path.is_absolute()
+        {
+            *path = cwd.join(&*path);
+        }
+    }
+
+    pub(crate) fn prepare_config(
+        &mut self,
+        config: crate::rustdoc::config::Config,
+    ) -> Result<(), CliError> {
+        if matches!(self.config, ResolvedRustdocConfig::Prepared(_)) {
+            return Err(CliError::Internal(
+                "Rustdoc configuration was prepared more than once".to_string(),
+            ));
+        }
+        self.config = ResolvedRustdocConfig::Prepared(config);
+        Ok(())
+    }
+
+    pub(crate) fn into_config(self) -> Result<crate::rustdoc::config::Config, CliError> {
+        match self.config {
+            ResolvedRustdocConfig::Prepared(config) => Ok(config),
+            ResolvedRustdocConfig::Requested(_) => Err(CliError::Internal(
+                "Rustdoc command reached dispatch without configuration preflight".to_string(),
+            )),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -432,9 +501,25 @@ pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvoc
         RawCommand::Batch(args) => normalize_batch(args, facts).map(ResolvedInvocation::Batch),
         #[cfg(feature = "svg")]
         RawCommand::Mmdc(args) => normalize_mmdc(args, facts).map(ResolvedInvocation::Mmdc),
+        #[cfg(feature = "rustdoc")]
+        RawCommand::Rustdoc(args) => normalize_rustdoc(args).map(ResolvedInvocation::Rustdoc),
         #[cfg(feature = "shell-completions")]
         RawCommand::Completion(args) => Ok(ResolvedInvocation::Completion(args)),
     }
+}
+
+#[cfg(feature = "rustdoc")]
+fn normalize_rustdoc(args: RustdocArgs) -> Result<ResolvedRustdoc, CliError> {
+    let (action, args) = match args.command {
+        RustdocCommand::Build(args) => (RustdocAction::Build, args),
+        RustdocCommand::Check(args) => (RustdocAction::Check, args),
+    };
+    Ok(ResolvedRustdoc {
+        action,
+        quiet: args.quiet,
+        resources: resolve_resource_policy(ResourceCliArgs::default())?,
+        config: ResolvedRustdocConfig::Requested(args.config),
+    })
 }
 
 fn validate_parse_args(args: &ParseCliArgs) -> Result<(), CliError> {

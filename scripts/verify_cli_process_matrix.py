@@ -136,6 +136,12 @@ PROFILE_CASES = (
         "Render one RaTeX expression.",
     ),
     ProfileCase(
+        "rustdoc",
+        "Rustdoc",
+        ("rustdoc",),
+        "Build and check one committed static Rustdoc fragment.",
+    ),
+    ProfileCase(
         "completions",
         "Completions",
         ("shell-completions",),

@@ -27,7 +27,7 @@ import {
   type BenchmarkSampleIntentKind
 } from "./sample-plan.ts";
 
-export const BENCHMARK_PROTOCOL_VERSION = 3 as const;
+export const BENCHMARK_PROTOCOL_VERSION = 4 as const;
 
 export type { BenchmarkFailureStage } from "./phase-contract.ts";
 

@@ -109,6 +109,37 @@ pub(crate) enum CliError {
     InvalidInput(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[cfg(feature = "rustdoc")]
+    #[error("invalid Rustdoc configuration {path:?} at {location}: {source}")]
+    RustdocConfig {
+        path: PathBuf,
+        location: String,
+        #[source]
+        source: Box<CliError>,
+    },
+    #[cfg(feature = "rustdoc")]
+    #[error("Rustdoc source {path:?} at line {line}, column {column}: {message}")]
+    RustdocContent {
+        path: PathBuf,
+        line: usize,
+        column: usize,
+        message: String,
+    },
+    #[cfg(feature = "rustdoc")]
+    #[error("Rustdoc source {path:?} at line {line}, column {column}: {source}")]
+    RustdocInput {
+        path: PathBuf,
+        line: usize,
+        column: usize,
+        #[source]
+        source: Box<CliError>,
+    },
+    #[cfg(feature = "rustdoc")]
+    #[error("invalid Rustdoc receipt {path:?}: {reason}")]
+    RustdocReceipt { path: PathBuf, reason: String },
+    #[cfg(feature = "rustdoc")]
+    #[error("Rustdoc output is stale at {path:?}: {reason}")]
+    RustdocStale { path: PathBuf, reason: String },
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     InvalidOutput(String),
@@ -173,6 +204,65 @@ impl CliError {
         }
     }
 
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_config(
+        path: impl AsRef<Path>,
+        location: impl Into<String>,
+        source: CliError,
+    ) -> Self {
+        Self::RustdocConfig {
+            path: path.as_ref().to_path_buf(),
+            location: location.into(),
+            source: Box::new(source),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_content(
+        path: impl AsRef<Path>,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::RustdocContent {
+            path: path.as_ref().to_path_buf(),
+            line,
+            column,
+            message: message.into(),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_input(
+        path: impl AsRef<Path>,
+        line: usize,
+        column: usize,
+        source: CliError,
+    ) -> Self {
+        Self::RustdocInput {
+            path: path.as_ref().to_path_buf(),
+            line,
+            column,
+            source: Box::new(source),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_receipt(path: impl AsRef<Path>, reason: impl Into<String>) -> Self {
+        Self::RustdocReceipt {
+            path: path.as_ref().to_path_buf(),
+            reason: reason.into(),
+        }
+    }
+
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_stale(path: impl AsRef<Path>, reason: impl Into<String>) -> Self {
+        Self::RustdocStale {
+            path: path.as_ref().to_path_buf(),
+            reason: reason.into(),
+        }
+    }
+
     #[cfg(feature = "markdown")]
     pub(crate) fn markdown_chart(
         index: u64,
@@ -206,6 +296,16 @@ impl CliError {
             Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } | Self::Internal(_) => {
                 ErrorCategory::Operational
             }
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocConfig { source, .. } => source.category(),
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocContent { .. } => ErrorCategory::Content,
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocInput { source, .. } => source.category(),
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocReceipt { .. } => ErrorCategory::Operational,
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocStale { .. } => ErrorCategory::Content,
             #[cfg(feature = "markdown")]
             Self::Transaction(_) => ErrorCategory::Operational,
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]

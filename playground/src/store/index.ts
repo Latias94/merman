@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import type { ThemeName } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
+import type {
+  ShareViewWarning,
+  StartupShareHydration,
+} from "../lib/share-view.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -9,6 +13,10 @@ import type {
   MermanSvgPipeline,
   MermanTextMeasurementMode,
 } from "../runtime/merman-core.ts";
+import {
+  DEFAULT_SVG_PRESENTATION_MODE,
+  type SvgPresentationMode,
+} from "../lib/svg-presentation.ts";
 
 export type Theme = ThemeName;
 export type UITheme = "light" | "dark" | "system";
@@ -18,6 +26,7 @@ export type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
 export type WorkspacePane = "editor" | "preview";
 export type TextMeasurementMode = MermanTextMeasurementMode;
 export type SvgPipeline = MermanSvgPipeline;
+export type { SvgPresentationMode };
 export type { DiagramFont };
 export { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot };
 
@@ -44,6 +53,8 @@ export interface AppState {
   diagramFont: DiagramFont;
   setDiagramFont: (font: DiagramFont) => void;
   applyWorkspaceSnapshot: (snapshot: WorkspaceSnapshot) => void;
+  shareViewWarning: Readonly<ShareViewWarning> | null;
+  applyStartupShareHydration: (hydration: StartupShareHydration) => void;
 
   // Workbench theme
   uiTheme: UITheme;
@@ -55,6 +66,10 @@ export interface AppState {
   setWorkspacePane: (pane: WorkspacePane) => void;
   previewMode: PreviewMode;
   setPreviewMode: (mode: PreviewMode) => void;
+  svgPresentationMode: SvgPresentationMode;
+  setSvgPresentationMode: (mode: SvgPresentationMode) => void;
+  showSvgBounds: boolean;
+  setShowSvgBounds: (show: boolean) => void;
 }
 
 export function selectWorkspaceSnapshot(
@@ -147,6 +162,17 @@ export const useAppStore = create<AppState>((set) => ({
   diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
   setDiagramFont: (diagramFont) => set({ diagramFont }),
   applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot }),
+  shareViewWarning: null,
+  applyStartupShareHydration: ({ workspace, view, warning }) =>
+    set({
+      ...workspace,
+      workspacePane: view.workspacePane,
+      editorMode: view.editorMode,
+      previewMode: view.previewMode,
+      svgPresentationMode: view.svgPresentationMode,
+      showSvgBounds: view.showSvgBounds,
+      shareViewWarning: warning,
+    }),
 
   // Workbench theme
   uiTheme: initialUITheme,
@@ -163,6 +189,15 @@ export const useAppStore = create<AppState>((set) => ({
   setWorkspacePane: (workspacePane) => set({ workspacePane }),
   previewMode: "svg",
   setPreviewMode: (previewMode) => set({ previewMode }),
+  svgPresentationMode: DEFAULT_SVG_PRESENTATION_MODE,
+  setSvgPresentationMode: (svgPresentationMode) =>
+    set((state) =>
+      state.svgPresentationMode === svgPresentationMode
+        ? state
+        : { svgPresentationMode },
+    ),
+  showSvgBounds: false,
+  setShowSvgBounds: (showSvgBounds) => set({ showSvgBounds }),
 }));
 
 applyResolvedTheme(initialResolvedTheme);

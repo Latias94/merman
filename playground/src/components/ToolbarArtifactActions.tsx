@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -7,7 +7,6 @@ import {
   Copy,
   Download,
   ExternalLink,
-  FileCode,
   FileText,
   ImageIcon,
   Share2,
@@ -28,7 +27,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
+import { useExportWorkbench } from "@/src/components/ExportDialog";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import {
   asciiSupportDescription,
@@ -39,18 +38,26 @@ import {
   createMarkdownImageLink,
   createMermaidLiveEditorUrl,
 } from "@/src/lib/mermaid-live";
-import { copyShareUrl } from "@/src/lib/share";
+import { copyWorkspaceShareUrl } from "@/src/lib/share";
+import { copyIssueShareUrl } from "@/src/lib/share-view";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
 import {
   selectCompletedRenderBatch,
   selectCurrentDiagramType,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
-import { selectWorkspaceSnapshot, useAppStore } from "@/src/store";
+import {
+  selectWorkspaceSnapshot,
+  useAppStore,
+} from "@/src/store";
 
 export function useToolbarArtifactActions() {
   const { t } = useTranslation();
-  const { code, diagramTheme, mermaidConfig } = useAppStore(
+  const {
+    code,
+    diagramTheme,
+    mermaidConfig,
+  } = useAppStore(
     useShallow((state) => ({
       code: state.code,
       diagramTheme: state.diagramTheme,
@@ -60,7 +67,7 @@ export function useToolbarArtifactActions() {
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
   const currentBatch = useRenderCoordinator(selectCompletedRenderBatch);
   const asciiSupport = useAsciiSupport();
-  const [isExporting, setIsExporting] = useState(false);
+  const { openExport } = useExportWorkbench();
   const asciiCapability = asciiSupport.capabilityFor(diagramType);
   const asciiSupported = asciiSupport.isSupported(diagramType);
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
@@ -73,42 +80,10 @@ export function useToolbarArtifactActions() {
   const artifactActionsEnabled = currentMerman !== null;
   const asciiAvailable = currentBatch?.ascii.status === "success";
 
-  const handleExportSVG = useCallback(async () => {
-    try {
-      if (!currentBatch) throw new Error("Current render is unavailable.");
-      await executeArtifactAction({
-        action: "download-svg",
-        engine: "merman",
-        publicationId: currentBatch.snapshot.publicationId,
-      });
-      toast.success(t("export.svgSuccess"));
-    } catch {
-      toast.error(t("export.failed"));
-    }
-  }, [currentBatch, t]);
-
-  const handleExportPNG = useCallback(async () => {
-    setIsExporting(true);
-    try {
-      if (!currentBatch) throw new Error("Current render is unavailable.");
-      const plan = await executeArtifactAction({
-        action: "download-png",
-        engine: "merman",
-        publicationId: currentBatch.snapshot.publicationId,
-        scale: 2,
-      });
-      toast.success(
-        t("export.pngSuccess", {
-          width: plan.outputWidth,
-          height: plan.outputHeight,
-        }),
-      );
-    } catch (error) {
-      toast.error(pngExportErrorMessage(error, t));
-    } finally {
-      setIsExporting(false);
-    }
-  }, [currentBatch, t]);
+  const handleOpenExport = useCallback((restoreFocus?: HTMLElement | null) => {
+    if (!currentBatch) return;
+    openExport("merman", currentBatch.snapshot.publicationId, restoreFocus);
+  }, [currentBatch, openExport]);
 
   const handleExportASCII = useCallback(async () => {
     try {
@@ -165,14 +140,35 @@ export function useToolbarArtifactActions() {
     }
   }, [currentBatch, t]);
 
-  const handleShare = useCallback(async () => {
+  const handleCopyWorkspaceLink = useCallback(async () => {
     const snapshot = selectWorkspaceSnapshot(useAppStore.getState());
     if (!snapshot.code.trim()) {
       toast.error(t("share.copyFailed"));
       return;
     }
     try {
-      await copyShareUrl(snapshot);
+      await copyWorkspaceShareUrl(snapshot);
+      toast.success(t("share.copied"));
+    } catch {
+      toast.error(t("share.copyFailed"));
+    }
+  }, [t]);
+
+  const handleCopyIssueLink = useCallback(async () => {
+    const state = useAppStore.getState();
+    const snapshot = selectWorkspaceSnapshot(state);
+    if (!snapshot.code.trim()) {
+      toast.error(t("share.copyFailed"));
+      return;
+    }
+    try {
+      await copyIssueShareUrl(snapshot, {
+        workspacePane: state.workspacePane,
+        editorMode: state.editorMode,
+        previewMode: state.previewMode,
+        showSvgBounds: state.showSvgBounds,
+        svgPresentationMode: state.svgPresentationMode,
+      });
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
@@ -196,14 +192,13 @@ export function useToolbarArtifactActions() {
     asciiExportDescription,
     asciiAvailable,
     handleCopyCode,
+    handleCopyIssueLink,
     handleCopyMarkdown,
     handleCopySVG,
+    handleCopyWorkspaceLink,
     handleExportASCII,
-    handleExportPNG,
-    handleExportSVG,
+    handleOpenExport,
     handleOpenMermaidLive,
-    handleShare,
-    isExporting,
   };
 }
 
@@ -219,6 +214,7 @@ export function ToolbarArtifactActions({
   owner: ToolbarArtifactActionsOwner;
 }) {
   const { t } = useTranslation();
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
   return (
     <>
       <DropdownMenu>
@@ -226,10 +222,10 @@ export function ToolbarArtifactActions({
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
+                ref={exportTriggerRef}
                 variant="outline"
                 size={compact ? "icon-sm" : "sm"}
                 className={compact ? undefined : "w-8 px-0 sm:w-auto sm:px-2.5"}
-                disabled={owner.isExporting}
                 aria-label={t("toolbar.export")}
               >
                 <Download className="size-4" />
@@ -248,28 +244,11 @@ export function ToolbarArtifactActions({
           <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={owner.handleExportSVG}
-            disabled={!owner.artifactActionsEnabled}
-          >
-            <FileCode className="size-4" />
-            {t("export.svg")}
-            {!compact && (
-              <span className="ml-auto text-xs text-muted-foreground">
-                {t("export.svgDesc")}
-              </span>
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={owner.handleExportPNG}
+            onClick={() => owner.handleOpenExport(exportTriggerRef.current)}
             disabled={!owner.artifactActionsEnabled}
           >
             <ImageIcon className="size-4" />
-            {t("export.png")}
-            {!compact && (
-              <span className="ml-auto text-xs text-muted-foreground">
-                {t("export.pngDesc")}
-              </span>
-            )}
+            {t("export.image")}
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={owner.handleExportASCII}
@@ -321,23 +300,90 @@ export function ToolbarArtifactActions({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="outline"
-            size={compact ? "icon-sm" : "sm"}
-            className={compact ? undefined : "w-8 px-0 sm:w-auto sm:px-2.5"}
-            onClick={owner.handleShare}
-            aria-label={t("share.copyLink")}
-          >
-            <Share2 className="size-4" />
-            {!compact && (
-              <span className="hidden sm:inline">{t("toolbar.share")}</span>
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("share.copyLink")}</TooltipContent>
-      </Tooltip>
+      <ShareMenu compact={compact} owner={owner} />
     </>
+  );
+}
+
+function ShareMenu({
+  compact,
+  owner,
+}: {
+  compact: boolean;
+  owner: ToolbarArtifactActionsOwner;
+}) {
+  const { t } = useTranslation();
+  const workspaceDescriptionId = useId();
+  const issueDescriptionId = useId();
+
+  return (
+    <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size={compact ? "icon-sm" : "sm"}
+                className={
+                  compact ? undefined : "w-8 px-0 sm:w-auto sm:px-2.5"
+                }
+                aria-label={t("toolbar.share")}
+              >
+                <Share2 className="size-4" />
+                {!compact && (
+                  <>
+                    <span className="hidden sm:inline">{t("toolbar.share")}</span>
+                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("toolbar.share")}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent
+          align="end"
+          className="w-80 max-w-[calc(100vw-2rem)]"
+        >
+          <DropdownMenuLabel>{t("share.title")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            aria-label={t("share.workspaceLink")}
+            aria-describedby={workspaceDescriptionId}
+            className="items-start py-2"
+            onClick={owner.handleCopyWorkspaceLink}
+          >
+            <Share2 className="mt-0.5 size-4" />
+            <span className="min-w-0">
+              <span className="block font-medium">
+                {t("share.workspaceLink")}
+              </span>
+              <span
+                id={workspaceDescriptionId}
+                className="mt-0.5 block text-xs leading-snug text-muted-foreground"
+              >
+                {t("share.workspaceLinkDesc")}
+              </span>
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            aria-label={t("share.issueLink")}
+            aria-describedby={issueDescriptionId}
+            className="items-start py-2"
+            onClick={owner.handleCopyIssueLink}
+          >
+            <Copy className="mt-0.5 size-4" />
+            <span className="min-w-0">
+              <span className="block font-medium">{t("share.issueLink")}</span>
+              <span
+                id={issueDescriptionId}
+                className="mt-0.5 block text-xs leading-snug text-muted-foreground"
+              >
+                {t("share.issueLinkDesc")}
+              </span>
+            </span>
+          </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

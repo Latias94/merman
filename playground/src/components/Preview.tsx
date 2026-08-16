@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -17,6 +18,11 @@ import {
 import { retryMermanRuntime } from "@/src/runtime/merman";
 import type { MermanRuntimeFailure } from "@/src/runtime/merman-core";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import { resolveMermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
+import {
+  SVG_PRESENTATION_MODES,
+  type SvgPresentationMode,
+} from "@/src/lib/svg-presentation";
 import {
   asciiSupportDescription,
   asciiSupportLabelKey,
@@ -45,7 +51,7 @@ import type {
   RenderPublicationId,
 } from "@/src/runtime/render-coordinator";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
-import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
+import { useExportWorkbench } from "@/src/components/ExportDialog";
 import {
   SvgViewport,
   useSvgViewportController,
@@ -69,6 +75,7 @@ import {
   FileCode,
   ImageIcon,
   RefreshCw,
+  SquareDashed,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -100,9 +107,20 @@ const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
 export function Preview({ className }: PreviewProps) {
   const { t } = useTranslation();
   const code = useAppStore((state) => state.code);
+  const diagramTheme = useAppStore((state) => state.diagramTheme);
+  const mermaidConfig = useAppStore((state) => state.mermaidConfig);
   const isDarkMode = useAppStore((state) => state.resolvedTheme === "dark");
   const previewMode = useAppStore((state) => state.previewMode);
   const setPreviewMode = useAppStore((state) => state.setPreviewMode);
+  const svgPresentationMode = useAppStore(
+    (state) => state.svgPresentationMode,
+  );
+  const setSvgPresentationMode = useAppStore(
+    (state) => state.setSvgPresentationMode,
+  );
+  const showSvgBounds = useAppStore((state) => state.showSvgBounds);
+  const setShowSvgBounds = useAppStore((state) => state.setShowSvgBounds);
+  const { openExport } = useExportWorkbench();
   const renderState = useRenderCoordinator((state) => state);
   const currentBatch = selectCompletedRenderBatch(renderState);
   const visibleBatch = selectVisibleRenderBatch(renderState);
@@ -120,10 +138,6 @@ export function Preview({ className }: PreviewProps) {
     useState<DiagnosticKey | null>(null);
   const [copiedSvgTarget, setCopiedSvgTarget] =
     useState<CopiedSvgTarget | null>(null);
-  const [exportingPngEngines, setExportingPngEngines] = useState<
-    Set<EngineKey>
-  >(() => new Set());
-  const exportingPngEnginesRef = useRef<Set<EngineKey>>(new Set());
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticKey>("parse");
   const asciiCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -159,6 +173,20 @@ export function Preview({ className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewportController();
+  const canvasOperation =
+    previewMode === "compare"
+      ? visibleBatch?.snapshot.operation
+      : currentBatch?.snapshot.operation;
+  const canvasTone = useMemo(
+    () =>
+      resolveMermaidCanvasTone(
+        canvasOperation?.configJson ?? mermaidConfig,
+        canvasOperation?.theme ?? diagramTheme,
+        canvasOperation?.source ?? code,
+      ),
+    [canvasOperation, code, diagramTheme, mermaidConfig],
+  );
+  const canvasMode = previewMode === "svg" || previewMode === "compare";
 
   useEffect(() => {
     setRenderFeatures({
@@ -249,52 +277,6 @@ export function Preview({ className }: PreviewProps) {
     }
   }, [diagnosticTab, diagnostics]);
 
-  const handleExportSvg = useCallback(
-    async (engine: EngineKey, publicationId: RenderPublicationId) => {
-      try {
-        await executeArtifactAction({
-          action: "download-svg",
-          engine,
-          publicationId,
-        });
-        toast.success(t("export.svgSuccess"));
-      } catch {
-        toast.error(t("export.failed"));
-      }
-    },
-    [t],
-  );
-
-  const handleExportPng = useCallback(
-    async (engine: EngineKey, publicationId: RenderPublicationId) => {
-      if (exportingPngEnginesRef.current.has(engine)) {
-        return;
-      }
-      exportingPngEnginesRef.current.add(engine);
-      setExportingPngEngines(new Set(exportingPngEnginesRef.current));
-      try {
-        const plan = await executeArtifactAction({
-          action: "download-png",
-          engine,
-          publicationId,
-          scale: 2,
-        });
-        toast.success(
-          t("export.pngSuccess", {
-            width: plan.outputWidth,
-            height: plan.outputHeight,
-          }),
-        );
-      } catch (error) {
-        toast.error(pngExportErrorMessage(error, t));
-      } finally {
-        exportingPngEnginesRef.current.delete(engine);
-        setExportingPngEngines(new Set(exportingPngEnginesRef.current));
-      }
-    },
-    [t],
-  );
-
   const handleRefreshCompare = useCallback(() => {
     refreshRenderCoordinator();
   }, []);
@@ -335,82 +317,6 @@ export function Preview({ className }: PreviewProps) {
     />
   );
 
-  if (loading) {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="min-h-0 flex-1"
-        >
-          <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
-            {runtimeLoadStage
-              ? `${t("preview.loading")} (${runtimeLoadStage})`
-              : t("preview.loading")}
-          </CenteredMessage>
-        </div>
-      </div>
-    );
-  }
-
-  if (runtimeFailure) {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="min-h-0 flex-1"
-        >
-          <RuntimeFailureView failure={runtimeFailure} t={t} />
-        </div>
-      </div>
-    );
-  }
-
-  if (!code.trim()) {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="flex min-h-0 flex-1 items-center justify-center"
-        >
-          <div className="text-center text-muted-foreground">
-            <p className="text-sm">{t("preview.empty")}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && previewMode === "svg") {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="min-h-0 flex-1"
-        >
-          <RenderError
-            engine={t("preview.mermanEngine")}
-            stage={errorStage}
-            message={error}
-            detail={errorDetail}
-            t={t}
-          />
-        </div>
-      </div>
-    );
-  }
-
   const mermanArtifact: CompareArtifact = {
     key: "merman",
     publicationId: visibleBatch?.snapshot.publicationId ?? null,
@@ -441,197 +347,268 @@ export function Preview({ className }: PreviewProps) {
     unavailableLabel: mermaidSvgUnavailableLabel,
     stale: compareStale,
   };
-
-  return (
-    <div className={cn("flex flex-col h-full", className)}>
-      {renderTabBar(
-        <>
-          {previewMode === "svg" && (
-            <>
-              {svgDisplayMode === "visual" && (
-                <ViewportControls controller={svgViewport} t={t} />
-              )}
-              <IconButton
-                label={
-                  copiedSvgTarget?.engine === "merman" &&
-                  copiedSvgTarget.publicationId === currentPublicationId
-                    ? t("preview.copied")
-                    : (mermanSvgUnavailableLabel ?? t("preview.copySvg"))
-                }
-                onClick={() =>
-                  currentPublicationId &&
-                  handleCopySvg("merman", currentPublicationId)
-                }
-                disabled={!actionsEnabled || Boolean(mermanSvgUnavailableLabel)}
-              >
-                {copiedSvgTarget?.engine === "merman" &&
-                copiedSvgTarget.publicationId === currentPublicationId ? (
-                  <Check className="size-4 text-green-500" />
-                ) : (
-                  <Copy className="size-4" />
+  const showToolbarActions =
+    !loading &&
+    !runtimeFailure &&
+    Boolean(code.trim()) &&
+    !(error && previewMode === "svg");
+  const toolbarActions =
+    canvasMode || showToolbarActions ? (
+      <>
+        {canvasMode && (
+          <>
+            <SvgPresentationModeToggle
+              value={svgPresentationMode}
+              groupLabel={t("preview.presentationMode")}
+              infiniteLabel={t("preview.infiniteCanvas")}
+              infiniteShortLabel={t("preview.infiniteCanvasShort")}
+              viewBoxLabel={t("preview.viewBoxFrame")}
+              viewBoxShortLabel={t("preview.viewBoxFrameShort")}
+              onValueChange={setSvgPresentationMode}
+            />
+            <SvgBoundsToggle
+              pressed={showSvgBounds}
+              label={t("preview.svgBounds")}
+              onPressedChange={setShowSvgBounds}
+            />
+          </>
+        )}
+        {showToolbarActions && (
+          <>
+            {previewMode === "svg" && (
+              <>
+                {svgDisplayMode === "visual" && (
+                  <ViewportControls controller={svgViewport} t={t} />
                 )}
-              </IconButton>
-              <IconButton
-                label={
-                  svgDisplayMode === "visual"
-                    ? t("preview.viewSvgSource")
-                    : t("preview.viewSvgPreview")
-                }
-                onClick={() =>
-                  setSvgDisplayMode((value) =>
-                    value === "visual" ? "source" : "visual",
-                  )
-                }
-                disabled={!svg}
-              >
-                {svgDisplayMode === "visual" ? (
-                  <Code2 className="size-4" />
-                ) : (
-                  <ImageIcon className="size-4" />
-                )}
-              </IconButton>
-            </>
-          )}
-          {previewMode === "ascii" && asciiResult?.status === "success" && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  data-testid="copy-ascii-button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleCopyAscii}
-                  aria-label={
-                    copiedAscii ? t("preview.copied") : t("preview.copyAscii")
+                <IconButton
+                  label={
+                    copiedSvgTarget?.engine === "merman" &&
+                    copiedSvgTarget.publicationId === currentPublicationId
+                      ? t("preview.copied")
+                      : (mermanSvgUnavailableLabel ?? t("preview.copySvg"))
+                  }
+                  onClick={() =>
+                    currentPublicationId &&
+                    handleCopySvg("merman", currentPublicationId)
+                  }
+                  disabled={
+                    !actionsEnabled || Boolean(mermanSvgUnavailableLabel)
                   }
                 >
-                  {copiedAscii ? (
+                  {copiedSvgTarget?.engine === "merman" &&
+                  copiedSvgTarget.publicationId === currentPublicationId ? (
                     <Check className="size-4 text-green-500" />
                   ) : (
                     <Copy className="size-4" />
                   )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {copiedAscii ? t("preview.copied") : t("preview.copyAscii")}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          {previewMode === "diagnostics" && (
-            <IconButton
-              label={
-                copiedDiagnostic === diagnosticTab
-                  ? t("preview.copied")
-                  : t("preview.copyJson")
-              }
-              onClick={handleCopyDiagnosticJson}
-              disabled={diagnosticsLoading || !diagnostics[diagnosticTab].json}
-            >
-              {copiedDiagnostic === diagnosticTab ? (
-                <Check className="size-4 text-green-500" />
-              ) : diagnosticsLoading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Copy className="size-4" />
+                </IconButton>
+                <IconButton
+                  label={
+                    svgDisplayMode === "visual"
+                      ? t("preview.viewSvgSource")
+                      : t("preview.viewSvgPreview")
+                  }
+                  onClick={() =>
+                    setSvgDisplayMode((value) =>
+                      value === "visual" ? "source" : "visual",
+                    )
+                  }
+                  disabled={!svg}
+                >
+                  {svgDisplayMode === "visual" ? (
+                    <Code2 className="size-4" />
+                  ) : (
+                    <ImageIcon className="size-4" />
+                  )}
+                </IconButton>
+              </>
+            )}
+            {previewMode === "ascii" &&
+              asciiResult?.status === "success" && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      data-testid="copy-ascii-button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={handleCopyAscii}
+                      aria-label={
+                        copiedAscii
+                          ? t("preview.copied")
+                          : t("preview.copyAscii")
+                      }
+                    >
+                      {copiedAscii ? (
+                        <Check className="size-4 text-green-500" />
+                      ) : (
+                        <Copy className="size-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {copiedAscii
+                      ? t("preview.copied")
+                      : t("preview.copyAscii")}
+                  </TooltipContent>
+                </Tooltip>
               )}
-            </IconButton>
-          )}
-          {previewMode === "compare" && (
-            <IconButton
-              label={t("preview.refreshCompare")}
-              onClick={handleRefreshCompare}
-            >
-              <RefreshCw className="size-4" />
-            </IconButton>
-          )}
-        </>,
-      )}
+            {previewMode === "diagnostics" && (
+              <IconButton
+                label={
+                  copiedDiagnostic === diagnosticTab
+                    ? t("preview.copied")
+                    : t("preview.copyJson")
+                }
+                onClick={handleCopyDiagnosticJson}
+                disabled={
+                  diagnosticsLoading || !diagnostics[diagnosticTab].json
+                }
+              >
+                {copiedDiagnostic === diagnosticTab ? (
+                  <Check className="size-4 text-green-500" />
+                ) : diagnosticsLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
+              </IconButton>
+            )}
+            {previewMode === "compare" && (
+              <IconButton
+                label={t("preview.refreshCompare")}
+                onClick={handleRefreshCompare}
+              >
+                <RefreshCw className="size-4" />
+              </IconButton>
+            )}
+          </>
+        )}
+      </>
+    ) : undefined;
+
+  return (
+    <div className={cn("flex flex-col h-full", className)}>
+      {renderTabBar(toolbarActions)}
 
       <div
         id="preview-mode-panel"
         role="tabpanel"
         aria-labelledby={`preview-${previewMode}-tab`}
-        className="relative min-h-0 flex-1 overflow-hidden"
+        className={cn(
+          "relative min-h-0 flex-1 overflow-hidden",
+          canvasMode && "preview-canvas",
+        )}
+        data-preview-canvas-tone={canvasMode ? canvasTone : undefined}
+        data-svg-presentation-mode={
+          canvasMode ? svgPresentationMode : undefined
+        }
       >
-        {previewMode === "svg" &&
-          (svgDisplayMode === "source" ? (
-            <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
-          ) : (
-            <SvgViewport
-              artifact={svgArtifact}
-              presentationKey={currentPublicationId}
-              controller={svgViewport}
-              renderMountError={(mountError) => (
-                <RenderError
-                  engine={t("preview.mermanEngine")}
-                  stage="svg-mount"
-                  message={mountError.message}
-                  detail={mountError.stack}
-                  t={t}
+        {loading ? (
+          <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
+            {runtimeLoadStage
+              ? `${t("preview.loading")} (${runtimeLoadStage})`
+              : t("preview.loading")}
+          </CenteredMessage>
+        ) : runtimeFailure ? (
+          <RuntimeFailureView failure={runtimeFailure} t={t} />
+        ) : !code.trim() ? (
+          <CenteredMessage>{t("preview.empty")}</CenteredMessage>
+        ) : error && previewMode === "svg" ? (
+          <RenderError
+            engine={t("preview.mermanEngine")}
+            stage={errorStage}
+            message={error}
+            detail={errorDetail}
+            t={t}
+          />
+        ) : (
+          <>
+            {previewMode === "svg" &&
+              (svgDisplayMode === "source" ? (
+                <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
+              ) : (
+                <SvgViewport
+                  artifact={svgArtifact}
+                  canvasTone={canvasTone}
+                  presentationKey={currentPublicationId}
+                  controller={svgViewport}
+                  showSvgBounds={showSvgBounds}
+                  presentationMode={svgPresentationMode}
+                  renderMountError={(mountError) => (
+                    <RenderError
+                      engine={t("preview.mermanEngine")}
+                      stage="svg-mount"
+                      message={mountError.message}
+                      detail={mountError.stack}
+                      t={t}
+                    />
+                  )}
+                  onPresentationReady={(at) => {
+                    if (currentBatch) {
+                      markRenderCoordinatorPresented(
+                        currentBatch.snapshot.publicationId,
+                        "merman",
+                        at,
+                      );
+                    }
+                  }}
                 />
-              )}
-              onPresentationReady={(at) => {
-                if (currentBatch) {
-                  markRenderCoordinatorPresented(
-                    currentBatch.snapshot.publicationId,
-                    "merman",
-                    at,
-                  );
-                }
-              }}
-            />
-          ))}
+              ))}
 
-        {previewMode === "compare" && (
-          <CompareView
-            merman={{
-              artifact: mermanArtifact,
-            }}
-            mermaid={{
-              artifact: mermaidArtifact,
-            }}
-            actions={{
-              copiedSvgTarget,
-              exportingPngEngines,
-              onCopySvg: handleCopySvg,
-              onExportPng: handleExportPng,
-              onExportSvg: handleExportSvg,
-              onRetry: handleRefreshCompare,
-              onPresentationReady: (engine, at) => {
-                if (visibleBatch) {
-                  markRenderCoordinatorPresented(
-                    visibleBatch.snapshot.publicationId,
-                    engine,
-                    at,
-                  );
-                }
-              },
-            }}
-            isDarkMode={isDarkMode}
-            t={t}
-          />
-        )}
+            {previewMode === "compare" && (
+              <CompareView
+                merman={{
+                  artifact: mermanArtifact,
+                }}
+                mermaid={{
+                  artifact: mermaidArtifact,
+                }}
+                actions={{
+                  copiedSvgTarget,
+                  onCopySvg: handleCopySvg,
+                  onExport: openExport,
+                  onRetry: handleRefreshCompare,
+                  onPresentationReady: (engine, at) => {
+                    if (visibleBatch) {
+                      markRenderCoordinatorPresented(
+                        visibleBatch.snapshot.publicationId,
+                        engine,
+                        at,
+                      );
+                    }
+                  },
+                }}
+                canvasTone={canvasTone}
+                isDarkMode={isDarkMode}
+                showSvgBounds={showSvgBounds}
+                presentationMode={svgPresentationMode}
+                t={t}
+              />
+            )}
 
-        {previewMode === "diagnostics" && (
-          <DiagnosticsView
-            activeTab={diagnosticTab}
-            diagnostics={diagnostics}
-            loading={diagnosticsLoading}
-            isDarkMode={isDarkMode}
-            onActiveTabChange={setDiagnosticTab}
-            t={t}
-          />
-        )}
+            {previewMode === "diagnostics" && (
+              <DiagnosticsView
+                activeTab={diagnosticTab}
+                diagnostics={diagnostics}
+                loading={diagnosticsLoading}
+                isDarkMode={isDarkMode}
+                onActiveTabChange={setDiagnosticTab}
+                t={t}
+              />
+            )}
 
-        {previewMode === "ascii" && (
-          <AsciiArtifactView
-            result={asciiResult}
-            rendering={renderingCurrent}
-            capability={asciiCapability}
-            supportLabel={asciiSupportLabel}
-            supportLimit={asciiSupportLimit}
-            isDarkMode={isDarkMode}
-            t={t}
-          />
+            {previewMode === "ascii" && (
+              <AsciiArtifactView
+                result={asciiResult}
+                rendering={renderingCurrent}
+                capability={asciiCapability}
+                supportLabel={asciiSupportLabel}
+                supportLimit={asciiSupportLimit}
+                isDarkMode={isDarkMode}
+                t={t}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -728,7 +705,10 @@ function TabBar({
       </div>
 
       {rightContent && (
-        <div className="scrollbar-thin flex min-h-10 w-full shrink-0 items-center justify-end gap-1 overflow-x-auto border-t px-2 xl:min-h-0 xl:w-auto xl:border-t-0 xl:px-0">
+        <div
+          data-testid="preview-toolbar-actions"
+          className="scrollbar-thin flex min-h-10 w-full shrink-0 items-center justify-start gap-1 overflow-x-auto border-t px-2 xl:ml-auto xl:min-h-0 xl:w-auto xl:min-w-0 xl:max-w-full xl:shrink xl:border-t-0 xl:px-0"
+        >
           {rightContent}
         </div>
       )}
@@ -1139,16 +1119,109 @@ function IconButton({
   );
 }
 
+function SvgBoundsToggle({
+  pressed,
+  label,
+  onPressedChange,
+}: {
+  pressed: boolean;
+  label: string;
+  onPressedChange(pressed: boolean): void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          data-testid="svg-bounds-toggle"
+          variant={pressed ? "secondary" : "ghost"}
+          size="icon-sm"
+          aria-label={label}
+          aria-pressed={pressed}
+          className={cn(pressed && "ring-1 ring-ring")}
+          onClick={() => onPressedChange(!pressed)}
+        >
+          <SquareDashed className="size-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SvgPresentationModeToggle({
+  value,
+  groupLabel,
+  infiniteLabel,
+  infiniteShortLabel,
+  viewBoxLabel,
+  viewBoxShortLabel,
+  onValueChange,
+}: {
+  value: SvgPresentationMode;
+  groupLabel: string;
+  infiniteLabel: string;
+  infiniteShortLabel: string;
+  viewBoxLabel: string;
+  viewBoxShortLabel: string;
+  onValueChange(value: SvgPresentationMode): void;
+}) {
+  const labels = {
+    infinite: {
+      label: infiniteLabel,
+      shortLabel: infiniteShortLabel,
+    },
+    viewbox: {
+      label: viewBoxLabel,
+      shortLabel: viewBoxShortLabel,
+    },
+  } satisfies Record<
+    SvgPresentationMode,
+    { readonly label: string; readonly shortLabel: string }
+  >;
+
+  return (
+    <div
+      role="group"
+      aria-label={groupLabel}
+      data-testid="svg-presentation-mode-toggle"
+      className="flex shrink-0 items-center rounded-md border bg-background/70 p-0.5"
+    >
+      {SVG_PRESENTATION_MODES.map((choice) => {
+        const pressed = value === choice;
+        return (
+          <Button
+            key={choice}
+            type="button"
+            variant={pressed ? "secondary" : "ghost"}
+            size="sm"
+            aria-label={labels[choice].label}
+            aria-pressed={pressed}
+            className={cn(
+              "h-7 px-2 text-xs",
+              pressed && "ring-1 ring-ring",
+            )}
+            onClick={() => onValueChange(choice)}
+          >
+            <span className="sm:hidden">{labels[choice].shortLabel}</span>
+            <span className="hidden sm:inline">{labels[choice].label}</span>
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
 function CenteredMessage({
   icon,
   children,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-full flex-1 items-center justify-center">
-      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+    <div className="preview-canvas-status flex h-full flex-1 items-center justify-center">
+      <div className="preview-canvas-status-muted flex flex-col items-center gap-3">
         {icon}
         <span className="text-sm">{children}</span>
       </div>
@@ -1173,7 +1246,7 @@ function RenderError({
 }) {
   return (
     <div
-      className="flex h-full flex-1 items-center justify-center p-6"
+      className="preview-canvas-status flex h-full flex-1 items-center justify-center p-6"
       data-merman-render-error="true"
       data-merman-error-engine={engine}
       data-merman-error-stage={stage ?? undefined}
@@ -1183,19 +1256,19 @@ function RenderError({
         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
           <AlertCircle className="size-6 text-destructive" />
         </div>
-        <h3 className="mb-1 font-medium text-foreground">
+        <h3 className="mb-1 font-medium">
           {engine ? `${engine} · ${t("preview.error")}` : t("preview.error")}
         </h3>
         {stage && (
-          <p className="mb-2 font-mono text-xs text-muted-foreground">
+          <p className="preview-canvas-status-muted mb-2 font-mono text-xs">
             {stage}
           </p>
         )}
-        <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
+        <p className="preview-canvas-status-muted rounded-md bg-black/5 p-3 font-mono text-sm dark:bg-white/5">
           {message}
         </p>
         {detail && (
-          <details className="mt-3 text-left text-xs text-muted-foreground">
+          <details className="preview-canvas-status-muted mt-3 text-left text-xs">
             <summary className="cursor-pointer select-none text-center">
               {t("preview.errorDetails")}
             </summary>
@@ -1226,22 +1299,22 @@ function RuntimeFailureView({
 
   return (
     <div
-      className="flex h-full flex-1 items-center justify-center p-6"
+      className="preview-canvas-status flex h-full flex-1 items-center justify-center p-6"
       role="alert"
     >
       <div className="max-w-md text-center">
         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
           <AlertCircle className="size-6 text-destructive" />
         </div>
-        <h3 className="mb-2 font-medium text-foreground">
+        <h3 className="mb-2 font-medium">
           {t("preview.error")}
         </h3>
-        <p className="mb-4 text-xs text-muted-foreground">{failure.stage}</p>
-        <p className="mb-4 rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
+        <p className="preview-canvas-status-muted mb-4 text-xs">{failure.stage}</p>
+        <p className="preview-canvas-status-muted mb-4 rounded-md bg-black/5 p-3 font-mono text-sm dark:bg-white/5">
           {failure.message}
         </p>
         {failure.detail && (
-          <details className="mb-4 text-left text-xs text-muted-foreground">
+          <details className="preview-canvas-status-muted mb-4 text-left text-xs">
             <summary className="cursor-pointer select-none text-center">
               {t("preview.errorDetails")}
             </summary>

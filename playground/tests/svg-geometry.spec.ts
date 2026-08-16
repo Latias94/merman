@@ -32,6 +32,144 @@ test.afterAll(async () => {
   sourceServer = null;
 });
 
+test("raster export changes only the root canvas and encodes explicit alpha or JPEG background", async ({
+  page,
+}) => {
+  await page.goto(sourceOrigin);
+  const result = await page.evaluate(async () => {
+    const { projectNavigableInlineSvg } = await import(
+      "/src/runtime/" + "render-artifact.ts"
+    );
+    const { inspectSvgForRasterExport, prepareSvgForRasterExport } =
+      await import("/src/lib/" + "svg-geometry.ts");
+    const { planRasterExport } = await import(
+      "/src/lib/" + "raster-export-plan.ts"
+    );
+    const { encodeRasterExport } = await import("/src/lib/" + "export.ts");
+    const artifact = projectNavigableInlineSvg(
+      [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" style="background-color: white !important; background-image: linear-gradient(red, red) !important;">',
+        '<rect x="8" y="8" width="16" height="16" fill="white"/>',
+        "</svg>",
+      ].join("")
+    );
+    const source = inspectSvgForRasterExport(artifact);
+    const transparentPlan = planRasterExport(source, {
+      format: "png",
+      background: { mode: "transparent" },
+      sizing: { mode: "scale", scale: 1 },
+    });
+    const transparentSvg = prepareSvgForRasterExport(
+      artifact,
+      transparentPlan
+    );
+    if (!transparentSvg) throw new Error("Expected a prepared transparent SVG.");
+    const transparent = await encodeRasterExport(artifact, transparentPlan);
+
+    const jpegPlan = planRasterExport(source, {
+      format: "jpeg",
+      background: { mode: "custom", color: "#12abef" },
+      quality: 100,
+      sizing: { mode: "scale", scale: 1 },
+    });
+    const jpeg = await encodeRasterExport(artifact, jpegPlan);
+
+    async function pixels(blob: Blob) {
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Missing test canvas context.");
+      context.drawImage(bitmap, 0, 0);
+      const corner = [...context.getImageData(1, 1, 1, 1).data];
+      const center = [...context.getImageData(16, 16, 1, 1).data];
+      bitmap.close();
+      return { width: canvas.width, height: canvas.height, corner, center };
+    }
+
+    const unsizedArtifact = projectNavigableInlineSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" style="background-color:white" />'
+    );
+    const unsizedPlan = planRasterExport(
+      inspectSvgForRasterExport(unsizedArtifact),
+      {
+        format: "png",
+        background: { mode: "transparent" },
+        sizing: { mode: "scale", scale: 1 },
+      }
+    );
+    const unsizedPrepared = prepareSvgForRasterExport(
+      unsizedArtifact,
+      unsizedPlan
+    );
+    if (!unsizedPrepared) throw new Error("Expected fallback SVG geometry.");
+    const unsizedParsed = new DOMParser().parseFromString(
+      unsizedPrepared.svg,
+      "image/svg+xml"
+    );
+    const unsized = await encodeRasterExport(unsizedArtifact, unsizedPlan);
+
+    const parsed = new DOMParser().parseFromString(
+      transparentSvg.svg,
+      "image/svg+xml"
+    );
+    return {
+      sourceBackground: source.originalBackground,
+      rootBackground: (parsed.documentElement as unknown as SVGSVGElement).style
+        .backgroundColor,
+      rootBackgroundPriority: (
+        parsed.documentElement as unknown as SVGSVGElement
+      ).style.getPropertyPriority("background-color"),
+      rootBackgroundImage: (
+        parsed.documentElement as unknown as SVGSVGElement
+      ).style.backgroundImage,
+      descendantFill: parsed.querySelector("rect")?.getAttribute("fill"),
+      pngType: transparent.type,
+      png: await pixels(transparent),
+      jpegType: jpeg.type,
+      jpeg: await pixels(jpeg),
+      unsized: {
+        viewBox: unsizedParsed.documentElement.getAttribute("viewBox"),
+        rootBackground: (
+          unsizedParsed.documentElement as unknown as SVGSVGElement
+        ).style.backgroundColor,
+        raster: await pixels(unsized),
+      },
+    };
+  });
+
+  expect(result.sourceBackground).toEqual({ color: "white", opaque: true });
+  expect(result.rootBackground).toBe("transparent");
+  expect(result.rootBackgroundPriority).toBe("important");
+  expect(result.rootBackgroundImage).toBe("none");
+  expect(result.descendantFill).toBe("white");
+  expect(result.pngType).toBe("image/png");
+  expect(result.png).toEqual({
+    width: 32,
+    height: 32,
+    corner: [0, 0, 0, 0],
+    center: [255, 255, 255, 255],
+  });
+  expect(result.jpegType).toBe("image/jpeg");
+  expect(result.jpeg.width).toBe(32);
+  expect(result.jpeg.height).toBe(32);
+  expect(result.jpeg.corner[0]).toBeCloseTo(18, -1);
+  expect(result.jpeg.corner[1]).toBeCloseTo(171, -1);
+  expect(result.jpeg.corner[2]).toBeCloseTo(239, -1);
+  expect(result.jpeg.corner[3]).toBe(255);
+  expect(result.unsized).toEqual({
+    viewBox: "0 0 300 150",
+    rootBackground: "transparent",
+    raster: {
+      width: 300,
+      height: 150,
+      corner: [0, 0, 0, 0],
+      center: [0, 0, 0, 0],
+    },
+  });
+});
+
 test("preview preserves safe HTML-compatible SVG through inert DOM parsing", async ({
   page,
 }) => {
@@ -155,6 +293,53 @@ test("preview preserves safe HTML-compatible SVG through inert DOM parsing", asy
       htmlLabelHasLayout: null,
       rectangleIsSvg: true,
       text: "",
+    },
+  ]);
+});
+
+test("responsive preview preserves renderer viewBox ownership", async ({ page }) => {
+  await page.goto(sourceOrigin);
+  const result = await page.evaluate(async () => {
+    const { projectNavigableInlineSvg } = await import(
+      "/src/runtime/" + "render-artifact.ts"
+    );
+    const { prepareSvgForResponsivePreview } = await import(
+      "/src/lib/" + "svg-geometry.ts"
+    );
+    const sources = [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="5 6 120 40" style="background-color: white"><text>bounded</text></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text>intrinsic</text></svg>',
+    ];
+
+    return sources.map((source) => {
+      const artifact = projectNavigableInlineSvg(source);
+      const preview = prepareSvgForResponsivePreview(artifact, document);
+      if (!preview) throw new Error("Expected prepared preview geometry.");
+      const root = preview.takeNode();
+      return {
+        backgroundColor: (root as SVGElement).style.backgroundColor,
+        sourceUnchanged: artifact.svg === source,
+        viewBox: root.getAttribute("viewBox"),
+        width: root.getAttribute("width"),
+        height: root.getAttribute("height"),
+      };
+    });
+  });
+
+  expect(result).toEqual([
+    {
+      backgroundColor: "",
+      sourceUnchanged: true,
+      viewBox: "5 6 120 40",
+      width: "100%",
+      height: "100%",
+    },
+    {
+      backgroundColor: "",
+      sourceUnchanged: true,
+      viewBox: null,
+      width: "120",
+      height: "40",
     },
   ]);
 });

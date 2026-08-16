@@ -11,8 +11,8 @@ pub(crate) const PINNED_MERMAID_CLI_VERSION: &str = "11.16.0";
 pub(crate) const MERMAID_SOURCE_TAG: &str = "mermaid@11.16.1";
 pub(crate) const MERMAID_SOURCE_COMMIT: &str = "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf";
 pub(crate) const REFERENCE_CLI_PACKAGE_JSON_SHA256: &str =
-    "414c8bd85a6ebbfbeae9b6bc350ea38475466c2355d33da6c5dee9d62d5f8377";
+    "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5";
 pub(crate) const REFERENCE_CLI_PACKAGE_LOCK_SHA256: &str =
-    "a9f67c4957d149375e0380ba38f0f3e7ca7c2fbd330b1a76e835ad1a28a3332c";
+    "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b";
 pub(crate) const REFERENCE_CLI_CONFIG_SHA256: &str =
     "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc";

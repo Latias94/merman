@@ -107,6 +107,55 @@ The visible interactive render timer measures the actual source. There is no hid
 render. The preview separately records when a validated artifact reaches its presentation
 boundary; this feedback is not represented as a formal cross-engine benchmark.
 
+Interactive rendering owns one canonical layout environment: `800x600` CSS pixels with
+`screenAvailableWidth=800`. The same frozen values enter the Merman layout environment and Mermaid
+realm, and the opaque Mermaid realm installs the controlled screen width before loading the engine.
+Preview allocation, resizing, pan, pinch, zoom, fit, Infinite Canvas/ViewBox Frame selection, and
+SVG Bounds visibility are presentation state only; they do not participate in operation identity.
+Benchmark keeps an independent copy of the same canonical values.
+
+Sharing has two explicit promises. A `#s2:` workspace link contains the versioned, bounded,
+compressed render-affecting workspace. An issue-reproduction link adds an independently versioned
+`rv=1` query describing the workspace pane, editor tab, Preview mode, SVG presentation mode, and
+SVG Bounds preference. Startup applies the complete workspace and view before React mounts. An
+invalid or future view layer is rejected atomically while a valid workspace remains usable with
+local navigation defaults.
+Legacy Host-bearing Base64, `#s2:`, and `rv=1` links validate their bounded fields, restore the
+supported workspace/view state, ignore the removed Host geometry, and render canonically. Copying
+either link is clipboard-only.
+
+Renderer geometry, operation viewport, responsive presentation, and export dimensions remain
+separate owners. Visual and Compare share two presentation shells over the same mounted artifact
+and camera state. Infinite Canvas uses the full available grid surface without a finite paper edge.
+ViewBox Frame removes the grid and outlines the exact mounted SVG viewport with a finite surface and
+shadow; it adds no padding, rounding, or renderer geometry. The responsive presentation clone
+preserves a valid renderer `viewBox` byte-for-byte. An SVG without `viewBox` may use only
+preview-local intrinsic width and height. The clone suppresses the known Merman default white root
+background so the selected presentation shell owns the surface; the frozen artifact, exports, and
+non-default root backgrounds remain unchanged. SVG Bounds is an independent pointer-transparent
+outline on the mounted root; neither control synthesizes browser bounds, exposes arbitrary
+`viewBox` editing, mutates export geometry, or claims to repair renderer-owned title clipping.
+
+## Export Workbench
+
+One App-owned workbench serves the toolbar and both Compare panes. Opening it freezes the selected
+engine and publication: exact SVG remains the validated published artifact, while Merman raster
+formats lazily render and cache the same frozen operation through the `resvg-safe` pipeline.
+Mermaid raster formats use its validated publication artifact. Later publications never retarget
+an open workbench.
+
+SVG download is byte-exact. PNG supports Original, Transparent, and Custom root backgrounds; JPEG
+supports explicit opaque Original or Custom backgrounds and quality `1..100`. Raster sizing offers
+`1x` through `4x`, width, height, and fit-box modes with a locked aspect ratio. Planning happens
+before Canvas allocation and deterministically caps each side at `4096` pixels and total output at
+`16,777,216` pixels. Root background projection changes only a parsed SVG clone, preserving all
+descendant fills and the publication artifact.
+
+The preview and download share one encoded Blob. Encoding is debounced and serialized so rapid
+recipe edits cannot allocate concurrent high-resolution canvases or publish an older result. One
+controlled dialog owns validation, busy, failure, and success feedback; it uses a full-screen
+safe-area-aware presentation on narrow mobile layouts.
+
 ## Benchmark
 
 Benchmark is a separate product surface with one Window realm per engine. Merman uses a trusted
@@ -115,13 +164,16 @@ iframe/module realm; `warm` reuses it. It does not claim that realm-cold means n
 Resource Timing entries are retained as observations without inferring unavailable HTTP-cache
 provenance.
 
-Protocol `3` and trace schema `1` record realm-local events for font readiness, adapter/engine
-imports, resource acquisition, registration, initialization, budgeted output, isolated DOM
+Benchmark protocol `4` and trace schema `1` record realm-local events for font readiness,
+adapter/engine imports, resource acquisition, registration, initialization, budgeted output, isolated DOM
 insertion, layout, and presentation. One closed phase contract owns applicability, event order,
 failure prefixes, progress, publication boundary, and watchdog transitions. Those events do not
-claim parent publication safety. Report schema `6` adds one parent-clock vector from sample dispatch
-through response delivery, envelope validation, and strict SVG projection. Parent-side first/warm
-publishable-SVG totals are the primary cross-engine metrics.
+claim parent publication safety. Report schema `7` carries one parent-clock vector from sample
+dispatch through response delivery, envelope validation, and strict SVG projection, and records the
+controlled `screenAvailableWidth` input alongside the viewport. Parent-side first/warm publishable-SVG
+totals are the primary cross-engine metrics. The benchmark owns a fixed `800x600` viewport and an
+independent fixed `800` CSS-pixel `screenAvailableWidth`; neither value is read from the Preview
+canvas or the browser device.
 
 One immutable sample plan owns setup, warmups, measured cold/warm blocks, balanced AB/BA order,
 realm reuse, exact work budgets, and aggregation eligibility; the controller interprets that plan
@@ -235,10 +287,11 @@ The closed lane is protected by:
 - mandatory Chromium desktop coverage for startup, render, Compare, Monaco Worker,
   BFCache/teardown, accessibility, CSP, and benchmark behavior;
 - one focused mandatory startup/render/Compare/theme/focus flow with BFCache Compare-realm cleanup
-  in each of Firefox and WebKit;
+  and JPEG export in each of Firefox and WebKit;
 - an on-demand Chromium mobile-interaction lane for compact controls, dialog scrolling, workspace
-  tabs, touch pan/zoom, shortened visual viewports, and overflow. Real iOS Safari and Android
-  Chrome remain an explicit release residual documented in [MOBILE_QA.md](./MOBILE_QA.md).
+  tabs, touch pan/zoom, Host measurement, export safe areas, shortened visual viewports, and
+  overflow. Real iOS Safari and Android Chrome remain an explicit release residual documented in
+  [MOBILE_QA.md](./MOBILE_QA.md).
 
 Historical `TODO.md`, `MILESTONES.md`, `EVIDENCE_AND_GATES.md`, and journal entries record how the
 lane was built. They are not current runtime or release contracts.
