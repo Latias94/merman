@@ -240,7 +240,8 @@ pub(super) fn write_state_css(
     } else {
         String::new()
     };
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
     let text_color = theme.text_color.as_str();
     let title_color = theme.title_color.as_str();
     let error_bkg = theme.error_bkg.as_str();
@@ -269,7 +270,7 @@ pub(super) fn write_state_css(
     let use_gradient =
         config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
     let neo_cluster_stroke = if use_gradient {
-        format!("url(#{diagram_id}-gradient)")
+        format!("url(#{fragment_id}-gradient)")
     } else {
         state_border.clone()
     };
@@ -279,7 +280,7 @@ pub(super) fn write_state_css(
             .max(0.0);
     let neo_drop_shadow = theme.drop_shadow.replace(
         "url(#drop-shadow)",
-        &format!("url(#{diagram_id}-drop-shadow)"),
+        &format!("url(#{fragment_id}-drop-shadow)"),
     );
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.

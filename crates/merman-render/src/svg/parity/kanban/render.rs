@@ -9,7 +9,7 @@ fn write_kanban_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
 ) -> Result<()> {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let theme = MermaidThemeAdapter::new(effective_config).kanban()?;
     let root_rule = parts.root_rule;

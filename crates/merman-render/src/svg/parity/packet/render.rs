@@ -7,7 +7,7 @@ fn write_packet_css(
     effective_config: &serde_json::Value,
 ) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let font = crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS;
     let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
     write_mermaid_default_base_css_prefix(out, &id, font)?;

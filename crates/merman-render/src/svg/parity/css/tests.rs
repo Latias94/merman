@@ -93,6 +93,25 @@ fn mermaid_base_css_fragments_keep_parity_order() {
 }
 
 #[test]
+fn shared_css_keeps_selectors_and_url_fragments_in_their_own_escaping_domains() {
+    let css = info_css_with_config(
+        "seq:prod.v1",
+        &serde_json::json!({
+            "look": "neo",
+            "themeVariables": {
+                "useGradient": true,
+                "dropShadow": "url(#drop-shadow)"
+            }
+        }),
+    );
+
+    assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].node rect"#));
+    assert!(css.contains("url(#seq:prod.v1-gradient)"));
+    assert!(css.contains("url(#seq:prod.v1-drop-shadow)"));
+    assert!(!css.contains(r"url(#seq\:prod\.v1-"));
+}
+
+#[test]
 fn mermaid_base_css_exposes_the_complete_common_neo_contract() {
     let css = info_css_with_config(
         "diag",

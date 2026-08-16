@@ -6,7 +6,7 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
 
     let mut out = String::new();
     let _ = write!(

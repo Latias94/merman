@@ -280,10 +280,10 @@ pub(super) fn write_swimlane_css(
     effective_config: &merman_core::MermaidConfig,
 ) {
     let theme = MermaidThemeAdapter::new(effective_config.as_value()).node_diagram();
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let _ = write!(
         out,
         r#"#{id} .swimlane.cluster rect{{stroke:{border}!important;}}#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
-        id = diagram_id,
         border = theme.cluster_border,
     );
 }
@@ -291,6 +291,19 @@ pub(super) fn write_swimlane_css(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
+        let mut css = String::new();
+        write_swimlane_css(
+            &mut css,
+            "seq:prod.v1",
+            &merman_core::MermaidConfig::default(),
+        );
+
+        assert!(css.contains(r"#seq\:prod\.v1 .swimlane.cluster"));
+        assert!(!css.contains("#seq:prod.v1 .swimlane.cluster"));
+    }
 
     fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
         crate::model::LayoutPoint { x, y }

@@ -212,12 +212,7 @@ fn push_element(
 
 fn write_railroad_css_scope(out: &mut impl SvgOutput, diagram_id: &str) -> Result<()> {
     out.push('#');
-    for ch in diagram_id.chars() {
-        if matches!(ch, '.' | ':') {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
+    out.push_str(&crate::svg::escape_css_identifier(diagram_id));
     out.checkpoint()
 }
 

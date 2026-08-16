@@ -205,7 +205,7 @@ fn root_open(
 }
 
 fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     format!(
         "#{id} .venn-title{{font-size:32px;fill:{title_color};font-family:{font_family};}}\
 #{id} .venn-circle text{{font-size:48px;font-family:{font_family};}}\

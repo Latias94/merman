@@ -96,12 +96,17 @@ fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {
     }
 }
 
-fn write_mermaid_common_neo_css(out: &mut String, id: &str, effective_config: &serde_json::Value) {
+fn write_mermaid_common_neo_css(
+    out: &mut String,
+    selector_id: &str,
+    fragment_id: &str,
+    effective_config: &serde_json::Value,
+) {
     let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
     let use_gradient =
         config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
     let neo_stroke = if use_gradient {
-        format!("url(#{id}-gradient)")
+        format!("url(#{fragment_id}-gradient)")
     } else {
         node_border.clone()
     };
@@ -110,54 +115,61 @@ fn write_mermaid_common_neo_css(out: &mut String, id: &str, effective_config: &s
         &["themeVariables", "dropShadow"],
     )
     .unwrap_or_else(|| "none".to_string())
-    .replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
+    .replace(
+        "url(#drop-shadow)",
+        &format!("url(#{fragment_id}-drop-shadow)"),
+    );
     let stroke_width = mermaid_stroke_width_px(effective_config);
 
-    let _ = write!(out, r#"#{} .node .neo-node{{stroke:{};}}"#, id, node_border);
+    let _ = write!(
+        out,
+        r#"#{} .node .neo-node{{stroke:{};}}"#,
+        selector_id, node_border
+    );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node rect,#{} [data-look="neo"].cluster rect,#{} [data-look="neo"].node polygon{{stroke:{};filter:{};}}"#,
-        id, id, id, neo_stroke, drop_shadow
+        selector_id, selector_id, selector_id, neo_stroke, drop_shadow
     );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].swimlane.cluster rect{{filter:none;}}"#,
-        id
+        selector_id
     );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
-        id, neo_stroke, stroke_width
+        selector_id, neo_stroke, stroke_width
     );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node .outer-path{{filter:{};}}"#,
-        id, drop_shadow
+        selector_id, drop_shadow
     );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node .neo-line path{{stroke:{};filter:none;}}"#,
-        id, node_border
+        selector_id, node_border
     );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].node circle{{stroke:{};filter:{};}}"#,
-        id, neo_stroke, drop_shadow
+        selector_id, neo_stroke, drop_shadow
     );
     let _ = write!(
         out,
         r##"#{} [data-look="neo"].node circle .state-start{{fill:#000000;}}"##,
-        id
+        selector_id
     );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].icon-shape .icon{{fill:{};filter:{};}}"#,
-        id, neo_stroke, drop_shadow
+        selector_id, neo_stroke, drop_shadow
     );
     let _ = write!(
         out,
         r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
-        id, neo_stroke, drop_shadow
+        selector_id, neo_stroke, drop_shadow
     );
 }
 
@@ -166,11 +178,12 @@ fn mermaid_base_css_root_rule(id: &str, font_family: &str) -> String {
 }
 
 pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
     let font = crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS;
     write_mermaid_default_base_css_prefix(out, &id, font)
         .expect("String-backed Mermaid base CSS emission cannot fail");
-    write_mermaid_common_neo_css(out, &id, &serde_json::Value::Null);
+    write_mermaid_common_neo_css(out, &id, &fragment_id, &serde_json::Value::Null);
     out.push_str(&mermaid_base_css_root_rule(&id, font));
 }
 
@@ -227,7 +240,8 @@ fn info_css_parts_with_font_size_source(
     effective_config: &serde_json::Value,
     font_size_source: InfoCssFontSizeSource,
 ) -> InfoCssParts {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
 
     let font_family = crate::config::config_font_family_css(effective_config);
     let font_size_css = match font_size_source {
@@ -269,7 +283,7 @@ fn info_css_parts_with_font_size_source(
     .expect("String-backed Mermaid base CSS emission cannot fail");
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     let mut root_rule = String::new();
-    write_mermaid_common_neo_css(&mut root_rule, &id, effective_config);
+    write_mermaid_common_neo_css(&mut root_rule, &id, &fragment_id, effective_config);
     root_rule.push_str(&mermaid_base_css_root_rule(&id, &font_family));
 
     InfoCssParts {
@@ -305,7 +319,8 @@ pub(super) fn architecture_css_parts_with_config(
 ) -> ArchitectureCssParts {
     // Architecture uses the same "info-like" base stylesheet as Mermaid, but should honor
     // user-configured `fontFamily` / `fontSize` and theme variable colors.
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
 
     let font_family = SvgTheme::new(effective_config).font_family_css();
     let font_size =
@@ -380,7 +395,7 @@ pub(super) fn architecture_css_parts_with_config(
         id
     );
 
-    write_mermaid_common_neo_css(&mut out, &id, effective_config);
+    write_mermaid_common_neo_css(&mut out, &id, &fragment_id, effective_config);
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     out.push_str(&mermaid_base_css_root_rule(&id, &font_family));
     ArchitectureCssParts {
@@ -402,7 +417,7 @@ pub(super) fn architecture_css_with_config(
 pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid 11.15 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last to match upstream fixtures.
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let font = parts.font_family;
@@ -497,7 +512,8 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     // Mirrors pinned Mermaid ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
     // and shared base stylesheet).
     // Keep `:root` last (matches upstream fixtures).
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
     let theme = SvgTheme::new(effective_config);
     let font = theme.font_family_css();
     let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
@@ -599,7 +615,7 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
         id, line_color
     );
-    write_mermaid_common_neo_css(&mut out, &id, effective_config);
+    write_mermaid_common_neo_css(&mut out, &id, &fragment_id, effective_config);
     out.push_str(&mermaid_base_css_root_rule(&id, &font));
     Ok(out)
 }
@@ -615,7 +631,7 @@ fn pie_theme_option(
 pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.16.0 `diagrams/pie/pieStyles.ts`. Keep `:root` last to match the
     // config-aware CSS emitters used by the other diagram families.
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let font = parts.font_family;
@@ -664,7 +680,7 @@ pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) ->
 pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
@@ -694,7 +710,7 @@ pub(super) fn treemap_css(
 ) -> Result<String> {
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
     let mut out = parts.css_prefix;
@@ -732,7 +748,7 @@ pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {
 }
 
 pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let theme = MermaidThemeAdapter::new(effective_config).gantt();
     let mut out = parts.css_prefix;

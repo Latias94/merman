@@ -39,6 +39,7 @@ fn requirement_color_css(
     theme_color_limit: usize,
 ) -> String {
     let mut out = String::new();
+    let diagram_id = crate::svg::escape_css_identifier(diagram_id);
     for index in 0..theme_color_limit {
         let Some(border_color) = border_colors.get(index) else {
             continue;
@@ -50,12 +51,12 @@ fn requirement_color_css(
         let _ = write!(
             &mut out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            escape_xml(diagram_id),
+            diagram_id.as_str(),
             escape_xml(data_look),
             index,
             border_color,
             fill,
-            escape_xml(diagram_id),
+            diagram_id.as_str(),
             escape_xml(data_look),
             index,
             border_color,
@@ -70,7 +71,7 @@ fn insert_requirement_color_css(css: &mut String, diagram_id: &str, color_css: &
         return;
     }
 
-    let escaped_id = escape_xml(diagram_id);
+    let escaped_id = crate::svg::escape_css_identifier(diagram_id);
     let family_rule = format!("#{escaped_id} marker");
     let root_rule = format!("#{escaped_id} :root");
     let insertion_point = css

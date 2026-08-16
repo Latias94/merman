@@ -92,7 +92,8 @@ fn gitgraph_defs(diagram_id: &str, effective_config: &serde_json::Value) -> Stri
 }
 
 fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGraphCss {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
     let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
     let theme_name = gitgraph_theme_name(effective_config);
@@ -231,7 +232,7 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
                             let _ = write!(
                                 &mut out,
                                 r#"#{} .label{}{{fill:{};stroke:url(#{}-gradient);stroke-width:{};}}"#,
-                                id, label_i, main_bkg, id, stroke_width
+                                id, label_i, main_bkg, fragment_id, stroke_width
                             );
                         }
                     }

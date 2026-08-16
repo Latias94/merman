@@ -150,7 +150,7 @@ fn journey_css(
     effective_config: &serde_json::Value,
     theme: &JourneyTheme,
 ) -> String {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let font = theme.font_family_css.as_str();

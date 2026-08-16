@@ -86,6 +86,64 @@ fn assert_scoped_definition_id(svg: &str, diagram_id: &str, local_id: &str) {
     );
 }
 
+fn assert_css_root_scope_escapes_selector_significant_id_characters(family: &str, source: &str) {
+    const DIAGRAM_ID: &str = "seq:prod.v1";
+    const ESCAPED_SELECTOR: &str = r"#seq\:prod\.v1";
+
+    let svg = render_svg_from_text(source, DIAGRAM_ID);
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    assert_eq!(
+        document.root_element().attribute("id"),
+        Some(DIAGRAM_ID),
+        "{family} must preserve the XML id spelling"
+    );
+    let css = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect::<String>();
+    assert!(
+        css.contains(ESCAPED_SELECTOR),
+        "{family} must CSS-escape its root selector: {css}"
+    );
+    for invalid_selector_prefix in [
+        "#seq:prod.v1{",
+        "#seq:prod.v1 ",
+        "#seq:prod.v1.",
+        "#seq:prod.v1[",
+    ] {
+        assert!(
+            !css.contains(invalid_selector_prefix),
+            "{family} emitted an unescaped root selector {invalid_selector_prefix:?}: {css}"
+        );
+    }
+}
+
+#[test]
+fn css_root_scope_escapes_selector_significant_ids_across_families() {
+    for (family, source) in [
+        ("Flowchart", "flowchart TD\n  A --> B\n"),
+        ("State", "stateDiagram-v2\n  [*] --> Ready\n"),
+        ("Class", "classDiagram\n  class Ready\n"),
+        (
+            "Kanban",
+            "kanban\n  todo[Todo]\n    task[Write regression]\n",
+        ),
+        ("Block", "block\n  A[\"Alpha\"] --> B[\"Beta\"]\n"),
+        (
+            "C4",
+            "C4Context\nPerson(customer, \"Customer\")\nSystem(system, \"System\")\nRel(customer, system, \"Uses\")\n",
+        ),
+        (
+            "Journey",
+            "journey\n  section Work\n    Write regression: 5: Developer\n",
+        ),
+        ("Timeline", "timeline\n  section Release\n    2026 : Ship\n"),
+    ] {
+        assert_css_root_scope_escapes_selector_significant_id_characters(family, source);
+    }
+}
+
 #[test]
 fn c4_marker_ids_are_prefixed_with_diagram_svg_id() {
     let svg = render_svg_from_text(

@@ -8,7 +8,8 @@ fn timeline_css(
     effective_config: &serde_json::Value,
     theme: &TimelineTheme,
 ) -> String {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
 
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
     let parts = info_css_parts_with_config(diagram_id, effective_config);
@@ -17,7 +18,7 @@ fn timeline_css(
     let scoped_drop_shadow = if diagram_id.is_empty() {
         theme.drop_shadow.clone()
     } else {
-        format!("url(#{id}-drop-shadow)")
+        format!("url(#{fragment_id}-drop-shadow)")
     };
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);

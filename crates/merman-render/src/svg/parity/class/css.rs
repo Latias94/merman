@@ -30,7 +30,7 @@ pub(super) fn write_class_css(
     render_font_family: &str,
     _render_font_size_css: &str,
 ) -> Result<()> {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     // Mermaid compiles this stylesheet from resolved theme variables; render metrics have a
     // separate legacy precedence and must not replace the CSS font-size spelling.
     let parts =

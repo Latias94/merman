@@ -119,7 +119,7 @@ fn write_c4_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
 ) -> Result<()> {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     out.push_str(&parts.css_prefix);
     out.checkpoint()?;

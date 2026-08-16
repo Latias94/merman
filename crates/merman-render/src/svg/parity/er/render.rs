@@ -47,6 +47,7 @@ fn write_er_redux_color_css(
     background_colors: &[String],
     theme_color_limit: usize,
 ) -> Result<()> {
+    let diagram_id = crate::svg::escape_css_identifier(diagram_id);
     for index in 0..theme_color_limit {
         let Some(border_color) = border_colors.get(index) else {
             continue;
@@ -58,12 +59,12 @@ fn write_er_redux_color_css(
         let _ = write!(
             out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            escape_xml(diagram_id),
+            diagram_id.as_str(),
             escape_xml(data_look),
             index,
             border_color,
             fill,
-            escape_xml(diagram_id),
+            diagram_id.as_str(),
             escape_xml(data_look),
             index,
             border_color,
@@ -75,7 +76,7 @@ fn write_er_redux_color_css(
 }
 
 fn er_redux_color_css_insertion_point(css: &str, diagram_id: &str) -> usize {
-    let escaped_id = escape_xml(diagram_id);
+    let escaped_id = crate::svg::escape_css_identifier(diagram_id);
     let family_rule = format!("#{escaped_id} .entityBox");
     let root_rule = format!("#{escaped_id} :root");
     css.find(&family_rule)

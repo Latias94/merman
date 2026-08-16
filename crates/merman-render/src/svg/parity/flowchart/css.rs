@@ -88,7 +88,8 @@ pub(in crate::svg::parity) fn write_flowchart_css(
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
 ) -> Result<()> {
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
     let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
@@ -112,9 +113,12 @@ pub(in crate::svg::parity) fn write_flowchart_css(
     let scoped_drop_shadow = drop_shadow
         .replace(
             "url(#drop-shadow-small)",
-            &format!("url(#{id}-drop-shadow-small)"),
+            &format!("url(#{fragment_id}-drop-shadow-small)"),
         )
-        .replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
+        .replace(
+            "url(#drop-shadow)",
+            &format!("url(#{fragment_id}-drop-shadow)"),
+        );
 
     let _ = write!(
         &mut *out,
@@ -220,20 +224,20 @@ pub(in crate::svg::parity) fn write_flowchart_css(
     let _ = write!(
         &mut *out,
         r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         cluster_bkg,
         cluster_border,
-        escape_xml(diagram_id),
+        id.as_str(),
         title_color,
-        escape_xml(diagram_id),
+        id.as_str(),
         title_color,
-        escape_xml(diagram_id),
+        id.as_str(),
         font_family,
         tertiary,
         cluster_border,
-        escape_xml(diagram_id),
+        id.as_str(),
         text_color,
-        escape_xml(diagram_id)
+        id.as_str()
     );
     let _ = write!(
         &mut *out,

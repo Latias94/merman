@@ -337,7 +337,8 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last (matches upstream fixtures).
-    let id = escape_xml(diagram_id);
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let fragment_id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
 
@@ -407,8 +408,10 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         &["themeVariables", "dropShadow"],
     )
     .unwrap_or_else(|| "none".to_string());
-    let scoped_drop_shadow =
-        drop_shadow.replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
+    let scoped_drop_shadow = drop_shadow.replace(
+        "url(#drop-shadow)",
+        &format!("url(#{fragment_id}-drop-shadow)"),
+    );
     let use_gradient =
         config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
 
@@ -594,7 +597,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
             let _ = write!(
                 &mut out,
                 r#"#{} [data-look="neo"].mindmap-node.section-{} rect,#{} [data-look="neo"].mindmap-node.section-{} path,#{} [data-look="neo"].mindmap-node.section-{} circle,#{} [data-look="neo"].mindmap-node.section-{} polygon{{stroke:url(#{}-gradient);fill:{};}}"#,
-                id, section, id, section, id, section, id, section, id, main_bkg
+                id, section, id, section, id, section, id, section, fragment_id, main_bkg
             );
             let _ = write!(
                 &mut out,
