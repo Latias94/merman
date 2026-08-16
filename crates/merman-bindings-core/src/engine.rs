@@ -1322,6 +1322,67 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
+    fn oversized_constrained_font_theme_options() -> (Vec<u8>, usize) {
+        let max = merman::svg::ThemeResourcePolicy::constrained()
+            .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained encoded-theme ceiling");
+        let options = serde_json::to_vec(&json!({
+            "resources": { "profile": "constrained" },
+            "theme": {
+                "spec": {
+                    "assets": {
+                        "fonts": [{
+                            "id": "oversized",
+                            "format": "invalid-after-preflight",
+                            "data_base64": "A".repeat(max),
+                        }]
+                    }
+                }
+            }
+        }))
+        .expect("oversized font theme options JSON");
+        (options, max)
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn constrained_font_asset_preflight_matches_constructor_and_request_transport_paths() {
+        let (options, max) = oversized_constrained_font_theme_options();
+        let constructor_error = BindingEngine::new(&options)
+            .err()
+            .expect("the constructor must reject the oversized font theme before typed decoding");
+
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"interactive"}}"#)
+            .expect("interactive engine");
+        let request_error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(&options),
+            )
+            .expect_err(
+                "the request overlay must reject the oversized font theme before typed decoding",
+            );
+
+        assert_eq!(
+            constructor_error.resource_details(),
+            request_error.resource_details(),
+            "constructor and request transports must expose the same constrained ceiling"
+        );
+        for error in [&constructor_error, &request_error] {
+            assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+            let details = error
+                .resource_details()
+                .expect("theme input rejection must remain structured");
+            assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+            assert_eq!(details.phase, "theme_input");
+            assert!(details.actual > details.max);
+            assert_eq!(details.max, u64::try_from(max).unwrap());
+            assert_eq!(details.profile, "constrained");
+            assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
+        }
+    }
+
+    #[cfg(feature = "svg")]
     fn effect_heavy_theme_options(profile: &str) -> Vec<u8> {
         let effects = (0..9)
             .map(|index| {
