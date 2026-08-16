@@ -72,6 +72,16 @@ _CRATE_OWNER_RULES = (
     ("crates/merman-render/", _CORE_OWNERS),
     ("crates/merman-rustdoc/", _CORE_OWNERS),
     ("crates/roughr/", _CORE_OWNERS),
+    ("crates/xtask/src/cmd/typst_", {"core", "hygiene", "typst"}),
+    (
+        "crates/xtask/src/cmd/editor_",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    (
+        "crates/xtask/src/cmd/playground_",
+        {"core", "hygiene", "npm", "vscode", "web"},
+    ),
+    ("crates/xtask/src/cmd/native_abi.rs", {"core", "hygiene", "platform"}),
     ("crates/xtask/", _CORE_OWNERS),
 )
 _SCRIPT_EXACT_OWNER_RULES = {

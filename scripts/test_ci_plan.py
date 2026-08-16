@@ -124,6 +124,46 @@ class PlannerTests(unittest.TestCase):
                 self.assertFalse(plan["fallback"])
                 self.assertEqual(selected, expected)
 
+    def test_xtask_changes_select_their_artifact_consumers(self) -> None:
+        fixtures = {
+            "crates/xtask/src/cmd/typst_package.rs": {
+                "core",
+                "hygiene",
+                "typst",
+            },
+            "crates/xtask/src/cmd/editor_language_contract.rs": {
+                "core",
+                "hygiene",
+                "npm",
+                "vscode",
+                "web",
+            },
+            "crates/xtask/src/cmd/playground_catalog.rs": {
+                "core",
+                "hygiene",
+                "npm",
+                "vscode",
+                "web",
+            },
+            "crates/xtask/src/cmd/native_abi.rs": {
+                "core",
+                "hygiene",
+                "platform",
+            },
+            "crates/xtask/src/cmd/fixtures.rs": {"core", "hygiene"},
+        }
+
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {name for name, enabled in plan["owners"].items() if enabled}
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(selected, expected)
+
     def test_fixture_upstream_and_script_changes_use_narrow_explicit_owners(self) -> None:
         fixtures = {
             "fixtures/flowchart/basic.mmd": {"core", "hygiene"},
