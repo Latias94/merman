@@ -708,6 +708,13 @@ fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::GANTT
+        && target == ThemeTarget::Task
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && facet == FamilyThemeRuleFacet::Radius
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -1300,6 +1307,36 @@ mod tests {
         ] {
             assert!(
                 compile_rule_routes(DiagramFamilyId::CLASS, 0, &rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
+        }
+    }
+
+    #[test]
+    fn gantt_owns_only_unqualified_static_task_radius() {
+        let task_radius = ThemeStylePatch {
+            geometry: ThemeGeometryPatch {
+                radius: Specified::Value(7.0),
+            },
+            ..ThemeStylePatch::default()
+        };
+        let unqualified = ThemeRule::new(ThemeTarget::Task, task_radius.clone());
+        let routes = compile_rule_routes(DiagramFamilyId::GANTT, 0, &unqualified);
+        assert_eq!(routes.len(), 1);
+        assert_eq!(
+            routes[0].disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+
+        for rule in [
+            ThemeRule::new(ThemeTarget::Task, task_radius.clone())
+                .with_variant(ThemeVariant::Default),
+            ThemeRule::new(ThemeTarget::Task, task_radius)
+                .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+        ] {
+            assert!(
+                compile_rule_routes(DiagramFamilyId::GANTT, 0, &rule)
                     .iter()
                     .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
             );

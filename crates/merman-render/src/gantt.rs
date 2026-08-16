@@ -11,6 +11,9 @@ use std::fmt::Write as _;
 
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
+mod theme;
+pub(crate) use theme::GanttTaskTheme;
+
 // Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
 const MS_PER_DAY: i64 = 86_400_000;
@@ -948,10 +951,16 @@ pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
     diagram_title: Option<&str>,
     config: &serde_json::Value,
+    task_theme: &GanttTaskTheme,
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<GanttDiagramLayout> {
+    if task_theme.task_count() != model.tasks.len() {
+        return Err(crate::Error::InvalidModel {
+            message: "Gantt task theme count did not match the semantic model".to_string(),
+        });
+    }
     let mut m = model.clone();
     let title = m.title.as_deref().or(diagram_title).map(str::to_owned);
 
@@ -1177,7 +1186,10 @@ pub(crate) fn layout_gantt_diagram_typed(
     };
 
     let mut tasks: Vec<GanttTaskLayout> = Vec::new();
-    for t in &m.tasks {
+    for (task_index, t) in m.tasks.iter().enumerate() {
+        let task_radius = task_theme
+            .radius_px(task_index)
+            .expect("Gantt task theme count was validated before layout");
         let start_x = scale_time(t.start_ms, min_ms, max_ms, range);
         let end_x = scale_time(t.end_ms, min_ms, max_ms, range);
         let render_end_x = scale_time(t.render_end_ms.unwrap_or(t.end_ms), min_ms, max_ms, range);
@@ -1244,8 +1256,8 @@ pub(crate) fn layout_gantt_diagram_typed(
             y: bar_y,
             width: bar_width,
             height: bar_height_actual,
-            rx: 3.0,
-            ry: 3.0,
+            rx: task_radius,
+            ry: task_radius,
             class: format!("task{task_class}"),
         };
 
@@ -1490,10 +1502,12 @@ mod tests {
         });
 
         let utc = merman_core::time::LocalTimeZone::utc();
+        let task_theme = super::GanttTaskTheme::baseline(model.tasks.len());
         let layout = layout_gantt_diagram_typed(
             &model,
             None,
             &serde_json::json!({}),
+            &task_theme,
             &DeterministicTextMeasurer::default(),
             800.0,
             &utc,

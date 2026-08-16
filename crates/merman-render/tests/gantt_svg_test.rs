@@ -1,5 +1,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector, Specified,
+    ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
+};
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity,
@@ -43,6 +48,63 @@ fn layout_gantt_from_text_with_environment(
     serde_json::from_value(projection["layout"]["GanttDiagram"].clone()).expect("Gantt layout")
 }
 
+fn gantt_task_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Gantt task theme")
+}
+
+fn gantt_task_rule_theme(rule: ThemeRule) -> DiagramTheme {
+    gantt_task_rules_theme([rule])
+}
+
+fn gantt_task_radius_theme(radius: Specified<f32>) -> DiagramTheme {
+    gantt_task_rule_theme(ThemeRule::new(
+        ThemeTarget::Task,
+        ThemeStylePatch {
+            geometry: ThemeGeometryPatch { radius },
+            ..ThemeStylePatch::default()
+        },
+    ))
+}
+
+fn prepare_gantt_family_with_theme(
+    text: &str,
+    theme: &DiagramTheme,
+) -> family::FamilyRenderArtifact {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse themed Gantt diagram")
+        .expect("detect themed Gantt diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_runtime_policy(
+            merman_core::runtime::RuntimePolicy::deterministic()
+                .with_fixed_unix_millis(1_704_067_200_000),
+        )
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Gantt session");
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Gantt artifact")
+}
+
+fn render_gantt_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
+    prepare_gantt_family_with_theme(text, theme)
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Gantt SVG")
+        .svg()
+        .to_owned()
+}
+
 #[test]
 fn gantt_layout_uses_the_operation_container_width_unless_config_overrides_it() {
     let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: 2024-01-01, 1d";
@@ -57,6 +119,205 @@ fn gantt_layout_uses_the_operation_container_width_unless_config_overrides_it() 
         960.0,
     );
     assert_eq!(configured.width, 420.0);
+}
+
+#[test]
+fn gantt_static_task_radius_reaches_layout_svg_and_portable_evidence() {
+    let source = r#"gantt
+dateFormat YYYY-MM-DD
+section Delivery
+Radius task: radius-task, 2024-01-01, 1d
+"#;
+
+    let baseline = render_gantt_svg_from_text(source);
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile empty typed theme");
+    assert_eq!(
+        render_gantt_svg_from_text_with_theme(source, &empty_theme).as_bytes(),
+        baseline.as_bytes(),
+        "an absent Gantt task radius must preserve default SVG bytes"
+    );
+
+    let theme = gantt_task_radius_theme(Specified::Value(7.0));
+    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let projection = artifact
+        .layout_json()
+        .expect("themed Gantt layout projection");
+    let layout: GanttDiagramLayout =
+        serde_json::from_value(projection["layout"]["GanttDiagram"].clone())
+            .expect("themed Gantt layout");
+    let task = layout
+        .tasks
+        .iter()
+        .find(|task| task.id == "radius-task")
+        .expect("themed Gantt task");
+    assert_eq!(task.bar.rx, 7.0);
+    assert_eq!(task.bar.ry, 7.0);
+
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Gantt SVG")
+        .svg()
+        .to_owned();
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Gantt SVG XML");
+    let task_rect = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("id") == Some("gantt-config-radius-task")
+        })
+        .expect("themed Gantt task rect");
+    assert_eq!(task_rect.attribute("rx"), Some("7"));
+    assert_eq!(task_rect.attribute("ry"), Some("7"));
+}
+
+#[test]
+fn gantt_task_radius_clear_restores_the_mermaid_baseline() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d";
+    let svg =
+        render_gantt_svg_from_text_with_theme(source, &gantt_task_radius_theme(Specified::Clear));
+    let document = roxmltree::Document::parse(&svg).expect("valid cleared Gantt SVG XML");
+    let task = document
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("id") == Some("gantt-config-task"))
+        .expect("cleared Gantt task rect");
+    assert_eq!(task.attribute("rx"), Some("3"));
+    assert_eq!(task.attribute("ry"), Some("3"));
+}
+
+#[test]
+fn gantt_task_radius_rejects_unsupported_selector_and_mixed_geometry() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d";
+    let radius_style = ThemeStylePatch {
+        geometry: ThemeGeometryPatch {
+            radius: Specified::Value(7.0),
+        },
+        ..ThemeStylePatch::default()
+    };
+    let rules = [
+        ThemeRule::new(ThemeTarget::Task, radius_style.clone()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::Task, radius_style.clone())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid task ordinal")),
+        ThemeRule::new(
+            ThemeTarget::Task,
+            radius_style.with_padding(InsetsPx::all(4.0)),
+        ),
+    ];
+
+    for rule in rules {
+        let theme = gantt_task_rule_theme(rule);
+        let error = match prepare_gantt_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        {
+            Ok(_) => panic!("unsupported Gantt task theme routes must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::GANTT, 1))
+        );
+    }
+}
+
+#[test]
+fn gantt_task_radius_is_not_applicable_without_task_bars() {
+    render_gantt_svg_from_text_with_theme(
+        "gantt\ndateFormat YYYY-MM-DD\n",
+        &gantt_task_radius_theme(Specified::Value(7.0)),
+    );
+}
+
+#[test]
+fn gantt_task_variant_radius_routes_fail_closed_for_matching_task_states() {
+    for (task_tag, variant) in [
+        ("active", ThemeVariant::Active),
+        ("done", ThemeVariant::Success),
+        ("crit", ThemeVariant::Error),
+    ] {
+        let source = format!(
+            "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: {task_tag}, task, 2024-01-01, 1d"
+        );
+        let theme = gantt_task_rule_theme(
+            ThemeRule::new(
+                ThemeTarget::Task,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(11.0),
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            )
+            .with_variant(variant),
+        );
+
+        let error = prepare_gantt_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .err()
+            .expect("a matching unsupported task variant must remain residual");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::GANTT, 1))
+        );
+    }
+}
+
+#[test]
+fn gantt_task_variant_override_does_not_reuse_unqualified_geometry() {
+    let source = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Plain: plain, 2024-01-01, 1d\n",
+        "Active: active, active-task, 2024-01-02, 1d\n",
+    );
+    let radius_style = |radius| ThemeStylePatch {
+        geometry: ThemeGeometryPatch {
+            radius: Specified::Value(radius),
+        },
+        ..ThemeStylePatch::default()
+    };
+    let theme = gantt_task_rules_theme([
+        ThemeRule::new(ThemeTarget::Task, radius_style(7.0)),
+        ThemeRule::new(ThemeTarget::Task, radius_style(11.0)).with_variant(ThemeVariant::Active),
+    ]);
+    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let projection = artifact.layout_json().expect("Gantt layout projection");
+    let layout: GanttDiagramLayout =
+        serde_json::from_value(projection["layout"]["GanttDiagram"].clone())
+            .expect("themed Gantt layout");
+    assert_eq!(layout.tasks[0].bar.rx, 7.0);
+    assert_eq!(layout.tasks[1].bar.rx, 3.0);
+
+    let error = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .err()
+        .expect("the unsupported active override must fail strict completion");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::GANTT, 1))
+    );
+}
+
+#[test]
+fn gantt_task_radius_receipt_binds_the_canonical_svg_number() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d";
+    let svg = render_gantt_svg_from_text_with_theme(
+        source,
+        &gantt_task_radius_theme(Specified::Value(5.0e-10)),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Gantt SVG XML");
+    let task = document
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("id") == Some("gantt-config-task"))
+        .expect("Gantt task rect");
+    assert_eq!(task.attribute("rx"), Some("0"));
+    assert_eq!(task.attribute("ry"), Some("0"));
 }
 
 struct RawBBoxProbeMeasurer {

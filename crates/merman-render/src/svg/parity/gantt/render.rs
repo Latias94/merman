@@ -134,6 +134,7 @@ fn render_gantt_axis_group(
 pub(crate) fn render_gantt_diagram_svg_model(
     layout: &crate::model::GanttDiagramLayout,
     model: &GanttDiagramRenderModel,
+    task_theme: &crate::gantt::GanttTaskTheme,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -304,6 +305,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let mut tasks_in_draw_order: Vec<(usize, &crate::model::GanttTaskLayout)> =
         layout.tasks.iter().enumerate().collect();
     tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
+    let mut task_radius_receipt = task_theme.begin_terminal_receipt();
 
     let mut semantic_task_by_id: std::collections::HashMap<&str, &GanttRenderTask> =
         std::collections::HashMap::new();
@@ -317,7 +319,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         out.push_str("<g>");
         out.checkpoint()?;
 
-        for (_idx, t) in &tasks_in_draw_order {
+        for (task_index, t) in &tasks_in_draw_order {
             let start_x = gantt_scale_time_round(t.start_ms, min_ms, max_ms, range);
             let end_x = gantt_scale_time_round(t.end_ms, min_ms, max_ms, range);
             let center_x = start_x + layout.left_padding + 0.5 * (end_x - start_x);
@@ -329,6 +331,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
             );
 
             let _ = write!(&mut out, r#"<rect"#);
+            let rx = fmt(t.bar.rx).to_string();
+            let ry = fmt(t.bar.ry).to_string();
+            let expected_radius = task_theme
+                .radius_px(*task_index)
+                .map(|radius| fmt(radius).to_string());
             let _ = write!(
                 &mut out,
                 r#" id="{}""#,
@@ -337,8 +344,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{origin}" class="{cls}"/>"#,
-                rx = fmt(t.bar.rx),
-                ry = fmt(t.bar.ry),
+                rx = &rx,
+                ry = &ry,
                 x = fmt(t.bar.x),
                 y = fmt(t.bar.y),
                 w = fmt(t.bar.width),
@@ -347,6 +354,14 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 cls = escape_attr(&t.bar.class),
             );
             out.checkpoint()?;
+            if let Some(receipt) = task_radius_receipt.as_mut() {
+                receipt.record_checkpointed_task(
+                    *task_index,
+                    expected_radius
+                        .as_deref()
+                        .is_some_and(|expected| expected == rx.as_str() && expected == ry.as_str()),
+                );
+            }
         }
 
         for (_idx, t) in &tasks_in_draw_order {
@@ -508,7 +523,13 @@ pub(crate) fn render_gantt_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if task_radius_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Gantt task radius receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]

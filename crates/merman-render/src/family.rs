@@ -904,8 +904,12 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
-    fn merge_class_evidence(&mut self, evidence: FamilyThemeEvidence) {
-        debug_assert_eq!(self.family_id, DiagramFamilyId::CLASS);
+    fn merge_accounted_terminal_evidence(
+        &mut self,
+        expected_family: DiagramFamilyId,
+        evidence: FamilyThemeEvidence,
+    ) {
+        debug_assert_eq!(self.family_id, expected_family);
         self.theme_evidence.merge_accounted_from(evidence);
         self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref()) {
             FamilyStylePayload::NotApplicable
@@ -981,6 +985,7 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::SEQUENCE
                 | DiagramFamilyId::CLASS
+                | DiagramFamilyId::GANTT
         ) && self
             .resolved_theme
             .as_deref()
@@ -1158,8 +1163,13 @@ impl FamilyRenderContext {
         self.style_plan.merge_sequence_evidence(evidence);
     }
 
-    fn merge_class_evidence(&mut self, evidence: FamilyThemeEvidence) {
-        self.style_plan.merge_class_evidence(evidence);
+    fn merge_accounted_terminal_evidence(
+        &mut self,
+        expected_family: DiagramFamilyId,
+        evidence: FamilyThemeEvidence,
+    ) {
+        self.style_plan
+            .merge_accounted_terminal_evidence(expected_family, evidence);
     }
 
     fn ensure_portable(&self) -> Result<()> {
@@ -1271,6 +1281,24 @@ impl ClassFamilyArtifact {
 }
 
 #[derive(Debug)]
+pub(crate) struct GanttFamilyArtifact {
+    pair: FamilyPair<diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout>,
+    task_theme: crate::gantt::GanttTaskTheme,
+}
+
+impl GanttFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn task_theme(&self) -> &crate::gantt::GanttTaskTheme {
+        &self.task_theme
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct StateFamilyArtifact {
     pair: FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
     label_sidecar: crate::state::StateLabelSidecar,
@@ -1340,7 +1368,7 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Gantt(Box<FamilyPair<diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout>>),
+    Gantt(Box<GanttFamilyArtifact>),
     Pie(Box<FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>>),
     Packet(Box<FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>>),
     Timeline(
@@ -1601,6 +1629,13 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn gantt_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Gantt(artifact) => Some(artifact.task_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
@@ -1621,7 +1656,7 @@ impl BuiltinFamilyArtifact {
             Self::Wardley(pair) => pair.compatibility_json(metadata),
             Self::Railroad(pair) => pair.compatibility_json(metadata),
             Self::Kanban(pair) => pair.compatibility_json(metadata),
-            Self::Gantt(pair) => pair.compatibility_json(metadata),
+            Self::Gantt(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Pie(pair) => pair.compatibility_json(metadata),
             Self::Packet(pair) => pair.compatibility_json(metadata),
             Self::Timeline(pair) => pair.compatibility_json(metadata),
@@ -1660,7 +1695,7 @@ impl BuiltinFamilyArtifact {
             Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
             Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
             Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout().layout()),
-            Self::Gantt(pair) => LayoutProjection::GanttDiagram(pair.layout()),
+            Self::Gantt(artifact) => LayoutProjection::GanttDiagram(artifact.pair.layout()),
             Self::Pie(pair) => LayoutProjection::PieDiagram(pair.layout()),
             Self::Packet(pair) => LayoutProjection::PacketDiagram(pair.layout()),
             Self::Timeline(pair) => LayoutProjection::TimelineDiagram(pair.layout()),
@@ -2169,10 +2204,10 @@ impl FamilyRenderArtifact {
     }
 
     pub fn gantt_time_axis_diagnostics(&self) -> Option<GanttTimeAxisDiagnostics> {
-        let BuiltinFamilyArtifact::Gantt(pair) = &self.family else {
+        let BuiltinFamilyArtifact::Gantt(artifact) = &self.family else {
             return None;
         };
-        GanttTimeAxisDiagnostics::from_layout(pair.layout())
+        GanttTimeAxisDiagnostics::from_layout(artifact.pair().layout())
     }
 
     pub fn layout_json(&self) -> Result<serde_json::Value> {
@@ -2250,6 +2285,7 @@ impl FamilyRenderArtifact {
         let class_theme_evidence = self
             .family
             .class_theme_evidence(self.context.resolved_theme());
+        let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let state_filter_receipt = match &self.family {
             BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
             _ => None,
@@ -2268,7 +2304,10 @@ impl FamilyRenderArtifact {
             context.merge_sequence_evidence(evidence);
         }
         if let Some(evidence) = class_theme_evidence {
-            context.merge_class_evidence(evidence);
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::CLASS, evidence);
+        }
+        if let Some(evidence) = gantt_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::GANTT, evidence);
         }
         context.observe_output_visibility(debug);
         if let Some(emitted) = state_filter_receipt {
@@ -2732,16 +2771,24 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Gantt(model) => {
-            BuiltinFamilyArtifact::Gantt(prepare_pair(model, |model| {
-                crate::gantt::layout_gantt_diagram_typed(
-                    model,
-                    title,
-                    effective_config,
-                    execution.text_measurer(),
-                    execution.container_width,
-                    execution.local_time_zone(),
-                )
-            })?)
+            let task_theme = crate::gantt::GanttTaskTheme::resolve(
+                execution.resolved_theme(),
+                &model.tasks,
+                execution.work_meter_ref(),
+            )?;
+            let layout = crate::gantt::layout_gantt_diagram_typed(
+                &model,
+                title,
+                effective_config,
+                &task_theme,
+                execution.text_measurer(),
+                execution.container_width,
+                execution.local_time_zone(),
+            )?;
+            BuiltinFamilyArtifact::Gantt(Box::new(GanttFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                task_theme,
+            }))
         }
         RenderSemanticModel::Pie(model) => {
             BuiltinFamilyArtifact::Pie(prepare_pair(model, |model| {

@@ -661,9 +661,10 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Kanban(pair) => {
             kanban::render_kanban_diagram_svg(pair.layout(), effective_config, options)
         }
-        BuiltinFamilyArtifact::Gantt(pair) => gantt::render_gantt_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Gantt(artifact) => gantt::render_gantt_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.task_theme(),
             effective_config_value,
             options,
         ),
