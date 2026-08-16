@@ -631,6 +631,29 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn typst_options_preflight_measures_raw_theme_bytes_before_value_normalization() {
+        let raw_padding = " ".repeat(600 * 1024);
+        let options_json = format!(r#"{{"theme":{{{raw_padding}"preset":"base"}}}}"#);
+
+        let error = typst_options_json(options_json.as_bytes())
+            .expect_err("raw encoded theme bytes must be checked before Value normalization");
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::ResourceLimitExceeded
+        );
+        let resource = error
+            .resource_details()
+            .expect("raw theme input rejection must remain structured");
+        assert_eq!(resource.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(resource.profile, "constrained");
+
+        let compact = json!({ "theme": { "preset": "base" } }).to_string();
+        typst_options_json(compact.as_bytes())
+            .expect("the same semantic theme without raw padding must remain below the ceiling");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn render_svg_json_rejects_oversized_font_input_before_base64_decoding() {
         let oversized_base64 = "A".repeat(600 * 1024);
         let options = json!({
