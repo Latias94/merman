@@ -1,7 +1,7 @@
 # Playground Mobile QA
 
 Status: Maintainer runbook
-Last updated: 2026-08-05
+Last updated: 2026-08-16
 
 ## Automated Scope
 
@@ -12,9 +12,10 @@ npm run test:browser:mobile --prefix playground
 ```
 
 Use `test:browser:mobile:built` after a verified production build. The focused suite owns the
-`320x568`, Pixel portrait, `568x320`, and shortened visual-viewport contracts. It exercises touch
-activation, compact toolbar menus, workspace and preview tabs, dialog focus restoration, dialog
-scroll ownership, viewport pan/zoom/fit, and page-level horizontal overflow.
+`320x568`, Pixel portrait, `568x320`, safe-area `844x390`, and shortened visual-viewport contracts.
+It exercises touch activation, compact toolbar menus, workspace and preview tabs, dialog focus
+restoration, dialog scroll ownership, Host viewport measurement, full-screen export, raster
+preview/download reachability, viewport pan/zoom/fit, and page-level horizontal overflow.
 
 Playwright device emulation does not prove real mobile browser behavior. In particular, emulated
 safe-area values and viewport resizing cannot reproduce every keyboard, browser-chrome, or display
@@ -30,10 +31,14 @@ claim:
 - Open Examples and Bench with the keyboard both hidden and visible. Confirm the close control,
   scrollable body, and primary/footer actions remain reachable above browser chrome and the home
   indicator.
+- Open Export from the toolbar and each Compare pane. Exercise SVG, transparent/custom PNG, JPEG
+  quality, width/height/fit sizing, and download in portrait and landscape. The preview may scroll,
+  but the close and Download controls must remain reachable and the dialog must not move the page.
 - Check portrait and landscape on a display with a cutout or rounded corners. No toolbar control,
   dialog action, or status content may enter a safe area.
-- Rotate while the editor, Preview, Examples, and Bench are active. The selected workspace and
-  dialog state must remain coherent, and Preview must refit without a blank or zero-sized SVG.
+- Rotate while the editor, Preview, Examples, Bench, and Export are active. The selected workspace,
+  export recipe, and frozen publication must remain coherent, and Host Preview must refit without
+  a blank or zero-sized SVG.
 - Collapse and expand dynamic browser chrome by scrolling. Confirm `100dvh` ownership does not hide
   the toolbar, status bar, dialog close control, or Bench footer.
 - Exercise pinch zoom, browser page zoom, text selection, Preview pan, Zoom in, Zoom out, and Fit to

@@ -31,6 +31,7 @@ export function encodeShareHash(data: WorkspaceSnapshot): string {
     config: data.mermaidConfig,
     presentationThemePresetId: data.presentationThemePresetId,
     presentationProfileId: data.presentationProfileId,
+    renderViewportMode: data.renderViewportMode,
     svgPipeline: data.svgPipeline,
     textMeasurementMode: data.textMeasurementMode,
     diagramFont: data.diagramFont,
@@ -79,7 +80,18 @@ export function decodeShareHash(
       defaults.diagramFont,
       isDiagramFontValue
     );
-    if (config === null || textMeasurementMode === null || diagramFont === null) {
+    const renderViewportMode = optionalEnum(
+      value,
+      "renderViewportMode",
+      defaults.renderViewportMode,
+      isRenderViewportMode
+    );
+    if (
+      config === null ||
+      textMeasurementMode === null ||
+      diagramFont === null ||
+      renderViewportMode === null
+    ) {
       return null;
     }
 
@@ -102,6 +114,7 @@ export function decodeShareHash(
       ...presentation,
       textMeasurementMode,
       diagramFont,
+      renderViewportMode,
     };
   } catch {
     return null;
@@ -257,7 +270,8 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
     isOptionalId(value.presentationProfileId) &&
     isMermanSvgPipeline(value.svgPipeline) &&
     isTextMeasurementMode(value.textMeasurementMode) &&
-    isDiagramFontValue(value.diagramFont)
+    isDiagramFontValue(value.diagramFont) &&
+    isRenderViewportMode(value.renderViewportMode)
   );
 }
 
@@ -290,6 +304,12 @@ function isDiagramFontValue(
   value: unknown
 ): value is WorkspaceSnapshot["diagramFont"] {
   return typeof value === "string" && isDiagramFont(value);
+}
+
+function isRenderViewportMode(
+  value: unknown
+): value is WorkspaceSnapshot["renderViewportMode"] {
+  return value === "canonical" || value === "host";
 }
 
 function isBoundedString(value: unknown, maxBytes: number): value is string {

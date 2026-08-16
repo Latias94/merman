@@ -202,6 +202,128 @@ test("example dialog traps focus, closes with Escape, and restores its trigger",
   errors.assertNone();
 });
 
+test("export workbench targets toolbar and Compare artifacts through one dialog", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => {
+    const blobs = new Map<string, Blob>();
+    const createObjectURL = URL.createObjectURL;
+    URL.createObjectURL = ((object: Blob | MediaSource) => {
+      const url = createObjectURL.call(URL, object);
+      if (object instanceof Blob) blobs.set(url, object);
+      return url;
+    }) as typeof URL.createObjectURL;
+    Object.defineProperty(window, "__mermanExportBlobs", { value: blobs });
+  });
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const trigger = page.getByRole("button", { name: "Export", exact: true });
+  await trigger.click();
+  await page.getByRole("menuitem", { name: "Export image…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Export image" });
+  await expect(dialog).toHaveAttribute("data-export-engine", "merman");
+  await expect(
+    dialog.getByRole("button", { name: "SVG", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+
+  await dialog.getByRole("button", { name: "PNG", exact: true }).click();
+  await dialog.getByRole("button", { name: "Transparent", exact: true }).click();
+  await dialog.getByRole("button", { name: "Width", exact: true }).click();
+  await dialog.getByRole("textbox", { name: /^Width/u }).fill("320");
+  await expect(dialog.getByTestId("export-output-dimensions")).toContainText(
+    "320 ×",
+  );
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+  const widthInput = dialog.getByRole("textbox", { name: /^Width/u });
+  const lastSuccessfulPreview = await dialog
+    .getByRole("img", { name: "Export preview" })
+    .getAttribute("src");
+  await widthInput.fill("");
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Width must be a positive integer",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Download", exact: true }),
+  ).toBeDisabled();
+  await expect(dialog.getByRole("img", { name: "Export preview" })).toHaveAttribute(
+    "src",
+    lastSuccessfulPreview ?? "",
+  );
+  await widthInput.fill("320");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+
+  await dialog.getByRole("button", { name: "JPEG", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Transparent", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "Custom", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const quality = dialog.getByRole("slider", { name: "Quality" });
+  await quality.fill("73");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+  await page.evaluate(() => {
+    const exportWindow = window as typeof window & {
+      __mermanOriginalCanvasToBlob?: HTMLCanvasElement["toBlob"];
+    };
+    exportWindow.__mermanOriginalCanvasToBlob =
+      HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = (callback) => callback(null);
+  });
+  await quality.fill("72");
+  await expect(dialog.getByRole("alert")).toContainText("could not encode");
+  await expect(
+    dialog.getByRole("button", { name: "Download", exact: true }),
+  ).toBeDisabled();
+  await page.evaluate(() => {
+    const exportWindow = window as typeof window & {
+      __mermanOriginalCanvasToBlob?: HTMLCanvasElement["toBlob"];
+    };
+    const original = exportWindow.__mermanOriginalCanvasToBlob;
+    if (!original) throw new Error("Canvas encoder was not captured.");
+    HTMLCanvasElement.prototype.toBlob = original;
+    delete exportWindow.__mermanOriginalCanvasToBlob;
+  });
+  await quality.fill("71");
+  await expect(dialog.getByRole("status")).toHaveText("Ready");
+  const previewBytes = await dialog
+    .getByRole("img", { name: "Export preview" })
+    .evaluate(async (image) => {
+      const blobs = (
+        window as typeof window & {
+          __mermanExportBlobs: Map<string, Blob>;
+        }
+      ).__mermanExportBlobs;
+      const blob = blobs.get((image as HTMLImageElement).src);
+      if (!blob) throw new Error("Preview Blob was not captured.");
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    });
+  const jpegDownload = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download", exact: true }).click();
+  const downloadedJpeg = await jpegDownload;
+  expect(downloadedJpeg.suggestedFilename()).toBe("merman-diagram.jpg");
+  expect(await downloadBytes(downloadedJpeg)).toEqual(Buffer.from(previewBytes));
+
+  const accessibility = await new AxeBuilder({ page })
+    .include('[data-testid="export-dialog"]')
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+  await dialog.getByRole("button", { name: "Close export" }).click();
+  await expect(trigger).toBeFocused();
+
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
+  await mermaidPane.getByRole("button", { name: "Export image" }).click();
+  await expect(dialog).toHaveAttribute("data-export-engine", "mermaid");
+  await expect(dialog).toContainText("Mermaid JS");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  errors.assertNone();
+});
+
 test("preview tabs use manual keyboard activation", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
@@ -279,4 +401,14 @@ function requestCount(requests: readonly string[], output: string): number {
   return requests.filter((url) =>
     new URL(url).pathname.endsWith(`/${output}`),
   ).length;
+}
+
+async function downloadBytes(
+  download: import("@playwright/test").Download,
+): Promise<Buffer> {
+  const stream = await download.createReadStream();
+  if (!stream) throw new Error("Download stream is unavailable");
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
 }

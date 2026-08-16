@@ -55,6 +55,7 @@ test("applies one complete workspace snapshot with one coherent notification", (
     diagramTheme: "forest",
     presentationProfileId: "future-profile",
     presentationThemePresetId: "future-theme",
+    renderViewportMode: "host",
     svgPipeline: "readable",
     textMeasurementMode: "headless",
     diagramFont: "arial",
@@ -69,6 +70,32 @@ test("applies one complete workspace snapshot with one coherent notification", (
 
   assert.deepEqual(notifications, [next]);
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), next);
+});
+
+test("stores viewport intent but keeps measured Host pixels transient", () => {
+  useAppStore.setState({
+    hostRenderViewport: null,
+    renderViewportMode: "canonical",
+  });
+
+  useAppStore.getState().setRenderViewportMode("host");
+  useAppStore
+    .getState()
+    .setHostRenderViewport({ width: 959.6, height: 539.5 });
+  assert.deepEqual(useAppStore.getState().hostRenderViewport, {
+    width: 960,
+    height: 540,
+  });
+
+  useAppStore
+    .getState()
+    .setHostRenderViewport({ width: 0, height: 0 });
+  assert.deepEqual(useAppStore.getState().hostRenderViewport, {
+    width: 960,
+    height: 540,
+  });
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).renderViewportMode, "host");
+  assert.equal("hostRenderViewport" in selectWorkspaceSnapshot(useAppStore.getState()), false);
 });
 
 function presentationState() {

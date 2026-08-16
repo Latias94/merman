@@ -1,7 +1,7 @@
 # Mermaid Compare Mode
 
 Status: Implemented
-Last updated: 2026-07-18
+Last updated: 2026-08-16
 
 ## Purpose
 
@@ -15,7 +15,8 @@ pixel-diff oracle and not the formal benchmark.
 - Compare is selected explicitly and loads the reference engine lazily.
 - Both panes show the exact engine version, render status, and an interactive render duration.
 - Desktop uses side-by-side panes; narrow viewports stack them without changing artifact identity.
-- SVG/PNG export and copy actions consume the validated displayed artifact.
+- Copy consumes the validated displayed artifact. Export opens one shared workbench frozen to the
+  chosen engine and publication, with exact SVG plus planned PNG/JPEG output.
 - A Merman failure and Mermaid failure remain independent evidence; partial success is visible.
 - Source/config/theme/font changes produce one latest coherent batch. Actions are disabled while a
   replacement batch is pending.
@@ -75,7 +76,7 @@ The coordinator freezes:
 - config JSON;
 - theme and diagram font;
 - text-measurement mode and SVG pipeline;
-- Compare viewport;
+- selected Canonical/Host viewport mode and one resolved viewport;
 - diagnostics/Compare flags;
 - exact Merman package version.
 
@@ -83,6 +84,18 @@ It invokes Merman and, when enabled, the Compare realm. Monotonic request ids ma
 latest-wins even when non-abortable work completes out of order. Parse/layout diagnostics and
 engine render failures remain request artifacts; they do not change the Merman runtime lifecycle.
 Benchmark pauses coordinator scheduling and resumes exactly the latest input after cleanup.
+
+Canonical mode sends `800x600` to both engines. Host mode measures the stable Preview allocation
+before the side-by-side split, then sends the same rounded dimensions to Merman and the Mermaid
+realm. Pane width, zoom, and pan remain presentation-only. A hidden panel cannot publish zero-sized
+geometry, and the Benchmark never inherits Host mode. Browser-dependent title or root-viewBox
+clipping visible in pinned Mermaid remains visible in both panes; the Playground does not hide it
+with a Merman-only bounds workaround.
+
+Each Compare pane has one export launcher. The workbench keeps the engine identity visible and
+does not retarget when a newer render completes. Mermaid raster output uses the pane's validated
+artifact; Merman raster output rerenders the frozen operation once through `resvg-safe`. Preview
+and download use the same encoded Blob.
 
 ## Security And Resource Lifecycle
 

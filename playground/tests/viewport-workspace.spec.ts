@@ -417,6 +417,7 @@ test("a current share hash is restored before the first visible publication", as
     diagramTheme: "forest",
     presentationThemePresetId: null,
     presentationProfileId: null,
+    renderViewportMode: "canonical",
     svgPipeline: "parity",
     textMeasurementMode: "browser",
     diagramFont: "arial",
