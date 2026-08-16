@@ -4,8 +4,6 @@ mod actor_man_glyphs;
 mod actor_popup;
 mod actor_shapes;
 mod actors;
-mod block_collection;
-mod block_geometry;
 mod block_text;
 mod blocks;
 mod css;

@@ -17,6 +17,8 @@ const SEQUENCE_POPUP_LINK_LAYOUT_WORK_UNITS: usize = 2;
 
 mod activation;
 mod actors;
+mod block_collection;
+mod block_geometry;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
@@ -32,11 +34,18 @@ mod theme_evidence;
 mod typography;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
+pub(crate) use block_collection::{
+    AltSection, SequenceBlock, collect_sequence_blocks, sequence_block_section_geometry,
+};
+pub(crate) use block_geometry::{
+    SequenceBlockGeometry, frame_x_from_actors, resolved_block_frame_x,
+    resolved_critical_block_frame_x,
+};
 pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
 pub(crate) use constants::{
-    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
-    SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, sequence_actor_popup_panel_height,
-    sequence_text_dimensions_height_px, sequence_text_line_step_px,
+    SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
+    sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
+    sequence_text_line_step_px,
 };
 pub(crate) use metrics::{
     SequenceMathHeightMode, measure_sequence_math_label, wrap_sequence_label_like_mermaid_lines,
@@ -387,6 +396,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         diagram_title,
         nodes: &nodes,
         edges: &edges,
+        block_layouts_by_id: &block_layouts_by_id,
         bounds_start_x,
         bounds_stop_x,
         actor_index: &actor_index,

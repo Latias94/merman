@@ -1,13 +1,12 @@
-use super::super::*;
-use super::model::SequenceSvgModel;
-use crate::sequence::{
+use super::constants::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
 };
-use merman_core::diagrams::sequence::SequenceMessage;
+use crate::model::{LayoutEdge, LayoutNode};
+use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use rustc_hash::FxHashMap;
 
-pub(super) fn frame_x_from_actors(
-    model: &SequenceSvgModel,
+pub(crate) fn frame_x_from_actors(
+    model: &SequenceDiagramRenderModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
 ) -> Option<(f64, f64)> {
     let mut min_x = f64::INFINITY;
@@ -25,6 +24,34 @@ pub(super) fn frame_x_from_actors(
         min_x - SEQUENCE_FRAME_SIDE_PAD_PX,
         max_x + SEQUENCE_FRAME_SIDE_PAD_PX,
     ))
+}
+
+pub(crate) fn resolved_block_frame_x(
+    geometry: SequenceBlockGeometry<'_>,
+    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    default_frame: (f64, f64),
+) -> Option<(f64, f64, f64)> {
+    geometry.frame_y_range()?;
+    Some(geometry.frame_x(actor_nodes_by_id).unwrap_or((
+        default_frame.0,
+        default_frame.1,
+        f64::INFINITY,
+    )))
+}
+
+pub(crate) fn resolved_critical_block_frame_x(
+    geometry: SequenceBlockGeometry<'_>,
+    section_count: usize,
+    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    default_frame: (f64, f64),
+) -> Option<(f64, f64, f64)> {
+    let (mut frame_left, frame_right, min_actor_left) =
+        resolved_block_frame_x(geometry, actor_nodes_by_id, default_frame)?;
+    if section_count > 1 && min_actor_left.is_finite() {
+        // Mermaid widens `critical` blocks with `option` sections to the left.
+        frame_left = frame_left.min(min_actor_left - 9.0);
+    }
+    Some((frame_left, frame_right, min_actor_left))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,7 +72,7 @@ impl<'a> SelfOnlyActor<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct SequenceBlockGeometry<'a> {
+pub(crate) struct SequenceBlockGeometry<'a> {
     geom_min_x: f64,
     geom_max_x: f64,
     min_actor_center_x: f64,
@@ -57,7 +84,7 @@ pub(super) struct SequenceBlockGeometry<'a> {
 }
 
 impl<'a> SequenceBlockGeometry<'a> {
-    pub(super) fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             geom_min_x: f64::INFINITY,
             geom_max_x: f64::NEG_INFINITY,
@@ -70,10 +97,10 @@ impl<'a> SequenceBlockGeometry<'a> {
         }
     }
 
-    pub(super) fn from_message(
+    pub(crate) fn from_message(
         msg: &'a SequenceMessage,
         actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-        edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+        edges_by_id: &FxHashMap<&str, &LayoutEdge>,
         nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     ) -> Self {
         let mut geometry = Self::empty();
@@ -137,7 +164,7 @@ impl<'a> SequenceBlockGeometry<'a> {
         geometry
     }
 
-    pub(super) fn merge(&mut self, other: Self) {
+    pub(crate) fn merge(&mut self, other: Self) {
         self.geom_min_x = self.geom_min_x.min(other.geom_min_x);
         self.geom_max_x = self.geom_max_x.max(other.geom_max_x);
         self.min_actor_center_x = self.min_actor_center_x.min(other.min_actor_center_x);
@@ -148,12 +175,12 @@ impl<'a> SequenceBlockGeometry<'a> {
         self.self_only_actor = self.self_only_actor.merge(other.self_only_actor);
     }
 
-    pub(super) fn merged(mut self, other: Self) -> Self {
+    pub(crate) fn merged(mut self, other: Self) -> Self {
         self.merge(other);
         self
     }
 
-    pub(super) fn frame_x(
+    pub(crate) fn frame_x(
         self,
         actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     ) -> Option<(f64, f64, f64)> {
@@ -186,7 +213,7 @@ impl<'a> SequenceBlockGeometry<'a> {
         Some((x1, x2, self.min_actor_left_x))
     }
 
-    pub(super) fn frame_y_range(self) -> Option<(f64, f64)> {
+    pub(crate) fn frame_y_range(self) -> Option<(f64, f64)> {
         (self.frame_min_y.is_finite() && self.frame_max_y.is_finite())
             .then_some((self.frame_min_y, self.frame_max_y))
     }

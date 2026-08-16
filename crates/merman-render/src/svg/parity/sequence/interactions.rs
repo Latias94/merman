@@ -1,7 +1,5 @@
 use super::super::*;
 use super::activation::{SequenceActivationPlan, render_sequence_activation_group};
-use super::block_collection::{SequenceBlock, collect_sequence_blocks};
-use super::block_geometry::frame_x_from_actors;
 use super::blocks::{
     SequenceBlockRenderContext, SimpleSequenceBlock, render_critical_sequence_block,
     render_sectioned_sequence_block, render_simple_sequence_block,
@@ -9,7 +7,9 @@ use super::blocks::{
 use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
 use super::settings::SequenceRenderSettings;
-use crate::sequence::SequenceStaticRectThemeReceipt;
+use crate::sequence::{
+    SequenceBlock, SequenceStaticRectThemeReceipt, collect_sequence_blocks, frame_x_from_actors,
+};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {

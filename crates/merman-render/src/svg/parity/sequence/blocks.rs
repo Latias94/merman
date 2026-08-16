@@ -1,12 +1,13 @@
 use super::super::*;
-use super::block_collection::AltSection;
-use super::block_geometry::SequenceBlockGeometry;
 use super::block_text::{
     LoopTextPlacement, LoopTextRenderContext, display_block_label, write_loop_text_lines,
     write_section_title_lines,
 };
 use crate::model::SequenceBlockLayout;
-use crate::sequence::sequence_block_label_wrap_width;
+use crate::sequence::{
+    AltSection, SequenceBlockGeometry, resolved_block_frame_x, resolved_critical_block_frame_x,
+    sequence_block_label_wrap_width, sequence_block_section_geometry,
+};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceBlockRenderContext<'a> {
@@ -144,17 +145,16 @@ pub(super) fn render_simple_sequence_block(
     block: SimpleSequenceBlock<'_>,
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
-    if block.geometry.frame_y_range().is_none() {
-        return;
-    }
     let Some(layout) = block.layout else {
         return;
     };
-
-    let (frame_x1, frame_x2, _min_left) = block
-        .geometry
-        .frame_x(ctx.actor_nodes_by_id)
-        .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let Some((frame_x1, frame_x2, _min_left)) = resolved_block_frame_x(
+        block.geometry,
+        ctx.actor_nodes_by_id,
+        (ctx.default_frame_x1, ctx.default_frame_x2),
+    ) else {
+        return;
+    };
     let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
 
     let frame_y1 = layout.start_y;
@@ -194,14 +194,6 @@ pub(super) fn render_simple_sequence_block(
     out.push_str("</g>");
 }
 
-fn section_geometry<'a>(sections: &[AltSection<'a>]) -> SequenceBlockGeometry<'a> {
-    sections
-        .iter()
-        .fold(SequenceBlockGeometry::empty(), |geometry, section| {
-            geometry.merged(section.geometry)
-        })
-}
-
 fn section_separator_ys(sections: &[AltSection<'_>]) -> Option<Vec<f64>> {
     sections
         .iter()
@@ -222,10 +214,7 @@ pub(super) fn render_sectioned_sequence_block(
         return;
     }
 
-    let geometry = section_geometry(sections);
-    if geometry.frame_y_range().is_none() {
-        return;
-    }
+    let geometry = sequence_block_section_geometry(sections);
     let Some(layout) = layout else {
         return;
     };
@@ -233,11 +222,13 @@ pub(super) fn render_sectioned_sequence_block(
         return;
     };
 
-    let (frame_x1, frame_x2, _min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
-        ctx.default_frame_x1,
-        ctx.default_frame_x2,
-        f64::INFINITY,
-    ));
+    let Some((frame_x1, frame_x2, _min_left)) = resolved_block_frame_x(
+        geometry,
+        ctx.actor_nodes_by_id,
+        (ctx.default_frame_x1, ctx.default_frame_x2),
+    ) else {
+        return;
+    };
     let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
 
     let frame_y1 = layout.start_y;
@@ -329,10 +320,7 @@ pub(super) fn render_critical_sequence_block(
         return;
     }
 
-    let geometry = section_geometry(sections);
-    if geometry.frame_y_range().is_none() {
-        return;
-    }
+    let geometry = sequence_block_section_geometry(sections);
     let Some(layout) = layout else {
         return;
     };
@@ -340,15 +328,14 @@ pub(super) fn render_critical_sequence_block(
         return;
     };
 
-    let (mut frame_x1, frame_x2, min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
-        ctx.default_frame_x1,
-        ctx.default_frame_x2,
-        f64::INFINITY,
-    ));
-    if sections.len() > 1 && min_left.is_finite() {
-        // Mermaid's `critical` w/ `option` sections widens the frame to the left.
-        frame_x1 = frame_x1.min(min_left - 9.0);
-    }
+    let Some((frame_x1, frame_x2, _min_left)) = resolved_critical_block_frame_x(
+        geometry,
+        sections.len(),
+        ctx.actor_nodes_by_id,
+        (ctx.default_frame_x1, ctx.default_frame_x2),
+    ) else {
+        return;
+    };
     let frame_x2 = frame_x2.max(frame_x1 + ctx.label_box_width);
 
     let frame_y1 = layout.start_y;

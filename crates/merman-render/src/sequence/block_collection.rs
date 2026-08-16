@@ -1,19 +1,18 @@
 use super::block_geometry::SequenceBlockGeometry;
-use super::model::SequenceSvgModel;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
-use merman_core::diagrams::sequence::SequenceMessage;
+use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
-pub(super) struct AltSection<'a> {
-    pub(super) label_id: &'a str,
-    pub(super) raw_label: &'a str,
-    pub(super) geometry: SequenceBlockGeometry<'a>,
-    pub(super) separator_y: Option<f64>,
+pub(crate) struct AltSection<'a> {
+    pub(crate) label_id: &'a str,
+    pub(crate) raw_label: &'a str,
+    pub(crate) geometry: SequenceBlockGeometry<'a>,
+    pub(crate) separator_y: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) enum SequenceBlock<'a> {
+pub(crate) enum SequenceBlock<'a> {
     Alt {
         control_id: &'a str,
         sections: Vec<AltSection<'a>>,
@@ -50,6 +49,40 @@ pub(super) enum SequenceBlock<'a> {
         sections: Vec<AltSection<'a>>,
         layout: Option<&'a SequenceBlockLayout>,
     },
+}
+
+impl SequenceBlock<'_> {
+    pub(crate) fn geometry(&self) -> SequenceBlockGeometry<'_> {
+        match self {
+            Self::Alt { sections, .. }
+            | Self::Par { sections, .. }
+            | Self::Critical { sections, .. } => sequence_block_section_geometry(sections),
+            Self::Loop { geometry, .. }
+            | Self::Opt { geometry, .. }
+            | Self::Break { geometry, .. } => *geometry,
+        }
+    }
+
+    pub(crate) fn layout(&self) -> Option<&SequenceBlockLayout> {
+        match self {
+            Self::Alt { layout, .. }
+            | Self::Opt { layout, .. }
+            | Self::Break { layout, .. }
+            | Self::Par { layout, .. }
+            | Self::Loop { layout, .. }
+            | Self::Critical { layout, .. } => *layout,
+        }
+    }
+}
+
+pub(crate) fn sequence_block_section_geometry<'a>(
+    sections: &[AltSection<'a>],
+) -> SequenceBlockGeometry<'a> {
+    sections
+        .iter()
+        .fold(SequenceBlockGeometry::empty(), |geometry, section| {
+            geometry.merged(section.geometry)
+        })
 }
 
 #[derive(Debug, Clone)]
@@ -112,11 +145,7 @@ impl<'a> BlockStackEntry<'a> {
         match self {
             Self::Alt { sections, .. }
             | Self::Par { sections, .. }
-            | Self::Critical { sections, .. } => sections
-                .iter()
-                .fold(SequenceBlockGeometry::empty(), |geometry, section| {
-                    geometry.merged(section.geometry)
-                }),
+            | Self::Critical { sections, .. } => sequence_block_section_geometry(sections),
             Self::Loop { geometry, .. }
             | Self::Opt { geometry, .. }
             | Self::Break { geometry, .. } => *geometry,
@@ -124,8 +153,8 @@ impl<'a> BlockStackEntry<'a> {
     }
 }
 
-pub(super) fn collect_sequence_blocks<'a>(
-    model: &'a SequenceSvgModel,
+pub(crate) fn collect_sequence_blocks<'a>(
+    model: &'a SequenceDiagramRenderModel,
     actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &LayoutEdge>,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
@@ -137,7 +166,7 @@ pub(super) fn collect_sequence_blocks<'a>(
 }
 
 fn collect_sequence_blocks_with<'a>(
-    model: &'a SequenceSvgModel,
+    model: &'a SequenceDiagramRenderModel,
     block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
     mut message_geometry: impl FnMut(&'a SequenceMessage) -> SequenceBlockGeometry<'a>,
 ) -> (Vec<Option<usize>>, Vec<SequenceBlock<'a>>) {
@@ -401,7 +430,7 @@ fn push_block<'a>(
 #[cfg(test)]
 mod tests {
     use super::{SequenceBlock, collect_sequence_blocks_with};
-    use crate::svg::parity::sequence::block_geometry::SequenceBlockGeometry;
+    use crate::sequence::block_geometry::SequenceBlockGeometry;
     use merman_core::diagrams::sequence::{
         SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload,
     };

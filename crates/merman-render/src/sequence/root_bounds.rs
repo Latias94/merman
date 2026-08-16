@@ -1,11 +1,16 @@
-use super::constants::{SEQUENCE_FRAME_SIDE_PAD_PX, sequence_actor_popup_panel_height};
+use super::block_collection::{SequenceBlock, collect_sequence_blocks};
+use super::block_geometry::{
+    frame_x_from_actors, resolved_block_frame_x, resolved_critical_block_frame_x,
+};
+use super::constants::sequence_actor_popup_panel_height;
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::math::MathRenderer;
-use crate::model::{Bounds, LayoutEdge, LayoutNode};
+use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
@@ -13,6 +18,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
     pub(super) edges: &'a [LayoutEdge],
+    pub(super) block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
     pub(super) bounds_start_x: f64,
     pub(super) bounds_stop_x: f64,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
@@ -94,11 +100,59 @@ fn include_resolved_block_label_box_bounds(
     if !ctx.block_label_box_metrics.typography_expanded() {
         return;
     }
-    let Some(rightmost_actor_center) = ctx.actor_centers_x.iter().copied().reduce(f64::max) else {
+
+    // Mermaid anchors each label box to the left edge of its resolved control-block frame. Consume
+    // the same family-owned block plan as terminal SVG emission instead of guessing that edge from
+    // a global actor position.
+    let nodes_by_id: FxHashMap<&str, &LayoutNode> = ctx
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let edges_by_id: FxHashMap<&str, &LayoutEdge> = ctx
+        .edges
+        .iter()
+        .map(|edge| (edge.id.as_str(), edge))
+        .collect();
+    let mut actor_nodes_by_id = FxHashMap::default();
+    for actor_id in &ctx.model.actor_order {
+        let node_id = format!("actor-top-{actor_id}");
+        if let Some(node) = nodes_by_id.get(node_id.as_str()).copied() {
+            actor_nodes_by_id.insert(actor_id.as_str(), node);
+        }
+    }
+
+    let Some(default_frame) = frame_x_from_actors(ctx.model, &nodes_by_id) else {
         return;
     };
-    let frame_left = rightmost_actor_center - SEQUENCE_FRAME_SIDE_PAD_PX;
-    bounds_box.include(frame_left, frame_left + ctx.block_label_box_metrics.width());
+    let (_, blocks) = collect_sequence_blocks(
+        ctx.model,
+        &actor_nodes_by_id,
+        &edges_by_id,
+        &nodes_by_id,
+        ctx.block_layouts_by_id,
+    );
+    for block in blocks {
+        if block.layout().is_none() {
+            continue;
+        }
+        let frame = match &block {
+            SequenceBlock::Critical { sections, .. } => resolved_critical_block_frame_x(
+                block.geometry(),
+                sections.len(),
+                &actor_nodes_by_id,
+                default_frame,
+            ),
+            _ => resolved_block_frame_x(block.geometry(), &actor_nodes_by_id, default_frame),
+        };
+        let Some((frame_left, frame_right, _)) = frame else {
+            continue;
+        };
+        bounds_box.include(
+            frame_left,
+            frame_right.max(frame_left + ctx.block_label_box_metrics.width()),
+        );
+    }
 }
 
 fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> ContentBounds {

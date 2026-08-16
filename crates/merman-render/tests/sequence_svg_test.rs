@@ -2666,10 +2666,11 @@ fn sequence_loop_keyword_typography_expands_the_measured_label_box() {
     let source = r#"sequenceDiagram
 participant Alice
 participant Bob
+participant Carol
 critical Establish connection
-Alice->>Bob: Connect
+Bob->>Carol: Connect
 option Retry later
-Bob-->>Alice: Retry
+Carol-->>Bob: Retry
 end"#;
     let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
     let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
@@ -2778,6 +2779,47 @@ end"#;
     assert!(
         max_x <= view_box[0] + view_box[2],
         "the measured control label box must remain inside the root viewBox"
+    );
+    let actor_max_x = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "actor")
+                })
+        })
+        .filter_map(|node| {
+            Some((
+                node.attribute("x")?.parse::<f64>().ok()?,
+                node.attribute("width")?.parse::<f64>().ok()?,
+            ))
+        })
+        .map(|(x, width)| x + width)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let frame_max_x = control_structure
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "loopLine")
+                })
+        })
+        .flat_map(|node| [node.attribute("x1"), node.attribute("x2")])
+        .flatten()
+        .filter_map(|value| value.parse::<f64>().ok())
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        actor_max_x > max_x,
+        "the unused leading actor regression must leave the participant row wider than the resolved label box: actor_max_x={actor_max_x}, label_max_x={max_x}"
+    );
+    let emitted_max_x = actor_max_x.max(frame_max_x).max(max_x);
+    assert!(
+        ((view_box[0] + view_box[2]) - (emitted_max_x + 50.0)).abs() <= 0.01,
+        "the root must add diagramMarginX to the actual emitted geometry rather than a guessed block anchor: viewBox={view_box:?}, actor_max_x={actor_max_x}, frame_max_x={frame_max_x}, label_max_x={max_x}"
     );
 }
 
