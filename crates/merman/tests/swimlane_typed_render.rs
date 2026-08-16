@@ -93,9 +93,7 @@ fn swimlane_edge_label_uses_html(svg: &str) -> bool {
                         .all(|part| matches!(part, "label" | "edgeLabel"))
                         && class.split_ascii_whitespace().count() == 2
                 })
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.starts_with("edge-label-"))
+                && node.attribute("data-et") == Some("edge-label")
         })
         .expect("swimlane edge label node");
     label
@@ -287,14 +285,14 @@ fn default_swimlane_uses_the_typed_swimlane_artifact() {
     assert_eq!(svg.matches(r#"class="swimlane-title""#).count(), 3);
     assert_eq!(svg.matches(r#"class="swimlane-body""#).count(), 3);
     assert!(svg.contains("rotate(-90)"), "{svg}");
-    assert!(svg.contains("typed-swimlane_swimlane-pointEnd"), "{svg}");
+    assert!(has_marker_kind(&svg, "pointEnd"), "{svg}");
     assert!(
-        svg.contains("edge-label-triage-answer-L_triage_answer_0"),
+        has_semantic_group(&svg, "L_triage_answer_0", "edge-label"),
         "{svg}"
     );
     assert!(svg.contains("Known issue"), "{svg}");
     assert!(
-        svg.contains("edge-label-triage-investigate-L_triage_investigate_0"),
+        has_semantic_group(&svg, "L_triage_investigate_0", "edge-label"),
         "{svg}"
     );
     assert!(svg.contains("Needs code change"), "{svg}");
@@ -383,12 +381,7 @@ A -->|`This is **bold**`| B
     let document = roxmltree::Document::parse(&svg).expect("valid SVG XML");
     let label = document
         .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.starts_with("edge-label-"))
-        })
+        .find(|node| node.has_tag_name("g") && node.attribute("data-et") == Some("edge-label"))
         .expect("swimlane edge label node");
     let text = label
         .descendants()
@@ -464,9 +457,7 @@ fn loose_nodes_render_the_synthetic_default_lane() {
     );
 
     assert!(
-        svg.contains(
-            r#"<g class="cluster swimlane" id="__swimlane_default__" data-id="__swimlane_default__" data-et="cluster">"#
-        ),
+        has_semantic_group(&svg, "__swimlane_default__", "cluster"),
         "{svg}"
     );
     assert_eq!(svg.matches(r#"class="swimlane-title""#).count(), 1);
@@ -511,10 +502,26 @@ flowchart LR
         "{svg}"
     );
     assert!(svg.contains(r#"class="cluster swimlane""#), "{svg}");
-    assert!(
-        svg.contains("flowchart-swimlane-layout_flowchart-v2-pointEnd"),
-        "{svg}"
-    );
+    assert!(has_marker_kind(&svg, "pointEnd"), "{svg}");
+}
+
+fn has_semantic_group(svg: &str, raw_id: &str, element_type: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    document.descendants().any(|node| {
+        node.has_tag_name("g")
+            && node.attribute("data-id") == Some(raw_id)
+            && node.attribute("data-et") == Some(element_type)
+    })
+}
+
+fn has_marker_kind(svg: &str, kind: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    document.descendants().any(|node| {
+        node.has_tag_name("marker")
+            && node
+                .attribute("id")
+                .is_some_and(|id| id.ends_with(&format!("-{kind}")))
+    })
 }
 
 #[test]

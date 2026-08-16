@@ -44,8 +44,8 @@ fn renderer_uses_flowchart_elk_svg_contract() {
     );
 
     assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
-    assert!(svg.contains("flowchart-elk-contract_flowchart-elk-pointEnd"));
-    let d = edge_path_d(&svg, "flowchart-elk-contract-L_A_B_0");
+    assert!(has_marker_kind(&svg, "pointEnd"));
+    let d = edge_path_attr(&svg, "L_A_B_0", "d");
     assert!(
         d.contains('L') && !d.contains('C'),
         "expected ELK edges to avoid cubic curves in the default flowchart-elk path: {d}"
@@ -59,14 +59,13 @@ fn renderer_keeps_flowchart_elk_cutter_jog_for_straight_shape_edge() {
         "flowchart-elk TD\nA([Start]) ==> B[Step 1]",
     );
 
-    let path = edge_path_chunk(&svg, "flowchart-elk-straight-cutter-L_A_B_0");
-    let d = path_attr(path, "d");
+    let d = edge_path_attr(&svg, "L_A_B_0", "d");
     assert!(
         d.contains('Q'),
         "expected ELK cutter points to preserve a rounded corner for the stadium endpoint: {d}"
     );
     assert_eq!(
-        data_points_len(path),
+        data_points_len(&edge_path_attr(&svg, "L_A_B_0", "data-points")),
         3,
         "expected Mermaid-style ELK cutter data-points to keep start intersection, jog, and end"
     );
@@ -244,35 +243,34 @@ flowchart TD
     assert!(!svg.contains("NaN"));
 }
 
-fn edge_path_d<'a>(svg: &'a str, edge_id: &str) -> &'a str {
-    path_attr(edge_path_chunk(svg, edge_id), "d")
+fn edge_path_attr(svg: &str, raw_edge_id: &str, attr: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-et") == Some("edge")
+                && node.attribute("data-id") == Some(raw_edge_id)
+        })
+        .unwrap_or_else(|| panic!("edge path for {raw_edge_id}"))
+        .attribute(attr)
+        .unwrap_or_else(|| panic!("edge path attribute {attr}"))
+        .to_string()
 }
 
-fn edge_path_chunk<'a>(svg: &'a str, edge_id: &str) -> &'a str {
-    let id_attr = format!(r#"id="{edge_id}""#);
-    let id_start = svg.find(&id_attr).expect("edge id");
-    let path_start = svg[..id_start].rfind("<path ").expect("edge path start");
-    let path_end = svg[id_start..].find("/>").expect("edge path end") + id_start;
-    &svg[path_start..path_end]
+fn has_marker_kind(svg: &str, kind: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    document.descendants().any(|node| {
+        node.has_tag_name("marker")
+            && node
+                .attribute("id")
+                .is_some_and(|id| id.ends_with(&format!("-{kind}")))
+    })
 }
 
-fn path_attr<'a>(path: &'a str, attr: &str) -> &'a str {
-    let attr_start = path
-        .find(&format!(r#"{attr}=""#))
-        .unwrap_or_else(|| panic!("path attr {attr}"))
-        + attr.len()
-        + r#"=""#.len();
-    let attr_end = path[attr_start..]
-        .find('"')
-        .unwrap_or_else(|| panic!("path attr {attr} end"))
-        + attr_start;
-    &path[attr_start..attr_end]
-}
-
-fn data_points_len(path: &str) -> usize {
+fn data_points_len(payload: &str) -> usize {
     use base64::Engine as _;
 
-    let payload = path_attr(path, "data-points");
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload.as_bytes())
         .expect("data-points base64");
