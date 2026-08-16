@@ -495,6 +495,27 @@ fn class_parser_members_and_methods_render_ascii_sections() {
 }
 
 #[test]
+fn class_parser_member_classifiers_remain_visible() {
+    let rendered = render_class(
+        "classDiagram\nclass Service {\n  +abstractValue*\n  +staticValue$\n  +abstractCall()*\n  +staticCall()$\n}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("classified class members should render");
+
+    for expected in [
+        "+abstractValue*",
+        "+staticValue$",
+        "+abstractCall()*",
+        "+staticCall()$",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "classified member {expected:?} should remain visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn class_render_model_reconstructs_members_when_display_text_is_empty() {
     let mut model =
         parse_class_model("classDiagram\nclass Service {\n  +value\n  #compute(input) Result\n}");
@@ -1098,6 +1119,45 @@ class Outside",
         rendered.matches('┌').count() >= 4,
         "nested namespace output should contain nested terminal boxes:\n{rendered}"
     );
+}
+
+#[test]
+fn class_parser_namespace_aliases_disclose_utf8_authored_identity() {
+    let render = |root: &str| {
+        render_class(
+            &format!(
+                "classDiagram\nnamespace {root}[\"Shared\"] {{\n  namespace API[\"Nested\"] {{\n    class C\n  }}\n}}"
+            ),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|error| panic!("aliased namespace {root:?} should render: {error}"))
+    };
+
+    let domain = render("领域");
+    let boundary = render("边界");
+
+    assert_ne!(
+        domain, boundary,
+        "different authored namespace ids must not collapse behind the same visible aliases"
+    );
+    for expected in [
+        r#"namespaceId(bytes=6)="领域""#,
+        r#"namespaceId(bytes=10)="领域.API""#,
+    ] {
+        assert!(
+            domain.contains(expected),
+            "namespace identity should use UTF-8 byte framing for {expected:?}:\n{domain}"
+        );
+    }
+    for expected in [
+        r#"namespaceId(bytes=6)="边界""#,
+        r#"namespaceId(bytes=10)="边界.API""#,
+    ] {
+        assert!(
+            boundary.contains(expected),
+            "nested namespace identity should retain its owning authored id {expected:?}:\n{boundary}"
+        );
+    }
 }
 
 #[test]

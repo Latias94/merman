@@ -1056,13 +1056,26 @@ pub(super) fn render_namespace_container_box<'a>(
         settings.options.terminal_width_profile,
         resources,
     )?;
+    let identity = namespace_authored_identity(namespace, raw_title)
+        .map(|id| {
+            deferred_text.try_register_framed_value(
+                "namespaceId(bytes=",
+                id,
+                settings.options.terminal_width_profile,
+                resources,
+            )
+        })
+        .transpose()?;
+    let header_width = identity.as_ref().map_or(title.width(), |identity| {
+        title.width().max(identity.width())
+    });
     let inner_gap = settings.options.box_border_padding;
     let inner_width = children
         .iter()
         .map(RelationGraphBox::width)
         .max()
-        .unwrap_or_else(|| title.width())
-        .max(title.width());
+        .unwrap_or(header_width)
+        .max(header_width);
     let content_width = resources.checked_grid_add(
         inner_width,
         resources.checked_grid_mul(settings.options.box_border_padding, 2)?,
@@ -1076,7 +1089,8 @@ pub(super) fn render_namespace_container_box<'a>(
     } else {
         resources.checked_grid_add(child_rows, child_gaps)?
     };
-    let height = resources.checked_grid_add(body_rows, 4)?;
+    let frame_rows = resources.checked_grid_add(4, usize::from(identity.is_some()))?;
+    let height = resources.checked_grid_add(body_rows, frame_rows)?;
     let width = resources.checked_grid_add(content_width, 2)?;
     let extent = resources.grid_extent(width, height)?;
     resources.charge_layout_work(extent.cells())?;
@@ -1113,6 +1127,16 @@ pub(super) fn render_namespace_container_box<'a>(
         settings.options.terminal_width_profile,
         resources,
     )?);
+    if let Some(identity) = identity.as_ref() {
+        lines.push(RelationGraphLine::deferred_box_content(
+            identity,
+            content_width,
+            settings.options.box_border_padding,
+            style,
+            settings.options.terminal_width_profile,
+            resources,
+        )?);
+    }
     lines.push(RelationGraphLine::try_box_border(
         style.separator_left,
         style.separator_right,
@@ -1250,6 +1274,19 @@ fn namespace_title<'a>(namespace: &'a Namespace, resources: &ResourceContext) ->
     } else {
         Ok(namespace.label.as_str())
     }
+}
+
+fn namespace_authored_identity<'a>(
+    namespace: &'a Namespace,
+    visible_title: &str,
+) -> Option<&'a str> {
+    let leaf_id = namespace
+        .id
+        .rsplit('.')
+        .next()
+        .unwrap_or(namespace.id.as_str());
+    (visible_title != namespace.id.as_str() && namespace.label.as_str() != leaf_id)
+        .then_some(namespace.id.as_str())
 }
 
 fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {

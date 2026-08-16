@@ -1028,9 +1028,15 @@ struct ClassMemberTextPlan<'a> {
 impl<'a> ClassMemberTextPlan<'a> {
     fn try_new(member: &'a ClassMember, resources: &ResourceContext) -> Result<Self> {
         if !member.display_text.is_empty() {
-            return Ok(Self {
-                text: ComposedTextPlan::try_new(resources, 1, |push| push(&member.display_text))?,
-            });
+            let producer_work_per_pass = 1 + usize::from(!member.classifier.is_empty());
+            let text = ComposedTextPlan::try_new(resources, producer_work_per_pass, |push| {
+                push(&member.display_text)?;
+                if !member.classifier.is_empty() {
+                    push(&member.classifier)?;
+                }
+                Ok(())
+            })?;
+            return Ok(Self { text });
         }
 
         let callable = member.member_type == "method"
@@ -2570,21 +2576,7 @@ fn preflight_class_member_text(
     member: &ClassMember,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    if !member.display_text.is_empty() {
-        return charge_text_layout(resources, &member.display_text);
-    }
-
-    charge_text_layout(resources, &member.id)?;
-    for field in [
-        &member.visibility,
-        &member.parameters,
-        &member.return_type,
-        &member.classifier,
-    ] {
-        if !field.is_empty() {
-            charge_text_layout(resources, field)?;
-        }
-    }
+    ClassMemberTextPlan::try_new(member, resources)?;
     Ok(())
 }
 
@@ -2996,6 +2988,37 @@ mod tests {
             assert_eq!(details.actual, OVERSIZED_GRAPHEME.len());
             assert_eq!(details.max, 2);
         }
+    }
+
+    #[test]
+    fn displayed_member_classifier_is_preflighted_with_the_canonical_text_plan() {
+        let mut model = parsed_class_model("classDiagram\nclass Service {\n  +value*\n}");
+        let member = model
+            .classes
+            .get_mut("Service")
+            .and_then(|class| class.members.first_mut())
+            .expect("Service member should exist");
+        member.display_text = "A".to_string();
+        member.classifier = "\u{301}".to_string();
+
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 3)
+            .expect("grapheme resource limit should be valid");
+        preflight_class_text(&model, &mut ResourceContext::new(exact_policy))
+            .expect("display plus classifier should pass at the exact grapheme byte limit");
+
+        let below_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 2)
+            .expect("grapheme resource limit should be valid");
+        let error = preflight_class_text(&model, &mut ResourceContext::new(below_policy))
+            .expect_err("display plus classifier must be planned as one grapheme stream");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGraphemeBytes
+                    && details.actual == 3
+                    && details.max == 2
+        ));
     }
 
     #[test]
