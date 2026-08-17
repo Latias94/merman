@@ -64,7 +64,8 @@ definition into a complete editable spec; the ordinary compiler remains the only
 
 ```rust
 use merman::diagram_theme::{
-    DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializer, ThemeTokensV1,
+    DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1,
+    compile_theme_definition,
 };
 
 let definition = ThemeDefinitionV1::new(
@@ -77,8 +78,7 @@ let definition = ThemeDefinitionV1::new(
         .with_color(ThemeColorTokenV1::Line, "#94a3b8")
         .with_series(["#60a5fa", "#34d399", "#f59e0b"].map(str::to_owned).to_vec()),
 );
-let materialized = ThemeMaterializer::new().materialize_theme(&definition)?;
-let theme = DiagramThemeCompiler::new().compile_spec_wire(materialized.into_spec())?;
+let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)?;
 # let request = merman::RenderRequest::svg(
 #     "flowchart TD\nA --> B",
 #     merman::OperationControl::new(),
@@ -88,13 +88,44 @@ let theme = DiagramThemeCompiler::new().compile_spec_wire(materialized.into_spec
 
 `merman::diagram_theme` selectively re-exports the dependency-neutral authoring wire used by the
 renderer. The name is intentionally visual: terminal/ASCII styling is not part of this contract.
-`ThemeMaterializer` owns defaults, expansion order, palette replacement, and the materialization
-digest. It does not inspect family capabilities or render output. Raw untrusted JSON still requires
-an encoded-byte admission boundary before ordinary Serde decoding; the typed Rust constructor above
-is the currently supported authoring facade. Render-time bindings remain limited to either a preset
-reference or a complete `theme.spec` until their authoring operations adopt the same contract.
+`ThemeMaterializer` remains available when callers need to inspect or edit the complete materialized
+spec. It owns defaults, expansion order, palette replacement, and the materialization digest; the
+facade above delegates to that same implementation before compilation. It does not inspect family
+capabilities or render output. Raw untrusted JSON still requires the bounded
+`compile_theme_definition_json` entry point rather than ordinary Serde decoding. Render-time
+bindings remain limited to either a preset reference or a complete `theme.spec` until their
+authoring operations adopt the same contract.
 Built-in preset recipes remain alpha inventory: this migration preserves their resolved visual
 winners but intentionally does not freeze prior recipe fingerprints or rule indices.
+
+## Capability Discovery
+
+Static discovery describes the current build's coarse upper bound without claiming that a concrete
+document applied a rule or produced a portable output:
+
+```rust
+use merman::diagram_theme::{
+    DiagramFamilyId, ThemeRuleFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
+    ThemeTarget, describe_theme_support,
+};
+
+let support = describe_theme_support(&ThemeSupportQueryV1::known(
+    DiagramFamilyId::FLOWCHART.as_str(),
+    ThemeSupportOutputV1::StandaloneSvg,
+    ThemeTarget::Node.id(),
+    ThemeRuleFacetV1::Radius,
+));
+
+println!("{:?}: {:?}", support.state(), support.reason_ids());
+```
+
+The result is one of `Unconditional`, `Conditional`, `NotApplicable`, `Unsupported`, or
+`Unverified`. A family-owned direct route and a legacy Mermaid compatibility route may both be
+`Conditional`; stable reason IDs distinguish them. Unknown identifiers remain visible and return
+`Unverified`. The current alpha implementation makes positive static claims only for Standalone
+SVG. Browser SVG and PNG/JPEG/PDF remain `Unverified` until their terminal or export owner projects
+qualification into this contract. Only the evidence and target-admission receipt from an actual
+render can report application, residuals, host dependence, or portability.
 
 `DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
 typography, semantic rules and ordinal palettes, canvas, effects, resource assets, and declared

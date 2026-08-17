@@ -2,10 +2,12 @@ use merman::diagram_theme::{
     DiagramFamilyId, DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionAdmissionError,
     ThemeDefinitionBuilderV1, ThemeDefinitionCompileError, ThemeDefinitionV1,
     ThemeMaterializationError, ThemeMaterializer, ThemeRuleBuilderV1, ThemeRuleFacetV1,
-    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeTarget, ThemeTokensV1, ThemeVariant,
-    compile_theme_definition, compile_theme_definition_json,
+    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
+    ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant, compile_theme_definition,
+    compile_theme_definition_json, describe_theme_support,
 };
 use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
 
 #[test]
 fn typed_family_rule_matches_the_equivalent_shareable_json() {
@@ -84,6 +86,113 @@ fn versioned_authoring_materializes_and_compiles_through_the_rust_facade() {
 }
 
 #[test]
+fn series_token_reaches_flowchart_node_and_pie_slice_terminal_fills() {
+    const FIRST_SERIES_COLOR: &str = "#12ab34";
+    let definition = ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_series(vec![FIRST_SERIES_COLOR.to_owned(), "#3456de".to_owned()]),
+    );
+    let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)
+        .expect("the shared authoring definition should compile");
+
+    let flowchart = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "flowchart LR\nA[Alpha] --> B[Beta]\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme.clone()),
+        )
+        .expect("the authored Flowchart should render");
+    let RenderOutput::Svg(Some(flowchart)) = flowchart else {
+        panic!("expected an authored Flowchart SVG");
+    };
+    let flowchart_document =
+        roxmltree::Document::parse(flowchart.svg()).expect("valid authored Flowchart SVG");
+    let first_node = flowchart_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("A")
+                && node.attribute("data-et") == Some("node")
+        })
+        .expect("the first Flowchart node wrapper");
+    let first_node_style = first_node
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "label-container")
+                })
+        })
+        .and_then(|node| node.attribute("style"))
+        .expect("the first Flowchart node shape style");
+    assert!(
+        first_node_style.contains(&format!("fill:{FIRST_SERIES_COLOR} !important")),
+        "tokens.series[0] must own the first Flowchart node fill: {first_node_style}"
+    );
+
+    let pie = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme),
+        )
+        .expect("the authored Pie should render");
+    let RenderOutput::Svg(Some(pie)) = pie else {
+        panic!("expected an authored Pie SVG");
+    };
+    let pie_document = roxmltree::Document::parse(pie.svg()).expect("valid authored Pie SVG");
+    let first_slice_fill = pie_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "pieCircle")
+                })
+        })
+        .and_then(|node| node.attribute("fill"))
+        .expect("the first Pie slice fill");
+    assert_eq!(first_slice_fill, FIRST_SERIES_COLOR);
+
+    let first_legend_style = pie_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.parent().is_some_and(|parent| {
+                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
+                })
+        })
+        .and_then(|node| node.attribute("style"))
+        .expect("the first Pie legend swatch style");
+    assert!(
+        first_legend_style.contains("fill: rgb(18, 171, 52)"),
+        "tokens.series[0] must own the first Pie legend swatch: {first_legend_style}"
+    );
+}
+
+#[test]
+fn rust_facade_exposes_the_versioned_support_discovery_operation() {
+    let support = describe_theme_support(&ThemeSupportQueryV1::known(
+        DiagramFamilyId::FLOWCHART.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Node.id(),
+        ThemeRuleFacetV1::Radius,
+    ));
+
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(support.query().family_id(), "flowchart");
+}
+
+#[test]
 fn rust_facade_preserves_materialization_and_compilation_error_sources() {
     let materialization_error = compile_theme_definition(
         &DiagramThemeCompiler::new(),
@@ -118,6 +227,12 @@ fn rust_facade_preserves_materialization_and_compilation_error_sources() {
 fn json_authoring_rejects_the_first_rule_beyond_the_v1_budget_before_typed_decode() {
     let rule = r##"{"kind":"rule","target":"node","style":{"fill":"#123456"}}"##;
     let admitted_styles = std::iter::repeat_n(rule, 489).collect::<Vec<_>>().join(",");
+
+    let exact = format!(
+        r##"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{admitted_styles}]}}"##
+    );
+    compile_theme_definition_json(&DiagramThemeCompiler::new(), exact.as_bytes())
+        .expect("the exact V1 authored-rule budget should compile");
 
     let oversized = format!(
         r##"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{admitted_styles},{{"kind":"rule","target":{{"typed":"decode must not reach this value"}},"style":{{"fill":"#123456"}}}}]}}"##

@@ -2,8 +2,8 @@ use merman_core::DiagramFamilyId;
 use merman_render::diagram_theme::{ThemeTarget, ThemeVariant};
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeCanvasPaintWireV1, ThemeDefinitionV1, ThemeOrdinalCycleWireV1,
-    ThemeOrdinalSelectorWireV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
-    ThemeTextStylePatchWireV1, ThemeTokensV1,
+    ThemeOrdinalSelectorWireV1, ThemeRuleFacetV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1,
+    ThemeStylePatchWireV1, ThemeTextStylePatchWireV1, ThemeTokensV1,
 };
 
 /// Builds one shareable version 1 theme definition without introducing another wire shape.
@@ -226,57 +226,4 @@ impl ThemeRuleBuilderV1 {
             style: self.style,
         }
     }
-}
-
-/// An atomic version 1 style facet that can be explicitly cleared.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ThemeRuleFacetV1 {
-    /// Fill paint.
-    Fill,
-    /// Overall opacity.
-    Opacity,
-    /// Fill-specific opacity.
-    FillOpacity,
-    /// Stroke paint.
-    StrokePaint,
-    /// Stroke width.
-    StrokeWidth,
-    /// Stroke dash lengths.
-    StrokeDasharray,
-    /// Stroke line cap.
-    StrokeLineCap,
-    /// Stroke line join.
-    StrokeLineJoin,
-    /// Stroke-specific opacity.
-    StrokeOpacity,
-    /// Corner radius.
-    Radius,
-    /// Content padding.
-    Padding,
-    /// Font-family stack.
-    FontStack,
-    /// Font size.
-    FontSize,
-    /// Font weight.
-    FontWeight,
-    /// Font style.
-    FontStyle,
-    /// Line height.
-    LineHeight,
-    /// Letter spacing.
-    LetterSpacing,
-    /// Word spacing.
-    WordSpacing,
-    /// Text transform.
-    TextTransform,
-    /// Text decoration.
-    TextDecoration,
-    /// Text alignment.
-    TextAlign,
-    /// White-space behavior.
-    WhiteSpace,
-    /// Text wrapping mode.
-    Wrap,
-    /// Effect graph reference.
-    Effect,
 }

@@ -158,6 +158,11 @@ impl ThemeTarget {
         }
     }
 
+    /// Parses one known semantic target identifier.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|target| target.id() == id)
+    }
+
     pub(crate) fn valid_for(self, family: DiagramFamilyId) -> bool {
         match self {
             Self::State

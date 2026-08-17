@@ -27,6 +27,7 @@ mod resources;
 mod semantic;
 mod source_styles;
 mod spec;
+mod support;
 mod typography;
 mod wire_decode;
 
@@ -35,7 +36,10 @@ use std::fmt;
 use std::sync::Arc;
 
 pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
-pub use merman_theme_contract::DiagramThemeSpecWireV1;
+pub use merman_theme_contract::{
+    DiagramThemeSpecWireV1, ThemeCapabilityDescriptorV1, ThemeRuleFacetV1, ThemeSupportFacetV1,
+    ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
+};
 
 pub(crate) use admission::ResolvedThemeAdmission;
 pub use admission::{
@@ -101,6 +105,7 @@ pub use semantic::{
     ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
+pub use support::describe_theme_support;
 pub(crate) use typography::is_css_wide_keyword;
 pub use typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,

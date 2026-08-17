@@ -7,6 +7,7 @@ use crate::theme_route_cutover::{
     ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjectionSet, ThemeRouteCutoverSelector,
     ThemeRouteCutoverValue,
 };
+use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportFacetV1};
 
 use super::canvas::CanvasPaint;
 use super::resolved::ThemeTypographyProperty;
@@ -30,6 +31,35 @@ pub(crate) enum FamilyThemeDisposition {
     Unsupported,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) struct FamilyThemeSupportSummary {
+    typed: bool,
+    legacy: bool,
+    unsupported: bool,
+}
+
+impl FamilyThemeSupportSummary {
+    fn record(&mut self, disposition: FamilyThemeDisposition) {
+        match disposition {
+            FamilyThemeDisposition::TypedAdapter => self.typed = true,
+            FamilyThemeDisposition::LegacyCompatibility => self.legacy = true,
+            FamilyThemeDisposition::Unsupported => self.unsupported = true,
+        }
+    }
+
+    pub(super) const fn has_typed(self) -> bool {
+        self.typed
+    }
+
+    pub(super) const fn has_legacy(self) -> bool {
+        self.legacy
+    }
+
+    pub(super) const fn has_unsupported(self) -> bool {
+        self.unsupported
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum FamilyThemePaintKind {
     Clear,
@@ -41,6 +71,15 @@ pub(crate) enum FamilyThemePaintKind {
 }
 
 impl FamilyThemePaintKind {
+    const ALL: [Self; 6] = [
+        Self::Clear,
+        Self::Transparent,
+        Self::Solid,
+        Self::LinearGradient,
+        Self::RadialGradient,
+        Self::Pattern,
+    ];
+
     fn from_specified(paint: &Specified<CanvasPaint>) -> Option<Self> {
         match paint {
             Specified::Unspecified => None,
@@ -533,20 +572,158 @@ pub(super) fn compile_ordinal_palette_route(
 ) -> FamilyThemeRoute {
     FamilyThemeRoute::new(
         FamilyThemeMechanism::OrdinalPalette { target },
-        if family == DiagramFamilyId::STATE
-            || (matches!(
-                family,
-                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::MINDMAP
-            ) && target == ThemeTarget::Node)
-            || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
-        {
-            FamilyThemeDisposition::TypedAdapter
-        } else if legacy_palette_supported(family, target) {
-            FamilyThemeDisposition::LegacyCompatibility
-        } else {
-            FamilyThemeDisposition::Unsupported
-        },
+        classify_ordinal_palette(family, target),
     )
+}
+
+fn classify_ordinal_palette(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::STATE
+        || (matches!(
+            family,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::MINDMAP
+        ) && target == ThemeTarget::Node)
+        || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
+    {
+        FamilyThemeDisposition::TypedAdapter
+    } else if legacy_palette_supported(family, target) {
+        FamilyThemeDisposition::LegacyCompatibility
+    } else {
+        FamilyThemeDisposition::Unsupported
+    }
+}
+
+/// Projects the private route domain into the coarse facts used by public support discovery.
+///
+/// This deliberately returns only aggregate disposition presence. Selectors, paint classes, route
+/// identities, and writer evidence remain private implementation details.
+pub(super) fn summarize_theme_support(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    facet: ThemeSupportFacetV1,
+) -> FamilyThemeSupportSummary {
+    let mut summary = FamilyThemeSupportSummary::default();
+    if family == DiagramFamilyId::STATE {
+        match crate::state::static_theme_support(target, facet) {
+            crate::state::StateStaticThemeSupport::Partial => {
+                summary.record(FamilyThemeDisposition::TypedAdapter);
+                summary.record(FamilyThemeDisposition::Unsupported);
+            }
+            crate::state::StateStaticThemeSupport::SurfaceDependent => {
+                summary.record(FamilyThemeDisposition::TypedAdapter);
+            }
+            crate::state::StateStaticThemeSupport::Unsupported => {
+                summary.record(FamilyThemeDisposition::Unsupported);
+            }
+        }
+        return summary;
+    }
+    let rule_facet = match facet {
+        ThemeSupportFacetV1::OrdinalPalette => {
+            summary.record(classify_ordinal_palette(family, target));
+            return summary;
+        }
+        ThemeSupportFacetV1::Rule(rule_facet) => rule_facet,
+        _ => return summary,
+    };
+
+    let effect_binding =
+        (rule_facet == ThemeRuleFacetV1::Effect).then(|| classify_effect_binding(family));
+    for_each_public_selector(|selector| {
+        for_each_public_rule_facet(rule_facet, |matrix_facet| {
+            let mut disposition = classify_rule_facet(family, target, selector, matrix_facet);
+            if effect_binding.is_some_and(|binding| {
+                disposition != FamilyThemeDisposition::TypedAdapter
+                    || binding != FamilyThemeDisposition::TypedAdapter
+            }) {
+                disposition = FamilyThemeDisposition::Unsupported;
+            }
+            summary.record(disposition);
+        });
+    });
+    summary
+}
+
+fn for_each_public_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
+    for variant in std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some)) {
+        visit(FamilyThemeSelectorShape::Static { variant });
+        visit(FamilyThemeSelectorShape::Ordinal {
+            variant,
+            selector: OrdinalSelector::Exact(1),
+        });
+        visit(FamilyThemeSelectorShape::Ordinal {
+            variant,
+            selector: OrdinalSelector::Cycle {
+                period: 1,
+                offset: 0,
+            },
+        });
+    }
+}
+
+fn for_each_public_rule_facet(
+    facet: ThemeRuleFacetV1,
+    mut visit: impl FnMut(FamilyThemeRuleFacet),
+) {
+    match facet {
+        ThemeRuleFacetV1::Fill | ThemeRuleFacetV1::StrokePaint => {
+            for kind in FamilyThemePaintKind::ALL {
+                visit(if facet == ThemeRuleFacetV1::Fill {
+                    FamilyThemeRuleFacet::Fill(kind)
+                } else {
+                    FamilyThemeRuleFacet::Stroke(kind)
+                });
+            }
+        }
+        ThemeRuleFacetV1::Opacity => visit(FamilyThemeRuleFacet::Opacity),
+        ThemeRuleFacetV1::FillOpacity => visit(FamilyThemeRuleFacet::FillOpacity),
+        ThemeRuleFacetV1::StrokeWidth => visit(FamilyThemeRuleFacet::StrokeWidth),
+        ThemeRuleFacetV1::StrokeDasharray => visit(FamilyThemeRuleFacet::StrokeDasharray),
+        ThemeRuleFacetV1::StrokeLineCap => visit(FamilyThemeRuleFacet::StrokeLinecap),
+        ThemeRuleFacetV1::StrokeLineJoin => visit(FamilyThemeRuleFacet::StrokeLinejoin),
+        ThemeRuleFacetV1::StrokeOpacity => visit(FamilyThemeRuleFacet::StrokeOpacity),
+        ThemeRuleFacetV1::Radius => visit(FamilyThemeRuleFacet::Radius),
+        ThemeRuleFacetV1::Padding => visit(FamilyThemeRuleFacet::Padding),
+        ThemeRuleFacetV1::FontStack => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::FontStack,
+        )),
+        ThemeRuleFacetV1::FontSize => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::FontSize,
+        )),
+        ThemeRuleFacetV1::FontWeight => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::FontWeight,
+        )),
+        ThemeRuleFacetV1::FontStyle => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::FontStyle,
+        )),
+        ThemeRuleFacetV1::LineHeight => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::LineHeight,
+        )),
+        ThemeRuleFacetV1::LetterSpacing => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::LetterSpacing,
+        )),
+        ThemeRuleFacetV1::WordSpacing => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::WordSpacing,
+        )),
+        ThemeRuleFacetV1::TextTransform => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::Transform,
+        )),
+        ThemeRuleFacetV1::TextDecoration => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::Decoration,
+        )),
+        ThemeRuleFacetV1::TextAlign => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::TextAlign,
+        )),
+        ThemeRuleFacetV1::WhiteSpace => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::WhiteSpace,
+        )),
+        ThemeRuleFacetV1::Wrap => visit(FamilyThemeRuleFacet::Typography(
+            ThemeTypographyProperty::Wrap,
+        )),
+        ThemeRuleFacetV1::Effect => visit(FamilyThemeRuleFacet::Effect),
+    }
 }
 
 pub(super) fn compile_effect_binding_route(
@@ -559,12 +736,16 @@ pub(super) fn compile_effect_binding_route(
             binding_index,
             target,
         },
-        if family == DiagramFamilyId::STATE {
-            FamilyThemeDisposition::TypedAdapter
-        } else {
-            FamilyThemeDisposition::Unsupported
-        },
+        classify_effect_binding(family),
     )
+}
+
+fn classify_effect_binding(family: DiagramFamilyId) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::STATE {
+        FamilyThemeDisposition::TypedAdapter
+    } else {
+        FamilyThemeDisposition::Unsupported
+    }
 }
 
 fn classify_base_typography(

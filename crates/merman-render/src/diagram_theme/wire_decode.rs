@@ -737,7 +737,7 @@ fn parse_target(
     value: &str,
     field: &'static str,
 ) -> Result<ThemeTarget, ThemeCompileValidationError> {
-    parse_id(value, ThemeTarget::ALL, ThemeTarget::id, field)
+    ThemeTarget::from_id(value).ok_or(ThemeCompileValidationError::UnknownId { field })
 }
 
 fn parse_variant(

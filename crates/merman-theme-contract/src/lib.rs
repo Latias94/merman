@@ -4,8 +4,10 @@
 
 mod authoring;
 mod canonical_json;
+mod facet;
 mod finite;
 mod spec;
+mod support;
 mod version;
 mod wire;
 
@@ -13,12 +15,17 @@ pub use authoring::{
     ThemeAuthoringTypographyV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1,
 };
 pub use canonical_json::{CanonicalJsonError, CanonicalJsonErrorKind};
+pub use facet::ThemeRuleFacetV1;
 pub use spec::{
     DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, MermaidThemeValueWireV1,
     ThemeAssetsWireV1, ThemeCanvasLayerWireV1, ThemeCanvasSpecWireV1, ThemeEffectEntryWireV1,
     ThemeEffectPrimitiveWireV1, ThemeFontAliasWireV1, ThemeFontAssetWireV1,
     ThemeGenericFamilyWireV1, ThemeRequirementsWireV1, ThemeTextStyleWireV1,
     ThemeTypographySpecWireV1,
+};
+pub use support::{
+    MAX_THEME_SUPPORT_REASON_IDS_V1, THEME_SUPPORT_SCHEMA_VERSION_V1, ThemeCapabilityDescriptorV1,
+    ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
 };
 pub use version::{
     ThemeContractVersion, ThemeContractVersionError, authoring_version_registry,

@@ -2,6 +2,10 @@
 //!
 //! Source semantics: Mermaid 11.16.
 
+use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportFacetV1};
+
+use crate::diagram_theme::ThemeTarget;
+
 type StateDiagramModel = merman_core::diagrams::state::StateDiagramRenderModel;
 type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
 
@@ -75,6 +79,101 @@ pub(crate) use style_plan::{
     ResolvedLabelTypography, StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan,
     StateStylePlan,
 };
+
+/// Coarse static support projected from State's existing terminal consumers.
+///
+/// Route ownership remains broader because the State adapter must also report honest residuals for
+/// unsupported values. Public support discovery uses this narrower projection for positive claims.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StateStaticThemeSupport {
+    Partial,
+    SurfaceDependent,
+    Unsupported,
+}
+
+pub(crate) fn static_theme_support(
+    target: ThemeTarget,
+    facet: ThemeSupportFacetV1,
+) -> StateStaticThemeSupport {
+    use StateStaticThemeSupport::{Partial, SurfaceDependent, Unsupported};
+
+    match facet {
+        ThemeSupportFacetV1::OrdinalPalette => {
+            if matches!(
+                target,
+                ThemeTarget::State
+                    | ThemeTarget::StateLabel
+                    | ThemeTarget::Transition
+                    | ThemeTarget::TransitionLabel
+                    | ThemeTarget::Composite
+                    | ThemeTarget::CompositeLabel
+                    | ThemeTarget::SpecialState
+                    | ThemeTarget::Note
+                    | ThemeTarget::NoteLabel
+            ) {
+                SurfaceDependent
+            } else {
+                Unsupported
+            }
+        }
+        ThemeSupportFacetV1::Rule(facet) => {
+            let text_surface = matches!(
+                target,
+                ThemeTarget::Text
+                    | ThemeTarget::Title
+                    | ThemeTarget::StateLabel
+                    | ThemeTarget::TransitionLabel
+                    | ThemeTarget::CompositeLabel
+                    | ThemeTarget::NoteLabel
+            );
+            let shape_surface = matches!(
+                target,
+                ThemeTarget::State
+                    | ThemeTarget::Transition
+                    | ThemeTarget::TransitionMarker
+                    | ThemeTarget::TransitionLabelBackground
+                    | ThemeTarget::Composite
+                    | ThemeTarget::CompositeHeader
+                    | ThemeTarget::SpecialState
+                    | ThemeTarget::SpecialStateInner
+                    | ThemeTarget::Note
+            );
+            let geometry_surface = matches!(
+                target,
+                ThemeTarget::State | ThemeTarget::Composite | ThemeTarget::Note
+            );
+
+            let supported = match facet {
+                ThemeRuleFacetV1::Fill => text_surface || shape_surface,
+                ThemeRuleFacetV1::StrokePaint
+                | ThemeRuleFacetV1::StrokeWidth
+                | ThemeRuleFacetV1::StrokeDasharray
+                | ThemeRuleFacetV1::StrokeLineCap
+                | ThemeRuleFacetV1::StrokeLineJoin
+                | ThemeRuleFacetV1::Opacity
+                | ThemeRuleFacetV1::FillOpacity
+                | ThemeRuleFacetV1::StrokeOpacity => shape_surface,
+                ThemeRuleFacetV1::Radius | ThemeRuleFacetV1::Padding => geometry_surface,
+                ThemeRuleFacetV1::FontStack
+                | ThemeRuleFacetV1::FontSize
+                | ThemeRuleFacetV1::FontWeight
+                | ThemeRuleFacetV1::FontStyle
+                | ThemeRuleFacetV1::LetterSpacing
+                | ThemeRuleFacetV1::WordSpacing
+                | ThemeRuleFacetV1::TextTransform => text_surface,
+                ThemeRuleFacetV1::Effect => target == ThemeTarget::State,
+                ThemeRuleFacetV1::LineHeight
+                | ThemeRuleFacetV1::TextDecoration
+                | ThemeRuleFacetV1::TextAlign
+                | ThemeRuleFacetV1::WhiteSpace
+                | ThemeRuleFacetV1::Wrap => false,
+            };
+
+            if supported { Partial } else { Unsupported }
+        }
+        _ => Unsupported,
+    }
+}
 
 pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
 pub use layout::{
