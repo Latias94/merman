@@ -1,4 +1,4 @@
-use crate::environment::RenderSession;
+use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::model::*;
 use crate::presentation::{
     FlowchartPresentationPolicy, PresentationAspectResolution, PresentationProfile,
@@ -1266,12 +1266,14 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Sequence(model) => {
+            let text_measurer = session
+                .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout);
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
                 crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
                     effective_config,
-                    execution.text_measurer(),
+                    &text_measurer,
                     execution.math_renderer(),
                     execution.work_meter_ref(),
                 )

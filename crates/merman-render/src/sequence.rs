@@ -5,7 +5,9 @@ use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
 use crate::text::TextMeasurer;
-use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::sequence::{
+    SequenceControlKind, SequenceDiagramRenderModel, SequenceMessage,
+};
 use merman_core::{MermaidConfig, OperationPhase};
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -15,6 +17,7 @@ const SEQUENCE_ACTOR_LAYOUT_WORK_UNITS: usize = 12;
 const SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS: usize = 8;
 const SEQUENCE_BOX_LAYOUT_WORK_UNITS: usize = 3;
 const SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS: usize = 2;
+const SEQUENCE_TEXT_LINEAR_REPLAY_WORK_UNITS_PER_BYTE: usize = 8;
 const SEQUENCE_LAYOUT_CHECKPOINT_INTERVAL: usize = 64;
 
 mod activation;
@@ -130,6 +133,7 @@ struct SequenceLayoutWorkShape {
     messages: usize,
     boxes: usize,
     box_memberships: usize,
+    text_work: usize,
 }
 
 impl SequenceLayoutWorkShape {
@@ -150,19 +154,98 @@ impl SequenceLayoutWorkShape {
                 self.box_memberships
                     .checked_mul(SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS)?,
             )
+            .and_then(|work| work.checked_add(self.text_work))
     }
+}
+
+fn sequence_label_text_work_units(byte_len: usize, wraps: bool) -> Option<usize> {
+    // `str::len()` gives an O(1), conservative upper bound for scalar/word scans. The linear
+    // term covers the fixed layout, bounds, and SVG replay envelope. Wrapped labels additionally
+    // pay a squared-byte envelope before any measurement callback because Mermaid-compatible
+    // wrapping repeatedly materializes and measures growing word/line prefixes.
+    let linear = byte_len.checked_mul(SEQUENCE_TEXT_LINEAR_REPLAY_WORK_UNITS_PER_BYTE)?;
+    let wrapping = if wraps {
+        byte_len.checked_mul(byte_len)?
+    } else {
+        0
+    };
+    linear.checked_add(wrapping)
+}
+
+fn sequence_message_text_work_units(message: &SequenceMessage) -> Option<usize> {
+    if let Some(semantics) = message.control_semantics() {
+        if semantics.kind == SequenceControlKind::Rect || !semantics.consumes_text() {
+            return Some(0);
+        }
+        let byte_len = message.message_text().len().checked_add(2)?;
+        return sequence_label_text_work_units(byte_len, true);
+    }
+    sequence_label_text_work_units(message.message_text().len(), message.wrap)
+}
+
+fn sequence_text_work_units_controlled(
+    model: &SequenceDiagramRenderModel,
+    diagram_title: Option<&str>,
+    checkpoints: SequenceLayoutCheckpoints<'_>,
+) -> Result<Option<usize>> {
+    let mut work_units = 0usize;
+    let mut label_index = 0usize;
+    let mut include = |label_work: Option<usize>| -> Result<bool> {
+        checkpoints.checkpoint_loop(label_index)?;
+        label_index = label_index.saturating_add(1);
+        let Some(label_work) = label_work else {
+            return Ok(false);
+        };
+        let Some(next) = work_units.checked_add(label_work) else {
+            return Ok(false);
+        };
+        work_units = next;
+        Ok(true)
+    };
+
+    for actor_id in &model.actor_order {
+        if let Some(actor) = model.actors.get(actor_id)
+            && !include(sequence_label_text_work_units(
+                actor.description.len(),
+                actor.wrap,
+            ))?
+        {
+            return Ok(None);
+        }
+    }
+    for message in &model.messages {
+        if !include(sequence_message_text_work_units(message))? {
+            return Ok(None);
+        }
+    }
+    for sequence_box in &model.boxes {
+        if let Some(name) = sequence_box.name.as_deref()
+            && !include(sequence_label_text_work_units(name.len(), false))?
+        {
+            return Ok(None);
+        }
+    }
+    if let Some(title) = sequence_render_title(model.title.as_deref(), diagram_title)
+        && !include(sequence_label_text_work_units(title.len(), false))?
+    {
+        return Ok(None);
+    }
+
+    checkpoints.checkpoint()?;
+    Ok(Some(work_units))
 }
 
 #[cfg(test)]
 fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> Option<usize> {
     let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-    sequence_layout_work_units_controlled(model, SequenceLayoutCheckpoints::new(&meter))
+    sequence_layout_work_units_controlled(model, None, SequenceLayoutCheckpoints::new(&meter))
         .ok()
         .flatten()
 }
 
 fn sequence_layout_work_units_controlled(
     model: &SequenceDiagramRenderModel,
+    diagram_title: Option<&str>,
     checkpoints: SequenceLayoutCheckpoints<'_>,
 ) -> Result<Option<usize>> {
     let mut box_memberships = 0usize;
@@ -179,11 +262,17 @@ fn sequence_layout_work_units_controlled(
     }
     checkpoints.checkpoint()?;
 
+    let Some(text_work) = sequence_text_work_units_controlled(model, diagram_title, checkpoints)?
+    else {
+        return Ok(None);
+    };
+
     Ok(SequenceLayoutWorkShape {
         actors: model.actor_order.len(),
         messages: model.messages.len(),
         boxes: model.boxes.len(),
         box_memberships,
+        text_work,
     }
     .work_units())
 }
@@ -280,7 +369,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     checkpoints.checkpoint()?;
     work_meter.policy().check_sequence_complexity(model)?;
     checkpoints.checkpoint()?;
-    let work_units = sequence_layout_work_units_controlled(model, checkpoints)?
+    let work_units = sequence_layout_work_units_controlled(model, diagram_title, checkpoints)?
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
     work_meter.charge(work_units)?;
 
@@ -441,9 +530,10 @@ pub(crate) fn sequence_render_title<'a>(
 #[cfg(test)]
 mod resource_tests {
     use super::{
-        SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS, SequenceLayoutWorkShape,
+        SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS, SequenceControlKind, SequenceLayoutWorkShape,
         prepare_sequence_diagram_typed_with_title_and_work_meter, sequence_block_widths_for_render,
-        sequence_layout_work_units,
+        sequence_label_text_work_units, sequence_layout_work_units,
+        sequence_message_text_work_units,
     };
     use crate::Error;
     use crate::resources::{
@@ -515,12 +605,68 @@ mod resource_tests {
         let flat = sequence_model("sequenceDiagram\nA->>B: hi\n");
         let nested =
             sequence_model("sequenceDiagram\nloop outer\nloop inner\nA->>B: hi\nend\nend\n");
+        let flat_text_work = flat
+            .messages
+            .iter()
+            .map(|message| sequence_message_text_work_units(message).unwrap())
+            .sum::<usize>();
+        let nested_text_work = nested
+            .messages
+            .iter()
+            .map(|message| sequence_message_text_work_units(message).unwrap())
+            .sum::<usize>();
 
         assert_eq!(
             sequence_layout_work_units(&nested).unwrap()
                 - sequence_layout_work_units(&flat).unwrap(),
             (nested.messages.len() - flat.messages.len()) * SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS
+                + nested_text_work
+                - flat_text_work
         );
+    }
+
+    #[test]
+    fn control_labels_budget_the_renderer_owned_brackets_and_wrapping() {
+        let model = sequence_model("sequenceDiagram\nloop a long control label\nA->>B: hi\nend\n");
+        let control = model
+            .messages
+            .iter()
+            .find(|message| message.control_semantics().is_some())
+            .expect("loop control record");
+        assert!(!control.wrap);
+
+        let bracketed_bytes = control.message_text().len() + 2;
+        assert_eq!(
+            sequence_message_text_work_units(control),
+            sequence_label_text_work_units(bracketed_bytes, true)
+        );
+    }
+
+    #[test]
+    fn invisible_control_records_do_not_budget_label_measurement_work() {
+        let model = sequence_model(
+            "sequenceDiagram\nrect rgb(240,240,240)\nA->>B: hi\nend\nloop visible\nA->>B: hi\nend\n",
+        );
+        let controls = model
+            .messages
+            .iter()
+            .filter_map(|message| {
+                message
+                    .control_semantics()
+                    .map(|semantics| (message, semantics))
+            })
+            .collect::<Vec<_>>();
+
+        assert!(controls.len() >= 4);
+        for (message, semantics) in controls {
+            let work = sequence_message_text_work_units(message)
+                .expect("control label work should remain representable");
+            if semantics.kind == SequenceControlKind::Rect || !semantics.consumes_text() {
+                assert_eq!(work, 0, "{semantics:?}");
+            } else {
+                assert!(work > 0, "{semantics:?}");
+            }
+        }
     }
 
     #[test]
@@ -566,6 +712,54 @@ mod resource_tests {
             &exact_meter,
         )
         .unwrap();
+        assert_eq!(exact_meter.used(), expected_work);
+        assert!(measurer.calls.get() > 0);
+    }
+
+    #[test]
+    fn wrapped_sequence_text_is_admitted_before_measurement_callbacks() {
+        let mut model = sequence_model("sequenceDiagram\nparticipant A\n");
+        let actor = model.actors.get_mut("A").expect("participant A");
+        actor.description = "x".repeat(130);
+        actor.wrap = true;
+        let expected_work = sequence_layout_work_units(&model).unwrap();
+
+        let measurer = CountingTextMeasurer::default();
+        let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
+            .unwrap();
+        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
+            &model,
+            None,
+            &json!({}),
+            &measurer,
+            None,
+            &narrow_meter,
+        )
+        .unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+
+        assert_eq!(error.actual, expected_work);
+        assert_eq!(narrow_meter.used(), 0);
+        assert_eq!(measurer.calls.get(), 0);
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
+            .unwrap();
+        let exact_meter = OperationWorkMeter::new(exact_policy);
+        prepare_sequence_diagram_typed_with_title_and_work_meter(
+            &model,
+            None,
+            &json!({}),
+            &measurer,
+            None,
+            &exact_meter,
+        )
+        .unwrap();
+
         assert_eq!(exact_meter.used(), expected_work);
         assert!(measurer.calls.get() > 0);
     }
@@ -666,6 +860,7 @@ mod resource_tests {
                     messages: 0,
                     boxes: 0,
                     box_memberships: 0,
+                    text_work: 0,
                 }
                 .work_units(),
                 Some(actors * super::SEQUENCE_ACTOR_LAYOUT_WORK_UNITS)
@@ -677,6 +872,7 @@ mod resource_tests {
             messages: 0,
             boxes: 1,
             box_memberships: 1,
+            text_work: 0,
         }
         .work_units()
         .unwrap();
@@ -685,6 +881,7 @@ mod resource_tests {
             messages: 0,
             boxes: 1,
             box_memberships: 65,
+            text_work: 0,
         }
         .work_units()
         .unwrap();
@@ -702,6 +899,7 @@ mod resource_tests {
                 messages: 0,
                 boxes: 0,
                 box_memberships: 0,
+                text_work: 0,
             }
             .work_units(),
             None
