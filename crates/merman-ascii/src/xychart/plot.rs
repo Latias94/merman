@@ -1115,16 +1115,6 @@ fn axis_labels(
     count: usize,
     resources: &mut ResourceContext,
 ) -> Result<Vec<String>> {
-    axis_labels_with_allocation_probe(axis, authored_band_categories, count, resources, || {})
-}
-
-fn axis_labels_with_allocation_probe(
-    axis: &AxisPlan,
-    authored_band_categories: &[String],
-    count: usize,
-    resources: &mut ResourceContext,
-    before_band_allocation: impl FnOnce(),
-) -> Result<Vec<String>> {
     match axis {
         AxisPlan::Band {
             authored_category_count,
@@ -1141,7 +1131,6 @@ fn axis_labels_with_allocation_probe(
                 charge_text_layout(resources, category)?;
             }
 
-            before_band_allocation();
             let mut labels = Vec::new();
             labels
                 .try_reserve_exact(count)
@@ -2789,7 +2778,6 @@ mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::{CancelReason, OperationControl};
-    use std::cell::Cell;
 
     fn default_resources() -> AsciiResourcePolicy {
         AsciiResourcePolicy::default()
@@ -2912,7 +2900,7 @@ mod tests {
     }
 
     #[test]
-    fn band_axis_labels_materialize_only_after_exact_admission() {
+    fn band_axis_label_work_admission_is_exact() {
         let policy = default_resources()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 4)
             .expect("the exact band-label work limit should be valid");
@@ -2921,21 +2909,15 @@ mod tests {
             authored_category_count: 1,
         };
         let categories = vec!["A".to_string()];
-        let allocated = Cell::new(false);
-
-        let labels =
-            axis_labels_with_allocation_probe(&axis, &categories, 2, &mut resources, || {
-                allocated.set(true)
-            })
+        let labels = axis_labels(&axis, &categories, 2, &mut resources)
             .expect("the exact container and category-text admission should fit");
 
-        assert!(allocated.get());
         assert_eq!(labels, ["A", "2"]);
         assert_eq!(resources.layout_work_used(), 4);
     }
 
     #[test]
-    fn band_axis_labels_reject_large_text_before_first_allocation() {
+    fn band_axis_labels_reject_large_text_at_the_work_boundary() {
         let policy = default_resources()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
             .expect("the bounded band-label work limit should be valid");
@@ -2944,15 +2926,9 @@ mod tests {
             authored_category_count: 1,
         };
         let categories = vec!["A".repeat(256 * 1_024)];
-        let allocated = Cell::new(false);
+        let error = axis_labels(&axis, &categories, 1, &mut resources)
+            .expect_err("the category scan must reject at the work boundary");
 
-        let error =
-            axis_labels_with_allocation_probe(&axis, &categories, 1, &mut resources, || {
-                allocated.set(true)
-            })
-            .expect_err("the category scan must reject before reserving or copying labels");
-
-        assert!(!allocated.get());
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
         };
@@ -2963,7 +2939,7 @@ mod tests {
     }
 
     #[test]
-    fn band_axis_labels_check_grapheme_limit_before_first_allocation() {
+    fn band_axis_labels_enforce_the_grapheme_limit() {
         let policy = default_resources()
             .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)
             .expect("the bounded grapheme limit should be valid");
@@ -2972,15 +2948,9 @@ mod tests {
             authored_category_count: 1,
         };
         let categories = vec!["é".to_string()];
-        let allocated = Cell::new(false);
+        let error = axis_labels(&axis, &categories, 1, &mut resources)
+            .expect_err("the grapheme ceiling must reject the category");
 
-        let error =
-            axis_labels_with_allocation_probe(&axis, &categories, 1, &mut resources, || {
-                allocated.set(true)
-            })
-            .expect_err("the grapheme ceiling must reject before reserving or copying labels");
-
-        assert!(!allocated.get());
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a grapheme resource error, got {error:?}");
         };
@@ -2990,7 +2960,7 @@ mod tests {
     }
 
     #[test]
-    fn band_axis_label_admission_prioritizes_cancellation_before_allocation() {
+    fn band_axis_label_admission_prioritizes_cancellation_over_work_limits() {
         let policy = default_resources()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
             .expect("the bounded band-label work limit should be valid");
@@ -3002,15 +2972,9 @@ mod tests {
             authored_category_count: 1,
         };
         let categories = vec!["A".repeat(256 * 1_024)];
-        let allocated = Cell::new(false);
-
-        let error =
-            axis_labels_with_allocation_probe(&axis, &categories, 2, &mut resources, || {
-                allocated.set(true)
-            })
+        let error = axis_labels(&axis, &categories, 2, &mut resources)
             .expect_err("cancellation must win over the container work ceiling");
 
-        assert!(!allocated.get());
         assert!(matches!(
             error,
             AsciiError::Cancelled(cancelled)

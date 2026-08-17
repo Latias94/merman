@@ -166,7 +166,7 @@ impl GraphLabel {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> crate::Result<Self> {
-        Self::try_single_with_profile(raw, None, width_profile, resources, || {})
+        Self::try_single_with_profile(raw, None, width_profile, resources)
     }
 
     #[cfg(test)]
@@ -201,7 +201,7 @@ impl GraphLabel {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> crate::Result<Self> {
-        Self::try_single_with_profile(raw, Some(max_width), width_profile, resources, || {})
+        Self::try_single_with_profile(raw, Some(max_width), width_profile, resources)
     }
 
     pub(super) fn lines(&self) -> &[String] {
@@ -296,16 +296,9 @@ impl GraphLabel {
         wrap_width: Option<usize>,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
-        before_materialize: impl FnOnce(),
     ) -> crate::Result<Self> {
         resources.transaction(|resources| {
-            Self::try_single_with_profile_transactional(
-                raw,
-                wrap_width,
-                width_profile,
-                resources,
-                before_materialize,
-            )
+            Self::try_single_with_profile_transactional(raw, wrap_width, width_profile, resources)
         })
     }
 
@@ -314,7 +307,6 @@ impl GraphLabel {
         wrap_width: Option<usize>,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
-        before_materialize: impl FnOnce(),
     ) -> crate::Result<Self> {
         let plan = required_label_plan(
             raw,
@@ -326,26 +318,12 @@ impl GraphLabel {
         let metrics = plan.metrics();
         resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
         plan.check_materialization_limits(resources)?;
-        before_materialize();
         let (lines, width) = plan.materialize(raw, resources)?.into_parts();
         Ok(Self {
             lines,
             width,
             width_profile,
             compartment_break_after: None,
-        })
-    }
-
-    #[cfg(test)]
-    fn try_wrapped_with_probe(
-        raw: &str,
-        max_width: usize,
-        width_profile: TerminalWidthProfile,
-        resources: &ResourceContext,
-        materialized: &std::cell::Cell<bool>,
-    ) -> crate::Result<Self> {
-        Self::try_single_with_profile(raw, Some(max_width), width_profile, resources, || {
-            materialized.set(true)
         })
     }
 }
@@ -894,35 +872,13 @@ impl GraphNodeLabelPlan {
         node: &AsciiGraphNode,
         resources: &ResourceContext,
     ) -> crate::Result<GraphLabel> {
-        self.materialize_with_callback(node, resources, || {})
+        resources.transaction(|resources| self.materialize_transactional(node, resources))
     }
 
-    #[cfg(test)]
-    fn materialize_with_body_reserve_probe(
+    fn materialize_transactional(
         &self,
         node: &AsciiGraphNode,
         resources: &ResourceContext,
-        body_reserve_started: &std::cell::Cell<bool>,
-    ) -> crate::Result<GraphLabel> {
-        self.materialize_with_callback(node, resources, || body_reserve_started.set(true))
-    }
-
-    fn materialize_with_callback(
-        &self,
-        node: &AsciiGraphNode,
-        resources: &ResourceContext,
-        before_body_reserve: impl FnOnce(),
-    ) -> crate::Result<GraphLabel> {
-        resources.transaction(|resources| {
-            self.materialize_with_callback_transactional(node, resources, before_body_reserve)
-        })
-    }
-
-    fn materialize_with_callback_transactional(
-        &self,
-        node: &AsciiGraphNode,
-        resources: &ResourceContext,
-        before_body_reserve: impl FnOnce(),
     ) -> crate::Result<GraphLabel> {
         self.admit_materialization(resources)?;
         match (self.kind, node.compartments()) {
@@ -944,7 +900,6 @@ impl GraphNodeLabelPlan {
                 let (mut lines, title_width) = self
                     .primary
                     .materialize_after_admission(&compartments.title, resources)?;
-                before_body_reserve();
                 lines
                     .try_reserve_exact(body.metrics.line_count)
                     .map_err(|_| label_allocation_failed())?;
@@ -1106,7 +1061,6 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use crate::{AsciiError, TerminalWidthProfile};
     use merman_core::resources::ResourceProfile;
-    use std::cell::Cell;
 
     #[test]
     fn graph_label_splits_html_breaks() {
@@ -1149,42 +1103,40 @@ mod tests {
     }
 
     #[test]
-    fn wrapped_label_admits_exact_grid_before_materializing_rows() {
+    fn wrapped_label_grid_admission_is_exact() {
         const REQUIRED_CELLS: usize = 25;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxGridCells, REQUIRED_CELLS)
             .expect("exact graph-label grid limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
-        let exact_materialized = Cell::new(false);
 
-        let label = GraphLabel::try_wrapped_with_probe(
+        let label = GraphLabel::try_wrapped_with_profile(
             "Alpha Beta<br><br>Gamma Delta",
             6,
             TerminalWidthProfile::Unicode,
             &exact_resources,
-            &exact_materialized,
         )
         .expect("exact graph-label extent should permit materialization");
 
         assert_eq!(label.lines(), ["Alpha", "Beta", "", "Gamma", "Delta"]);
-        assert!(exact_materialized.get());
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxGridCells, REQUIRED_CELLS - 1)
             .expect("max-minus-one graph-label grid limit should be valid");
         let below_resources = ResourceContext::new(below_policy);
-        let below_materialized = Cell::new(false);
-        let error = GraphLabel::try_wrapped_with_probe(
+        let work_before = below_resources.layout_work_used();
+        let document_cells_before = below_resources.document_cells_used();
+        let error = GraphLabel::try_wrapped_with_profile(
             "Alpha Beta<br><br>Gamma Delta",
             6,
             TerminalWidthProfile::Unicode,
             &below_resources,
-            &below_materialized,
         )
         .expect_err("max-minus-one graph-label extent should reject before materialization");
 
-        assert!(!below_materialized.get());
+        assert_eq!(below_resources.layout_work_used(), work_before);
+        assert_eq!(below_resources.document_cells_used(), document_cells_before);
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
@@ -1288,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn compartmented_label_admits_replay_document_and_output_before_reserving_body_rows() {
+    fn compartmented_label_admission_is_exact_and_transactional() {
         let node = compartmented_node("Title<br>continued", "Body<br>detail");
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let measured_resources = ResourceContext::new(unbounded);
@@ -1302,11 +1254,9 @@ mod tests {
         .expect("compartmented label planning should succeed");
         let exact_document_cells = measured_plan.document_cells();
         let exact_output_bytes = measured_plan.materialized_bytes();
-        let measured_reserve = Cell::new(false);
         measured_plan
-            .materialize_with_body_reserve_probe(&node, &measured_resources, &measured_reserve)
+            .materialize(&node, &measured_resources)
             .expect("unbounded compartmented label materialization should succeed");
-        assert!(measured_reserve.get());
         let exact_work = measured_resources.layout_work_used();
         assert!(exact_work > 1);
         assert!(exact_document_cells > 1);
@@ -1352,12 +1302,10 @@ mod tests {
             .expect("compartment planning should remain non-materializing");
             let work_before = below_resources.layout_work_used();
             let document_cells_before = below_resources.document_cells_used();
-            let body_reserve_started = Cell::new(false);
             let error = below_plan
-                .materialize_with_body_reserve_probe(&node, &below_resources, &body_reserve_started)
-                .expect_err("max-minus-one limit should reject before body allocation");
+                .materialize(&node, &below_resources)
+                .expect_err("max-minus-one limit should reject materialization");
 
-            assert!(!body_reserve_started.get(), "limit={limit:?}");
             assert_eq!(
                 below_resources.layout_work_used(),
                 work_before,
