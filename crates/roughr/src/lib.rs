@@ -166,9 +166,11 @@ pub mod core;
 pub mod filler;
 pub mod generator;
 pub mod geometry;
+mod path_segment;
 pub mod points_on_path;
 pub mod renderer;
 
 pub use euclid::Point2D;
 pub use palette::Srgba;
+pub use path_segment::SvgPathSegment;
 pub use svgtypes::*;

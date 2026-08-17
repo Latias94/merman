@@ -192,7 +192,7 @@ function ComparePane({
           <p
             id={statusId}
             aria-live="polite"
-            className="preview-canvas-status-muted shrink-0 text-xs"
+            className="shrink-0 text-xs text-muted-foreground"
             role="status"
           >
             {status.label}

@@ -148,8 +148,9 @@
   --preview-canvas-status: oklch(0.2 0.018 165);
   --preview-canvas-status-muted: oklch(0.43 0.02 165);
   --preview-canvas-border: oklch(0.74 0.025 165);
-  --preview-canvas-focus: oklch(0.48 0.14 210);
   --preview-canvas-bounds: oklch(0.56 0.18 45);
+  --preview-transparency-surface: oklch(0.97 0.004 160);
+  --preview-transparency-cell: oklch(0.91 0.008 160);
   --preview-viewbox-shadow: oklch(0.2 0.018 165 / 0.16);
 }
 
@@ -159,8 +160,9 @@
   --preview-canvas-status: oklch(0.94 0.008 220);
   --preview-canvas-status-muted: oklch(0.75 0.018 220);
   --preview-canvas-border: oklch(0.42 0.025 220);
-  --preview-canvas-focus: oklch(0.76 0.13 210);
   --preview-canvas-bounds: oklch(0.78 0.17 70);
+  --preview-transparency-surface: oklch(0.18 0.014 255);
+  --preview-transparency-cell: oklch(0.23 0.018 240);
   --preview-viewbox-shadow: oklch(0 0 0 / 0.42);
 }
 
@@ -178,44 +180,32 @@
 }
 
 .preview-container[data-svg-presentation-mode="viewbox"] {
-  background-color: var(--preview-canvas-surface);
+  background-color: var(--preview-transparency-surface);
+  background-image: conic-gradient(
+    var(--preview-transparency-cell) 25%,
+    var(--preview-transparency-surface) 0 50%,
+    var(--preview-transparency-cell) 0 75%,
+    var(--preview-transparency-surface) 0
+  );
+  background-size: 16px 16px;
   outline: 1px solid var(--preview-canvas-border);
   box-shadow: 0 14px 36px var(--preview-viewbox-shadow);
 }
 
 .preview-canvas-frame {
-  border-color: var(--preview-canvas-border);
-  background-color: color-mix(
-    in oklab,
-    var(--preview-canvas-surface) 94%,
-    transparent
-  );
+  border-color: var(--border);
+  background-color: var(--preview-canvas-surface);
   color: var(--preview-canvas-status);
 }
 
 .preview-canvas-frame:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--preview-canvas-focus);
+  box-shadow: inset 0 0 0 2px var(--ring);
 }
 
 .preview-canvas-toolbar {
-  border-color: var(--preview-canvas-border);
-  background-color: color-mix(
-    in oklab,
-    var(--preview-canvas-surface) 88%,
-    var(--preview-canvas-status) 12%
-  );
-}
-
-.preview-canvas-toolbar .text-muted-foreground {
-  color: var(--preview-canvas-status-muted);
-}
-
-.preview-canvas-toolbar .bg-muted {
-  background-color: color-mix(
-    in oklab,
-    var(--preview-canvas-surface) 82%,
-    var(--preview-canvas-status) 18%
-  );
+  border-color: var(--border);
+  background-color: var(--card);
+  color: var(--card-foreground);
 }
 
 .preview-canvas-status {

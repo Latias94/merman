@@ -1,6 +1,6 @@
 ---
 name: merman-release
-description: Merman release operator workflow. Use when preparing a new Merman version, updating changelog or release notes, bumping package versions, running release preflight, creating or verifying a tag release, dispatching platform publish workflows, recovering failed release CI, or checking published registry and GitHub Release state.
+description: Merman release operator workflow. Use when preparing a new Merman or independently versioned support-crate release, updating changelog or release notes, bumping package versions, running release preflight, creating or verifying a tag release, dispatching platform publish workflows, recovering failed release CI, or checking published registry and GitHub Release state.
 ---
 
 # Merman Release
@@ -90,6 +90,19 @@ rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
 Classify every match instead of blindly replacing it. Historical reports may retain historical wording; current installation guidance must match the intended release state. A cancelled or completed release has no generated README mode to restore, but a successful or partially recovered publication can require a new documentation commit so `main` stops describing an already-published version as unavailable.
 
 VS Code, Typst, and `roughr-merman` have independent version axes. Update them only when that surface is being released, and preserve their bundled Merman provenance.
+
+### Independent Implementation Crates
+
+Treat an independently versioned implementation crate such as `roughr-merman` as a compatibility boundary, not merely another workspace member.
+
+- Keep the workspace path dependency's declared version aligned with the selected independent-crate release. Use Cargo's ordinary compatible requirement (`0.12.3` admits later `0.12.x` patches); reserve an exact requirement for time-bounded incident containment with an explicit removal condition.
+- Apply Cargo SemVer to `0.y.z` crates: a patch release preserves source compatibility, while a public breaking change increments `y` (`0.12.x` to `0.13.0`). A removed or renamed method, changed signature, removed default feature, or upgraded public dependency whose types cross the crate API cannot ship in a patch unless the candidate provides a compatibility adapter.
+- Before publishing a patch, compare its public API with the latest published version in the same compatibility line. Treat a compatibility-restoration patch after an accidental breaking release as incident recovery, not precedent for carrying future breaking changes in patch versions.
+- Identify every published Merman stable or prerelease whose Cargo requirement can admit the candidate. Compile each one from crates.io in a fresh temporary project without copying a lockfile, first against the candidate package and then, after publication, against ordinary registry resolution. A workspace build is not evidence because its path dependency bypasses the registry version choice that consumers make.
+- Require both the previous stable lane and the current prerelease lane to compile before publication completes. Keep this matrix narrow: one newest published dependent per distinct dependency/API contract is sufficient.
+- Publish the compatible replacement before yanking a broken predecessor. Wait for registry visibility, confirm fresh resolution selects the replacement in every dependent lane, then yank the predecessor; existing lockfiles may continue using a yanked crate.
+
+An independent patch is ready only when the API comparison is non-breaking, the focused crate tests pass, every admitted published dependent compiles from a fresh resolution, and the workspace dependency floor and lock projections name the candidate version.
 
 ### Local Contract And Preflight
 
