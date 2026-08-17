@@ -57,24 +57,76 @@ fn tokens_only_definition_materializes_the_complete_version_one_spec() {
         .styles
         .as_ref()
         .expect("the generated rule set should be explicit");
-    assert_eq!(styles.len(), 42);
+    assert_eq!(styles.len(), 25);
+    let generated_targets = styles[..23]
+        .iter()
+        .map(|entry| match entry {
+            ThemeRuleSetWireV1::Rule { target, .. } => target.as_str(),
+            ThemeRuleSetWireV1::OrdinalPalette { .. } => {
+                panic!("the generated rule tranche must precede palettes")
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        generated_targets,
+        [
+            "text",
+            "title",
+            "node",
+            "edge",
+            "cluster",
+            "actor",
+            "lifeline",
+            "message",
+            "state",
+            "state-label",
+            "transition",
+            "transition-marker",
+            "transition-label",
+            "transition-label-background",
+            "composite",
+            "composite-header",
+            "composite-label",
+            "special-state",
+            "special-state-inner",
+            "note",
+            "note-label",
+            "activation",
+            "entity",
+        ]
+    );
+    for target in ["edge", "lifeline", "message", "transition"] {
+        assert!(matches!(
+            styles[..23].iter().find(|entry| matches!(
+                entry,
+                ThemeRuleSetWireV1::Rule { target: actual, .. } if actual == target
+            )),
+            Some(ThemeRuleSetWireV1::Rule { style, .. })
+                if matches!(style.fill, SpecifiedWireV1::Unspecified)
+                    && matches!(
+                        style.stroke.as_ref().map(|stroke| &stroke.paint),
+                        Some(SpecifiedWireV1::Value(_))
+                    )
+        ));
+    }
     assert!(matches!(
-        &styles[0],
-        ThemeRuleSetWireV1::Rule { target, .. } if target == "text"
+        &styles[22],
+        ThemeRuleSetWireV1::Rule { target, style, .. }
+            if target == "entity"
+                && matches!(style.fill, SpecifiedWireV1::Value(_))
+                && matches!(
+                    style.stroke.as_ref().map(|stroke| &stroke.paint),
+                    Some(SpecifiedWireV1::Value(_))
+                )
     ));
     assert!(matches!(
-        &styles[39],
-        ThemeRuleSetWireV1::Rule { target, variant, .. }
-            if target == "table" && variant.as_deref() == Some("even")
-    ));
-    assert!(matches!(
-        &styles[40],
+        &styles[23],
         ThemeRuleSetWireV1::OrdinalPalette { target, colors }
             if target == "node"
                 && colors == &["#2563eb", "#16a34a", "#d97706", "#9333ea"]
     ));
     assert!(matches!(
-        &styles[41],
+        &styles[24],
         ThemeRuleSetWireV1::OrdinalPalette { target, colors }
             if target == "pie-slice"
                 && colors == &["#2563eb", "#16a34a", "#d97706", "#9333ea"]
@@ -127,7 +179,7 @@ fn authored_rules_append_and_authored_palettes_replace_or_extend_generated_slots
         .expect("authored rules and unique palettes should compose");
     let styles = materialized.spec().styles.as_ref().expect("styles");
 
-    assert_eq!(styles.len(), 44);
+    assert_eq!(styles.len(), 27);
     assert_eq!(
         materialized
             .spec()
@@ -161,19 +213,19 @@ fn authored_rules_append_and_authored_palettes_replace_or_extend_generated_slots
                     if color == "#101010"
             )
     ));
-    assert_eq!(&styles[40], &authored_rule);
+    assert_eq!(&styles[23], &authored_rule);
     assert!(matches!(
-        &styles[41],
+        &styles[24],
         ThemeRuleSetWireV1::OrdinalPalette { target, colors }
             if target == "node" && colors == &["#333333", "#444444"]
     ));
     assert!(matches!(
-        &styles[42],
+        &styles[25],
         ThemeRuleSetWireV1::OrdinalPalette { target, colors }
             if target == "pie-slice" && colors == &["#111111", "#222222"]
     ));
     assert!(matches!(
-        &styles[43],
+        &styles[26],
         ThemeRuleSetWireV1::OrdinalPalette { target, colors }
             if target == "chart-series" && colors == &["#555555"]
     ));
@@ -216,7 +268,7 @@ fn duplicate_authored_palette_targets_fail_without_a_partial_spec() {
 }
 
 #[test]
-fn authored_rule_budget_accepts_472_and_rejects_473_before_expansion() {
+fn authored_rule_budget_accepts_489_and_rejects_490_before_expansion() {
     let authored_rule = ThemeRuleSetWireV1::Rule {
         target: "node".to_owned(),
         family: None,
@@ -226,10 +278,10 @@ fn authored_rule_budget_accepts_472_and_rejects_473_before_expansion() {
     };
     let boundary =
         ThemeDefinitionV1::new(ThemeTokensV1::default())
-            .with_styles(vec![authored_rule.clone(); 472]);
+            .with_styles(vec![authored_rule.clone(); 489]);
     let materialized = ThemeMaterializer::new()
         .materialize_theme(&boundary)
-        .expect("40 generated plus 472 authored rules should fit the compiler ceiling");
+        .expect("23 generated plus 489 authored rules should fit the compiler ceiling");
     assert_eq!(
         materialized
             .spec()
@@ -243,7 +295,7 @@ fn authored_rule_budget_accepts_472_and_rejects_473_before_expansion() {
     );
 
     let exceeded =
-        ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![authored_rule; 473]);
+        ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![authored_rule; 490]);
     let error = ThemeMaterializer::new()
         .materialize_theme(&exceeded)
         .expect_err("the exact-plus-one authored rule must fail closed");
@@ -251,8 +303,8 @@ fn authored_rule_budget_accepts_472_and_rejects_473_before_expansion() {
     assert!(matches!(
         error,
         ThemeMaterializationError::RuleBudgetExceeded {
-            actual: 473,
-            max: 472,
+            actual: 490,
+            max: 489,
         }
     ));
 }
@@ -318,7 +370,7 @@ fn concrete_effect_references_are_rejected_but_explicit_clear_is_preserved() {
         .materialize_theme(&cleared)
         .expect("clear uses the existing atomic facet and names no graph");
     assert!(matches!(
-        &materialized.spec().styles.as_ref().expect("styles")[40],
+        &materialized.spec().styles.as_ref().expect("styles")[23],
         ThemeRuleSetWireV1::Rule { style, .. }
             if matches!(style.effect, SpecifiedWireV1::Clear)
     ));

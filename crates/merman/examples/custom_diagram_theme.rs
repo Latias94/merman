@@ -19,7 +19,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_surface_alt("#1f2937")
             .with_surface_muted("#334155")
             .with_text("#e5e7eb")
-            .with_subtle_text("#cbd5e1")
             .with_border("#475569")
             .with_line("#94a3b8")
             .with_series(

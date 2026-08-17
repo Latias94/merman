@@ -471,7 +471,7 @@ fn native_theme_definition_materializes_and_renders_without_an_intermediate_spec
                 "text": "#e5e7eb",
                 "border": "#475569",
                 "line": "#94a3b8",
-                "accent": "#60a5fa"
+                "series": ["#60a5fa"]
             }
         }"##,
     )

@@ -591,7 +591,7 @@ fn classify_base_typography(
     }
 }
 
-fn classify_rule_facet(
+pub(super) fn classify_rule_facet(
     family: DiagramFamilyId,
     target: ThemeTarget,
     selector: FamilyThemeSelectorShape,

@@ -208,15 +208,11 @@ Wire identifiers use `snake_case` and project from one Rust-owned executable con
 | 3 | `surface_alt` | `ThemeColorValue` | `#e2e8f0` |
 | 4 | `surface_muted` | `ThemeColorValue` | `#f1f5f9` |
 | 5 | `text` | `ThemeColorValue` | `#0f172a` |
-| 6 | `subtle_text` | `ThemeColorValue` | `#475569` |
-| 7 | `border` | `ThemeColorValue` | `#94a3b8` |
-| 8 | `line` | `ThemeColorValue` | `#64748b` |
-| 9 | `accent` | `ThemeColorValue` | `#2563eb` |
-| 10 | `error` | `ThemeColorValue` | `#dc2626` |
-| 11 | `warning` | `ThemeColorValue` | `#d97706` |
-| 12 | `success` | `ThemeColorValue` | `#059669` |
-| 13 | `series` | Non-empty list of `ThemeColorValue`, maximum 256 | `[#2563eb, #16a34a, #d97706, #9333ea]` |
-| 14 | `typography` | `ThemeAuthoringTypographyV1` | See the table below |
+| 6 | `border` | `ThemeColorValue` | `#94a3b8` |
+| 7 | `line` | `ThemeColorValue` | `#64748b` |
+| 8 | `accent` | `ThemeColorValue` | `#2563eb` |
+| 9 | `series` | Non-empty list of `ThemeColorValue`, maximum 256 | `[#2563eb, #16a34a, #d97706, #9333ea]` |
+| 10 | `typography` | `ThemeAuthoringTypographyV1` | See the table below |
 
 `ThemeAuthoringTypographyV1` is intentionally smaller than `TypographySpec`:
 
@@ -232,6 +228,11 @@ Family-specific actor, note, activation, cluster, message, task, and similar fie
 rule-only or alpha until they have unambiguous cross-family expansion, resource bounds, and terminal
 consumer evidence. Advanced authors use the existing `ThemeRuleSet` or a complete
 `DiagramThemeSpec`.
+
+`subtle_text`, `error`, `warning`, and `success` are also absent from expansion version 1. They had
+no direct generated consumer after row-coverage pruning, so retaining them would accept author input
+that materializes to no visual change. A later expansion version may add a semantic role only after
+at least one direct family writer and terminal witness exist.
 
 The existing alpha-only family fields migrate as follows; no binding keeps them as aliases:
 
@@ -267,48 +268,31 @@ No color algorithm, contrast adjustment, target probing, family probing, or host
 runs during expansion. In the table, `fill = X` means a solid paint and `stroke = X` means a solid
 `stroke.paint`. Rows are emitted in exactly this order:
 
-| Rule index | Target | Variant | Emitted facets |
-| ---: | --- | --- | --- |
-| 0 | `text` | - | `fill = text` |
-| 1 | `title` | - | `fill = text` |
-| 2 | `node` | - | `stroke = border` |
-| 3 | `node-label` | - | `fill = text` |
-| 4 | `edge` | - | `fill = line`, `stroke = line` |
-| 5 | `edge-label` | - | `fill = text` |
-| 6 | `edge-label-background` | - | `fill = canvas` |
-| 7 | `cluster` | - | `fill = surface_muted`, `stroke = border` |
-| 8 | `cluster-label` | - | `fill = subtle_text` |
-| 9 | `actor` | - | `fill = surface`, `stroke = border` |
-| 10 | `actor-label` | - | `fill = text` |
-| 11 | `lifeline` | - | `fill = line`, `stroke = line` |
-| 12 | `message` | - | `fill = line`, `stroke = line` |
-| 13 | `message-label` | - | `fill = text` |
-| 14 | `loop` | - | `fill = surface_alt`, `stroke = border` |
-| 15 | `loop-label` | - | `fill = text` |
-| 16 | `state` | - | `fill = surface`, `stroke = border` |
-| 17 | `state-label` | - | `fill = text` |
-| 18 | `transition` | - | `fill = line`, `stroke = line` |
-| 19 | `transition-marker` | - | `fill = line`, `stroke = line` |
-| 20 | `transition-label` | - | `fill = text` |
-| 21 | `transition-label-background` | - | `fill = canvas` |
-| 22 | `composite` | - | `fill = canvas`, `stroke = border` |
-| 23 | `composite-header` | - | `fill = surface_alt`, `stroke = border` |
-| 24 | `composite-label` | - | `fill = text` |
-| 25 | `special-state` | `special` | `fill = accent`, `stroke = accent` |
-| 26 | `special-state-inner` | `end` | `fill = canvas`, `stroke = canvas` |
-| 27 | `marker` | - | `fill = accent`, `stroke = accent` |
-| 28 | `note` | - | `fill = surface_alt`, `stroke = border` |
-| 29 | `note-label` | - | `fill = text` |
-| 30 | `activation` | - | `fill = surface_alt`, `stroke = border` |
-| 31 | `task` | - | `fill = surface`, `stroke = border` |
-| 32 | `task` | `active` | `fill = surface_muted`, `stroke = line` |
-| 33 | `task` | `error` | `fill = surface_alt`, `stroke = error` |
-| 34 | `task` | `warning` | `fill = surface_alt`, `stroke = warning` |
-| 35 | `task` | `success` | `fill = surface_alt`, `stroke = success` |
-| 36 | `requirement` | - | `fill = surface`, `stroke = border` |
-| 37 | `relation` | - | `fill = line`, `stroke = line` |
-| 38 | `table` | `odd` | `fill = surface` |
-| 39 | `table` | `even` | `fill = surface_alt` |
+| Rule index | Target | Variant | Emitted facets | Direct consumer | Terminal witness |
+| ---: | --- | --- | --- | --- | --- |
+| 0 | `text` | - | `fill = text` | State | State terminal SVG/C6a evidence |
+| 1 | `title` | - | `fill = text` | State | `state_svg_title_theme_fill_reaches_the_terminal_svg_text_paint` |
+| 2 | `node` | - | `stroke = border` | Flowchart | Scalar route-cutover SVG/PNG evidence |
+| 3 | `edge` | - | `stroke = line` | Flowchart | Scalar route-cutover SVG/PNG evidence |
+| 4 | `cluster` | - | `fill = surface_muted`, `stroke = border` | Flowchart | Scalar route-cutover SVG/PNG evidence |
+| 5 | `actor` | - | `fill = surface`, `stroke = border` | Sequence | Scalar route-cutover SVG/PNG evidence |
+| 6 | `lifeline` | - | `stroke = line` | Sequence | Scalar route-cutover SVG/PNG evidence |
+| 7 | `message` | - | `stroke = line` | Sequence | Scalar route-cutover SVG/PNG evidence |
+| 8 | `state` | - | `fill = surface`, `stroke = border` | State | State terminal SVG/C6a evidence |
+| 9 | `state-label` | - | `fill = text` | State | State terminal SVG/C6a evidence |
+| 10 | `transition` | - | `stroke = line` | State | State terminal SVG evidence |
+| 11 | `transition-marker` | - | `fill = line`, `stroke = line` | State | State structural-role terminal SVG evidence |
+| 12 | `transition-label` | - | `fill = text` | State | State structural-role terminal SVG evidence |
+| 13 | `transition-label-background` | - | `fill = canvas` | State | State structural-role terminal SVG evidence |
+| 14 | `composite` | - | `fill = canvas`, `stroke = border` | State | State structural-role terminal SVG evidence |
+| 15 | `composite-header` | - | `fill = surface_alt`, `stroke = border` | State | State structural-role terminal SVG evidence |
+| 16 | `composite-label` | - | `fill = text` | State | State structural-role terminal SVG evidence |
+| 17 | `special-state` | `special` | `fill = accent`, `stroke = accent` | State | State split-surface terminal SVG evidence |
+| 18 | `special-state-inner` | `end` | `fill = canvas`, `stroke = canvas` | State | State split-surface terminal SVG evidence |
+| 19 | `note` | - | `fill = surface_alt`, `stroke = border` | Sequence | Scalar route-cutover SVG/PNG evidence |
+| 20 | `note-label` | - | `fill = text` | State | State terminal SVG evidence |
+| 21 | `activation` | - | `fill = surface_alt`, `stroke = border` | Sequence | Scalar route-cutover SVG/PNG evidence |
+| 22 | `entity` | - | `fill = surface`, `stroke = border` | ER | `er_tokens_only_definition_reaches_the_model_owned_entity_surface` |
 
 Expansion then creates ordinal palettes in this fixed order, each using the complete `series` list:
 
@@ -332,7 +316,7 @@ later expansion version after those family writers and terminal witnesses exist.
 
 Composition with `ThemeDefinitionV1.styles` is deterministic:
 
-1. Generated rules 0 through 39 are emitted first.
+1. Generated rules 0 through 22 are emitted first.
 2. Authored rules are appended in their input order. Rule collisions are not deduplicated; the
    existing selector specificity and source-order winner semantics remain authoritative.
 3. An authored ordinal palette for one of the two generated targets replaces that target's colors
@@ -343,12 +327,19 @@ Composition with `ThemeDefinitionV1.styles` is deterministic:
    not that target also has a generated palette.
 
 The complete spec retains the existing 512-rule ceiling. The executable table derives
-`MAX_AUTHORED_RULES = 512 - GENERATED_RULE_COUNT`; for the current 40-row candidate this is 472.
-Inputs with 473 authored rules fail with the dedicated rule-budget diagnostic before constructing a
+`MAX_AUTHORED_RULES = 512 - GENERATED_RULE_COUNT`; for the current 23-row candidate this is 489.
+Inputs with 490 authored rules fail with the dedicated rule-budget diagnostic before constructing a
 partial spec. If the candidate row set changes before `C7a-contract`, the derived boundary and golden
 vectors change with it; after `C7a-contract`, changing the boundary requires a new expansion version.
 Concrete effect references in authored rules also fail with a dedicated diagnostic because version
 1 does not carry effect graphs.
+
+Development snapshots before this contraction generated `requirement.fill/stroke` and treated the
+`requirement` target as applicable to ER. The model-owned ER target is now `entity`; persisted
+family-scoped ER rules must replace `family = "er", target = "requirement"` with
+`family = "er", target = "entity"`. The Requirement family keeps the `requirement` target. Because
+version 1 remains an unfrozen alpha candidate, this correction updates expansion version 1 in place
+and does not add a compatibility alias or a second lowering path.
 
 The executable contract table in `merman-render` must generate or verify this expansion. Bindings do
 not copy these rows or implement the collision algorithm. Before `C7a-candidate`, every generated

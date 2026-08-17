@@ -22,7 +22,7 @@ use super::{
 const MAX_JSON_DEPTH: usize = 32;
 const MAX_JSON_OBJECT_MEMBERS: usize = 64;
 const MAX_JSON_ARRAY_ITEMS: usize = 1_024;
-const MAX_JSON_TOTAL_ENTRIES: usize = 65_536;
+const MAX_TOTAL_COLLECTION_ITEMS: usize = 65_536;
 const MAX_JSON_STRING_BYTES: usize = 64 * 1_024;
 const PREFLIGHT_SENTINEL: &str = "theme definition JSON preflight failed";
 
@@ -118,7 +118,7 @@ fn admit_typed_definition(
     validate_definition_shape(definition)?;
     let mut usage = TypedUsage::default();
 
-    usage.charge_entries(definition.styles().len())?;
+    usage.charge_collection_items(definition.styles().len())?;
     for entry in definition.styles() {
         match entry {
             ThemeRuleSetWireV1::Rule {
@@ -182,29 +182,36 @@ fn admit_typed_definition(
         }
     }
 
-    let mut writer = CountingWriter::default();
-    serde_json::to_writer(&mut writer, definition).map_err(|error| {
-        ThemeDefinitionAdmissionError::TypedEncoding {
-            message: error.to_string(),
-        }
+    // This is transport admission, not canonical identity. Stream the contract-owned wire shape
+    // so an over-budget typed value stops at the first inadmissible byte without allocating a
+    // complete JSON buffer. Canonical JSON remains the authority for exported identity/digests.
+    let mut writer = BoundedCountingWriter::new(resources);
+    let encoded = serde_json::to_writer(&mut writer, definition);
+    if let Some(error) = writer.take_resource_error() {
+        return Err(error.into());
+    }
+    encoded.map_err(|error| ThemeDefinitionAdmissionError::TypedEncoding {
+        message: error.to_string(),
     })?;
-    resources.check_theme_encoded_bytes(writer.bytes)?;
     Ok(())
 }
 
 #[derive(Default)]
 struct TypedUsage {
-    total_entries: usize,
+    total_collection_items: usize,
 }
 
 impl TypedUsage {
-    fn charge_entries(&mut self, actual: usize) -> Result<(), ThemeDefinitionAdmissionError> {
-        self.total_entries = self.total_entries.saturating_add(actual);
-        if self.total_entries > MAX_JSON_TOTAL_ENTRIES {
+    fn charge_collection_items(
+        &mut self,
+        actual: usize,
+    ) -> Result<(), ThemeDefinitionAdmissionError> {
+        self.total_collection_items = self.total_collection_items.saturating_add(actual);
+        if self.total_collection_items > MAX_TOTAL_COLLECTION_ITEMS {
             return Err(ThemeDefinitionAdmissionError::CollectionLimit {
                 path: "/",
-                actual: self.total_entries,
-                max: MAX_JSON_TOTAL_ENTRIES,
+                actual: self.total_collection_items,
+                max: MAX_TOTAL_COLLECTION_ITEMS,
             });
         }
         Ok(())
@@ -246,7 +253,7 @@ impl TypedUsage {
         if actual > max {
             return Err(ThemeDefinitionAdmissionError::CollectionLimit { path, actual, max });
         }
-        self.charge_entries(actual)
+        self.charge_collection_items(actual)
     }
 
     fn style(
@@ -336,8 +343,11 @@ impl TypedUsage {
         &mut self,
         paint: &ThemeCanvasPaintWireV1,
     ) -> Result<(), ThemeDefinitionAdmissionError> {
-        let ThemeCanvasPaintWireV1::Structured(paint) = paint else {
-            return Ok(());
+        let paint = match paint {
+            ThemeCanvasPaintWireV1::Color(color) => {
+                return self.string("/styles/rule/style/paint/color", color);
+            }
+            ThemeCanvasPaintWireV1::Structured(paint) => paint,
         };
         let stops = match paint {
             ThemeCanvasPaintObjectWireV1::Transparent => None,
@@ -375,14 +385,42 @@ impl TypedUsage {
     }
 }
 
-#[derive(Default)]
-struct CountingWriter {
+struct BoundedCountingWriter<'a> {
+    resources: &'a ThemeResourcePolicy,
     bytes: usize,
+    resource_error: Option<ThemeResourceLimitExceeded>,
 }
 
-impl io::Write for CountingWriter {
+impl<'a> BoundedCountingWriter<'a> {
+    const fn new(resources: &'a ThemeResourcePolicy) -> Self {
+        Self {
+            resources,
+            bytes: 0,
+            resource_error: None,
+        }
+    }
+
+    fn take_resource_error(&mut self) -> Option<ThemeResourceLimitExceeded> {
+        self.resource_error.take()
+    }
+}
+
+impl io::Write for BoundedCountingWriter<'_> {
     fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        self.bytes = self.bytes.saturating_add(buffer.len());
+        if self.resource_error.is_some() {
+            return Err(io::Error::other(
+                "theme definition encoded-byte limit exceeded",
+            ));
+        }
+        let projected = self.bytes.saturating_add(buffer.len());
+        if let Err(mut error) = self.resources.check_theme_encoded_bytes(projected) {
+            error.actual = error.max.saturating_add(1);
+            self.resource_error = Some(error);
+            return Err(io::Error::other(
+                "theme definition encoded-byte limit exceeded",
+            ));
+        }
+        self.bytes = projected;
         Ok(buffer.len())
     }
 
@@ -439,7 +477,7 @@ enum PreflightFailure {
 }
 
 struct PreflightState {
-    total_entries: usize,
+    total_collection_items: usize,
     authored_rules: usize,
     materialized_palettes: usize,
     failure: Option<PreflightFailure>,
@@ -448,7 +486,7 @@ struct PreflightState {
 impl PreflightState {
     const fn new() -> Self {
         Self {
-            total_entries: 0,
+            total_collection_items: 0,
             authored_rules: 0,
             materialized_palettes: GENERATED_PALETTE_TARGETS.len(),
             failure: None,
@@ -483,10 +521,10 @@ impl PreflightState {
         Ok(())
     }
 
-    fn charge_entry<E: de::Error>(&mut self) -> Result<(), E> {
-        self.total_entries = self.total_entries.saturating_add(1);
-        if self.total_entries > MAX_JSON_TOTAL_ENTRIES {
-            return Err(self.fail_json("total collection entry limit exceeded"));
+    fn charge_collection_item<E: de::Error>(&mut self) -> Result<(), E> {
+        self.total_collection_items = self.total_collection_items.saturating_add(1);
+        if self.total_collection_items > MAX_TOTAL_COLLECTION_ITEMS {
+            return Err(self.fail_json("total collection item limit exceeded"));
         }
         Ok(())
     }
@@ -658,7 +696,7 @@ impl JsonValueVisitor<'_> {
                 marker.replaces_generated_palette = Some(
                     GENERATED_PALETTE_TARGETS
                         .iter()
-                        .any(|target| *target == value),
+                        .any(|target| target.id() == value),
                 );
             }
             JsonCapture::None => {}
@@ -740,7 +778,7 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
             else {
                 break;
             };
-            self.state.charge_entry()?;
+            self.state.charge_collection_item()?;
             item_count = next_count;
         }
         Ok(JsonMarker::default())
@@ -760,7 +798,6 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
         })? {
             member_count = member_count.saturating_add(1);
             self.state.check_object_members(member_count)?;
-            self.state.charge_entry()?;
             if !seen.insert(key.clone()) {
                 return Err(self.state.fail_json("duplicate object key"));
             }
@@ -882,5 +919,50 @@ impl<'de> Visitor<'de> for JsonKeyVisitor<'_> {
     {
         self.state.check_string(&value)?;
         Ok(Cow::Owned(value))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use merman_theme_contract::{ThemeGradientStopWireV1, ThemeTokensV1};
+
+    use super::*;
+
+    const DENSE_RULE_COUNT: usize = 328;
+
+    #[test]
+    fn json_and_typed_admission_count_only_dynamic_collection_items() {
+        // The arrays contain 21,320 items. Counting their surrounding object members as collection
+        // items would incorrectly push this valid definition beyond the shared 65,536-item budget.
+        let stops = (0..super::super::canvas::MAX_GRADIENT_STOPS)
+            .map(|index| ThemeGradientStopWireV1 {
+                offset: index as f32 / (super::super::canvas::MAX_GRADIENT_STOPS - 1) as f32,
+                color: "#123456".to_owned(),
+            })
+            .collect();
+        let rule = ThemeRuleSetWireV1::Rule {
+            target: "node".to_owned(),
+            family: None,
+            variant: None,
+            ordinal: None,
+            style: ThemeStylePatchWireV1 {
+                fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Structured(
+                    ThemeCanvasPaintObjectWireV1::LinearGradient {
+                        angle_degrees: 0.0,
+                        stops,
+                        repetition: None,
+                    },
+                )),
+                ..ThemeStylePatchWireV1::default()
+            },
+        };
+        let definition = ThemeDefinitionV1::new(ThemeTokensV1::default())
+            .with_styles(vec![rule; DENSE_RULE_COUNT]);
+        let json = serde_json::to_vec(&definition).expect("the typed wire should serialize");
+
+        preflight_json(&json)
+            .expect("JSON object members must not consume the dynamic-collection budget");
+        admit_typed_definition(&ThemeResourcePolicy::interactive(), &definition)
+            .expect("typed and JSON inputs must share collection-item accounting");
     }
 }

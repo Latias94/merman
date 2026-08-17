@@ -141,37 +141,25 @@ pub enum ThemeColorTokenV1 {
     SurfaceMuted,
     /// The primary text color.
     Text,
-    /// The secondary text color.
-    SubtleText,
     /// The border color.
     Border,
     /// The line color.
     Line,
     /// The accent color.
     Accent,
-    /// The error color.
-    Error,
-    /// The warning color.
-    Warning,
-    /// The success color.
-    Success,
 }
 
 impl ThemeColorTokenV1 {
     /// Every version 1 color token in contract order.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 8] = [
         Self::Canvas,
         Self::Surface,
         Self::SurfaceAlt,
         Self::SurfaceMuted,
         Self::Text,
-        Self::SubtleText,
         Self::Border,
         Self::Line,
         Self::Accent,
-        Self::Error,
-        Self::Warning,
-        Self::Success,
     ];
 }
 
@@ -217,12 +205,6 @@ pub struct ThemeTokensV1 {
         deserialize_with = "deserialize_optional_non_null",
         skip_serializing_if = "Option::is_none"
     )]
-    subtle_text: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
     border: Option<String>,
     #[serde(
         default,
@@ -236,24 +218,6 @@ pub struct ThemeTokensV1 {
         skip_serializing_if = "Option::is_none"
     )]
     accent: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    error: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    warning: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    success: Option<String>,
     #[serde(
         default,
         deserialize_with = "deserialize_optional_non_null",
@@ -277,13 +241,9 @@ impl ThemeTokensV1 {
             ThemeColorTokenV1::SurfaceAlt => &mut self.surface_alt,
             ThemeColorTokenV1::SurfaceMuted => &mut self.surface_muted,
             ThemeColorTokenV1::Text => &mut self.text,
-            ThemeColorTokenV1::SubtleText => &mut self.subtle_text,
             ThemeColorTokenV1::Border => &mut self.border,
             ThemeColorTokenV1::Line => &mut self.line,
             ThemeColorTokenV1::Accent => &mut self.accent,
-            ThemeColorTokenV1::Error => &mut self.error,
-            ThemeColorTokenV1::Warning => &mut self.warning,
-            ThemeColorTokenV1::Success => &mut self.success,
         };
         *slot = Some(value.into());
         self
@@ -314,11 +274,6 @@ impl ThemeTokensV1 {
         self.with_color(ThemeColorTokenV1::Text, value)
     }
 
-    /// Sets the secondary text color.
-    pub fn with_subtle_text(self, value: impl Into<String>) -> Self {
-        self.with_color(ThemeColorTokenV1::SubtleText, value)
-    }
-
     /// Sets the border color.
     pub fn with_border(self, value: impl Into<String>) -> Self {
         self.with_color(ThemeColorTokenV1::Border, value)
@@ -334,21 +289,6 @@ impl ThemeTokensV1 {
         self.with_color(ThemeColorTokenV1::Accent, value)
     }
 
-    /// Sets the error color.
-    pub fn with_error(self, value: impl Into<String>) -> Self {
-        self.with_color(ThemeColorTokenV1::Error, value)
-    }
-
-    /// Sets the warning color.
-    pub fn with_warning(self, value: impl Into<String>) -> Self {
-        self.with_color(ThemeColorTokenV1::Warning, value)
-    }
-
-    /// Sets the success color.
-    pub fn with_success(self, value: impl Into<String>) -> Self {
-        self.with_color(ThemeColorTokenV1::Success, value)
-    }
-
     /// Returns one authored color token, or `None` when it was omitted.
     pub fn color(&self, token: ThemeColorTokenV1) -> Option<&str> {
         match token {
@@ -357,13 +297,9 @@ impl ThemeTokensV1 {
             ThemeColorTokenV1::SurfaceAlt => self.surface_alt.as_deref(),
             ThemeColorTokenV1::SurfaceMuted => self.surface_muted.as_deref(),
             ThemeColorTokenV1::Text => self.text.as_deref(),
-            ThemeColorTokenV1::SubtleText => self.subtle_text.as_deref(),
             ThemeColorTokenV1::Border => self.border.as_deref(),
             ThemeColorTokenV1::Line => self.line.as_deref(),
             ThemeColorTokenV1::Accent => self.accent.as_deref(),
-            ThemeColorTokenV1::Error => self.error.as_deref(),
-            ThemeColorTokenV1::Warning => self.warning.as_deref(),
-            ThemeColorTokenV1::Success => self.success.as_deref(),
         }
     }
 

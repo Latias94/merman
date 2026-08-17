@@ -9,16 +9,17 @@ use merman_theme_contract::{
 };
 use sha2::{Digest as _, Sha256};
 
-use super::{FontStack, LineHeight, ThemeColorValue, ThemeTextStyle};
+use super::{FontStack, LineHeight, ThemeColorValue, ThemeTarget, ThemeTextStyle, ThemeVariant};
 
 const DEFAULT_SERIES: [&str; 4] = ["#2563eb", "#16a34a", "#d97706", "#9333ea"];
 const DEFAULT_FONT_STACK: [&str; 4] = ["Inter", "ui-sans-serif", "system-ui", "sans-serif"];
 const DEFAULT_FONT_SIZE_PX: f32 = 16.0;
 const DEFAULT_FONT_WEIGHT: u16 = 400;
 const MATERIALIZATION_DIGEST_DOMAIN: &[u8] = b"merman.theme-materialization.v1\0";
-pub(crate) const GENERATED_PALETTE_TARGETS: [&str; 2] = ["node", "pie-slice"];
+pub(crate) const GENERATED_PALETTE_TARGETS: [ThemeTarget; 2] =
+    [ThemeTarget::Node, ThemeTarget::PieSlice];
 
-const COLOR_DEFAULTS: [(ThemeColorTokenV1, &str, &str); 12] = [
+const COLOR_DEFAULTS: [(ThemeColorTokenV1, &str, &str); 8] = [
     (ThemeColorTokenV1::Canvas, "#ffffff", "/tokens/canvas"),
     (ThemeColorTokenV1::Surface, "#f8fafc", "/tokens/surface"),
     (
@@ -32,30 +33,22 @@ const COLOR_DEFAULTS: [(ThemeColorTokenV1, &str, &str); 12] = [
         "/tokens/surface_muted",
     ),
     (ThemeColorTokenV1::Text, "#0f172a", "/tokens/text"),
-    (
-        ThemeColorTokenV1::SubtleText,
-        "#475569",
-        "/tokens/subtle_text",
-    ),
     (ThemeColorTokenV1::Border, "#94a3b8", "/tokens/border"),
     (ThemeColorTokenV1::Line, "#64748b", "/tokens/line"),
     (ThemeColorTokenV1::Accent, "#2563eb", "/tokens/accent"),
-    (ThemeColorTokenV1::Error, "#dc2626", "/tokens/error"),
-    (ThemeColorTokenV1::Warning, "#d97706", "/tokens/warning"),
-    (ThemeColorTokenV1::Success, "#059669", "/tokens/success"),
 ];
 
 #[derive(Debug, Clone, Copy)]
 struct GeneratedRule {
-    target: &'static str,
-    variant: Option<&'static str>,
+    target: ThemeTarget,
+    variant: Option<ThemeVariant>,
     fill: Option<ThemeColorTokenV1>,
     stroke: Option<ThemeColorTokenV1>,
 }
 
 const fn generated_rule(
-    target: &'static str,
-    variant: Option<&'static str>,
+    target: ThemeTarget,
+    variant: Option<ThemeVariant>,
     fill: Option<ThemeColorTokenV1>,
     stroke: Option<ThemeColorTokenV1>,
 ) -> GeneratedRule {
@@ -67,186 +60,134 @@ const fn generated_rule(
     }
 }
 
-const GENERATED_RULES: [GeneratedRule; 40] = [
-    generated_rule("text", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule("title", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule("node", None, None, Some(ThemeColorTokenV1::Border)),
-    generated_rule("node-label", None, Some(ThemeColorTokenV1::Text), None),
+const GENERATED_RULES: [GeneratedRule; 23] = [
+    generated_rule(ThemeTarget::Text, None, Some(ThemeColorTokenV1::Text), None),
     generated_rule(
-        "edge",
-        None,
-        Some(ThemeColorTokenV1::Line),
-        Some(ThemeColorTokenV1::Line),
-    ),
-    generated_rule("edge-label", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule(
-        "edge-label-background",
-        None,
-        Some(ThemeColorTokenV1::Canvas),
-        None,
-    ),
-    generated_rule(
-        "cluster",
-        None,
-        Some(ThemeColorTokenV1::SurfaceMuted),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule(
-        "cluster-label",
-        None,
-        Some(ThemeColorTokenV1::SubtleText),
-        None,
-    ),
-    generated_rule(
-        "actor",
-        None,
-        Some(ThemeColorTokenV1::Surface),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule("actor-label", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule(
-        "lifeline",
-        None,
-        Some(ThemeColorTokenV1::Line),
-        Some(ThemeColorTokenV1::Line),
-    ),
-    generated_rule(
-        "message",
-        None,
-        Some(ThemeColorTokenV1::Line),
-        Some(ThemeColorTokenV1::Line),
-    ),
-    generated_rule("message-label", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule(
-        "loop",
-        None,
-        Some(ThemeColorTokenV1::SurfaceAlt),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule("loop-label", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule(
-        "state",
-        None,
-        Some(ThemeColorTokenV1::Surface),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule("state-label", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule(
-        "transition",
-        None,
-        Some(ThemeColorTokenV1::Line),
-        Some(ThemeColorTokenV1::Line),
-    ),
-    generated_rule(
-        "transition-marker",
-        None,
-        Some(ThemeColorTokenV1::Line),
-        Some(ThemeColorTokenV1::Line),
-    ),
-    generated_rule(
-        "transition-label",
+        ThemeTarget::Title,
         None,
         Some(ThemeColorTokenV1::Text),
         None,
     ),
     generated_rule(
-        "transition-label-background",
+        ThemeTarget::Node,
         None,
-        Some(ThemeColorTokenV1::Canvas),
         None,
-    ),
-    generated_rule(
-        "composite",
-        None,
-        Some(ThemeColorTokenV1::Canvas),
         Some(ThemeColorTokenV1::Border),
     ),
+    generated_rule(ThemeTarget::Edge, None, None, Some(ThemeColorTokenV1::Line)),
     generated_rule(
-        "composite-header",
+        ThemeTarget::Cluster,
         None,
-        Some(ThemeColorTokenV1::SurfaceAlt),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule("composite-label", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule(
-        "special-state",
-        Some("special"),
-        Some(ThemeColorTokenV1::Accent),
-        Some(ThemeColorTokenV1::Accent),
-    ),
-    generated_rule(
-        "special-state-inner",
-        Some("end"),
-        Some(ThemeColorTokenV1::Canvas),
-        Some(ThemeColorTokenV1::Canvas),
-    ),
-    generated_rule(
-        "marker",
-        None,
-        Some(ThemeColorTokenV1::Accent),
-        Some(ThemeColorTokenV1::Accent),
-    ),
-    generated_rule(
-        "note",
-        None,
-        Some(ThemeColorTokenV1::SurfaceAlt),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule("note-label", None, Some(ThemeColorTokenV1::Text), None),
-    generated_rule(
-        "activation",
-        None,
-        Some(ThemeColorTokenV1::SurfaceAlt),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule(
-        "task",
-        None,
-        Some(ThemeColorTokenV1::Surface),
-        Some(ThemeColorTokenV1::Border),
-    ),
-    generated_rule(
-        "task",
-        Some("active"),
         Some(ThemeColorTokenV1::SurfaceMuted),
-        Some(ThemeColorTokenV1::Line),
+        Some(ThemeColorTokenV1::Border),
     ),
     generated_rule(
-        "task",
-        Some("error"),
-        Some(ThemeColorTokenV1::SurfaceAlt),
-        Some(ThemeColorTokenV1::Error),
-    ),
-    generated_rule(
-        "task",
-        Some("warning"),
-        Some(ThemeColorTokenV1::SurfaceAlt),
-        Some(ThemeColorTokenV1::Warning),
-    ),
-    generated_rule(
-        "task",
-        Some("success"),
-        Some(ThemeColorTokenV1::SurfaceAlt),
-        Some(ThemeColorTokenV1::Success),
-    ),
-    generated_rule(
-        "requirement",
+        ThemeTarget::Actor,
         None,
         Some(ThemeColorTokenV1::Surface),
         Some(ThemeColorTokenV1::Border),
     ),
     generated_rule(
-        "relation",
+        ThemeTarget::Lifeline,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Line),
+    ),
+    generated_rule(
+        ThemeTarget::Message,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Line),
+    ),
+    generated_rule(
+        ThemeTarget::State,
+        None,
+        Some(ThemeColorTokenV1::Surface),
+        Some(ThemeColorTokenV1::Border),
+    ),
+    generated_rule(
+        ThemeTarget::StateLabel,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+    ),
+    generated_rule(
+        ThemeTarget::Transition,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Line),
+    ),
+    generated_rule(
+        ThemeTarget::TransitionMarker,
         None,
         Some(ThemeColorTokenV1::Line),
         Some(ThemeColorTokenV1::Line),
     ),
-    generated_rule("table", Some("odd"), Some(ThemeColorTokenV1::Surface), None),
     generated_rule(
-        "table",
-        Some("even"),
-        Some(ThemeColorTokenV1::SurfaceAlt),
+        ThemeTarget::TransitionLabel,
         None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+    ),
+    generated_rule(
+        ThemeTarget::TransitionLabelBackground,
+        None,
+        Some(ThemeColorTokenV1::Canvas),
+        None,
+    ),
+    generated_rule(
+        ThemeTarget::Composite,
+        None,
+        Some(ThemeColorTokenV1::Canvas),
+        Some(ThemeColorTokenV1::Border),
+    ),
+    generated_rule(
+        ThemeTarget::CompositeHeader,
+        None,
+        Some(ThemeColorTokenV1::SurfaceAlt),
+        Some(ThemeColorTokenV1::Border),
+    ),
+    generated_rule(
+        ThemeTarget::CompositeLabel,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+    ),
+    generated_rule(
+        ThemeTarget::SpecialState,
+        Some(ThemeVariant::Special),
+        Some(ThemeColorTokenV1::Accent),
+        Some(ThemeColorTokenV1::Accent),
+    ),
+    generated_rule(
+        ThemeTarget::SpecialStateInner,
+        Some(ThemeVariant::End),
+        Some(ThemeColorTokenV1::Canvas),
+        Some(ThemeColorTokenV1::Canvas),
+    ),
+    generated_rule(
+        ThemeTarget::Note,
+        None,
+        Some(ThemeColorTokenV1::SurfaceAlt),
+        Some(ThemeColorTokenV1::Border),
+    ),
+    generated_rule(
+        ThemeTarget::NoteLabel,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+    ),
+    generated_rule(
+        ThemeTarget::Activation,
+        None,
+        Some(ThemeColorTokenV1::SurfaceAlt),
+        Some(ThemeColorTokenV1::Border),
+    ),
+    generated_rule(
+        ThemeTarget::Entity,
+        None,
+        Some(ThemeColorTokenV1::Surface),
+        Some(ThemeColorTokenV1::Border),
     ),
 ];
 pub(crate) const MAX_AUTHORED_RULES: usize =
@@ -283,7 +224,7 @@ impl ThemeMaterializer {
 
         let mut palettes =
             GENERATED_PALETTE_TARGETS.map(|target| ThemeRuleSetWireV1::OrdinalPalette {
-                target: target.to_owned(),
+                target: target.id().to_owned(),
                 colors: tokens.series.clone(),
             });
         let mut additional_palettes = Vec::new();
@@ -293,7 +234,7 @@ impl ThemeMaterializer {
             };
             match GENERATED_PALETTE_TARGETS
                 .iter()
-                .position(|generated| *generated == target.as_str())
+                .position(|generated| generated.id() == target)
             {
                 Some(index) => palettes[index] = entry.clone(),
                 None => additional_palettes.push(ThemeRuleSetWireV1::OrdinalPalette {
@@ -514,7 +455,10 @@ fn validate_authored_styles(
                         duplicate_authored_index: authored_index,
                     });
                 }
-                if !GENERATED_PALETTE_TARGETS.contains(&target.as_str()) {
+                if !GENERATED_PALETTE_TARGETS
+                    .iter()
+                    .any(|generated| generated.id() == target)
+                {
                     materialized_palette_count = materialized_palette_count.saturating_add(1);
                     if materialized_palette_count > super::semantic::MAX_THEME_ORDINAL_PALETTES {
                         return Err(ThemeMaterializationError::OrdinalPaletteBudgetExceeded {
@@ -596,7 +540,7 @@ fn font_stack_shape_is_valid(font_stack: &[String]) -> bool {
 }
 
 struct ResolvedTokensV1 {
-    colors: [String; 12],
+    colors: [String; ThemeColorTokenV1::ALL.len()],
     series: Vec<String>,
     typography: ThemeTextStyleWireV1,
 }
@@ -611,7 +555,7 @@ impl ResolvedTokensV1 {
                 path,
             )?);
         }
-        let colors: [String; 12] = colors
+        let colors: [String; ThemeColorTokenV1::ALL.len()] = colors
             .try_into()
             .expect("the version one color table has a fixed width");
 
@@ -646,24 +590,11 @@ impl ResolvedTokensV1 {
     }
 
     fn color(&self, token: ThemeColorTokenV1) -> &str {
-        &self.colors[color_index(token)]
-    }
-}
-
-const fn color_index(token: ThemeColorTokenV1) -> usize {
-    match token {
-        ThemeColorTokenV1::Canvas => 0,
-        ThemeColorTokenV1::Surface => 1,
-        ThemeColorTokenV1::SurfaceAlt => 2,
-        ThemeColorTokenV1::SurfaceMuted => 3,
-        ThemeColorTokenV1::Text => 4,
-        ThemeColorTokenV1::SubtleText => 5,
-        ThemeColorTokenV1::Border => 6,
-        ThemeColorTokenV1::Line => 7,
-        ThemeColorTokenV1::Accent => 8,
-        ThemeColorTokenV1::Error => 9,
-        ThemeColorTokenV1::Warning => 10,
-        ThemeColorTokenV1::Success => 11,
+        let index = COLOR_DEFAULTS
+            .iter()
+            .position(|(candidate, _, _)| *candidate == token)
+            .expect("every version one color token has a default");
+        &self.colors[index]
     }
 }
 
@@ -744,9 +675,9 @@ fn materialize_generated_rule(row: GeneratedRule, tokens: &ResolvedTokensV1) -> 
         });
     }
     ThemeRuleSetWireV1::Rule {
-        target: row.target.to_owned(),
+        target: row.target.id().to_owned(),
         family: None,
-        variant: row.variant.map(str::to_owned),
+        variant: row.variant.map(ThemeVariant::id).map(str::to_owned),
         ordinal: None,
         style,
     }
@@ -754,4 +685,67 @@ fn materialize_generated_rule(row: GeneratedRule, tokens: &ResolvedTokensV1) -> 
 
 fn solid_color(color: &str) -> ThemeCanvasPaintWireV1 {
     ThemeCanvasPaintWireV1::Color(color.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::DiagramFamilyId;
+
+    use super::super::family_mechanism_matrix::{
+        FamilyThemeDisposition, FamilyThemePaintKind, FamilyThemeRuleFacet,
+        FamilyThemeSelectorShape, classify_rule_facet, compile_ordinal_palette_route,
+    };
+    use super::*;
+
+    #[test]
+    fn generated_expansion_rows_have_direct_consumers() {
+        for row in GENERATED_RULES {
+            let selector = FamilyThemeSelectorShape::Static {
+                variant: row.variant,
+            };
+            let direct_family = DiagramFamilyId::all().iter().copied().find(|family| {
+                [
+                    FamilyThemePaintKind::Solid,
+                    FamilyThemePaintKind::Transparent,
+                ]
+                .into_iter()
+                .all(|paint_kind| {
+                    let fill_is_direct = row.fill.is_none_or(|_| {
+                        classify_rule_facet(
+                            *family,
+                            row.target,
+                            selector,
+                            FamilyThemeRuleFacet::Fill(paint_kind),
+                        ) == FamilyThemeDisposition::TypedAdapter
+                    });
+                    let stroke_is_direct = row.stroke.is_none_or(|_| {
+                        classify_rule_facet(
+                            *family,
+                            row.target,
+                            selector,
+                            FamilyThemeRuleFacet::Stroke(paint_kind),
+                        ) == FamilyThemeDisposition::TypedAdapter
+                    });
+                    fill_is_direct && stroke_is_direct
+                })
+            });
+            assert!(
+                direct_family.is_some(),
+                "{} generated rule lacks one family that directly consumes every emitted facet",
+                row.target.id(),
+            );
+        }
+
+        for target in GENERATED_PALETTE_TARGETS {
+            let direct_family = DiagramFamilyId::all().iter().copied().find(|family| {
+                compile_ordinal_palette_route(*family, target).disposition()
+                    == FamilyThemeDisposition::TypedAdapter
+            });
+            assert!(
+                direct_family.is_some(),
+                "{} palette lacks a direct consumer",
+                target.id(),
+            );
+        }
+    }
 }

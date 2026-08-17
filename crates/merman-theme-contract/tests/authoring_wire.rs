@@ -358,13 +358,9 @@ fn named_token_setters_are_the_same_shareable_wire_value_as_generic_construction
             .with_surface_alt("#1f2937")
             .with_surface_muted("#334155")
             .with_text("#e5e7eb")
-            .with_subtle_text("#cbd5e1")
             .with_border("#475569")
             .with_line("#94a3b8")
-            .with_accent("#60a5fa")
-            .with_error("#ef4444")
-            .with_warning("#f59e0b")
-            .with_success("#34d399"),
+            .with_accent("#60a5fa"),
     );
     let generic = ThemeDefinitionV1::new(
         ThemeTokensV1::default()
@@ -373,13 +369,9 @@ fn named_token_setters_are_the_same_shareable_wire_value_as_generic_construction
             .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
             .with_color(ThemeColorTokenV1::SurfaceMuted, "#334155")
             .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
-            .with_color(ThemeColorTokenV1::SubtleText, "#cbd5e1")
             .with_color(ThemeColorTokenV1::Border, "#475569")
             .with_color(ThemeColorTokenV1::Line, "#94a3b8")
-            .with_color(ThemeColorTokenV1::Accent, "#60a5fa")
-            .with_color(ThemeColorTokenV1::Error, "#ef4444")
-            .with_color(ThemeColorTokenV1::Warning, "#f59e0b")
-            .with_color(ThemeColorTokenV1::Success, "#34d399"),
+            .with_color(ThemeColorTokenV1::Accent, "#60a5fa"),
     );
 
     assert_eq!(

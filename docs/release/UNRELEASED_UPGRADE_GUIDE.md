@@ -68,6 +68,24 @@ by the one-shot call.
 
 ## Rust rendering migration
 
+### Theme authoring candidate corrections
+
+The unreleased `ThemeDefinitionV1` contract is still pre-freeze. Development snapshots that used
+`family = "er", target = "requirement"` must use `family = "er", target = "entity"`; the
+`requirement` target is now reserved for Requirement diagrams. There is no compatibility alias,
+because keeping both target meanings would preserve a second semantic authority.
+
+The candidate token object also removes `subtle_text`, `error`, `warning`, and `success`. After
+row-coverage pruning those fields had no generated direct consumer, so accepting them would produce
+a shareable definition whose materialized appearance did not change. Use explicit authored rules
+for those colors until a later expansion version introduces a proven semantic role.
+
+Expansion version 1 now emits only rows with a direct family consumer and terminal witness: 23
+generated rules followed by the `node` and `pie-slice` ordinal palettes. The derived authored-rule
+budget is therefore 489, and the 490th authored rule is rejected before materialization. Definitions
+persisted from a pre-freeze development snapshot should be re-materialized and must not compare old
+materialization digests or generated rule indices as stable identities.
+
 `Renderer` is the only source-to-output operation owner. Target-local service configuration stays
 inside `SvgRequest` or `AsciiRequest`, while runtime policy, input admission, cancellation, and the
 monotonic deadline belong to the renderer/request operation. Resource exhaustion and cancellation

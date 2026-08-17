@@ -117,15 +117,10 @@ fn rust_facade_preserves_materialization_and_compilation_error_sources() {
 #[test]
 fn json_authoring_rejects_the_first_rule_beyond_the_v1_budget_before_typed_decode() {
     let rule = r##"{"kind":"rule","target":"node","style":{"fill":"#123456"}}"##;
-    let exact_styles = std::iter::repeat_n(rule, 472).collect::<Vec<_>>().join(",");
-    let exact = format!(
-        r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{exact_styles}]}}"#
-    );
-    compile_theme_definition_json(&DiagramThemeCompiler::new(), exact.as_bytes())
-        .expect("the exact authored-rule budget should compile");
+    let admitted_styles = std::iter::repeat_n(rule, 489).collect::<Vec<_>>().join(",");
 
     let oversized = format!(
-        r##"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{exact_styles},{{"kind":"rule","target":{{"typed":"decode must not reach this value"}},"style":{{"fill":"#123456"}}}}]}}"##
+        r##"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{admitted_styles},{{"kind":"rule","target":{{"typed":"decode must not reach this value"}},"style":{{"fill":"#123456"}}}}]}}"##
     );
     let error = compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized.as_bytes())
         .expect_err("the first rule beyond the V1 budget must fail during streaming admission");
@@ -133,8 +128,8 @@ fn json_authoring_rejects_the_first_rule_beyond_the_v1_budget_before_typed_decod
         error,
         ThemeDefinitionCompileError::Materialization(
             ThemeMaterializationError::RuleBudgetExceeded {
-                actual: 473,
-                max: 472
+                actual: 490,
+                max: 489
             }
         )
     ));
@@ -200,6 +195,26 @@ fn json_authoring_collection_limits_accept_the_exact_boundary_and_reject_the_nex
 }
 
 #[test]
+fn typed_compact_paint_obeys_the_decoded_string_ceiling() {
+    let definition = ThemeDefinitionBuilderV1::new(ThemeTokensV1::default())
+        .with_rule(
+            ThemeRuleBuilderV1::new(ThemeTarget::Node).with_fill_color("x".repeat(64 * 1024 + 1)),
+        )
+        .build();
+    let error = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)
+        .expect_err("compact paint strings must use the shared decoded-string ceiling");
+
+    assert!(matches!(
+        error,
+        ThemeDefinitionCompileError::Admission(ThemeDefinitionAdmissionError::CollectionLimit {
+            path: "/styles/rule/style/paint/color",
+            actual: 65_537,
+            max: 65_536,
+        })
+    ));
+}
+
+#[test]
 fn typed_authoring_uses_the_caller_owned_encoded_input_policy_before_expansion() {
     let policy = ThemeResourcePolicy::default()
         .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
@@ -215,6 +230,6 @@ fn typed_authoring_uses_the_caller_owned_encoded_input_policy_before_expansion()
         error,
         ThemeDefinitionCompileError::Admission(ThemeDefinitionAdmissionError::ResourceLimit(
             ref error
-        )) if error.limit == "max_theme_encoded_bytes" && error.max == 1
+        )) if error.limit == "max_theme_encoded_bytes" && error.actual == 2 && error.max == 1
     ));
 }

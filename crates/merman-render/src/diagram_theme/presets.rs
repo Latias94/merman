@@ -72,13 +72,9 @@ impl ThemePreset {
             .with_color(ThemeColorTokenV1::SurfaceAlt, palette.surface_alt)
             .with_color(ThemeColorTokenV1::SurfaceMuted, palette.surface_muted)
             .with_color(ThemeColorTokenV1::Text, palette.text)
-            .with_color(ThemeColorTokenV1::SubtleText, palette.subtle_text)
             .with_color(ThemeColorTokenV1::Border, palette.border)
             .with_color(ThemeColorTokenV1::Line, palette.line)
             .with_color(ThemeColorTokenV1::Accent, palette.accent)
-            .with_color(ThemeColorTokenV1::Error, palette.error)
-            .with_color(ThemeColorTokenV1::Warning, palette.warning)
-            .with_color(ThemeColorTokenV1::Success, palette.success)
             .with_series(
                 palette
                     .series
@@ -270,9 +266,6 @@ struct PresetPalette {
     actor_text: &'static str,
     activation_background: &'static str,
     activation_border: &'static str,
-    error: &'static str,
-    warning: &'static str,
-    success: &'static str,
     series: &'static [&'static str],
 }
 
@@ -299,9 +292,6 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
             actor_text: "#0f172a",
             activation_background: "#e2e8f0",
             activation_border: "#94a3b8",
-            error: "#dc2626",
-            warning: "#d97706",
-            success: "#059669",
             series: &[
                 "#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#a16207",
                 "#65a30d",
@@ -328,9 +318,6 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
             actor_text: "#e5e7eb",
             activation_background: "#334155",
             activation_border: "#64748b",
-            error: "#f87171",
-            warning: "#fbbf24",
-            success: "#34d399",
             series: &[
                 "#60a5fa", "#34d399", "#f59e0b", "#c084fc", "#22d3ee", "#fb7185", "#facc15",
                 "#a3e635",
@@ -357,9 +344,6 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
             actor_text: "#abb2bf",
             activation_background: "#3e4451",
             activation_border: "#5c6370",
-            error: "#e06c75",
-            warning: "#e5c07b",
-            success: "#98c379",
             series: &[
                 "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#e06c75", "#d19a66",
                 "#be5046",
@@ -386,9 +370,6 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
             actor_text: "#3c3836",
             activation_background: "#d5c4a1",
             activation_border: "#bdae93",
-            error: "#cc241d",
-            warning: "#d79921",
-            success: "#98971a",
             series: &[
                 "#458588", "#98971a", "#d79921", "#b16286", "#689d6a", "#cc241d", "#d65d0e",
                 "#427b58",
@@ -415,9 +396,6 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
             actor_text: "#ebdbb2",
             activation_background: "#504945",
             activation_border: "#7c6f64",
-            error: "#fb4934",
-            warning: "#fabd2f",
-            success: "#b8bb26",
             series: &[
                 "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb4934", "#fe8019",
                 "#689d6a",
@@ -444,9 +422,6 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
             actor_text: "#5c6166",
             activation_background: "#e6e8eb",
             activation_border: "#8a9199",
-            error: "#f07171",
-            warning: "#ffaa33",
-            success: "#86b300",
             series: &[
                 "#55b4d4", "#86b300", "#ffaa33", "#a37acc", "#4cbf99", "#f07171", "#f2ae49",
                 "#399ee6",
@@ -473,9 +448,6 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
             actor_text: "#bfbdb6",
             activation_background: "#343b48",
             activation_border: "#4f5866",
-            error: "#f07178",
-            warning: "#ffb454",
-            success: "#aad94c",
             series: &[
                 "#59c2ff", "#aad94c", "#ffb454", "#d2a6ff", "#95e6cb", "#f07178", "#ff8f40",
                 "#e6b673",
