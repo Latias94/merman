@@ -16,7 +16,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 /// Timeline event opacity and evidence resolved in the exact terminal draw order.
 #[derive(Debug)]
 pub(crate) struct TimelineEventTheme {
-    event_opacities: Vec<Option<f64>>,
+    event_opacity_tokens: Vec<Option<Box<str>>>,
     evidence: FamilyThemeEvidence,
     pending_opacity_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<()>,
@@ -33,7 +33,7 @@ impl TimelineEventTheme {
         };
         let event_count = timeline_event_count(layout);
 
-        let mut event_opacities = Vec::with_capacity(event_count);
+        let mut event_opacity_tokens = Vec::with_capacity(event_count);
         let mut winner_properties = BTreeSet::new();
         let has_ordinal_event_rules = theme.family_rules().any(|(_, rule)| {
             rule.target() == ThemeTarget::TimelineEvent && rule.ordinal().is_some()
@@ -51,7 +51,7 @@ impl TimelineEventTheme {
                     .into_iter()
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
-            event_opacities.resize(event_count, typed_opacity(theme, &style));
+            event_opacity_tokens.resize(event_count, typed_opacity_token(theme, &style));
         } else {
             for event_ordinal in 1..=event_count {
                 let style = theme.style_with_work_meter(
@@ -66,7 +66,7 @@ impl TimelineEventTheme {
                         .into_iter()
                         .map(|(property, origin)| (origin.rule_index(), property)),
                 );
-                event_opacities.push(typed_opacity(theme, &style));
+                event_opacity_tokens.push(typed_opacity_token(theme, &style));
             }
         }
 
@@ -162,7 +162,7 @@ impl TimelineEventTheme {
         }
 
         Ok(Self {
-            event_opacities,
+            event_opacity_tokens,
             evidence,
             pending_opacity_key,
             terminal_receipt: OnceLock::new(),
@@ -171,26 +171,28 @@ impl TimelineEventTheme {
 
     pub(crate) fn baseline() -> Self {
         Self {
-            event_opacities: Vec::new(),
+            event_opacity_tokens: Vec::new(),
             evidence: FamilyThemeEvidence::default(),
             pending_opacity_key: None,
             terminal_receipt: OnceLock::new(),
         }
     }
 
-    pub(crate) fn opacity_for_event(&self, event_index: usize) -> Option<f64> {
-        self.event_opacities.get(event_index).copied().flatten()
+    pub(crate) fn opacity_token_for_event(&self, event_index: usize) -> Option<&str> {
+        self.event_opacity_tokens
+            .get(event_index)
+            .and_then(|token| token.as_deref())
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<TimelineEventOpacityThemeReceipt> {
         self.pending_opacity_key
             .as_ref()
-            .map(|_| TimelineEventOpacityThemeReceipt::new(self.event_opacities.len()))
+            .map(|_| TimelineEventOpacityThemeReceipt::new(self.event_opacity_tokens.len()))
     }
 
     pub(crate) fn record_terminal(&self, receipt: TimelineEventOpacityThemeReceipt) -> bool {
         self.pending_opacity_key.is_some()
-            && receipt.proves(self.event_opacities.len())
+            && receipt.proves(self.event_opacity_tokens.len())
             && self.terminal_receipt.set(()).is_ok()
     }
 
@@ -215,10 +217,10 @@ fn timeline_event_count(layout: &TimelineDiagramLayout) -> usize {
         .sum()
 }
 
-fn typed_opacity(
+fn typed_opacity_token(
     theme: &ResolvedDiagramTheme,
     style: &crate::diagram_theme::ResolvedThemeStyle,
-) -> Option<f64> {
+) -> Option<Box<str>> {
     let origin = style.opacity_resolution().winner()?;
     if theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::Opacity)
         != Some(FamilyThemeDisposition::TypedAdapter)
@@ -226,7 +228,7 @@ fn typed_opacity(
         return None;
     }
     match style.opacity_resolution().specified() {
-        Specified::Value(value) => Some(f64::from(*value)),
+        Specified::Value(value) => Some(value.to_string().into_boxed_str()),
         Specified::Unspecified | Specified::Clear => None,
     }
 }
@@ -248,13 +250,18 @@ impl TimelineEventOpacityThemeReceipt {
         }
     }
 
-    pub(crate) fn record_checkpointed_event(&mut self, event_index: usize, attributes_match: bool) {
+    pub(crate) fn record_checkpointed_event(
+        &mut self,
+        event_index: usize,
+        emitted_opacity_token: Option<&str>,
+        expected_opacity_token: Option<&str>,
+    ) {
         if event_index != self.next_event_index || event_index >= self.expected_event_count {
             self.attributes_match = false;
             return;
         }
         self.next_event_index = self.next_event_index.saturating_add(1);
-        self.attributes_match &= attributes_match;
+        self.attributes_match &= emitted_opacity_token == expected_opacity_token;
     }
 
     fn proves(&self, expected_event_count: usize) -> bool {
@@ -279,25 +286,25 @@ mod tests {
     #[test]
     fn event_opacity_receipt_requires_each_terminal_event_once() {
         let mut complete = TimelineEventOpacityThemeReceipt::new(1);
-        complete.record_checkpointed_event(0, true);
+        complete.record_checkpointed_event(0, Some("0.5"), Some("0.5"));
         assert!(complete.proves(1));
 
         let mut incomplete = TimelineEventOpacityThemeReceipt::new(2);
-        incomplete.record_checkpointed_event(0, true);
+        incomplete.record_checkpointed_event(0, Some("0.5"), Some("0.5"));
         assert!(!incomplete.proves(2));
 
         let mut duplicate = TimelineEventOpacityThemeReceipt::new(1);
-        duplicate.record_checkpointed_event(0, true);
-        duplicate.record_checkpointed_event(0, true);
+        duplicate.record_checkpointed_event(0, Some("0.5"), Some("0.5"));
+        duplicate.record_checkpointed_event(0, Some("0.5"), Some("0.5"));
         assert!(!duplicate.proves(1));
 
         let mut out_of_order = TimelineEventOpacityThemeReceipt::new(2);
-        out_of_order.record_checkpointed_event(1, true);
-        out_of_order.record_checkpointed_event(0, true);
+        out_of_order.record_checkpointed_event(1, Some("0.5"), Some("0.5"));
+        out_of_order.record_checkpointed_event(0, Some("0.5"), Some("0.5"));
         assert!(!out_of_order.proves(2));
 
         let mut mismatch = TimelineEventOpacityThemeReceipt::new(1);
-        mismatch.record_checkpointed_event(0, false);
+        mismatch.record_checkpointed_event(0, Some("1"), Some("0.9999995"));
         assert!(!mismatch.proves(1));
     }
 }

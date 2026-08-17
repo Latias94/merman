@@ -21,11 +21,17 @@ use super::config::DEFAULT_LINE_THICKNESS;
 /// Final Tree View edge width shared by layout, terminal SVG emission, and family evidence.
 #[derive(Debug)]
 pub(crate) struct TreeViewEdgeThemePlan {
-    line_thickness_override: Option<f64>,
+    line_thickness_override: Option<TreeViewTerminalStrokeWidth>,
     expected_line_count: usize,
     evidence: FamilyThemeEvidence,
     pending_stroke_width_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<()>,
+}
+
+#[derive(Debug)]
+struct TreeViewTerminalStrokeWidth {
+    value_px: f64,
+    token: Box<str>,
 }
 
 impl TreeViewEdgeThemePlan {
@@ -56,20 +62,24 @@ impl TreeViewEdgeThemePlan {
             .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect::<BTreeSet<_>>();
-        let line_thickness_override = (!mermaid_owns_line_thickness)
+        let static_line_thickness_candidate = (!mermaid_owns_line_thickness)
             .then(|| typed_line_thickness(theme, &static_style))
             .flatten();
-        let typed_winner_rule = line_thickness_override.and_then(|_| {
+        let static_winner_rule = static_line_thickness_candidate.as_ref().and_then(|_| {
             static_style
                 .stroke_width_resolution()
                 .winner()
                 .map(|origin| origin.rule_index())
         });
+        let direct_static_winner_rule = static_winner_rule
+            .filter(|rule_index| has_direct_static_stroke_width_route(theme, *rule_index));
 
         let has_ordinal_edge_rules = theme
             .family_rules()
             .any(|(_, rule)| rule.target() == ThemeTarget::Edge && rule.ordinal().is_some());
         let mut occurrence_winners = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
+        let mut static_width_wins_every_line =
+            expected_line_count != 0 && direct_static_winner_rule.is_some();
         if expected_line_count != 0 {
             if has_ordinal_edge_rules {
                 for ordinal in 1..=expected_line_count {
@@ -85,11 +95,20 @@ impl TreeViewEdgeThemePlan {
                             .into_iter()
                             .map(|(property, origin)| (origin.rule_index(), property)),
                     );
+                    static_width_wins_every_line &= style
+                        .stroke_width_resolution()
+                        .winner()
+                        .map(|origin| origin.rule_index())
+                        == direct_static_winner_rule;
                 }
             } else {
                 occurrence_winners.extend(static_winners.iter().copied());
             }
         }
+        let terminal_winner_rule = static_width_wins_every_line
+            .then_some(direct_static_winner_rule)
+            .flatten();
+        let line_thickness_override = terminal_winner_rule.and(static_line_thickness_candidate);
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<usize, TreeViewEdgeRuleObservation>::new();
@@ -126,7 +145,7 @@ impl TreeViewEdgeThemePlan {
                             FamilyThemeDisposition::TypedAdapter,
                             FamilyThemeSelectorShape::Static { variant: None },
                             FamilyThemeRuleFacet::StrokeWidth,
-                        ) if typed_winner_rule == Some(rule_index) => {
+                        ) if terminal_winner_rule == Some(rule_index) => {
                             observation.stroke_width_pending = true;
                         }
                         (FamilyThemeDisposition::Unsupported, _, facet) => {
@@ -212,7 +231,21 @@ impl TreeViewEdgeThemePlan {
 
     pub(crate) fn line_thickness_px(&self, mermaid_line_thickness: f64) -> f64 {
         self.line_thickness_override
-            .unwrap_or(mermaid_line_thickness)
+            .as_ref()
+            .map_or(mermaid_line_thickness, |width| width.value_px)
+    }
+
+    pub(crate) fn terminal_stroke_width_token(&self, emitted_stroke_width_px: f64) -> Option<&str> {
+        self.line_thickness_override
+            .as_ref()
+            .filter(|width| width.value_px.to_bits() == emitted_stroke_width_px.to_bits())
+            .map(|width| width.token.as_ref())
+    }
+
+    pub(crate) fn additional_paint_outset_px(&self) -> f64 {
+        self.line_thickness_override.as_ref().map_or(0.0, |width| {
+            ((width.value_px - DEFAULT_LINE_THICKNESS).max(0.0)) / 2.0
+        })
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<TreeViewEdgeStrokeWidthThemeReceipt> {
@@ -220,7 +253,10 @@ impl TreeViewEdgeThemePlan {
             TreeViewEdgeStrokeWidthThemeReceipt::new(
                 self.expected_line_count,
                 self.line_thickness_override
-                    .expect("pending Tree View stroke width has a typed terminal value"),
+                    .as_ref()
+                    .expect("pending Tree View stroke width has a typed terminal value")
+                    .token
+                    .clone(),
             )
         })
     }
@@ -245,7 +281,7 @@ impl TreeViewEdgeThemePlan {
 fn typed_line_thickness(
     theme: &ResolvedDiagramTheme,
     style: &crate::diagram_theme::ResolvedThemeStyle,
-) -> Option<f64> {
+) -> Option<TreeViewTerminalStrokeWidth> {
     let origin = style.stroke_width_resolution().winner()?;
     if theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::StrokeWidth)
         != Some(FamilyThemeDisposition::TypedAdapter)
@@ -253,10 +289,38 @@ fn typed_line_thickness(
         return None;
     }
     match style.stroke_width_resolution().specified() {
-        Specified::Value(value) => Some(f64::from(*value)),
-        Specified::Clear => Some(DEFAULT_LINE_THICKNESS),
+        Specified::Value(value) => Some(TreeViewTerminalStrokeWidth {
+            value_px: f64::from(*value),
+            token: value.to_string().into_boxed_str(),
+        }),
+        Specified::Clear => Some(TreeViewTerminalStrokeWidth {
+            value_px: DEFAULT_LINE_THICKNESS,
+            token: DEFAULT_LINE_THICKNESS.to_string().into_boxed_str(),
+        }),
         Specified::Unspecified => None,
     }
+}
+
+fn has_direct_static_stroke_width_route(
+    theme: &ResolvedDiagramTheme,
+    expected_rule_index: usize,
+) -> bool {
+    theme
+        .family_mechanism_routes()
+        .iter()
+        .copied()
+        .any(|route| {
+            route.disposition() == FamilyThemeDisposition::TypedAdapter
+                && matches!(
+                    route.mechanism(),
+                    FamilyThemeMechanism::RuleFacet {
+                        rule_index,
+                        target: ThemeTarget::Edge,
+                        selector: FamilyThemeSelectorShape::Static { variant: None },
+                        facet: FamilyThemeRuleFacet::StrokeWidth,
+                    } if rule_index == expected_rule_index
+                )
+        })
 }
 
 fn tree_view_line_count(root: &TreeViewNode) -> usize {
@@ -276,16 +340,16 @@ fn tree_view_line_count(root: &TreeViewNode) -> usize {
 #[derive(Debug)]
 pub(crate) struct TreeViewEdgeStrokeWidthThemeReceipt {
     expected_line_count: usize,
-    expected_stroke_width: f64,
+    expected_stroke_width_token: Box<str>,
     next_line_index: usize,
     attributes_match: bool,
 }
 
 impl TreeViewEdgeStrokeWidthThemeReceipt {
-    fn new(expected_line_count: usize, expected_stroke_width: f64) -> Self {
+    fn new(expected_line_count: usize, expected_stroke_width_token: Box<str>) -> Self {
         Self {
             expected_line_count,
-            expected_stroke_width,
+            expected_stroke_width_token,
             next_line_index: 0,
             attributes_match: true,
         }
@@ -294,7 +358,7 @@ impl TreeViewEdgeStrokeWidthThemeReceipt {
     pub(crate) fn record_checkpointed_line(
         &mut self,
         line_index: usize,
-        emitted_stroke_width: f64,
+        emitted_stroke_width_token: Option<&str>,
     ) {
         if line_index != self.next_line_index {
             self.attributes_match = false;
@@ -302,7 +366,7 @@ impl TreeViewEdgeStrokeWidthThemeReceipt {
         }
         self.next_line_index = self.next_line_index.saturating_add(1);
         self.attributes_match &=
-            emitted_stroke_width.to_bits() == self.expected_stroke_width.to_bits();
+            emitted_stroke_width_token == Some(self.expected_stroke_width_token.as_ref());
     }
 
     fn proves(&self, expected_line_count: usize) -> bool {
@@ -326,26 +390,26 @@ mod tests {
 
     #[test]
     fn edge_width_receipt_requires_ordered_matching_terminal_lines() {
-        let mut complete = TreeViewEdgeStrokeWidthThemeReceipt::new(1, 6.0);
-        complete.record_checkpointed_line(0, 6.0);
+        let mut complete = TreeViewEdgeStrokeWidthThemeReceipt::new(1, "6".into());
+        complete.record_checkpointed_line(0, Some("6"));
         assert!(complete.proves(1));
 
-        let mut incomplete = TreeViewEdgeStrokeWidthThemeReceipt::new(2, 6.0);
-        incomplete.record_checkpointed_line(0, 6.0);
+        let mut incomplete = TreeViewEdgeStrokeWidthThemeReceipt::new(2, "6".into());
+        incomplete.record_checkpointed_line(0, Some("6"));
         assert!(!incomplete.proves(2));
 
-        let mut duplicate = TreeViewEdgeStrokeWidthThemeReceipt::new(1, 6.0);
-        duplicate.record_checkpointed_line(0, 6.0);
-        duplicate.record_checkpointed_line(0, 6.0);
+        let mut duplicate = TreeViewEdgeStrokeWidthThemeReceipt::new(1, "6".into());
+        duplicate.record_checkpointed_line(0, Some("6"));
+        duplicate.record_checkpointed_line(0, Some("6"));
         assert!(!duplicate.proves(1));
 
-        let mut out_of_order = TreeViewEdgeStrokeWidthThemeReceipt::new(2, 6.0);
-        out_of_order.record_checkpointed_line(1, 6.0);
-        out_of_order.record_checkpointed_line(0, 6.0);
+        let mut out_of_order = TreeViewEdgeStrokeWidthThemeReceipt::new(2, "6".into());
+        out_of_order.record_checkpointed_line(1, Some("6"));
+        out_of_order.record_checkpointed_line(0, Some("6"));
         assert!(!out_of_order.proves(2));
 
-        let mut mismatch = TreeViewEdgeStrokeWidthThemeReceipt::new(1, 6.0);
-        mismatch.record_checkpointed_line(0, 5.0);
+        let mut mismatch = TreeViewEdgeStrokeWidthThemeReceipt::new(1, "5.9999995".into());
+        mismatch.record_checkpointed_line(0, Some("6"));
         assert!(!mismatch.proves(1));
     }
 }

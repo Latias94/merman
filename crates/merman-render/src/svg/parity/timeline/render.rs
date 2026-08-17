@@ -148,17 +148,17 @@ fn write_timeline_connector(
     out.checkpoint()
 }
 
-fn write_timeline_event_wrapper_open(
+fn write_timeline_event_wrapper_open<'a>(
     out: &mut impl SvgOutput,
     event: &TimelineNodeLayout,
-    opacity: Option<f64>,
-) -> Result<Option<f64>> {
-    match opacity {
-        Some(opacity) => {
+    opacity_token: Option<&'a str>,
+) -> Result<Option<&'a str>> {
+    match opacity_token {
+        Some(opacity_token) => {
             let _ = write!(
                 out,
                 r#"<g class="eventWrapper" opacity="{opacity}" transform="translate({x}, {y})">"#,
-                opacity = fmt(opacity),
+                opacity = opacity_token,
                 x = fmt(event.x),
                 y = fmt(event.y)
             );
@@ -173,7 +173,7 @@ fn write_timeline_event_wrapper_open(
         }
     }
     out.checkpoint()?;
-    Ok(opacity)
+    Ok(opacity_token)
 }
 
 struct TimelineEventEmissionState<'a> {
@@ -191,20 +191,25 @@ impl<'a> TimelineEventEmissionState<'a> {
         }
     }
 
-    fn expected_opacity(&self) -> Option<f64> {
-        self.theme.opacity_for_event(self.next_event_index)
-    }
-
-    fn record_checkpointed_event(&mut self, emitted_opacity: Option<f64>) {
+    fn write_event_wrapper_open(
+        &mut self,
+        out: &mut impl SvgOutput,
+        event: &TimelineNodeLayout,
+    ) -> Result<()> {
         let event_index = self.next_event_index;
-        let expected_opacity = self.expected_opacity();
+        let theme = self.theme;
+        let expected_opacity_token = theme.opacity_token_for_event(event_index);
+        let emitted_opacity_token =
+            write_timeline_event_wrapper_open(out, event, expected_opacity_token)?;
         if let Some(receipt) = self.receipt.as_mut() {
             receipt.record_checkpointed_event(
                 event_index,
-                option_f64_bits_eq(emitted_opacity, expected_opacity),
+                emitted_opacity_token,
+                expected_opacity_token,
             );
         }
         self.next_event_index = self.next_event_index.saturating_add(1);
+        Ok(())
     }
 
     fn finish(self) -> Result<()> {
@@ -218,14 +223,6 @@ impl<'a> TimelineEventEmissionState<'a> {
             });
         }
         Ok(())
-    }
-}
-
-fn option_f64_bits_eq(left: Option<f64>, right: Option<f64>) -> bool {
-    match (left, right) {
-        (Some(left), Some(right)) => left.to_bits() == right.to_bits(),
-        (None, None) => true,
-        (Some(_), None) | (None, Some(_)) => false,
     }
 }
 
@@ -374,12 +371,10 @@ fn render_timeline_diagram_svg_inner(
         is_redux_theme: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
     ) -> Result<()> {
-        let emission =
-            write_timeline_event_wrapper_open(out, event, event_emission.expected_opacity())?;
+        event_emission.write_event_wrapper_open(out, event)?;
         render_node(out, diagram_id, node_count, event, is_redux_theme, true)?;
         out.push_str("</g>");
         out.checkpoint()?;
-        event_emission.record_checkpointed_event(emission);
         Ok(())
     }
 

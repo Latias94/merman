@@ -264,6 +264,21 @@ fn timeline_static_event_opacity_reaches_each_terminal_wrapper() {
 }
 
 #[test]
+fn timeline_event_opacity_preserves_the_authored_round_trip_token() {
+    let svg = render_timeline_svg_with_theme(
+        "timeline\n    2026 : Ship\n",
+        &timeline_event_opacity_theme(Specified::Value(0.000_000_000_5)),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Timeline SVG XML");
+    let wrapper = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .expect("Timeline event wrapper");
+
+    assert_eq!(wrapper.attribute("opacity"), Some("0.0000000005"));
+}
+
+#[test]
 fn timeline_event_opacity_clear_restores_the_absent_attribute() {
     let svg = render_timeline_svg_with_theme(
         "timeline\n    2026 : Ship\n",

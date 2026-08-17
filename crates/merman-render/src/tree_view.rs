@@ -71,13 +71,24 @@ pub(crate) fn layout_tree_view_diagram_typed(
     let total_width =
         ctx.total_width.max(1.0) + highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     let total_height = ctx.total_height.max(1.0);
-    Ok(TreeViewDiagramLayout {
-        bounds: Some(Bounds {
+    let additional_paint_outset = edge_theme.additional_paint_outset_px();
+    let bounds = if additional_paint_outset > 0.0 {
+        widened_tree_view_line_paint_bounds(
+            &ctx.lines,
+            total_width,
+            total_height,
+            ctx.cfg.line_thickness,
+        )
+    } else {
+        Bounds {
             min_x,
             min_y: 0.0,
             max_x: total_width,
             max_y: total_height,
-        }),
+        }
+    };
+    Ok(TreeViewDiagramLayout {
+        bounds: Some(bounds),
         total_width,
         total_height,
         row_indent: ctx.cfg.row_indent,
@@ -89,6 +100,37 @@ pub(crate) fn layout_tree_view_diagram_typed(
         nodes: ctx.nodes,
         lines: ctx.lines,
     })
+}
+
+fn widened_tree_view_line_paint_bounds(
+    lines: &[TreeViewLineLayout],
+    total_width: f64,
+    total_height: f64,
+    line_thickness: f64,
+) -> Bounds {
+    let stroke_outset = line_thickness / 2.0;
+    let mut bounds = Bounds {
+        min_x: -stroke_outset,
+        min_y: 0.0,
+        max_x: total_width,
+        max_y: total_height,
+    };
+
+    for (line_index, line) in lines.iter().enumerate() {
+        // Mermaid deliberately clips the root node's incoming horizontal segment at x=0.
+        // Preserve that semantic while accounting for every other emitted line endpoint.
+        let min_line_x = if line_index == 0 && line.kind == "horizontal" {
+            line.x2
+        } else {
+            line.x1.min(line.x2)
+        };
+        bounds.min_x = bounds.min_x.min(min_line_x - stroke_outset);
+        bounds.min_y = bounds.min_y.min(line.y1.min(line.y2) - stroke_outset);
+        bounds.max_x = bounds.max_x.max(line.x1.max(line.x2) + stroke_outset);
+        bounds.max_y = bounds.max_y.max(line.y1.max(line.y2) + stroke_outset);
+    }
+
+    bounds
 }
 
 fn validate_tree_view_render_depth(root: &TreeViewNode) -> Result<()> {

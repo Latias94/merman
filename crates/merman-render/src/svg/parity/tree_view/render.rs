@@ -34,12 +34,25 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .filter(|d| !d.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let root_bounds = root_svg::DiagramBounds::from_view_box(
-        -layout.line_thickness / 2.0,
-        0.0,
-        layout.total_width,
-        layout.total_height,
-    );
+    let root_bounds = if edge_theme.additional_paint_outset_px() > 0.0 {
+        let bounds = layout.bounds.as_ref().ok_or_else(|| Error::InvalidModel {
+            message: "Tree View themed paint bounds are missing".to_string(),
+        })?;
+        root_svg::DiagramBounds::from_extents(
+            bounds.min_x,
+            bounds.min_y,
+            bounds.max_x,
+            bounds.max_y,
+            0.0,
+        )
+    } else {
+        root_svg::DiagramBounds::from_view_box(
+            -layout.line_thickness / 2.0,
+            0.0,
+            layout.total_width,
+            layout.total_height,
+        )
+    };
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
@@ -110,18 +123,31 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             )?;
             next_node += 1;
         }
-        let _ = write!(
-            &mut out,
-            r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
-            fmt(line.x1),
-            fmt(line.y1),
-            fmt(line.x2),
-            fmt(line.y2),
-            fmt(line.stroke_width)
-        );
+        let emitted_stroke_width_token = edge_theme.terminal_stroke_width_token(line.stroke_width);
+        if let Some(stroke_width_token) = emitted_stroke_width_token {
+            let _ = write!(
+                &mut out,
+                r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                fmt(line.x1),
+                fmt(line.y1),
+                fmt(line.x2),
+                fmt(line.y2),
+                stroke_width_token
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                fmt(line.x1),
+                fmt(line.y1),
+                fmt(line.x2),
+                fmt(line.y2),
+                fmt(line.stroke_width)
+            );
+        }
         out.checkpoint()?;
         if let Some(receipt) = edge_theme_receipt.as_mut() {
-            receipt.record_checkpointed_line(line_index, line.stroke_width);
+            receipt.record_checkpointed_line(line_index, emitted_stroke_width_token);
         }
     }
     for node in layout.nodes.iter().skip(next_node) {

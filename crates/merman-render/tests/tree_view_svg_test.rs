@@ -74,14 +74,26 @@ fn try_render_tree_view_svg_with_theme(
     source: &str,
     theme: &DiagramTheme,
 ) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
+    try_render_tree_view_svg_with_theme_requirement(
+        source,
+        theme,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn try_render_tree_view_svg_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Tree View")
         .expect("detect themed Tree View");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Tree View session");
+        .expect("begin themed Tree View session");
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
     render_tree_view_artifact(artifact)
 }
@@ -335,6 +347,105 @@ fn tree_view_static_edge_width_reaches_layout_bounds_endpoints_svg_and_evidence(
             .iter()
             .all(|line| line.attribute("stroke-width") == Some("6"))
     );
+}
+
+#[test]
+fn tree_view_edge_width_preserves_the_authored_round_trip_token() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let authored_width = 5.999_999_5_f32;
+    let (layout, svg) = render_tree_view_svg_with_theme(
+        source,
+        &tree_view_edge_width_theme(Specified::Value(authored_width)),
+    );
+
+    assert_eq!(layout.line_thickness, f64::from(authored_width));
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("5.9999995"))
+    );
+}
+
+#[test]
+fn tree_view_static_width_falls_back_when_an_ordinal_rule_wins_any_line() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let theme = tree_view_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(6.0)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(9.0)),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).expect("valid Tree View edge ordinal")),
+    ]);
+    let (layout, svg) = try_render_tree_view_svg_with_theme_requirement(
+        source,
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render Tree View with an unsupported ordinal width");
+
+    assert_eq!(layout.line_thickness, 1.0);
+    assert!(layout.lines.iter().all(|line| line.stroke_width == 1.0));
+    let document = roxmltree::Document::parse(&svg).expect("valid fallback Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("1"))
+    );
+}
+
+#[test]
+fn tree_view_large_edge_width_expands_paint_bounds_without_relaying_out_nodes() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let baseline = layout_tree_view(source, &RenderEnvironment::deterministic());
+    let (layout, svg) = render_tree_view_svg_with_theme(
+        source,
+        &tree_view_edge_width_theme(Specified::Value(100.0)),
+    );
+
+    assert_eq!(layout.nodes.len(), baseline.nodes.len());
+    for (themed, baseline) in layout.nodes.iter().zip(&baseline.nodes) {
+        assert_eq!((themed.x, themed.y), (baseline.x, baseline.y));
+        assert_eq!(
+            (themed.label_x, themed.label_y),
+            (baseline.label_x, baseline.label_y)
+        );
+    }
+
+    let bounds = layout.bounds.as_ref().expect("Tree View paint bounds");
+    let stroke_outset = layout.line_thickness / 2.0;
+    for (line_index, line) in layout.lines.iter().enumerate() {
+        let expected_min_x = if line_index == 0 && line.kind == "horizontal" {
+            line.x2 - stroke_outset
+        } else {
+            line.x1.min(line.x2) - stroke_outset
+        };
+        assert!(bounds.min_x <= expected_min_x);
+        assert!(bounds.min_y <= line.y1.min(line.y2) - stroke_outset);
+        assert!(bounds.max_x >= line.x1.max(line.x2) + stroke_outset);
+        assert!(bounds.max_y >= line.y1.max(line.y2) + stroke_outset);
+    }
+    assert!(bounds.min_y < 0.0);
+    assert!(bounds.max_y > layout.total_height);
+
+    let document = roxmltree::Document::parse(&svg).expect("valid wide-edge Tree View SVG XML");
+    let view_box = document
+        .root_element()
+        .attribute("viewBox")
+        .expect("Tree View root viewBox")
+        .split_whitespace()
+        .map(|part| part.parse::<f64>().expect("numeric viewBox component"))
+        .collect::<Vec<_>>();
+    assert!((view_box[0] - bounds.min_x).abs() < 1e-6);
+    assert!((view_box[1] - bounds.min_y).abs() < 1e-6);
+    assert!((view_box[0] + view_box[2] - bounds.max_x).abs() < 1e-6);
+    assert!((view_box[1] + view_box[3] - bounds.max_y).abs() < 1e-6);
 }
 
 #[test]
