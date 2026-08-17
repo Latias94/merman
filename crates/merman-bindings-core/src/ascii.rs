@@ -368,8 +368,13 @@ mod tests {
         let output = render_ascii_with_limit(limit_id, expected, source)
             .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
         assert!(!output.is_empty(), "{limit_id} produced no output");
-        let error = render_ascii_with_limit(limit_id, expected - 1, source)
-            .expect_err("one-below binding ASCII boundary must fail");
+        let error = match render_ascii_with_limit(limit_id, expected - 1, source) {
+            Err(error) => error,
+            Ok(output) => panic!(
+                "one-below {limit_id} boundary must fail, but rendered {} bytes",
+                output.len()
+            ),
+        };
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
         let details = error
             .resource_details()

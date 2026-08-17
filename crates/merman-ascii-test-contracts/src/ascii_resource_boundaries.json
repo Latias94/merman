@@ -13,7 +13,7 @@
       "id": "max_ascii_layout_work_units",
       "phase": "ascii_layout_work",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "exact": 2905
+      "exact": 2865
     },
     {
       "id": "max_ascii_document_cells",
