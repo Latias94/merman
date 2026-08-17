@@ -4,6 +4,7 @@
 (comment) @comment
 (directive) @attribute
 (frontmatter_delimiter) @punctuation.special
+(frontmatter_content) @attribute
 (quoted_string) @string
 
 ; Shared structured-family vocabulary.

@@ -11,10 +11,11 @@ exact generated parser.
 - downstream editors own their installed query copies and may intentionally diverge from the
   portable capture vocabulary.
 
-The repository compiles every shipped query and executes a small set of representative captures.
-It does not maintain a fixed-editor download matrix, 35-by-surface applicability table, or exact
-capture forest. Real downstream adoption is verified in the downstream pull request against an
-immutable grammar release.
+The repository compiles every shipped query and keeps one compact canonical highlight contract:
+non-header capture classes for all 35 public families plus focused exact-span, recovery, and
+incremental-parse cases. It does not maintain a fixed-editor download matrix, 35-by-surface
+applicability table, or exact capture forest. Real downstream adoption is verified in the
+downstream pull request against an immutable grammar release.
 
 ## Migrating from monaqa/tree-sitter-mermaid
 

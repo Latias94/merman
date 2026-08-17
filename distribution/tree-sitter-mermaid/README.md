@@ -93,6 +93,12 @@ pinned npm `generate` script and is never part of the default C source build.
 promise that npm or crates.io publication automatically updates those editors. Editor integrations
 must pin a released repository revision and its `distribution/tree-sitter-mermaid` subdirectory.
 
+The portable highlight query is the package's canonical base-highlighting contract. Its package
+tests keep a compact non-header capture-class expectation for all 35 public families, exact spans
+for boundary-sensitive syntax, bounded frontmatter and directives, recovery of later siblings, and
+incremental-query equivalence with a fresh parse. These checks intentionally stop short of an exact
+capture forest or a per-editor matrix.
+
 ## Development
 
 Install the pinned package-local toolchain first:
