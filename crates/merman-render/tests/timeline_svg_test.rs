@@ -1,8 +1,13 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
+use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector, Specified,
+    ThemePaintPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
+};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::resources::{
@@ -25,6 +30,55 @@ fn render_timeline_svg_from_text(text: &str) -> String {
         .expect("render svg")
         .svg()
         .to_owned()
+}
+
+fn timeline_event_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Timeline event theme")
+}
+
+fn timeline_event_opacity_style(opacity: Specified<f32>) -> ThemeStylePatch {
+    ThemeStylePatch {
+        paint: ThemePaintPatch {
+            opacity,
+            ..ThemePaintPatch::default()
+        },
+        ..ThemeStylePatch::default()
+    }
+}
+
+fn timeline_event_opacity_theme(opacity: Specified<f32>) -> DiagramTheme {
+    timeline_event_rules_theme([ThemeRule::new(
+        ThemeTarget::TimelineEvent,
+        timeline_event_opacity_style(opacity),
+    )])
+}
+
+fn try_render_timeline_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> merman_render::Result<String> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Timeline")
+        .expect("detect themed Timeline");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Timeline session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    Ok(artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
+        .svg()
+        .to_owned())
+}
+
+fn render_timeline_svg_with_theme(source: &str, theme: &DiagramTheme) -> String {
+    try_render_timeline_svg_with_theme(source, theme).expect("render themed Timeline SVG")
 }
 
 fn try_render_timeline_svg_with_resource_policy(
@@ -182,4 +236,96 @@ timeline
         "{root_open}"
     );
     assert!(!root_open.contains("max-width"), "{root_open}");
+}
+
+#[test]
+fn timeline_static_event_opacity_reaches_each_terminal_wrapper() {
+    let source = concat!(
+        "timeline\n",
+        "    section Release\n",
+        "        2026 : Plan\n",
+        "             : Ship\n",
+    );
+    let svg = render_timeline_svg_with_theme(
+        source,
+        &timeline_event_opacity_theme(Specified::Value(0.5)),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Timeline SVG XML");
+    let wrappers = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .collect::<Vec<_>>();
+    assert_eq!(wrappers.len(), 2);
+    assert!(
+        wrappers
+            .iter()
+            .all(|wrapper| wrapper.attribute("opacity") == Some("0.5"))
+    );
+}
+
+#[test]
+fn timeline_event_opacity_clear_restores_the_absent_attribute() {
+    let svg = render_timeline_svg_with_theme(
+        "timeline\n    2026 : Ship\n",
+        &timeline_event_opacity_theme(Specified::Clear),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid cleared Timeline SVG XML");
+    let wrapper = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .expect("Timeline event wrapper");
+    assert_eq!(wrapper.attribute("opacity"), None);
+}
+
+#[test]
+fn timeline_event_opacity_rejects_qualified_and_mixed_rules() {
+    let source = "timeline\n    2026 : Ship\n";
+    let opacity_style = timeline_event_opacity_style(Specified::Value(0.5));
+    let unsupported_rules = [
+        ThemeRule::new(ThemeTarget::TimelineEvent, opacity_style.clone())
+            .with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::TimelineEvent, opacity_style.clone())
+            .with_variant(ThemeVariant::Active),
+        ThemeRule::new(ThemeTarget::TimelineEvent, opacity_style.clone())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid Timeline event ordinal")),
+        ThemeRule::new(
+            ThemeTarget::TimelineEvent,
+            ThemeStylePatch {
+                paint: ThemePaintPatch {
+                    fill_opacity: Specified::Value(0.5),
+                    ..ThemePaintPatch::default()
+                },
+                ..ThemeStylePatch::default()
+            },
+        ),
+        ThemeRule::new(
+            ThemeTarget::TimelineEvent,
+            opacity_style.with_padding(InsetsPx::all(4.0)),
+        ),
+    ];
+
+    for rule in unsupported_rules {
+        let error = try_render_timeline_svg_with_theme(source, &timeline_event_rules_theme([rule]))
+            .expect_err("unsupported Timeline event routes must fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::TIMELINE, 1))
+        );
+    }
+}
+
+#[test]
+fn timeline_event_opacity_is_not_applicable_without_events() {
+    let svg = render_timeline_svg_with_theme(
+        "timeline\n    section Release\n        2026\n",
+        &timeline_event_opacity_theme(Specified::Value(0.5)),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid event-free Timeline SVG XML");
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+            .count(),
+        0
+    );
 }

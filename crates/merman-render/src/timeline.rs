@@ -10,8 +10,10 @@ use merman_core::diagrams::timeline::{
 use std::borrow::Cow;
 
 mod config;
+mod theme;
 
 pub(crate) use config::TimelineConfigView;
+pub(crate) use theme::{TimelineEventOpacityThemeReceipt, TimelineEventTheme};
 
 const MAX_SECTIONS: i64 = 12;
 

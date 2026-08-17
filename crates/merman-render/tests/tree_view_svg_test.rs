@@ -5,6 +5,11 @@ use merman_core::{
     Engine, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseOptions, ParsedDiagramRender,
 };
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector, Specified,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
+};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementOperation,
@@ -19,6 +24,74 @@ use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptio
 use merman_render::text::{TextMeasurer, TextStyle};
 use std::sync::Arc;
 use std::sync::Mutex;
+
+fn tree_view_edge_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Tree View edge theme")
+}
+
+fn tree_view_edge_width_style(stroke_width: Specified<f32>) -> ThemeStylePatch {
+    ThemeStylePatch {
+        stroke: ThemeStrokePatch {
+            width: stroke_width,
+            ..ThemeStrokePatch::default()
+        },
+        ..ThemeStylePatch::default()
+    }
+}
+
+fn tree_view_edge_width_theme(stroke_width: Specified<f32>) -> DiagramTheme {
+    tree_view_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        tree_view_edge_width_style(stroke_width),
+    )])
+}
+
+fn render_tree_view_artifact(
+    artifact: family::FamilyRenderArtifact,
+) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
+    let projection = artifact.layout_json()?;
+    let layout = serde_json::from_value(projection["layout"]["TreeViewDiagram"].clone())
+        .expect("Tree View layout projection");
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("tree-view-theme".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )?
+        .svg()
+        .to_owned();
+    Ok((layout, svg))
+}
+
+fn try_render_tree_view_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> merman_render::Result<(TreeViewDiagramLayout, String)> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Tree View")
+        .expect("detect themed Tree View");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Tree View session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    render_tree_view_artifact(artifact)
+}
+
+fn render_tree_view_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> (TreeViewDiagramLayout, String) {
+    try_render_tree_view_svg_with_theme(source, theme).expect("render themed Tree View SVG")
+}
 
 #[derive(Default)]
 struct TreeViewBBoxHost {
@@ -206,6 +279,125 @@ treeView-beta
     assert!(svg.contains(r#"font-size: 20px"#));
     assert!(svg.contains(r#"fill: #FF0000"#));
     assert!(svg.contains(r#"stroke: #00FF00"#));
+}
+
+#[test]
+fn tree_view_static_edge_width_reaches_layout_bounds_endpoints_svg_and_evidence() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let baseline_layout = layout_tree_view(source, &RenderEnvironment::deterministic());
+    let baseline_svg = render_tree_view_svg_with_options(
+        source,
+        SvgRenderOptions {
+            diagram_id: Some("tree-view-theme".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile empty typed theme");
+    let (_, empty_theme_svg) = render_tree_view_svg_with_theme(source, &empty_theme);
+    assert_eq!(empty_theme_svg.as_bytes(), baseline_svg.as_bytes());
+
+    let (layout, svg) =
+        render_tree_view_svg_with_theme(source, &tree_view_edge_width_theme(Specified::Value(6.0)));
+    assert_eq!(layout.line_thickness, 6.0);
+    assert_eq!(
+        layout.bounds.as_ref().map(|bounds| bounds.min_x),
+        Some(-3.0)
+    );
+    assert!(layout.lines.iter().all(|line| line.stroke_width == 6.0));
+
+    let baseline_vertical = baseline_layout
+        .lines
+        .iter()
+        .find(|line| line.kind == "vertical")
+        .expect("baseline Tree View vertical line");
+    let themed_vertical = layout
+        .lines
+        .iter()
+        .find(|line| line.kind == "vertical")
+        .expect("themed Tree View vertical line");
+    assert_eq!(themed_vertical.y2 - baseline_vertical.y2, 2.5);
+
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Tree View SVG XML");
+    let root_view_box = document
+        .root_element()
+        .attribute("viewBox")
+        .expect("Tree View root viewBox");
+    assert!(root_view_box.starts_with("-3 0 "), "{root_view_box}");
+    let terminal_lines = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+        .collect::<Vec<_>>();
+    assert_eq!(terminal_lines.len(), layout.lines.len());
+    assert!(
+        terminal_lines
+            .iter()
+            .all(|line| line.attribute("stroke-width") == Some("6"))
+    );
+}
+
+#[test]
+fn tree_view_edge_width_clear_restores_the_mermaid_baseline() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let (layout, svg) =
+        render_tree_view_svg_with_theme(source, &tree_view_edge_width_theme(Specified::Clear));
+
+    assert_eq!(layout.line_thickness, 1.0);
+    let document = roxmltree::Document::parse(&svg).expect("valid cleared Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("1"))
+    );
+}
+
+#[test]
+fn tree_view_explicit_line_thickness_outranks_typed_edge_width() {
+    let source = r#"---
+config:
+  treeView:
+    lineThickness: 7
+---
+treeView-beta
+Root/
+    Child
+"#;
+    let (layout, svg) =
+        render_tree_view_svg_with_theme(source, &tree_view_edge_width_theme(Specified::Value(6.0)));
+
+    assert_eq!(layout.line_thickness, 7.0);
+    let document = roxmltree::Document::parse(&svg).expect("valid source-owned Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("7"))
+    );
+}
+
+#[test]
+fn tree_view_edge_width_rejects_qualified_ordinal_and_mixed_rules() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let width_style = tree_view_edge_width_style(Specified::Value(6.0));
+    for rule in [
+        ThemeRule::new(ThemeTarget::Edge, width_style.clone()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::Edge, width_style.clone())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid Tree View edge ordinal")),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            width_style.clone().with_padding(InsetsPx::all(4.0)),
+        ),
+    ] {
+        let error =
+            try_render_tree_view_svg_with_theme(source, &tree_view_edge_rules_theme([rule]))
+                .expect_err("unsupported Tree View edge routes must fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::TREE_VIEW, 1))
+        );
+    }
 }
 
 #[test]

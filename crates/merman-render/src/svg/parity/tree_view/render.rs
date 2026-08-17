@@ -4,7 +4,7 @@ use crate::svg::icon_registry::mermaid_unknown_icon_svg;
 use crate::tree_view::{
     TREE_VIEW_DESCRIPTION_FONT_STYLE, TREE_VIEW_DIRECTORY_FONT_WEIGHT,
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
-    is_tree_view_highlight_class,
+    TreeViewEdgeStrokeWidthThemeReceipt, TreeViewEdgeThemePlan, is_tree_view_highlight_class,
 };
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,6 +15,7 @@ const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
+    edge_theme: &TreeViewEdgeThemePlan,
     effective_config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -93,7 +94,9 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .count();
     let mut width_before_highlight =
         layout.total_width - highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
-    for line in &layout.lines {
+    let mut edge_theme_receipt: Option<TreeViewEdgeStrokeWidthThemeReceipt> =
+        edge_theme.begin_terminal_receipt();
+    for (line_index, line) in layout.lines.iter().enumerate() {
         if line.kind == "horizontal"
             && let Some(node) = layout.nodes.get(next_node)
         {
@@ -117,6 +120,9 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             fmt(line.stroke_width)
         );
         out.checkpoint()?;
+        if let Some(receipt) = edge_theme_receipt.as_mut() {
+            receipt.record_checkpointed_line(line_index, line.stroke_width);
+        }
     }
     for node in layout.nodes.iter().skip(next_node) {
         push_tree_view_node(
@@ -130,7 +136,11 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     }
     out.push_str("</g></svg>\n");
     out.checkpoint()?;
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if let Some(receipt) = edge_theme_receipt {
+        let _ = edge_theme.record_terminal(receipt);
+    }
+    Ok(rooted)
 }
 
 fn push_tree_view_node(

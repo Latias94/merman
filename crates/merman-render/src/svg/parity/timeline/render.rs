@@ -148,19 +148,109 @@ fn write_timeline_connector(
     out.checkpoint()
 }
 
+fn write_timeline_event_wrapper_open(
+    out: &mut impl SvgOutput,
+    event: &TimelineNodeLayout,
+    opacity: Option<f64>,
+) -> Result<Option<f64>> {
+    match opacity {
+        Some(opacity) => {
+            let _ = write!(
+                out,
+                r#"<g class="eventWrapper" opacity="{opacity}" transform="translate({x}, {y})">"#,
+                opacity = fmt(opacity),
+                x = fmt(event.x),
+                y = fmt(event.y)
+            );
+        }
+        None => {
+            let _ = write!(
+                out,
+                r#"<g class="eventWrapper" transform="translate({x}, {y})">"#,
+                x = fmt(event.x),
+                y = fmt(event.y)
+            );
+        }
+    }
+    out.checkpoint()?;
+    Ok(opacity)
+}
+
+struct TimelineEventEmissionState<'a> {
+    theme: &'a crate::timeline::TimelineEventTheme,
+    next_event_index: usize,
+    receipt: Option<crate::timeline::TimelineEventOpacityThemeReceipt>,
+}
+
+impl<'a> TimelineEventEmissionState<'a> {
+    fn new(theme: &'a crate::timeline::TimelineEventTheme) -> Self {
+        Self {
+            theme,
+            next_event_index: 0,
+            receipt: theme.begin_terminal_receipt(),
+        }
+    }
+
+    fn expected_opacity(&self) -> Option<f64> {
+        self.theme.opacity_for_event(self.next_event_index)
+    }
+
+    fn record_checkpointed_event(&mut self, emitted_opacity: Option<f64>) {
+        let event_index = self.next_event_index;
+        let expected_opacity = self.expected_opacity();
+        if let Some(receipt) = self.receipt.as_mut() {
+            receipt.record_checkpointed_event(
+                event_index,
+                option_f64_bits_eq(emitted_opacity, expected_opacity),
+            );
+        }
+        self.next_event_index = self.next_event_index.saturating_add(1);
+    }
+
+    fn finish(self) -> Result<()> {
+        if self
+            .receipt
+            .is_some_and(|receipt| !self.theme.record_terminal(receipt))
+        {
+            return Err(crate::Error::InvalidModel {
+                message: "Timeline event opacity receipt did not match the terminal SVG"
+                    .to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
+fn option_f64_bits_eq(left: Option<f64>, right: Option<f64>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left.to_bits() == right.to_bits(),
+        (None, None) => true,
+        (Some(_), None) | (None, Some(_)) => false,
+    }
+}
+
 pub(crate) fn render_timeline_diagram_svg_model(
     layout: &TimelineDiagramLayout,
     _model: &TimelineDiagramRenderModel,
+    event_theme: &crate::timeline::TimelineEventTheme,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    render_timeline_diagram_svg_inner(layout, effective_config, diagram_title, measurer, options)
+    render_timeline_diagram_svg_inner(
+        layout,
+        event_theme,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
 }
 
 fn render_timeline_diagram_svg_inner(
     layout: &TimelineDiagramLayout,
+    event_theme: &crate::timeline::TimelineEventTheme,
     effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
@@ -282,17 +372,15 @@ fn render_timeline_diagram_svg_inner(
         node_count: &mut usize,
         event: &TimelineNodeLayout,
         is_redux_theme: bool,
+        event_emission: &mut TimelineEventEmissionState<'_>,
     ) -> Result<()> {
-        let _ = write!(
-            out,
-            r#"<g class="eventWrapper" transform="translate({x}, {y})">"#,
-            x = fmt(event.x),
-            y = fmt(event.y)
-        );
-        out.checkpoint()?;
+        let emission =
+            write_timeline_event_wrapper_open(out, event, event_emission.expected_opacity())?;
         render_node(out, diagram_id, node_count, event, is_redux_theme, true)?;
         out.push_str("</g>");
-        out.checkpoint()
+        out.checkpoint()?;
+        event_emission.record_checkpointed_event(emission);
+        Ok(())
     }
 
     fn render_task(
@@ -303,6 +391,7 @@ fn render_timeline_diagram_svg_inner(
         direction: merman_core::diagrams::timeline::TimelineDirection,
         is_redux_theme: bool,
         arrowhead_url: &str,
+        event_emission: &mut TimelineEventEmissionState<'_>,
     ) -> Result<()> {
         let node = &task.node;
         let _ = write!(
@@ -322,12 +411,26 @@ fn render_timeline_diagram_svg_inner(
                     write_timeline_connector(out, connector, arrowhead_url)?;
                 }
                 for event in &task.events {
-                    render_event(out, diagram_id, node_count, event, is_redux_theme)?;
+                    render_event(
+                        out,
+                        diagram_id,
+                        node_count,
+                        event,
+                        is_redux_theme,
+                        event_emission,
+                    )?;
                 }
             }
             merman_core::diagrams::timeline::TimelineDirection::TopDown => {
                 for (index, event) in task.events.iter().enumerate() {
-                    render_event(out, diagram_id, node_count, event, is_redux_theme)?;
+                    render_event(
+                        out,
+                        diagram_id,
+                        node_count,
+                        event,
+                        is_redux_theme,
+                        event_emission,
+                    )?;
                     if let Some(connector) = task.connectors.get(index) {
                         write_timeline_connector(out, connector, arrowhead_url)?;
                     }
@@ -404,6 +507,7 @@ fn render_timeline_diagram_svg_inner(
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
     let mut node_count = 0usize;
+    let mut event_emission = TimelineEventEmissionState::new(event_theme);
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
@@ -440,6 +544,7 @@ fn render_timeline_diagram_svg_inner(
                 layout.direction,
                 is_redux_theme,
                 &arrowhead_url,
+                &mut event_emission,
             )?;
         }
     }
@@ -453,6 +558,7 @@ fn render_timeline_diagram_svg_inner(
             layout.direction,
             is_redux_theme,
             &arrowhead_url,
+            &mut event_emission,
         )?;
     }
 
@@ -481,7 +587,9 @@ fn render_timeline_diagram_svg_inner(
     }
 
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    event_emission.finish()?;
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
@@ -614,6 +722,7 @@ mod tests {
 
         let svg = render_timeline_diagram_svg_inner(
             &layout,
+            &crate::timeline::TimelineEventTheme::baseline(),
             &serde_json::json!({}),
             None,
             &crate::text::DeterministicTextMeasurer::default(),

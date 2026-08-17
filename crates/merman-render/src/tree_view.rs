@@ -9,6 +9,9 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 mod config;
+mod theme;
+
+pub(crate) use theme::{TreeViewEdgeStrokeWidthThemeReceipt, TreeViewEdgeThemePlan};
 
 use config::{TreeViewConfigView, TreeViewLayoutSettings};
 
@@ -29,9 +32,11 @@ pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
 pub(crate) fn layout_tree_view_diagram_typed(
     model: &TreeViewDiagramRenderModel,
     effective_config: &Value,
+    edge_theme: &TreeViewEdgeThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<TreeViewDiagramLayout> {
-    let cfg = TreeViewConfigView::new(effective_config).layout_settings();
+    let mut cfg = TreeViewConfigView::new(effective_config).layout_settings();
+    cfg.line_thickness = edge_theme.line_thickness_px(cfg.line_thickness);
     validate_tree_view_render_depth(&model.root)?;
     let label_style = TextStyle {
         font_family: Some(cfg.font_family.clone()),
@@ -365,9 +370,13 @@ mod tests {
             ..Default::default()
         };
 
-        let error =
-            layout_tree_view_diagram_typed(&model, &Value::Object(Default::default()), &measurer)
-                .unwrap_err();
+        let error = layout_tree_view_diagram_typed(
+            &model,
+            &Value::Object(Default::default()),
+            &TreeViewEdgeThemePlan::baseline(0),
+            &measurer,
+        )
+        .unwrap_err();
         assert!(
             error.to_string().contains("treeView nesting depth exceeds"),
             "{error}"

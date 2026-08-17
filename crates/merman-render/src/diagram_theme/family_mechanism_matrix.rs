@@ -920,6 +920,20 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::TIMELINE
+        && target == ThemeTarget::TimelineEvent
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && facet == FamilyThemeRuleFacet::Opacity
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::TREE_VIEW
+        && target == ThemeTarget::Edge
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && facet == FamilyThemeRuleFacet::StrokeWidth
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::ER
         && target == ThemeTarget::Entity
         && matches!(
@@ -1627,6 +1641,64 @@ mod tests {
                         .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn timeline_owns_only_unqualified_static_event_opacity() {
+        let event_opacity = ThemeStylePatch {
+            paint: ThemePaintPatch {
+                opacity: Specified::Value(0.42),
+                ..ThemePaintPatch::default()
+            },
+            ..ThemeStylePatch::default()
+        };
+        let unqualified = ThemeRule::new(ThemeTarget::TimelineEvent, event_opacity.clone());
+        let routes = compile_rule_routes(DiagramFamilyId::TIMELINE, 0, &unqualified);
+        assert_eq!(routes.len(), 1);
+        assert_eq!(
+            routes[0].disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+
+        for rule in [
+            ThemeRule::new(ThemeTarget::TimelineEvent, event_opacity.clone())
+                .with_variant(ThemeVariant::Default),
+            ThemeRule::new(ThemeTarget::TimelineEvent, event_opacity)
+                .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+        ] {
+            assert!(
+                compile_rule_routes(DiagramFamilyId::TIMELINE, 0, &rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
+        }
+    }
+
+    #[test]
+    fn tree_view_owns_only_unqualified_static_edge_stroke_width() {
+        let edge_width = ThemeStylePatch::default()
+            .with_stroke_width(6.0)
+            .expect("valid Tree View edge width");
+        let unqualified = ThemeRule::new(ThemeTarget::Edge, edge_width.clone());
+        let routes = compile_rule_routes(DiagramFamilyId::TREE_VIEW, 0, &unqualified);
+        assert_eq!(routes.len(), 1);
+        assert_eq!(
+            routes[0].disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+
+        for rule in [
+            ThemeRule::new(ThemeTarget::Edge, edge_width.clone())
+                .with_variant(ThemeVariant::Default),
+            ThemeRule::new(ThemeTarget::Edge, edge_width)
+                .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+        ] {
+            assert!(
+                compile_rule_routes(DiagramFamilyId::TREE_VIEW, 0, &rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
         }
     }
 

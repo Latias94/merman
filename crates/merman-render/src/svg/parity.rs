@@ -680,9 +680,10 @@ fn render_builtin_family_artifact_raw(
             title,
             options,
         ),
-        BuiltinFamilyArtifact::Timeline(pair) => timeline::render_timeline_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.event_theme(),
             effective_config_value,
             title,
             measurer,
@@ -766,9 +767,10 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        BuiltinFamilyArtifact::TreeView(pair) => tree_view::render_tree_view_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::TreeView(artifact) => tree_view::render_tree_view_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.edge_theme(),
             effective_config,
             options,
         ),

@@ -989,6 +989,8 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::KANBAN
                 | DiagramFamilyId::GANTT
                 | DiagramFamilyId::PIE
+                | DiagramFamilyId::TIMELINE
+                | DiagramFamilyId::TREE_VIEW
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::ARCHITECTURE
         ) && self
@@ -1298,6 +1300,18 @@ pub(crate) struct PieFamilyArtifact {
 }
 
 #[derive(Debug)]
+pub(crate) struct TimelineFamilyArtifact {
+    pair: FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>,
+    event_theme: crate::timeline::TimelineEventTheme,
+}
+
+#[derive(Debug)]
+pub(crate) struct TreeViewFamilyArtifact {
+    pair: FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>,
+    edge_theme: crate::tree_view::TreeViewEdgeThemePlan,
+}
+
+#[derive(Debug)]
 pub(crate) struct MindmapFamilyArtifact {
     pair: FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>,
     node_palette: crate::mindmap::MindmapNodePalettePlan,
@@ -1342,6 +1356,30 @@ impl PieFamilyArtifact {
 
     pub(crate) const fn slice_paint(&self) -> &crate::pie::PieSlicePaintPlan {
         &self.slice_paint
+    }
+}
+
+impl TimelineFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn event_theme(&self) -> &crate::timeline::TimelineEventTheme {
+        &self.event_theme
+    }
+}
+
+impl TreeViewFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn edge_theme(&self) -> &crate::tree_view::TreeViewEdgeThemePlan {
+        &self.edge_theme
     }
 }
 
@@ -1449,9 +1487,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Gantt(Box<GanttFamilyArtifact>),
     Pie(Box<PieFamilyArtifact>),
     Packet(Box<FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>>),
-    Timeline(
-        Box<FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>>,
-    ),
+    Timeline(Box<TimelineFamilyArtifact>),
     Journey(Box<FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>>),
     Requirement(
         Box<
@@ -1477,9 +1513,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     ),
     XyChart(Box<FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>>),
     GitGraph(Box<FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>>),
-    TreeView(
-        Box<FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>>,
-    ),
+    TreeView(Box<TreeViewFamilyArtifact>),
     Ishikawa(
         Box<FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>>,
     ),
@@ -1728,6 +1762,20 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn timeline_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Timeline(artifact) => Some(artifact.event_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn tree_view_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::TreeView(artifact) => Some(artifact.edge_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn mindmap_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::Mindmap(artifact) => Some(artifact.node_palette().finish_evidence()),
@@ -1775,7 +1823,7 @@ impl BuiltinFamilyArtifact {
             Self::Gantt(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Pie(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Packet(pair) => pair.compatibility_json(metadata),
-            Self::Timeline(pair) => pair.compatibility_json(metadata),
+            Self::Timeline(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Journey(pair) => pair.compatibility_json(metadata),
             Self::Requirement(pair) => pair.compatibility_json(metadata),
             Self::Sankey(pair) => pair.compatibility_json(metadata),
@@ -1787,7 +1835,7 @@ impl BuiltinFamilyArtifact {
             Self::QuadrantChart(pair) => pair.compatibility_json(metadata),
             Self::XyChart(pair) => pair.compatibility_json(metadata),
             Self::GitGraph(pair) => pair.compatibility_json(metadata),
-            Self::TreeView(pair) => pair.compatibility_json(metadata),
+            Self::TreeView(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Ishikawa(pair) => pair.compatibility_json(metadata),
             Self::EventModeling(pair) => pair.compatibility_json(metadata),
             Self::Venn(pair) => pair.compatibility_json(metadata),
@@ -1816,7 +1864,7 @@ impl BuiltinFamilyArtifact {
             Self::Gantt(artifact) => LayoutProjection::GanttDiagram(artifact.pair.layout()),
             Self::Pie(artifact) => LayoutProjection::PieDiagram(artifact.pair.layout()),
             Self::Packet(pair) => LayoutProjection::PacketDiagram(pair.layout()),
-            Self::Timeline(pair) => LayoutProjection::TimelineDiagram(pair.layout()),
+            Self::Timeline(artifact) => LayoutProjection::TimelineDiagram(artifact.pair.layout()),
             Self::Journey(pair) => LayoutProjection::JourneyDiagram(pair.layout()),
             Self::Requirement(pair) => LayoutProjection::RequirementDiagram(pair.layout().layout()),
             Self::Sankey(pair) => LayoutProjection::SankeyDiagram(pair.layout()),
@@ -1828,7 +1876,7 @@ impl BuiltinFamilyArtifact {
             Self::QuadrantChart(pair) => LayoutProjection::QuadrantChartDiagram(pair.layout()),
             Self::XyChart(pair) => LayoutProjection::XyChartDiagram(pair.layout()),
             Self::GitGraph(pair) => LayoutProjection::GitGraphDiagram(pair.layout()),
-            Self::TreeView(pair) => LayoutProjection::TreeViewDiagram(pair.layout()),
+            Self::TreeView(artifact) => LayoutProjection::TreeViewDiagram(artifact.pair.layout()),
             Self::Ishikawa(pair) => LayoutProjection::IshikawaDiagram(pair.layout()),
             Self::EventModeling(pair) => LayoutProjection::EventModelingDiagram(pair.layout()),
             Self::Venn(pair) => LayoutProjection::VennDiagram(pair.layout()),
@@ -2406,6 +2454,8 @@ impl FamilyRenderArtifact {
         let kanban_theme_evidence = self.family.kanban_theme_evidence();
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let pie_theme_evidence = self.family.pie_theme_evidence();
+        let timeline_theme_evidence = self.family.timeline_theme_evidence();
+        let tree_view_theme_evidence = self.family.tree_view_theme_evidence();
         let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
         let er_theme_evidence = self.family.er_theme_evidence();
         #[cfg(feature = "layout-cytoscape")]
@@ -2438,6 +2488,12 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = pie_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::PIE, evidence);
+        }
+        if let Some(evidence) = timeline_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::TIMELINE, evidence);
+        }
+        if let Some(evidence) = tree_view_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::TREE_VIEW, evidence);
         }
         if let Some(evidence) = mindmap_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::MINDMAP, evidence);
@@ -2976,13 +3032,20 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Timeline(model) => {
-            BuiltinFamilyArtifact::Timeline(prepare_pair(model, |model| {
-                crate::timeline::layout_timeline_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let layout = crate::timeline::layout_timeline_diagram_typed(
+                &model,
+                effective_config,
+                execution.text_measurer(),
+            )?;
+            let event_theme = crate::timeline::TimelineEventTheme::resolve(
+                execution.resolved_theme(),
+                &layout,
+                execution.work_meter_ref(),
+            )?;
+            BuiltinFamilyArtifact::Timeline(Box::new(TimelineFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                event_theme,
+            }))
         }
         RenderSemanticModel::Journey(model) => {
             BuiltinFamilyArtifact::Journey(prepare_pair(model, |model| {
@@ -3108,13 +3171,22 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::TreeView(model) => {
-            BuiltinFamilyArtifact::TreeView(prepare_pair(model, |model| {
-                crate::tree_view::layout_tree_view_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let edge_theme = crate::tree_view::TreeViewEdgeThemePlan::resolve(
+                execution.resolved_theme(),
+                &meta.effective_config,
+                &model,
+                execution.work_meter_ref(),
+            )?;
+            let layout = crate::tree_view::layout_tree_view_diagram_typed(
+                &model,
+                effective_config,
+                &edge_theme,
+                execution.text_measurer(),
+            )?;
+            BuiltinFamilyArtifact::TreeView(Box::new(TreeViewFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                edge_theme,
+            }))
         }
         RenderSemanticModel::Ishikawa(model) => {
             BuiltinFamilyArtifact::Ishikawa(prepare_pair(model, |model| {

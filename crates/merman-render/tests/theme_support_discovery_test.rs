@@ -84,6 +84,42 @@ fn family_owned_partial_route_is_reported_as_conditional() {
 }
 
 #[test]
+fn direct_only_family_slices_are_reported_as_conditional() {
+    for (family, target, facet) in [
+        (
+            DiagramFamilyId::TIMELINE,
+            ThemeTarget::TimelineEvent,
+            ThemeRuleFacetV1::Opacity,
+        ),
+        (
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Edge,
+            ThemeRuleFacetV1::StrokeWidth,
+        ),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            facet,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ],
+            "family={family} target={} facet={facet:?}",
+            target.id()
+        );
+    }
+}
+
+#[test]
 fn state_support_discovery_uses_the_family_consumer_instead_of_route_ownership() {
     for (target, facet, expected_state, expected_reasons) in [
         (

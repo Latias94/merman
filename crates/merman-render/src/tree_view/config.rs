@@ -6,7 +6,7 @@ use std::collections::HashMap;
 const DEFAULT_ROW_INDENT: f64 = 10.0;
 const DEFAULT_PADDING_X: f64 = 5.0;
 const DEFAULT_PADDING_Y: f64 = 5.0;
-const DEFAULT_LINE_THICKNESS: f64 = 1.0;
+pub(super) const DEFAULT_LINE_THICKNESS: f64 = 1.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 
 pub(crate) struct TreeViewConfigView<'a> {
