@@ -8,6 +8,7 @@ struct FlowchartEdgeStyleArtifact {
     emission: FlowchartCompiledStyles,
     projected_source_style_bytes: usize,
     source_stroke_width_status: crate::flowchart::FlowchartSourceFacetStatus,
+    source_stroke_width_value: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +26,29 @@ pub(crate) struct FlowchartEdgeStylePlan {
     edge_stroke_width_config_override: bool,
     #[cfg(test)]
     parsed_class_declaration_count: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(in crate::svg::parity::flowchart) struct FlowchartEdgeStrokeWidthResolution {
+    precedence: crate::flowchart::FlowchartFacetPrecedence,
+    typed_value: Option<f32>,
+    paint_value: Option<f32>,
+}
+
+impl FlowchartEdgeStrokeWidthResolution {
+    pub(in crate::svg::parity::flowchart) const fn precedence(
+        self,
+    ) -> crate::flowchart::FlowchartFacetPrecedence {
+        self.precedence
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn typed_value(self) -> Option<f32> {
+        self.typed_value
+    }
+
+    pub(in crate::svg::parity::flowchart) fn paint_outset(self) -> Option<f64> {
+        self.paint_value.map(|value| f64::from(value) / 2.0)
+    }
 }
 
 impl FlowchartEdgeStylePlan {
@@ -117,12 +141,17 @@ impl FlowchartEdgeStylePlan {
                     work_meter.check_svg_append(usize::MAX, 1)?;
                     unreachable!("overflowing edge source-style projection must be rejected")
                 };
+                let source_stroke_width_status = if hand_drawn {
+                    crate::flowchart::FlowchartSourceFacetStatus::Absent
+                } else {
+                    emission.source_stroke_width_status()
+                };
+                let source_stroke_width_value = (!hand_drawn)
+                    .then(|| emission.admitted_stroke_width_value())
+                    .flatten();
                 let artifact = Arc::new(FlowchartEdgeStyleArtifact {
-                    source_stroke_width_status: if hand_drawn {
-                        crate::flowchart::FlowchartSourceFacetStatus::Absent
-                    } else {
-                        emission.source_stroke_width_status()
-                    },
+                    source_stroke_width_status,
+                    source_stroke_width_value,
                     emission: emission.into_edge_artifact(hand_drawn),
                     projected_source_style_bytes,
                 });
@@ -206,6 +235,7 @@ impl FlowchartEdgeStylePlan {
         Ok(&self.occurrence(key)?.artifact.emission)
     }
 
+    #[cfg(test)]
     pub(in crate::svg::parity::flowchart) fn edge_source_stroke_width_status_for(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
@@ -213,10 +243,45 @@ impl FlowchartEdgeStylePlan {
         Ok(self.occurrence(key)?.artifact.source_stroke_width_status)
     }
 
-    pub(in crate::svg::parity::flowchart) const fn edge_stroke_width_config_override(
+    pub(in crate::svg::parity::flowchart) fn resolve_edge_stroke_width_for(
         &self,
-    ) -> bool {
-        self.edge_stroke_width_config_override
+        key: crate::flowchart::FlowchartEdgeKey,
+        edge: &crate::flowchart::FlowEdge,
+        edge_theme: &crate::flowchart::FlowchartEdgeThemeStyle,
+        mermaid_stroke_width: f32,
+        hand_drawn: bool,
+    ) -> crate::Result<FlowchartEdgeStrokeWidthResolution> {
+        let artifact = &self.occurrence(key)?.artifact;
+        let precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+            artifact.source_stroke_width_status,
+            self.edge_stroke_width_config_override,
+        );
+        let typed_value = edge_theme.stroke_width_value(precedence, !hand_drawn);
+        let class_value = if hand_drawn {
+            1.0
+        } else {
+            match edge.stroke.as_deref() {
+                Some("thick") => 3.5,
+                Some("invisible") => 0.0,
+                _ => mermaid_stroke_width,
+            }
+        };
+        let paint_value = match artifact.source_stroke_width_status {
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted => {
+                artifact.source_stroke_width_value
+            }
+            // Dynamic or invalid source CSS still owns precedence, but it has no numeric paint
+            // extent that the headless viewport can safely claim.
+            crate::flowchart::FlowchartSourceFacetStatus::Unverified => None,
+            crate::flowchart::FlowchartSourceFacetStatus::Absent => {
+                typed_value.or(Some(class_value))
+            }
+        };
+        Ok(FlowchartEdgeStrokeWidthResolution {
+            precedence,
+            typed_value,
+            paint_value,
+        })
     }
 
     #[cfg(test)]

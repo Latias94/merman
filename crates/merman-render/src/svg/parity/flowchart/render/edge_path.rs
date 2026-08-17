@@ -40,16 +40,15 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.edge_stroke_config_override,
     );
     let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);
-    let stroke_width_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        ctx.edge_style_plan
-            .edge_source_stroke_width_status_for(key)?,
-        ctx.edge_style_plan.edge_stroke_width_config_override(),
-    );
-    let edge_writer_supports_typed_stroke_width = !hand_drawn;
-    let typed_stroke_width = ctx.edge_theme.stroke_width_value(
-        stroke_width_precedence,
-        edge_writer_supports_typed_stroke_width,
-    );
+    let stroke_width = ctx.edge_style_plan.resolve_edge_stroke_width_for(
+        key,
+        edge,
+        ctx.edge_theme,
+        ctx.node_stroke_width,
+        hand_drawn,
+    )?;
+    let stroke_width_precedence = stroke_width.precedence();
+    let typed_stroke_width = stroke_width.typed_value();
     let stroke_dasharray_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
         emitted_styles.emitted_edge_source_stroke_dasharray_status(hand_drawn),
         false,

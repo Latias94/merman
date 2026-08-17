@@ -1917,6 +1917,72 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths(
 }
 
 #[test]
+fn flowchart_and_swimlane_typed_edge_stroke_width_expands_paint_bounds_without_relayout() {
+    const STROKE_WIDTH: f32 = 160.0;
+
+    fn prepare_control(source: &str) -> family::FamilyRenderArtifact {
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+                .expect("parse control Flowchart family")
+                .expect("detect control Flowchart family");
+        family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("begin control Flowchart session"),
+        )
+        .expect("prepare control Flowchart family")
+    }
+
+    let theme = edge_stroke_width_theme(STROKE_WIDTH);
+    for (family_name, source, layout_key) in [
+        (
+            "Flowchart",
+            "%%{init: {\"flowchart\": {\"diagramPadding\": 0}}}%%\nflowchart LR\nA --- B\n",
+            "FlowchartV2",
+        ),
+        (
+            "Swimlane",
+            "%%{init: {\"flowchart\": {\"diagramPadding\": 0}}}%%\nswimlane-beta LR\nA --- B\n",
+            "SwimlaneDiagram",
+        ),
+    ] {
+        let control = prepare_control(source);
+        let control_layout = control
+            .layout_json()
+            .unwrap_or_else(|error| panic!("project control {family_name} layout: {error}"));
+        let control_svg = control
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render control {family_name} SVG: {error}"));
+
+        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let themed_layout = themed
+            .layout_json()
+            .unwrap_or_else(|error| panic!("project themed {family_name} layout: {error}"));
+        assert_eq!(
+            control_layout["layout"][layout_key], themed_layout["layout"][layout_key],
+            "{family_name} stroke paint must not alter layout geometry"
+        );
+        let themed_svg = themed
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render themed {family_name} SVG: {error}"));
+
+        let control_viewbox = flowchart_svg_viewbox_values(control_svg.svg());
+        let themed_viewbox = flowchart_svg_viewbox_values(themed_svg.svg());
+        assert!(
+            themed_viewbox[3] + 1.0e-6 >= f64::from(STROKE_WIDTH),
+            "{family_name} viewBox must contain the full {STROKE_WIDTH}px edge stroke; control={control_viewbox:?}, themed={themed_viewbox:?}, svg={}",
+            themed_svg.svg()
+        );
+        assert!(
+            themed_viewbox[3] > control_viewbox[3],
+            "{family_name} paint bounds must expand beyond the unchanged layout bounds; control={control_viewbox:?}, themed={themed_viewbox:?}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_source_and_explicit_config_stroke_width_override_the_typed_edge_value() {
     let theme = edge_stroke_width_theme(2.5);
     for (case, engine, source, expected_path_style, expected_svg) in [

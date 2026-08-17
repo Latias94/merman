@@ -194,6 +194,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
     // edge path `d` into our base bbox.
     {
         let edge_bounds_base = (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y);
+        let hand_drawn = flowchart_config_diagram_look(ctx.config).is_hand_drawn();
         let _g = timing.section(viewbox_edge_curve_bounds);
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
         for e in render_edges {
@@ -237,14 +238,25 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
             if geom.bounds_skipped_for_viewbox {
                 detail.viewbox_edge_curve_geom_skipped_bounds += 1;
             }
+            let paint_outset = ctx
+                .edge_style_plan
+                .resolve_edge_stroke_width_for(
+                    key,
+                    edge,
+                    ctx.edge_theme,
+                    ctx.node_stroke_width,
+                    hand_drawn,
+                )?
+                .paint_outset()
+                .unwrap_or(0.0);
 
             {
                 let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
                 if let Some(pb) = geom.pb {
-                    bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x);
-                    bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform);
-                    bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x);
-                    bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform);
+                    bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x - paint_outset);
+                    bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform - paint_outset);
+                    bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x + paint_outset);
+                    bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform + paint_outset);
                 }
 
                 edge_path_cache.insert(
@@ -271,13 +283,30 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
             // from the same post-processed geometry that SVG emission consumes, while retaining
             // node, cluster, and label bounds as the base.
             (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y) = edge_bounds_base;
-            for cache_entry in edge_path_cache.values() {
+            for edge in render_edges {
+                let edge = edge.as_ref();
+                let Some(cache_entry) = edge_path_cache.get(&edge.key) else {
+                    continue;
+                };
+                let paint_outset = ctx
+                    .edge_style_plan
+                    .resolve_edge_stroke_width_for(
+                        edge.key,
+                        edge.edge,
+                        ctx.edge_theme,
+                        ctx.node_stroke_width,
+                        hand_drawn,
+                    )?
+                    .paint_outset()
+                    .unwrap_or(0.0);
                 let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
                 if let Some(pb) = cache_entry.geom.pb {
-                    bbox_min_x = bbox_min_x.min(pb.min_x + cache_entry.origin_x);
-                    bbox_min_y = bbox_min_y.min(pb.min_y + cache_entry.abs_top_transform);
-                    bbox_max_x = bbox_max_x.max(pb.max_x + cache_entry.origin_x);
-                    bbox_max_y = bbox_max_y.max(pb.max_y + cache_entry.abs_top_transform);
+                    bbox_min_x = bbox_min_x.min(pb.min_x + cache_entry.origin_x - paint_outset);
+                    bbox_min_y =
+                        bbox_min_y.min(pb.min_y + cache_entry.abs_top_transform - paint_outset);
+                    bbox_max_x = bbox_max_x.max(pb.max_x + cache_entry.origin_x + paint_outset);
+                    bbox_max_y =
+                        bbox_max_y.max(pb.max_y + cache_entry.abs_top_transform + paint_outset);
                 }
             }
         }
