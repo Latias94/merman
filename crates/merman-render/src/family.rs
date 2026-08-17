@@ -2459,6 +2459,7 @@ fn prepare_class_family(
     let node_count = model.classes.len();
     let relation_theme = crate::class::ClassRelationThemePlan::resolve(
         execution.resolved_theme(),
+        &meta.effective_config,
         relation_count,
         node_count,
         execution.work_meter_ref(),

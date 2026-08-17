@@ -16,7 +16,10 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 enum ClassRelationStrokeWidth {
     Unspecified,
     Clear { rule_index: usize },
-    Value { rule_index: usize, value: f32 },
+    // Keep Mermaid ownership even when its CSS value cannot be reduced to a finite paint width;
+    // an unmeasurable source value must not accidentally fall back to the typed default.
+    MermaidOwned { paint_width: Option<f32> },
+    Typed { rule_index: usize, value: f32 },
 }
 
 impl Default for ClassRelationStrokeWidth {
@@ -25,7 +28,7 @@ impl Default for ClassRelationStrokeWidth {
     }
 }
 
-/// Prepared Class relation theme state shared by paint bounds and terminal SVG emission.
+/// Prepared final Class relation width winner shared by bounds, SVG emission, and evidence.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassRelationThemePlan {
     stroke_width: ClassRelationStrokeWidth,
@@ -36,12 +39,32 @@ pub(crate) struct ClassRelationThemePlan {
 impl ClassRelationThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &merman_core::MermaidConfig,
         relation_count: usize,
         node_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
+        let mermaid_owns_stroke_width = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.strokeWidth",
+        );
+        let mermaid_stroke_width = if mermaid_owns_stroke_width {
+            crate::class::config::ClassConfigView::new(effective_config.as_value())
+                .relation_stroke_width_for_bounds()
+        } else {
+            None
+        };
         let Some(theme) = theme else {
-            return Ok(Self::default());
+            return Ok(Self {
+                stroke_width: if mermaid_owns_stroke_width {
+                    ClassRelationStrokeWidth::MermaidOwned {
+                        paint_width: mermaid_stroke_width,
+                    }
+                } else {
+                    ClassRelationStrokeWidth::Unspecified
+                },
+                ..Self::default()
+            });
         };
         let style = theme.style_with_work_meter(
             ThemeTarget::Edge,
@@ -93,7 +116,7 @@ impl ClassRelationThemePlan {
                 );
             }
         }
-        let stroke_width = style
+        let typed_stroke_width = style
             .stroke_width_resolution()
             .winner()
             .and_then(|origin| {
@@ -107,12 +130,19 @@ impl ClassRelationThemePlan {
                 |(rule_index, specified)| match specified {
                     Specified::Unspecified => ClassRelationStrokeWidth::Unspecified,
                     Specified::Clear => ClassRelationStrokeWidth::Clear { rule_index },
-                    Specified::Value(value) => ClassRelationStrokeWidth::Value {
+                    Specified::Value(value) => ClassRelationStrokeWidth::Typed {
                         rule_index,
                         value: *value,
                     },
                 },
             );
+        let stroke_width = if mermaid_owns_stroke_width {
+            ClassRelationStrokeWidth::MermaidOwned {
+                paint_width: mermaid_stroke_width,
+            }
+        } else {
+            typed_stroke_width
+        };
         Ok(Self {
             stroke_width,
             static_winner_rules,
@@ -120,17 +150,29 @@ impl ClassRelationThemePlan {
         })
     }
 
-    pub(crate) const fn stroke_width(&self) -> Option<f32> {
+    pub(crate) const fn paint_stroke_width(&self) -> Option<f32> {
         match self.stroke_width {
-            ClassRelationStrokeWidth::Value { value, .. } => Some(value),
+            ClassRelationStrokeWidth::MermaidOwned { paint_width } => paint_width,
+            ClassRelationStrokeWidth::Typed { value, .. } => Some(value),
             ClassRelationStrokeWidth::Unspecified | ClassRelationStrokeWidth::Clear { .. } => None,
         }
     }
 
-    fn stroke_width_emission(&self) -> Option<(usize, f32)> {
+    pub(crate) const fn typed_stroke_width(&self) -> Option<f32> {
         match self.stroke_width {
-            ClassRelationStrokeWidth::Value { rule_index, value } => Some((rule_index, value)),
-            ClassRelationStrokeWidth::Unspecified | ClassRelationStrokeWidth::Clear { .. } => None,
+            ClassRelationStrokeWidth::Typed { value, .. } => Some(value),
+            ClassRelationStrokeWidth::Unspecified
+            | ClassRelationStrokeWidth::Clear { .. }
+            | ClassRelationStrokeWidth::MermaidOwned { .. } => None,
+        }
+    }
+
+    fn typed_stroke_width_emission(&self) -> Option<(usize, f32)> {
+        match self.stroke_width {
+            ClassRelationStrokeWidth::Typed { rule_index, value } => Some((rule_index, value)),
+            ClassRelationStrokeWidth::Unspecified
+            | ClassRelationStrokeWidth::Clear { .. }
+            | ClassRelationStrokeWidth::MermaidOwned { .. } => None,
         }
     }
 
@@ -150,6 +192,15 @@ impl ClassRelationThemePlan {
         selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
+        if target == ThemeTarget::Edge
+            && facet == FamilyThemeRuleFacet::StrokeWidth
+            && matches!(
+                self.stroke_width,
+                ClassRelationStrokeWidth::MermaidOwned { .. }
+            )
+        {
+            return false;
+        }
         let property = resolved_style_property_for_facet(facet);
         match selector {
             FamilyThemeSelectorShape::Static {
@@ -173,7 +224,7 @@ impl ClassRelationThemePlan {
 pub(crate) struct ClassRelationThemeReceipt {
     expected_relation_paths: usize,
     checkpointed_relation_paths: usize,
-    checkpointed_width_paths: usize,
+    checkpointed_typed_width_paths: usize,
 }
 
 impl ClassRelationThemeReceipt {
@@ -181,14 +232,15 @@ impl ClassRelationThemeReceipt {
         Self {
             expected_relation_paths,
             checkpointed_relation_paths: 0,
-            checkpointed_width_paths: 0,
+            checkpointed_typed_width_paths: 0,
         }
     }
 
-    pub(crate) fn record_checkpointed_relation(&mut self, width_emitted: bool) {
+    pub(crate) fn record_checkpointed_relation(&mut self, typed_width_emitted: bool) {
         self.checkpointed_relation_paths = self.checkpointed_relation_paths.saturating_add(1);
-        if width_emitted {
-            self.checkpointed_width_paths = self.checkpointed_width_paths.saturating_add(1);
+        if typed_width_emitted {
+            self.checkpointed_typed_width_paths =
+                self.checkpointed_typed_width_paths.saturating_add(1);
         }
     }
 
@@ -196,9 +248,9 @@ impl ClassRelationThemeReceipt {
         self.checkpointed_relation_paths == self.expected_relation_paths
     }
 
-    fn proves_width(&self) -> bool {
+    fn proves_typed_width(&self) -> bool {
         self.proves_complete_relation_emission()
-            && self.checkpointed_width_paths == self.expected_relation_paths
+            && self.checkpointed_typed_width_paths == self.expected_relation_paths
     }
 }
 
@@ -279,11 +331,11 @@ impl ClassThemeEvidenceRecorder {
                             if plan.stroke_width_is_clear_for(rule_index) {
                                 observation.residual =
                                     Some(FamilyThemeResidualReason::UnsupportedGeometry);
-                            } else if let Some((winner, _)) = plan.stroke_width_emission() {
+                            } else if let Some((winner, _)) = plan.typed_stroke_width_emission() {
                                 if winner != rule_index {
                                     observation.incomplete = true;
                                 } else if receipt
-                                    .is_some_and(ClassRelationThemeReceipt::proves_width)
+                                    .is_some_and(ClassRelationThemeReceipt::proves_typed_width)
                                 {
                                     observation.width_verified = true;
                                 } else {
@@ -372,7 +424,7 @@ mod tests {
     #[test]
     fn relation_width_receipt_requires_every_terminal_checkpoint() {
         let plan = ClassRelationThemePlan {
-            stroke_width: ClassRelationStrokeWidth::Value {
+            stroke_width: ClassRelationStrokeWidth::Typed {
                 rule_index: 3,
                 value: 6.0,
             },
@@ -380,11 +432,11 @@ mod tests {
             ordinal_winner_rules: BTreeSet::new(),
         };
         let mut receipt = ClassRelationThemeReceipt::new(2);
-        receipt.record_checkpointed_relation(plan.stroke_width().is_some());
-        assert!(!receipt.proves_width());
+        receipt.record_checkpointed_relation(plan.typed_stroke_width().is_some());
+        assert!(!receipt.proves_typed_width());
 
-        receipt.record_checkpointed_relation(plan.stroke_width().is_some());
-        assert!(receipt.proves_width());
+        receipt.record_checkpointed_relation(plan.typed_stroke_width().is_some());
+        assert!(receipt.proves_typed_width());
     }
 
     #[test]

@@ -191,6 +191,12 @@ impl<'a> ClassConfigView<'a> {
             .unwrap_or_else(|| "#9370DB".to_string())
     }
 
+    pub(crate) fn relation_stroke_width_for_bounds(&self) -> Option<f32> {
+        config_f64_css_px(self.effective_config, &["themeVariables", "strokeWidth"])
+            .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
+            .map(|value| value as f32)
+    }
+
     pub(crate) fn diagram_look(&self) -> String {
         config_diagram_look(self.effective_config)
             .as_str()

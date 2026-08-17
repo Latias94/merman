@@ -3229,6 +3229,108 @@ note for A "note"
 }
 
 #[test]
+fn class_source_and_site_config_own_relation_stroke_width_precedence() {
+    const DIAGRAM: &str = r#"classDiagram
+direction LR
+A o-- B
+"#;
+    const SOURCE_CONFIG: &str = r#"%%{init: {"themeVariables": {"strokeWidth": 160}}}%%
+classDiagram
+direction LR
+A o-- B
+"#;
+
+    let theme = class_relation_theme(
+        ThemeStylePatch::default()
+            .with_stroke_width(6.0)
+            .expect("valid Class relation width"),
+        None,
+    );
+    let render = |engine: Engine, source: &str| {
+        let parsed = theme
+            .install_parse_compatibility(engine)
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Class precedence source should produce a render model");
+        prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Class precedence session"),
+        )
+        .expect("prepare Class precedence fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("source-owned Class relation width should supersede the typed default")
+    };
+    let view_box = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .expect("valid Class SVG")
+            .root_element()
+            .attribute("viewBox")
+            .expect("Class root viewBox")
+            .split_ascii_whitespace()
+            .map(|part| part.parse::<f64>().expect("numeric viewBox component"))
+            .collect::<Vec<_>>()
+    };
+
+    let typed = render(Engine::new(), DIAGRAM);
+    let typed_view_box = view_box(typed.svg());
+    assert!(typed.svg().contains("stroke-width:6px !important"));
+
+    let configured = [
+        render(
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "secure": [
+                    "secure",
+                    "securityLevel",
+                    "startOnLoad",
+                    "maxTextSize",
+                    "suppressErrorRendering",
+                    "maxEdges"
+                ]
+            }))),
+            SOURCE_CONFIG,
+        ),
+        render(
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": {"strokeWidth": 160}
+            }))),
+            DIAGRAM,
+        ),
+    ];
+    for rendered in &configured {
+        assert!(rendered.svg().contains("stroke-width:160;fill:none;}"));
+        assert!(!rendered.svg().contains("stroke-width:6px !important"));
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+
+        let configured_view_box = view_box(rendered.svg());
+        assert!(
+            configured_view_box[2] > typed_view_box[2] + 1_000.0,
+            "typed={typed_view_box:?} configured={configured_view_box:?}"
+        );
+        assert!(
+            configured_view_box[3] > typed_view_box[3] + 1_000.0,
+            "typed={typed_view_box:?} configured={configured_view_box:?}"
+        );
+    }
+}
+
+#[test]
 fn class_relation_stroke_width_clear_and_mixed_facets_fail_closed() {
     const SOURCE: &str = "classDiagram\nclass A\nclass B\nA --> B\n";
 

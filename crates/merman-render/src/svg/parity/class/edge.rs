@@ -220,8 +220,9 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
             ctx.relations_by_id.get(e.id.as_str()).copied()
         };
         let is_relation = relation.is_some();
-        let themed_stroke_width = relation.and(ctx.relation_theme.stroke_width());
-        let stroke_outset = themed_stroke_width.map_or(0.0, |width| f64::from(width) / 2.0);
+        let relation_stroke_width = relation.and(ctx.relation_theme.paint_stroke_width());
+        let typed_stroke_width = relation.and(ctx.relation_theme.typed_stroke_width());
+        let stroke_outset = relation_stroke_width.map_or(0.0, |width| f64::from(width) / 2.0);
         let start_marker_paint =
             relation.and_then(|rel| class_marker_paint_spec(rel.relation.type1, true));
         let end_marker_paint =
@@ -274,7 +275,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         // marker anchors without maintaining a second SVG path interpreter. Classic and ELK paths
         // retain one stable endpoint pair and can use the tighter rotated marker boxes below.
         let rough_marker_outset = if rough_d.is_some() {
-            themed_stroke_width.map_or(0.0, |width| {
+            relation_stroke_width.map_or(0.0, |width| {
                 [start_marker_paint, end_marker_paint]
                     .into_iter()
                     .flatten()
@@ -305,7 +306,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
             );
         }
         if rough_d.is_none()
-            && let Some(width) = themed_stroke_width.map(f64::from)
+            && let Some(width) = relation_stroke_width.map(f64::from)
         {
             if let Some(marker) = start_marker_paint {
                 include_class_marker_paint_bounds(
@@ -401,7 +402,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
             }
         }
         let base_style = class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn");
-        match themed_stroke_width {
+        match typed_stroke_width {
             Some(width) => {
                 let _ = write!(
                     out,
@@ -417,7 +418,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         out.push_str("/>");
         out.checkpoint()?;
         if is_relation {
-            theme_receipt.record_checkpointed_relation(themed_stroke_width.is_some());
+            theme_receipt.record_checkpointed_relation(typed_stroke_width.is_some());
         }
     }
     out.push_str("</g>");
