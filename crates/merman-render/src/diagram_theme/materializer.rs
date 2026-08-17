@@ -697,38 +697,53 @@ mod tests {
     };
     use super::*;
 
+    fn direct_consumer_for_generated_rule(row: GeneratedRule) -> Option<DiagramFamilyId> {
+        let selector = FamilyThemeSelectorShape::Static {
+            variant: row.variant,
+        };
+        DiagramFamilyId::all().iter().copied().find(|family| {
+            if !row.target.valid_for(*family) {
+                return false;
+            }
+            [
+                FamilyThemePaintKind::Solid,
+                FamilyThemePaintKind::Transparent,
+            ]
+            .into_iter()
+            .all(|paint_kind| {
+                let fill_is_direct = row.fill.is_none_or(|_| {
+                    classify_rule_facet(
+                        *family,
+                        row.target,
+                        selector,
+                        FamilyThemeRuleFacet::Fill(paint_kind),
+                    ) == FamilyThemeDisposition::TypedAdapter
+                });
+                let stroke_is_direct = row.stroke.is_none_or(|_| {
+                    classify_rule_facet(
+                        *family,
+                        row.target,
+                        selector,
+                        FamilyThemeRuleFacet::Stroke(paint_kind),
+                    ) == FamilyThemeDisposition::TypedAdapter
+                });
+                fill_is_direct && stroke_is_direct
+            })
+        })
+    }
+
+    fn direct_consumer_for_generated_palette(target: ThemeTarget) -> Option<DiagramFamilyId> {
+        DiagramFamilyId::all().iter().copied().find(|family| {
+            target.valid_for(*family)
+                && compile_ordinal_palette_route(*family, target).disposition()
+                    == FamilyThemeDisposition::TypedAdapter
+        })
+    }
+
     #[test]
     fn generated_expansion_rows_have_direct_consumers() {
         for row in GENERATED_RULES {
-            let selector = FamilyThemeSelectorShape::Static {
-                variant: row.variant,
-            };
-            let direct_family = DiagramFamilyId::all().iter().copied().find(|family| {
-                [
-                    FamilyThemePaintKind::Solid,
-                    FamilyThemePaintKind::Transparent,
-                ]
-                .into_iter()
-                .all(|paint_kind| {
-                    let fill_is_direct = row.fill.is_none_or(|_| {
-                        classify_rule_facet(
-                            *family,
-                            row.target,
-                            selector,
-                            FamilyThemeRuleFacet::Fill(paint_kind),
-                        ) == FamilyThemeDisposition::TypedAdapter
-                    });
-                    let stroke_is_direct = row.stroke.is_none_or(|_| {
-                        classify_rule_facet(
-                            *family,
-                            row.target,
-                            selector,
-                            FamilyThemeRuleFacet::Stroke(paint_kind),
-                        ) == FamilyThemeDisposition::TypedAdapter
-                    });
-                    fill_is_direct && stroke_is_direct
-                })
-            });
+            let direct_family = direct_consumer_for_generated_rule(row);
             assert!(
                 direct_family.is_some(),
                 "{} generated rule lacks one family that directly consumes every emitted facet",
@@ -737,15 +752,28 @@ mod tests {
         }
 
         for target in GENERATED_PALETTE_TARGETS {
-            let direct_family = DiagramFamilyId::all().iter().copied().find(|family| {
-                compile_ordinal_palette_route(*family, target).disposition()
-                    == FamilyThemeDisposition::TypedAdapter
-            });
+            let direct_family = direct_consumer_for_generated_palette(target);
             assert!(
                 direct_family.is_some(),
                 "{} palette lacks a direct consumer",
                 target.id(),
             );
         }
+    }
+
+    #[test]
+    fn invalid_family_targets_cannot_borrow_state_direct_classification() {
+        let invalid_rule = generated_rule(
+            ThemeTarget::Requirement,
+            None,
+            Some(ThemeColorTokenV1::Surface),
+            None,
+        );
+
+        assert_eq!(direct_consumer_for_generated_rule(invalid_rule), None);
+        assert_eq!(
+            direct_consumer_for_generated_palette(ThemeTarget::Requirement),
+            None
+        );
     }
 }
