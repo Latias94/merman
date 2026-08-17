@@ -178,7 +178,7 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         !stdout.contains("--presentation-profile") && !stdout.contains("merman-modern"),
         "removed non-upstream presentation inputs must stay absent:\n{stdout}"
     );
-    for removed in ["--theme-preset", "--theme-file"] {
+    for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
         assert!(
             !stdout.contains(removed),
             "mmdc help must not advertise provisional native theme option {removed}:\n{stdout}"
@@ -238,6 +238,7 @@ fn compatibility_commands_reject_native_theme_options_before_input_acquisition()
         for (removed, value) in [
             ("--theme-preset", "editor-dark"),
             ("--theme-file", "theme.json"),
+            ("--theme-definition", "theme-definition.json"),
         ] {
             let args = if command == "mmdc" {
                 vec![command, "-i", "missing.mmd", removed, value]
@@ -258,25 +259,36 @@ fn compatibility_commands_reject_native_theme_options_before_input_acquisition()
 }
 
 #[test]
-fn native_theme_file_conflicts_with_the_native_preset() {
+fn native_theme_inputs_conflict_before_input_acquisition() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    let args = [
-        "render",
-        "missing.mmd",
-        "--theme-preset",
-        "editor-dark",
-        "--theme-file",
-        "missing-theme.json",
-    ];
-    let output = Command::new(exe).args(args).output().expect("run cli");
+    for args in [
+        [
+            "render",
+            "missing.mmd",
+            "--theme-preset",
+            "editor-dark",
+            "--theme-file",
+            "missing-theme.json",
+        ],
+        [
+            "render",
+            "missing.mmd",
+            "--theme-file",
+            "missing-theme.json",
+            "--theme-definition",
+            "missing-definition.json",
+        ],
+    ] {
+        let output = Command::new(exe).args(args).output().expect("run cli");
 
-    assert_eq!(support::exit_code(output.status), 2, "{args:?}");
-    assert!(output.stdout.is_empty(), "{args:?}");
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("--theme-file") && !stderr.contains("missing.mmd:"),
-        "theme selector conflicts must precede input acquisition for {args:?}:\n{stderr}"
-    );
+        assert_eq!(support::exit_code(output.status), 2, "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("cannot be used with") && !stderr.contains("missing.mmd:"),
+            "theme selector conflicts must precede input acquisition for {args:?}:\n{stderr}"
+        );
+    }
 }
 
 #[test]
@@ -442,6 +454,51 @@ fn native_theme_file_uses_the_compiled_theme_contract() {
     assert!(
         svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
         "native render should compile the theme file through the typed theme path: {svg}"
+    );
+}
+
+#[test]
+fn native_theme_definition_materializes_and_renders_without_an_intermediate_spec() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("midnight.json"),
+        br##"{
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": {
+                "canvas": "#0f172a",
+                "surface": "#111827",
+                "text": "#e5e7eb",
+                "border": "#475569",
+                "line": "#94a3b8",
+                "accent": "#60a5fa"
+            }
+        }"##,
+    )
+    .expect("write shared theme definition");
+
+    let args = [
+        "render",
+        "--theme-definition",
+        "midnight.json",
+        "--format",
+        "svg",
+        "-",
+    ];
+    let output = run_with_stdin_in_dir(&args, "flowchart LR\nA-->B\n", Some(tmp.path()));
+    assert!(
+        output.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        svg.contains("#0f172a")
+            && svg.contains("#e5e7eb")
+            && svg.contains("#475569")
+            && svg.contains("#94a3b8")
+            && svg.contains("#60a5fa"),
+        "native render should compose decode, materialization, compilation, and rendering: {svg}"
     );
 }
 

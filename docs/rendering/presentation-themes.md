@@ -251,8 +251,10 @@ Configuration precedence is structural and independent of builder call order:
 
 The official Mermaid CLI selector remains unchanged: `merman-cli mmdc -t/--theme` accepts the
 upstream values `default`, `forest`, `dark`, and `neutral` (with an omitted value meaning
-`default`). Merman's compiled selectors are separate: native render/batch commands use
-`--theme-preset` or `--theme-file`, and binding callers use top-level `theme`.
+`default`). Merman's native inputs are separate: render/batch commands use `--theme-definition`
+for a shareable `ThemeDefinitionV1`, `--theme-preset` for a built-in preset, or `--theme-file` for
+an advanced complete selection. Binding callers use the corresponding Rust-owned theme operation;
+no host reimplements token expansion.
 
 The removed `presentation`, `host_theme`, `PresentationTheme`, `HostTheme`, and
 `PresentationProfile::MermanModern` names are not compatibility aliases. Options JSON rejects the

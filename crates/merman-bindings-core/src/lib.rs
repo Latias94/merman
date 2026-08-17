@@ -25,6 +25,8 @@ mod services;
 mod svg_plan;
 #[cfg(feature = "svg")]
 mod text_measurement;
+#[cfg(feature = "svg")]
+mod theme_definition;
 mod transport_contract;
 
 #[cfg(feature = "ascii")]
@@ -136,6 +138,8 @@ pub use text_measurement::{
 };
 #[cfg(feature = "svg")]
 pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with};
+#[cfg(feature = "svg")]
+pub use theme_definition::{compile_theme_definition_json, compile_theme_definition_json_with};
 pub use transport_contract::{
     BindingTransportExposureSpec, BindingTransportKey, WEB_TRANSPORT_API_VERSION,
 };

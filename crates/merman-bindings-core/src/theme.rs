@@ -156,7 +156,7 @@ pub(crate) fn compile_theme_with(
     Ok(Some(theme))
 }
 
-fn theme_compile_error(error: merman::svg::ThemeCompileError) -> BindingError {
+pub(crate) fn theme_compile_error(error: merman::svg::ThemeCompileError) -> BindingError {
     match error {
         merman::svg::ThemeCompileError::ResourceLimit(error)
         | merman::svg::ThemeCompileError::FontCatalog(
@@ -200,7 +200,7 @@ fn theme_validation_error(error: merman::svg::ThemeCompileValidationError) -> Bi
     invalid_theme(field, message)
 }
 
-fn theme_resource_error(error: merman::svg::ThemeResourceLimitExceeded) -> BindingError {
+pub(crate) fn theme_resource_error(error: merman::svg::ThemeResourceLimitExceeded) -> BindingError {
     let actual = u64::try_from(error.actual).unwrap_or(u64::MAX);
     let max = u64::try_from(error.max).unwrap_or(u64::MAX);
     let profile = error
@@ -307,6 +307,62 @@ mod tests {
                 .report()
                 .requires_capability(ThemeCapability::SemanticRules)
         );
+    }
+
+    #[test]
+    fn authoring_definition_materializes_through_the_shared_rust_authority() {
+        let theme = crate::compile_theme_definition_json(
+            br##"{
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": {
+                    "canvas": "#0f172a",
+                    "surface": "#111827",
+                    "text": "#e5e7eb",
+                    "border": "#475569"
+                }
+            }"##,
+        )
+        .expect("a shared authoring definition should materialize and compile");
+
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::SemanticRules)
+        );
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::SolidPaint)
+        );
+    }
+
+    #[test]
+    fn authoring_definition_rejects_duplicate_members_and_oversized_raw_collections() {
+        let duplicate = br##"{
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": {
+                "canvas": "#ffffff",
+                "canv\u0061s": "#000000"
+            }
+        }"##;
+        let error = crate::compile_theme_definition_json(duplicate)
+            .expect_err("decoded-equivalent duplicate keys must fail before typed projection");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("duplicate object key"));
+
+        let rule = r#"{"kind":"rule","target":"node","style":{}}"#;
+        let styles = std::iter::repeat_n(rule, 1_025)
+            .collect::<Vec<_>>()
+            .join(",");
+        let oversized = format!(
+            r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{styles}]}}"#
+        );
+        let error = crate::compile_theme_definition_json(oversized.as_bytes())
+            .expect_err("raw arrays must be bounded before typed Vec allocation");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("array item limit"));
     }
 
     #[test]

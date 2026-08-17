@@ -135,6 +135,7 @@ gruvbox-dark\t''
 ayu-light\t''
 ayu-dark\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
@@ -226,6 +227,7 @@ gruvbox-dark\t''
 ayu-light\t''
 ayu-dark\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''

@@ -614,11 +614,22 @@ pub(crate) struct RenderCliArgs {
     #[arg(
         long = "theme-file",
         value_hint = ValueHint::FilePath,
-        conflicts_with = "theme_preset",
+        conflicts_with_all = ["theme_preset", "theme_definition"],
         help_heading = "Merman renderer controls",
         hide_short_help = true
     )]
     pub(crate) theme_file: Option<PathBuf>,
+
+    #[cfg(feature = "svg")]
+    /// Shareable ThemeDefinitionV1 JSON materialized before rendering.
+    #[arg(
+        long = "theme-definition",
+        value_hint = ValueHint::FilePath,
+        conflicts_with_all = ["theme_preset", "theme_file"],
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) theme_definition: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
     /// Text measurement strategy.
@@ -723,6 +734,7 @@ impl LayoutRenderCliArgs {
         RenderCliArgs {
             theme_preset: None,
             theme_file: None,
+            theme_definition: None,
             text_measurer: Some(self.text_measurer),
             math_renderer: self.math_renderer,
             container_width: self.container_width,

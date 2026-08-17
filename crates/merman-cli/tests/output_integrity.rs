@@ -131,12 +131,20 @@ fn hard_link_output_alias_of_primary_input_is_rejected_by_file_identity() {
 }
 
 #[test]
-fn hard_link_aliases_of_every_auxiliary_input_are_rejected() {
-    let cases: &[(&str, &str, &str, &[&str])] = &[
+fn aliases_of_every_auxiliary_input_are_rejected() {
+    #[derive(Clone, Copy)]
+    enum AliasKind {
+        Exact,
+        HardLink,
+    }
+
+    let cases: &[(&str, &str, &str, &str, AliasKind, &[&str])] = &[
         (
             "configuration",
             "config.json",
+            "out.svg",
             "{}",
+            AliasKind::HardLink,
             &[
                 "render",
                 "diagram.mmd",
@@ -149,7 +157,9 @@ fn hard_link_aliases_of_every_auxiliary_input_are_rejected() {
         (
             "CSS",
             "style.css",
+            "out.svg",
             "svg { color: red; }",
+            AliasKind::HardLink,
             &[
                 "render",
                 "diagram.mmd",
@@ -162,7 +172,9 @@ fn hard_link_aliases_of_every_auxiliary_input_are_rejected() {
         (
             "Puppeteer configuration",
             "puppeteer.json",
+            "out.svg",
             "{}",
+            AliasKind::HardLink,
             &[
                 "mmdc",
                 "-i",
@@ -176,7 +188,9 @@ fn hard_link_aliases_of_every_auxiliary_input_are_rejected() {
         (
             "local icon",
             "icons.json",
+            "out.svg",
             r#"{"prefix":"fixture","icons":{"box":{"body":"<path d=\"M0 0\"/>"}}}"#,
+            AliasKind::HardLink,
             &[
                 "render",
                 "diagram.mmd",
@@ -186,27 +200,76 @@ fn hard_link_aliases_of_every_auxiliary_input_are_rejected() {
                 "fixture#icons.json",
             ],
         ),
+        (
+            "theme selection",
+            "theme.svg",
+            "theme.svg",
+            r#"{"preset":"editor-dark"}"#,
+            AliasKind::Exact,
+            &[
+                "render",
+                "diagram.mmd",
+                "--output",
+                "theme.svg",
+                "--format",
+                "svg",
+                "--theme-file",
+                "theme.svg",
+            ],
+        ),
+        (
+            "theme definition",
+            "generated/diagram.md",
+            "generated/diagram.md",
+            r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}"#,
+            AliasKind::Exact,
+            &[
+                "batch",
+                "diagram.md",
+                "--output-dir",
+                "generated",
+                "--theme-definition",
+                "generated/diagram.md",
+                "--quiet",
+            ],
+        ),
     ];
 
-    for (label, protected_name, contents, args) in cases {
+    for (label, protected_name, output_name, contents, alias_kind, args) in cases {
         let tmp = tempfile::tempdir().expect("tempdir");
         fs::write(tmp.path().join("diagram.mmd"), MERMAID_SOURCE).expect("write source");
+        fs::write(
+            tmp.path().join("diagram.md"),
+            "# Diagram\n\n```mermaid\nflowchart LR\nA-->B\n```\n",
+        )
+        .expect("write Markdown source");
         let protected = tmp.path().join(protected_name);
+        if let Some(parent) = protected.parent() {
+            fs::create_dir_all(parent).expect("create protected input parent");
+        }
         fs::write(&protected, contents).expect("write protected input");
-        fs::hard_link(&protected, tmp.path().join("out.svg")).expect("create output hard link");
+        let output_path = tmp.path().join(output_name);
+        if matches!(alias_kind, AliasKind::HardLink) {
+            fs::hard_link(&protected, &output_path).expect("create output hard link");
+        } else {
+            assert_eq!(
+                protected, output_path,
+                "exact alias fixture must share a path"
+            );
+        }
 
         let output = run_in(tmp.path(), args);
 
-        assert_alias_rejected(&output, "out.svg", protected_name);
+        assert_alias_rejected(&output, output_name, protected_name);
         assert_eq!(
             fs::read_to_string(&protected).expect("read protected input"),
             *contents,
             "{label} input changed"
         );
         assert_eq!(
-            fs::read_to_string(tmp.path().join("out.svg")).expect("read output hard link"),
+            fs::read_to_string(output_path).expect("read output alias"),
             *contents,
-            "{label} hard link changed"
+            "{label} output alias changed"
         );
     }
 }

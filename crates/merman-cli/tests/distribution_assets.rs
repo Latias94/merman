@@ -71,6 +71,10 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         render.contains("--theme-file"),
         "native render completion must expose structured theme files"
     );
+    assert!(
+        render.contains("--theme-definition"),
+        "native render completion must expose shareable theme definitions"
+    );
 
     let batch = bash_options(&script, "batch");
     assert!(
@@ -87,7 +91,7 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         mmdc.contains("-e"),
         "the permanent mmdc compatibility surface must retain -e"
     );
-    for removed in ["--theme-preset", "--theme-file"] {
+    for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
         assert!(
             !mmdc.contains(removed),
             "mmdc completion must not expose provisional native option {removed}"
@@ -95,7 +99,7 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
     }
 
     let layout = bash_options(&script, "layout");
-    for removed in ["--theme-preset", "--theme-file"] {
+    for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
         assert!(
             !layout.contains(removed),
             "layout completion must not expose provisional native option {removed}"
