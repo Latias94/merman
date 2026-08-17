@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-11
+Last updated: 2026-08-17
 
 ## Version Decision
 
@@ -45,7 +45,7 @@ Only crates within the same independent batch use lexical ordering. The local pu
 release preflight, and release workflow consume this same projection; Markdown is not parsed as a
 release-order database.
 
-`roughr-merman` is versioned separately as `0.12.2`. The workflow reads each crate's own package
+`roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
 ## Binding Release Chain

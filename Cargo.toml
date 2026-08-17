@@ -71,7 +71,7 @@ quick-xml = "0.41.0"
 ropey = { version = "1.6.1", default-features = false, features = ["cr_lines", "simd"] }
 rustc-hash = "2.1.1"
 ryu-js = "1.0.2"
-roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.2", default-features = false }
+roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.3", default-features = false }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.150"
 same-file = "1.0.6"
