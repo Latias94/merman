@@ -1,7 +1,7 @@
-use merman::svg::theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
-use merman::svg::{
-    CssOverridePolicy, DiagramThemeCompiler, SvgOutputPolicy, SvgPipelinePreset, ThemeMaterializer,
+use merman::diagram_theme::{
+    DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializer, ThemeTokensV1,
 };
+use merman::svg::{CssOverridePolicy, SvgOutputPolicy, SvgPipelinePreset};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const SOURCE: &str = r#"sequenceDiagram

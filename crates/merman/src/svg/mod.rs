@@ -7,7 +7,6 @@
 
 pub use crate::SvgEnvironment;
 pub use merman_core::DiagramFamilyId;
-pub use merman_render::diagram_theme::theme_contract;
 pub use merman_render::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
     DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput,
@@ -20,21 +19,20 @@ pub use merman_render::diagram_theme::{
     MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP, MAX_FONT_ASSETS_HARD_CAP,
     MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP,
     MAX_FONT_FACES_HARD_CAP, MAX_FONT_TABLES_HARD_CAP, MAX_THEME_BASE64_BYTES_HARD_CAP,
-    MAX_THEME_ENCODED_BYTES_HARD_CAP, MaterializedTheme, MermaidThemeCompatibility,
-    MermaidThemeValue, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
-    Specified, StrokeLineCap, StrokeLineJoin, THEME_RESOURCE_LIMIT_COUNT,
-    THEME_RESOURCE_LIMIT_DESCRIPTORS, TextAlign, TextDecoration, TextLayoutCapability,
-    TextStylePatch, TextTransform, ThemeAdmissionError, ThemeAdmissionPolicy, ThemeAssets,
-    ThemeCapability, ThemeColorValue, ThemeCompileError, ThemeCompileValidationError,
-    ThemeEffectPatch, ThemeGeometryPatch, ThemeLength, ThemeMaterializationDigest,
-    ThemeMaterializationError, ThemeMaterializer, ThemePaintPatch, ThemePortabilityRequirement,
-    ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemeRecipeFingerprint,
-    ThemeRecipeReport, ThemeRequirements, ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded,
-    ThemeResourceLimitId, ThemeResourceLimitOverride, ThemeResourceLimitOverrideError,
-    ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, ThemeRule,
-    ThemeRuleSet, ThemeSpacingPatch, ThemeStrokePatch, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, ThemeWrapMode, TrustedThemeLane, TrustedThemeLanes,
-    TypographySpec, WhiteSpace, theme_preset_descriptors, theme_resource_limit_descriptors,
+    MAX_THEME_ENCODED_BYTES_HARD_CAP, MermaidThemeCompatibility, MermaidThemeValue, OrdinalPalette,
+    OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified, StrokeLineCap,
+    StrokeLineJoin, THEME_RESOURCE_LIMIT_COUNT, THEME_RESOURCE_LIMIT_DESCRIPTORS, TextAlign,
+    TextDecoration, TextLayoutCapability, TextStylePatch, TextTransform, ThemeAdmissionError,
+    ThemeAdmissionPolicy, ThemeAssets, ThemeCapability, ThemeColorValue, ThemeCompileError,
+    ThemeCompileValidationError, ThemeEffectPatch, ThemeGeometryPatch, ThemeLength,
+    ThemePaintPatch, ThemePortabilityRequirement, ThemePreset, ThemePresetDescriptor,
+    ThemePresetParseError, ThemeRecipeFingerprint, ThemeRecipeReport, ThemeRequirements,
+    ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded, ThemeResourceLimitId,
+    ThemeResourceLimitOverride, ThemeResourceLimitOverrideError, ThemeResourceLimitPhase,
+    ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, ThemeRule, ThemeRuleSet,
+    ThemeSpacingPatch, ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
+    ThemeVariant, ThemeWrapMode, TrustedThemeLane, TrustedThemeLanes, TypographySpec, WhiteSpace,
+    theme_preset_descriptors, theme_resource_limit_descriptors,
 };
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,

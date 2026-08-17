@@ -34,7 +34,6 @@ use std::fmt;
 use std::sync::Arc;
 
 pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
-pub use merman_theme_contract as theme_contract;
 pub use merman_theme_contract::DiagramThemeSpecWireV1;
 
 pub(crate) use admission::ResolvedThemeAdmission;

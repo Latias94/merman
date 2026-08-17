@@ -63,8 +63,9 @@ Use the versioned authoring contract for compact cross-family tokens. The materi
 definition into a complete editable spec; the ordinary compiler remains the only semantic compiler:
 
 ```rust
-use merman::svg::theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
-use merman::svg::{DiagramThemeCompiler, ThemeMaterializer};
+use merman::diagram_theme::{
+    DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializer, ThemeTokensV1,
+};
 
 let definition = ThemeDefinitionV1::new(
     ThemeTokensV1::default()
@@ -85,15 +86,15 @@ let theme = DiagramThemeCompiler::new().compile_spec_wire(materialized.into_spec
 # ).with_theme(theme);
 ```
 
-`merman::svg::theme_contract` re-exports the dependency-neutral persisted wire types at the version
-used by the renderer. `ThemeMaterializer` owns defaults, expansion order, palette replacement, and
-the materialization digest. It does not inspect family capabilities or render output. Raw untrusted
-JSON still requires an encoded-byte admission boundary before ordinary Serde decoding; the typed
-Rust constructor above is the currently supported authoring facade. Render-time bindings remain
-limited to either a preset reference or a complete `theme.spec` until their authoring operations
-adopt the same contract. Built-in preset recipes remain alpha inventory: this migration preserves
-their resolved visual winners but intentionally does not freeze prior recipe fingerprints or rule
-indices.
+`merman::diagram_theme` selectively re-exports the dependency-neutral authoring wire used by the
+renderer. The name is intentionally visual: terminal/ASCII styling is not part of this contract.
+`ThemeMaterializer` owns defaults, expansion order, palette replacement, and the materialization
+digest. It does not inspect family capabilities or render output. Raw untrusted JSON still requires
+an encoded-byte admission boundary before ordinary Serde decoding; the typed Rust constructor above
+is the currently supported authoring facade. Render-time bindings remain limited to either a preset
+reference or a complete `theme.spec` until their authoring operations adopt the same contract.
+Built-in preset recipes remain alpha inventory: this migration preserves their resolved visual
+winners but intentionally does not freeze prior recipe fingerprints or rule indices.
 
 `DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
 typography, semantic rules and ordinal palettes, canvas, effects, resource assets, and declared

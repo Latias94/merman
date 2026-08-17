@@ -117,6 +117,10 @@ pub use merman_editor_core as editor;
 #[cfg(feature = "svg")]
 pub mod svg;
 
+/// Versioned visual diagram-theme authoring and compilation.
+#[cfg(feature = "svg")]
+pub mod diagram_theme;
+
 /// Workspace-only evidence seams used by the non-published theme acceptance harness.
 ///
 /// These helpers are deliberately feature-gated and excluded from the ordinary facade. They may

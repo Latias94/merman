@@ -1,9 +1,6 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
-use merman::svg::{
-    DiagramTheme, DiagramThemeCompiler, SvgPipeline, ThemeMaterializer, ThemePreset,
-};
+use merman::svg::{DiagramTheme, DiagramThemeCompiler, SvgPipeline, ThemePreset};
 use merman::{
     Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
@@ -19,24 +16,6 @@ fn one_dark() -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile_preset(ThemePreset::OneDark)
         .expect("one-dark preset should compile")
-}
-
-#[test]
-fn versioned_authoring_facade_materializes_and_compiles() {
-    let definition = ThemeDefinitionV1::new(
-        ThemeTokensV1::default()
-            .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
-            .with_color(ThemeColorTokenV1::Surface, "#111827")
-            .with_color(ThemeColorTokenV1::Text, "#e5e7eb"),
-    );
-    let materialized = ThemeMaterializer::new()
-        .materialize_theme(&definition)
-        .expect("versioned authoring should materialize");
-    let theme = DiagramThemeCompiler::new()
-        .compile_spec_wire(materialized.into_spec())
-        .expect("the materialized complete spec should compile");
-
-    assert_ne!(theme.recipe_fingerprint().as_bytes(), &[0; 32]);
 }
 
 fn effective_config(

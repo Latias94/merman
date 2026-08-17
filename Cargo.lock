@@ -2432,6 +2432,7 @@ dependencies = [
  "merman-export",
  "merman-fixture-render-context",
  "merman-render",
+ "merman-theme-contract",
  "png",
  "roxmltree 0.21.1",
  "serde",
