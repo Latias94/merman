@@ -150,6 +150,7 @@ merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.8.0-alph
 merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.8.0-alpha.5" }
 merman-ffi = { path = "crates/merman-ffi", version = "0.8.0-alpha.5" }
 merman-rustdoc = { path = "crates/merman-rustdoc", version = "0.8.0-alpha.5" }
+merman-theme-contract = { path = "crates/merman-theme-contract", version = "0.8.0-alpha.5" }
 merman-render = { path = "crates/merman-render", version = "0.8.0-alpha.5", default-features = false }
 merman-export = { path = "crates/merman-export", version = "0.8.0-alpha.5", default-features = false }
 merman-typst-plugin = { path = "crates/merman-typst-plugin", version = "0.8.0-alpha.5" }

@@ -12,7 +12,6 @@ documentation = "https://docs.rs/merman-theme-contract"
 readme = "README.md"
 keywords = ["mermaid", "themes", "json", "contracts"]
 categories = ["encoding", "visualization"]
-publish = false
 
 [features]
 default = []

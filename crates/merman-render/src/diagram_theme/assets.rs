@@ -551,7 +551,7 @@ impl FontCatalog {
 struct CanonicalizedFontAsset {
     input_container: FontContainer,
     canonical_container: FontContainer,
-    canonical_bytes: Vec<u8>,
+    canonical_bytes: Arc<[u8]>,
     admission_receipt: FontAssetAdmissionReceipt,
 }
 
@@ -608,12 +608,13 @@ fn compile_font_catalog(
     let mut total_decoded_bytes = 0usize;
     let mut total_tables = 0usize;
     for (asset_index, asset) in indexed_assets {
+        let FontAssetSpec { id, bytes } = asset;
         let CanonicalizedFontAsset {
             input_container,
             canonical_container,
             canonical_bytes,
             admission_receipt,
-        } = canonicalize_font_asset(asset_index, &asset.bytes, resources)?;
+        } = canonicalize_font_asset(asset_index, bytes, resources)?;
         let fingerprint = hash_font_asset(canonical_container, &canonical_bytes);
         let canonical_bytes = if let Some(retained) = canonical_assets.get(&fingerprint) {
             Arc::clone(retained)
@@ -622,13 +623,12 @@ fn compile_font_catalog(
                 .checked_add(canonical_bytes.len())
                 .ok_or(FontCatalogError::CatalogByteCountOverflow)?;
             resources.check_font_catalog_decoded_bytes(total_decoded_bytes)?;
-            let retained = Arc::<[u8]>::from(canonical_bytes);
-            canonical_assets.insert(fingerprint, Arc::clone(&retained));
-            retained
+            canonical_assets.insert(fingerprint, Arc::clone(&canonical_bytes));
+            canonical_bytes
         };
 
         let asset_faces = parse_font_faces(
-            &asset.id,
+            &id,
             &canonical_bytes,
             canonical_container,
             spec.embedding,
@@ -643,7 +643,7 @@ fn compile_font_catalog(
         }
 
         assets.push(FontAsset {
-            id: asset.id,
+            id,
             input_container,
             canonical_container,
             canonical_bytes,
@@ -738,22 +738,23 @@ fn compile_resolved_family_names(
 
 fn canonicalize_font_asset(
     asset_index: usize,
-    bytes: &[u8],
+    bytes: Arc<[u8]>,
     resources: &ThemeResourcePolicy,
 ) -> Result<CanonicalizedFontAsset, FontCatalogError> {
-    let input_container = detect_font_container(bytes)
+    let input_container = detect_font_container(&bytes)
         .ok_or(FontCatalogError::UnsupportedFontContainer { asset_index })?;
+    let input_len = bytes.len();
     let mut compressed_block_size = None;
     let canonical_bytes = if input_container == FontContainer::Woff2 {
-        resources.check_font_asset_compressed_bytes(bytes.len())?;
-        let plan = preflight_woff2(bytes, resources, asset_index)?;
+        resources.check_font_asset_compressed_bytes(input_len)?;
+        let plan = preflight_woff2(&bytes, resources, asset_index)?;
         compressed_block_size = Some(plan.total_compressed_size);
         let declared_size = plan.declared_sfnt_size;
 
         let mut resource_error = None;
         let plan_for_decode = plan.clone();
         let decoded = wuff::decompress_woff2_with_custom_brotli(
-            bytes,
+            &bytes,
             &mut |compressed_data, expected_size| {
                 if let Err(error) = resources.check_font_asset_decoded_bytes(expected_size) {
                     resource_error = Some(error);
@@ -793,15 +794,15 @@ fn canonicalize_font_asset(
                 actual: decoded.len(),
             });
         }
-        decoded
+        Arc::<[u8]>::from(decoded)
     } else {
-        resources.check_font_asset_decoded_bytes(bytes.len())?;
-        bytes.to_vec()
+        resources.check_font_asset_decoded_bytes(input_len)?;
+        bytes
     };
 
     resources.check_font_asset_decoded_bytes(canonical_bytes.len())?;
     resources.check_font_decoded_expansion(
-        compressed_block_size.unwrap_or(bytes.len()),
+        compressed_block_size.unwrap_or(input_len),
         canonical_bytes.len(),
     )?;
     let canonical_container = detect_font_container(&canonical_bytes)
@@ -811,8 +812,8 @@ fn canonicalize_font_asset(
         input_container,
         canonical_container,
         admission_receipt: FontAssetAdmissionReceipt {
-            compressed_bytes: (input_container == FontContainer::Woff2).then_some(bytes.len()),
-            expansion_source_bytes: compressed_block_size.unwrap_or(bytes.len()),
+            compressed_bytes: (input_container == FontContainer::Woff2).then_some(input_len),
+            expansion_source_bytes: compressed_block_size.unwrap_or(input_len),
         },
         canonical_bytes,
     })
@@ -1117,7 +1118,7 @@ fn map_permissions(permissions: Option<Permissions>) -> FontEmbeddingPermissions
     }
 }
 
-fn detect_font_container(bytes: &[u8]) -> Option<FontContainer> {
+pub(super) fn detect_font_container(bytes: &[u8]) -> Option<FontContainer> {
     let magic = bytes.get(..4)?;
     match magic {
         [0x00, 0x01, 0x00, 0x00] | b"true" | b"typ1" => Some(FontContainer::TrueType),
@@ -2122,6 +2123,20 @@ mod tests {
                 .iter()
                 .any(|face| face.family_name() == "FontAwesome")
         );
+    }
+
+    #[test]
+    fn raw_sfnt_reuses_caller_owned_shared_bytes() {
+        let bytes = Arc::<[u8]>::from(canonical_excalifont_ttf());
+        let input = Arc::clone(&bytes);
+        let spec = FontCatalogSpec::new([FontAssetSpec::from_shared_bytes("font.ttf", input)]);
+
+        let catalog = compile_font_catalog(spec, &ThemeResourcePolicy::interactive()).unwrap();
+
+        assert!(std::ptr::eq(
+            bytes.as_ptr(),
+            catalog.assets()[0].canonical_bytes().as_ptr()
+        ));
     }
 
     #[test]

@@ -108,6 +108,15 @@ impl DiagramThemeCompiler {
         })))
     }
 
+    /// Decodes and compiles one closed version 1 complete-spec wire under this compiler's policy.
+    pub fn compile_spec_wire(
+        &self,
+        spec: super::DiagramThemeSpecWireV1,
+    ) -> Result<super::DiagramTheme, ThemeCompileError> {
+        let spec = super::wire_decode::decode(spec, &self.resources)?;
+        self.compile(spec)
+    }
+
     pub fn compile_preset(
         &self,
         preset: super::ThemePreset,

@@ -27,12 +27,14 @@ mod source_styles;
 mod spec;
 mod tokens;
 mod typography;
+mod wire_decode;
 
 use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
 pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
+pub use merman_theme_contract::DiagramThemeSpecWireV1;
 
 pub(crate) use admission::ResolvedThemeAdmission;
 pub use admission::{

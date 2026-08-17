@@ -10,8 +10,8 @@ and may omit `styles` to select an empty authored rule set. Optional token field
 JSON `null` is rejected outside clearable style-patch facets. The crate does not apply defaults,
 expand tokens, validate renderer semantics, or decode the wire into renderer types.
 
-This crate is not published and makes no cross-version compatibility promise before the C7a
-contract gate.
+This crate is configured as a publishable pre-freeze alpha contract and makes no cross-version
+compatibility promise before the C7a contract gate.
 
 ## Authoring wire
 

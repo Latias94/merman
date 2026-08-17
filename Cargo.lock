@@ -2654,6 +2654,7 @@ dependencies = [
  "merman-core",
  "merman-fixture-render-context",
  "merman-layout-elk",
+ "merman-theme-contract",
  "pulldown-cmark",
  "quick-xml",
  "ratex-layout",
