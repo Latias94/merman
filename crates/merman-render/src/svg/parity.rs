@@ -67,7 +67,7 @@ mod xychart;
 mod zenuml;
 use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_theme_font_size_only,
-    info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
+    info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css,
     write_mermaid_default_base_css_prefix,
 };
 use output::{BoundedSvgOutput, SvgOutput};
@@ -724,9 +724,12 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Info(pair) => {
             info::render_info_diagram_svg(pair.layout(), effective_config_value, options)
         }
-        BuiltinFamilyArtifact::Treemap(pair) => {
-            treemap::render_treemap_diagram_svg(pair.layout(), effective_config_value, options)
-        }
+        BuiltinFamilyArtifact::Treemap(artifact) => treemap::render_treemap_diagram_svg(
+            artifact.pair().layout(),
+            effective_config_value,
+            artifact.title_theme(),
+            options,
+        ),
         BuiltinFamilyArtifact::Venn(pair) => venn::render_venn_diagram_svg_model(
             pair.layout(),
             pair.semantic(),

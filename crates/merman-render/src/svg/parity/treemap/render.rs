@@ -1,5 +1,7 @@
 use super::super::*;
-use crate::treemap::{TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PADDING_PX};
+use crate::treemap::{
+    TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PADDING_PX, TREEMAP_TITLE_CLASS,
+};
 
 // Treemap diagram SVG renderer implementation (split from parity.rs).
 
@@ -22,6 +24,7 @@ fn write_treemap_leaf_group_open(
 pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
     effective_config: &serde_json::Value,
+    title_theme: &crate::treemap::TreemapTitleThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     #[derive(Default)]
@@ -421,7 +424,15 @@ pub(crate) fn render_treemap_diagram_svg(
         out.checkpoint()?;
     }
 
-    let css = treemap_css(diagram_id, effective_config)?;
+    let mut title_theme_receipt = title_theme.begin_terminal_receipt();
+    let (css, title_css_emission) = super::super::css::treemap_css_with_title_fill(
+        diagram_id,
+        effective_config,
+        title_theme.fill_css(),
+    )?;
+    if let Some(receipt) = title_theme_receipt.as_mut() {
+        receipt.record_stylesheet(title_css_emission.class(), title_css_emission.fill());
+    }
     let _ = write!(&mut out, "<style>{}</style>", css);
     drop(css);
     out.push_str("<g/>");
@@ -430,12 +441,16 @@ pub(crate) fn render_treemap_diagram_svg(
     if let Some(title) = layout.title.as_deref().filter(|t| !t.trim().is_empty()) {
         let _ = write!(
             &mut out,
-            r#"<text x="{x}" y="{y}" class="treemapTitle" text-anchor="middle" dominant-baseline="middle">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" class="{class}" text-anchor="middle" dominant-baseline="middle">{text}</text>"#,
             x = fmt(layout.width / 2.0),
             y = fmt(layout.title_height / 2.0),
+            class = TREEMAP_TITLE_CLASS,
             text = escape_xml(title)
         );
         out.checkpoint()?;
+        if let Some(receipt) = title_theme_receipt.as_mut() {
+            receipt.record_title_text(TREEMAP_TITLE_CLASS);
+        }
     }
 
     let _ = write!(
@@ -896,7 +911,13 @@ pub(crate) fn render_treemap_diagram_svg(
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if title_theme_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Treemap title theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted)
 }
 
 #[cfg(test)]
@@ -1066,7 +1087,16 @@ mod tests {
         let execution =
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::TREEMAP)
                 .expect("SVG execution");
-        let svg = render_treemap_diagram_svg(&layout, &serde_json::json!({}), &execution).unwrap();
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
+            None,
+            &config,
+            None,
+            session.work_meter().as_ref(),
+        )
+        .unwrap();
+        let svg = render_treemap_diagram_svg(&layout, config.as_value(), &title_theme, &execution)
+            .unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");
         assert!(

@@ -37,13 +37,14 @@ theme-to-family path and its visible residuals.
 | Journey | Static unqualified `JourneyTask` radius is written to every terminal task rectangle while section geometry keeps its independent Mermaid baseline; text, line, activity, actor, paint, and series values still use compatibility behavior or remain unsupported | Partial typed adapter plus legacy compatibility | `Clear` restores the 3px task radius. Qualified selectors, ordinals, and mixed facets remain fail-closed. |
 | Architecture | Static `Cluster` clear/solid/transparent fill and stroke are resolved once and emitted as group-local inline paint after source/site group-border precedence; remaining text, service, edge, geometry, and variant routes use compatibility behavior or remain unsupported | Partial typed adapter plus legacy compatibility | This is a C7a spatial/container shape witness, not C6 coverage or broad Architecture theme support. |
 | C4 | Static unqualified `Cluster` radius is written only to explicit solid or dashed boundaries and reconciled from terminal boundary receipts; ordinary C4 elements keep their independent geometry, while paint, text, relationships, and remaining boundary facets still use compatibility behavior or remain unsupported | Partial typed adapter plus legacy compatibility | `Clear` restores the 2.5px boundary radius. The implicit global boundary is not a terminal occurrence and therefore does not satisfy the mechanism. |
-| Packet, Treemap, Ishikawa, EventModeling, Venn, and Sankey | The bridge supplies bounded text plus frozen family-specific compatibility values where available | Legacy compatibility | These families are outside the current C6 representative matrix and retain varying amounts of raw Mermaid-token consumption. |
+| Treemap | Static unqualified `Title.fill` solid/transparent values are emitted by the final Treemap stylesheet and reconciled against the body-title text node. General text, typography, node paint, hierarchy-specific styling, and remaining title facets still use compatibility behavior or remain unsupported. | Partial typed adapter plus legacy compatibility | Explicit `treemap.titleColor` or `themeVariables.titleColor` ownership outranks typed fill. The two scalar routes have exact Standalone SVG and PNG cutover receipts; they do not add C6a cells. `Clear`, gradients, patterns, variants, and ordinals remain fail-closed. |
+| Packet, Ishikawa, EventModeling, Venn, and Sankey | The bridge supplies bounded text plus frozen family-specific compatibility values where available | Legacy compatibility | These families are outside the current C6 representative matrix and retain varying amounts of raw Mermaid-token consumption. |
 | Info, Error, ZenUML, Cynefin, Wardley, and Railroad | Text-only or no-op compatibility contribution, depending on the family surface | Minimal compatibility | No positive typed visual-theme claim is made for these families. |
 
-Eighteen of the 33 concrete families now have at least one family-owned direct typed surface:
+Nineteen of the 33 concrete families now have at least one family-owned direct typed surface:
 State, Flowchart, Swimlane, Sequence, Class, Gantt, Kanban, Pie, Architecture, ER, Mindmap,
-Timeline, Tree View, Journey, Quadrant Chart, XY Chart, Radar, and C4. State remains the only family with no
-`LegacyCompatibility` route. The other seventeen direct families are partial; 15/33 families have no family-local direct typed surface,
+Timeline, Tree View, Journey, Quadrant Chart, XY Chart, Radar, C4, and Treemap. State remains the only family with no
+`LegacyCompatibility` route. The other eighteen direct families are partial; 14/33 families have no family-local direct typed surface,
 and 32/33 may still enter the compatibility bridge.
 
 The compatibility bridge is deliberately family-local and runs only after detection. It never
@@ -68,7 +69,7 @@ Flowchart/State/Sequence by Standalone SVG/PNG cells execute successfully and th
 now seals that exact ledger with `C6aEligibilityReceipt`. Remaining C5 and C7a pre-freeze witnesses
 still block the public authoring contract.
 
-The current private cutover manifest contains 34 route-level authorization witnesses producing 46
+The current private cutover manifest contains 36 route-level authorization witnesses producing 48
 artifact witnesses. These witnesses prove only that the named bridge projections may be retired;
 they do not increase C6a's 18-cell count.
 The active `acceptance/c6-v4.json` representative ledger preserves `c6-v3.json` as an immutable

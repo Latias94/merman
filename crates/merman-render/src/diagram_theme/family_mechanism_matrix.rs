@@ -331,6 +331,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTIVATION_STROKE)
         }
+        (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL)
+        }
         _ => None,
     }
 }
@@ -974,6 +977,19 @@ pub(super) fn classify_rule_facet(
         && facet == FamilyThemeRuleFacet::Radius
     {
         return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::TREEMAP && target == ThemeTarget::Title {
+        return if matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+            && matches!(
+                facet,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
+            ) {
+            FamilyThemeDisposition::TypedAdapter
+        } else {
+            FamilyThemeDisposition::Unsupported
+        };
     }
     if family == DiagramFamilyId::ER
         && target == ThemeTarget::Entity
@@ -2334,6 +2350,65 @@ mod tests {
     }
 
     #[test]
+    fn treemap_title_only_owns_unqualified_scalar_fill() {
+        for paint_kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::TREEMAP,
+                    ThemeTarget::Title,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+                FamilyThemeDisposition::TypedAdapter
+            );
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::TREEMAP,
+                    ThemeTarget::Title,
+                    FamilyThemeSelectorShape::Static {
+                        variant: Some(ThemeVariant::Default),
+                    },
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
+
+        for paint_kind in [
+            FamilyThemePaintKind::Clear,
+            FamilyThemePaintKind::LinearGradient,
+            FamilyThemePaintKind::RadialGradient,
+            FamilyThemePaintKind::Pattern,
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::TREEMAP,
+                    ThemeTarget::Title,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
+
+        assert_eq!(
+            classify_rule_facet(
+                DiagramFamilyId::TREEMAP,
+                ThemeTarget::Title,
+                FamilyThemeSelectorShape::Ordinal {
+                    variant: None,
+                    selector: OrdinalSelector::exact(1).expect("valid Treemap title ordinal"),
+                },
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+            ),
+            FamilyThemeDisposition::Unsupported
+        );
+    }
+
+    #[test]
     fn legacy_replacing_typed_routes_are_derived_from_the_matrix() {
         use ThemeRouteCutoverFacet::{Fill, Stroke};
         use ThemeRouteCutoverValue::{Solid, Transparent};
@@ -2594,6 +2669,20 @@ mod tests {
                 Solid,
                 vec!["edge.stroke", "marker.paint-from-edge"],
             ),
+            (
+                DiagramFamilyId::TREEMAP,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::TREEMAP,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
+            ),
         ];
 
         assert_eq!(actual, expected);
@@ -2671,6 +2760,27 @@ mod tests {
                 crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::Replace
             );
         }
+    }
+
+    #[test]
+    fn treemap_title_cutover_replaces_the_title_fill_projection() {
+        let route = legacy_replacing_typed_routes()
+            .expect("derive typed legacy-replacing routes")
+            .into_iter()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::TREEMAP
+                    && route.target() == ThemeTarget::Title
+                    && route.facet() == ThemeRouteCutoverFacet::Fill
+                    && route.value() == ThemeRouteCutoverValue::Solid
+            })
+            .expect("Treemap Title.fill solid route");
+        let projections = route.projections().iter().collect::<Vec<_>>();
+
+        assert_eq!(projections, vec![ThemeRouteCutoverProjection::TitleFill]);
+        assert_eq!(
+            projections[0].action(),
+            crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::Replace
+        );
     }
 
     #[test]

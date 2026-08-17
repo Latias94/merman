@@ -101,11 +101,12 @@ pub enum ThemeRouteCutoverProjection {
     ClusterFill = 11,
     ClusterStroke = 12,
     LifelineStroke = 13,
+    TitleFill = 14,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 14] = [
+    const ALL: [Self; 15] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -120,6 +121,7 @@ impl ThemeRouteCutoverProjection {
         Self::ClusterFill,
         Self::ClusterStroke,
         Self::LifelineStroke,
+        Self::TitleFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -138,6 +140,7 @@ impl ThemeRouteCutoverProjection {
             Self::ClusterFill => "cluster.fill",
             Self::ClusterStroke => "cluster.stroke",
             Self::LifelineStroke => "lifeline.stroke",
+            Self::TitleFill => "title.fill",
         }
     }
 
@@ -157,7 +160,8 @@ impl ThemeRouteCutoverProjection {
             | Self::MessageStroke
             | Self::ClusterFill
             | Self::ClusterStroke
-            | Self::LifelineStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::LifelineStroke
+            | Self::TitleFill => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -212,6 +216,7 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::ClusterStroke);
     pub const REPLACE_LIFELINE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::LifelineStroke);
+    pub const REPLACE_TITLE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TitleFill);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -387,5 +392,20 @@ mod tests {
             );
             assert_eq!(set.iter().collect::<Vec<_>>(), vec![projection]);
         }
+    }
+
+    #[test]
+    fn title_fill_projection_is_an_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::TitleFill;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "title.fill");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
     }
 }

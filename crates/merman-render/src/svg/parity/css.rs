@@ -704,10 +704,43 @@ pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value)
     out
 }
 
+#[cfg(test)]
+#[cfg(test)]
 pub(super) fn treemap_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
 ) -> Result<String> {
+    treemap_css_inner(diagram_id, effective_config, None).map(|(css, _)| css)
+}
+
+pub(super) struct TreemapTitleCssEmission {
+    class: &'static str,
+    fill: Box<str>,
+}
+
+impl TreemapTitleCssEmission {
+    pub(super) const fn class(&self) -> &'static str {
+        self.class
+    }
+
+    pub(super) fn fill(&self) -> &str {
+        &self.fill
+    }
+}
+
+pub(super) fn treemap_css_with_title_fill(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    title_fill: Option<&str>,
+) -> Result<(String, TreemapTitleCssEmission)> {
+    treemap_css_inner(diagram_id, effective_config, title_fill)
+}
+
+fn treemap_css_inner(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    title_fill: Option<&str>,
+) -> Result<(String, TreemapTitleCssEmission)> {
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
     let id = crate::svg::escape_css_identifier(diagram_id);
@@ -717,7 +750,7 @@ pub(super) fn treemap_css(
 
     let _ = write!(
         &mut out,
-        r#"#{} .treemapNode.section{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapNode.leaf{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapLabel{{fill:{};font-size:{};}}#{} .treemapValue{{fill:{};font-size:{};}}#{} .treemapTitle{{fill:{};font-size:{};}}"#,
+        r#"#{} .treemapNode.section{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapNode.leaf{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapLabel{{fill:{};font-size:{};}}#{} .treemapValue{{fill:{};font-size:{};}}"#,
         id,
         theme.section_stroke_color,
         theme.section_stroke_width,
@@ -731,13 +764,21 @@ pub(super) fn treemap_css(
         theme.label_font_size,
         id,
         theme.value_color,
-        theme.value_font_size,
-        id,
-        theme.title_color,
-        theme.title_font_size
+        theme.value_font_size
     );
+    let title_class = crate::treemap::TREEMAP_TITLE_CLASS;
+    let title_fill = title_fill.unwrap_or(&theme.title_color);
+    let _ = write!(
+        &mut out,
+        r#"#{} .{}{{fill:{};font-size:{};}}"#,
+        id, title_class, title_fill, theme.title_font_size
+    );
+    let title_emission = TreemapTitleCssEmission {
+        class: title_class,
+        fill: title_fill.into(),
+    };
     out.push_str(&parts.root_rule);
-    Ok(out)
+    Ok((out, title_emission))
 }
 
 pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {

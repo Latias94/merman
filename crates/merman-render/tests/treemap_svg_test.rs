@@ -1,4 +1,8 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
@@ -148,6 +152,41 @@ fn render_treemap_svg_from_source(text: &str) -> String {
     render_treemap_svg_and_config_from_source(text).0
 }
 
+fn treemap_title_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::TREEMAP),
+                ),
+            ),
+        )
+        .expect("compile Treemap title fill theme")
+}
+
+fn render_treemap_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::RenderedFamilySvg {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Treemap")
+        .expect("detect themed Treemap");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Treemap session");
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Treemap")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed Treemap")
+}
+
 fn try_render_treemap_svg_with_resource_policy(
     text: &str,
     resource_policy: RenderResourcePolicy,
@@ -244,6 +283,111 @@ title Body treemap
     );
     assert!(body_svg.contains(">Body treemap</text>"));
     assert!(!body_svg.contains(">Frontmatter treemap</text>"));
+}
+
+#[test]
+fn treemap_title_fill_reaches_terminal_css_and_title_text() {
+    let cases = [
+        (
+            CanvasPaint::solid("#123456").expect("valid Treemap title color"),
+            "#123456",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ];
+
+    for (fill, expected_fill) in cases {
+        let theme = treemap_title_fill_theme(fill);
+        let rendered = render_treemap_with_theme(
+            "treemap\ntitle Themed treemap\n\"Section\"\n  \"Leaf\": 1\n",
+            &theme,
+            Engine::new(),
+        );
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid themed Treemap SVG");
+        let titles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("treemapTitle")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(titles.len(), 1);
+        assert_eq!(titles[0].text(), Some("Themed treemap"));
+
+        let style = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Treemap stylesheet");
+        assert!(
+            style.contains(&format!(".treemapTitle{{fill:{expected_fill};")),
+            "typed title fill must own the final Treemap title rule: {style}"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn treemap_explicit_title_color_owners_outrank_typed_fill() {
+    let theme =
+        treemap_title_fill_theme(CanvasPaint::solid("#123456").expect("valid Treemap title color"));
+    let cases = [
+        (
+            concat!(
+                "---\nconfig:\n  treemap:\n    titleColor: '#fedcba'\n---\n",
+                "treemap\ntitle Source-owned title\n\"Leaf\": 1\n",
+            ),
+            Engine::new(),
+        ),
+        (
+            "treemap\ntitle Site-owned title\n\"Leaf\": 1\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "titleColor": "#fedcba" }
+            }))),
+        ),
+    ];
+
+    for (source, engine) in cases {
+        let rendered = render_treemap_with_theme(source, &theme, engine);
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid owner-precedence SVG");
+        let style = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Treemap stylesheet");
+        assert!(style.contains(".treemapTitle{fill:#fedcba;"), "{style}");
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn treemap_title_fill_is_not_applicable_without_a_title() {
+    let theme =
+        treemap_title_fill_theme(CanvasPaint::solid("#123456").expect("valid Treemap title color"));
+    let rendered = render_treemap_with_theme("treemap\n\"Leaf\": 1\n", &theme, Engine::new());
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid titleless Treemap SVG");
+    assert!(!document.descendants().any(|node| {
+        node.has_tag_name("text") && node.attribute("class") == Some("treemapTitle")
+    }));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

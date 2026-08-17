@@ -8,10 +8,14 @@ use serde_json::Value;
 
 pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
 pub(crate) const TREEMAP_SECTION_HEADER_HEIGHT_PX: f64 = 25.0;
+pub(crate) const TREEMAP_TITLE_CLASS: &str = "treemapTitle";
 
 mod config;
+mod theme;
 
 use config::TreemapConfigView;
+
+pub(crate) use theme::TreemapTitleThemePlan;
 
 #[derive(Debug, Clone)]
 struct HierNode {

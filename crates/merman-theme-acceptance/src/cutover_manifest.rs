@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 6;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 7;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 14] = [
+); 15] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -70,6 +70,10 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::LifelineStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::TitleFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -129,6 +133,8 @@ const CLUSTER_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ClusterFill];
 const CLUSTER_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ClusterStroke];
+const TITLE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::TitleFill];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -143,7 +149,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 34] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 36] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -381,6 +387,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 34] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         MESSAGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREEMAP,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREEMAP,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TITLE_FILL_PROJECTIONS,
     ),
 ];
 

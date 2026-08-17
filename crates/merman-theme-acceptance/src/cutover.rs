@@ -173,6 +173,12 @@ A-|/B: solid bottom
 B-\\A: stick top
 A-//B: stick bottom
 "#;
+const TREEMAP_TITLE_TEXT: &str = "Cutover treemap title";
+const TREEMAP_TITLE_SOURCE: &str = r#"treemap
+title Cutover treemap title
+"Section"
+  "Leaf": 1
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -290,6 +296,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, _) => Ok(SEQUENCE_ACTIVATION_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SEQUENCE_MESSAGE_SOURCE)
+        }
+        (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(TREEMAP_TITLE_SOURCE)
         }
         _ => Err(C6ProofError::new(
             "route-source",
@@ -1065,6 +1074,7 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
         (
             ThemeTarget::Node
             | ThemeTarget::Cluster
+            | ThemeTarget::Title
             | ThemeTarget::Actor
             | ThemeTarget::Lifeline
             | ThemeTarget::Note
@@ -1099,7 +1109,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
     match route.value() {
         ThemeRouteCutoverValue::Transparent => match route.family_id() {
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE => Ok("none"),
-            DiagramFamilyId::SEQUENCE => Ok("transparent"),
+            DiagramFamilyId::SEQUENCE | DiagramFamilyId::TREEMAP => Ok("transparent"),
             family => Err(C6ProofError::new(
                 "route-svg-proof",
                 format!("unsupported transparent cutover family {family}"),
@@ -1109,6 +1119,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             (
                 ThemeTarget::Node
                 | ThemeTarget::Cluster
+                | ThemeTarget::Title
                 | ThemeTarget::Actor
                 | ThemeTarget::Lifeline
                 | ThemeTarget::Note
@@ -1288,11 +1299,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_thirty_four_routes_and_forty_six_artifact_witnesses() {
+    fn route_inventory_retains_thirty_six_routes_and_forty_eight_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 34);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 46);
+        assert_eq!(inventory.len(), 36);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 48);
     }
 
     #[test]

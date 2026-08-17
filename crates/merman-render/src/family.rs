@@ -995,6 +995,7 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::QUADRANT_CHART
                 | DiagramFamilyId::XY_CHART
                 | DiagramFamilyId::RADAR
+                | DiagramFamilyId::TREEMAP
                 | DiagramFamilyId::C4
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::ARCHITECTURE
@@ -1378,6 +1379,24 @@ pub(crate) struct RadarFamilyArtifact {
     series_paint: crate::radar::RadarSeriesPaintPlan,
 }
 
+#[derive(Debug)]
+pub(crate) struct TreemapFamilyArtifact {
+    pair: FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>,
+    title_theme: crate::treemap::TreemapTitleThemePlan,
+}
+
+impl TreemapFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn title_theme(&self) -> &crate::treemap::TreemapTitleThemePlan {
+        &self.title_theme
+    }
+}
+
 impl RadarFamilyArtifact {
     pub(crate) const fn pair(
         &self,
@@ -1597,7 +1616,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Sankey(Box<FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>>),
     Radar(Box<RadarFamilyArtifact>),
     Info(Box<FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>>),
-    Treemap(Box<FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>>),
+    Treemap(Box<TreemapFamilyArtifact>),
     Block(Box<FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>>),
     Er(Box<ErFamilyArtifact>),
     QuadrantChart(Box<QuadrantChartFamilyArtifact>),
@@ -1887,6 +1906,13 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn treemap_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Treemap(artifact) => Some(artifact.title_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn c4_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::C4(artifact) => Some(artifact.cluster_theme().finish_evidence()),
@@ -1952,7 +1978,7 @@ impl BuiltinFamilyArtifact {
             Self::Sankey(pair) => pair.compatibility_json(metadata),
             Self::Radar(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Info(pair) => pair.compatibility_json(metadata),
-            Self::Treemap(pair) => pair.compatibility_json(metadata),
+            Self::Treemap(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Block(pair) => pair.compatibility_json(metadata),
             Self::Er(artifact) => artifact.pair.compatibility_json(metadata),
             Self::QuadrantChart(artifact) => artifact.pair.compatibility_json(metadata),
@@ -1993,7 +2019,7 @@ impl BuiltinFamilyArtifact {
             Self::Sankey(pair) => LayoutProjection::SankeyDiagram(pair.layout()),
             Self::Radar(artifact) => LayoutProjection::RadarDiagram(artifact.pair.layout()),
             Self::Info(pair) => LayoutProjection::InfoDiagram(pair.layout()),
-            Self::Treemap(pair) => LayoutProjection::TreemapDiagram(pair.layout()),
+            Self::Treemap(artifact) => LayoutProjection::TreemapDiagram(artifact.pair.layout()),
             Self::Block(pair) => LayoutProjection::BlockDiagram(pair.layout()),
             Self::Er(artifact) => LayoutProjection::ErDiagram(artifact.pair.layout()),
             Self::QuadrantChart(artifact) => {
@@ -2584,6 +2610,7 @@ impl FamilyRenderArtifact {
         let quadrant_chart_theme_evidence = self.family.quadrant_chart_theme_evidence();
         let xychart_theme_evidence = self.family.xychart_theme_evidence();
         let radar_theme_evidence = self.family.radar_theme_evidence();
+        let treemap_theme_evidence = self.family.treemap_theme_evidence();
         let c4_theme_evidence = self.family.c4_theme_evidence();
         let tree_view_theme_evidence = self.family.tree_view_theme_evidence();
         let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
@@ -2633,6 +2660,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = radar_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::RADAR, evidence);
+        }
+        if let Some(evidence) = treemap_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::TREEMAP, evidence);
         }
         if let Some(evidence) = c4_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::C4, evidence);
@@ -3268,14 +3298,22 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Treemap(model) => {
-            BuiltinFamilyArtifact::Treemap(prepare_pair(model, |model| {
-                crate::treemap::layout_treemap_diagram_typed(
-                    model,
-                    title,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let layout = crate::treemap::layout_treemap_diagram_typed(
+                &model,
+                title,
+                effective_config,
+                execution.text_measurer(),
+            )?;
+            let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
+                execution.resolved_theme(),
+                &meta.effective_config,
+                layout.title.as_deref(),
+                execution.work_meter_ref(),
+            )?;
+            BuiltinFamilyArtifact::Treemap(Box::new(TreemapFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                title_theme,
+            }))
         }
         RenderSemanticModel::Block(model) => {
             BuiltinFamilyArtifact::Block(prepare_pair(model, |model| {

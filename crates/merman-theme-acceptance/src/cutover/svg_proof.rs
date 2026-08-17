@@ -34,6 +34,14 @@ pub(super) fn prove_svg_routes(
                     observation.target_regions,
                 )
             }
+            DiagramFamilyId::TREEMAP => {
+                let observation = treemap_route_observation(&document, route)?;
+                (
+                    observation.value,
+                    observation.terminal_digest,
+                    observation.target_regions,
+                )
+            }
             _ => {
                 return Err(C6ProofError::new(
                     "route-svg-proof",
@@ -967,6 +975,12 @@ struct FlowchartRouteObservation {
     target_regions: Vec<[f64; 4]>,
 }
 
+struct TreemapRouteObservation {
+    value: String,
+    terminal_digest: [u8; 32],
+    target_regions: Vec<[f64; 4]>,
+}
+
 fn flowchart_route_observation(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
@@ -1044,6 +1058,62 @@ fn flowchart_route_observation(
             .to_owned(),
         terminal_digest: sha256(terminal),
         target_regions,
+    })
+}
+
+fn treemap_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<TreemapRouteObservation> {
+    c6_ensure!(
+        "route-svg-proof",
+        route.target() == ThemeTarget::Title && route.facet() == ThemeRouteCutoverFacet::Fill,
+        "unsupported Treemap cutover route {}",
+        route_label(route)
+    );
+    let root_id = document
+        .root_element()
+        .attribute("id")
+        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Treemap SVG root lacks an id"))?;
+    let selector = format!("#{root_id} .treemapTitle");
+    let value = stylesheet_property(document, &selector, "fill")?;
+    let titles = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("treemapTitle"))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        titles.len() == 1 && titles[0].text() == Some(TREEMAP_TITLE_TEXT),
+        "Treemap witness must emit one canonical body title"
+    );
+    let title = titles[0];
+    c6_ensure!(
+        "route-svg-proof",
+        style_value(title, "fill").is_none() && title.attribute("fill").is_none(),
+        "Treemap title retained a direct fill that bypasses the terminal stylesheet"
+    );
+    let x = number_attribute(title, "x")?;
+    let y = number_attribute(title, "y")?;
+    c6_ensure!(
+        "route-svg-geometry",
+        x > 0.0 && y > 0.0,
+        "Treemap title coordinates must be positive"
+    );
+    let region = [0.0, 0.0, x * 2.0, y * 2.0];
+
+    let mut terminal = b"merman.c6-route-treemap-title.v1\0".to_vec();
+    append_len_prefixed(&mut terminal, selector.as_bytes());
+    append_len_prefixed(&mut terminal, value.as_bytes());
+    append_len_prefixed(
+        &mut terminal,
+        title.attribute("class").unwrap_or_default().as_bytes(),
+    );
+    append_len_prefixed(&mut terminal, title.text().unwrap_or_default().as_bytes());
+    append_rect(&mut terminal, region);
+    Ok(TreemapRouteObservation {
+        value: value.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions: vec![region],
     })
 }
 

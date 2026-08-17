@@ -785,10 +785,11 @@ fn compile_text_family(
     if family != DiagramFamilyId::PACKET {
         contributions.add_theme_variables(
             "text.fill",
-            [
-                ("textColor", reader.text_fill(ThemeTarget::Text)),
-                ("titleColor", reader.text_fill(ThemeTarget::Title)),
-            ],
+            [("textColor", reader.text_fill(ThemeTarget::Text))],
+        );
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::TitleFill.contribution_id(),
+            [("titleColor", reader.text_fill(ThemeTarget::Title))],
         );
     }
     contributions.finish_into(builder);
@@ -1305,6 +1306,40 @@ mod tests {
             baseline.effective_config.get_str("themeVariables.cScale0")
         );
         assert_eq!(fallback_contribution_count(&parsed), 0);
+    }
+
+    #[test]
+    fn typed_treemap_title_fill_suppresses_only_the_title_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid("#334155")),
+                    )
+                    .for_family(DiagramFamilyId::TREEMAP),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                    )
+                    .for_family(DiagramFamilyId::TREEMAP),
+                ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::TREEMAP);
+
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.treemap.text.fill")
+        );
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.treemap.title.fill")
+        );
     }
 
     #[test]
