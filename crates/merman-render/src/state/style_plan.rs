@@ -205,9 +205,11 @@ pub(crate) struct StateNodeStylePlan {
     semantic_shape_style_attr: String,
     composite_header_style_attr: String,
     composite_header_text_style_attr: String,
-    special_state_inner_style_attr: String,
-    source_shape_style_attr: String,
     shape_style_attr: String,
+    fill_path_style_attr: String,
+    stroke_path_style_attr: String,
+    special_state_inner_fill_path_style_attr: String,
+    special_state_inner_stroke_path_style_attr: String,
     label_style_attr: String,
     div_style_prefix: String,
     composite_header_text_div_style_prefix: String,
@@ -338,6 +340,14 @@ impl StateNodeStylePlan {
         &self.shape_style_attr
     }
 
+    pub(crate) fn fill_path_style_attr(&self) -> &str {
+        &self.fill_path_style_attr
+    }
+
+    pub(crate) fn stroke_path_style_attr(&self) -> &str {
+        &self.stroke_path_style_attr
+    }
+
     pub(crate) fn semantic_shape_style_attr(&self) -> &str {
         &self.semantic_shape_style_attr
     }
@@ -354,12 +364,12 @@ impl StateNodeStylePlan {
         &self.composite_header_text_div_style_prefix
     }
 
-    pub(crate) fn special_state_inner_style_attr(&self) -> &str {
-        &self.special_state_inner_style_attr
+    pub(crate) fn special_state_inner_fill_path_style_attr(&self) -> &str {
+        &self.special_state_inner_fill_path_style_attr
     }
 
-    pub(crate) fn source_shape_style_attr(&self) -> &str {
-        &self.source_shape_style_attr
+    pub(crate) fn special_state_inner_stroke_path_style_attr(&self) -> &str {
+        &self.special_state_inner_stroke_path_style_attr
     }
 
     pub(crate) fn label_style_attr(&self) -> &str {
@@ -805,7 +815,7 @@ impl StateStylePlan {
                 append_semantic_text_emission(style, &mut emission);
                 title_label_typography.canonicalize_emission(&mut emission);
                 if let Some(color) = text_paint_value(style.fill_resolution()) {
-                    insert_emitted(&mut emission, "color", color);
+                    insert_emitted(&mut emission, "fill", color);
                 }
                 compact_style_attr(&emission)
             })
@@ -2129,10 +2139,16 @@ fn prepare_node(
             insert_emitted(&mut composite_header_emission, "stroke", stroke);
         }
     }
-    let special_state_inner_style_attr = semantic_special_state_inner
-        .as_ref()
-        .map(semantic_shape_style_attr_for_style)
-        .unwrap_or_default();
+    let mut special_state_inner_emission = IndexMap::new();
+    if let Some(style) = semantic_special_state_inner.as_ref() {
+        append_semantic_shape_emission(style, &mut special_state_inner_emission);
+        if let Some(fill) = shape_paint_value(style.fill_resolution()) {
+            insert_emitted(&mut special_state_inner_emission, "fill", fill);
+        }
+        if let Some(stroke) = shape_paint_value(style.stroke_resolution()) {
+            insert_emitted(&mut special_state_inner_emission, "stroke", stroke);
+        }
+    }
     for declaration in &shape_declarations {
         if node.shape == "stateStart" {
             residuals.push(SourceStyleResidual::from_declaration(
@@ -2280,6 +2296,11 @@ fn prepare_node(
         theme_evidence.record_series_color_emission(label_target);
     }
 
+    let mut terminal_special_state_inner_emission = special_state_inner_emission;
+    for (property, declaration) in &source_shape_emission {
+        terminal_special_state_inner_emission.insert(property.clone(), declaration.clone());
+    }
+
     let classic_stroke_paint_width = effect.as_ref().map(|_| {
         classic_stroke_paint_width(
             compatibility,
@@ -2303,9 +2324,15 @@ fn prepare_node(
         semantic_shape_style_attr,
         composite_header_style_attr: compact_style_attr(&composite_header_emission),
         composite_header_text_style_attr: compact_style_attr(&composite_header_text_emission),
-        special_state_inner_style_attr,
-        source_shape_style_attr: compact_style_attr(&source_shape_emission),
         shape_style_attr: compact_style_attr(&shape_emission),
+        fill_path_style_attr: compact_split_fill_path_style_attr(&shape_emission),
+        stroke_path_style_attr: compact_split_stroke_path_style_attr(&shape_emission),
+        special_state_inner_fill_path_style_attr: compact_split_fill_path_style_attr(
+            &terminal_special_state_inner_emission,
+        ),
+        special_state_inner_stroke_path_style_attr: compact_split_stroke_path_style_attr(
+            &terminal_special_state_inner_emission,
+        ),
         label_style_attr: compact_style_attr(&label_emission),
         div_style_prefix: div_style_prefix(&label_emission),
         composite_header_text_div_style_prefix: div_style_prefix(&composite_header_text_emission),
@@ -3047,8 +3074,40 @@ fn append_style_declaration(style: &mut String, property: &str, value: impl AsRe
 }
 
 fn compact_style_attr(declarations: &IndexMap<String, EmittedDeclaration>) -> String {
+    compact_filtered_style_attr(declarations, |_| true)
+}
+
+fn compact_split_fill_path_style_attr(
+    declarations: &IndexMap<String, EmittedDeclaration>,
+) -> String {
+    compact_filtered_style_attr(declarations, |property| {
+        !matches!(
+            property,
+            "stroke"
+                | "stroke-width"
+                | "stroke-dasharray"
+                | "stroke-linecap"
+                | "stroke-linejoin"
+                | "stroke-opacity"
+        )
+    })
+}
+
+fn compact_split_stroke_path_style_attr(
+    declarations: &IndexMap<String, EmittedDeclaration>,
+) -> String {
+    compact_filtered_style_attr(declarations, |property| {
+        !matches!(property, "fill" | "fill-opacity")
+    })
+}
+
+fn compact_filtered_style_attr(
+    declarations: &IndexMap<String, EmittedDeclaration>,
+    include: impl Fn(&str) -> bool,
+) -> String {
     declarations
         .values()
+        .filter(|declaration| include(declaration.property.trim()))
         .map(|declaration| {
             format!(
                 "{}:{} !important",
@@ -3496,7 +3555,7 @@ mod tests {
         assert!(
             plan.node("end")
                 .unwrap()
-                .special_state_inner_style_attr()
+                .special_state_inner_fill_path_style_attr()
                 .contains("fill:#ffffff !important")
         );
         assert_eq!(
@@ -3585,7 +3644,7 @@ mod tests {
             end_plan
                 .node("end")
                 .unwrap()
-                .special_state_inner_style_attr()
+                .special_state_inner_fill_path_style_attr()
                 .contains("fill:#ffffff !important")
         );
     }
@@ -4130,14 +4189,15 @@ mod tests {
         assert!(
             plan.node("end")
                 .unwrap()
-                .special_state_inner_style_attr()
-                .contains("fill:#ffffff !important")
+                .special_state_inner_fill_path_style_attr()
+                .contains("fill:#111827 !important")
         );
         assert!(
-            plan.node("end")
+            !plan
+                .node("end")
                 .unwrap()
-                .source_shape_style_attr()
-                .contains("fill:#111827 !important")
+                .special_state_inner_fill_path_style_attr()
+                .contains("fill:#ffffff !important")
         );
         assert!(!evidence.applied().contains(&key));
         assert!(evidence.not_applicable_mechanisms().contains(&key));
@@ -4180,7 +4240,6 @@ mod tests {
             node.semantic_shape_style_attr()
                 .contains("fill:#22c55e !important")
         );
-        assert!(node.source_shape_style_attr().is_empty());
         assert!(evidence.applied().contains(&key));
         assert!(plan.residuals().iter().any(|residual| {
             residual.property() == Some("fill")

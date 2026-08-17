@@ -915,6 +915,132 @@ state Parent {
     assert!((themed_inner_y - themed_outer_y - themed_title_height - 2.0).abs() < 1e-6);
 }
 
+#[test]
+fn state_svg_title_theme_fill_reaches_the_terminal_svg_text_paint() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#f43f5e").expect("valid title paint")),
+                )),
+            ),
+        )
+        .expect("compile State title theme");
+    let svg = render_state_svg_from_text_with_theme(
+        r#"---
+title: Terminal title
+---
+stateDiagram-v2
+[*] --> Ready
+Ready --> [*]
+"#,
+        &theme,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed State SVG XML");
+    let title = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text") && node.attribute("class") == Some("statediagramTitleText")
+        })
+        .expect("terminal State diagram title");
+    let style = title.attribute("style").expect("typed title style");
+
+    assert!(style.contains("fill:#f43f5e !important"), "{style}");
+    assert!(!style.contains("color:#f43f5e"), "{style}");
+}
+
+#[test]
+fn state_svg_split_rough_surfaces_keep_fill_and_stroke_styles_on_their_own_paths() {
+    let split_paint = || {
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#f43f5e").expect("valid split-surface fill"))
+            .with_stroke(CanvasPaint::solid("#2563eb").expect("valid split-surface stroke"))
+            .with_stroke_width(6.0)
+            .expect("valid split-surface stroke width")
+    };
+    let styles = ThemeRuleSet::default()
+        .with_rule(ThemeRule::new(ThemeTarget::State, split_paint()))
+        .with_rule(ThemeRule::new(ThemeTarget::Note, split_paint()))
+        .with_rule(
+            ThemeRule::new(ThemeTarget::SpecialState, split_paint())
+                .with_variant(ThemeVariant::End),
+        )
+        .with_rule(
+            ThemeRule::new(ThemeTarget::SpecialStateInner, split_paint())
+                .with_variant(ThemeVariant::End),
+        )
+        .with_rule(
+            ThemeRule::new(ThemeTarget::SpecialState, split_paint())
+                .with_variant(ThemeVariant::Special),
+        );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile split-surface State theme");
+    let svg = render_state_svg_from_text_with_theme(
+        r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+stateDiagram-v2
+[*] --> Idle
+state Decide <<choice>>
+Idle --> Decide
+Decide --> Fork
+state Fork <<fork>>
+Fork --> Join
+state Join <<join>>
+Join --> [*]
+note right of Idle : split surface
+"#,
+        &theme,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed State SVG XML");
+    let split_path_pairs = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g"))
+        .filter_map(|group| {
+            let paths = group
+                .children()
+                .filter(|child| child.has_tag_name("path"))
+                .collect::<Vec<_>>();
+            (paths.len() == 2).then(|| (paths[0], paths[1]))
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        split_path_pairs.len(),
+        7,
+        "expected ordinary, choice, fork, join, note, and both end-state surfaces: {svg}"
+    );
+    for (fill_path, stroke_path) in split_path_pairs {
+        assert_eq!(fill_path.attribute("stroke"), Some("none"));
+        assert_eq!(stroke_path.attribute("fill"), Some("none"));
+
+        let fill_style = fill_path.attribute("style").unwrap_or_default();
+        let stroke_style = stroke_path.attribute("style").unwrap_or_default();
+        assert!(
+            fill_style.contains("fill:#f43f5e !important"),
+            "fill path must retain the typed fill: {fill_style}"
+        );
+        assert!(
+            !fill_style
+                .split(';')
+                .any(|declaration| declaration.trim_start().starts_with("stroke")),
+            "fill path must not acquire stroke declarations: {fill_style}"
+        );
+        assert!(
+            stroke_style.contains("stroke:#2563eb !important")
+                && stroke_style.contains("stroke-width:6px !important"),
+            "stroke path must retain the typed stroke: {stroke_style}"
+        );
+        assert!(
+            !stroke_style
+                .split(';')
+                .any(|declaration| declaration.trim_start().starts_with("fill")),
+            "stroke path must not acquire fill declarations: {stroke_style}"
+        );
+    }
+}
+
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
     let site_config = MermaidConfig::from_value(serde_json::json!({
         "look": "handDrawn",

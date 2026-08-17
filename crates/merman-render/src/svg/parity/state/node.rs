@@ -158,11 +158,14 @@ pub(super) fn render_state_node_svg(
     let shape_style_attr = node_style
         .map(crate::state::StateNodeStylePlan::shape_style_attr)
         .unwrap_or_default();
+    let fill_path_style_attr = node_style
+        .map(crate::state::StateNodeStylePlan::fill_path_style_attr)
+        .unwrap_or_default();
+    let stroke_path_style_attr = node_style
+        .map(crate::state::StateNodeStylePlan::stroke_path_style_attr)
+        .unwrap_or_default();
     let semantic_shape_style_attr = node_style
         .map(crate::state::StateNodeStylePlan::semantic_shape_style_attr)
-        .unwrap_or_default();
-    let source_shape_style_attr = node_style
-        .map(crate::state::StateNodeStylePlan::source_shape_style_attr)
         .unwrap_or_default();
     let text_style_attr = node_style
         .map(crate::state::StateNodeStylePlan::label_style_attr)
@@ -240,18 +243,20 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let shape_style_escaped = escape_attr(&shape_style_attr);
-            let inner_style = match (
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
+            let inner_fill_path_style_escaped = escape_attr(
                 node_style
-                    .map(crate::state::StateNodeStylePlan::special_state_inner_style_attr)
+                    .map(crate::state::StateNodeStylePlan::special_state_inner_fill_path_style_attr)
                     .unwrap_or_default(),
-                source_shape_style_attr,
-            ) {
-                ("", source) => source.to_string(),
-                (semantic, "") => semantic.to_string(),
-                (semantic, source) => format!("{semantic};{source}"),
-            };
-            let inner_style_escaped = escape_attr(&inner_style);
+            );
+            let inner_stroke_path_style_escaped = escape_attr(
+                node_style
+                    .map(
+                        crate::state::StateNodeStylePlan::special_state_inner_stroke_path_style_attr,
+                    )
+                    .unwrap_or_default(),
+            );
             let outer_fill = fill_override.unwrap_or(compatibility.end_outer_fill.as_str());
             let outer_stroke = stroke_override.unwrap_or(compatibility.end_outer_stroke.as_str());
             let inner_fill = compatibility.inner_end_background.as_str();
@@ -266,16 +271,16 @@ pub(super) fn render_state_node_svg(
                 fmt(cy),
                 outer_d.as_str(),
                 escape_attr(outer_fill),
-                shape_style_escaped,
+                fill_path_style_escaped,
                 outer_d.as_str(),
                 escape_attr(outer_stroke),
-                shape_style_escaped,
+                stroke_path_style_escaped,
                 inner_d.as_str(),
                 escape_attr(inner_fill),
-                inner_style_escaped,
+                inner_fill_path_style_escaped,
                 inner_d.as_str(),
                 escape_attr(inner_stroke),
-                inner_style_escaped,
+                inner_stroke_path_style_escaped,
             );
             drop(_g_emit);
         }
@@ -311,7 +316,8 @@ pub(super) fn render_state_node_svg(
             let fill_attr = fill_override.unwrap_or(compatibility.special_state_color.as_str());
             let stroke_attr = stroke_override.unwrap_or(compatibility.special_state_color.as_str());
             let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
-            let shape_style_escaped = escape_attr(&shape_style_attr);
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -323,11 +329,11 @@ pub(super) fn render_state_node_svg(
                 fmt_display(cy),
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
-                shape_style_escaped,
+                fill_path_style_escaped,
                 stroke_d.as_str(),
                 escape_xml_display(stroke_attr),
                 fmt_display(stroke_width_attr),
-                shape_style_escaped
+                stroke_path_style_escaped
             );
             drop(_g_emit);
         }
@@ -364,7 +370,8 @@ pub(super) fn render_state_node_svg(
             let stroke_width_attr = stroke_width_override
                 .unwrap_or(compatibility.rough_stroke_width_value)
                 .max(0.0);
-            let shape_style_escaped = escape_attr(&shape_style_attr);
+            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -376,11 +383,11 @@ pub(super) fn render_state_node_svg(
                 fmt_display(cy),
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
-                shape_style_escaped,
+                fill_path_style_escaped,
                 stroke_d.as_str(),
                 escape_xml_display(stroke_attr),
                 fmt_display(stroke_width_attr),
-                shape_style_escaped
+                stroke_path_style_escaped
             );
             drop(_g_emit);
         }
@@ -475,7 +482,8 @@ pub(super) fn render_state_node_svg(
             let fill_attr = fill_override.unwrap_or(compatibility.note_bkg.as_str());
             let stroke_attr = stroke_override.unwrap_or(compatibility.note_border.as_str());
             let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
-            let shape_style_escaped = escape_xml_display(shape_style_attr);
+            let fill_path_style_escaped = escape_xml_display(fill_path_style_attr);
+            let stroke_path_style_escaped = escape_xml_display(stroke_path_style_attr);
             let label_style_escaped = escape_xml_display(text_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
@@ -504,11 +512,11 @@ pub(super) fn render_state_node_svg(
                     fmt_display(cy),
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    shape_style_escaped,
+                    fill_path_style_escaped,
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    shape_style_escaped,
+                    stroke_path_style_escaped,
                     label_style_escaped,
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
@@ -529,11 +537,11 @@ pub(super) fn render_state_node_svg(
                     fmt_display(cy),
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    shape_style_escaped,
+                    fill_path_style_escaped,
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    shape_style_escaped,
+                    stroke_path_style_escaped,
                     label_style_escaped,
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
@@ -986,11 +994,11 @@ pub(super) fn render_state_node_svg(
                     node_title_attr,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    escape_xml_display(&shape_style_attr),
+                    escape_xml_display(fill_path_style_attr),
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    escape_xml_display(&shape_style_attr),
+                    escape_xml_display(stroke_path_style_attr),
                     escape_xml_display(&text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
@@ -1014,11 +1022,11 @@ pub(super) fn render_state_node_svg(
                     node_title_attr,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
-                    escape_xml_display(&shape_style_attr),
+                    escape_xml_display(fill_path_style_attr),
                     stroke_d.as_str(),
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
-                    escape_xml_display(&shape_style_attr),
+                    escape_xml_display(stroke_path_style_attr),
                     escape_xml_display(&text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
