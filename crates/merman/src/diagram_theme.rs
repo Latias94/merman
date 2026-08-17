@@ -7,12 +7,16 @@
 //! compiled [`DiagramTheme`]. Terminal/ASCII styling is a separate concern and is not part of this
 //! visual contract.
 
+mod authoring;
+
+pub use authoring::{ThemeDefinitionBuilderV1, ThemeRuleBuilderV1, ThemeRuleFacetV1};
+pub use merman_core::DiagramFamilyId;
 pub use merman_render::diagram_theme::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, MaterializedTheme, ThemeCompileError,
     ThemeDefinitionAdmissionError, ThemeDefinitionCompileError, ThemeMaterializationDigest,
     ThemeMaterializationError, ThemeMaterializer, ThemePreset, ThemePresetDescriptor,
-    ThemePresetParseError, compile_theme_definition, compile_theme_definition_json,
-    theme_preset_descriptors,
+    ThemePresetParseError, ThemeTarget, ThemeVariant, compile_theme_definition,
+    compile_theme_definition_json, theme_preset_descriptors,
 };
 pub use merman_theme_contract::{
     CanonicalJsonError, CanonicalJsonErrorKind, DiagramThemeSpecWireV1, SpecifiedWireV1,

@@ -1,10 +1,66 @@
 use merman::diagram_theme::{
-    DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionAdmissionError,
-    ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeMaterializationError, ThemeMaterializer,
-    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeTokensV1, compile_theme_definition,
-    compile_theme_definition_json,
+    DiagramFamilyId, DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionAdmissionError,
+    ThemeDefinitionBuilderV1, ThemeDefinitionCompileError, ThemeDefinitionV1,
+    ThemeMaterializationError, ThemeMaterializer, ThemeRuleBuilderV1, ThemeRuleFacetV1,
+    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeTarget, ThemeTokensV1, ThemeVariant,
+    compile_theme_definition, compile_theme_definition_json,
 };
 use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
+
+#[test]
+fn typed_family_rule_matches_the_equivalent_shareable_json() {
+    let typed = ThemeDefinitionBuilderV1::new(ThemeTokensV1::default())
+        .with_rule(
+            ThemeRuleBuilderV1::new(ThemeTarget::Node)
+                .for_family(DiagramFamilyId::FLOWCHART)
+                .with_variant(ThemeVariant::Primary)
+                .with_ordinal_cycle(4, 1)
+                .with_fill_color("#60a5fa")
+                .with_stroke_color("#1e293b")
+                .with_stroke_width(2.0)
+                .with_radius(8.0)
+                .clear(ThemeRuleFacetV1::FillOpacity),
+        )
+        .with_ordinal_palette(ThemeTarget::Node, ["#60a5fa", "#34d399"])
+        .build();
+    let decoded: ThemeDefinitionV1 = serde_json::from_str(
+        r##"{
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": {},
+            "styles": [
+                {
+                    "kind": "rule",
+                    "target": "node",
+                    "family": "flowchart",
+                    "variant": "primary",
+                    "ordinal": {"cycle": {"period": 4, "offset": 1}},
+                    "style": {
+                        "fill": "#60a5fa",
+                        "fill_opacity": null,
+                        "stroke": {"paint": "#1e293b", "width": 2},
+                        "radius": 8
+                    }
+                },
+                {
+                    "kind": "ordinal-palette",
+                    "target": "node",
+                    "colors": ["#60a5fa", "#34d399"]
+                }
+            ]
+        }"##,
+    )
+    .expect("the equivalent shared JSON should decode");
+
+    assert_eq!(
+        typed
+            .canonical_json_bytes()
+            .expect("the typed definition should canonicalize"),
+        decoded
+            .canonical_json_bytes()
+            .expect("the decoded definition should canonicalize"),
+    );
+}
 
 #[test]
 fn versioned_authoring_materializes_and_compiles_through_the_rust_facade() {
