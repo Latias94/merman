@@ -1,9 +1,10 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector,
-    Specified, ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx,
+    MermaidThemeCompatibility, OrdinalPalette, OrdinalSelector, Specified, ThemeColorValue,
+    ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -34,6 +35,60 @@ fn kanban_task_radius_theme(radius: Specified<f32>) -> DiagramTheme {
         ThemeTarget::Task,
         kanban_task_radius_style(radius),
     )])
+}
+
+fn kanban_task_palette_styles(colors: &[&str]) -> ThemeRuleSet {
+    let palette = OrdinalPalette::new(
+        colors
+            .iter()
+            .map(|color| ThemeColorValue::parse(*color).expect("valid Kanban task palette color")),
+    )
+    .expect("non-empty Kanban task palette");
+    ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Task, palette)
+}
+
+fn kanban_task_palette_theme(colors: &[&str]) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(kanban_task_palette_styles(colors)))
+        .expect("compile Kanban task palette")
+}
+
+fn render_kanban_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> family::RenderedFamilySvg {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Kanban")
+        .expect("detect themed Kanban");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Kanban session");
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Kanban")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("kanban-palette".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Kanban")
+}
+
+fn kanban_task_rect_style<'input>(
+    document: &'input roxmltree::Document<'input>,
+    id: &str,
+) -> &'input str {
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(id))
+        .and_then(|group| group.children().find(|node| node.has_tag_name("rect")))
+        .and_then(|rect| rect.attribute("style"))
+        .expect("Kanban task rect style")
 }
 
 fn render_kanban_artifact(
@@ -240,6 +295,201 @@ fn kanban_static_task_radius_reaches_layout_priority_geometry_svg_and_evidence()
         y2,
         -item.height / 2.0 + item.height - (item.rx / 2.0).floor()
     );
+}
+
+#[test]
+fn kanban_task_palette_reaches_terminal_paint_and_wraps_the_twelve_mermaid_slots() {
+    let theme = kanban_task_palette_theme(&[
+        "#123456",
+        "transparent",
+        "#111111",
+        "#222222",
+        "#333333",
+        "#444444",
+        "#555555",
+        "#666666",
+        "#777777",
+        "#888888",
+        "#999999",
+        "#aaaaaa",
+        "#abcdef",
+    ]);
+    let rendered = render_kanban_with_theme_and_engine(
+        concat!(
+            "kanban\n  todo[Todo]\n",
+            "    first[First]\n",
+            "    second[Second]\n",
+            "    third[Third]\n",
+            "    fourth[Fourth]\n",
+            "    fifth[Fifth]\n",
+            "    sixth[Sixth]\n",
+            "    seventh[Seventh]\n",
+            "    eighth[Eighth]\n",
+            "    ninth[Ninth]\n",
+            "    tenth[Tenth]\n",
+            "    eleventh[Eleventh]\n",
+            "    twelfth[Twelfth]\n",
+            "    thirteenth[Thirteenth]\n",
+        ),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Kanban palette SVG");
+
+    assert_eq!(
+        kanban_task_rect_style(&document, "kanban-palette-first"),
+        "fill:hsl(210, 65.3846153846%, 30.3921568627%);"
+    );
+    assert_eq!(
+        kanban_task_rect_style(&document, "kanban-palette-second"),
+        "fill:hsla(0, 0%, 10%, 0);"
+    );
+    assert_eq!(
+        kanban_task_rect_style(&document, "kanban-palette-thirteenth"),
+        "fill:hsl(210, 65.3846153846%, 30.3921568627%);",
+        "the terminal palette must preserve Mermaid's twelve-slot ring"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn kanban_task_palette_derives_dark_mode_from_the_final_typed_winner() {
+    let theme = kanban_task_palette_theme(&["#123456"]);
+    let rendered = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "darkMode": true
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid dark Kanban SVG");
+
+    assert_eq!(
+        kanban_task_rect_style(&document, "kanban-palette-task"),
+        "fill:hsl(210, 65.3846153846%, 10.3921568627%);"
+    );
+}
+
+#[test]
+fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
+    let theme = kanban_task_palette_theme(&["#123456"]);
+    let site = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "background": "#fedcba" }
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let site_document = roxmltree::Document::parse(site.svg()).expect("valid site-owned Kanban");
+    assert_eq!(
+        kanban_task_rect_style(&site_document, "kanban-palette-task"),
+        ""
+    );
+    assert!(
+        site.svg().contains("#fedcba"),
+        "the site-owned background must remain in Mermaid's task-card CSS"
+    );
+
+    let source = render_kanban_with_theme_and_engine(
+        concat!(
+            "%%{init: {\"themeVariables\": {\"background\": \"#fedcba\"}}}%%\n",
+            "kanban\n  todo[Todo]\n    task[Task]\n",
+        ),
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "secure": []
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let source_document =
+        roxmltree::Document::parse(source.svg()).expect("valid source-owned Kanban");
+    assert_eq!(
+        kanban_task_rect_style(&source_document, "kanban-palette-task"),
+        ""
+    );
+    assert!(
+        source.svg().contains("#fedcba"),
+        "the source-owned background must remain in Mermaid's task-card CSS"
+    );
+
+    let compatibility = MermaidThemeCompatibility::default()
+        .with_variable("background", "#fedcba")
+        .expect("valid explicit Kanban Mermaid compatibility");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(kanban_task_palette_styles(&["#123456"]))
+                .with_mermaid_compatibility(compatibility),
+        )
+        .expect("compile explicit Mermaid Kanban palette fixture");
+    let spec = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let spec_document = roxmltree::Document::parse(spec.svg()).expect("valid spec-owned Kanban");
+    assert_eq!(
+        kanban_task_rect_style(&spec_document, "kanban-palette-task"),
+        ""
+    );
+    assert!(
+        spec.svg().contains("#fedcba"),
+        "the spec-owned background must remain in Mermaid's task-card CSS"
+    );
+
+    for (site_config, expected_surface) in [
+        (
+            serde_json::json!({ "themeVariables": { "cScale0": "#fedcba" } }),
+            "section",
+        ),
+        (
+            serde_json::json!({ "themeVariables": { "git0": "#fedcba" } }),
+            "root",
+        ),
+    ] {
+        let theme = kanban_task_palette_theme(&["#123456"]);
+        let rendered = render_kanban_with_theme_and_engine(
+            "kanban\n  todo[Todo]\n    task[Task]\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(site_config)),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let document = roxmltree::Document::parse(rendered.svg())
+            .expect("valid independently owned Kanban surface");
+        assert_eq!(
+            kanban_task_rect_style(&document, "kanban-palette-task"),
+            "fill:hsl(210, 65.3846153846%, 30.3921568627%);"
+        );
+        assert!(
+            rendered.svg().contains("#fedcba"),
+            "the explicit {expected_surface} color must remain in Mermaid CSS"
+        );
+    }
+}
+
+#[test]
+fn kanban_task_palette_is_not_applicable_without_tasks() {
+    let theme = kanban_task_palette_theme(&["#123456"]);
+    let rendered = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

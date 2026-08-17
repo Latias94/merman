@@ -512,16 +512,6 @@ fn compile_task_family(
                 "task.default",
                 [("nodeBorder", reader.stroke(ThemeTarget::Task))],
             );
-            contributions.add_palette(
-                "task.palette.color-scale",
-                reader.palette(ThemeTarget::Task),
-                PaletteProjection::ColorScale { limit: 12 },
-            );
-            contributions.add_palette(
-                "task.palette.git",
-                reader.palette(ThemeTarget::Task),
-                PaletteProjection::Git { limit: 12 },
-            );
         }
         _ => unreachable!("task compatibility is limited to Gantt and Kanban"),
     }
@@ -1453,7 +1443,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_family_palettes_create_family_local_contributions() {
+    fn legacy_family_palettes_keep_git_graph_and_retire_kanban_contributions() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#ef4444").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#22c55e").expect("valid palette color"),
@@ -1465,18 +1455,19 @@ mod tests {
         let spec = DiagramThemeSpec::new().with_styles(styles);
         let bridge = bridge(&spec);
 
-        for (family, direct_id) in [
-            (
-                DiagramFamilyId::GIT_GRAPH,
-                "merman.legacy-family-theme.v1.gitGraph.node.palette",
-            ),
-            (
-                DiagramFamilyId::KANBAN,
-                "merman.legacy-family-theme.v1.kanban.task.palette.color-scale",
-            ),
+        let git_graph = bridge.compile_for_family(DiagramFamilyId::GIT_GRAPH);
+        assert!(
+            git_graph
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.gitGraph.node.palette")
+        );
+
+        let kanban = bridge.compile_for_family(DiagramFamilyId::KANBAN);
+        for retired_id in [
+            "merman.legacy-family-theme.v1.kanban.task.palette.color-scale",
+            "merman.legacy-family-theme.v1.kanban.task.palette.git",
         ] {
-            let artifact = bridge.compile_for_family(family);
-            assert!(artifact.contribution_ids.contains(direct_id));
+            assert!(!kanban.contribution_ids.contains(retired_id));
         }
     }
 

@@ -1105,6 +1105,7 @@ their selector and value domains:
 | --- | --- | --- | --- |
 | Pie / `PieSlice` | `merman.legacy-family-theme.v1.pie.slice.palette`; `pie1..pie12`, limit 12 | `PieSlicePaintPlan` shared by terminal slice paths and legend swatches; exact `pieN` source precedence; final-SVG family evidence for solid palette values | Migrated (pre-KTD18, ratified) |
 | Mindmap / `Node` | `merman.legacy-family-theme.v1.mindmap.node.palette`; `cScale0..cScale63`, limit 64 | `MindmapNodePalettePlan` bound to non-root branch-node shape CSS; exact `cScaleN` / `mainBkg` source precedence; gradient and raw-theme-CSS residuals; strict final-SVG evidence for solid/transparent palette values | Migrated |
+| Kanban / `Task` | `merman.legacy-family-theme.v1.kanban.task.palette.color-scale` and `merman.legacy-family-theme.v1.kanban.task.palette.git`; `cScale0..cScale11` plus `git0..git11`, limit 12 | `KanbanTaskTheme` bound to terminal task rectangles; exact `background` source precedence; Mermaid light/dark adjustment preserved; strict final-SVG evidence for solid/transparent palette values. The retired `cScaleN` / `gitN` section and root side effects are intentionally not reproduced by the direct `Task` adapter. | Migrated |
 
 Adding another row requires a deliberate plan edit and the same atomic implementation boundary; the
 ledger is not a wildcard exemption for effects, typography, arbitrary selectors, or future

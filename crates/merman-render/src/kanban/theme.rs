@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use merman_core::MermaidConfig;
+use merman_core::theme_color::{darken, lighten};
+
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     ResolvedDiagramTheme, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
@@ -15,14 +18,23 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 /// site configuration expose no separate radius owner, so `Task.radius` can replace this value
 /// without competing with a source-owned style channel. Section geometry remains independent.
 pub(super) const MERMAID_TASK_RADIUS_PX: f64 = 5.0;
+const MERMAID_TASK_PALETTE_SLOT_COUNT: usize = 12;
 
 /// Kanban task geometry and evidence resolved once for concrete item occurrences.
 #[derive(Debug)]
 pub(crate) struct KanbanTaskTheme {
     item_radii: Vec<f64>,
+    item_palette_fills: Vec<Option<KanbanTaskPaletteFill>>,
     evidence: FamilyThemeEvidence,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
-    terminal_receipt: OnceLock<()>,
+    palette_key: Option<FamilyThemeMechanismKey>,
+    terminal_receipt: OnceLock<KanbanTaskThemeReceipt>,
+}
+
+#[derive(Debug)]
+struct KanbanTaskPaletteFill {
+    css: String,
+    capability: ThemeCapability,
 }
 
 impl KanbanTaskTheme {
@@ -35,7 +47,10 @@ impl KanbanTaskTheme {
             return Ok(Self::baseline(item_count));
         };
 
+        let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::Task);
         let mut item_radii = Vec::with_capacity(item_count);
+        let mut item_palette_fills = Vec::with_capacity(item_count);
+        let mut missing_palette_color = false;
         let mut winner_properties = BTreeSet::new();
         for item_index in 0..item_count {
             let style = theme.style_with_work_meter(
@@ -51,10 +66,33 @@ impl KanbanTaskTheme {
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
             item_radii.push(typed_radius_px(theme, &style));
+            let palette_fill = if palette_disposition == Some(FamilyThemeDisposition::TypedAdapter)
+                && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+            {
+                let palette_ordinal = item_index % MERMAID_TASK_PALETTE_SLOT_COUNT + 1;
+                match theme.series_color(ThemeTarget::Task, palette_ordinal) {
+                    Some(color) => Some(KanbanTaskPaletteFill {
+                        css: color.as_css(),
+                        capability: if color.is_transparent() {
+                            ThemeCapability::TransparentPaint
+                        } else {
+                            ThemeCapability::SolidPaint
+                        },
+                    }),
+                    None => {
+                        missing_palette_color = true;
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            item_palette_fills.push(palette_fill);
         }
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<usize, KanbanTaskRuleObservation>::new();
+        let mut palette_key = None;
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -87,8 +125,27 @@ impl KanbanTaskTheme {
                 }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Task,
-                } if item_count == 0 => {
-                    evidence.mark_not_applicable(theme.family_mechanism_key(route));
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if item_count == 0 {
+                        evidence.mark_not_applicable(key);
+                    } else {
+                        match route.disposition() {
+                            FamilyThemeDisposition::TypedAdapter if missing_palette_color => {
+                                evidence.mark_residual(
+                                    key,
+                                    FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                                );
+                                item_palette_fills.iter_mut().for_each(|fill| *fill = None);
+                            }
+                            FamilyThemeDisposition::TypedAdapter => palette_key = Some(key),
+                            FamilyThemeDisposition::Unsupported => evidence.mark_residual(
+                                key,
+                                FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                            ),
+                            FamilyThemeDisposition::LegacyCompatibility => {}
+                        }
+                    }
                 }
                 FamilyThemeMechanism::EffectBinding {
                     target: ThemeTarget::Task,
@@ -130,8 +187,10 @@ impl KanbanTaskTheme {
 
         Ok(Self {
             item_radii,
+            item_palette_fills,
             evidence,
             pending_radius_key,
+            palette_key,
             terminal_receipt: OnceLock::new(),
         })
     }
@@ -139,8 +198,10 @@ impl KanbanTaskTheme {
     pub(crate) fn baseline(item_count: usize) -> Self {
         Self {
             item_radii: vec![MERMAID_TASK_RADIUS_PX; item_count],
+            item_palette_fills: (0..item_count).map(|_| None).collect(),
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: None,
+            palette_key: None,
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -149,26 +210,109 @@ impl KanbanTaskTheme {
         self.item_radii.get(item_index).copied()
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<KanbanTaskRadiusThemeReceipt> {
-        self.pending_radius_key
-            .as_ref()
-            .map(|_| KanbanTaskRadiusThemeReceipt::new(self.item_radii.len()))
+    pub(crate) fn palette_terminal_decisions(
+        &self,
+        config: &MermaidConfig,
+    ) -> crate::Result<Vec<KanbanTaskPaletteTerminalDecision>> {
+        if self.palette_key.is_none() {
+            return Ok(vec![
+                KanbanTaskPaletteTerminalDecision::NotApplicable;
+                self.item_palette_fills.len()
+            ]);
+        }
+        // `cScaleN` and `gitN` own section and root surfaces, not task cards. Only an explicit or
+        // surviving compatibility `background` value can outrank the typed terminal rectangle.
+        let mermaid_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+            config,
+            "themeVariables.background",
+        );
+        let dark_mode = config
+            .get_bool("darkMode")
+            .or_else(|| config.get_bool("themeVariables.darkMode"))
+            .unwrap_or(false);
+        (0..self.item_palette_fills.len())
+            .map(|item_index| {
+                self.palette_terminal_decision(item_index, mermaid_owns_fill, dark_mode)
+            })
+            .collect()
     }
 
-    pub(crate) fn record_terminal(&self, receipt: KanbanTaskRadiusThemeReceipt) -> bool {
-        self.pending_radius_key.is_some()
+    fn palette_terminal_decision(
+        &self,
+        item_index: usize,
+        mermaid_owns_fill: bool,
+        dark_mode: bool,
+    ) -> crate::Result<KanbanTaskPaletteTerminalDecision> {
+        let Some(fill) = self
+            .item_palette_fills
+            .get(item_index)
+            .and_then(Option::as_ref)
+        else {
+            return Ok(KanbanTaskPaletteTerminalDecision::NotApplicable);
+        };
+        if mermaid_owns_fill {
+            return Ok(KanbanTaskPaletteTerminalDecision::NotApplicable);
+        }
+        let css = if dark_mode {
+            darken(&fill.css, 10.0)?
+        } else {
+            lighten(&fill.css, 10.0)?
+        };
+        Ok(KanbanTaskPaletteTerminalDecision::Applied {
+            css,
+            capability: fill.capability,
+        })
+    }
+
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<KanbanTaskThemeReceipt> {
+        (self.pending_radius_key.is_some() || self.palette_key.is_some())
+            .then(|| KanbanTaskThemeReceipt::new(self.item_radii.len()))
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: KanbanTaskThemeReceipt) -> bool {
+        (self.pending_radius_key.is_some() || self.palette_key.is_some())
             && receipt.proves(self.item_radii.len())
-            && self.terminal_receipt.set(()).is_ok()
+            && self.terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        if let Some(key) = self.pending_radius_key.clone()
-            && self.terminal_receipt.get().is_some()
-        {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::RoundedGeometry]);
+        if let Some(receipt) = self.terminal_receipt.get() {
+            if let Some(key) = self.pending_radius_key.clone() {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::RoundedGeometry]);
+            }
+            if let Some(key) = self.palette_key.clone() {
+                if receipt.palette_capabilities.is_empty() {
+                    evidence.mark_not_applicable(key);
+                } else {
+                    evidence.mark_applied_with_capabilities(
+                        key,
+                        receipt.palette_capabilities.iter().copied(),
+                    );
+                }
+            }
+        } else if let Some(key) = self.palette_key.clone() {
+            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
         }
         evidence
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum KanbanTaskPaletteTerminalDecision {
+    Applied {
+        css: String,
+        capability: ThemeCapability,
+    },
+    NotApplicable,
+}
+
+impl KanbanTaskPaletteTerminalDecision {
+    pub(crate) fn fill_css(&self) -> Option<&str> {
+        match self {
+            Self::Applied { css, .. } => Some(css),
+            Self::NotApplicable => None,
+        }
     }
 }
 
@@ -190,22 +334,29 @@ fn typed_radius_px(
     }
 }
 
-/// Writer-owned proof that every Kanban item emitted its canonical SVG radius attributes.
+/// Writer-owned proof that every Kanban item emitted its canonical SVG theme attributes.
 #[derive(Debug)]
-pub(crate) struct KanbanTaskRadiusThemeReceipt {
+pub(crate) struct KanbanTaskThemeReceipt {
     checkpointed_items: Vec<bool>,
     attributes_match: bool,
+    palette_capabilities: BTreeSet<ThemeCapability>,
 }
 
-impl KanbanTaskRadiusThemeReceipt {
+impl KanbanTaskThemeReceipt {
     fn new(item_count: usize) -> Self {
         Self {
             checkpointed_items: vec![false; item_count],
             attributes_match: true,
+            palette_capabilities: BTreeSet::new(),
         }
     }
 
-    pub(crate) fn record_checkpointed_item(&mut self, item_index: usize, attributes_match: bool) {
+    pub(crate) fn record_checkpointed_item(
+        &mut self,
+        item_index: usize,
+        attributes_match: bool,
+        palette_decision: &KanbanTaskPaletteTerminalDecision,
+    ) {
         let Some(checkpointed) = self.checkpointed_items.get_mut(item_index) else {
             self.attributes_match = false;
             return;
@@ -216,6 +367,9 @@ impl KanbanTaskRadiusThemeReceipt {
         }
         *checkpointed = true;
         self.attributes_match &= attributes_match;
+        if let KanbanTaskPaletteTerminalDecision::Applied { capability, .. } = palette_decision {
+            self.palette_capabilities.insert(*capability);
+        }
     }
 
     fn proves(&self, expected_item_count: usize) -> bool {
@@ -238,21 +392,22 @@ struct KanbanTaskRuleObservation {
 
 #[cfg(test)]
 mod tests {
-    use super::KanbanTaskRadiusThemeReceipt;
+    use super::{KanbanTaskPaletteTerminalDecision, KanbanTaskThemeReceipt};
 
     #[test]
-    fn task_radius_receipt_requires_each_terminal_item_once() {
-        let mut incomplete = KanbanTaskRadiusThemeReceipt::new(2);
-        incomplete.record_checkpointed_item(0, true);
+    fn task_theme_receipt_requires_each_terminal_item_once() {
+        let not_applicable = KanbanTaskPaletteTerminalDecision::NotApplicable;
+        let mut incomplete = KanbanTaskThemeReceipt::new(2);
+        incomplete.record_checkpointed_item(0, true, &not_applicable);
         assert!(!incomplete.proves(2));
 
-        let mut duplicate = KanbanTaskRadiusThemeReceipt::new(1);
-        duplicate.record_checkpointed_item(0, true);
-        duplicate.record_checkpointed_item(0, true);
+        let mut duplicate = KanbanTaskThemeReceipt::new(1);
+        duplicate.record_checkpointed_item(0, true, &not_applicable);
+        duplicate.record_checkpointed_item(0, true, &not_applicable);
         assert!(!duplicate.proves(1));
 
-        let mut mismatch = KanbanTaskRadiusThemeReceipt::new(1);
-        mismatch.record_checkpointed_item(0, false);
+        let mut mismatch = KanbanTaskThemeReceipt::new(1);
+        mismatch.record_checkpointed_item(0, false, &not_applicable);
         assert!(!mismatch.proves(1));
     }
 }

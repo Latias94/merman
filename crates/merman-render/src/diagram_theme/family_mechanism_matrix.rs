@@ -603,6 +603,7 @@ fn classify_ordinal_palette(
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::MINDMAP
         ) && target == ThemeTarget::Node)
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
+        || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
     {
         FamilyThemeDisposition::TypedAdapter
     } else if legacy_palette_supported(family, target) {
@@ -1281,7 +1282,6 @@ fn legacy_paint_variants(
 fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> bool {
     match family {
         DiagramFamilyId::GIT_GRAPH => target == ThemeTarget::Node,
-        DiagramFamilyId::KANBAN => target == ThemeTarget::Task,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::RADAR => target == ThemeTarget::ChartSeries,
         DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
         DiagramFamilyId::JOURNEY => target == ThemeTarget::JourneyTask,
@@ -1298,6 +1298,7 @@ fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> boo
         | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::GANTT
+        | DiagramFamilyId::KANBAN
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::REQUIREMENT
         | DiagramFamilyId::SANKEY
@@ -1700,6 +1701,14 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn kanban_owns_the_task_ordinal_palette() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::KANBAN, ThemeTarget::Task).disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
     }
 
     #[test]
