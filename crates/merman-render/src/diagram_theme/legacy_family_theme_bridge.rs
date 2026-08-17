@@ -671,8 +671,6 @@ fn compile_chart_family(
     contributions.add_typography(&reader);
     match family {
         DiagramFamilyId::XY_CHART => {
-            let palette = reader.palette(ThemeTarget::ChartSeries);
-            contributions.add_xy_palette("series.palette", palette);
             let mut xy = Map::new();
             for (key, value) in [
                 ("titleColor", title),
@@ -1122,20 +1120,6 @@ impl FamilyContributions {
         self.add_patch(mapping, root);
     }
 
-    fn add_xy_palette(&mut self, mapping: &'static str, palette: Option<Vec<String>>) {
-        let Some(palette) = palette.filter(|palette| !palette.is_empty()) else {
-            return;
-        };
-        let csv = bounded_palette_csv(&palette);
-        if csv.is_empty() {
-            return;
-        }
-        let mut xy = Map::new();
-        xy.insert("plotColorPalette".to_string(), Value::String(csv));
-        xy.insert("accentColor".to_string(), Value::String(palette[0].clone()));
-        self.add_theme_variable_object(mapping, "xyChart", xy);
-    }
-
     fn add_patch(&mut self, mapping: &'static str, patch: Map<String, Value>) {
         self.entries.push(PendingContribution { mapping, patch });
     }
@@ -1148,21 +1132,6 @@ impl FamilyContributions {
             builder.push(self.family, contribution.mapping, contribution.patch);
         }
     }
-}
-
-fn bounded_palette_csv(palette: &[String]) -> String {
-    let mut csv = String::new();
-    for color in palette {
-        let added_bytes = color.len() + usize::from(!csv.is_empty());
-        if csv.len() + added_bytes > MAX_LEGACY_ASSIGNMENT_STRING_BYTES {
-            break;
-        }
-        if !csv.is_empty() {
-            csv.push(',');
-        }
-        csv.push_str(color);
-    }
-    csv
 }
 
 struct OverlayBuilder {
@@ -1283,9 +1252,6 @@ mod tests {
         include_str!("../../../../fixtures/requirement/relations.mmd");
     const PIE_FIXTURE: &str = include_str!(
         "../../../../fixtures/pie/upstream_cypress_pie_spec_should_render_a_pie_diagram_with_showdata_005.mmd"
-    );
-    const XY_FIXTURE: &str = include_str!(
-        "../../../../fixtures/xychart/upstream_cypress_xychart_spec_render_all_the_theme_color_018.mmd"
     );
     const JOURNEY_FIXTURE: &str =
         include_str!("../../../../fixtures/journey/upstream_tasks_and_people.mmd");
@@ -2135,7 +2101,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_family_palettes_are_projected_while_pie_stays_direct() {
+    fn direct_pie_and_xy_palettes_do_not_create_bridge_contributions() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#2563eb").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#16a34a").expect("valid palette color"),
@@ -2158,13 +2124,11 @@ mod tests {
         );
         assert_eq!(fallback_contribution_count(&pie), 0);
 
-        let xy = parse(&spec, XY_FIXTURE);
-        assert_eq!(
-            xy.effective_config
-                .get_str("themeVariables.xyChart.plotColorPalette"),
-            Some("#2563eb,#16a34a,#d97706,#9333ea")
+        let xy = bridge(&spec).compile_for_family(DiagramFamilyId::XY_CHART);
+        assert!(
+            !xy.contribution_ids
+                .contains("merman.legacy-family-theme.v1.xychart.series.palette")
         );
-        assert!(fallback_contribution_count(&xy) > 0);
 
         let journey = parse(&spec, JOURNEY_FIXTURE);
         assert_eq!(
@@ -2172,16 +2136,5 @@ mod tests {
             Some("#2563eb")
         );
         assert!(fallback_contribution_count(&journey) > 0);
-    }
-
-    #[test]
-    fn xy_palette_csv_is_bounded_to_the_core_assignment_limit() {
-        let colors = (0..256)
-            .map(|index| format!("#{index:06x}{}", "a".repeat(96)))
-            .collect::<Vec<_>>();
-        let csv = bounded_palette_csv(&colors);
-        assert!(csv.len() <= MAX_LEGACY_ASSIGNMENT_STRING_BYTES);
-        assert!(!csv.ends_with(','));
-        assert!(colors.iter().any(|color| !csv.contains(color)));
     }
 }

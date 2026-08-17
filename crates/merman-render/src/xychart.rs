@@ -1,4 +1,3 @@
-use crate::chart_palette::plot_color_from_palette;
 use crate::config::{config_bool, config_f64_css_px as config_f64};
 use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
@@ -11,6 +10,10 @@ use merman_core::diagrams::xychart::{
 };
 use serde_json::Value;
 use std::fmt::Write as _;
+
+mod theme;
+
+pub(crate) use theme::XyChartSeriesPaintPlan;
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -964,8 +967,14 @@ pub(crate) fn layout_xychart_diagram_typed(
     model: &XyChartDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
+    series_paint: &XyChartSeriesPaintPlan,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<XyChartDiagramLayout> {
+    if series_paint.plot_count() != model.plots.len() {
+        return Err(Error::InvalidModel {
+            message: "XY Chart series paint plan does not match the semantic model".to_string(),
+        });
+    }
     if model
         .orientation
         .as_str()
@@ -1178,7 +1187,17 @@ pub(crate) fn layout_xychart_diagram_typed(
     }
 
     for (plot_index, plot) in model.plots.iter().enumerate() {
-        let color = plot_color_from_palette(&theme_cfg.plot_color_palette, plot_index);
+        let fill_color = series_paint
+            .fill_css(plot_index)
+            .ok_or_else(|| Error::InvalidModel {
+                message: "XY Chart series fill plan is incomplete".to_string(),
+            })?;
+        let stroke_color =
+            series_paint
+                .stroke_css(plot_index)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "XY Chart series stroke plan is incomplete".to_string(),
+                })?;
 
         match plot.plot_type {
             XyChartPlotType::Bar => {
@@ -1197,8 +1216,8 @@ pub(crate) fn layout_xychart_diagram_typed(
                             y: x - bar_width_half,
                             width: y - plot_rect.x,
                             height: bar_width,
-                            fill: color.clone(),
-                            stroke_fill: color.clone(),
+                            fill: fill_color.to_string(),
+                            stroke_fill: stroke_color.to_string(),
                             stroke_width: 0.0,
                         });
                     } else {
@@ -1207,8 +1226,8 @@ pub(crate) fn layout_xychart_diagram_typed(
                             y,
                             width: bar_width,
                             height: plot_rect.y + plot_rect.height - y,
-                            fill: color.clone(),
-                            stroke_fill: color.clone(),
+                            fill: fill_color.to_string(),
+                            stroke_fill: stroke_color.to_string(),
                             stroke_width: 0.0,
                         });
                     }
@@ -1231,13 +1250,12 @@ pub(crate) fn layout_xychart_diagram_typed(
                     });
                 }
                 if let Some(path) = line_path(&points) {
-                    let line_color = color.clone();
                     drawables.push(XyChartDrawableElem::Path {
                         group_texts: vec!["plot".to_string(), format!("line-plot-{plot_index}")],
                         data: vec![XyChartPathData {
                             path,
                             fill: None,
-                            stroke_fill: line_color.clone(),
+                            stroke_fill: stroke_color.to_string(),
                             stroke_width: 2.0,
                         }],
                     });
@@ -1272,7 +1290,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                                     text: label.clone(),
                                     x,
                                     y,
-                                    fill: line_color.clone(),
+                                    fill: fill_color.to_string(),
                                     font_size,
                                     rotation: 0.0,
                                     vertical_pos,

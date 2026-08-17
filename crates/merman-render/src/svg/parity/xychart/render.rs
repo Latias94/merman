@@ -68,9 +68,20 @@ fn write_xychart_temporary_group(out: &mut impl SvgOutput) -> Result<()> {
     out.checkpoint()
 }
 
+fn plot_group_index(group_texts: &[String], prefix: &str) -> Option<usize> {
+    if group_texts.first().map(String::as_str) != Some("plot") {
+        return None;
+    }
+    group_texts
+        .get(1)
+        .and_then(|group| group.strip_prefix(prefix))
+        .and_then(|index| index.parse().ok())
+}
+
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
+    series_paint: &crate::xychart::XyChartSeriesPaintPlan,
     _effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -85,8 +96,10 @@ pub(crate) fn render_xychart_diagram_svg(
     }
 
     impl Node {
-        fn attr(&mut self, name: &'static str, value: impl Into<String>) {
+        fn attr(&mut self, name: &'static str, value: impl Into<String>) -> usize {
+            let index = self.attrs.len();
             self.attrs.push((name, value.into()));
+            index
         }
     }
 
@@ -190,6 +203,12 @@ pub(crate) fn render_xychart_diagram_svg(
             .unwrap_or_else(|| "black".to_string())
     }
 
+    if series_paint.plot_count() != model.plots.len() {
+        return Err(crate::Error::InvalidModel {
+            message: "XY Chart series paint plan does not match the terminal model".to_string(),
+        });
+    }
+
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model
@@ -212,6 +231,7 @@ pub(crate) fn render_xychart_diagram_svg(
     } else {
         None
     };
+    let mut series_paint_receipt = series_paint.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
@@ -282,9 +302,10 @@ pub(crate) fn render_xychart_diagram_svg(
                     continue;
                 }
                 let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
+                let bar_plot_index = plot_group_index(group_texts, "bar-plot-");
 
                 // Append rect elements.
-                for r in data {
+                for (mark_index, r) in data.iter().enumerate() {
                     let mut n = node("rect");
                     n.attr("x", fmt_xy(r.x));
                     if !r.y.is_nan() {
@@ -292,10 +313,23 @@ pub(crate) fn render_xychart_diagram_svg(
                     }
                     n.attr("width", fmt_xy(r.width));
                     n.attr("height", fmt_xy(r.height));
-                    n.attr("fill", escape_xml(&r.fill));
-                    n.attr("stroke", escape_xml(&r.stroke_fill));
+                    let fill_attr = n.attr("fill", escape_xml(&r.fill));
+                    let stroke_attr = n.attr("stroke", escape_xml(&r.stroke_fill));
                     n.attr("stroke-width", fmt_xy(r.stroke_width));
-                    push_child(&mut arena, parent, n);
+                    let node_id = push_child(&mut arena, parent, n);
+                    if let Some(receipt) = series_paint_receipt.as_mut()
+                        && let Some(plot_index) = bar_plot_index
+                    {
+                        let emitted_fill = &arena[node_id].attrs[fill_attr];
+                        let emitted_stroke = &arena[node_id].attrs[stroke_attr];
+                        receipt.record_bar_mark(
+                            series_paint,
+                            plot_index,
+                            mark_index,
+                            Some((emitted_fill.0, emitted_fill.1.as_str())),
+                            Some((emitted_stroke.0, emitted_stroke.1.as_str())),
+                        );
+                    }
                 }
 
                 // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
@@ -412,12 +446,16 @@ pub(crate) fn render_xychart_diagram_svg(
                     continue;
                 }
                 let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
+                let line_label_plot_index = (group_texts.get(2).map(String::as_str)
+                    == Some("labels"))
+                .then(|| plot_group_index(group_texts, "line-plot-"))
+                .flatten();
 
-                for t in data {
+                for (label_index, t) in data.iter().enumerate() {
                     let mut n = node("text");
                     n.attr("x", "0");
                     n.attr("y", "0");
-                    n.attr("fill", escape_xml(&t.fill));
+                    let fill_attr = n.attr("fill", escape_xml(&t.fill));
                     n.attr("font-size", fmt_string(t.font_size));
                     n.attr("dominant-baseline", dominant_baseline(&t.vertical_pos));
                     n.attr("text-anchor", text_anchor(&t.horizontal_pos));
@@ -432,7 +470,18 @@ pub(crate) fn render_xychart_diagram_svg(
                         ),
                     );
                     n.text = Some(escape_xml(&t.text));
-                    push_child(&mut arena, parent, n);
+                    let node_id = push_child(&mut arena, parent, n);
+                    if let Some(receipt) = series_paint_receipt.as_mut()
+                        && let Some(plot_index) = line_label_plot_index
+                    {
+                        let emitted_fill = &arena[node_id].attrs[fill_attr];
+                        receipt.record_line_label(
+                            series_paint,
+                            plot_index,
+                            label_index,
+                            Some((emitted_fill.0, emitted_fill.1.as_str())),
+                        );
+                    }
                 }
             }
             crate::model::XyChartDrawableElem::Path { group_texts, data } => {
@@ -440,14 +489,26 @@ pub(crate) fn render_xychart_diagram_svg(
                     continue;
                 }
                 let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
+                let line_plot_index = plot_group_index(group_texts, "line-plot-");
 
-                for p in data {
+                for (mark_index, p) in data.iter().enumerate() {
                     let mut n = node("path");
                     n.attr("d", escape_xml(&p.path));
                     n.attr("fill", escape_xml(p.fill.as_deref().unwrap_or("none")));
-                    n.attr("stroke", escape_xml(&p.stroke_fill));
+                    let stroke_attr = n.attr("stroke", escape_xml(&p.stroke_fill));
                     n.attr("stroke-width", fmt_xy(p.stroke_width));
-                    push_child(&mut arena, parent, n);
+                    let node_id = push_child(&mut arena, parent, n);
+                    if let Some(receipt) = series_paint_receipt.as_mut()
+                        && let Some(plot_index) = line_plot_index
+                    {
+                        let emitted_stroke = &arena[node_id].attrs[stroke_attr];
+                        receipt.record_line_mark(
+                            series_paint,
+                            plot_index,
+                            mark_index,
+                            Some((emitted_stroke.0, emitted_stroke.1.as_str())),
+                        );
+                    }
                 }
             }
         }
@@ -456,7 +517,13 @@ pub(crate) fn render_xychart_diagram_svg(
     render_node(&mut out, &arena, 0)?;
     write_xychart_temporary_group(&mut out)?;
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if series_paint_receipt.is_some_and(|receipt| !series_paint.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "XY Chart series paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted)
 }
 
 #[cfg(test)]

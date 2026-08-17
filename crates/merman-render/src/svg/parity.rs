@@ -755,9 +755,10 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::XyChart(pair) => xychart::render_xychart_diagram_svg(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::XyChart(artifact) => xychart::render_xychart_diagram_svg(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.series_paint(),
             effective_config_value,
             options,
         ),

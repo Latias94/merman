@@ -1,8 +1,12 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
+    ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget,
+};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::{XyChartDiagramLayout, XyChartDrawableElem};
@@ -10,6 +14,48 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+
+fn xychart_series_palette_theme(colors: &[&str]) -> DiagramTheme {
+    let palette =
+        OrdinalPalette::new(colors.iter().map(|color| {
+            ThemeColorValue::parse(*color).expect("valid XY Chart series palette color")
+        }))
+        .expect("non-empty XY Chart series palette");
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::ChartSeries, palette),
+        ))
+        .expect("compile XY Chart series palette theme")
+}
+
+fn render_xychart_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::RenderedFamilySvg {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed XY Chart")
+        .expect("detect themed XY Chart");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable XY Chart session");
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed XY Chart")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed XY Chart")
+}
+
+fn xychart_plot_group<'document, 'input>(
+    document: &'document roxmltree::Document<'input>,
+    class: &str,
+) -> roxmltree::Node<'document, 'input> {
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some(class))
+        .unwrap_or_else(|| panic!("XY Chart plot group {class}"))
+}
 
 fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -355,4 +401,153 @@ fn xychart_svg_honors_mermaid_11_15_inline_theme_config() {
     assert_contains(left_axis, r##"stroke="#ff6347" stroke-width="2""##);
     assert_contains(left_axis, r##"class="ticks"><path"##);
     assert_contains(left_axis, r##"stroke="#87ceeb" stroke-width="2""##);
+}
+
+#[test]
+fn xychart_series_palette_reaches_bar_line_and_point_label_terminal_svg() {
+    let theme = xychart_series_palette_theme(&["#123456", "#abcdef"]);
+    let rendered = render_xychart_with_theme_and_engine(
+        r##"---
+config:
+  xyChart:
+    showDataLabel: true
+---
+xychart
+  x-axis [A]
+  y-axis 0 --> 10
+  bar [4]
+  line [7 "Trend"]
+"##,
+        &theme,
+        Engine::new(),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed XY Chart SVG");
+
+    let bar = xychart_plot_group(&document, "bar-plot-0");
+    let bar_rect = bar
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .expect("themed XY Chart bar rect");
+    assert_eq!(bar_rect.attribute("fill"), Some("#123456"));
+    assert_eq!(bar_rect.attribute("stroke"), Some("#123456"));
+    let bar_label = bar
+        .children()
+        .find(|node| node.has_tag_name("text"))
+        .expect("XY Chart bar data label");
+    assert_ne!(
+        bar_label.attribute("fill"),
+        Some("#123456"),
+        "bar data labels are not ChartSeries palette surfaces"
+    );
+
+    let line = xychart_plot_group(&document, "line-plot-1");
+    let line_path = line
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .expect("themed XY Chart line path");
+    assert_eq!(line_path.attribute("stroke"), Some("#abcdef"));
+    let point_label = line
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Trend"))
+        .expect("themed XY Chart line point label");
+    assert_eq!(point_label.attribute("fill"), Some("#abcdef"));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn xychart_series_palette_supports_transparent_paint_and_cycles() {
+    let theme = xychart_series_palette_theme(&["transparent", "#00aa00"]);
+    let rendered = render_xychart_with_theme_and_engine(
+        "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [2]\n  line [4]\n  bar [6]\n",
+        &theme,
+        Engine::new(),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid palette-cycle SVG");
+
+    let first_bar = xychart_plot_group(&document, "bar-plot-0")
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .expect("first XY Chart bar");
+    assert_eq!(first_bar.attribute("fill"), Some("#00000000"));
+    assert_eq!(first_bar.attribute("stroke"), Some("#00000000"));
+
+    let line = xychart_plot_group(&document, "line-plot-1")
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .expect("second XY Chart line");
+    assert_eq!(line.attribute("stroke"), Some("#00aa00"));
+
+    let third_bar = xychart_plot_group(&document, "bar-plot-2")
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .expect("third XY Chart bar");
+    assert_eq!(third_bar.attribute("fill"), Some("#00000000"));
+    assert_eq!(third_bar.attribute("stroke"), Some("#00000000"));
+}
+
+#[test]
+fn xychart_explicit_plot_palette_owners_outrank_typed_series_palette() {
+    let theme = xychart_series_palette_theme(&["#123456"]);
+    let cases = [
+        (
+            "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": {
+                    "xyChart": { "plotColorPalette": "#fedcba" }
+                }
+            }))),
+        ),
+        (
+            concat!(
+                "%%{init: {\"themeVariables\": {\"xyChart\": ",
+                "{\"plotColorPalette\": \"#fedcba\"}}}}%%\n",
+                "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
+            ),
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "secure": []
+            }))),
+        ),
+    ];
+
+    for (source, engine) in cases {
+        let rendered = render_xychart_with_theme_and_engine(source, &theme, engine);
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid owner-precedence SVG");
+        let bar = xychart_plot_group(&document, "bar-plot-0")
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .expect("owner-precedence XY Chart bar");
+        assert_eq!(bar.attribute("fill"), Some("#fedcba"));
+        assert_eq!(bar.attribute("stroke"), Some("#fedcba"));
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_series_palette_is_not_applicable_without_plots() {
+    let theme = xychart_series_palette_theme(&["#123456"]);
+    let rendered = render_xychart_with_theme_and_engine(
+        "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n",
+        &theme,
+        Engine::new(),
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }

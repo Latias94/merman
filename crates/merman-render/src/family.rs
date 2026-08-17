@@ -993,6 +993,7 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::TREE_VIEW
                 | DiagramFamilyId::JOURNEY
                 | DiagramFamilyId::QUADRANT_CHART
+                | DiagramFamilyId::XY_CHART
                 | DiagramFamilyId::C4
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::ARCHITECTURE
@@ -1365,6 +1366,24 @@ impl QuadrantChartFamilyArtifact {
 }
 
 #[derive(Debug)]
+pub(crate) struct XyChartFamilyArtifact {
+    pair: FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
+    series_paint: crate::xychart::XyChartSeriesPaintPlan,
+}
+
+impl XyChartFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn series_paint(&self) -> &crate::xychart::XyChartSeriesPaintPlan {
+        &self.series_paint
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct TreeViewFamilyArtifact {
     pair: FamilyPair<diagrams::tree_view::TreeViewDiagramRenderModel, TreeViewDiagramLayout>,
     edge_theme: crate::tree_view::TreeViewEdgeThemePlan,
@@ -1563,7 +1582,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Block(Box<FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>>),
     Er(Box<ErFamilyArtifact>),
     QuadrantChart(Box<QuadrantChartFamilyArtifact>),
-    XyChart(Box<FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>>),
+    XyChart(Box<XyChartFamilyArtifact>),
     GitGraph(Box<FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>>),
     TreeView(Box<TreeViewFamilyArtifact>),
     Ishikawa(
@@ -1835,6 +1854,13 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn xychart_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::XyChart(artifact) => Some(artifact.series_paint().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn c4_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::C4(artifact) => Some(artifact.cluster_theme().finish_evidence()),
@@ -1904,7 +1930,7 @@ impl BuiltinFamilyArtifact {
             Self::Block(pair) => pair.compatibility_json(metadata),
             Self::Er(artifact) => artifact.pair.compatibility_json(metadata),
             Self::QuadrantChart(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::XyChart(pair) => pair.compatibility_json(metadata),
+            Self::XyChart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::GitGraph(pair) => pair.compatibility_json(metadata),
             Self::TreeView(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Ishikawa(pair) => pair.compatibility_json(metadata),
@@ -1947,7 +1973,7 @@ impl BuiltinFamilyArtifact {
             Self::QuadrantChart(artifact) => {
                 LayoutProjection::QuadrantChartDiagram(artifact.pair.layout())
             }
-            Self::XyChart(pair) => LayoutProjection::XyChartDiagram(pair.layout()),
+            Self::XyChart(artifact) => LayoutProjection::XyChartDiagram(artifact.pair.layout()),
             Self::GitGraph(pair) => LayoutProjection::GitGraphDiagram(pair.layout()),
             Self::TreeView(artifact) => LayoutProjection::TreeViewDiagram(artifact.pair.layout()),
             Self::Ishikawa(pair) => LayoutProjection::IshikawaDiagram(pair.layout()),
@@ -2530,6 +2556,7 @@ impl FamilyRenderArtifact {
         let timeline_theme_evidence = self.family.timeline_theme_evidence();
         let journey_theme_evidence = self.family.journey_theme_evidence();
         let quadrant_chart_theme_evidence = self.family.quadrant_chart_theme_evidence();
+        let xychart_theme_evidence = self.family.xychart_theme_evidence();
         let c4_theme_evidence = self.family.c4_theme_evidence();
         let tree_view_theme_evidence = self.family.tree_view_theme_evidence();
         let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
@@ -2573,6 +2600,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = quadrant_chart_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::QUADRANT_CHART, evidence);
+        }
+        if let Some(evidence) = xychart_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::XY_CHART, evidence);
         }
         if let Some(evidence) = c4_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::C4, evidence);
@@ -3265,14 +3295,23 @@ fn prepare_non_class_render(
             }))
         }
         RenderSemanticModel::XyChart(model) => {
-            BuiltinFamilyArtifact::XyChart(prepare_pair(model, |model| {
-                crate::xychart::layout_xychart_diagram_typed(
-                    model,
-                    title,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let series_paint = crate::xychart::XyChartSeriesPaintPlan::resolve(
+                execution.resolved_theme(),
+                &meta.effective_config,
+                &model,
+                execution.work_meter_ref(),
+            )?;
+            let layout = crate::xychart::layout_xychart_diagram_typed(
+                &model,
+                title,
+                effective_config,
+                &series_paint,
+                execution.text_measurer(),
+            )?;
+            BuiltinFamilyArtifact::XyChart(Box::new(XyChartFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                series_paint,
+            }))
         }
         RenderSemanticModel::GitGraph(model) => {
             BuiltinFamilyArtifact::GitGraph(prepare_pair(model, |model| {
