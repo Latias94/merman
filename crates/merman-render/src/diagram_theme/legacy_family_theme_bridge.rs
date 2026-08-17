@@ -584,14 +584,6 @@ fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyTheme
 
     contributions.add_typography(&reader);
     contributions.add_theme_variables(
-        "entity.paint",
-        [
-            ("mainBkg", reader.fill(ThemeTarget::Entity)),
-            ("primaryColor", reader.fill(ThemeTarget::Entity)),
-            ("nodeBorder", reader.stroke(ThemeTarget::Entity)),
-        ],
-    );
-    contributions.add_theme_variables(
         "entity.text",
         [
             ("textColor", reader.text_fill(ThemeTarget::Text)),
@@ -1339,6 +1331,29 @@ mod tests {
             !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.treemap.title.fill")
+        );
+    }
+
+    #[test]
+    fn direct_er_entity_paint_has_no_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Entity,
+                    ThemeStylePatch::default()
+                        .with_fill(solid("#f8fafc"))
+                        .with_stroke(solid("#334155")),
+                )
+                .for_family(DiagramFamilyId::ER),
+            ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
+
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.er.entity.paint")
         );
     }
 
