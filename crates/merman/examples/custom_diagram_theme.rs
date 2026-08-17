@@ -1,5 +1,6 @@
+use merman::svg::theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
 use merman::svg::{
-    CssOverridePolicy, DiagramThemeCompiler, SvgOutputPolicy, SvgPipelinePreset, ThemeTokens,
+    CssOverridePolicy, DiagramThemeCompiler, SvgOutputPolicy, SvgPipelinePreset, ThemeMaterializer,
 };
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
@@ -11,25 +12,24 @@ const SOURCE: &str = r#"sequenceDiagram
 "#;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let spec = ThemeTokens::default()
-        .with_canvas("#0f172a")?
-        .with_surface("#111827")?
-        .with_surface_alt("#1f2937")?
-        .with_text("#e5e7eb")?
-        .with_subtle_text("#cbd5e1")?
-        .with_border("#475569")?
-        .with_line("#94a3b8")?
-        .with_note_background("#422006")?
-        .with_note_border("#a16207")?
-        .with_note_text("#fef3c7")?
-        .with_actor_background("#1f2937")?
-        .with_actor_border("#64748b")?
-        .with_actor_text("#e5e7eb")?
-        .with_activation_background("#334155")?
-        .with_activation_border("#94a3b8")?
-        .with_series(["#60a5fa", "#34d399", "#f59e0b"])?
-        .into_theme_spec();
-    let theme = DiagramThemeCompiler::new().compile(spec)?;
+    let definition = ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
+            .with_color(ThemeColorTokenV1::Surface, "#111827")
+            .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
+            .with_color(ThemeColorTokenV1::SurfaceMuted, "#334155")
+            .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
+            .with_color(ThemeColorTokenV1::SubtleText, "#cbd5e1")
+            .with_color(ThemeColorTokenV1::Border, "#475569")
+            .with_color(ThemeColorTokenV1::Line, "#94a3b8")
+            .with_series(
+                ["#60a5fa", "#34d399", "#f59e0b"]
+                    .map(str::to_owned)
+                    .to_vec(),
+            ),
+    );
+    let materialized = ThemeMaterializer::new().materialize_theme(&definition)?;
+    let theme = DiagramThemeCompiler::new().compile_spec_wire(materialized.into_spec())?;
     let output = SvgOutputPolicy {
         preset: SvgPipelinePreset::ResvgSafe,
         css_override_policy: CssOverridePolicy::StripExistingImportant,

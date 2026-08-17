@@ -6,13 +6,15 @@ theme recipe is compiled from
 `DiagramTheme`, then attached to the operation `RenderRequest`. This surface is not a
 completed cross-target compatibility promise: compilation reports required capabilities, while
 family, document, and export stages provide the evidence and target-specific admission decision.
-The C6 representative SVG/PNG/PDF matrix is not yet proven.
+The private C6a representative matrix covers Flowchart, State, and Sequence across Standalone SVG
+and PNG. It does not imply equivalent support for every diagram family or output target.
 
 Merman keeps independent concerns in separate owners:
 
 | Owner | Public input | Use it for |
 | --- | --- | --- |
-| Compiled diagram theme | `DiagramThemeSpec` -> `DiagramThemeCompiler` -> `DiagramTheme`; `RenderRequest::with_theme(...)` | Typed semantic styles, typography, canvas, effects, font assets, and the explicit Mermaid compatibility lane |
+| Versioned authoring | `ThemeDefinitionV1` -> `ThemeMaterializer` -> `DiagramThemeSpecWireV1` | Compact cross-family tokens plus ordered authored rules and deterministic materialization identity |
+| Compiled diagram theme | `DiagramThemeSpecWireV1` / `DiagramThemeSpec` -> `DiagramThemeCompiler` -> `DiagramTheme`; `RenderRequest::with_theme(...)` | Typed semantic styles, typography, canvas, effects, font assets, and the explicit Mermaid compatibility lane |
 | Mermaid configuration | `Engine::with_site_config(...)` / top-level `site_config` | Mermaid `theme`, `look`, layout, `themeVariables`, and family configuration |
 | Layout and runtime | `Renderer`, `RenderRequest`, `SvgRequest`, and explicit operation control | Container dimensions, text measurement, math, resource policy, renderer selection, cancellation, and deadlines |
 | SVG output | `SvgRequest.pipeline` / `svg` | Parity, readable, or `resvg-safe` post-processing and output-specific policy |
@@ -57,21 +59,25 @@ let RenderOutput::Svg(Some(svg)) = output else {
 `look: neo`, an ELK renderer, an SVG pipeline, or a product behavior profile. The preset's
 Mermaid compatibility values are limited to the explicit compatibility lane owned by the theme.
 
-`ThemeTokens` is the current Rust-only alpha convenience adapter. It converts to a complete spec
-before compiling:
+Use the versioned authoring contract for compact cross-family tokens. The materializer expands one
+definition into a complete editable spec; the ordinary compiler remains the only semantic compiler:
 
 ```rust
-use merman::svg::{DiagramThemeCompiler, ThemeTokens};
+use merman::svg::theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
+use merman::svg::{DiagramThemeCompiler, ThemeMaterializer};
 
-let spec = ThemeTokens::default()
-    .with_canvas("#0f172a")?
-    .with_surface("#111827")?
-    .with_surface_alt("#1f2937")?
-    .with_text("#e5e7eb")?
-    .with_border("#475569")?
-    .with_line("#94a3b8")?
-    .with_series(["#60a5fa", "#34d399", "#f59e0b"])?.into_theme_spec();
-let theme = DiagramThemeCompiler::new().compile(spec)?;
+let definition = ThemeDefinitionV1::new(
+    ThemeTokensV1::default()
+        .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
+        .with_color(ThemeColorTokenV1::Surface, "#111827")
+        .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
+        .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
+        .with_color(ThemeColorTokenV1::Border, "#475569")
+        .with_color(ThemeColorTokenV1::Line, "#94a3b8")
+        .with_series(["#60a5fa", "#34d399", "#f59e0b"].map(str::to_owned).to_vec()),
+);
+let materialized = ThemeMaterializer::new().materialize_theme(&definition)?;
+let theme = DiagramThemeCompiler::new().compile_spec_wire(materialized.into_spec())?;
 # let request = merman::RenderRequest::svg(
 #     "flowchart TD\nA --> B",
 #     merman::OperationControl::new(),
@@ -79,12 +85,13 @@ let theme = DiagramThemeCompiler::new().compile(spec)?;
 # ).with_theme(theme);
 ```
 
-Do not persist this alpha `ThemeTokens` shape or mirror it into a binding contract. It still
-contains family-specific fields and will be replaced rather than kept beside the proposed
-cross-family authoring facade in [ADR 0082](../adr/0082-versioned-theme-authoring-facade.md).
-`ThemeDefinitionV1`, `ThemeMaterializer`, materialization diagnostics, and target inspection are
-design work in that Proposed ADR; they are not implemented APIs yet. Render-time bindings remain
-deliberately limited to either a preset reference or a complete `theme.spec`.
+`merman::svg::theme_contract` re-exports the dependency-neutral persisted wire types at the version
+used by the renderer. `ThemeMaterializer` owns defaults, expansion order, palette replacement, and
+the materialization digest. It does not inspect family capabilities or render output. Raw untrusted
+JSON still requires an encoded-byte admission boundary before ordinary Serde decoding; the typed
+Rust constructor above is the currently supported authoring facade. Render-time bindings remain
+limited to either a preset reference or a complete `theme.spec` until their authoring operations
+adopt the same contract.
 
 `DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
 typography, semantic rules and ordinal palettes, canvas, effects, resource assets, and declared
@@ -125,7 +132,8 @@ value:
 
 | Recipe component | Merman owner | Status |
 | --- | --- | --- |
-| Semantic palette, typography, geometry, and ordinal series | `DiagramThemeSpec` / `ThemeTokens` | Experimental typed support |
+| Cross-family tokens and ordered authored rules | `ThemeDefinitionV1` / `ThemeMaterializer` | Experimental versioned authoring |
+| Semantic palette, typography, geometry, and ordinal series | `DiagramThemeSpecWireV1` / `DiagramThemeSpec` | Experimental typed support |
 | Layered canvas and bounded effects | `DiagramThemeSpec` | Experimental typed model; target evidence is still required |
 | Exact Mermaid variables and per-family settings | `MermaidConfig` / `site_config` or `DiagramThemeSpec::mermaid` | Supported compatibility lanes, with Mermaid precedence |
 | Selector-heavy `themeCSS` | Trusted Rust/native CLI `site_config.themeCSS` | Host capability lane; rejected by general bindings and not typed portability evidence |
