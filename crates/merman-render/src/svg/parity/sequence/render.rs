@@ -263,6 +263,7 @@ fn render_sequence_diagram_svg_inner(
         crate::sequence::SequenceLifelineThemeEmission::from_terminal_writer(
             lifeline_theme.typed_stroke.as_deref(),
             lifeline_theme.typed_stroke_width,
+            lifeline_theme.typed_stroke_width_won,
             lifeline_theme.selected_property,
             lifeline_stroke_overridden,
             lifeline_theme.receipt,
@@ -458,6 +459,7 @@ struct SequenceActorThemeResolution {
 struct SequenceLifelineThemeResolution {
     typed_stroke: Option<String>,
     typed_stroke_width: Option<f32>,
+    typed_stroke_width_won: bool,
     selected_property: Option<crate::diagram_theme::ResolvedStyleProperty>,
     receipt: crate::sequence::SequenceLifelineThemeReceipt,
 }
@@ -739,9 +741,15 @@ fn resolve_sequence_lifeline_theme(
     let typed_stroke_width = has_typed_stroke_width
         .then(|| style.stroke_width())
         .flatten();
+    // `Clear` intentionally has no CSS override value: every terminal Lifeline writer already
+    // emits Mermaid's `0.5px` baseline. Keep the resolved winner separate from the optional CSS
+    // value so the same completed actor-line receipt can seal both Value and Clear.
+    let typed_stroke_width_won =
+        has_typed_stroke_width && style.stroke_width_resolution().winner().is_some();
     Ok(SequenceLifelineThemeResolution {
         typed_stroke,
         typed_stroke_width,
+        typed_stroke_width_won,
         selected_property,
         receipt,
     })

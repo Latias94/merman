@@ -160,6 +160,7 @@ impl SequenceLifelineThemeEmission {
     pub(crate) fn from_terminal_writer(
         typed_stroke: Option<&str>,
         typed_stroke_width: Option<f32>,
+        typed_stroke_width_won: bool,
         selected_property: Option<ResolvedStyleProperty>,
         paint_overridden: bool,
         receipt: SequenceLifelineThemeReceipt,
@@ -168,7 +169,11 @@ impl SequenceLifelineThemeEmission {
         let complete_line_emission = has_lines && receipt.emitted_lines == receipt.line_candidates;
         Self {
             paint_emitted: complete_line_emission && typed_stroke.is_some(),
-            stroke_width_emitted: complete_line_emission && typed_stroke_width.is_some(),
+            // A Value winner reaches the terminal CSS block; a Clear winner deliberately keeps
+            // the `0.5px` width emitted inline by every actor-line writer. The shared candidate /
+            // emission receipt proves both paths without treating Clear as an absent winner.
+            stroke_width_emitted: complete_line_emission
+                && (typed_stroke_width.is_some() || typed_stroke_width_won),
             paint_overridden: has_lines && paint_overridden,
             selected_property,
             receipt,
@@ -1396,6 +1401,7 @@ mod tests {
             recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
                 Some("#2563eb"),
                 None,
+                false,
                 Some(ResolvedStyleProperty::Stroke),
                 false,
                 receipt,
@@ -1448,6 +1454,7 @@ mod tests {
             recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
                 None,
                 Some(2.0),
+                true,
                 None,
                 paint_overridden,
                 receipt,
@@ -1498,6 +1505,7 @@ mod tests {
         recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
             Some("#2563eb"),
             None,
+            false,
             Some(ResolvedStyleProperty::Stroke),
             false,
             receipt,

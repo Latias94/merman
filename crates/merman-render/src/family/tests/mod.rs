@@ -6202,6 +6202,59 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_after_actor_line_emis
 }
 
 #[test]
+fn require_portable_accepts_sequence_lifeline_stroke_width_clear_after_baseline_emission() {
+    let mut style = ThemeStylePatch::default();
+    style.stroke.width = Specified::Clear;
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::Lifeline, style).for_family(DiagramFamilyId::SEQUENCE),
+            )),
+        )
+        .expect("compile cleared Sequence Lifeline width theme");
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Sequence source should produce a render model");
+    let rendered = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable cleared Sequence Lifeline width session"),
+    )
+    .expect("cleared Sequence Lifeline width theme should prepare")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("every cleared Lifeline width should be proven by its baseline terminal emission");
+
+    assert_eq!(
+        rendered
+            .svg()
+            .matches(r##"stroke-width="0.5px" stroke="#999""##)
+            .count(),
+        2,
+        "Clear must restore the Mermaid baseline on actor-man and regular participant lifelines"
+    );
+    assert_eq!(
+        rendered.style_report().verification(),
+        FamilyStyleVerification::Verified
+    );
+    assert_eq!(
+        rendered.style_report().theme_applied_mechanisms(),
+        &[FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Lifeline,
+        }]
+    );
+    assert!(rendered.style_report().theme_residuals().is_empty());
+}
+
+#[test]
 fn sequence_lifeline_stroke_wins_over_fill_independent_of_rule_order() {
     for stroke_first in [false, true] {
         let fill_rule = ThemeRule::new(
