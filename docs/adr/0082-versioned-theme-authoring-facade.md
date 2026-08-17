@@ -27,6 +27,13 @@ Bindings also lack one Rust-owned materialization operation, so adding token exp
 Web, Node, Python, or a Playground would create multiple authorities for defaults, ordering,
 diagnostics, and replay.
 
+Version 1 is share-first. One self-contained `ThemeDefinitionV1` value is the ordinary authored and
+shared theme. Pretty-printed JSON, canonical JSON bytes, Rust or generated-SDK constructors, a local
+file, and an optional compressed Playground URL are projections of that same value, not separate
+theme formats. A complete `DiagramThemeSpec` remains the advanced share format when the compact
+definition cannot express a recipe. Version 1 does not add theme packages, manifests, installation,
+lock files, or a remote registry.
+
 This ADR defines the proposed alpha authoring contract used by the C7a pre-freeze authoring
 witnesses. It does not declare a stable public interface, satisfy C6a, or unblock C7a. C7a remains
 blocked until the plan's compiler, family-writer, terminal-evidence, rollout, and author-task gates
@@ -38,22 +45,36 @@ consumer, terminal-evidence, and rollout witnesses pass.
 
 ## Decision
 
-### 1. Keep render-time theme selection closed
+### 1. Keep the internal renderer closed and compose it at first-party facades
 
-Render operations continue to accept exactly one of:
+The low-level renderer continues to accept exactly one of:
 
 ```text
 preset ID
 complete DiagramThemeSpec
 ```
 
-`ThemeDefinitionV1` is never accepted directly by the renderer. It is input to a separate
-materialization operation that returns a complete spec. Preset-plus-patch, partial-spec merge,
-output-target branches, runtime light/dark conditions, host policy, raw CSS, selector strings, and
-family-capability-dependent lowering are outside version 1.
+`ThemeDefinitionV1` is not a third low-level renderer input. First-party facades may accept an
+admitted definition and compose the existing authorities in order:
 
-Light and dark themes are two independently materialized definitions. To edit a preset, callers
-materialize the preset, edit the returned complete spec, and render that spec.
+```text
+bounded decode, when input is bytes
+    -> ThemeMaterializer
+    -> DiagramThemeCompiler
+    -> closed renderer
+```
+
+That convenience path must call the Rust-owned operations rather than reimplement expansion or
+compilation in a host. The separate materialization operation remains available for inspection,
+export, editing, and reuse. Preset-plus-patch, partial-spec merge, output-target branches, runtime
+light/dark conditions, host policy, raw CSS, selector strings, and family-capability-dependent
+lowering are outside version 1.
+
+Light and dark themes are two independently materialized definitions. A preset is a catalog
+selection and starter example, not another authoring format. A copy/export action returns a
+self-contained `ThemeDefinitionV1` when the preset has one lossless source definition, and otherwise
+returns a complete spec. Version 1 does not require reverse-engineering an arbitrary preset into a
+compact definition and does not add runtime preset-plus-patch semantics.
 
 ### 2. Separate authoring, compilation, and execution authorities
 
@@ -123,14 +144,25 @@ The contract registry owns the legal version tuple. Version 1 accepts exactly
 independently accept any pair of known integers. `DiagramThemeSpecWireV1` is the canonical closed
 wire used by `theme.spec`, materialization results, golden vectors, and digest calculation.
 
-Canonical materialization JSON uses RFC 8785 JSON Canonicalization Scheme over the Rust-owned wire:
-UTF-8, JCS property ordering, typed array order, no insignificant whitespace, and JCS number
+Canonical `ThemeDefinitionV1` bytes use RFC 8785 JSON Canonicalization Scheme over the Rust-owned
+wire: UTF-8, JCS property ordering, typed array order, no insignificant whitespace, and JCS number
 serialization including negative-zero normalization. Non-finite values are rejected before
 canonicalization. Unspecified optional facets are omitted; explicit clear remains JSON `null`;
 typed colors, lengths, paints, selectors, and IDs serialize through their Rust-owned canonical wire
-forms. This serializer is distinct from the compiler's existing binary recipe-fingerprint encoder.
-Golden vectors cover Rust construction, JSON decode/re-encode, and every generated SDK before either
-materialization digest is treated as replayable.
+forms. Human-readable JSON and canonical bytes represent the same definition; whitespace is not a
+second format. `DiagramThemeSpecWireV1` has its own canonical bytes for materialized-spec identity.
+Both serializers are distinct from the compiler's existing binary recipe-fingerprint encoder.
+
+The typed authoring facade is also a projection of the same wire value. It provides discoverable
+named setters for the small stable token set and typed constructors for family, target, variant,
+ordinal, facet, and `Unspecified | Clear | Value` states. The common typed path does not require raw
+wire identifiers. These helpers only construct `ThemeDefinitionV1`; they do not own defaults,
+expansion, precedence, capability discovery, or execution policy. JSON-to-typed-to-JSON and
+typed-to-JSON-to-typed round trips must produce identical canonical definition bytes.
+
+Golden vectors cover Rust construction, JSON decode/re-encode, and generated SDK projections. Each
+binding proves schema round-trip, tri-state preservation, bounded admission, and one end-to-end
+transport smoke against the shared vectors; it does not repeat the Rust-owned expansion matrix.
 
 External materialization operations apply the host profile's encoded-byte and collection ceilings
 before typed decoding. They then validate string, rule, palette, and nested collection bounds while
@@ -141,7 +173,8 @@ Fatal authoring errors return no partial spec.
 ### 4. Define omission, null, and clear semantics across transports
 
 Version 1 uses one rule throughout the convenience layer: omission selects a documented default;
-`null` is not a shorthand for omission or clearing.
+`null` is rejected except at an existing clearable style facet, where it encodes
+`Specified::Clear`. It never clears token defaults or an entire collection or patch group.
 
 | Location | Omitted | `null` | Empty value | Explicit clear |
 | --- | --- | --- | --- | --- |
@@ -325,57 +358,35 @@ rather than retained as a convenience value that only creates a residual. Moving
 `proposed` to `accepted` approves the design and ownership boundary only; it neither certifies that
 coverage nor freezes compatibility. Only `C7a-contract` does that.
 
-### 7. Separate theme and preset materialization results
+### 7. Make the definition the share identity and keep preset governance separate
 
-The operations return different envelopes because a preset does not necessarily originate from a
-`ThemeDefinitionV1` or an authoring expansion version.
+The ordinary user-facing hierarchy is:
 
 ```text
-MaterializedTheme {
-    authoring_schema_version,
-    expansion_version,
-    spec_schema_version,
-    spec,
-    diagnostics,
-    theme_materialization_digest,
-}
-
-MaterializedPreset {
-    preset_id,
-    preset_revision,
-    maturity,
-    qualification_revision,
-    qualification_digest,
-    spec_schema_version,
-    spec,
-    preset_materialization_digest,
-}
+ThemeDefinitionV1 = authored, saved, and shared value
+MaterializedTheme = inspectable deterministic expansion
+DiagramThemeSpec = advanced complete recipe and low-level render input
+DiagramTheme = compiled executable theme
 ```
 
-`ThemeMaterializationDigest` is owned by `ThemeMaterializer`. Its domain-separated canonical input
-is the authoring schema version, expansion version, complete-spec schema version, and canonical
-complete spec wire. It is an integrity and replay identity for one materialization result.
+`MaterializedTheme` carries the authoring and expansion versions, complete-spec schema version,
+editable complete spec, and bounded diagnostics. Canonical `ThemeDefinitionV1` bytes identify the
+shared authored value. A `ThemeMaterializationDigest` may additionally bind the version tuple and
+canonical complete spec for cache or replay use, but it excludes diagnostics and display messages
+and is not the primary share identity. It remains alpha until a first-party cache or replay consumer
+demonstrates that it must be a stable public field.
 
-`PresetMaterializationDigest` is owned by the preset materializer. Its domain-separated canonical
-input is the preset ID, immutable preset revision, complete-spec schema version, and canonical
-complete spec wire. Maturity is deliberately outside this digest because qualification can advance
-without changing the preset recipe revision.
+The materialization digest is not the compiler-owned `ThemeRecipeFingerprint`, a preset
+qualification receipt, an artifact digest, or runtime evidence. If a future caller needs a hash of
+only canonical spec bytes, that type must be named `CanonicalThemeSpecDigest`.
 
-Neither digest is the compiler-owned `ThemeRecipeFingerprint`, a preset qualification receipt, an
-artifact digest, or runtime evidence. If a future caller needs a hash of only canonical spec bytes,
-that type must be named `CanonicalThemeSpecDigest`; the misleading name
-`MaterializedSpecDigest` is not used for a digest that also binds authoring or preset metadata.
-
-Preset materialization does not expose authoring schema or expansion fields merely because one
-internal preset implementation happens to use tokens. The editable `spec` in either result can be
-passed directly as `theme.spec`.
-
-The replayable preset operation accepts `PresetRef { preset_id, preset_revision }`. The catalog may
-also expose an alpha convenience that resolves the current revision by ID, but callers must persist
-the returned `PresetRef`, not the moving ID-only alias. `qualification_revision` and
-`qualification_digest` identify the maturity and proven-cell assessment. They are separate from the
-recipe materialization digest, and caches of the complete preset response bind the qualification
-identity so a maturity change cannot remain invisible.
+Preset revision, maturity, and qualification metadata belong to the preset catalog and release
+governance, not to the version 1 authoring envelope. Version 1 therefore does not add
+`MaterializedPreset`, `PresetRef`, or `PresetMaterializationDigest` as stable authoring concepts. A
+preset may still be selected by the existing render convenience. A copy/export action returns its
+self-contained `ThemeDefinitionV1` when that representation is lossless, and otherwise returns a
+clearly labeled complete `DiagramThemeSpec`. The system does not infer a compact definition from an
+arbitrary complete recipe.
 
 ### 8. Keep diagnostics and expansion traces at different maturity levels
 
@@ -420,9 +431,12 @@ The candidate operations are:
 
 ```text
 materialize_theme(definition) -> MaterializedTheme
-materialize_preset(preset_ref) -> MaterializedPreset
 describe_theme_support(query) -> ThemeCapabilityDescriptor
 ```
+
+First-party render facades may additionally accept an admitted `ThemeDefinitionV1` and compose
+materialization, compilation, and rendering in one call. That orchestration is a convenience over
+the same authorities, not a new renderer input or materialization implementation.
 
 `describe_theme_support` returns a C5-owned static upper bound such as `Unconditional`,
 `Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. `Unconditional` requires an
@@ -449,21 +463,23 @@ admission results.
   canonical wire serialization. It may be a small dedicated crate or an equally dependency-neutral
   lower shared module; it must not import renderer or binding types.
 - `merman-render` owns decoding `ThemeRuleSetWireV1[]` into the in-memory typed `ThemeRuleSet`, the
-  executable token contract table, `ThemeMaterializer`, expansion, preset materialization,
-  materialization digests, and complete typed results. It consumes canonical bytes from the shared
-  contract module and never imports `merman-bindings-core`.
+  executable token contract table, `ThemeMaterializer`, expansion, materialization semantics, and
+  complete typed results. It consumes canonical bytes from the shared contract module and never
+  imports `merman-bindings-core`.
 - `merman-bindings-core` owns transport admission and external envelopes only; it projects or
   generates SDK types from the dependency-neutral wire contract and does not own a second
   serializer. Authoring wire ownership therefore introduces no dependency from
   `merman-bindings-core` to `merman-render`; any unrelated pre-existing execution dependency is not
   an authority for wire or canonicalization.
-- First-party bindings call the Rust-owned operation through the existing `merman` facade; they do
-  not import renderer internals, expand tokens, reorder rules, or resolve palette collisions
-  locally.
+- First-party bindings call the Rust-owned operations through the existing target-independent
+  `merman::diagram_theme` facade. They may expose a one-step definition-to-render convenience, but
+  they do not import renderer internals, expand tokens, reorder rules, canonicalize wires, or
+  resolve palette collisions locally. Terminal/ASCII styling remains a separate contract.
 - The former alpha `ThemeTokens::into_theme_spec` and `ThemePreset::spec` paths are deleted;
   `DiagramThemeCompiler::compile_preset` delegates through the same versioned materializer and
   complete-spec decoder. Family-specific token fields and duplicate expansion tables are not
-  retained as compatibility implementations.
+  retained as compatibility implementations. Preset catalog metadata stays outside the authoring
+  wire and materializer.
 - The renderer and private family adapters remain unaware of the original authoring form.
 - Full asset-bearing complete specs remain subject to encoded-byte and effective runtime resource
   limits after materialization and during compilation/session admission.
@@ -479,9 +495,10 @@ C7a eligible.
 ## Consequences
 
 - Common theme authoring becomes smaller without weakening the complete typed recipe language.
-- The authoring module is deep: callers learn one small input and one materialization operation,
-  while defaults, expansion, ordering, collision handling, canonicalization, and validation remain
-  local to `merman-render`.
+- The authoring module is deep: callers share one small value and may use either one composed render
+  convenience or the explicit materialization operation. Canonical wire serialization remains in
+  the dependency-neutral contract module; defaults, expansion, ordering, collision handling, and
+  semantic validation remain local to `merman-render`.
 - The compiler, capability catalog, preset qualification, and runtime evidence retain separate
   authorities.
 - Stored authoring inputs are replayable because expansion behavior is explicit and versioned.
@@ -516,3 +533,6 @@ C7a eligible.
 8. Adopt DTCG or CSS variables as the renderer input.
    They may be future import/export adapters, but neither format represents diagram family targets,
    variants, terminal evidence, or admission.
+9. Add theme packages, manifests, install commands, lock files, or a remote registry.
+   A self-contained definition or complete spec already satisfies copying, files, generated SDKs,
+   and Playground links. Distribution infrastructure requires a separate demonstrated product need.

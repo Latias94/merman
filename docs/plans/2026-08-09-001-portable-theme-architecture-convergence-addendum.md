@@ -173,25 +173,22 @@ ADR-0082 is completed now as the proposed source of truth for the authoring desi
 C6a. Moving it to `accepted` approves that design only; acceptance neither waits for C6a nor freezes
 the candidate rows. After the C6a engine gate closes, one Rust-owned executable table and the C7a
 pre-freeze authoring witnesses verify the candidate contract. Every generated expansion row must
-name a direct typed consumer and terminal witness; unproven rows are removed before
-`C7a-candidate`, and the surviving table freezes only at `C7a-contract`. Individual preset
-retain/remove decisions remain a later catalog gate.
+be justified by the cross-family authoring model and representative semantic-shape probes. Missing
+family writers remain visible through capability discovery instead of forcing shallow direct
+adapters solely for the gate. The surviving table freezes only at `C7a-contract`. Individual
+preset retain/remove decisions remain a later catalog gate.
 
-`MaterializedTheme` and `MaterializedPreset` are separate result types. The former binds authoring
-schema version, expansion version, complete-spec schema version, editable spec, diagnostics, and a
-`ThemeMaterializationDigest`. The latter binds preset ID, immutable revision, maturity,
-qualification revision/digest, complete-spec schema version, editable spec, and a
-`PresetMaterializationDigest`; it does not claim an authoring expansion version. Replayable preset
-materialization accepts an immutable preset ID/revision pair rather than a moving ID-only alias. Both
-materialization digests are materializer-owned integrity identities over their ADR-defined domains.
-Neither is the compiler-owned `ThemeRecipeFingerprint`, a qualification identity, an artifact
-digest, or render identity. Neither result contains authoritative required capabilities, admission,
-or portability.
+`ThemeDefinitionV1` is the ordinary authored and shared value. `MaterializedTheme` binds its
+authoring schema version, expansion version, complete-spec schema version, editable spec, and
+bounded diagnostics. Canonical definition bytes identify the shared value. A separate
+materialization digest remains alpha until a first-party cache or replay consumer demonstrates a
+stable need. Preset revision, maturity, and qualification remain catalog metadata rather than a
+second authoring result type. No authoring result contains authoritative required capabilities,
+admission, or portability.
 
 Authoring inspection, static discovery, and runtime evidence are separate surfaces. An alpha
 `inspect_theme_authoring` may explain token/default/rule provenance. Its expansion trace is a
-separate alpha/debug result and is not part of the stable `MaterializedTheme` or
-`MaterializedPreset` envelope. It may report a theme-internal winner only by joining that trace with
+separate alpha/debug result and is not part of the stable `MaterializedTheme` envelope. It may report a theme-internal winner only by joining that trace with
 compiler-owned resolution and provenance; it never
 re-matches selectors, reorders rules, or implements a second cascade. Without a compiler result it
 returns expansion sources only. It cannot say `Applied`, `Portable`, or `Rejected`.
@@ -199,16 +196,16 @@ returns expansion sources only. It cannot say `Applied`, `Portable`, or `Rejecte
 `Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`). Unknown or additive rows normalize
 to `Unverified`, never `Unsupported`. Only a concrete final render or export report may report actual
 application, residuals, and target admission. The first stable authoring surface therefore needs only
-`materialize_theme`, revision-aware `materialize_preset`, and query-oriented
-`describe_theme_support`; inspection and the complete selector/value-condition matrix remain alpha
-until real consumers prove a bounded public result.
+`materialize_theme` and query-oriented `describe_theme_support`, plus a composed first-party
+definition-to-render convenience. Inspection and the complete selector/value-condition matrix remain
+alpha until real consumers prove a bounded public result.
 
 Preset patch/merge semantics are not part of the first stable binding or CLI contract. This avoids
 making merge precedence a second theme language; a later typed preset-override layer requires a
 separate product decision and its own deterministic materialization rules. The rollout must still
-provide a read-only, versioned way to materialize each supported preset as a complete editable spec
-through the native CLI and binding metadata. That export does not add patch semantics and records
-the preset/schema version from which it was derived.
+provide a read-only way to copy each supported preset as a self-contained `ThemeDefinitionV1` when
+lossless, or otherwise as a complete editable spec. That export does not add patch semantics or
+require an inverse conversion from complete specs.
 
 The built-in preset catalog is a convenience layer and reference implementation of the same
 authoring contract, not Merman's primary brand or roadmap taxonomy. The catalog is not limited to
@@ -925,28 +922,33 @@ and public theme scope from the independent renderer taxonomy before adding face
   `C7a-candidate`, land its executable Rust contract table, closed
   `ThemeDefinitionV1` and `DiagramThemeSpecWireV1` projections, legal version-tuple registry,
   cross-transport omission/null/clear encoding, diagnostic code registry, canonical serializer, and
-  golden digest vectors. Every candidate expansion row and palette target must have the required
-  direct consumer and terminal witness before the candidate gate closes. The exact table remains an
-  alpha revision through rollout; only `C7a-contract` begins the compatibility and expansion-version
-  freeze, and C7a remains blocked until then.
-- **Pre-freeze family consumers:** Before declaring a contract candidate, run one source-backed
-  representative from each remaining semantic shape category: relation-centric (`Class`),
-  entity/card (`ER`), interval/lane (`Gantt`), quantitative chart (`Pie`), and spatial/container
-  (`Architecture` or `C4`). For each, record model-owned targets, variants, clear/none semantics,
-  unique geometry/typography/effect facets, and whether the versioned envelope can express them
-  without a new public sum-type shape. For each shape category, at least one minimal direct typed
-  family writer must consume the candidate shape through compiler and Standalone SVG terminal
-  evidence. A model-only or runtime-residual probe cannot freeze that category. Findings and owner
-  decisions live in the internal family mechanism matrix and committed fixtures/reports. Any missing
-  public shape returns the plan to C1/C5 before rollout.
+  golden definition/spec vectors. The design review must also approve the share contract: one
+  self-contained `ThemeDefinitionV1` value has equivalent JSON and typed projections, while complete
+  specs remain the advanced escape hatch. Candidate expansion rows are selected by the intended
+  cross-family authoring model and representative shape probes; a family that lacks a direct writer
+  reports `Conditional`, `Unsupported`, or `Unverified` rather than forcing a shallow adapter only to
+  freeze the envelope. The exact table remains an alpha revision through rollout; only
+  `C7a-contract` begins the compatibility and expansion-version freeze, and C7a remains blocked until
+  then.
+- **Pre-freeze family consumers:** Keep the deep Flowchart, State, and Sequence witnesses, then use
+  Class, Gantt, and Pie as the minimum direct probes for relation-centric, interval/lane, and
+  quantitative shapes. Review ER and Architecture/C4 as entity/card and spatial/container model
+  probes; an existing direct writer is useful evidence but is not required merely to satisfy this
+  gate. For each category, record model-owned targets, variants, clear/none semantics, unique
+  geometry/typography/effect facets, and whether the versioned envelope can express them without a
+  new public sum-type shape. Missing direct support remains an honest discovery result and continues
+  in C7b. Any probe that reveals a missing public recipe shape returns the plan to C1/C5 before
+  rollout.
 - **Pre-freeze authoring witnesses:** After C6a closes, build two independently authored light and
-  dark `ThemeDefinitionV1` records, materialize them through the Rust-owned `ThemeMaterializer`, bind
-  their materialization digests, reuse each compiled theme across independent renderers, and prove
-  Flowchart, State, and Sequence Standalone SVG plus PNG without state leakage. Use only
-  `ThemeTokensV1` for this witness; do not inject family-specific rules to hide a missing token
-  expansion. Separately build one cold-start complete spec with the existing `ThemeRuleSet` so the
-  full recipe language remains independently proven rather than becoming an implicit tokens-plus-spec
-  merge. These are C7a candidate inputs, not C6 cells and not inputs to `C6aEligibilityReceipt`.
+  dark `ThemeDefinitionV1` records. Export each as readable JSON, import it through another
+  first-party surface, and require identical canonical definition bytes and materialized specs.
+  Materialize them through the Rust-owned `ThemeMaterializer`, reuse each compiled theme across
+  independent renderers, and prove Flowchart, State, and Sequence Standalone SVG plus PNG without
+  state leakage. Use only `ThemeTokensV1` for this witness; do not inject family-specific rules to
+  hide a missing token expansion. Separately build one cold-start complete spec with the existing
+  `ThemeRuleSet` so the full recipe language remains independently proven rather than becoming an
+  implicit tokens-plus-spec merge. These are C7a candidate inputs, not C6 cells and not inputs to
+  `C6aEligibilityReceipt`.
 - **Approach:** Use three ordered gates rather than freezing before consumers can exercise the
   candidate. `C7a-candidate` follows C1-C3, C4a, C5, C6a, and the pre-freeze family, expansion-row,
   and authoring witnesses; it
@@ -989,13 +991,16 @@ and public theme scope from the independent renderer taxonomy before adding face
   even when it remains usable during alpha. No descriptor may imply all-family or all-target support
   without a later scoped release-qualification plan; any recipe/resource change invalidates that
   revision's qualification as defined above.
-- **Authoring and preset materialization contract:** A dependency-neutral theme-contract module
+- **Authoring and sharing contract:** A dependency-neutral theme-contract module
   below both `merman-render` and `merman-bindings-core` owns the persisted `ThemeDefinitionV1`,
-  `ThemeTokensV1`, `ThemeRuleSetWireV1`, `MaterializedThemeWireV1`,
-  `MaterializedPresetWireV1`, and `DiagramThemeSpecWireV1` types, the legal version registry, and
-  canonical wire serializer. `merman-render` alone decodes `ThemeRuleSetWireV1[]` into the existing
-  typed `ThemeRuleSet` and owns the semantic `ThemeMaterializer`, expansion, and materialization
-  digests. `merman-bindings-core` owns transport admission and external envelopes, and generated
+  `ThemeTokensV1`, `ThemeRuleSetWireV1`, `MaterializedThemeWireV1`, and
+  `DiagramThemeSpecWireV1` types, the legal version registry, and canonical wire serializer.
+  `ThemeDefinitionV1` JSON is the ordinary portable share value; readable JSON, canonical JSON,
+  typed constructors, files, and optional Playground URLs are projections of the same value rather
+  than separate formats. `merman-render` alone decodes `ThemeRuleSetWireV1[]` into the existing
+  typed `ThemeRuleSet` and owns the semantic `ThemeMaterializer` and expansion. A materialization
+  digest remains alpha until a first-party cache or replay consumer requires it as a stable field.
+  `merman-bindings-core` owns transport admission and external envelopes, and generated
   SDKs project from the dependency-neutral wire contract. This ownership introduces no
   dependency from `merman-bindings-core` to `merman-render` for authoring wire or canonicalization;
   neither render nor the shared contract imports binding types. Binding hosts invoke the operation
@@ -1004,42 +1009,42 @@ and public theme scope from the independent renderer taxonomy before adding face
   alpha `ThemeTokens::into_theme_spec` and `ThemePreset::spec` expansion paths are deleted;
   `compile_preset` delegates through the same versioned materializer and complete-spec decoder.
   Family-specific token fields and duplicate expansion tables do not remain as compatibility
-  implementations. The first stable
-  operations are `materialize_theme`, revision-aware
-  `materialize_preset(PresetRef)`, and query-oriented `describe_theme_support`; an authoring inspector
-  and its expansion trace are alpha/debug-only.
-  The CLI exposes fixed read-only `theme materialize` operations for a versioned definition or
-  preset. Both results separate the editable `spec` from metadata and tell users to pass the edited
-  spec through `theme.spec`; preset results do not pretend to have authoring schema or expansion
-  provenance. External materialization applies encoded-byte and collection admission before typed
-  decoding. Unknown versions, illegal version tuples, removed preset revisions, fatal validation
+  implementations. The first stable operations are `materialize_theme` and query-oriented
+  `describe_theme_support`; an authoring inspector and its expansion trace are alpha/debug-only.
+  First-party facades may also compose bounded decode, materialization, compilation, and rendering
+  so a user can render a shared definition without manually carrying an intermediate spec. The
+  native CLI exposes `--theme-definition` for compact authoring JSON and retains the advanced
+  complete-spec input as a distinct option; it does not add install, add, pack, registry, or lock
+  commands. Preset revision, maturity, and qualification remain catalog/release metadata rather
+  than a second authoring result. A copy/export action returns a self-contained definition when
+  lossless and otherwise a clearly labeled complete spec. External materialization applies
+  encoded-byte and collection admission before typed decoding. Unknown versions, illegal version
+  tuples, fatal validation
   errors, more than the executable table's derived `MAX_AUTHORED_RULES`, concrete effect references,
   resource limits, duplicate palettes, and empty required collections fail closed without a partial
   spec.
   Materialization never introduces preset merge/patch semantics and encodes bounded assets through
   the existing typed resource wire shape.
-- **Verification:** The authoring contract matrix validates tokens-only expansion; token rules plus
+- **Verification:** The authoritative Rust contract suite validates tokens-only expansion; token rules plus
   existing global/family/variant/ordinal rules in the ADR-defined order; generated/authored ordinal
   palette replacement and duplicate rejection; omitted, explicit clear, and rejected token-null
-  behavior through real generated SDK tri-state values; source-order conflicts; empty/invalid
+  behavior; source-order conflicts; empty/invalid
   collections; the derived exact/exact-plus-one authored-rule boundary; rejected concrete effect
   references; pre-decode
-  byte/collection limits; legal and illegal schema/expansion/spec tuples; preset
-  export; `ThemeMaterializationDigest` and `PresetMaterializationDigest` sensitivity; exclusion of
-  maturity from the preset digest; and identical Rust, JSON, Web/Node, UniFFI, and generated SDK
-  materialization. The materialized spec then enters the ordinary compiler and renderer; the
+  byte/collection limits; legal and illegal schema/expansion/spec tuples; and canonical definition
+  and spec vectors. Each binding reuses those vectors and proves only schema round-trip, tri-state
+  preservation, resource admission, and one end-to-end transport smoke. It does not repeat the
+  expansion algorithm or the whole Rust semantic matrix. The materialized spec then enters the ordinary compiler and renderer; the
   authoring layer creates no proof receipt. The candidate gate validates the Rust envelope, compiler/policy boundary,
   version/discovery behavior, facet descriptor population from real C5/C6 evidence, unknown-ID and
   additive-field behavior, cross-binding descriptor round trips, existing-preset migration, coarse
   reports, deletion audit, and independent contract review. The
   rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
   parity, native CLI scope, generated contracts, migration examples, and public API compilation.
-  One aggregate `C7aContractEligibilityReport` binds the final ADR design digest and exact candidate
-  executable-table digest, C5 matrix and
-  route-manifest versions, C6a receipt, pre-freeze family and authoring witnesses, generated binding
-  artifacts, author-task results, and rollout outputs from one source revision. Do not create a new
-  public receipt type for each test action. Only this aggregate report freezes `C7a-contract`. The
-  rollout also regenerates all SDK/package
+  A concise release checklist references the final ADR and executable-table revisions, existing
+  C5/C6 receipts, pre-freeze family and authoring witnesses, generated binding artifacts,
+  author-task results, and rollout jobs from one source revision. Do not build a second aggregate
+  proof engine merely to join already-owned receipts. The rollout also regenerates all SDK/package
   copies from their authorities, checks Web types against the shared theme catalog, documents every
   resource field, and returns a versioned bounded execution-evidence envelope through Node, UniFFI,
   and C FFI. An alpha preset is discoverable only with an explicit maturity marker. A stable preset
@@ -1047,9 +1052,11 @@ and public theme scope from the independent renderer taxonomy before adding face
   and per-target admission expectations backed by C6 runner evidence.
 - **Authoring rollout witness:** After `C7a-candidate`, migrate first-party bindings and examples to
   the shared materialization operations. Rust and at least one non-Rust or CLI consumer must complete
-  the same author-task matrix: create a tokens-only theme; add a family-scoped rule; materialize and
-  edit a preset revision; diagnose a precedence conflict; explain a conditional, unsupported, and
-  not-applicable query; and exercise omitted, clear, and invalid-null states. The Playground may
+  the same share-first author tasks: import a self-contained definition JSON; render it without
+  manually persisting an intermediate spec; export readable JSON; prove typed/JSON canonical
+  equivalence; add one typed family-scoped rule; and explain one unsupported or unverified query.
+  Omitted, clear, invalid-null, precedence, and complete discovery-state combinations remain contract
+  tests rather than duplicated usability gates. The Playground may
   dogfood the same tasks with side-by-side Flowchart/State/Sequence light/dark previews, but a UI is
   not required for the gate. This is rollout evidence and a usability check, not a frozen UI or a
   reason to expose private ledgers.
