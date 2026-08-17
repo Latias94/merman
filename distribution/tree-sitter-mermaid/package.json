@@ -25,6 +25,7 @@
       "default": "./bindings/node/index.js"
     },
     "./package.json": "./package.json",
+    "./tree-sitter.json": "./tree-sitter.json",
     "./tree-sitter-mermaid.wasm": "./tree-sitter-mermaid.wasm",
     "./queries/*": "./queries/*",
     "./src/*": "./src/*"

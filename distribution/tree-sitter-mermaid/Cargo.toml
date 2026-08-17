@@ -13,7 +13,6 @@ categories = ["parsing", "text-editors"]
 build = "bindings/rust/build.rs"
 include = [
     "/bindings/rust/**",
-    "/grammar.js",
     "/metadata/derivations.json",
     "/metadata/provenance.json",
     "/queries/portable/**",

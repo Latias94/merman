@@ -134,6 +134,9 @@ const Parser = require('tree-sitter');
 const Mermaid = require('tree-sitter-mermaid');
 const { Language, Parser: WasmParser } = require('web-tree-sitter');
 
+const grammarMetadata = require('tree-sitter-mermaid/tree-sitter.json');
+assert.equal(grammarMetadata.grammars[0].scope, 'source.mermaid');
+
 const source = 'flowchart TD\nA --> B\n';
 const parser = new Parser();
 parser.setLanguage(Mermaid);
