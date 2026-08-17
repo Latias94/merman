@@ -222,18 +222,14 @@ fn decode_style_patch(
     decoded.paint.fill = decode_specified(value.fill, decode_paint)?;
     decoded.paint.opacity = decode_specified_value(value.opacity);
     decoded.paint.fill_opacity = decode_specified_value(value.fill_opacity);
-    decoded.stroke = match value.stroke {
-        wire::SpecifiedWireV1::Unspecified => Default::default(),
-        wire::SpecifiedWireV1::Clear => cleared_stroke_patch(),
-        wire::SpecifiedWireV1::Value(stroke) => decode_stroke_patch(stroke)?,
-    };
+    if let Some(stroke) = value.stroke {
+        decoded.stroke = decode_stroke_patch(stroke)?;
+    }
     decoded.geometry.radius = decode_specified_value(value.radius);
     decoded.spacing.padding = decode_specified(value.padding, |value| Ok(decode_insets(value)))?;
-    decoded.typography = match value.typography {
-        wire::SpecifiedWireV1::Unspecified => Default::default(),
-        wire::SpecifiedWireV1::Clear => cleared_text_style_patch(),
-        wire::SpecifiedWireV1::Value(typography) => decode_text_style_patch(typography)?,
-    };
+    if let Some(typography) = value.typography {
+        decoded.typography = decode_text_style_patch(typography)?;
+    }
     decoded.effects.effect = decode_specified_value(value.effect);
     Ok(decoded)
 }
@@ -268,34 +264,6 @@ fn decode_text_style_patch(
         white_space: decode_specified(value.white_space, |value| parse_white_space(&value))?,
         wrap: decode_specified(value.wrap, |value| parse_wrap_mode(&value))?,
     })
-}
-
-fn cleared_stroke_patch() -> super::ThemeStrokePatch {
-    super::ThemeStrokePatch {
-        paint: Specified::Clear,
-        width: Specified::Clear,
-        dasharray: Specified::Clear,
-        linecap: Specified::Clear,
-        linejoin: Specified::Clear,
-        stroke_opacity: Specified::Clear,
-    }
-}
-
-fn cleared_text_style_patch() -> TextStylePatch {
-    TextStylePatch {
-        font_stack: Specified::Clear,
-        font_size_px: Specified::Clear,
-        font_weight: Specified::Clear,
-        font_style: Specified::Clear,
-        line_height: Specified::Clear,
-        letter_spacing_px: Specified::Clear,
-        word_spacing_px: Specified::Clear,
-        transform: Specified::Clear,
-        decoration: Specified::Clear,
-        text_align: Specified::Clear,
-        white_space: Specified::Clear,
-        wrap: Specified::Clear,
-    }
 }
 
 fn decode_canvas(value: wire::ThemeCanvasSpecWireV1) -> Result<CanvasSpec, ThemeCompileError> {
@@ -937,52 +905,5 @@ fn decode_specified_value<T>(value: wire::SpecifiedWireV1<T>) -> Specified<T> {
         wire::SpecifiedWireV1::Unspecified => Specified::Unspecified,
         wire::SpecifiedWireV1::Clear => Specified::Clear,
         wire::SpecifiedWireV1::Value(value) => Specified::Value(value),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stroke_and_typography_group_clear_lower_atomically() {
-        let spec = wire::DiagramThemeSpecWireV1 {
-            styles: Some(vec![wire::ThemeRuleSetWireV1::Rule {
-                target: "node".to_string(),
-                family: None,
-                variant: None,
-                ordinal: None,
-                style: wire::ThemeStylePatchWireV1 {
-                    stroke: wire::SpecifiedWireV1::Clear,
-                    typography: wire::SpecifiedWireV1::Clear,
-                    ..Default::default()
-                },
-            }]),
-            ..Default::default()
-        };
-
-        let decoded = decode(spec, &ThemeResourcePolicy::default()).expect("decode complete spec");
-        let style = decoded.styles().rules()[0].style();
-        assert!(matches!(style.stroke.paint, Specified::Clear));
-        assert!(matches!(style.stroke.width, Specified::Clear));
-        assert!(matches!(style.stroke.dasharray, Specified::Clear));
-        assert!(matches!(style.stroke.linecap, Specified::Clear));
-        assert!(matches!(style.stroke.linejoin, Specified::Clear));
-        assert!(matches!(style.stroke.stroke_opacity, Specified::Clear));
-        assert!(matches!(style.typography.font_stack, Specified::Clear));
-        assert!(matches!(style.typography.font_size_px, Specified::Clear));
-        assert!(matches!(style.typography.font_weight, Specified::Clear));
-        assert!(matches!(style.typography.font_style, Specified::Clear));
-        assert!(matches!(style.typography.line_height, Specified::Clear));
-        assert!(matches!(
-            style.typography.letter_spacing_px,
-            Specified::Clear
-        ));
-        assert!(matches!(style.typography.word_spacing_px, Specified::Clear));
-        assert!(matches!(style.typography.transform, Specified::Clear));
-        assert!(matches!(style.typography.decoration, Specified::Clear));
-        assert!(matches!(style.typography.text_align, Specified::Clear));
-        assert!(matches!(style.typography.white_space, Specified::Clear));
-        assert!(matches!(style.typography.wrap, Specified::Clear));
     }
 }

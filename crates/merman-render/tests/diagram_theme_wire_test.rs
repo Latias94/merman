@@ -1,8 +1,8 @@
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeCompileError,
-    ThemeCompileValidationError, ThemeResourceLimitExceeded, ThemeResourceLimitId,
-    ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget,
+    CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch,
+    ThemeCompileError, ThemeCompileValidationError, ThemeResourceLimitExceeded,
+    ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeRule, ThemeRuleSet,
+    ThemeStrokePatch, ThemeStylePatch, ThemeTarget,
 };
 use merman_theme_contract::{
     DiagramThemeSpecWireV1, SpecifiedWireV1, ThemeAssetsWireV1, ThemeCanvasPaintWireV1,
@@ -39,6 +39,39 @@ fn spec_wire_compiles_to_the_equivalent_typed_recipe() {
     let typed = compiler
         .compile(typed)
         .expect("typed recipe should compile");
+
+    assert_eq!(wire.recipe_fingerprint(), typed.recipe_fingerprint());
+}
+
+#[test]
+fn nested_style_clear_facets_lower_to_the_equivalent_typed_recipe() {
+    let wire = serde_json::from_str::<DiagramThemeSpecWireV1>(
+        r#"{"styles":[{"kind":"rule","target":"node","style":{"stroke":{"paint":null},"typography":{"font_size_px":null}}}]}"#,
+    )
+    .expect("nested style facets should preserve clear semantics");
+    let typed =
+        DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch {
+                stroke: ThemeStrokePatch {
+                    paint: Specified::Clear,
+                    ..Default::default()
+                },
+                typography: TextStylePatch {
+                    font_size_px: Specified::Clear,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+    let compiler = DiagramThemeCompiler::new();
+
+    let wire = compiler
+        .compile_spec_wire(wire)
+        .expect("nested clear facets should compile");
+    let typed = compiler
+        .compile(typed)
+        .expect("typed clear facets should compile");
 
     assert_eq!(wire.recipe_fingerprint(), typed.recipe_fingerprint());
 }

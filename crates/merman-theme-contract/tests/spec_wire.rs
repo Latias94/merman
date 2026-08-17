@@ -1,6 +1,6 @@
 use merman_theme_contract::{
-    CanonicalJsonErrorKind, DiagramThemeSpecWireV1, ThemeEffectEntryWireV1,
-    ThemeEffectPrimitiveWireV1, resolve_authoring_version,
+    CanonicalJsonErrorKind, DiagramThemeSpecWireV1, SpecifiedWireV1, ThemeEffectEntryWireV1,
+    ThemeEffectPrimitiveWireV1, ThemeRuleSetWireV1, resolve_authoring_version,
 };
 
 const ALL_SECTIONS_JSON: &str = r##"
@@ -195,6 +195,8 @@ fn complete_spec_wire_rejects_unknown_fields_and_non_clearable_nulls() {
         r##"{"canvas":{"layers":[{"paint":"#fff","unexpected":true}]}}"##,
         r#"{"canvas":null}"#,
         r#"{"typography":{"default":{"font_stack":null}}}"#,
+        r#"{"styles":[{"kind":"rule","target":"node","style":{"stroke":null}}]}"#,
+        r#"{"styles":[{"kind":"rule","target":"node","style":{"typography":null}}]}"#,
     ] {
         assert!(
             serde_json::from_str::<DiagramThemeSpecWireV1>(invalid).is_err(),
@@ -210,9 +212,21 @@ fn complete_spec_wire_preserves_omission_empty_collections_and_style_clear() {
     let empty: DiagramThemeSpecWireV1 = serde_json::from_str(r#"{"styles":[],"effects":[]}"#)
         .expect("explicit empty collections should decode");
     let clear: DiagramThemeSpecWireV1 = serde_json::from_str(
-        r#"{"styles":[{"kind":"rule","target":"node","style":{"opacity":null}}]}"#,
+        r#"{"styles":[{"kind":"rule","target":"node","style":{"opacity":null,"stroke":{"paint":null},"typography":{"font_size_px":null}}}]}"#,
     )
-    .expect("null inside a style patch should mean clear");
+    .expect("null on atomic style facets should mean clear");
+    let ThemeRuleSetWireV1::Rule { style, .. } = &clear.styles.as_ref().unwrap()[0] else {
+        panic!("expected rule wire");
+    };
+    assert!(matches!(style.opacity, SpecifiedWireV1::Clear));
+    assert!(matches!(
+        style.stroke.as_ref().unwrap().paint,
+        SpecifiedWireV1::Clear
+    ));
+    assert!(matches!(
+        style.typography.as_ref().unwrap().font_size_px,
+        SpecifiedWireV1::Clear
+    ));
 
     assert_eq!(omitted.canonical_json_bytes().unwrap(), br#"{}"#);
     assert_eq!(
@@ -221,7 +235,7 @@ fn complete_spec_wire_preserves_omission_empty_collections_and_style_clear() {
     );
     assert_eq!(
         clear.canonical_json_bytes().unwrap(),
-        br#"{"styles":[{"kind":"rule","style":{"opacity":null},"target":"node"}]}"#
+        br#"{"styles":[{"kind":"rule","style":{"opacity":null,"stroke":{"paint":null},"typography":{"font_size_px":null}},"target":"node"}]}"#
     );
 }
 

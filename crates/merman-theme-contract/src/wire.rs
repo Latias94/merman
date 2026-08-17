@@ -109,18 +109,26 @@ pub struct ThemeStylePatchWireV1 {
     /// Fill-specific opacity.
     #[serde(default, skip_serializing_if = "SpecifiedWireV1::is_unspecified")]
     pub fill_opacity: SpecifiedWireV1<f32>,
-    /// Stroke patch.
-    #[serde(default, skip_serializing_if = "SpecifiedWireV1::is_unspecified")]
-    pub stroke: SpecifiedWireV1<ThemeStrokePatchWireV1>,
+    /// Optional stroke patch; explicit JSON `null` is rejected.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_non_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub stroke: Option<ThemeStrokePatchWireV1>,
     /// Corner radius in pixels.
     #[serde(default, skip_serializing_if = "SpecifiedWireV1::is_unspecified")]
     pub radius: SpecifiedWireV1<f32>,
     /// Padding in pixels.
     #[serde(default, skip_serializing_if = "SpecifiedWireV1::is_unspecified")]
     pub padding: SpecifiedWireV1<ThemeInsetsWireV1>,
-    /// Typography patch.
-    #[serde(default, skip_serializing_if = "SpecifiedWireV1::is_unspecified")]
-    pub typography: SpecifiedWireV1<ThemeTextStylePatchWireV1>,
+    /// Optional typography patch; explicit JSON `null` is rejected.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_non_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub typography: Option<ThemeTextStylePatchWireV1>,
     /// Effect graph identifier.
     #[serde(default, skip_serializing_if = "SpecifiedWireV1::is_unspecified")]
     pub effect: SpecifiedWireV1<String>,
