@@ -9,8 +9,10 @@ use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 use serde_json::Value;
 
 mod config;
+mod theme;
 
 pub(crate) use config::QuadrantChartConfigView;
+pub(crate) use theme::QuadrantChartPointThemePlan;
 
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
     MermaidThemeAdapter::new(effective_config).quadrantchart()
@@ -30,8 +32,15 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
     model: &QuadrantChartRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
+    point_theme: &QuadrantChartPointThemePlan,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<QuadrantChartDiagramLayout> {
+    if point_theme.point_count() != model.points.len() {
+        return Err(crate::Error::InvalidModel {
+            message: "Quadrant Chart point theme plan does not match the semantic model"
+                .to_string(),
+        });
+    }
     let cfg = QuadrantChartConfigView::new(effective_config).layout_settings();
     let theme = default_quadrant_theme(effective_config);
 
@@ -341,7 +350,7 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
     ];
 
     let mut points: Vec<QuadrantChartPointData> = Vec::new();
-    for p in &model.points {
+    for (point_index, p) in model.points.iter().enumerate() {
         let class_styles = p
             .class_name
             .as_deref()
@@ -352,6 +361,7 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
             .radius
             .map(|v| v as f64)
             .or_else(|| class_styles.and_then(|c| c.radius.map(|v| v as f64)))
+            .or_else(|| point_theme.radius_override_px(point_index))
             .unwrap_or(cfg.point_radius);
         let fill = p
             .styles

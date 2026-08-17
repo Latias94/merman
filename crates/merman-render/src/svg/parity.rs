@@ -689,9 +689,10 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        BuiltinFamilyArtifact::Journey(pair) => journey::render_journey_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Journey(artifact) => journey::render_journey_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.task_theme(),
             effective_config_value,
             title,
             measurer,
@@ -745,10 +746,11 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        BuiltinFamilyArtifact::QuadrantChart(pair) => {
+        BuiltinFamilyArtifact::QuadrantChart(artifact) => {
             quadrantchart::render_quadrantchart_diagram_svg(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.point_theme(),
                 effective_config_value,
                 options,
             )
@@ -785,12 +787,13 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::C4(pair) => c4::render_c4_diagram_svg_typed(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::C4(artifact) => c4::render_c4_diagram_svg_typed(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             effective_config_value,
             title,
             measurer,
+            artifact.cluster_theme(),
             options,
         ),
     }

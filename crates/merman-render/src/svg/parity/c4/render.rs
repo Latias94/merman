@@ -263,6 +263,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
+    cluster_theme: &crate::c4::C4ClusterThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -379,6 +380,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
     for r in &model.rels {
         rel_meta.insert((r.from_alias.as_str(), r.to_alias.as_str()), r);
     }
+    let mut cluster_radius_receipt = cluster_theme.begin_terminal_receipt();
+    let mut boundary_emission_ordinal = 0usize;
 
     const PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
     const EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
@@ -660,33 +663,46 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     .and_then(|m| m.border_color.clone())
                     .unwrap_or_else(|| "#444444".to_string());
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
+                let boundary_radius_attr = cluster_theme.radius_token();
 
                 out.push_str("<g>");
                 out.checkpoint()?;
                 if is_node_type {
                     let _ = write!(
                         &mut out,
-                        r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1"/>"#,
+                        r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="1"/>"#,
                         fmt(b.x),
                         fmt(b.y),
                         escape_attr(&fill_color),
                         escape_attr(&stroke_color),
                         fmt(b.width),
-                        fmt(b.height)
+                        fmt(b.height),
+                        boundary_radius_attr,
+                        boundary_radius_attr,
                     );
                 } else {
                     let _ = write!(
                         &mut out,
-                        r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1" stroke-dasharray="7.0,7.0"/>"#,
+                        r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="1" stroke-dasharray="7.0,7.0"/>"#,
                         fmt(b.x),
                         fmt(b.y),
                         escape_attr(&fill_color),
                         escape_attr(&stroke_color),
                         fmt(b.width),
-                        fmt(b.height)
+                        fmt(b.height),
+                        boundary_radius_attr,
+                        boundary_radius_attr,
                     );
                 }
                 out.checkpoint()?;
+                if let Some(receipt) = cluster_radius_receipt.as_mut() {
+                    receipt.record_checkpointed_boundary(
+                        boundary_emission_ordinal,
+                        boundary_radius_attr,
+                        boundary_radius_attr,
+                    );
+                }
+                boundary_emission_ordinal = boundary_emission_ordinal.saturating_add(1);
 
                 let boundary_font = c4_cfg.boundary_font();
                 let boundary_family = boundary_font
@@ -753,7 +769,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
             }
         }
     }
-
     let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
     let arrowend_url = scoped_svg_url(diagram_id, "arrowend");
     write_c4_relation_defs(&mut out, diagram_id)?;
@@ -896,7 +911,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
 
     out.push_str("</svg>");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if cluster_radius_receipt.is_some_and(|receipt| !cluster_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "C4 cluster radius receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]

@@ -934,6 +934,27 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::JOURNEY
+        && target == ThemeTarget::JourneyTask
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && facet == FamilyThemeRuleFacet::Radius
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::QUADRANT_CHART
+        && target == ThemeTarget::ChartSeries
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && facet == FamilyThemeRuleFacet::Radius
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::C4
+        && target == ThemeTarget::Cluster
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && facet == FamilyThemeRuleFacet::Radius
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::ER
         && target == ThemeTarget::Entity
         && matches!(

@@ -991,6 +991,9 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::PIE
                 | DiagramFamilyId::TIMELINE
                 | DiagramFamilyId::TREE_VIEW
+                | DiagramFamilyId::JOURNEY
+                | DiagramFamilyId::QUADRANT_CHART
+                | DiagramFamilyId::C4
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::ARCHITECTURE
         ) && self
@@ -1273,6 +1276,24 @@ pub(crate) struct ClassFamilyArtifact {
     theme_evidence: crate::class::ClassThemeEvidenceRecorder,
 }
 
+#[derive(Debug)]
+pub(crate) struct C4FamilyArtifact {
+    pair: FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>,
+    cluster_theme: crate::c4::C4ClusterThemePlan,
+}
+
+impl C4FamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn cluster_theme(&self) -> &crate::c4::C4ClusterThemePlan {
+        &self.cluster_theme
+    }
+}
+
 impl ClassFamilyArtifact {
     pub(crate) const fn pair(&self) -> &FamilyPair<ClassDiagram, ClassDiagramLayout> {
         &self.pair
@@ -1303,6 +1324,44 @@ pub(crate) struct PieFamilyArtifact {
 pub(crate) struct TimelineFamilyArtifact {
     pair: FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>,
     event_theme: crate::timeline::TimelineEventTheme,
+}
+
+#[derive(Debug)]
+pub(crate) struct JourneyFamilyArtifact {
+    pair: FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>,
+    task_theme: crate::journey::JourneyTaskTheme,
+}
+
+impl JourneyFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn task_theme(&self) -> &crate::journey::JourneyTaskTheme {
+        &self.task_theme
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct QuadrantChartFamilyArtifact {
+    pair:
+        FamilyPair<diagrams::quadrant_chart::QuadrantChartRenderModel, QuadrantChartDiagramLayout>,
+    point_theme: crate::quadrantchart::QuadrantChartPointThemePlan,
+}
+
+impl QuadrantChartFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::quadrant_chart::QuadrantChartRenderModel, QuadrantChartDiagramLayout>
+    {
+        &self.pair
+    }
+
+    pub(crate) const fn point_theme(&self) -> &crate::quadrantchart::QuadrantChartPointThemePlan {
+        &self.point_theme
+    }
 }
 
 #[derive(Debug)]
@@ -1470,7 +1529,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     #[cfg(feature = "layout-cytoscape")]
     Architecture(Box<ArchitectureFamilyArtifact>),
     Class(Box<ClassFamilyArtifact>),
-    C4(Box<FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>>),
+    C4(Box<C4FamilyArtifact>),
     Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
     Wardley(Box<FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>>),
     Railroad(
@@ -1488,7 +1547,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Pie(Box<PieFamilyArtifact>),
     Packet(Box<FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>>),
     Timeline(Box<TimelineFamilyArtifact>),
-    Journey(Box<FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>>),
+    Journey(Box<JourneyFamilyArtifact>),
     Requirement(
         Box<
             FamilyPair<
@@ -1503,14 +1562,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Treemap(Box<FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>>),
     Block(Box<FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>>),
     Er(Box<ErFamilyArtifact>),
-    QuadrantChart(
-        Box<
-            FamilyPair<
-                diagrams::quadrant_chart::QuadrantChartRenderModel,
-                QuadrantChartDiagramLayout,
-            >,
-        >,
-    ),
+    QuadrantChart(Box<QuadrantChartFamilyArtifact>),
     XyChart(Box<FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>>),
     GitGraph(Box<FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>>),
     TreeView(Box<TreeViewFamilyArtifact>),
@@ -1769,6 +1821,27 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn journey_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Journey(artifact) => Some(artifact.task_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn quadrant_chart_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::QuadrantChart(artifact) => Some(artifact.point_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn c4_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::C4(artifact) => Some(artifact.cluster_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn tree_view_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::TreeView(artifact) => Some(artifact.edge_theme().finish_evidence()),
@@ -1815,7 +1888,7 @@ impl BuiltinFamilyArtifact {
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Class(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::C4(pair) => pair.compatibility_json(metadata),
+            Self::C4(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Cynefin(pair) => pair.compatibility_json(metadata),
             Self::Wardley(pair) => pair.compatibility_json(metadata),
             Self::Railroad(pair) => pair.compatibility_json(metadata),
@@ -1824,7 +1897,7 @@ impl BuiltinFamilyArtifact {
             Self::Pie(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Packet(pair) => pair.compatibility_json(metadata),
             Self::Timeline(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Journey(pair) => pair.compatibility_json(metadata),
+            Self::Journey(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Requirement(pair) => pair.compatibility_json(metadata),
             Self::Sankey(pair) => pair.compatibility_json(metadata),
             Self::Radar(pair) => pair.compatibility_json(metadata),
@@ -1832,7 +1905,7 @@ impl BuiltinFamilyArtifact {
             Self::Treemap(pair) => pair.compatibility_json(metadata),
             Self::Block(pair) => pair.compatibility_json(metadata),
             Self::Er(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::QuadrantChart(pair) => pair.compatibility_json(metadata),
+            Self::QuadrantChart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::XyChart(pair) => pair.compatibility_json(metadata),
             Self::GitGraph(pair) => pair.compatibility_json(metadata),
             Self::TreeView(artifact) => artifact.pair.compatibility_json(metadata),
@@ -1856,7 +1929,7 @@ impl BuiltinFamilyArtifact {
                 LayoutProjection::ArchitectureDiagram(artifact.pair.layout())
             }
             Self::Class(artifact) => LayoutProjection::ClassDiagram(artifact.pair.layout()),
-            Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
+            Self::C4(artifact) => LayoutProjection::C4Diagram(artifact.pair.layout()),
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
             Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
             Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
@@ -1865,7 +1938,7 @@ impl BuiltinFamilyArtifact {
             Self::Pie(artifact) => LayoutProjection::PieDiagram(artifact.pair.layout()),
             Self::Packet(pair) => LayoutProjection::PacketDiagram(pair.layout()),
             Self::Timeline(artifact) => LayoutProjection::TimelineDiagram(artifact.pair.layout()),
-            Self::Journey(pair) => LayoutProjection::JourneyDiagram(pair.layout()),
+            Self::Journey(artifact) => LayoutProjection::JourneyDiagram(artifact.pair.layout()),
             Self::Requirement(pair) => LayoutProjection::RequirementDiagram(pair.layout().layout()),
             Self::Sankey(pair) => LayoutProjection::SankeyDiagram(pair.layout()),
             Self::Radar(pair) => LayoutProjection::RadarDiagram(pair.layout()),
@@ -1873,7 +1946,9 @@ impl BuiltinFamilyArtifact {
             Self::Treemap(pair) => LayoutProjection::TreemapDiagram(pair.layout()),
             Self::Block(pair) => LayoutProjection::BlockDiagram(pair.layout()),
             Self::Er(artifact) => LayoutProjection::ErDiagram(artifact.pair.layout()),
-            Self::QuadrantChart(pair) => LayoutProjection::QuadrantChartDiagram(pair.layout()),
+            Self::QuadrantChart(artifact) => {
+                LayoutProjection::QuadrantChartDiagram(artifact.pair.layout())
+            }
             Self::XyChart(pair) => LayoutProjection::XyChartDiagram(pair.layout()),
             Self::GitGraph(pair) => LayoutProjection::GitGraphDiagram(pair.layout()),
             Self::TreeView(artifact) => LayoutProjection::TreeViewDiagram(artifact.pair.layout()),
@@ -2455,6 +2530,9 @@ impl FamilyRenderArtifact {
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let pie_theme_evidence = self.family.pie_theme_evidence();
         let timeline_theme_evidence = self.family.timeline_theme_evidence();
+        let journey_theme_evidence = self.family.journey_theme_evidence();
+        let quadrant_chart_theme_evidence = self.family.quadrant_chart_theme_evidence();
+        let c4_theme_evidence = self.family.c4_theme_evidence();
         let tree_view_theme_evidence = self.family.tree_view_theme_evidence();
         let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
         let er_theme_evidence = self.family.er_theme_evidence();
@@ -2491,6 +2569,15 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = timeline_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::TIMELINE, evidence);
+        }
+        if let Some(evidence) = journey_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::JOURNEY, evidence);
+        }
+        if let Some(evidence) = quadrant_chart_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::QUADRANT_CHART, evidence);
+        }
+        if let Some(evidence) = c4_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::C4, evidence);
         }
         if let Some(evidence) = tree_view_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::TREE_VIEW, evidence);
@@ -2932,16 +3019,28 @@ fn prepare_non_class_render(
             unreachable!("Class models use the stack-bounded family dispatch path")
         }
         RenderSemanticModel::C4(model) => {
-            BuiltinFamilyArtifact::C4(prepare_pair(model, |model| {
-                crate::c4::layout_c4_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                    execution.container_width,
-                    execution.container_height,
-                    execution.screen_available_width,
-                )
-            })?)
+            let explicit_boundary_count = model
+                .boundaries
+                .iter()
+                .filter(|boundary| boundary.alias != "global")
+                .count();
+            let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
+                execution.resolved_theme(),
+                explicit_boundary_count,
+                execution.work_meter_ref(),
+            )?;
+            let layout = crate::c4::layout_c4_diagram_typed(
+                &model,
+                effective_config,
+                execution.text_measurer(),
+                execution.container_width,
+                execution.container_height,
+                execution.screen_available_width,
+            )?;
+            BuiltinFamilyArtifact::C4(Box::new(C4FamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                cluster_theme,
+            }))
         }
         RenderSemanticModel::Cynefin(model) => {
             BuiltinFamilyArtifact::Cynefin(prepare_pair(model, |model| {
@@ -3048,13 +3147,20 @@ fn prepare_non_class_render(
             }))
         }
         RenderSemanticModel::Journey(model) => {
-            BuiltinFamilyArtifact::Journey(prepare_pair(model, |model| {
-                crate::journey::layout_journey_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let layout = crate::journey::layout_journey_diagram_typed(
+                &model,
+                effective_config,
+                execution.text_measurer(),
+            )?;
+            let task_theme = crate::journey::JourneyTaskTheme::resolve(
+                execution.resolved_theme(),
+                layout.tasks.len(),
+                execution.work_meter_ref(),
+            )?;
+            BuiltinFamilyArtifact::Journey(Box::new(JourneyFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                task_theme,
+            }))
         }
         RenderSemanticModel::Requirement(model) => {
             BuiltinFamilyArtifact::Requirement(prepare_pair(model, |model| {
@@ -3142,14 +3248,23 @@ fn prepare_non_class_render(
             }))
         }
         RenderSemanticModel::QuadrantChart(model) => {
-            BuiltinFamilyArtifact::QuadrantChart(prepare_pair(model, |model| {
-                crate::quadrantchart::layout_quadrantchart_diagram_typed(
-                    model,
-                    title,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let point_theme = crate::quadrantchart::QuadrantChartPointThemePlan::resolve(
+                execution.resolved_theme(),
+                &meta.effective_config,
+                &model,
+                execution.work_meter_ref(),
+            )?;
+            let layout = crate::quadrantchart::layout_quadrantchart_diagram_typed(
+                &model,
+                title,
+                effective_config,
+                &point_theme,
+                execution.text_measurer(),
+            )?;
+            BuiltinFamilyArtifact::QuadrantChart(Box::new(QuadrantChartFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                point_theme,
+            }))
         }
         RenderSemanticModel::XyChart(model) => {
             BuiltinFamilyArtifact::XyChart(prepare_pair(model, |model| {

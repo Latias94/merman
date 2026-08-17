@@ -231,6 +231,7 @@ impl ThemeTarget {
                 DiagramFamilyId::FLOWCHART
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::ARCHITECTURE
+                    | DiagramFamilyId::C4
                     | DiagramFamilyId::CLASS
                     | DiagramFamilyId::MINDMAP
                     | DiagramFamilyId::TREE_VIEW

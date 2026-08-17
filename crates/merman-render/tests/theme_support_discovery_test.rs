@@ -96,6 +96,21 @@ fn direct_only_family_slices_are_reported_as_conditional() {
             ThemeTarget::Edge,
             ThemeRuleFacetV1::StrokeWidth,
         ),
+        (
+            DiagramFamilyId::JOURNEY,
+            ThemeTarget::JourneyTask,
+            ThemeRuleFacetV1::Radius,
+        ),
+        (
+            DiagramFamilyId::QUADRANT_CHART,
+            ThemeTarget::ChartSeries,
+            ThemeRuleFacetV1::Radius,
+        ),
+        (
+            DiagramFamilyId::C4,
+            ThemeTarget::Cluster,
+            ThemeRuleFacetV1::Radius,
+        ),
     ] {
         let query = ThemeSupportQueryV1::known(
             family.as_str(),

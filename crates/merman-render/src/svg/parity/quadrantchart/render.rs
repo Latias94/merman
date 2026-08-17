@@ -48,12 +48,53 @@ fn write_quadrantchart_axis_labels(
     Ok(())
 }
 
+fn quadrantchart_root_bounds(
+    layout: &QuadrantChartDiagramLayout,
+    point_theme: &crate::quadrantchart::QuadrantChartPointThemePlan,
+) -> root_svg::DiagramBounds {
+    let mut min_x = 0.0_f64;
+    let mut min_y = 0.0_f64;
+    let mut max_x = layout.width.max(1.0);
+    let mut max_y = layout.height.max(1.0);
+
+    for (point_index, point) in layout.points.iter().enumerate() {
+        if point_theme.radius_override_px(point_index).is_none() {
+            continue;
+        }
+        let stroke_outset =
+            parse_quadrantchart_stroke_width_px(&point.stroke_width).unwrap_or(0.0) / 2.0;
+        let paint_outset = point.radius.max(0.0) + stroke_outset;
+        min_x = min_x.min(point.x - paint_outset);
+        min_y = min_y.min(point.y - paint_outset);
+        max_x = max_x.max(point.x + paint_outset);
+        max_y = max_y.max(point.y + paint_outset);
+    }
+
+    root_svg::DiagramBounds::from_extents(min_x, min_y, max_x, max_y, 0.0)
+}
+
+fn parse_quadrantchart_stroke_width_px(raw: &str) -> Option<f64> {
+    let raw = raw.trim().trim_end_matches(';').trim();
+    let raw = raw.trim_end_matches("!important").trim();
+    let raw = raw.strip_suffix("px").unwrap_or(raw).trim();
+    raw.parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite() && *value >= 0.0)
+}
+
 pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
     model: &QuadrantChartRenderModel,
+    point_theme: &crate::quadrantchart::QuadrantChartPointThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    if point_theme.point_count() != layout.points.len() {
+        return Err(crate::Error::InvalidModel {
+            message: "Quadrant Chart point theme plan does not match the terminal layout"
+                .to_string(),
+        });
+    }
     let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model
@@ -73,8 +114,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         .use_max_width;
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let w = layout.width.max(1.0);
-    let h = layout.height.max(1.0);
+    let root_bounds = quadrantchart_root_bounds(layout, point_theme);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "quadrantChart");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
@@ -89,10 +129,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::QUADRANT_CHART, diagram_id)
             .write_open(
                 &mut out,
-                root_svg::RootViewportSpec::mermaid(
-                    root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h),
-                    use_max_width,
-                ),
+                root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width),
                 root_chrome,
             )?;
 
@@ -185,20 +222,36 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     // Points.
     out.push_str(r#"<g class="data-points">"#);
     out.checkpoint()?;
-    for point in &layout.points {
+    let mut point_radius_receipt = point_theme.begin_terminal_receipt();
+    for (point_index, point) in layout.points.iter().enumerate() {
         out.push_str(r#"<g class="data-point">"#);
         out.checkpoint()?;
+        let themed_radius_token = point_theme.radius_override_token(point_index);
+        let fallback_radius_token;
+        let radius_token = if let Some(token) = themed_radius_token {
+            token
+        } else {
+            fallback_radius_token = fmt(point.radius).to_string();
+            fallback_radius_token.as_str()
+        };
         let _ = write!(
             &mut out,
             r#"<circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}"/>"#,
             cx = fmt(point.x),
             cy = fmt(point.y),
-            r = fmt(point.radius),
+            r = radius_token,
             fill = escape_xml(&point.fill),
             stroke = escape_xml(&point.stroke_color),
             stroke_width = escape_xml(&point.stroke_width),
         );
         out.checkpoint()?;
+        if let Some(receipt) = point_radius_receipt.as_mut() {
+            receipt.record_checkpointed_point(
+                point_index,
+                themed_radius_token.map(|_| radius_token),
+                themed_radius_token,
+            );
+        }
         let _ = write!(
             &mut out,
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
@@ -247,7 +300,14 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     out.checkpoint()?;
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if point_radius_receipt.is_some_and(|receipt| !point_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Quadrant Chart point radius receipt did not match the terminal SVG"
+                .to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]

@@ -2,10 +2,12 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode, measure_mermaid_text_dimens
 use merman_core::diagrams::c4::C4DiagramRenderModel;
 
 mod config;
+mod theme;
 
 pub(crate) use config::{
     C4_DEFAULT_FONT_FAMILY, C4ConfigView, C4LayoutSettings, default_use_max_width,
 };
+pub(crate) use theme::C4ClusterThemePlan;
 
 type C4Model = C4DiagramRenderModel;
 type C4Conf = C4LayoutSettings;

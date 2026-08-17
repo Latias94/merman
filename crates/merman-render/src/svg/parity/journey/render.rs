@@ -145,6 +145,28 @@ fn write_text_candidate(
     out.checkpoint()
 }
 
+fn write_task_rect<'a>(
+    out: &mut impl SvgOutput,
+    task: &crate::model::JourneyTaskLayout,
+    radius_token: &'a str,
+) -> (&'a str, &'a str) {
+    let emitted_rx = radius_token;
+    let emitted_ry = radius_token;
+    let _ = write!(
+        out,
+        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
+        x = fmt(task.x),
+        y = fmt(task.y),
+        fill = escape_attr(&task.fill),
+        w = fmt(task.width),
+        h = fmt(task.height),
+        rx = emitted_rx,
+        ry = emitted_ry,
+        num = task.num,
+    );
+    (emitted_rx, emitted_ry)
+}
+
 fn journey_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
@@ -246,11 +268,17 @@ fn journey_css(
 pub(crate) fn render_journey_diagram_svg_model(
     layout: &crate::model::JourneyDiagramLayout,
     model: &JourneyDiagramRenderModel,
+    task_theme: &crate::journey::JourneyTaskTheme,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    if task_theme.task_count() != layout.tasks.len() {
+        return Err(crate::Error::InvalidModel {
+            message: "Journey task theme count did not match the layout".to_string(),
+        });
+    }
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -389,7 +417,9 @@ pub(crate) fn render_journey_diagram_svg_model(
 
     let mut section_iter = layout.sections.iter();
     let mut last_section: Option<&str> = None;
-    for task in &layout.tasks {
+    let mut task_radius_receipt: Option<crate::journey::JourneyTaskRadiusThemeReceipt> =
+        task_theme.begin_terminal_receipt();
+    for (task_index, task) in layout.tasks.iter().enumerate() {
         if last_section != Some(task.section.as_str()) {
             let Some(section) = section_iter.next() else {
                 break;
@@ -493,16 +523,7 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
 
-        let _ = write!(
-            &mut out,
-            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="task task-type-{num}"/>"##,
-            x = fmt(task.x),
-            y = fmt(task.y),
-            fill = escape_attr(&task.fill),
-            w = fmt(task.width),
-            h = fmt(task.height),
-            num = task.num,
-        );
+        let (emitted_rx, emitted_ry) = write_task_rect(&mut out, task, task_theme.radius_token());
 
         for c in &task.actor_circles {
             let _ = write!(
@@ -537,6 +558,9 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
         out.checkpoint()?;
+        if let Some(receipt) = task_radius_receipt.as_mut() {
+            receipt.record_checkpointed_task(task_index, emitted_rx, emitted_ry);
+        }
     }
 
     if let Some(title) = diagram_title {
@@ -564,7 +588,13 @@ pub(crate) fn render_journey_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if task_radius_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Journey task radius receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
@@ -654,9 +684,12 @@ mod tests {
         let execution =
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::JOURNEY)
                 .expect("SVG execution");
+        let layout = bounded_journey_layout();
+        let task_theme = crate::journey::JourneyTaskTheme::baseline(layout.tasks.len());
         render_journey_diagram_svg_model(
-            &bounded_journey_layout(),
+            &layout,
             &JourneyDiagramRenderModel::default(),
+            &task_theme,
             &serde_json::json!({}),
             None,
             &DeterministicTextMeasurer::default(),
@@ -805,11 +838,13 @@ mod tests {
             diagram_id: Some("journey".to_string()),
             ..Default::default()
         };
+        let task_theme = crate::journey::JourneyTaskTheme::baseline(layout.tasks.len());
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),
+                &task_theme,
                 &cfg,
                 None,
                 &DeterministicTextMeasurer::default(),
@@ -857,11 +892,13 @@ mod tests {
             diagram_id: Some("journeyFixed".to_string()),
             ..Default::default()
         };
+        let task_theme = crate::journey::JourneyTaskTheme::baseline(layout.tasks.len());
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),
+                &task_theme,
                 &serde_json::json!({}),
                 None,
                 &DeterministicTextMeasurer::default(),

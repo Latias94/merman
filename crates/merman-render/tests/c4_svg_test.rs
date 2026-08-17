@@ -1,5 +1,9 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeGeometryPatch,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+};
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity,
@@ -25,6 +29,37 @@ fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment)
     artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render svg")
+        .svg()
+        .to_owned()
+}
+
+fn c4_cluster_radius_theme(radius: Specified<f32>) -> DiagramTheme {
+    let style = ThemeStylePatch {
+        geometry: ThemeGeometryPatch { radius },
+        ..ThemeStylePatch::default()
+    };
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Cluster, style)),
+        ))
+        .expect("compile C4 cluster radius theme")
+}
+
+fn render_c4_svg_with_theme(source: &str, theme: &DiagramTheme) -> String {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed C4 diagram")
+        .expect("detect themed C4 diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable C4 session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare themed C4 artifact");
+
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed C4 SVG")
         .svg()
         .to_owned()
 }
@@ -65,6 +100,22 @@ fn svg_text_content(node: roxmltree::Node<'_, '_>) -> String {
         .collect()
 }
 
+fn c4_rect_labeled<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    label: &str,
+) -> roxmltree::Node<'a, 'input> {
+    let label_node = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && svg_text_content(*node) == label)
+        .unwrap_or_else(|| panic!("missing C4 label {label}"));
+
+    label_node
+        .ancestors()
+        .filter(|node| node.has_tag_name("g"))
+        .find_map(|group| group.children().find(|child| child.has_tag_name("rect")))
+        .unwrap_or_else(|| panic!("missing C4 rect for label {label}"))
+}
+
 #[derive(Debug)]
 struct C4TypeWidthProbe;
 
@@ -94,6 +145,47 @@ fn deep_c4_boundary_chain(depth: usize) -> String {
         input.push_str("}\n");
     }
     input
+}
+
+#[test]
+fn c4_cluster_radius_applies_to_explicit_solid_and_dashed_boundaries_only() {
+    let source = r#"C4Context
+Node(solid, "Solid Boundary") {
+  System(service, "Service")
+}
+Boundary(dashed, "Dashed Boundary") {
+  System(worker, "Worker")
+}
+"#;
+    let theme = c4_cluster_radius_theme(Specified::Value(9.0));
+    let svg = render_c4_svg_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid themed C4 SVG XML");
+
+    let solid_boundary = c4_rect_labeled(&document, "Solid Boundary");
+    assert_eq!(solid_boundary.attribute("rx"), Some("9"));
+    assert_eq!(solid_boundary.attribute("ry"), Some("9"));
+    assert_eq!(solid_boundary.attribute("stroke-dasharray"), None);
+
+    let dashed_boundary = c4_rect_labeled(&document, "Dashed Boundary");
+    assert_eq!(dashed_boundary.attribute("rx"), Some("9"));
+    assert_eq!(dashed_boundary.attribute("ry"), Some("9"));
+    assert_eq!(
+        dashed_boundary.attribute("stroke-dasharray"),
+        Some("7.0,7.0")
+    );
+
+    let ordinary_element = c4_rect_labeled(&document, "Service");
+    assert_eq!(ordinary_element.attribute("rx"), Some("2.5"));
+    assert_eq!(ordinary_element.attribute("ry"), Some("2.5"));
+
+    let cleared_svg = render_c4_svg_with_theme(source, &c4_cluster_radius_theme(Specified::Clear));
+    let cleared_document =
+        roxmltree::Document::parse(&cleared_svg).expect("valid cleared C4 SVG XML");
+    for label in ["Solid Boundary", "Dashed Boundary", "Service"] {
+        let rect = c4_rect_labeled(&cleared_document, label);
+        assert_eq!(rect.attribute("rx"), Some("2.5"));
+        assert_eq!(rect.attribute("ry"), Some("2.5"));
+    }
 }
 
 #[test]
