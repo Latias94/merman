@@ -79,7 +79,8 @@ preset metadata, or render receipt.
 ```rust
 use merman_theme_contract::{DiagramThemeSpecWireV1, MaterializedThemeWireV1};
 
-let materialized = MaterializedThemeWireV1::try_new(DiagramThemeSpecWireV1::default())?;
+let materialized = MaterializedThemeWireV1::try_new(DiagramThemeSpecWireV1::default())
+    .expect("the default complete spec should produce a materialized success wire");
 assert_eq!(materialized.schema_version(), 1);
 assert_eq!(materialized.authoring_schema_version(), 1);
 assert_eq!(materialized.expansion_version(), 1);
