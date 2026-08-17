@@ -21,7 +21,7 @@ This lets one Merman render operation replay Rough.js decisions deterministicall
 
 ## Version Compatibility
 
-`roughr-merman` follows its own SemVer line because it is a maintained fork of rough-rs whose API and Rough.js parity work do not move in lockstep with Merman releases. Merman selects a compatible roughr minor line through an ordinary Cargo requirement; breaking roughr changes start a new minor line before 1.0.
+`roughr-merman` follows its own SemVer line because it is a maintained fork of rough-rs whose API and Rough.js parity work do not move in lockstep with Merman releases. Merman selects a compatible roughr minor line through an ordinary Cargo requirement. For `0.y.z` releases, patch versions preserve compatibility and breaking changes increment `y`.
 
 Version `0.12.3` restores the `OptionsBuilder::seed` and `svgtypes` 0.11 call surface required by Merman 0.7 while retaining the explicit randomness and `svgtypes` 0.16 surface used by current Merman releases. The default `legacy-compat` feature carries the old path type and host-random fallback; current Merman disables default features and therefore keeps the smaller explicit-randomness dependency closure. New direct callers should use `OptionsBuilder::randomness`; the legacy entry points exist so already-published Merman versions remain buildable.
 
