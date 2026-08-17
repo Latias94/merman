@@ -13,6 +13,7 @@ mod assets;
 mod canonical;
 mod canvas;
 mod compiler;
+mod definition_admission;
 mod effects;
 mod family_mechanism_matrix;
 mod family_program;
@@ -60,6 +61,10 @@ pub use canvas::{
     PatternKind, PatternSpec, RadialGradient, ThemeColorValue, ThemeLength,
 };
 pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
+pub use definition_admission::{
+    ThemeDefinitionAdmissionError, ThemeDefinitionCompileError, compile_theme_definition,
+    compile_theme_definition_json,
+};
 pub use effects::{DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive};
 #[cfg(feature = "internal-theme-acceptance")]
 pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;

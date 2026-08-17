@@ -4,7 +4,7 @@ use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor};
 
 use super::ThemeCompileValidationError;
 
-const MAX_GRADIENT_STOPS: usize = 64;
+pub(crate) const MAX_GRADIENT_STOPS: usize = 64;
 const MAX_CANVAS_LAYERS: usize = 32;
 const MIN_GRADIENT_GEOMETRY_PX: f32 = 1.0;
 const MAX_GRADIENT_PERIOD_PX: f32 = 65_536.0;

@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use super::ThemeCompileValidationError;
 use crate::DiagramFamilyId;
 
-const MAX_FONT_STACK_ENTRIES: usize = 32;
-const MAX_FONT_FAMILY_BYTES: usize = 256;
+pub(crate) const MAX_FONT_STACK_ENTRIES: usize = 32;
+pub(crate) const MAX_FONT_FAMILY_BYTES: usize = 256;
 
 /// A property value which distinguishes omission from an explicit clear.
 #[derive(Debug, Clone, PartialEq)]

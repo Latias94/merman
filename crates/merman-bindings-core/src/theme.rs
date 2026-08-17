@@ -167,6 +167,34 @@ pub(crate) fn theme_compile_error(error: merman::svg::ThemeCompileError) -> Bind
     }
 }
 
+pub(crate) fn theme_definition_compile_error(
+    error: merman::svg::ThemeCompileError,
+) -> BindingError {
+    match error {
+        merman::svg::ThemeCompileError::ResourceLimit(error)
+        | merman::svg::ThemeCompileError::FontCatalog(
+            merman::svg::FontCatalogError::ResourceLimit(error),
+        ) => theme_resource_error(error),
+        merman::svg::ThemeCompileError::Validation(error) => {
+            let field = match &error {
+                merman::svg::ThemeCompileValidationError::EmptyValue { field }
+                | merman::svg::ThemeCompileValidationError::InvalidValue { field }
+                | merman::svg::ThemeCompileValidationError::InvalidNumber { field }
+                | merman::svg::ThemeCompileValidationError::InvalidCollection { field }
+                | merman::svg::ThemeCompileValidationError::LimitExceeded { field }
+                | merman::svg::ThemeCompileValidationError::DuplicateId { field }
+                | merman::svg::ThemeCompileValidationError::UnknownId { field }
+                | merman::svg::ThemeCompileValidationError::UnsupportedMermaidTheme {
+                    field, ..
+                } => *field,
+                _ => "definition",
+            };
+            invalid_theme(format!("theme definition {field}"), error.to_string())
+        }
+        error => invalid_theme("theme definition", error.to_string()),
+    }
+}
+
 fn theme_validation_error(error: merman::svg::ThemeCompileValidationError) -> BindingError {
     let message = error.to_string();
     let field = match &error {
@@ -338,7 +366,50 @@ mod tests {
     }
 
     #[test]
-    fn authoring_definition_rejects_duplicate_members_and_oversized_raw_collections() {
+    fn authoring_definition_preserves_binding_error_classification() {
+        let materialization_error = crate::compile_theme_definition_json(
+            br#"{
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": { "series": [] }
+            }"#,
+        )
+        .expect_err("an empty authored series should fail during materialization");
+        assert_eq!(
+            materialization_error.status(),
+            BindingStatus::InvalidArgument
+        );
+        assert!(
+            materialization_error
+                .message()
+                .contains("invalid theme definition")
+        );
+        assert!(materialization_error.message().contains("series"));
+
+        let compilation_error = crate::compile_theme_definition_json(
+            br#"{
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": {},
+                "styles": [{
+                    "kind": "rule",
+                    "target": "future-node",
+                    "style": {}
+                }]
+            }"#,
+        )
+        .expect_err("an unknown semantic target should fail during compilation");
+        assert_eq!(compilation_error.status(), BindingStatus::InvalidArgument);
+        assert!(
+            compilation_error
+                .message()
+                .contains("theme definition styles.rule.target")
+        );
+        assert!(!compilation_error.message().contains("theme.spec"));
+    }
+
+    #[test]
+    fn authoring_definition_rejects_duplicate_members_before_typed_projection() {
         let duplicate = br##"{
             "authoring_schema_version": 1,
             "expansion_version": 1,
@@ -351,18 +422,6 @@ mod tests {
             .expect_err("decoded-equivalent duplicate keys must fail before typed projection");
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(error.message().contains("duplicate object key"));
-
-        let rule = r#"{"kind":"rule","target":"node","style":{}}"#;
-        let styles = std::iter::repeat_n(rule, 1_025)
-            .collect::<Vec<_>>()
-            .join(",");
-        let oversized = format!(
-            r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{styles}]}}"#
-        );
-        let error = crate::compile_theme_definition_json(oversized.as_bytes())
-            .expect_err("raw arrays must be bounded before typed Vec allocation");
-        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
-        assert!(error.message().contains("array item limit"));
     }
 
     #[test]

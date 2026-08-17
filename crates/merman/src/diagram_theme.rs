@@ -1,14 +1,18 @@
 //! Versioned, target-independent visual diagram-theme authoring.
 //!
-//! This is an alpha design-validation surface. [`ThemeMaterializer`] expands a compact
-//! [`ThemeDefinitionV1`] into one complete wire recipe; [`DiagramThemeCompiler`] remains the only
-//! semantic compiler. Rendering consumes only the compiled [`DiagramTheme`]. Terminal/ASCII
-//! styling is a separate concern and is not part of this visual contract.
+//! [`compile_theme_definition`] is the normal Rust entry point: it expands a compact
+//! [`ThemeDefinitionV1`] and delegates the resulting complete recipe to a caller-owned
+//! [`DiagramThemeCompiler`]. The materializer and complete-spec wire remain available for callers
+//! that need to inspect or edit the intermediate representation. Rendering consumes only the
+//! compiled [`DiagramTheme`]. Terminal/ASCII styling is a separate concern and is not part of this
+//! visual contract.
 
 pub use merman_render::diagram_theme::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, MaterializedTheme, ThemeCompileError,
-    ThemeMaterializationDigest, ThemeMaterializationError, ThemeMaterializer, ThemePreset,
-    ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
+    ThemeDefinitionAdmissionError, ThemeDefinitionCompileError, ThemeMaterializationDigest,
+    ThemeMaterializationError, ThemeMaterializer, ThemePreset, ThemePresetDescriptor,
+    ThemePresetParseError, compile_theme_definition, compile_theme_definition_json,
+    theme_preset_descriptors,
 };
 pub use merman_theme_contract::{
     CanonicalJsonError, CanonicalJsonErrorKind, DiagramThemeSpecWireV1, SpecifiedWireV1,

@@ -16,6 +16,7 @@ const DEFAULT_FONT_STACK: [&str; 4] = ["Inter", "ui-sans-serif", "system-ui", "s
 const DEFAULT_FONT_SIZE_PX: f32 = 16.0;
 const DEFAULT_FONT_WEIGHT: u16 = 400;
 const MATERIALIZATION_DIGEST_DOMAIN: &[u8] = b"merman.theme-materialization.v1\0";
+pub(crate) const GENERATED_PALETTE_TARGETS: [&str; 2] = ["node", "pie-slice"];
 
 const COLOR_DEFAULTS: [(ThemeColorTokenV1, &str, &str); 12] = [
     (ThemeColorTokenV1::Canvas, "#ffffff", "/tokens/canvas"),
@@ -248,7 +249,8 @@ const GENERATED_RULES: [GeneratedRule; 40] = [
         None,
     ),
 ];
-const MAX_AUTHORED_RULES: usize = super::semantic::MAX_THEME_RULES - GENERATED_RULES.len();
+pub(crate) const MAX_AUTHORED_RULES: usize =
+    super::semantic::MAX_THEME_RULES - GENERATED_RULES.len();
 
 /// Pure versioned lowering from a compact authoring definition to a complete theme-spec wire.
 #[derive(Debug, Default, Clone, Copy)]
@@ -265,7 +267,7 @@ impl ThemeMaterializer {
         &self,
         definition: &ThemeDefinitionV1,
     ) -> Result<MaterializedTheme, ThemeMaterializationError> {
-        validate_authored_styles(definition.styles())?;
+        validate_definition_shape(definition)?;
         let tokens = ResolvedTokensV1::resolve(definition)?;
         let mut styles = GENERATED_RULES
             .iter()
@@ -279,25 +281,22 @@ impl ThemeMaterializer {
                 .cloned(),
         );
 
-        let mut palettes = [
-            ThemeRuleSetWireV1::OrdinalPalette {
-                target: "node".to_owned(),
+        let mut palettes =
+            GENERATED_PALETTE_TARGETS.map(|target| ThemeRuleSetWireV1::OrdinalPalette {
+                target: target.to_owned(),
                 colors: tokens.series.clone(),
-            },
-            ThemeRuleSetWireV1::OrdinalPalette {
-                target: "pie-slice".to_owned(),
-                colors: tokens.series.clone(),
-            },
-        ];
+            });
         let mut additional_palettes = Vec::new();
         for entry in definition.styles() {
             let ThemeRuleSetWireV1::OrdinalPalette { target, colors } = entry else {
                 continue;
             };
-            match target.as_str() {
-                "node" => palettes[0] = entry.clone(),
-                "pie-slice" => palettes[1] = entry.clone(),
-                _ => additional_palettes.push(ThemeRuleSetWireV1::OrdinalPalette {
+            match GENERATED_PALETTE_TARGETS
+                .iter()
+                .position(|generated| *generated == target.as_str())
+            {
+                Some(index) => palettes[index] = entry.clone(),
+                None => additional_palettes.push(ThemeRuleSetWireV1::OrdinalPalette {
                     target: target.clone(),
                     colors: colors.clone(),
                 }),
@@ -452,6 +451,14 @@ pub enum ThemeMaterializationError {
         /// Index of the authored rule entry carrying the concrete reference.
         authored_index: usize,
     },
+    /// Generated and authored ordinal palettes would exceed the complete-spec ceiling.
+    #[error("materialized ordinal palette count {actual} exceeds the maximum {max}")]
+    OrdinalPaletteBudgetExceeded {
+        /// Number of palettes that the definition would materialize.
+        actual: usize,
+        /// Maximum palettes accepted by the complete theme-spec contract.
+        max: usize,
+    },
     /// Canonical result serialization failed, so no replay identity can be issued.
     #[error(transparent)]
     Canonicalization(#[from] CanonicalJsonError),
@@ -468,6 +475,7 @@ impl ThemeMaterializationError {
             Self::EffectReferenceNotSupported { .. } => {
                 "theme-authoring.effect-reference-not-supported"
             }
+            Self::OrdinalPaletteBudgetExceeded { .. } => "theme-authoring.resource-limit-exceeded",
             Self::Canonicalization(_) => "theme-authoring.invalid-token-value",
         }
     }
@@ -488,6 +496,7 @@ fn validate_authored_styles(
     }
 
     let mut palette_targets = BTreeMap::<&str, usize>::new();
+    let mut materialized_palette_count = GENERATED_PALETTE_TARGETS.len();
     for (authored_index, entry) in styles.iter().enumerate() {
         match entry {
             ThemeRuleSetWireV1::Rule { style, .. }
@@ -505,11 +514,85 @@ fn validate_authored_styles(
                         duplicate_authored_index: authored_index,
                     });
                 }
+                if !GENERATED_PALETTE_TARGETS.contains(&target.as_str()) {
+                    materialized_palette_count = materialized_palette_count.saturating_add(1);
+                    if materialized_palette_count > super::semantic::MAX_THEME_ORDINAL_PALETTES {
+                        return Err(ThemeMaterializationError::OrdinalPaletteBudgetExceeded {
+                            actual: materialized_palette_count,
+                            max: super::semantic::MAX_THEME_ORDINAL_PALETTES,
+                        });
+                    }
+                }
             }
             ThemeRuleSetWireV1::Rule { .. } => {}
         }
     }
     Ok(())
+}
+
+pub(crate) fn validate_definition_shape(
+    definition: &ThemeDefinitionV1,
+) -> Result<(), ThemeMaterializationError> {
+    validate_authored_styles(definition.styles())?;
+
+    if let Some(series) = definition.tokens().series() {
+        if series.is_empty() {
+            return Err(ThemeMaterializationError::EmptySeries);
+        }
+        if series.len() > super::semantic::MAX_THEME_PALETTE_COLORS {
+            return Err(ThemeMaterializationError::InvalidTokenValue {
+                path: "/tokens/series",
+            });
+        }
+    }
+
+    if let Some(font_stack) = definition
+        .tokens()
+        .typography()
+        .and_then(|typography| typography.font_stack())
+        && !font_stack_shape_is_valid(font_stack)
+    {
+        return Err(ThemeMaterializationError::InvalidTokenValue {
+            path: "/tokens/typography/font_stack",
+        });
+    }
+
+    for entry in definition.styles() {
+        match entry {
+            ThemeRuleSetWireV1::Rule { style, .. } => {
+                let Some(typography) = style.typography.as_ref() else {
+                    continue;
+                };
+                let SpecifiedWireV1::Value(font_stack) = &typography.font_stack else {
+                    continue;
+                };
+                if !font_stack_shape_is_valid(font_stack) {
+                    return Err(ThemeMaterializationError::InvalidTokenValue {
+                        path: "/styles/rule/style/typography/font_stack",
+                    });
+                }
+            }
+            ThemeRuleSetWireV1::OrdinalPalette { colors, .. }
+                if colors.is_empty()
+                    || colors.len() > super::semantic::MAX_THEME_PALETTE_COLORS =>
+            {
+                return Err(ThemeMaterializationError::InvalidTokenValue {
+                    path: "/styles/ordinal-palette/colors",
+                });
+            }
+            ThemeRuleSetWireV1::OrdinalPalette { .. } => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn font_stack_shape_is_valid(font_stack: &[String]) -> bool {
+    !font_stack.is_empty()
+        && font_stack.len() <= super::typography::MAX_FONT_STACK_ENTRIES
+        && font_stack.iter().all(|family| {
+            !family.is_empty() && family.len() <= super::typography::MAX_FONT_FAMILY_BYTES
+        })
 }
 
 struct ResolvedTokensV1 {
@@ -538,7 +621,7 @@ impl ResolvedTokensV1 {
         if series_len == 0 {
             return Err(ThemeMaterializationError::EmptySeries);
         }
-        if series_len > 256 {
+        if series_len > super::semantic::MAX_THEME_PALETTE_COLORS {
             return Err(ThemeMaterializationError::InvalidTokenValue {
                 path: "/tokens/series",
             });

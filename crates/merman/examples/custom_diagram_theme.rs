@@ -1,5 +1,5 @@
 use merman::diagram_theme::{
-    DiagramThemeCompiler, ThemeDefinitionV1, ThemeMaterializer, ThemeTokensV1,
+    DiagramThemeCompiler, ThemeDefinitionV1, ThemeTokensV1, compile_theme_definition,
 };
 use merman::svg::{CssOverridePolicy, SvgOutputPolicy, SvgPipelinePreset};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
@@ -28,8 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .to_vec(),
             ),
     );
-    let materialized = ThemeMaterializer::new().materialize_theme(&definition)?;
-    let theme = DiagramThemeCompiler::new().compile_spec_wire(materialized.into_spec())?;
+    let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)?;
     let output = SvgOutputPolicy {
         preset: SvgPipelinePreset::ResvgSafe,
         css_override_policy: CssOverridePolicy::StripExistingImportant,

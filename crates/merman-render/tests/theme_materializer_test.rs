@@ -258,6 +258,32 @@ fn authored_rule_budget_accepts_472_and_rejects_473_before_expansion() {
 }
 
 #[test]
+fn authored_palette_budget_counts_generated_replacements_before_expansion() {
+    let palette = |index: usize| ThemeRuleSetWireV1::OrdinalPalette {
+        target: format!("custom-palette-{index}"),
+        colors: vec!["#123456".to_owned()],
+    };
+    let boundary = ThemeDefinitionV1::new(ThemeTokensV1::default())
+        .with_styles((0..62).map(palette).collect());
+    ThemeMaterializer::new()
+        .materialize_theme(&boundary)
+        .expect("two generated palettes plus 62 authored palettes should fit");
+
+    let exceeded = ThemeDefinitionV1::new(ThemeTokensV1::default())
+        .with_styles((0..63).map(palette).collect());
+    let error = ThemeMaterializer::new()
+        .materialize_theme(&exceeded)
+        .expect_err("the 65th materialized palette must fail before expansion");
+    assert!(matches!(
+        error,
+        ThemeMaterializationError::OrdinalPaletteBudgetExceeded {
+            actual: 65,
+            max: 64,
+        }
+    ));
+}
+
+#[test]
 fn concrete_effect_references_are_rejected_but_explicit_clear_is_preserved() {
     let rule_with_effect = |effect| ThemeRuleSetWireV1::Rule {
         target: "node".to_owned(),
