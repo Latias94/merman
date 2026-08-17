@@ -2,9 +2,10 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
-use super::attr::{parse_attr_f64, parse_attr_str};
-use super::css::{extract_style_property, parse_css_px_value};
-use crate::svg::pipeline::{checkpoint_loop, find_with_checkpoints};
+use super::css::{extract_style_property_with_checkpoints, parse_css_px_value};
+use crate::svg::pipeline::{
+    checkpoint_loop, extract_exact_double_quoted_attr_with_checkpoints, find_with_checkpoints,
+};
 
 fn strip_html_tags<E>(
     s: &str,
@@ -76,15 +77,32 @@ fn decode_html_entities<E>(
         // then let the shared HTML entity decoder handle the browser-facing syntax.
         let restored = decode_mermaid_entity_placeholders(&current, checkpoint)?;
         checkpoint()?;
-        let next =
-            merman_core::entities::decode_html_entities_to_unicode(restored.as_ref()).into_owned();
-        checkpoint()?;
+        let next = decode_html_entities_streaming(restored.as_ref(), checkpoint)?;
         if next == current {
             break;
         }
         current = next;
     }
     Ok(current)
+}
+
+fn decode_html_entities_streaming<E>(
+    text: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<String, E> {
+    use merman_core::entities::{
+        DecodedHtmlFragment, visit_decoded_html_entity_fragments_with_checkpoints,
+    };
+
+    let mut output = String::with_capacity(text.len());
+    visit_decoded_html_entity_fragments_with_checkpoints(text, &mut *checkpoint, |fragment| {
+        match fragment {
+            DecodedHtmlFragment::Borrowed(value) => output.push_str(value),
+            DecodedHtmlFragment::Scalar(value) => output.push(value),
+        }
+        Ok(())
+    })?;
+    Ok(output)
 }
 
 pub(super) fn htmlish_to_text_lines<E>(
@@ -243,23 +261,38 @@ pub(super) fn wrap_html_lines_to_width<E>(
     Ok(wrapped)
 }
 
-pub(super) fn extract_inline_html_style_property(html: &str, property: &str) -> Option<String> {
-    parse_attr_str(html, "style").and_then(|style| extract_style_property(style, property))
+pub(super) fn extract_inline_html_style_property<E>(
+    html: &str,
+    property: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<String>, E> {
+    let Some(style) = extract_exact_double_quoted_attr_with_checkpoints(html, "style", checkpoint)?
+    else {
+        return Ok(None);
+    };
+    extract_style_property_with_checkpoints(style, property, checkpoint)
 }
 
-pub(super) fn extract_inline_html_color(html: &str) -> Option<String> {
-    extract_inline_html_style_property(html, "color")
+pub(super) fn extract_inline_html_color<E>(
+    html: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<String>, E> {
+    extract_inline_html_style_property(html, "color", checkpoint)
 }
 
 pub(super) fn parse_css_px(value: &str, fallback: f64) -> f64 {
     parse_css_px_value(value).unwrap_or(fallback)
 }
 
-pub(super) fn foreign_object_html_soft_wrap_width(tag: &str, inner: &str) -> Option<f64> {
-    let white_space = extract_inline_html_style_property(inner, "white-space")
+pub(super) fn foreign_object_html_soft_wrap_width<E>(
+    tag: &str,
+    inner: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<f64>, E> {
+    let white_space = extract_inline_html_style_property(inner, "white-space", checkpoint)?
         .map(|value| value.trim().to_ascii_lowercase());
     if matches!(white_space.as_deref(), Some("nowrap" | "pre")) {
-        return None;
+        return Ok(None);
     }
 
     let wrap_is_explicit = matches!(
@@ -267,18 +300,19 @@ pub(super) fn foreign_object_html_soft_wrap_width(tag: &str, inner: &str) -> Opt
         Some("break-spaces" | "normal" | "pre-wrap" | "pre-line")
     );
     if white_space.is_some() && !wrap_is_explicit {
-        return None;
+        return Ok(None);
     }
 
-    let css_width = extract_inline_html_style_property(inner, "width")
+    let css_width = extract_inline_html_style_property(inner, "width", checkpoint)?
         .and_then(|value| parse_css_px_value(&value));
-    let max_width = extract_inline_html_style_property(inner, "max-width")
+    let max_width = extract_inline_html_style_property(inner, "max-width", checkpoint)?
         .and_then(|value| parse_css_px_value(&value));
+    let attr_width = extract_exact_double_quoted_attr_with_checkpoints(tag, "width", checkpoint)?
+        .and_then(|value| value.parse::<f64>().ok());
 
-    css_width
-        .or(max_width)
-        .or_else(|| parse_attr_f64(tag, "width"))
-        .filter(|width| {
-            *width > 0.0 && (wrap_is_explicit || css_width.is_some() || max_width.is_some())
-        })
+    let width = css_width.or(max_width).or(attr_width).filter(|width| {
+        *width > 0.0 && (wrap_is_explicit || css_width.is_some() || max_width.is_some())
+    });
+    checkpoint()?;
+    Ok(width)
 }

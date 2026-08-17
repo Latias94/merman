@@ -86,6 +86,35 @@ pub(crate) fn rfind_with_checkpoints<E>(
     find_pattern_with_checkpoints(haystack, needle, true, checkpoint)
 }
 
+pub(crate) fn trim_with_checkpoints<'a, E>(
+    value: &'a str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<&'a str, E> {
+    let mut start = None;
+    for (iteration, (index, character)) in value.char_indices().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        if !character.is_whitespace() {
+            start = Some(index);
+            break;
+        }
+    }
+    let Some(start) = start else {
+        checkpoint()?;
+        return Ok(&value[value.len()..]);
+    };
+
+    let mut end = value.len();
+    for (iteration, (index, character)) in value[start..].char_indices().rev().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        if !character.is_whitespace() {
+            end = start + index + character.len_utf8();
+            break;
+        }
+    }
+    checkpoint()?;
+    Ok(&value[start..end])
+}
+
 pub(crate) fn extract_exact_double_quoted_attr_with_checkpoints<'a, E>(
     tag: &'a str,
     name: &str,
@@ -99,7 +128,7 @@ pub(crate) fn extract_exact_double_quoted_attr_with_checkpoints<'a, E>(
     let Some(value_end) = find_with_checkpoints(&tag[value_start..], "\"", checkpoint)? else {
         return Ok(None);
     };
-    Ok(Some(tag[value_start..value_start + value_end].trim()))
+    trim_with_checkpoints(&tag[value_start..value_start + value_end], checkpoint).map(Some)
 }
 
 pub(crate) fn find_tag_end_with_checkpoints<E>(
@@ -123,6 +152,87 @@ pub(crate) fn find_tag_end_with_checkpoints<E>(
     }
     checkpoint()?;
     Ok(None)
+}
+
+fn find_declaration_end_with_checkpoints<E>(
+    input: &str,
+    start: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    let Some(tail) = input.get(start..) else {
+        checkpoint()?;
+        return Ok(None);
+    };
+    let mut quote = None;
+    let mut subset_depth = 0usize;
+    for (iteration, (offset, character)) in tail.char_indices().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        match character {
+            '\'' | '"' if quote == Some(character) => quote = None,
+            '\'' | '"' if quote.is_none() => quote = Some(character),
+            '[' if quote.is_none() => subset_depth = subset_depth.saturating_add(1),
+            ']' if quote.is_none() => subset_depth = subset_depth.saturating_sub(1),
+            '>' if quote.is_none() && subset_depth == 0 => return Ok(Some(start + offset)),
+            _ => {}
+        }
+    }
+    checkpoint()?;
+    Ok(None)
+}
+
+fn find_delimited_markup_end_with_checkpoints<E>(
+    input: &str,
+    start: usize,
+    prefix: &str,
+    terminator: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    let Some(content) = input
+        .get(start..)
+        .and_then(|tail| tail.strip_prefix(prefix))
+    else {
+        return Ok(None);
+    };
+    find_with_checkpoints(content, terminator, checkpoint)
+        .map(|end| end.map(|offset| start + prefix.len() + offset + terminator.len() - 1))
+}
+
+fn find_markup_end_with_checkpoints<E>(
+    input: &str,
+    start: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    if input
+        .get(start..)
+        .is_some_and(|tail| tail.starts_with("<!--"))
+    {
+        return find_delimited_markup_end_with_checkpoints(input, start, "<!--", "-->", checkpoint);
+    }
+    if input
+        .get(start..)
+        .is_some_and(|tail| tail.starts_with("<![CDATA["))
+    {
+        return find_delimited_markup_end_with_checkpoints(
+            input,
+            start,
+            "<![CDATA[",
+            "]]>",
+            checkpoint,
+        );
+    }
+    if input
+        .get(start..)
+        .is_some_and(|tail| tail.starts_with("<?"))
+    {
+        return find_delimited_markup_end_with_checkpoints(input, start, "<?", "?>", checkpoint);
+    }
+    if input
+        .get(start..)
+        .is_some_and(|tail| tail.starts_with("<!"))
+    {
+        return find_declaration_end_with_checkpoints(input, start, checkpoint);
+    }
+    find_tag_end_with_checkpoints(input, start, checkpoint)
 }
 
 pub(crate) fn find_matching_brace(text: &str, open: usize) -> Option<usize> {
@@ -183,19 +293,13 @@ impl<'a> SvgTagScanner<'a> {
         self.cursor = cursor.min(self.source.len());
     }
 
+    #[cfg(test)]
     pub(crate) fn next(&mut self) -> Option<SvgTag<'a>> {
-        let rel_start = self.source[self.cursor..].find('<')?;
-        let start = self.cursor + rel_start;
-        let Some(end) = find_tag_end(self.source, start) else {
-            self.cursor = start;
-            return None;
-        };
-        self.cursor = end + 1;
-        Some(SvgTag {
-            source: self.source,
-            start,
-            end,
-        })
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        match self.next_with_checkpoints(&mut checkpoint) {
+            Ok(tag) => tag,
+            Err(error) => match error {},
+        }
     }
 
     pub(crate) fn next_with_checkpoints<E>(
@@ -207,7 +311,7 @@ impl<'a> SvgTagScanner<'a> {
             return Ok(None);
         };
         let start = self.cursor + rel_start;
-        let Some(end) = find_tag_end_with_checkpoints(self.source, start, checkpoint)? else {
+        let Some(end) = find_markup_end_with_checkpoints(self.source, start, checkpoint)? else {
             self.cursor = start;
             return Ok(None);
         };
@@ -295,6 +399,14 @@ pub(crate) fn start_tag_name(tag: &str) -> Option<&str> {
             .find(|ch: char| ch.is_whitespace() || ch == '/' || ch == '>')
             .unwrap_or(tag.len() - start);
     (start < end).then_some(&tag[start..end])
+}
+
+pub(crate) fn end_tag_name(tag: &str) -> Option<&str> {
+    let tag = tag.trim_start().strip_prefix("</")?;
+    let end = tag
+        .find(|ch: char| ch.is_whitespace() || ch == '>')
+        .unwrap_or(tag.len());
+    (end > 0).then_some(&tag[..end])
 }
 
 fn svg_quoted_attr_at(tag: &str, full_start: usize, name_start: usize) -> Option<SvgQuotedAttr> {
@@ -439,20 +551,6 @@ fn is_svg_attr_name_continue_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')
 }
 
-pub(crate) fn root_svg_tag(svg: &str) -> Option<&str> {
-    let mut scanner = SvgTagScanner::new(svg);
-    while let Some(tag) = scanner.next() {
-        let Some(root_name) = start_tag_name(tag.raw()) else {
-            continue;
-        };
-        if root_name != "svg" {
-            return None;
-        }
-        return Some(tag.raw());
-    }
-    None
-}
-
 pub(crate) fn extract_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     let (start, end) = find_quoted_attr_value_span(tag, name)?;
     Some(tag[start..end].trim())
@@ -502,6 +600,27 @@ pub(crate) fn escape_xml_attr(value: &str) -> String {
     }
 }
 
+pub(crate) fn escape_xml_text_with_checkpoints<E>(
+    value: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<String, E> {
+    let mut out = String::with_capacity(value.len());
+    for (iteration, ch) in value.chars().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        if !crate::xml::is_xml_1_0_char(ch) {
+            continue;
+        }
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(ch),
+        }
+    }
+    checkpoint()?;
+    Ok(out)
+}
+
 pub(crate) fn escape_xml_attr_with_checkpoints<E>(
     value: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -548,7 +667,7 @@ mod tests {
 
     #[test]
     fn svg_tag_scanner_reports_tag_spans_and_names() {
-        let svg = r#"<svg><g class="a > b"><rect width="1"/></g><!--x--></svg>"#;
+        let svg = r#"<svg><g class="a > b"><rect width="1"/></g><!-- > <style>x</style> --><![CDATA[</style>]]></svg>"#;
         let mut scanner = SvgTagScanner::new(svg);
 
         let svg_tag = scanner.next().unwrap();
@@ -566,6 +685,9 @@ mod tests {
         assert_eq!(g_close.raw(), "</g>");
 
         let comment = scanner.next().unwrap();
-        assert_eq!(comment.raw(), "<!--x-->");
+        assert_eq!(comment.raw(), "<!-- > <style>x</style> -->");
+
+        let cdata = scanner.next().unwrap();
+        assert_eq!(cdata.raw(), "<![CDATA[</style>]]>");
     }
 }

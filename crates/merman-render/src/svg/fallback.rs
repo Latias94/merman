@@ -8,11 +8,11 @@ mod attr;
 mod context;
 mod css;
 mod html;
-mod xml;
 
 use crate::svg::pipeline::{
-    checkpoint_loop, extract_exact_double_quoted_attr_with_checkpoints,
-    find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints,
+    checkpoint_loop, escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
+    extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
+    find_with_checkpoints, rfind_with_checkpoints,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use std::convert::Infallible;
@@ -22,13 +22,12 @@ use context::{
     GFrame, class_attr_tokens, extract_svg_font_style_from_context,
     extract_svg_text_fill_from_ancestors, fallback_text_class_attr_tokens, sum_translate,
 };
-use css::extract_css_background_color_for_class;
+use css::FallbackStyleIndex;
 use html::{
     extract_inline_html_color, extract_inline_html_style_property,
     foreign_object_html_soft_wrap_width, htmlish_to_text_lines, parse_css_px,
     wrap_html_lines_to_width,
 };
-use xml::{escape_xml_attr, escape_xml_text};
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -96,8 +95,11 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     let mut out = String::with_capacity(svg.len() + 2048);
     let mut overlays = String::new();
     let mut g_stack: Vec<GFrame> = Vec::new();
+    let style_index = FallbackStyleIndex::new(svg, checkpoint)?;
     let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
-    let label_bkg = extract_css_background_color_for_class(svg, "labelBkg", checkpoint)?
+    let label_bkg = style_index
+        .background_color_for_class("labelBkg")
+        .map(str::to_owned)
         .unwrap_or(label_bkg_default);
     let mut i = 0usize;
     let mut iteration = 0usize;
@@ -195,7 +197,8 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         )?
                     ));
 
-                    let wants_label_bkg = inner.contains("labelBkg");
+                    let wants_label_bkg =
+                        find_with_checkpoints(inner, "labelBkg", checkpoint)?.is_some();
                     if wants_label_bkg {
                         overlays.push_str(&format!(
                             r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
@@ -203,15 +206,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                             abs_y,
                             width,
                             height,
-                            escape_xml_attr(&label_bkg)
+                            escape_xml_attr_with_checkpoints(&label_bkg, checkpoint)?
                         ));
                     }
 
                     let font_size_value =
-                        match extract_inline_html_style_property(inner, "font-size") {
+                        match extract_inline_html_style_property(inner, "font-size", checkpoint)? {
                             Some(value) => value,
                             None => extract_svg_font_style_from_context(
-                                svg,
+                                &style_index,
                                 &g_stack,
                                 "font-size",
                                 checkpoint,
@@ -219,36 +222,46 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                             .unwrap_or_else(|| "16px".to_string()),
                         };
                     let font_size = parse_css_px(&font_size_value, 16.0);
-                    let fill = match extract_inline_html_color(inner) {
+                    let fill = match extract_inline_html_color(inner, checkpoint)? {
                         Some(value) => value,
-                        None => extract_svg_text_fill_from_ancestors(svg, &g_stack, checkpoint)?
-                            .unwrap_or_else(|| "#333".to_string()),
-                    };
-                    let font_family = match extract_inline_html_style_property(inner, "font-family")
-                    {
-                        Some(value) => value,
-                        None => extract_svg_font_style_from_context(
-                            svg,
+                        None => extract_svg_text_fill_from_ancestors(
+                            &style_index,
                             &g_stack,
-                            "font-family",
                             checkpoint,
                         )?
-                        .unwrap_or_else(|| "trebuchet ms,verdana,arial,sans-serif".to_string()),
+                        .unwrap_or_else(|| "#333".to_string()),
                     };
-                    let font_weight = match extract_inline_html_style_property(inner, "font-weight")
-                    {
+                    let font_family =
+                        match extract_inline_html_style_property(inner, "font-family", checkpoint)?
+                        {
+                            Some(value) => value,
+                            None => extract_svg_font_style_from_context(
+                                &style_index,
+                                &g_stack,
+                                "font-family",
+                                checkpoint,
+                            )?
+                            .unwrap_or_else(|| "trebuchet ms,verdana,arial,sans-serif".to_string()),
+                        };
+                    let font_weight =
+                        match extract_inline_html_style_property(inner, "font-weight", checkpoint)?
+                        {
+                            Some(value) => Some(value),
+                            None => extract_svg_font_style_from_context(
+                                &style_index,
+                                &g_stack,
+                                "font-weight",
+                                checkpoint,
+                            )?,
+                        };
+                    let font_style = match extract_inline_html_style_property(
+                        inner,
+                        "font-style",
+                        checkpoint,
+                    )? {
                         Some(value) => Some(value),
                         None => extract_svg_font_style_from_context(
-                            svg,
-                            &g_stack,
-                            "font-weight",
-                            checkpoint,
-                        )?,
-                    };
-                    let font_style = match extract_inline_html_style_property(inner, "font-style") {
-                        Some(value) => Some(value),
-                        None => extract_svg_font_style_from_context(
-                            svg,
+                            &style_index,
                             &g_stack,
                             "font-style",
                             checkpoint,
@@ -260,7 +273,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         font_weight: font_weight.clone(),
                         font_style: None,
                     };
-                    let wrap_width = foreign_object_html_soft_wrap_width(tag, inner);
+                    let wrap_width = foreign_object_html_soft_wrap_width(tag, inner, checkpoint)?;
                     let lines = wrap_html_lines_to_width(
                         raw_lines,
                         wrap_width,
@@ -289,14 +302,14 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     for (idx, line) in lines.iter().enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
                         let y_line = y0 + (idx as f64) * line_height;
-                        let text = escape_xml_text(line);
+                        let text = escape_xml_text_with_checkpoints(line, checkpoint)?;
                         overlays.push_str(&format!(
                             r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="{}" style="{}">{}</text>"##,
                             text_x,
                             y_line,
-                            escape_xml_attr(&fill),
+                            escape_xml_attr_with_checkpoints(&fill, checkpoint)?,
                             text_class,
-                            escape_xml_attr(&text_style),
+                            escape_xml_attr_with_checkpoints(&text_style, checkpoint)?,
                             text
                         ));
                     }
@@ -523,6 +536,26 @@ mod tests {
         assert!(
             out.contains(r##"fill="#ddeeff""##),
             "expected root fill to be the final readable fallback: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_ignores_non_stylesheet_markup_before_and_inside_style() {
+        let svg = r##"<svg id="brace-theme" xmlns="http://www.w3.org/2000/svg"><!-- > <style>#brace-theme{fill:red;}</style> --><text>{</text><style><![CDATA[/* </style> */ #brace-theme{fill:#ddeeff;font-family:Inter;}#brace-theme .labelBkg{background-color:#c0ffee;}]]></style><g><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Alpha</p></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(r##"fill="#ddeeff""##),
+            "expected the real root rule after authored brace text to drive fallback text: {out}"
+        );
+        assert!(
+            out.contains(r##"fill="#c0ffee""##)
+                && out.contains(r#"<rect x="10" y="20" width="30" height="24""#),
+            "expected the real labelBkg rule after authored brace text to drive fallback background: {out}"
+        );
+        assert!(
+            out.contains("font-family: Inter"),
+            "expected root font declarations to remain indexed: {out}"
         );
     }
 

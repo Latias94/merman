@@ -152,12 +152,57 @@ pub enum DecodedHtmlFragment<'a> {
 /// recipe without copying authored text.
 pub fn visit_decoded_html_entity_fragments<'a, E>(
     input: &'a str,
+    visit: impl FnMut(DecodedHtmlFragment<'a>) -> Result<(), E>,
+) -> Result<(), E> {
+    visit_decoded_html_entity_fragments_impl(input, usize::MAX, || Ok(()), visit)
+}
+
+/// Visits decoded HTML text with bounded checkpoints while scanning and replaying source spans.
+///
+/// This is an internal cross-crate rendering seam rather than a separate entity implementation:
+/// it follows the exact matcher used by [`visit_decoded_html_entity_fragments`] while preventing
+/// a long plain-text span from becoming one opaque scan and callback.
+#[doc(hidden)]
+pub fn visit_decoded_html_entity_fragments_with_checkpoints<'a, E>(
+    input: &'a str,
+    checkpoint: impl FnMut() -> Result<(), E>,
+    visit: impl FnMut(DecodedHtmlFragment<'a>) -> Result<(), E>,
+) -> Result<(), E> {
+    const CHECKPOINT_BYTES: usize = 64;
+
+    visit_decoded_html_entity_fragments_impl(input, CHECKPOINT_BYTES, checkpoint, visit)
+}
+
+fn visit_decoded_html_entity_fragments_impl<'a, E>(
+    input: &'a str,
+    checkpoint_bytes: usize,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
     mut visit: impl FnMut(DecodedHtmlFragment<'a>) -> Result<(), E>,
 ) -> Result<(), E> {
+    checkpoint()?;
     let mut scan = 0usize;
     let mut emitted = 0usize;
-    while let Some(relative) = input[scan..].find('&') {
-        let amp = scan + relative;
+    let mut next_checkpoint = checkpoint_bytes;
+    while scan < input.len() {
+        if scan >= next_checkpoint {
+            checkpoint()?;
+            let mut chunk_end = scan;
+            while chunk_end > emitted && !input.is_char_boundary(chunk_end) {
+                chunk_end -= 1;
+            }
+            if emitted < chunk_end {
+                visit(DecodedHtmlFragment::Borrowed(&input[emitted..chunk_end]))?;
+                emitted = chunk_end;
+            }
+            next_checkpoint = scan.saturating_add(checkpoint_bytes);
+        }
+
+        if input.as_bytes()[scan] != b'&' {
+            scan += 1;
+            continue;
+        }
+
+        let amp = scan;
         let Some(entity) = match_html_entity(&input.as_bytes()[amp..]) else {
             scan = amp + 1;
             continue;
@@ -179,8 +224,10 @@ pub fn visit_decoded_html_entity_fragments<'a, E>(
         emitted = scan;
     }
     if emitted < input.len() {
+        checkpoint()?;
         visit(DecodedHtmlFragment::Borrowed(&input[emitted..]))?;
     }
+    checkpoint()?;
     Ok(())
 }
 
@@ -305,7 +352,7 @@ mod tests {
     use super::{
         decode_html_entities_to_unicode, decode_mermaid_entities_to_unicode,
         decode_mermaid_entity_placeholders, restore_mermaid_entity_spelling,
-        visit_decoded_html_entities,
+        visit_decoded_html_entities, visit_decoded_html_entity_fragments_with_checkpoints,
     };
 
     fn assert_streaming_html_decode_matches_owned(input: &str) {
@@ -383,6 +430,35 @@ mod tests {
         ] {
             assert_streaming_html_decode_matches_owned(input);
         }
+    }
+
+    #[test]
+    fn controlled_html_entity_scan_stops_before_copying_the_full_plain_span() {
+        let input = "A".repeat(4_096);
+        let mut checkpoints = 0usize;
+        let mut copied = 0usize;
+
+        let result = visit_decoded_html_entity_fragments_with_checkpoints(
+            &input,
+            || {
+                checkpoints += 1;
+                if checkpoints == 2 {
+                    Err("cancelled")
+                } else {
+                    Ok(())
+                }
+            },
+            |fragment| {
+                copied += match fragment {
+                    super::DecodedHtmlFragment::Borrowed(value) => value.len(),
+                    super::DecodedHtmlFragment::Scalar(value) => value.len_utf8(),
+                };
+                Ok(())
+            },
+        );
+
+        assert_eq!(result, Err("cancelled"));
+        assert_eq!(copied, 0);
     }
 
     #[test]

@@ -6,9 +6,10 @@ mod preset;
 mod static_validation;
 
 pub(crate) use builtin::util::{
-    checkpoint_loop, escape_xml_attr_with_checkpoints,
-    extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
-    find_with_checkpoints, rfind_with_checkpoints,
+    SvgTagScanner, checkpoint_loop, end_tag_name, escape_xml_attr_with_checkpoints,
+    escape_xml_text_with_checkpoints, extract_exact_double_quoted_attr_with_checkpoints,
+    find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
+    trim_with_checkpoints,
 };
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
@@ -16,6 +17,7 @@ pub use builtin::{
     ScopedCssPostprocessor, StripForeignObjectPostprocessor,
 };
 pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
+pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub(crate) use final_validation::validate_well_formed_svg;
 pub use policy::SvgOutputPolicy;
@@ -86,7 +88,6 @@ pub fn validate_static_inline_svg_admission(svg: &str, limits: RenderResourcePol
 use crate::environment::RenderSession;
 use crate::resources::{RenderResourcePolicy, ResourceLimitPhase};
 use crate::{Error, Result};
-use merman_core::OperationPhase;
 use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
@@ -269,7 +270,8 @@ impl SvgPipeline {
     }
 
     pub fn process<'a>(&self, svg: &'a str, session: &RenderSession) -> Result<Cow<'a, str>> {
-        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let execution = SvgPostprocessExecution::new(session);
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(svg, execution)?;
         self.process_with_metadata(svg, &metadata, session)
     }
 
@@ -299,14 +301,15 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<(Cow<'a, str>, Option<SvgReferencePlan>)> {
-        session.checkpoint(OperationPhase::Postprocess)?;
+        let execution = SvgPostprocessExecution::new(session);
+        execution.checkpoint()?;
         let mut current = svg;
-        session
+        execution
             .resource_policy()
             .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
-            session.checkpoint(OperationPhase::Postprocess)?;
+            execution.checkpoint()?;
             let ctx = SvgPostprocessContext::new(
                 self.preset,
                 index,
@@ -320,47 +323,49 @@ impl SvgPipeline {
                     return Err(error);
                 }
                 Err(error) => {
-                    session.checkpoint(OperationPhase::Postprocess)?;
+                    execution.checkpoint()?;
                     return Err(Error::svg_postprocess(
                         postprocessor.name(),
                         error.to_string(),
                     ));
                 }
             };
-            session.checkpoint(OperationPhase::Postprocess)?;
-            session
+            execution.checkpoint()?;
+            execution
                 .resource_policy()
                 .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         }
 
-        session.checkpoint(OperationPhase::Postprocess)?;
+        execution.checkpoint()?;
         let finalized = preset::apply_preset_cow(
             self.preset,
             current,
             metadata,
-            session,
+            execution,
             self.drop_native_duplicate_fallbacks,
         )?;
-        let finalized = crate::xml::strip_forbidden_xml_1_0_chars_cow(finalized);
-        session.checkpoint(OperationPhase::Postprocess)?;
-        session
+        let finalized =
+            crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(finalized, || {
+                execution.checkpoint()
+            })?;
+        execution
             .resource_policy()
             .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         let reference_plan = if self.preset == SvgPipelinePreset::ResvgSafe {
-            session.checkpoint(OperationPhase::Postprocess)?;
-            Some(final_validation::validate_resvg_compatible_svg(
-                finalized.as_ref(),
-                session.resource_policy(),
-            )?)
+            Some(
+                final_validation::validate_resvg_compatible_svg_with_execution(
+                    finalized.as_ref(),
+                    execution,
+                )?,
+            )
         } else {
-            session.checkpoint(OperationPhase::Postprocess)?;
-            final_validation::validate_well_formed_svg(
+            final_validation::validate_well_formed_svg_with_execution(
                 finalized.as_ref(),
-                session.resource_policy(),
+                execution,
             )?;
             None
         };
-        session.checkpoint(OperationPhase::Postprocess)?;
+        execution.checkpoint()?;
         Ok((finalized, reference_plan))
     }
 
@@ -369,7 +374,8 @@ impl SvgPipeline {
     }
 
     pub fn process_owned_to_string(&self, svg: String, session: &RenderSession) -> Result<String> {
-        let metadata = SvgPostprocessMetadata::from_svg(&svg);
+        let execution = SvgPostprocessExecution::new(session);
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(&svg, execution)?;
         self.process_owned_to_string_with_metadata(svg, &metadata, session)
     }
 
@@ -400,7 +406,8 @@ impl SvgPipeline {
         svg: &str,
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
-        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let execution = SvgPostprocessExecution::new(session);
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(svg, execution)?;
         self.process_resvg_compatible_with_metadata(svg, &metadata, session)
     }
 

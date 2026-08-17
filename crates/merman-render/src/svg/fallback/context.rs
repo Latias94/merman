@@ -1,6 +1,6 @@
 use super::css::{
-    extract_css_root_style_property, extract_css_root_text_fill,
-    extract_css_style_property_for_class, extract_css_text_fill_for_class, extract_style_property,
+    FallbackStyleIndex,
+    extract_style_property_with_checkpoints as extract_css_style_property_with_checkpoints,
 };
 use crate::svg::pipeline::{
     checkpoint_loop, escape_xml_attr_with_checkpoints,
@@ -64,10 +64,7 @@ fn extract_style_property_with_checkpoints<E>(
     let Some(style) = style else {
         return Ok(None);
     };
-    checkpoint()?;
-    let value = extract_style_property(style, property);
-    checkpoint()?;
-    Ok(value)
+    extract_css_style_property_with_checkpoints(style, property, checkpoint)
 }
 
 fn find_ascii_case_insensitive_with_checkpoints<E>(
@@ -159,7 +156,7 @@ pub(super) fn sum_translate<E>(
 }
 
 pub(super) fn extract_svg_text_fill_from_ancestors<E>(
-    svg: &str,
+    style_index: &FallbackStyleIndex<'_>,
     g_stack: &[GFrame],
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<String>, E> {
@@ -171,15 +168,15 @@ pub(super) fn extract_svg_text_fill_from_ancestors<E>(
         for token in frame.class_tokens.iter().rev() {
             checkpoint_loop(iteration, checkpoint)?;
             iteration = iteration.saturating_add(1);
-            if let Some(fill) = extract_css_text_fill_for_class(svg, token, checkpoint)? {
-                return Ok(Some(fill));
+            if let Some(fill) = style_index.text_fill_for_class(token) {
+                return Ok(Some(fill.to_owned()));
             }
         }
         if let Some(fill) = &frame.fill {
             return Ok(Some(fill.clone()));
         }
     }
-    extract_css_root_text_fill(svg, checkpoint)
+    Ok(style_index.root_text_fill().map(str::to_owned))
 }
 
 fn extract_svg_font_style_from_ancestors<E>(
@@ -205,7 +202,7 @@ fn extract_svg_font_style_from_ancestors<E>(
 }
 
 pub(super) fn extract_svg_font_style_from_context<E>(
-    svg: &str,
+    style_index: &FallbackStyleIndex<'_>,
     g_stack: &[GFrame],
     property: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -220,14 +217,12 @@ pub(super) fn extract_svg_font_style_from_context<E>(
         for token in frame.class_tokens.iter().rev() {
             checkpoint_loop(iteration, checkpoint)?;
             iteration = iteration.saturating_add(1);
-            if let Some(value) =
-                extract_css_style_property_for_class(svg, token, property, checkpoint)?
-            {
-                return Ok(Some(value));
+            if let Some(value) = style_index.style_property_for_class(token, property) {
+                return Ok(Some(value.to_owned()));
             }
         }
     }
-    extract_css_root_style_property(svg, &[property], checkpoint)
+    Ok(style_index.root_style_property(property).map(str::to_owned))
 }
 
 fn parse_class_tokens<E>(
