@@ -605,6 +605,7 @@ fn classify_ordinal_palette(
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
         || (family == DiagramFamilyId::XY_CHART && target == ThemeTarget::ChartSeries)
+        || (family == DiagramFamilyId::RADAR && target == ThemeTarget::ChartSeries)
     {
         FamilyThemeDisposition::TypedAdapter
     } else if legacy_palette_supported(family, target) {
@@ -1283,7 +1284,6 @@ fn legacy_paint_variants(
 fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> bool {
     match family {
         DiagramFamilyId::GIT_GRAPH => target == ThemeTarget::Node,
-        DiagramFamilyId::RADAR => target == ThemeTarget::ChartSeries,
         DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
         DiagramFamilyId::JOURNEY => target == ThemeTarget::JourneyTask,
         DiagramFamilyId::ERROR
@@ -1721,6 +1721,19 @@ mod tests {
         );
         assert!(!legacy_palette_supported(
             DiagramFamilyId::XY_CHART,
+            ThemeTarget::ChartSeries
+        ));
+    }
+
+    #[test]
+    fn radar_owns_the_chart_series_ordinal_palette() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::RADAR, ThemeTarget::ChartSeries)
+                .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert!(!legacy_palette_supported(
+            DiagramFamilyId::RADAR,
             ThemeTarget::ChartSeries
         ));
     }

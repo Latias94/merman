@@ -704,12 +704,6 @@ fn compile_chart_family(
             );
         }
         DiagramFamilyId::RADAR => {
-            let palette = reader.palette(ThemeTarget::ChartSeries);
-            contributions.add_palette(
-                "series.palette",
-                palette,
-                PaletteProjection::ColorScale { limit: 12 },
-            );
             contributions.add_theme_variables(
                 "chart.text",
                 [
@@ -2101,7 +2095,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_pie_and_xy_palettes_do_not_create_bridge_contributions() {
+    fn direct_pie_xy_and_radar_palettes_do_not_create_bridge_contributions() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#2563eb").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#16a34a").expect("valid palette color"),
@@ -2128,6 +2122,13 @@ mod tests {
         assert!(
             !xy.contribution_ids
                 .contains("merman.legacy-family-theme.v1.xychart.series.palette")
+        );
+
+        let radar = bridge(&spec).compile_for_family(DiagramFamilyId::RADAR);
+        assert!(
+            !radar
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.radar.series.palette")
         );
 
         let journey = parse(&spec, JOURNEY_FIXTURE);

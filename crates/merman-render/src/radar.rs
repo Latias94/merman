@@ -12,8 +12,10 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
 
 mod config;
+mod theme;
 
 pub(crate) use config::RadarConfigView;
+pub(crate) use theme::RadarSeriesPaintPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RadarLayoutWork {

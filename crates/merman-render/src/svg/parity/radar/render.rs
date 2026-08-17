@@ -4,7 +4,12 @@ use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
-fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
+fn radar_css(
+    diagram_id: &str,
+    theme: &RadarTheme,
+    series_colors: &[String],
+    mut record_series_rule: impl FnMut(usize, &str),
+) -> String {
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
     let id = crate::svg::escape_css_identifier(diagram_id);
 
@@ -78,7 +83,7 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
         fmt(theme.legend_font_size)
     );
 
-    for (i, c) in theme.series_colors.iter().enumerate() {
+    for (i, c) in series_colors.iter().enumerate() {
         let _ = write!(
             &mut out,
             r#"#{} .radarCurve-{}{{color:{};fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}#{} .radarLegendBox-{}{{fill:{};fill-opacity:{};stroke:{};}}"#,
@@ -95,6 +100,7 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
             fmt(theme.curve_opacity),
             c
         );
+        record_series_rule(i, c);
     }
 
     let _ = write!(
@@ -142,9 +148,30 @@ fn write_radar_axes(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn render_radar_diagram_svg_model(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let series_paint = crate::radar::RadarSeriesPaintPlan::baseline(&effective_config, model);
+    render_radar_diagram_svg_model_with_series_paint(
+        layout,
+        model,
+        &series_paint,
+        effective_config.as_value(),
+        diagram_title,
+        options,
+    )
+}
+
+pub(crate) fn render_radar_diagram_svg_model_with_series_paint(
+    layout: &RadarDiagramLayout,
+    model: &RadarDiagramRenderModel,
+    series_paint: &crate::radar::RadarSeriesPaintPlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
@@ -214,7 +241,19 @@ pub(crate) fn render_radar_diagram_svg_model(
     let theme = MermaidThemeAdapter::new(effective_config).radar();
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = radar_css(diagram_id, &theme);
+    let mut series_paint_receipt = series_paint.begin_terminal_receipt();
+    let css = radar_css(
+        diagram_id,
+        &theme,
+        series_paint.colors(),
+        |rule_index, color| {
+            if rule_index < series_paint.curve_count()
+                && let Some(receipt) = series_paint_receipt.as_mut()
+            {
+                receipt.record_series_rule(series_paint, rule_index, color);
+            }
+        },
+    );
     out.push_str(&css);
     drop(css);
     out.checkpoint()?;
@@ -256,7 +295,7 @@ pub(crate) fn render_radar_diagram_svg_model(
         .graticules
         .first()
         .is_some_and(|g| g.kind.trim() == "polygon");
-    for curve in &layout.curves {
+    for (curve_index, curve) in layout.curves.iter().enumerate() {
         if polygon_curves && !curve.points.is_empty() {
             let points = fmt_points(&curve.points);
             let _ = write!(
@@ -274,9 +313,12 @@ pub(crate) fn render_radar_diagram_svg_model(
             );
         }
         out.checkpoint()?;
+        if let Some(receipt) = series_paint_receipt.as_mut() {
+            receipt.record_curve(series_paint, curve_index, curve.class_index);
+        }
     }
 
-    for item in &layout.legend_items {
+    for (legend_index, item) in layout.legend_items.iter().enumerate() {
         let _ = write!(
             &mut out,
             r#"<g transform="translate({x}, {y})">"#,
@@ -306,6 +348,9 @@ pub(crate) fn render_radar_diagram_svg_model(
         out.checkpoint()?;
         out.push_str("</g>");
         out.checkpoint()?;
+        if let Some(receipt) = series_paint_receipt.as_mut() {
+            receipt.record_legend(series_paint, legend_index, item.class_index);
+        }
     }
 
     let title = model
@@ -339,7 +384,15 @@ pub(crate) fn render_radar_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if let Some(receipt) = series_paint_receipt
+        && !series_paint.record_terminal(receipt)
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Radar series paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted)
 }
 
 #[cfg(test)]
@@ -468,7 +521,7 @@ mod tests {
         });
 
         let theme = MermaidThemeAdapter::new(&cfg).radar();
-        let css = radar_css("radar", &theme);
+        let css = radar_css("radar", &theme, &theme.series_colors, |_, _| {});
 
         assert!(css.contains(r#"#radar .radarTitle{font-size:18px;color:#202020;"#));
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#606060;stroke-width:4;}"#));
@@ -508,7 +561,7 @@ mod tests {
         });
 
         let theme = MermaidThemeAdapter::new(&cfg).radar();
-        let css = radar_css("radar", &theme);
+        let css = radar_css("radar", &theme, &theme.series_colors, |_, _| {});
 
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#404040;stroke-width:2;}"#));
         assert!(css.contains(r#"#radar .radarAxisLabel{font-size:12px;color:#404040;}"#));

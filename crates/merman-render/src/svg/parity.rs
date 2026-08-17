@@ -711,13 +711,16 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Sankey(pair) => {
             sankey::render_sankey_diagram_svg(pair.layout(), effective_config_value, options)
         }
-        BuiltinFamilyArtifact::Radar(pair) => radar::render_radar_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Radar(artifact) => {
+            radar::render_radar_diagram_svg_model_with_series_paint(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.series_paint(),
+                effective_config_value,
+                title,
+                options,
+            )
+        }
         BuiltinFamilyArtifact::Info(pair) => {
             info::render_info_diagram_svg(pair.layout(), effective_config_value, options)
         }
