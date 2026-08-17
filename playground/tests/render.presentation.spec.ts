@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import {
   monitorBrowserErrors,
@@ -243,6 +243,81 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
     )
     .toBe(true);
 
+  errors.assertNone();
+});
+
+test("Infinite Canvas reveals visual overflow while ViewBox Frame preserves root clipping", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await renderSource(
+    page,
+    [
+      "sequenceDiagram",
+      "    title A diagram title that is quite long and might affect vertical bounds",
+      "    Alice->>Bob: hi",
+    ].join("\n")
+  );
+
+  const viewport = page.locator('[data-merman-svg-viewport="true"]').first();
+  const infinite = await sequenceTitlePresentation(viewport);
+  expect(infinite.titleBounds.right).toBeGreaterThan(infinite.viewBox.right);
+  expect(infinite.rootOverflow).toBe("visible");
+  expect(infinite.titleRect.left).toBeGreaterThanOrEqual(
+    infinite.viewportRect.left - 1
+  );
+  expect(infinite.titleRect.right).toBeLessThanOrEqual(
+    infinite.viewportRect.right + 1
+  );
+
+  await page
+    .getByRole("button", { name: "ViewBox Frame", exact: true })
+    .click();
+  const framed = await sequenceTitlePresentation(viewport);
+  expect(framed.viewBox).toEqual(infinite.viewBox);
+  expect(framed.titleBounds).toEqual(infinite.titleBounds);
+  expect(framed.rootOverflow).toBe("hidden");
+
+  await page
+    .getByRole("button", { name: "Infinite Canvas", exact: true })
+    .click();
+  const extremeOverflow = viewport.locator(".preview-container > div").first();
+  await extremeOverflow.evaluate((element) => {
+    const svg = element.shadowRoot?.querySelector<SVGSVGElement>("svg");
+    if (!svg) throw new Error("Missing mounted Sequence SVG.");
+    const rect = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "rect"
+    );
+    rect.dataset.testExtremeOverflow = "true";
+    rect.setAttribute("x", String(svg.viewBox.baseVal.x));
+    rect.setAttribute("y", String(svg.viewBox.baseVal.y));
+    rect.setAttribute("width", "2000000");
+    rect.setAttribute("height", "1");
+    rect.setAttribute("opacity", "0");
+    svg.append(rect);
+  });
+  await page.getByRole("button", { name: "Fit", exact: true }).click();
+  await expect
+    .poll(() =>
+      extremeOverflow.evaluate((element) => {
+        const rect = element.shadowRoot?.querySelector<SVGRectElement>(
+          '[data-test-extreme-overflow="true"]'
+        );
+        const canvas = element.closest(
+          '[data-merman-svg-viewport="true"]'
+        );
+        if (!rect || !canvas) return false;
+        const rectBounds = rect.getBoundingClientRect();
+        const canvasBounds = canvas.getBoundingClientRect();
+        return (
+          rectBounds.left >= canvasBounds.left - 1 &&
+          rectBounds.right <= canvasBounds.right + 1
+        );
+      })
+    )
+    .toBe(true);
   errors.assertNone();
 });
 
@@ -701,6 +776,38 @@ function fontOnlyConfig(theme: string): string {
 async function renderSource(page: Page, source: string): Promise<void> {
   await replaceEditorSource(page, source);
   await waitForPreviewSvg(page);
+}
+
+async function sequenceTitlePresentation(viewport: Locator) {
+  const viewportRect = await viewport.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { left: bounds.left, right: bounds.right };
+  });
+  const host = viewport.locator(".preview-container > div").first();
+  return host.evaluate((element, measuredViewport) => {
+    const svg = element.shadowRoot?.querySelector<SVGSVGElement>("svg");
+    const title = [...(svg?.querySelectorAll<SVGTextElement>("text") ?? [])].find(
+      (text) => text.textContent?.startsWith("A diagram title that is quite long")
+    );
+    if (!svg || !title) throw new Error("Missing Sequence title SVG geometry.");
+
+    const viewBox = svg.viewBox.baseVal;
+    const titleBounds = title.getBBox();
+    const titleRect = title.getBoundingClientRect();
+    return {
+      rootOverflow: getComputedStyle(svg).overflow,
+      titleBounds: {
+        left: titleBounds.x,
+        right: titleBounds.x + titleBounds.width,
+      },
+      titleRect: { left: titleRect.left, right: titleRect.right },
+      viewBox: {
+        left: viewBox.x,
+        right: viewBox.x + viewBox.width,
+      },
+      viewportRect: measuredViewport,
+    };
+  }, viewportRect);
 }
 
 function previewHost(page: Page) {
