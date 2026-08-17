@@ -538,6 +538,7 @@ pub(super) fn compile_ordinal_palette_route(
                 family,
                 DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
             ) && target == ThemeTarget::Node)
+            || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         {
             FamilyThemeDisposition::TypedAdapter
         } else if legacy_palette_supported(family, target) {
@@ -1006,7 +1007,6 @@ fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> boo
     match family {
         DiagramFamilyId::MINDMAP | DiagramFamilyId::GIT_GRAPH => target == ThemeTarget::Node,
         DiagramFamilyId::KANBAN => target == ThemeTarget::Task,
-        DiagramFamilyId::PIE => target == ThemeTarget::PieSlice,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::RADAR => target == ThemeTarget::ChartSeries,
         DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
         DiagramFamilyId::JOURNEY => target == ThemeTarget::JourneyTask,
@@ -1045,6 +1045,15 @@ mod tests {
     use crate::diagram_theme::{
         TextStylePatch, ThemeColorValue, ThemeGeometryPatch, ThemePaintPatch, ThemeStylePatch,
     };
+
+    #[test]
+    fn pie_slice_palette_uses_the_direct_adapter() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::PIE, ThemeTarget::PieSlice)
+                .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+    }
 
     #[test]
     fn mixed_flowchart_rule_is_split_by_facet() {

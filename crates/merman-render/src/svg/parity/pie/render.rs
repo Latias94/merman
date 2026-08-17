@@ -133,9 +133,27 @@ fn render_pie_slices(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let paint_plan = crate::pie::PieSlicePaintPlan::baseline(model, effective_config);
+    render_pie_diagram_svg_model_with_paint_plan(
+        layout,
+        model,
+        &paint_plan,
+        effective_config,
+        options,
+    )
+}
+
+pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
+    layout: &PieDiagramLayout,
+    model: &PieDiagramRenderModel,
+    paint_plan: &crate::pie::PieSlicePaintPlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -334,7 +352,13 @@ pub(crate) fn render_pie_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !paint_plan.record_terminal_complete() {
+        return Err(crate::Error::InvalidModel {
+            message: "Pie slice paint terminal completion could not be sealed".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]

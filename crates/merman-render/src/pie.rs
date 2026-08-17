@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::config::config_string;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
@@ -8,64 +7,10 @@ pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
 
 mod config;
+mod theme;
 
 pub(crate) use config::{PieConfigView, PieLegendPosition};
-
-#[derive(Debug, Clone)]
-struct ColorScale {
-    palette: Vec<String>,
-    mapping: std::collections::HashMap<String, usize>,
-    next: usize,
-}
-
-impl ColorScale {
-    fn default_palette() -> Vec<String> {
-        // This fallback is only for direct layout callers. Normal rendering consumes the final
-        // resolved `pie1..pie12` theme variables produced by merman-core.
-        [
-            "#ECECFF",
-            "#ffffde",
-            "hsl(80, 100%, 56.2745098039%)",
-            "hsl(240, 100%, 86.2745098039%)",
-            "hsl(60, 100%, 63.5294117647%)",
-            "hsl(80, 100%, 76.2745098039%)",
-            "hsl(300, 100%, 76.2745098039%)",
-            "hsl(180, 100%, 56.2745098039%)",
-            "hsl(0, 100%, 56.2745098039%)",
-            "hsl(300, 100%, 56.2745098039%)",
-            "hsl(150, 100%, 56.2745098039%)",
-            "hsl(0, 100%, 66.2745098039%)",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
-    }
-
-    fn from_config(effective_config: &serde_json::Value) -> Self {
-        let mut palette = Self::default_palette();
-        for (idx, color) in palette.iter_mut().enumerate() {
-            let key = format!("pie{}", idx + 1);
-            if let Some(value) = config_string(effective_config, &["themeVariables", &key]) {
-                *color = value;
-            }
-        }
-        Self {
-            palette,
-            mapping: std::collections::HashMap::new(),
-            next: 0,
-        }
-    }
-
-    fn color_for(&mut self, label: &str) -> String {
-        if let Some(idx) = self.mapping.get(label).copied() {
-            return self.palette[idx % self.palette.len()].clone();
-        }
-        let idx = self.next;
-        self.next += 1;
-        self.mapping.insert(label.to_string(), idx);
-        self.palette[idx % self.palette.len()].clone()
-    }
-}
+pub(crate) use theme::PieSlicePaintPlan;
 
 fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     // Mermaid pie charts use a "12 o'clock is zero" convention with y increasing downwards.
@@ -97,10 +42,28 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
+#[cfg(test)]
 pub(crate) fn layout_pie_diagram_typed(
     model: &PieDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<PieDiagramLayout> {
+    let paint_plan = PieSlicePaintPlan::baseline(model, effective_config);
+    layout_pie_diagram_typed_with_paint_plan(
+        model,
+        diagram_title,
+        effective_config,
+        &paint_plan,
+        measurer,
+    )
+}
+
+pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
+    model: &PieDiagramRenderModel,
+    diagram_title: Option<&str>,
+    effective_config: &serde_json::Value,
+    paint_plan: &PieSlicePaintPlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let _ = (
@@ -137,11 +100,6 @@ pub(crate) fn layout_pie_diagram_typed(
         .map(|s| s.value)
         .sum();
 
-    let mut color_scale = ColorScale::from_config(effective_config);
-    for sec in &model.sections {
-        let _ = color_scale.color_for(&sec.label);
-    }
-
     let mut slices: Vec<PieSliceLayout> = Vec::new();
     if total.is_finite() && total > 0.0 {
         // Mermaid@11.16 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
@@ -161,7 +119,7 @@ pub(crate) fn layout_pie_diagram_typed(
         if !pie_sections.is_empty() && pie_total.is_finite() && pie_total > 0.0 {
             if pie_sections.len() == 1 {
                 let s = pie_sections[0];
-                let fill = color_scale.color_for(&s.label);
+                let fill = pie_fill_for(paint_plan, &s.label)?;
                 let (tx, ty) = polar_xy(label_radius, std::f64::consts::PI);
                 let percent = ((100.0 * (s.value / total)).max(0.0)).round() as i64;
                 slices.push(PieSliceLayout {
@@ -183,7 +141,7 @@ pub(crate) fn layout_pie_diagram_typed(
                     let end = start + delta;
                     let mid = (start + end) / 2.0;
                     let (tx, ty) = polar_xy(label_radius, mid);
-                    let fill = color_scale.color_for(&s.label);
+                    let fill = pie_fill_for(paint_plan, &s.label)?;
                     let percent = ((100.0 * (s.value / total)).max(0.0)).round() as i64;
                     if percent != 0 {
                         slices.push(PieSliceLayout {
@@ -209,7 +167,7 @@ pub(crate) fn layout_pie_diagram_typed(
     let mut legend_items: Vec<PieLegendItemLayout> = Vec::new();
     for (i, sec) in model.sections.iter().enumerate() {
         let y = legend_start_y + (i as f64) * legend_step_y;
-        let fill = color_scale.color_for(&sec.label);
+        let fill = pie_fill_for(paint_plan, &sec.label)?;
         legend_items.push(PieLegendItemLayout {
             label: sec.label.clone(),
             value: sec.value,
@@ -310,6 +268,15 @@ pub(crate) fn layout_pie_diagram_typed(
         slices,
         legend_items,
     })
+}
+
+fn pie_fill_for(paint_plan: &PieSlicePaintPlan, label: &str) -> Result<String> {
+    paint_plan
+        .fill_for(label)
+        .map(str::to_string)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: format!("Pie slice paint plan is missing label `{label}`"),
+        })
 }
 
 #[cfg(test)]

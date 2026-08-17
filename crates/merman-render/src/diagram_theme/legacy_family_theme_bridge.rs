@@ -657,11 +657,15 @@ fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThem
             ("pieOuterStrokeColor", reader.stroke(ThemeTarget::PieSlice)),
         ],
     );
-    let palette = reader.palette(ThemeTarget::PieSlice).or_else(|| {
-        reader
-            .fill(ThemeTarget::PieSlice)
-            .map(|color| vec![color; 12])
-    });
+    let palette = if reader.has_typed_ordinal_palette(ThemeTarget::PieSlice) {
+        None
+    } else {
+        reader.palette(ThemeTarget::PieSlice).or_else(|| {
+            reader
+                .fill(ThemeTarget::PieSlice)
+                .map(|color| vec![color; 12])
+        })
+    };
     contributions.add_palette(
         "slice.palette",
         palette,
@@ -924,6 +928,11 @@ impl FamilyStyleReader {
                 .map(super::canvas::ThemeColorValue::as_css)
                 .collect(),
         )
+    }
+
+    fn has_typed_ordinal_palette(&self, target: ThemeTarget) -> bool {
+        self.program.ordinal_palette_disposition(target)
+            == Some(super::family_mechanism_matrix::FamilyThemeDisposition::TypedAdapter)
     }
 
     fn stroke_or_fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
@@ -2158,7 +2167,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_family_palettes_are_projected_from_public_rules() {
+    fn legacy_family_palettes_are_projected_while_pie_stays_direct() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#2563eb").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#16a34a").expect("valid palette color"),
@@ -2173,12 +2182,13 @@ mod tests {
                 .with_ordinal_palette(ThemeTarget::JourneyTask, palette),
         );
 
+        let baseline = parse(&DiagramThemeSpec::new(), PIE_FIXTURE);
         let pie = parse(&spec, PIE_FIXTURE);
         assert_eq!(
             pie.effective_config.get_str("themeVariables.pie1"),
-            Some("#2563eb")
+            baseline.effective_config.get_str("themeVariables.pie1")
         );
-        assert!(fallback_contribution_count(&pie) > 0);
+        assert_eq!(fallback_contribution_count(&pie), 0);
 
         let xy = parse(&spec, XY_FIXTURE);
         assert_eq!(

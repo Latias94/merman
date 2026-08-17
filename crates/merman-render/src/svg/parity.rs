@@ -668,9 +668,10 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
-        BuiltinFamilyArtifact::Pie(pair) => pie::render_pie_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Pie(artifact) => pie::render_pie_diagram_svg_model_with_paint_plan(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.slice_paint(),
             effective_config_value,
             options,
         ),

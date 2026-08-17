@@ -132,6 +132,24 @@ fn portable_state_theme() -> merman::svg::DiagramTheme {
 }
 
 #[cfg(feature = "svg")]
+fn portable_pie_palette_theme() -> merman::svg::DiagramTheme {
+    let palette = merman::svg::OrdinalPalette::new([
+        merman::svg::ThemeColorValue::parse("#ef4444").expect("valid first palette color"),
+        merman::svg::ThemeColorValue::parse("#22c55e").expect("valid second palette color"),
+        merman::svg::ThemeColorValue::parse("#2563eb").expect("valid third palette color"),
+    ])
+    .expect("valid Pie palette");
+    merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default()
+                    .with_ordinal_palette(merman::svg::ThemeTarget::PieSlice, palette),
+            ),
+        )
+        .expect("portable Pie theme should compile")
+}
+
+#[cfg(feature = "svg")]
 fn flowchart_paint_theme() -> merman::svg::DiagramTheme {
     let styles = merman::svg::ThemeRuleSet::default().with_rule(
         merman::svg::ThemeRule::new(
@@ -410,6 +428,104 @@ fn themed_state_svg_reports_verified_coarse_theme_evidence() {
     assert_eq!(
         admission.artifact_digest(),
         <[u8; 32]>::from(Sha256::digest(output.svg().as_bytes()))
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn pie_ordinal_palette_drives_terminal_slice_fills_and_verified_evidence() {
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "pie\n  \"Alpha\" : 60\n  \"Hidden\" : 0.1\n  \"Gamma\" : 39.9\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(portable_pie_palette_theme()),
+        )
+        .expect("themed Pie SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Pie SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Pie SVG");
+    let slice_fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "pieCircle")
+                })
+        })
+        .map(|node| node.attribute("fill").expect("Pie slice fill"))
+        .collect::<Vec<_>>();
+    assert_eq!(slice_fills, ["#ef4444", "#2563eb"]);
+    let legend_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.parent().is_some_and(|parent| {
+                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
+                })
+        })
+        .map(|node| node.attribute("style").expect("Pie legend style"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        legend_styles,
+        [
+            "fill: rgb(239, 68, 68); stroke: rgb(239, 68, 68);",
+            "fill: rgb(34, 197, 94); stroke: rgb(34, 197, 94);",
+            "fill: rgb(37, 99, 235); stroke: rgb(37, 99, 235);",
+        ]
+    );
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::Verified);
+    assert!(summary.is_verified());
+    assert!(summary.is_satisfied());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn pie_site_palette_slot_outranks_the_typed_default() {
+    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"pie1": "#111827"}
+        })),
+    ));
+    let output = renderer
+        .render(
+            RenderRequest::svg(
+                "pie\n  \"Site\" : 1\n  \"Typed\" : 1\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(portable_pie_palette_theme()),
+        )
+        .expect("source-owned Pie palette slot should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Pie SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Pie SVG");
+    let slice_fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "pieCircle")
+                })
+        })
+        .map(|node| node.attribute("fill").expect("Pie slice fill"))
+        .collect::<Vec<_>>();
+    assert_eq!(slice_fills, ["#111827", "#22c55e"]);
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
     );
 }
 

@@ -986,6 +986,7 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::SEQUENCE
                 | DiagramFamilyId::CLASS
                 | DiagramFamilyId::GANTT
+                | DiagramFamilyId::PIE
         ) && self
             .resolved_theme
             .as_deref()
@@ -1286,6 +1287,24 @@ pub(crate) struct GanttFamilyArtifact {
     task_theme: crate::gantt::GanttTaskTheme,
 }
 
+#[derive(Debug)]
+pub(crate) struct PieFamilyArtifact {
+    pair: FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>,
+    slice_paint: crate::pie::PieSlicePaintPlan,
+}
+
+impl PieFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn slice_paint(&self) -> &crate::pie::PieSlicePaintPlan {
+        &self.slice_paint
+    }
+}
+
 impl GanttFamilyArtifact {
     pub(crate) const fn pair(
         &self,
@@ -1369,7 +1388,7 @@ pub(crate) enum BuiltinFamilyArtifact {
         >,
     ),
     Gantt(Box<GanttFamilyArtifact>),
-    Pie(Box<FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>>),
+    Pie(Box<PieFamilyArtifact>),
     Packet(Box<FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>>),
     Timeline(
         Box<FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>>,
@@ -1636,6 +1655,13 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn pie_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Pie(artifact) => Some(artifact.slice_paint().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
@@ -1657,7 +1683,7 @@ impl BuiltinFamilyArtifact {
             Self::Railroad(pair) => pair.compatibility_json(metadata),
             Self::Kanban(pair) => pair.compatibility_json(metadata),
             Self::Gantt(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Pie(pair) => pair.compatibility_json(metadata),
+            Self::Pie(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Packet(pair) => pair.compatibility_json(metadata),
             Self::Timeline(pair) => pair.compatibility_json(metadata),
             Self::Journey(pair) => pair.compatibility_json(metadata),
@@ -1696,7 +1722,7 @@ impl BuiltinFamilyArtifact {
             Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
             Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout().layout()),
             Self::Gantt(artifact) => LayoutProjection::GanttDiagram(artifact.pair.layout()),
-            Self::Pie(pair) => LayoutProjection::PieDiagram(pair.layout()),
+            Self::Pie(artifact) => LayoutProjection::PieDiagram(artifact.pair.layout()),
             Self::Packet(pair) => LayoutProjection::PacketDiagram(pair.layout()),
             Self::Timeline(pair) => LayoutProjection::TimelineDiagram(pair.layout()),
             Self::Journey(pair) => LayoutProjection::JourneyDiagram(pair.layout()),
@@ -2286,6 +2312,7 @@ impl FamilyRenderArtifact {
             .family
             .class_theme_evidence(self.context.resolved_theme());
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
+        let pie_theme_evidence = self.family.pie_theme_evidence();
         let state_filter_receipt = match &self.family {
             BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
             _ => None,
@@ -2308,6 +2335,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = gantt_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::GANTT, evidence);
+        }
+        if let Some(evidence) = pie_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::PIE, evidence);
         }
         context.observe_output_visibility(debug);
         if let Some(emitted) = state_filter_receipt {
@@ -2792,14 +2822,22 @@ fn prepare_non_class_render(
             }))
         }
         RenderSemanticModel::Pie(model) => {
-            BuiltinFamilyArtifact::Pie(prepare_pair(model, |model| {
-                crate::pie::layout_pie_diagram_typed(
-                    model,
-                    title,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            let slice_paint = crate::pie::PieSlicePaintPlan::resolve(
+                &model,
+                &meta.effective_config,
+                execution.resolved_theme(),
+            );
+            let layout = crate::pie::layout_pie_diagram_typed_with_paint_plan(
+                &model,
+                title,
+                effective_config,
+                &slice_paint,
+                execution.text_measurer(),
+            )?;
+            BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                slice_paint,
+            }))
         }
         RenderSemanticModel::Packet(model) => {
             BuiltinFamilyArtifact::Packet(prepare_pair(model, |model| {
