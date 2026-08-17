@@ -133,6 +133,7 @@ pub(super) fn sanitize_css_value_with_checkpoints<E>(
     .ok())
 }
 
+#[cfg(test)]
 pub(in crate::svg::pipeline) fn validate_resvg_css_stylesheet(
     css: &str,
 ) -> std::result::Result<(), String> {
@@ -150,6 +151,7 @@ pub(in crate::svg::pipeline) fn validate_resvg_css_stylesheet_with_checkpoints<E
     .map_err(CssValidationError::Invalid)
 }
 
+#[cfg(test)]
 pub(in crate::svg::pipeline) fn validate_resvg_css_declaration_list(
     css: &str,
 ) -> std::result::Result<(), String> {
@@ -462,6 +464,7 @@ impl<'i> QualifiedRuleParser<'i> for ResvgCssRuleParser<'_, '_> {
     }
 }
 
+#[cfg(test)]
 fn process_stylesheet(css: &str, mode: CssProcessingMode) -> std::result::Result<String, String> {
     let mut probe = || true;
     let mut control = CssParseControl::new(&mut probe);

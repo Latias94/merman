@@ -47,6 +47,7 @@ class ResourceLimitId(str):
     MAX_SVG_CONVERSION_SUBROOTS: ClassVar[ResourceLimitId]
     MAX_NESTED_SVG_IMAGES: ClassVar[ResourceLimitId]
     SVG_BACKEND_TREE_NODES: ClassVar[ResourceLimitId]
+    SVG_BACKEND_TREE_DEPTH: ClassVar[ResourceLimitId]
     known_values: ClassVar[Tuple[ResourceLimitId, ...]]
 
     def __new__(cls, value: str) -> ResourceLimitId:
@@ -110,6 +111,7 @@ ResourceLimitId.MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES = ResourceLimitId("ma
 ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS = ResourceLimitId("max_svg_conversion_subroots")
 ResourceLimitId.MAX_NESTED_SVG_IMAGES = ResourceLimitId("max_nested_svg_images")
 ResourceLimitId.SVG_BACKEND_TREE_NODES = ResourceLimitId("svg_backend_tree_nodes")
+ResourceLimitId.SVG_BACKEND_TREE_DEPTH = ResourceLimitId("svg_backend_tree_depth")
 
 RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_SOURCE_BYTES,
@@ -140,6 +142,7 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS,
     ResourceLimitId.MAX_NESTED_SVG_IMAGES,
     ResourceLimitId.SVG_BACKEND_TREE_NODES,
+    ResourceLimitId.SVG_BACKEND_TREE_DEPTH,
 )
 ResourceLimitId.known_values = RESOURCE_LIMIT_IDS
 _RESOURCE_LIMIT_BY_ID = {limit.id: limit for limit in RESOURCE_LIMIT_IDS}
@@ -172,6 +175,7 @@ _RESOURCE_LIMIT_METADATA = {
     "max_svg_conversion_subroots": ("svg_conversion", False, 1),
     "max_nested_svg_images": ("svg_conversion", False, 1),
     "svg_backend_tree_nodes": ("svg_conversion", False, 1),
+    "svg_backend_tree_depth": ("svg_conversion", False, 1),
 }
 
 class ResourceOverrideId(str, Enum):

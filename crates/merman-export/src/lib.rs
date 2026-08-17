@@ -114,6 +114,9 @@ impl ExportError {
                     merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID => {
                         merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID
                     }
+                    merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID => {
+                        merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID
+                    }
                     _ => return None,
                 };
                 (limit_id, "svg_conversion", *actual, *max)
@@ -298,7 +301,7 @@ const PDF_RESOURCE_LIMIT_DESCRIPTORS: [ExportResourceLimitDescriptor; 1] =
 // These are backend recursion guards, not caller policy knobs. They remain active for the
 // trusted-input profile and are exposed only so resource failures have discoverable stable IDs.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-const SVG_CONVERSION_HARD_CAP_DESCRIPTORS: [ExportResourceLimitDescriptor; 6] = [
+const SVG_CONVERSION_HARD_CAP_DESCRIPTORS: [ExportResourceLimitDescriptor; 7] = [
     ExportResourceLimitDescriptor {
         stable_id: MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID,
         phase: "svg_conversion",
@@ -343,6 +346,14 @@ const SVG_CONVERSION_HARD_CAP_DESCRIPTORS: [ExportResourceLimitDescriptor; 6] = 
         stable_id: merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
         phase: "svg_conversion",
         description: "Maximum SVG backend tree nodes accepted by native export",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ExportResourceLimitDescriptor {
+        stable_id: merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
+        phase: "svg_conversion",
+        description: "Maximum SVG backend tree depth accepted by native export",
         overridable: false,
         hard_cap: true,
         minimum_value: 1,
@@ -433,6 +444,9 @@ pub fn export_resource_profile_value(
         MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID => DEFAULT_MAX_NESTED_SVG_IMAGES,
         merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID => {
             merman_render::resources::MAX_RESVG_TREE_NODES
+        }
+        merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID => {
+            merman_render::resources::MAX_RESVG_TREE_DEPTH
         }
         _ => return None,
     };
@@ -2888,8 +2902,7 @@ mod png_feature_tests {
         assert!(prepared_error.resource_limit_details().is_none());
 
         let bytes_error = svg_to_png_controlled(&svg, &RasterOptions::default(), control)
-            .err()
-            .expect("pre-cancelled encoding must fail");
+            .expect_err("pre-cancelled encoding must fail");
         assert!(matches!(
             bytes_error,
             ExportError::Cancelled(OperationCancelled {
@@ -2909,8 +2922,7 @@ mod png_feature_tests {
 
         let error = prepared
             .encode_png()
-            .err()
-            .expect("cancelled encoding must not return bytes");
+            .expect_err("cancelled encoding must not return bytes");
         assert!(matches!(
             error,
             ExportError::Cancelled(OperationCancelled {
@@ -2952,8 +2964,7 @@ mod jpeg_feature_tests {
         control.cancel();
 
         let error = svg_to_jpeg_controlled(&svg, &RasterOptions::default(), control)
-            .err()
-            .expect("pre-cancelled JPEG encoding must fail");
+            .expect_err("pre-cancelled JPEG encoding must fail");
         assert!(matches!(
             error,
             ExportError::Cancelled(OperationCancelled {
@@ -3055,8 +3066,7 @@ mod pdf_feature_tests {
         assert!(prepared_error.resource_limit_details().is_none());
 
         let bytes_error = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)
-            .err()
-            .expect("pre-cancelled PDF encoding must fail");
+            .expect_err("pre-cancelled PDF encoding must fail");
         assert!(matches!(
             bytes_error,
             ExportError::Cancelled(OperationCancelled {

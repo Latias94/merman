@@ -1,4 +1,6 @@
-use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
+use super::pipeline::{
+    ScopedCssPostprocessor, SvgPipeline, SvgPostprocessExecution, SvgPostprocessMetadata,
+};
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 #[cfg(feature = "layout-cytoscape")]
 use crate::model::ArchitectureDiagramLayout;
@@ -701,7 +703,10 @@ fn apply_theme_css(
         return Ok(svg);
     };
 
-    let metadata = SvgPostprocessMetadata::from_svg(&svg);
+    let metadata = SvgPostprocessMetadata::from_svg_with_execution(
+        &svg,
+        SvgPostprocessExecution::new(session),
+    )?;
     let pipeline = SvgPipeline::parity()
         .with_postprocessor(ScopedCssPostprocessor::new(theme_css).with_existing_style_merge());
     pipeline.process_to_string_with_metadata(&svg, &metadata, session)

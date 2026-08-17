@@ -6,7 +6,8 @@ use crate::presentation::{
 };
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
-    ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
+    ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessExecution,
+    SvgPostprocessMetadata, SvgRenderOptions,
 };
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
@@ -697,7 +698,7 @@ impl RenderedFamilySvg {
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        let output_metadata = self.output_metadata();
+        let output_metadata = self.output_metadata()?;
         self.svg = pipeline.process_owned_to_string_with_metadata(
             self.svg,
             &output_metadata,
@@ -713,7 +714,7 @@ impl RenderedFamilySvg {
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
         self.session.checkpoint(OperationPhase::Export)?;
-        let output_metadata = self.output_metadata();
+        let output_metadata = self.output_metadata()?;
         let svg = pipeline.process_owned_resvg_compatible_with_metadata(
             self.svg,
             &output_metadata,
@@ -731,11 +732,15 @@ impl RenderedFamilySvg {
         })
     }
 
-    fn output_metadata(&self) -> SvgPostprocessMetadata {
-        SvgPostprocessMetadata::from_svg(&self.svg)
+    fn output_metadata(&self) -> Result<SvgPostprocessMetadata> {
+        let metadata = SvgPostprocessMetadata::from_svg_with_execution(
+            &self.svg,
+            SvgPostprocessExecution::new(&self.session),
+        )?;
+        Ok(metadata
             .with_family_kind(self.family_kind)
             .with_diagram_type(self.metadata.diagram_type.clone())
-            .with_optional_diagram_title(self.metadata.title.clone())
+            .with_optional_diagram_title(self.metadata.title.clone()))
     }
 
     pub fn into_parts(self) -> (String, RenderFamilyKind, ParseMetadata, RenderSession) {
@@ -1676,6 +1681,32 @@ mod tests {
             panic!("expected final SVG admission cancellation");
         };
         assert_eq!(error.phase, OperationPhase::Emit);
+    }
+
+    #[test]
+    fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .expect("parse info diagram")
+            .expect("detect info diagram");
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .expect("begin render session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare info diagram")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render info diagram");
+
+        control.cancel();
+        let error = rendered
+            .output_metadata()
+            .expect_err("metadata extraction must observe the artifact session control");
+
+        let Error::Cancelled(cancelled) = error else {
+            panic!("expected structured postprocess cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
     }
 
     fn text_measurement_call_count(session: &RenderSession) -> u64 {

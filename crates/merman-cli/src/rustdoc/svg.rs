@@ -1,29 +1,22 @@
 use crate::error::CliError;
 use crate::markdown::MarkdownFenceLocation;
-use crate::resources::ResolvedResourcePolicy;
 use std::path::Path;
 
 pub(super) fn prepare_static_svg(
     svg: &str,
     source_path: &Path,
     location: MarkdownFenceLocation,
-    resources: &ResolvedResourcePolicy,
+    session: &merman_render::environment::RenderSession,
     control: &merman::OperationControl,
 ) -> Result<String, CliError> {
     crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
-    let limits = resources.render_policy();
-    merman_render::svg::validate_static_inline_svg_admission(svg, limits)
+    merman_render::svg::validate_static_inline_svg_admission(svg, session)
         .map_err(|error| svg_content_error(source_path, location, error))?;
-    let session = merman_render::environment::RenderEnvironment::deterministic()
-        .with_resource_policy(limits)
-        .begin_session_with_control(control.clone())
-        .map_err(merman::RenderError::from)
-        .map_err(CliError::from)?;
     let output = merman_render::svg::SvgPipeline::parity()
         .with_postprocessor(merman_render::svg::ForeignObjectFallbackPostprocessor)
         .with_postprocessor(merman_render::svg::SanitizeCssPostprocessor)
         .with_postprocessor(merman_render::svg::SanitizeSvgAttributesPostprocessor)
-        .process_to_string(svg, &session)
+        .process_to_string(svg, session)
         .map_err(|error| svg_content_error(source_path, location, error))?;
     crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
     Ok(output)
@@ -33,16 +26,13 @@ pub(super) fn validate_static_svg(
     svg: &str,
     source_path: &Path,
     location: MarkdownFenceLocation,
-    limits: merman_render::RenderResourcePolicy,
-    control: &merman::OperationControl,
+    session: &merman_render::environment::RenderSession,
 ) -> Result<(), CliError> {
-    crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
-    merman_render::svg::validate_static_inline_svg(svg, limits)
-        .map_err(|error| svg_content_error(source_path, location, error))?;
-    crate::operation::checkpoint(control, merman::OperationPhase::Emit)
+    merman_render::svg::validate_static_inline_svg(svg, session)
+        .map_err(|error| svg_content_error(source_path, location, error))
 }
 
-fn svg_content_error(
+pub(super) fn svg_content_error(
     source_path: &Path,
     location: MarkdownFenceLocation,
     error: merman_render::Error,
@@ -76,6 +66,7 @@ fn content_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::ResolvedResourcePolicy;
 
     fn resources() -> ResolvedResourcePolicy {
         ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
@@ -88,18 +79,15 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Safe label</div></foreignObject></svg>"#;
 
         let control = merman::OperationControl::new();
-        let output = prepare_static_svg(svg, source, location, &resources(), &control).unwrap();
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(resources().render_policy())
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let output = prepare_static_svg(svg, source, location, &session, &control).unwrap();
 
         assert!(output.contains("Safe label"), "{output}");
         assert!(!output.contains("foreignObject"), "{output}");
-        validate_static_svg(
-            &output,
-            source,
-            location,
-            resources().render_policy(),
-            &control,
-        )
-        .unwrap();
+        validate_static_svg(&output, source, location, &session).unwrap();
     }
 
     #[test]
@@ -132,12 +120,17 @@ mod tests {
         ];
 
         for (svg, expected) in cases {
+            let control = merman::OperationControl::new();
+            let session = merman_render::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(resources().render_policy())
+                .begin_session_with_control(control.clone())
+                .unwrap();
             let error = prepare_static_svg(
                 svg,
                 Path::new("docs.md"),
                 MarkdownFenceLocation { line: 7, column: 3 },
-                &resources(),
-                &merman::OperationControl::new(),
+                &session,
+                &control,
             )
             .unwrap_err();
 

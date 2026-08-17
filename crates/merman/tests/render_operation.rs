@@ -300,6 +300,109 @@ fn svg_request_cancellation_is_not_reported_as_a_resource_limit() {
     assert!(matches!(error, RenderError::Cancelled(_)));
 }
 
+#[cfg(feature = "svg")]
+#[test]
+fn svg_backend_errors_use_canonical_render_error_classification() {
+    let cancelled = merman::OperationCancelled {
+        phase: OperationPhase::Emit,
+        reason: merman::CancelReason::Requested,
+    };
+    let error = RenderError::from(merman::svg::RenderError::Cancelled(cancelled));
+    assert!(matches!(error, RenderError::Cancelled(actual) if actual == cancelled));
+
+    let policy = merman::svg::RenderResourcePolicy::interactive()
+        .with_limit(merman::svg::ResourceLimitId::MaxSvgBytes, 1)
+        .expect("max SVG bytes is overridable");
+    let resource = policy
+        .check_svg_bytes("<svg/>", merman::svg::ResourceLimitPhase::SvgOutput)
+        .expect_err("the backend policy should reject the oversized SVG");
+    let error = RenderError::from(merman::svg::RenderError::ResourceLimitExceeded(resource));
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_svg_bytes"
+                && limit.phase == "svg_output"
+                && limit.actual == 6
+                && limit.maximum == 1
+                && limit.cause == merman::ResourceLimitCause::Ceiling
+    ));
+
+    let error = RenderError::from(merman::svg::RenderError::SvgPostprocess {
+        pass: "test".to_string(),
+        message: "backend failure".to_string(),
+    });
+    assert!(matches!(
+        error,
+        RenderError::Svg(merman::svg::RenderError::SvgPostprocess { .. })
+    ));
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn export_backend_errors_use_canonical_render_error_classification() {
+    let cancelled = merman::OperationCancelled {
+        phase: OperationPhase::Export,
+        reason: merman::CancelReason::Requested,
+    };
+    let error = RenderError::from(merman::svg::export::ExportError::Cancelled(cancelled));
+    assert!(matches!(error, RenderError::Cancelled(actual) if actual == cancelled));
+
+    let error = RenderError::from(merman::svg::export::ExportError::EmbeddedImageLimit {
+        limit_name: "max_bytes_per_image",
+        actual: 2,
+        max: 1,
+    });
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id
+                == merman::svg::export::MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID
+                && limit.phase == "embedded_image_decode"
+                && limit.actual == 2
+                && limit.maximum == 1
+                && limit.cause == merman::ResourceLimitCause::Ceiling
+    ));
+
+    let error = RenderError::from(merman::svg::export::ExportError::SvgParse);
+    assert!(matches!(
+        error,
+        RenderError::Export(merman::svg::export::ExportError::SvgParse)
+    ));
+
+    let error = RenderError::from(merman::svg::export::ExportError::SvgConversionLimit {
+        limit_name: "svg_backend_tree_depth",
+        actual: 2,
+        max: 1,
+    });
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "svg_backend_tree_depth"
+                && limit.phase == "svg_conversion"
+                && limit.actual == 2
+                && limit.maximum == 1
+    ));
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn ascii_backend_errors_use_canonical_render_error_classification() {
+    let cancelled = merman::OperationCancelled {
+        phase: OperationPhase::Layout,
+        reason: merman::CancelReason::Requested,
+    };
+    let error = RenderError::from(merman::ascii::AsciiError::Cancelled(cancelled));
+    assert!(matches!(error, RenderError::Cancelled(actual) if actual == cancelled));
+
+    let error = RenderError::from(merman::ascii::AsciiError::UnsupportedDiagram {
+        diagram_type: "test".to_string(),
+    });
+    assert!(matches!(
+        error,
+        RenderError::Ascii(merman::ascii::AsciiError::UnsupportedDiagram { .. })
+    ));
+}
+
 #[cfg(feature = "ascii")]
 #[test]
 fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {

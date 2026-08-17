@@ -9,13 +9,19 @@ use svgtypes::{Length, LengthUnit, NumberListParser};
 
 use super::builtin::attr_sanitize::{is_safe_data_image_url, matches_active_svg_element};
 use super::builtin::css_sanitize::{
-    matches_external_image_function, validate_resvg_css_declaration_list,
-    validate_resvg_css_stylesheet,
+    CssValidationError, matches_external_image_function,
+    validate_resvg_css_declaration_list_with_checkpoints,
+    validate_resvg_css_stylesheet_with_checkpoints,
 };
-use super::final_validation::validate_well_formed_svg;
-use super::final_validation::{ReferenceDependencyGraph, plan_svg_reference_dependencies};
-use super::{is_css_value_attribute, is_svg_idref_attribute};
+use super::final_validation::{
+    ReferenceDependencyGraph, ReferencePlanningError,
+    plan_svg_reference_dependencies_with_checkpoints, validate_well_formed_svg_with_execution,
+};
+use super::{
+    SvgPostprocessExecution, checkpoint_loop, is_css_value_attribute, is_svg_idref_attribute,
+};
 use crate::svg::parity::{C4_EXTERNAL_PERSON_IMG, C4_PERSON_IMG};
+use std::cell::{Cell, RefCell};
 
 const STATIC_VALIDATION_PASS: &str = "validate-static-inline-svg";
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
@@ -25,24 +31,35 @@ const CSS_NESTING_HARD_LIMIT: u8 = 64;
 const ROOT_DIMENSION_HARD_LIMIT_PX: f64 = 1_000_000.0;
 const SVG_BYTES_PER_ROOT_PIXEL: usize = 16;
 
-pub(super) fn validate_rustdoc_static_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
-    validate_well_formed_svg(svg, limits)?;
-    validate(svg, ForeignObjectPolicy::Reject, CssStage::Final, limits)
-        .map_err(static_validation_error)
+pub(super) fn validate_rustdoc_static_svg(
+    svg: &str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    admit_svg_bytes(svg, execution)?;
+    validate_well_formed_svg_with_execution(svg, execution)?;
+    validate(svg, ForeignObjectPolicy::Reject, CssStage::Final, execution)
 }
 
 pub(super) fn validate_rustdoc_admission_svg(
     svg: &str,
-    limits: RenderResourcePolicy,
+    execution: SvgPostprocessExecution<'_>,
 ) -> Result<()> {
-    validate_well_formed_svg(svg, limits)?;
+    admit_svg_bytes(svg, execution)?;
+    validate_well_formed_svg_with_execution(svg, execution)?;
     validate(
         svg,
         ForeignObjectPolicy::AllowSafeXhtml,
         CssStage::Admission,
-        limits,
+        execution,
     )
-    .map_err(static_validation_error)
+}
+
+fn admit_svg_bytes(svg: &str, execution: SvgPostprocessExecution<'_>) -> Result<()> {
+    execution.checkpoint()?;
+    execution
+        .resource_policy()
+        .check_svg_bytes(svg, crate::resources::ResourceLimitPhase::SvgPostprocess)
+        .map_err(Error::from)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -61,42 +78,63 @@ fn validate(
     svg: &str,
     foreign_objects: ForeignObjectPolicy,
     css_stage: CssStage,
-    limits: RenderResourcePolicy,
-) -> std::result::Result<(), String> {
-    let document = roxmltree::Document::parse(svg)
-        .map_err(|error| format!("rendered SVG is not valid XML: {error}"))?;
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    let limits = execution.resource_policy();
+    let mut checkpoint = || execution.checkpoint();
+    checkpoint()?;
+    let document = roxmltree::Document::parse(svg).map_err(|error| {
+        static_validation_error(format!("rendered SVG is not valid XML: {error}"))
+    })?;
+    checkpoint()?;
     let root = document.root_element();
     if !root.tag_name().name().eq_ignore_ascii_case("svg") {
-        return Err("rendered document root is not <svg>".to_string());
+        return Err(static_validation_error(
+            "rendered document root is not <svg>",
+        ));
     }
     let root_id = unnamespaced_attribute(root, "id");
     let root_dimension_limit = root_dimension_limit(limits);
 
     let mut ids = BTreeSet::new();
-    for node in document.descendants().filter(roxmltree::Node::is_element) {
+    for (iteration, node) in document
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .enumerate()
+    {
+        checkpoint_loop(iteration, &mut checkpoint)?;
         if let Some(id) = unnamespaced_attribute(node, "id") {
             if id.is_empty() {
-                return Err("rendered SVG contains an empty id".to_string());
+                return Err(static_validation_error("rendered SVG contains an empty id"));
             }
             if !ids.insert(id.to_string()) {
-                return Err(format!("rendered SVG contains duplicate id {id:?}"));
+                return Err(static_validation_error(format!(
+                    "rendered SVG contains duplicate id {id:?}"
+                )));
             }
         }
     }
 
-    for node in document.descendants().filter(roxmltree::Node::is_element) {
+    let mut attribute_iteration = 0usize;
+    for (node_iteration, node) in document
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .enumerate()
+    {
+        checkpoint_loop(node_iteration, &mut checkpoint)?;
         let element = node.tag_name().name();
         let namespace = node.tag_name().namespace();
+        let inside_foreign_object = is_inside_svg_foreign_object(node, execution)?;
         let safe_xhtml = foreign_objects == ForeignObjectPolicy::AllowSafeXhtml
             && namespace == Some(XHTML_NAMESPACE)
-            && is_inside_svg_foreign_object(node);
+            && inside_foreign_object;
         if !safe_xhtml
             && let Some(namespace) = namespace
             && namespace != SVG_NAMESPACE
         {
-            return Err(format!(
+            return Err(static_validation_error(format!(
                 "rendered SVG contains non-SVG element <{element}> in namespace {namespace:?}"
-            ));
+            )));
         }
         let allowed_foreign_object = foreign_objects == ForeignObjectPolicy::AllowSafeXhtml
             && element.eq_ignore_ascii_case("foreignObject")
@@ -106,123 +144,157 @@ fn validate(
                 .is_none_or(|namespace| namespace == SVG_NAMESPACE);
         if element.eq_ignore_ascii_case("base")
             || (matches_active_svg_element(element) && !allowed_foreign_object)
-            || (is_inside_svg_foreign_object(node) && is_forbidden_xhtml_element(element))
+            || (inside_foreign_object && is_forbidden_xhtml_element(element))
         {
-            return Err(format!(
+            return Err(static_validation_error(format!(
                 "rendered SVG contains forbidden <{element}> content"
-            ));
+            )));
         }
         if safe_xhtml {
             if !is_allowed_static_xhtml_element(element) {
-                return Err(format!(
+                return Err(static_validation_error(format!(
                     "rendered SVG contains forbidden XHTML element <{element}>"
-                ));
+                )));
             }
         } else if !is_allowed_static_svg_element(element) {
-            return Err(format!(
+            return Err(static_validation_error(format!(
                 "rendered SVG contains unsupported SVG element <{element}>"
-            ));
+            )));
         }
 
         for attribute in node.attributes() {
+            checkpoint_loop(attribute_iteration, &mut checkpoint)?;
+            attribute_iteration = attribute_iteration.saturating_add(1);
             let name = attribute.name();
             let value = attribute.value();
             if node == root && attribute.namespace().is_none() {
                 if matches!(name.to_ascii_lowercase().as_str(), "width" | "height") {
-                    validate_root_dimension(name, value, root_dimension_limit)?;
+                    validate_root_layout_value_with_checkpoint(
+                        || validate_root_dimension(name, value, root_dimension_limit),
+                        &mut checkpoint,
+                    )?;
                 } else if name.eq_ignore_ascii_case("viewBox") {
-                    validate_root_view_box(value, root_dimension_limit)?;
+                    validate_root_layout_value_with_checkpoint(
+                        || validate_root_view_box(value, root_dimension_limit),
+                        &mut checkpoint,
+                    )?;
                 }
             }
             if name.eq_ignore_ascii_case("base") {
-                return Err(format!(
+                return Err(static_validation_error(format!(
                     "rendered SVG contains forbidden base attribute {name:?}"
-                ));
+                )));
             }
             if is_event_attribute(name) {
-                return Err(format!("rendered SVG contains event attribute {name:?}"));
+                return Err(static_validation_error(format!(
+                    "rendered SVG contains event attribute {name:?}"
+                )));
             }
             if is_forbidden_embedding_attribute(name)
-                || (is_inside_svg_foreign_object(node) && is_forbidden_xhtml_attribute(name))
+                || (inside_foreign_object && is_forbidden_xhtml_attribute(name))
             {
-                return Err(format!(
+                return Err(static_validation_error(format!(
                     "rendered SVG contains forbidden embedding attribute {name:?}"
-                ));
+                )));
             }
             if name.eq_ignore_ascii_case("href") {
                 if let Some(namespace) = attribute.namespace()
                     && namespace != XLINK_NAMESPACE
                 {
-                    return Err(format!(
+                    return Err(static_validation_error(format!(
                         "rendered SVG contains href in unsupported namespace {namespace:?}"
-                    ));
+                    )));
                 }
-                validate_href(element, value, &ids)?;
+                validate_href(element, value, &ids, execution)?;
             }
             if is_svg_idref_attribute(name) {
-                validate_idrefs(name, value, &ids)?;
+                validate_idrefs(name, value, &ids, execution)?;
             }
             if matches!(
                 name.to_ascii_lowercase().as_str(),
                 "src" | "data" | "poster"
             ) && !value.trim().is_empty()
             {
-                return Err(format!(
+                return Err(static_validation_error(format!(
                     "rendered SVG contains external resource attribute {name:?}"
-                ));
+                )));
             }
             if is_css_value_attribute(name) {
-                validate_css(value, &ids, false)?;
+                validate_css(value, &ids, false, execution)?;
                 if node == root && name.eq_ignore_ascii_case("style") {
-                    validate_root_layout_declaration_text(value, root_dimension_limit)?;
+                    validate_root_layout_declaration_text(value, root_dimension_limit, execution)?;
                 }
                 if css_stage == CssStage::Final && name.eq_ignore_ascii_case("style") {
-                    validate_resvg_css_declaration_list(value).map_err(|error| {
-                        format!("rendered SVG contains non-static CSS declarations: {error}")
-                    })?;
+                    validate_resvg_css_declaration_list_with_checkpoints(value, &mut checkpoint)
+                        .map_err(|error| {
+                            map_controlled_css_error(error, |message| {
+                                format!(
+                                    "rendered SVG contains non-static CSS declarations: {message}"
+                                )
+                            })
+                        })?;
                 }
             }
         }
 
         if element.eq_ignore_ascii_case("style") {
             let mut css = String::new();
-            for child in node.children() {
+            for (child_iteration, child) in node.children().enumerate() {
+                checkpoint_loop(child_iteration, &mut checkpoint)?;
                 if let Some(text) = child.text() {
+                    checkpoint()?;
                     css.push_str(text);
+                    checkpoint()?;
                 }
             }
-            validate_css(&css, &ids, true)?;
-            let root_id = root_id
-                .ok_or_else(|| "rendered SVG with embedded CSS must have a root id".to_string())?;
+            validate_css(&css, &ids, true, execution)?;
+            let root_id = root_id.ok_or_else(|| {
+                static_validation_error("rendered SVG with embedded CSS must have a root id")
+            })?;
             validate_stylesheet_scope(
                 &css,
                 root_id,
                 css_stage == CssStage::Admission,
                 root_dimension_limit,
+                execution,
             )?;
             if css_stage == CssStage::Final {
-                validate_resvg_css_stylesheet(&css)
-                    .map_err(|error| format!("rendered SVG contains non-static CSS: {error}"))?;
+                validate_resvg_css_stylesheet_with_checkpoints(&css, &mut checkpoint).map_err(
+                    |error| {
+                        map_controlled_css_error(error, |message| {
+                            format!("rendered SVG contains non-static CSS: {message}")
+                        })
+                    },
+                )?;
             }
         }
     }
-    validate_browser_reference_expansion(&document, limits)?;
-    Ok(())
+    validate_browser_reference_expansion(&document, execution)?;
+    checkpoint()
 }
 
 fn validate_browser_reference_expansion(
     document: &roxmltree::Document<'_>,
-    limits: RenderResourcePolicy,
-) -> std::result::Result<(), String> {
-    let elements = document
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    let mut checkpoint = || execution.checkpoint();
+    checkpoint()?;
+    let mut elements = Vec::new();
+    for (iteration, node) in document
         .descendants()
         .filter(roxmltree::Node::is_element)
-        .collect::<Vec<_>>();
+        .enumerate()
+    {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        elements.push(node);
+    }
+    checkpoint()?;
     let mut indices = HashMap::with_capacity(elements.len());
     let mut ids = HashMap::new();
     let mut dependencies = vec![Vec::new(); elements.len()];
 
     for (index, node) in elements.iter().copied().enumerate() {
+        checkpoint_loop(index, &mut checkpoint)?;
         indices.insert(node.id(), index);
         if let Some(id) = unnamespaced_attribute(node, "id") {
             ids.insert(id, index);
@@ -235,6 +307,7 @@ fn validate_browser_reference_expansion(
     }
 
     for (index, node) in elements.iter().copied().enumerate() {
+        checkpoint_loop(index, &mut checkpoint)?;
         if !node.tag_name().name().eq_ignore_ascii_case("use")
             || node
                 .tag_name()
@@ -254,10 +327,18 @@ fn validate_browser_reference_expansion(
     }
 
     let graph = ReferenceDependencyGraph::new(dependencies, elements.len());
-    let plan = plan_svg_reference_dependencies(&graph)?;
-    limits
-        .check_svg_structure(plan.expanded_elements(), plan.max_tree_depth())
-        .map_err(|error| error.to_string())
+    let plan = match plan_svg_reference_dependencies_with_checkpoints(&graph, &mut checkpoint) {
+        Ok(plan) => plan,
+        Err(ReferencePlanningError::Invalid(error)) => {
+            return Err(static_validation_error(error));
+        }
+        Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
+    };
+    checkpoint()?;
+    execution
+        .resource_policy()
+        .check_svg_structure(plan.expanded_elements(), plan.max_tree_depth())?;
+    checkpoint()
 }
 
 fn unnamespaced_attribute<'a, 'input>(
@@ -269,9 +350,14 @@ fn unnamespaced_attribute<'a, 'input>(
         .map(|attribute| attribute.value())
 }
 
-fn is_inside_svg_foreign_object(node: roxmltree::Node<'_, '_>) -> bool {
-    node.ancestors().any(|ancestor| {
-        ancestor.is_element()
+fn is_inside_svg_foreign_object(
+    node: roxmltree::Node<'_, '_>,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<bool> {
+    let mut checkpoint = || execution.checkpoint();
+    for (iteration, ancestor) in node.ancestors().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if ancestor.is_element()
             && ancestor
                 .tag_name()
                 .name()
@@ -280,7 +366,11 @@ fn is_inside_svg_foreign_object(node: roxmltree::Node<'_, '_>) -> bool {
                 .tag_name()
                 .namespace()
                 .is_none_or(|namespace| namespace == SVG_NAMESPACE)
-    })
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn is_event_attribute(name: &str) -> bool {
@@ -466,38 +556,49 @@ fn validate_href(
     element: &str,
     value: &str,
     ids: &BTreeSet<String>,
-) -> std::result::Result<(), String> {
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    let mut checkpoint = || execution.checkpoint();
+    checkpoint()?;
     let value = value.trim();
     if let Some(target) = value.strip_prefix('#') {
-        return require_local_target(target, ids, "href");
+        return require_local_target(target, ids, "href").map_err(static_validation_error);
     }
 
     if matches!(element.to_ascii_lowercase().as_str(), "image" | "feimage")
-        && value.to_ascii_lowercase().starts_with("data:")
+        && value
+            .get(..5)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
     {
-        return validate_inline_raster(value);
+        checkpoint()?;
+        let result = validate_inline_raster(value).map_err(static_validation_error);
+        checkpoint()?;
+        return result;
     }
 
     if !element.eq_ignore_ascii_case("a") {
-        return Err(format!(
+        return Err(static_validation_error(format!(
             "rendered <{element}> references a non-local resource {value:?}"
-        ));
+        )));
     }
 
-    let compact = value
-        .chars()
-        .filter(|character| !character.is_ascii_control() && !character.is_ascii_whitespace())
-        .flat_map(char::to_lowercase)
-        .collect::<String>();
+    let mut compact = String::with_capacity(value.len());
+    for (iteration, character) in value.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if !character.is_ascii_control() && !character.is_ascii_whitespace() {
+            compact.extend(character.to_lowercase());
+        }
+    }
+    checkpoint()?;
     if compact.starts_with("javascript:")
         || compact.starts_with("vbscript:")
         || compact.starts_with("data:")
         || compact.starts_with("file:")
         || compact.starts_with("//")
     {
-        return Err(format!(
+        return Err(static_validation_error(format!(
             "rendered SVG contains unsafe navigation href {value:?}"
-        ));
+        )));
     }
     Ok(())
 }
@@ -530,27 +631,34 @@ fn validate_idrefs(
     attribute: &str,
     value: &str,
     ids: &BTreeSet<String>,
-) -> std::result::Result<(), String> {
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    let mut checkpoint = || execution.checkpoint();
+    checkpoint()?;
     let mut references = value.split_ascii_whitespace().peekable();
     if references.peek().is_none() {
-        return Err(format!(
+        return Err(static_validation_error(format!(
             "rendered SVG contains an empty {attribute} reference"
-        ));
+        )));
     }
-    for reference in references {
-        require_local_target(reference, ids, attribute)?;
+    for (iteration, reference) in references.enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        require_local_target(reference, ids, attribute).map_err(static_validation_error)?;
     }
-    Ok(())
+    checkpoint()
 }
 
 fn validate_css(
     css: &str,
     ids: &BTreeSet<String>,
     stylesheet: bool,
-) -> std::result::Result<(), String> {
-    let mut input = ParserInput::new(css);
-    let mut parser = Parser::new(&mut input);
-    validate_css_parser(&mut parser, ids, stylesheet, 0)
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    run_css_validation(execution, |control| {
+        let mut input = ParserInput::new(css);
+        let mut parser = Parser::new(&mut input);
+        validate_css_parser(&mut parser, ids, stylesheet, 0, control)
+    })
 }
 
 fn validate_stylesheet_scope(
@@ -558,22 +666,92 @@ fn validate_stylesheet_scope(
     root_id: &str,
     allow_discardable_animation: bool,
     root_dimension_limit: f64,
-) -> std::result::Result<(), String> {
-    let mut input = ParserInput::new(css);
-    let mut input = Parser::new(&mut input);
-    validate_scoped_rule_list(
-        &mut input,
-        root_id,
-        0,
-        allow_discardable_animation,
-        root_dimension_limit,
-    )
-    .map_err(|error| match error.kind {
-        ParseErrorKind::Custom(message) => message,
-        ParseErrorKind::Basic(error) => {
-            format!("rendered SVG contains invalid scoped CSS: {error}")
-        }
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    run_css_validation(execution, |control| {
+        let mut input = ParserInput::new(css);
+        let mut input = Parser::new(&mut input);
+        validate_scoped_rule_list(
+            &mut input,
+            root_id,
+            0,
+            allow_discardable_animation,
+            root_dimension_limit,
+            control,
+        )
+        .map_err(|error| match error.kind {
+            ParseErrorKind::Custom(message) => message,
+            ParseErrorKind::Basic(error) => {
+                format!("rendered SVG contains invalid scoped CSS: {error}")
+            }
+        })
     })
+}
+
+struct StaticCssControl<'a> {
+    execution: SvgPostprocessExecution<'a>,
+    iterations: Cell<usize>,
+    error: RefCell<Option<Error>>,
+}
+
+impl<'a> StaticCssControl<'a> {
+    fn new(execution: SvgPostprocessExecution<'a>) -> Self {
+        Self {
+            execution,
+            iterations: Cell::new(0),
+            error: RefCell::new(None),
+        }
+    }
+
+    fn observe(&self) -> bool {
+        if self.error.borrow().is_some() {
+            return false;
+        }
+        let iteration = self.iterations.get();
+        self.iterations.set(iteration.saturating_add(1));
+        if iteration & 63 != 0 {
+            return true;
+        }
+        match self.execution.checkpoint() {
+            Ok(()) => true,
+            Err(error) => {
+                self.error.replace(Some(error));
+                false
+            }
+        }
+    }
+
+    fn take_error(&self) -> Option<Error> {
+        self.error.borrow_mut().take()
+    }
+}
+
+fn run_css_validation<T>(
+    execution: SvgPostprocessExecution<'_>,
+    validate: impl FnOnce(&StaticCssControl<'_>) -> std::result::Result<T, String>,
+) -> Result<T> {
+    execution.checkpoint()?;
+    let control = StaticCssControl::new(execution);
+    let result = validate(&control);
+    if let Some(error) = control.take_error() {
+        return Err(error);
+    }
+    execution.checkpoint()?;
+    result.map_err(static_validation_error)
+}
+
+fn css_checkpoint(control: &StaticCssControl<'_>) -> std::result::Result<(), String> {
+    control
+        .observe()
+        .then_some(())
+        .ok_or_else(|| "static SVG CSS validation was interrupted".to_string())
+}
+
+fn css_parse_checkpoint<'i, 't>(
+    input: &Parser<'i, 't>,
+    control: &StaticCssControl<'_>,
+) -> std::result::Result<(), ParseError<'i, String>> {
+    css_checkpoint(control).map_err(|message| input.new_custom_error(message))
 }
 
 #[derive(Clone, Copy)]
@@ -582,14 +760,15 @@ enum ScopedAtRule {
     DiscardableAnimation,
 }
 
-struct ScopedRuleParser<'a> {
-    root_id: &'a str,
+struct ScopedRuleParser<'root, 'control, 'execution> {
+    root_id: &'root str,
     nesting: u8,
     allow_discardable_animation: bool,
     root_dimension_limit: f64,
+    control: &'control StaticCssControl<'execution>,
 }
 
-impl<'i> AtRuleParser<'i> for ScopedRuleParser<'_> {
+impl<'i> AtRuleParser<'i> for ScopedRuleParser<'_, '_, '_> {
     type Prelude = ScopedAtRule;
     type AtRule = ();
     type Error = String;
@@ -599,7 +778,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'_> {
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        consume_scoped_css_tokens(input, self.nesting)?;
+        consume_scoped_css_tokens(input, self.nesting, self.control)?;
         if matches!(
             name.to_ascii_lowercase().as_str(),
             "container" | "document" | "layer" | "media" | "scope" | "supports"
@@ -638,15 +817,16 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'_> {
                 self.nesting + 1,
                 self.allow_discardable_animation,
                 self.root_dimension_limit,
+                self.control,
             ),
             ScopedAtRule::DiscardableAnimation => {
-                consume_scoped_css_tokens(input, self.nesting + 1)
+                consume_scoped_css_tokens(input, self.nesting + 1, self.control)
             }
         }
     }
 }
 
-impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'_> {
+impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'_, '_, '_> {
     type Prelude = SelectorScope;
     type QualifiedRule = ();
     type Error = String;
@@ -655,7 +835,7 @@ impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'_> {
         &mut self,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        validate_selector_list_scope(input, self.root_id, self.nesting)
+        validate_selector_list_scope(input, self.root_id, self.nesting, self.control)
     }
 
     fn parse_block<'t>(
@@ -665,9 +845,14 @@ impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'_> {
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
         if prelude.targets_root {
-            validate_root_layout_declarations(input, self.nesting, self.root_dimension_limit)
+            validate_root_layout_declarations(
+                input,
+                self.nesting,
+                self.root_dimension_limit,
+                self.control,
+            )
         } else {
-            consume_scoped_css_tokens(input, self.nesting)
+            consume_scoped_css_tokens(input, self.nesting, self.control)
         }
     }
 }
@@ -683,7 +868,9 @@ fn validate_scoped_rule_list<'i, 't>(
     nesting: u8,
     allow_discardable_animation: bool,
     root_dimension_limit: f64,
+    control: &StaticCssControl<'_>,
 ) -> std::result::Result<(), ParseError<'i, String>> {
+    css_parse_checkpoint(input, control)?;
     if nesting >= CSS_NESTING_HARD_LIMIT {
         return Err(
             input.new_custom_error("rendered SVG CSS exceeds the nesting limit".to_string())
@@ -694,6 +881,7 @@ fn validate_scoped_rule_list<'i, 't>(
         nesting,
         allow_discardable_animation,
         root_dimension_limit,
+        control,
     };
     for rule in StyleSheetParser::new(input, &mut parser) {
         rule.map_err(|(error, _)| error)?;
@@ -705,6 +893,7 @@ fn validate_selector_list_scope<'i, 't>(
     input: &mut Parser<'i, 't>,
     root_id: &str,
     nesting: u8,
+    control: &StaticCssControl<'_>,
 ) -> std::result::Result<SelectorScope, ParseError<'i, String>> {
     let mut expects_root = true;
     let mut saw_root = false;
@@ -712,6 +901,7 @@ fn validate_selector_list_scope<'i, 't>(
     let mut any_targets_root = false;
     let mut pending_descendant = false;
     loop {
+        css_parse_checkpoint(input, control)?;
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
@@ -760,8 +950,9 @@ fn validate_selector_list_scope<'i, 't>(
                     current_targets_root = false;
                     pending_descendant = false;
                 }
-                input
-                    .parse_nested_block(|nested| consume_scoped_css_tokens(nested, nesting + 1))?;
+                input.parse_nested_block(|nested| {
+                    consume_scoped_css_tokens(nested, nesting + 1, control)
+                })?;
             }
             _ if expects_root => {
                 return Err(input.new_custom_error(format!(
@@ -781,42 +972,61 @@ fn validate_selector_list_scope<'i, 't>(
 fn validate_root_layout_declaration_text(
     css: &str,
     root_dimension_limit: f64,
-) -> std::result::Result<(), String> {
-    let mut input = ParserInput::new(css);
-    let mut input = Parser::new(&mut input);
-    validate_root_layout_declarations(&mut input, 0, root_dimension_limit).map_err(|error| {
-        match error.kind {
-            ParseErrorKind::Custom(message) => message,
-            ParseErrorKind::Basic(error) => {
-                format!("rendered SVG contains invalid root CSS: {error}")
-            }
-        }
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    run_css_validation(execution, |control| {
+        let mut input = ParserInput::new(css);
+        let mut input = Parser::new(&mut input);
+        validate_root_layout_declarations(&mut input, 0, root_dimension_limit, control).map_err(
+            |error| match error.kind {
+                ParseErrorKind::Custom(message) => message,
+                ParseErrorKind::Basic(error) => {
+                    format!("rendered SVG contains invalid root CSS: {error}")
+                }
+            },
+        )
     })
+}
+
+fn map_controlled_css_error(
+    error: CssValidationError<Error>,
+    describe: impl FnOnce(String) -> String,
+) -> Error {
+    match error {
+        CssValidationError::Invalid(message) => static_validation_error(describe(message)),
+        CssValidationError::Checkpoint(error) => error,
+    }
 }
 
 fn validate_root_layout_declarations<'i, 't>(
     input: &mut Parser<'i, 't>,
     nesting: u8,
     root_dimension_limit: f64,
+    control: &StaticCssControl<'_>,
 ) -> std::result::Result<(), ParseError<'i, String>> {
+    css_parse_checkpoint(input, control)?;
     if nesting >= CSS_NESTING_HARD_LIMIT {
         return Err(
             input.new_custom_error("rendered SVG CSS exceeds the nesting limit".to_string())
         );
     }
     while !input.is_exhausted() {
+        css_parse_checkpoint(input, control)?;
         input.parse_until_after(cssparser::Delimiter::Semicolon, |declaration| {
+            css_parse_checkpoint(declaration, control)?;
             let property = declaration.expect_ident_cloned()?;
             declaration.expect_colon()?;
             let normalized = property.to_ascii_lowercase();
             if is_root_size_property(&normalized) {
                 let value_start = declaration.position();
-                consume_scoped_css_tokens(declaration, nesting + 1)?;
+                consume_scoped_css_tokens(declaration, nesting + 1, control)?;
+                css_parse_checkpoint(declaration, control)?;
                 let value = declaration.slice_from(value_start).trim().to_string();
+                css_parse_checkpoint(declaration, control)?;
                 validate_root_dimension(&property, &value, root_dimension_limit)
                     .map_err(|message| declaration.new_custom_error(message))?;
             } else if is_allowed_root_presentation_property(&normalized) {
-                consume_scoped_css_tokens(declaration, nesting + 1)?;
+                consume_scoped_css_tokens(declaration, nesting + 1, control)?;
             } else {
                 return Err(declaration
                     .new_custom_error(format!("rendered SVG root layout cannot set {property}")));
@@ -893,6 +1103,16 @@ fn root_dimension_limit(limits: RenderResourcePolicy) -> f64 {
         .clamp(1, ROOT_DIMENSION_HARD_LIMIT_PX as usize) as f64
 }
 
+fn validate_root_layout_value_with_checkpoint(
+    validate: impl FnOnce() -> std::result::Result<(), String>,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    checkpoint()?;
+    let result = validate();
+    checkpoint()?;
+    result.map_err(static_validation_error)
+}
+
 fn validate_root_dimension(
     property: &str,
     value: &str,
@@ -948,13 +1168,16 @@ fn validate_root_view_box(value: &str, limit: f64) -> std::result::Result<(), St
 fn consume_scoped_css_tokens<'i, 't>(
     input: &mut Parser<'i, 't>,
     nesting: u8,
+    control: &StaticCssControl<'_>,
 ) -> std::result::Result<(), ParseError<'i, String>> {
+    css_parse_checkpoint(input, control)?;
     if nesting >= CSS_NESTING_HARD_LIMIT {
         return Err(
             input.new_custom_error("rendered SVG CSS exceeds the nesting limit".to_string())
         );
     }
     loop {
+        css_parse_checkpoint(input, control)?;
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => return Ok(()),
@@ -967,7 +1190,9 @@ fn consume_scoped_css_tokens<'i, 't>(
                 | Token::SquareBracketBlock
                 | Token::CurlyBracketBlock
         ) {
-            input.parse_nested_block(|nested| consume_scoped_css_tokens(nested, nesting + 1))?;
+            input.parse_nested_block(|nested| {
+                consume_scoped_css_tokens(nested, nesting + 1, control)
+            })?;
         }
     }
 }
@@ -977,11 +1202,14 @@ fn validate_css_parser<'i, 't>(
     ids: &BTreeSet<String>,
     stylesheet: bool,
     nesting: u8,
+    control: &StaticCssControl<'_>,
 ) -> std::result::Result<(), String> {
+    css_checkpoint(control)?;
     if nesting >= CSS_NESTING_HARD_LIMIT {
         return Err("rendered SVG CSS exceeds the nesting limit".to_string());
     }
     loop {
+        css_checkpoint(control)?;
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => return Ok(()),
@@ -1002,9 +1230,9 @@ fn validate_css_parser<'i, 't>(
                 input
                     .parse_nested_block(|nested| {
                         if is_url {
-                            validate_quoted_css_url(nested, ids, !stylesheet)
+                            validate_quoted_css_url(nested, ids, !stylesheet, control)
                         } else {
-                            validate_css_parser(nested, ids, stylesheet, nesting + 1)
+                            validate_css_parser(nested, ids, stylesheet, nesting + 1, control)
                         }
                         .map_err(|message| nested.new_custom_error::<String, String>(message))
                     })
@@ -1013,7 +1241,7 @@ fn validate_css_parser<'i, 't>(
             Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock => {
                 input
                     .parse_nested_block(|nested| {
-                        validate_css_parser(nested, ids, stylesheet, nesting + 1)
+                        validate_css_parser(nested, ids, stylesheet, nesting + 1, control)
                             .map_err(|message| nested.new_custom_error::<String, String>(message))
                     })
                     .map_err(|error| nested_css_error(error, "block"))?;
@@ -1039,7 +1267,9 @@ fn validate_quoted_css_url<'i, 't>(
     input: &mut Parser<'i, 't>,
     ids: &BTreeSet<String>,
     require_target: bool,
+    control: &StaticCssControl<'_>,
 ) -> std::result::Result<(), String> {
+    css_checkpoint(control)?;
     let token = input
         .next_including_whitespace_and_comments()
         .map_err(|_| "rendered SVG contains an empty CSS URL".to_string())?
@@ -1092,9 +1322,87 @@ fn static_validation_error(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    fn validate_static_with_limits(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(limits)
+            .begin_session_with_control(OperationControl::new())
+            .unwrap();
+        validate_rustdoc_static_svg(svg, SvgPostprocessExecution::new(&session))
+    }
+
+    fn validate_admission_with_limits(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(limits)
+            .begin_session_with_control(OperationControl::new())
+            .unwrap();
+        validate_rustdoc_admission_svg(svg, SvgPostprocessExecution::new(&session))
+    }
 
     fn validate(svg: &str) -> Result<()> {
-        validate_rustdoc_static_svg(svg, RenderResourcePolicy::trusted_native())
+        validate_static_with_limits(svg, RenderResourcePolicy::trusted_native())
+    }
+
+    #[test]
+    fn static_css_control_preserves_cancellation_at_token_cadence() {
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::trusted_native())
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let css_control = StaticCssControl::new(SvgPostprocessExecution::new(&session));
+
+        assert!(css_control.observe());
+        control.cancel();
+        for _ in 1..64 {
+            assert!(css_control.observe());
+        }
+        assert!(!css_control.observe());
+
+        let Some(Error::Cancelled(cancelled)) = css_control.take_error() else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+        assert_eq!(cancelled.reason, CancelReason::Requested);
+    }
+
+    #[test]
+    fn static_validation_admits_svg_bytes_before_parsing_xml() {
+        let limits = RenderResourcePolicy::trusted_native()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+
+        let error = validate_static_with_limits("<svg>", limits)
+            .expect_err("the byte limit must reject before XML parsing");
+
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+    }
+
+    #[test]
+    fn root_layout_parse_error_yields_to_sticky_cancellation() {
+        let mut checkpoints = 0usize;
+        let error = validate_root_layout_value_with_checkpoint(
+            || validate_root_dimension("width", "not-a-length", 100.0),
+            &mut || {
+                checkpoints = checkpoints.saturating_add(1);
+                if checkpoints == 2 {
+                    Err(Error::Cancelled(merman_core::OperationCancelled {
+                        phase: OperationPhase::Postprocess,
+                        reason: CancelReason::Requested,
+                    }))
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .expect_err("cancellation after parsing must win over the parse error");
+
+        let Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+        assert_eq!(cancelled.reason, CancelReason::Requested);
     }
 
     #[test]
@@ -1186,7 +1494,7 @@ mod tests {
 
     #[test]
     fn admission_rejects_interactive_foreign_object_content() {
-        let error = validate_rustdoc_admission_svg(
+        let error = validate_admission_with_limits(
             r#"<svg><foreignObject><input xmlns="http://www.w3.org/1999/xhtml" autofocus="autofocus"/></foreignObject></svg>"#,
             RenderResourcePolicy::trusted_native(),
         )
@@ -1198,7 +1506,7 @@ mod tests {
     #[test]
     fn rejects_html_foreign_content_breakout_elements_in_svg_namespace() {
         let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
-            [validate_rustdoc_admission_svg, validate_rustdoc_static_svg];
+            [validate_admission_with_limits, validate_static_with_limits];
         for element in ["meta", "div", "img", "input", "button", "p", "span"] {
             let svg = format!(r#"<svg xmlns="{SVG_NAMESPACE}"><{element}/></svg>"#);
             for validator in validators {
@@ -1216,13 +1524,13 @@ mod tests {
 
     #[test]
     fn admission_allows_only_pinned_xhtml_below_foreign_object() {
-        validate_rustdoc_admission_svg(
+        validate_admission_with_limits(
             r#"<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><span>label</span></div></foreignObject></svg>"#,
             RenderResourcePolicy::trusted_native(),
         )
         .unwrap();
 
-        let error = validate_rustdoc_admission_svg(
+        let error = validate_admission_with_limits(
             r#"<svg><foreignObject><marquee xmlns="http://www.w3.org/1999/xhtml">label</marquee></foreignObject></svg>"#,
             RenderResourcePolicy::trusted_native(),
         )
@@ -1241,7 +1549,7 @@ mod tests {
             let svg =
                 format!(r#"<svg><path {attribute}="url(https://tracker.test/a.png)"/></svg>"#);
             let error =
-                validate_rustdoc_admission_svg(&svg, RenderResourcePolicy::trusted_native())
+                validate_admission_with_limits(&svg, RenderResourcePolicy::trusted_native())
                     .expect_err("external background resource");
 
             assert!(error.to_string().contains("non-local CSS URL"), "{error}");
@@ -1252,7 +1560,7 @@ mod tests {
     fn admission_allows_animation_only_for_the_staticization_stage() {
         let svg = r#"<svg id="root"><style>@keyframes dash{to{opacity:0}}#root .edge{animation:dash 1s}</style><path class="edge"/></svg>"#;
 
-        validate_rustdoc_admission_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+        validate_admission_with_limits(svg, RenderResourcePolicy::trusted_native()).unwrap();
         let error = validate(svg).expect_err("final animated CSS");
         assert!(error.to_string().contains("forbidden CSS"), "{error}");
     }
@@ -1284,7 +1592,7 @@ mod tests {
     #[test]
     fn rejects_layout_escape_css_that_can_target_the_svg_root() {
         let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
-            [validate_rustdoc_admission_svg, validate_rustdoc_static_svg];
+            [validate_admission_with_limits, validate_static_with_limits];
         for svg in [
             r#"<svg id="root" style="position:fixed;inset:0;z-index:2147483647;pointer-events:auto"/>"#,
             r#"<svg id="root"><style>#root{position:fixed!important;inset:0;z-index:2147483647}</style></svg>"#,
@@ -1322,7 +1630,7 @@ mod tests {
     #[test]
     fn rejects_recursive_or_amplified_browser_use_expansion() {
         let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
-            [validate_rustdoc_admission_svg, validate_rustdoc_static_svg];
+            [validate_admission_with_limits, validate_static_with_limits];
         for svg in [
             r##"<svg><g id="loop"><use href="#loop"/></g></svg>"##,
             r##"<svg><g id="left"><use href="#right"/></g><g id="right"><use href="#left"/></g></svg>"##,

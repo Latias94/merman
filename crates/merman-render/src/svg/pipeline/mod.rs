@@ -19,7 +19,7 @@ pub use builtin::{
 pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
 pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
-pub(crate) use final_validation::validate_well_formed_svg;
+pub(crate) use final_validation::validate_well_formed_svg_with_checkpoint;
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;
 
@@ -75,18 +75,18 @@ pub fn rebase_svg_ids(
 /// a general DOM-mount admission contract: the host must not inject or inherit a `<base>` URL that
 /// changes how fragment-only references resolve.
 #[doc(hidden)]
-pub fn validate_static_inline_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
-    static_validation::validate_rustdoc_static_svg(svg, limits)
+pub fn validate_static_inline_svg(svg: &str, session: &RenderSession) -> Result<()> {
+    static_validation::validate_rustdoc_static_svg(svg, SvgPostprocessExecution::new(session))
 }
 
 /// Validates renderer output before static-inline fallback and compatibility transformations.
 #[doc(hidden)]
-pub fn validate_static_inline_svg_admission(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
-    static_validation::validate_rustdoc_admission_svg(svg, limits)
+pub fn validate_static_inline_svg_admission(svg: &str, session: &RenderSession) -> Result<()> {
+    static_validation::validate_rustdoc_admission_svg(svg, SvgPostprocessExecution::new(session))
 }
 
 use crate::environment::RenderSession;
-use crate::resources::{RenderResourcePolicy, ResourceLimitPhase};
+use crate::resources::ResourceLimitPhase;
 use crate::{Error, Result};
 use std::borrow::Cow;
 use std::fmt;

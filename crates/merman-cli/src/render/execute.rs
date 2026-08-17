@@ -204,7 +204,7 @@ fn execute_graphical_with_pipeline(
                 .map_err(merman::RenderError::from)?;
             let svg = pipeline
                 .process_resvg_compatible(source, &session)
-                .map_err(|error| CliError::Render(merman::RenderError::Svg(error)))?;
+                .map_err(merman::RenderError::from)?;
             execute_encoded_svg(prepared, svg, permit, control, stderr)
         }
     }
@@ -228,7 +228,7 @@ fn execute_encoded_svg(
         PreparedGraphicalOutput::Png { options } => {
             let prepared_raster =
                 merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
+                    .map_err(merman::RenderError::from)?;
             let actual_weight = super::admission::actual_raster_weight(
                 prepared_raster.plan(),
                 prepared_raster.embedded_image_plan(),
@@ -239,7 +239,7 @@ fn execute_encoded_svg(
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_png()
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
+                    .map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -251,7 +251,7 @@ fn execute_encoded_svg(
         PreparedGraphicalOutput::Jpeg { options } => {
             let prepared_raster =
                 merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
+                    .map_err(merman::RenderError::from)?;
             let actual_weight = super::admission::actual_raster_weight(
                 prepared_raster.plan(),
                 prepared_raster.embedded_image_plan(),
@@ -262,7 +262,7 @@ fn execute_encoded_svg(
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_jpeg()
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
+                    .map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -274,7 +274,7 @@ fn execute_encoded_svg(
         PreparedGraphicalOutput::Pdf { options } => {
             let prepared_pdf =
                 merman::svg::export::prepare_pdf_controlled(&svg, options, control.clone())
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
+                    .map_err(merman::RenderError::from)?;
             let actual_weight = super::admission::actual_pdf_weight(
                 prepared_pdf.filter_plan(),
                 prepared_pdf.embedded_image_plan(),
@@ -282,9 +282,7 @@ fn execute_encoded_svg(
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_pdf_filter_plan(prepared.quiet, prepared_pdf.filter_plan(), stderr);
             Ok(ExecutedArtifact {
-                bytes: prepared_pdf
-                    .encode()
-                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
+                bytes: prepared_pdf.encode().map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,

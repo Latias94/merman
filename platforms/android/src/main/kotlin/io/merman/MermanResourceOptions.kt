@@ -57,6 +57,7 @@ public class MermanResourceLimitId private constructor(
         public val MAX_SVG_CONVERSION_SUBROOTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_conversion_subroots", "svg_conversion", false, 1)
         public val MAX_NESTED_SVG_IMAGES: MermanResourceLimitId = MermanResourceLimitId("max_nested_svg_images", "svg_conversion", false, 1)
         public val SVG_BACKEND_TREE_NODES: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_nodes", "svg_conversion", false, 1)
+        public val SVG_BACKEND_TREE_DEPTH: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_depth", "svg_conversion", false, 1)
 
         public val knownValues: List<MermanResourceLimitId> =
             java.util.Collections.unmodifiableList(listOf(
@@ -88,6 +89,7 @@ public class MermanResourceLimitId private constructor(
             MAX_SVG_CONVERSION_SUBROOTS,
             MAX_NESTED_SVG_IMAGES,
             SVG_BACKEND_TREE_NODES,
+            SVG_BACKEND_TREE_DEPTH,
             ))
 
         private val knownById: Map<String, MermanResourceLimitId> =

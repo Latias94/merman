@@ -187,6 +187,12 @@ final class MermanResourceLimitId {
     false,
     1,
   );
+  static const svgBackendTreeDepth = MermanResourceLimitId._known(
+    'svg_backend_tree_depth',
+    'svg_conversion',
+    false,
+    1,
+  );
 
   static const List<MermanResourceLimitId> knownValues =
       <MermanResourceLimitId>[
@@ -218,6 +224,7 @@ final class MermanResourceLimitId {
     maxSvgConversionSubroots,
     maxNestedSvgImages,
     svgBackendTreeNodes,
+    svgBackendTreeDepth,
   ];
 
   const MermanResourceLimitId._known(

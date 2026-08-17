@@ -290,13 +290,13 @@ pub enum RenderError {
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[cfg(feature = "svg")]
     #[error(transparent)]
-    Svg(#[from] merman_render::Error),
+    Svg(merman_render::Error),
     #[cfg(feature = "ascii")]
     #[error(transparent)]
-    Ascii(#[from] AsciiError),
+    Ascii(AsciiError),
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[error(transparent)]
-    Export(#[from] ExportError),
+    Export(ExportError),
     #[error("render target is not available in this feature configuration: {0}")]
     UnsupportedTarget(&'static str),
 }
@@ -316,6 +316,19 @@ impl From<merman_core::Error> for RenderError {
 impl From<merman_core::runtime::RuntimePolicyError> for RenderError {
     fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
         Self::RuntimePolicy(TerminalRuntimePolicyError::from(error))
+    }
+}
+
+#[cfg(feature = "svg")]
+impl From<merman_render::Error> for RenderError {
+    fn from(error: merman_render::Error) -> Self {
+        match error {
+            merman_render::Error::Cancelled(cancelled) => Self::Cancelled(cancelled),
+            merman_render::Error::ResourceLimitExceeded(resource) => {
+                Self::from(ResourceLimitExceeded::from(resource))
+            }
+            other => Self::Svg(other),
+        }
     }
 }
 
@@ -423,36 +436,34 @@ impl From<SvgResourceLimitExceeded> for ResourceLimitExceeded {
     }
 }
 
-#[cfg(feature = "svg")]
-fn map_svg_error(error: merman_render::Error) -> RenderError {
-    match error {
-        merman_render::Error::Cancelled(cancelled) => RenderError::Cancelled(cancelled),
-        merman_render::Error::ResourceLimitExceeded(resource) => {
-            RenderError::from(ResourceLimitExceeded::from(resource))
+#[cfg(feature = "ascii")]
+impl From<AsciiError> for RenderError {
+    fn from(error: AsciiError) -> Self {
+        match error {
+            AsciiError::Cancelled(cancelled) => Self::Cancelled(cancelled),
+            AsciiError::ResourceLimitExceeded(resource) => {
+                Self::from(ResourceLimitExceeded::from_ascii(resource))
+            }
+            other => Self::Ascii(other),
         }
-        other => RenderError::Svg(other),
     }
 }
 
 #[cfg(feature = "ascii")]
 fn map_ascii_error(error: AsciiError) -> RenderError {
-    match error {
-        AsciiError::Cancelled(cancelled) => RenderError::Cancelled(cancelled),
-        AsciiError::ResourceLimitExceeded(resource) => {
-            RenderError::from(ResourceLimitExceeded::from_ascii(resource))
-        }
-        other => RenderError::Ascii(other),
-    }
+    RenderError::from(error)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn map_export_error(error: ExportError) -> RenderError {
-    if let Some(details) = error.resource_limit_details() {
-        return RenderError::from(ResourceLimitExceeded::from_export(details));
-    }
-    match error {
-        ExportError::Cancelled(cancelled) => RenderError::Cancelled(cancelled),
-        other => RenderError::Export(other),
+impl From<ExportError> for RenderError {
+    fn from(error: ExportError) -> Self {
+        if let Some(details) = error.resource_limit_details() {
+            return Self::from(ResourceLimitExceeded::from_export(details));
+        }
+        match error {
+            ExportError::Cancelled(cancelled) => Self::Cancelled(cancelled),
+            other => Self::Export(other),
+        }
     }
 }
 
@@ -820,12 +831,14 @@ fn render_svg_target(
         session,
         request.presentation,
     )
-    .map_err(map_svg_error)?;
+    .map_err(RenderError::from)?;
     let rendered = artifact
         .render_svg(&request.options, &request.debug)
-        .map_err(map_svg_error)?;
+        .map_err(RenderError::from)?;
     let rendered = match request.pipeline.as_ref() {
-        Some(pipeline) => rendered.apply_pipeline(pipeline).map_err(map_svg_error)?,
+        Some(pipeline) => rendered
+            .apply_pipeline(pipeline)
+            .map_err(RenderError::from)?,
         None => rendered,
     };
     let required_capabilities = rendered.required_capabilities().to_vec();
@@ -848,9 +861,9 @@ fn render_layout_json_target(
         session,
         request.presentation,
     )
-    .map_err(map_svg_error)?;
+    .map_err(RenderError::from)?;
     let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    let layout = artifact.layout_json().map_err(map_svg_error)?;
+    let layout = artifact.layout_json().map_err(RenderError::from)?;
     Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
 }
 
@@ -865,7 +878,7 @@ fn render_svg_plan_target(
         .begin_session_in_context(operation.context, operation.control);
     merman_render::family::plan_render_with_policy(&parsed, &session, request.presentation)
         .map(Some)
-        .map_err(map_svg_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -883,7 +896,7 @@ fn prepare_resvg_target(
         session,
         request.presentation,
     )
-    .map_err(map_svg_error)?;
+    .map_err(RenderError::from)?;
     let pipeline = request
         .pipeline
         .clone()
@@ -891,11 +904,11 @@ fn prepare_resvg_target(
         .into_resvg_safe();
     artifact
         .render_svg(&request.options, &request.debug)
-        .map_err(map_svg_error)?
+        .map_err(RenderError::from)?
         .finalize_resvg(&pipeline)
         .map(|sealed| (sealed.into_parts().0, operation))
         .map(Some)
-        .map_err(map_svg_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(feature = "ascii")]
@@ -926,7 +939,7 @@ fn render_png_target(
     };
     merman_export::svg_to_png_with_plan_controlled(&svg, &request.options, operation.control)
         .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
-        .map_err(map_export_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(feature = "jpeg")]
@@ -939,7 +952,7 @@ fn render_jpeg_target(
     };
     merman_export::svg_to_jpeg_with_plan_controlled(&svg, &request.options, operation.control)
         .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
-        .map_err(map_export_error)
+        .map_err(RenderError::from)
 }
 
 #[cfg(feature = "pdf")]
@@ -952,5 +965,5 @@ fn render_pdf_target(
     };
     merman_export::svg_to_pdf_with_plan_controlled(&svg, &request.options, operation.control)
         .map(|(bytes, plan)| Some(PdfOutput { bytes, plan }))
-        .map_err(map_export_error)
+        .map_err(RenderError::from)
 }

@@ -63,6 +63,7 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
     public static let maxSvgConversionSubroots = MermanResourceLimitId("max_svg_conversion_subroots")
     public static let maxNestedSvgImages = MermanResourceLimitId("max_nested_svg_images")
     public static let svgBackendTreeNodes = MermanResourceLimitId("svg_backend_tree_nodes")
+    public static let svgBackendTreeDepth = MermanResourceLimitId("svg_backend_tree_depth")
 
     public static let knownValues: [MermanResourceLimitId] = [
         .maxSourceBytes,
@@ -93,6 +94,7 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         .maxSvgConversionSubroots,
         .maxNestedSvgImages,
         .svgBackendTreeNodes,
+        .svgBackendTreeDepth,
     ]
 
     private static let knownById: [String: MermanResourceLimitId] =
@@ -127,5 +129,6 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         "max_svg_conversion_subroots": MermanResourceLimitMetadata(id: "max_svg_conversion_subroots", phase: "svg_conversion", overridable: false, minimumValue: 1),
         "max_nested_svg_images": MermanResourceLimitMetadata(id: "max_nested_svg_images", phase: "svg_conversion", overridable: false, minimumValue: 1),
         "svg_backend_tree_nodes": MermanResourceLimitMetadata(id: "svg_backend_tree_nodes", phase: "svg_conversion", overridable: false, minimumValue: 1),
+        "svg_backend_tree_depth": MermanResourceLimitMetadata(id: "svg_backend_tree_depth", phase: "svg_conversion", overridable: false, minimumValue: 1),
     ]
 }

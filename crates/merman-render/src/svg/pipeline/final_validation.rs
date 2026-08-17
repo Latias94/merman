@@ -25,7 +25,8 @@ const VALIDATION_PASS: &str = "validate-resvg-compatible-svg";
 const XML_VALIDATION_PASS: &str = "validate-well-formed-svg";
 
 /// Proves the terminal contract shared by every public SVG output profile.
-pub(crate) fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
+#[cfg(test)]
+fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
     let mut checkpoint = || Ok(());
     validate_well_formed_svg_with_checkpoint(svg, limits, &mut checkpoint)
 }
@@ -39,7 +40,7 @@ pub(crate) fn validate_well_formed_svg_with_execution(
     })
 }
 
-fn validate_well_formed_svg_with_checkpoint(
+pub(crate) fn validate_well_formed_svg_with_checkpoint(
     svg: &str,
     limits: RenderResourcePolicy,
     checkpoint: &mut impl FnMut() -> Result<()>,
@@ -638,12 +639,12 @@ pub(super) struct ReferenceDependencyGraph {
     real_nodes: usize,
 }
 
-enum ReferencePlanningError<E> {
+pub(super) enum ReferencePlanningError<E> {
     Invalid(String),
     Checkpoint(E),
 }
 
-type ReferencePlanningResult<T, E> = std::result::Result<T, ReferencePlanningError<E>>;
+pub(super) type ReferencePlanningResult<T, E> = std::result::Result<T, ReferencePlanningError<E>>;
 
 impl ReferenceDependencyGraph {
     pub(super) fn new(dependencies: Vec<Vec<(usize, usize)>>, real_nodes: usize) -> Self {
@@ -1112,6 +1113,7 @@ fn resolve_reference_candidates_with_checkpoints<E>(
     Ok(Some(group_index))
 }
 
+#[cfg(test)]
 pub(super) fn plan_svg_reference_dependencies(
     graph: &ReferenceDependencyGraph,
 ) -> std::result::Result<SvgReferencePlan, String> {
@@ -1123,7 +1125,7 @@ pub(super) fn plan_svg_reference_dependencies(
     }
 }
 
-fn plan_svg_reference_dependencies_with_checkpoints<E>(
+pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
     graph: &ReferenceDependencyGraph,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferencePlan, E> {

@@ -1,7 +1,8 @@
 use super::IconRenderRequest;
 use super::ingest::ResolvedIcon;
 use super::xml::ValidatedIconBody;
-use crate::svg::pipeline::validate_well_formed_svg;
+use crate::svg::pipeline::validate_well_formed_svg_with_checkpoint;
+use merman_core::OperationPhase;
 use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
 
 const WORK_BYTES_PER_UNIT: usize = 256;
@@ -186,16 +187,30 @@ pub(super) fn render_resolved_icon(
             "sanitization removed the complete icon SVG",
         ));
     }
-    if let Err(error) = validate_well_formed_svg(&sanitized, request.work_meter.policy()) {
+    let validation = validate_well_formed_svg_with_checkpoint(
+        &sanitized,
+        request.work_meter.policy(),
+        &mut || {
+            request
+                .work_meter
+                .checkpoint(OperationPhase::Postprocess)
+                .map_err(crate::Error::from)
+        },
+    );
+    if let Err(error) = validation {
+        if matches!(
+            &error,
+            crate::Error::Cancelled(_) | crate::Error::ResourceLimitExceeded(_)
+        ) {
+            return Err(error);
+        }
+        request.work_meter.checkpoint(OperationPhase::Postprocess)?;
         request
             .work_meter
             .reconcile_svg_bytes(reserved_svg_bytes, 0)?;
-        return Err(match error {
-            crate::Error::ResourceLimitExceeded(error) => {
-                crate::Error::ResourceLimitExceeded(error)
-            }
-            _ => crate::Error::icon_processing("sanitizer produced invalid SVG XML"),
-        });
+        return Err(crate::Error::icon_processing(
+            "sanitizer produced invalid SVG XML",
+        ));
     }
     request
         .work_meter
@@ -656,6 +671,18 @@ mod tests {
             .unwrap();
         let error = render(body, "strict", one_less)
             .expect_err("sanitized output one byte above the SVG budget must be rejected");
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+    }
+
+    #[test]
+    fn icon_xml_validation_preserves_resource_error_classification() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgElements, 1)
+            .unwrap();
+
+        let error = render("<path d=\"M0 0h16v16H0z\"/>", "strict", policy)
+            .expect_err("the generated svg and path exceed the one-element validation limit");
+
         assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
     }
 
