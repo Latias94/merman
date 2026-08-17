@@ -1,3 +1,4 @@
+import { sha256 } from "@noble/hashes/sha2.js";
 import {
   RealmProtocolError,
   type RealmEngineArtifact,
@@ -16,13 +17,7 @@ export async function verifyAndCreateRealmEngineModuleLoader<T extends object>(
   artifact: RealmEngineArtifact,
   validate: (module: Record<string, unknown>) => T
 ): Promise<() => Promise<T>> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(artifact.source)
-  );
-  const actual = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
+  const actual = await sha256Hex(new TextEncoder().encode(artifact.source));
   if (actual !== artifact.sha256) {
     throw new RealmProtocolError("Realm engine artifact digest is invalid.");
   }
@@ -34,6 +29,23 @@ export async function verifyAndCreateRealmEngineModuleLoader<T extends object>(
     });
     return modulePromise;
   };
+}
+
+/**
+ * Computes SHA-256 with Web Crypto when available and a pure-JavaScript
+ * fallback for HTTP development origins where SubtleCrypto is unavailable.
+ */
+export async function sha256Hex(
+  bytes: Uint8Array,
+  subtle: Pick<SubtleCrypto, "digest"> | null =
+    globalThis.crypto?.subtle ?? null,
+): Promise<string> {
+  const digest = subtle
+    ? new Uint8Array(await subtle.digest("SHA-256", bytes))
+    : sha256(bytes);
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 async function importEngineModule<T extends object>(
