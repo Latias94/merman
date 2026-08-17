@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct StyleDeclarations<'a> {
+    background_color: Option<&'a str>,
     fill: Option<&'a str>,
     color: Option<&'a str>,
     font_size: Option<&'a str>,
@@ -16,6 +17,30 @@ struct StyleDeclarations<'a> {
 }
 
 impl<'a> StyleDeclarations<'a> {
+    fn apply_later(&mut self, later: Self) {
+        if later.background_color.is_some() {
+            self.background_color = later.background_color;
+        }
+        if later.fill.is_some() {
+            self.fill = later.fill;
+        }
+        if later.color.is_some() {
+            self.color = later.color;
+        }
+        if later.font_size.is_some() {
+            self.font_size = later.font_size;
+        }
+        if later.font_family.is_some() {
+            self.font_family = later.font_family;
+        }
+        if later.font_weight.is_some() {
+            self.font_weight = later.font_weight;
+        }
+        if later.font_style.is_some() {
+            self.font_style = later.font_style;
+        }
+    }
+
     fn property(self, property: &str) -> Option<&'a str> {
         match property {
             "fill" => self.fill,
@@ -187,15 +212,16 @@ fn index_style_rules<'a, E>(
         let raw_selector = &css[search..open];
         let raw_declarations = &css[open + 1..close];
         let declarations = parse_style_declarations_with_checkpoints(raw_declarations, checkpoint)?;
+        let selector_list = trim_with_checkpoints(raw_selector, checkpoint)?;
 
-        if root_declarations.is_none()
-            && let Some(root_id) = root_id
-            && selector_ends_with_root_id(raw_selector, root_id, checkpoint)?
+        if let Some(root_id) = root_id
+            && selector_ends_with_root_id(selector_list, root_id, checkpoint)?
         {
-            *root_declarations = Some(declarations);
+            root_declarations
+                .get_or_insert_with(StyleDeclarations::default)
+                .apply_later(declarations);
         }
 
-        let selector_list = trim_with_checkpoints(raw_selector, checkpoint)?;
         for (class_index, (class_name, target)) in
             index_rule_class_targets(selector_list, checkpoint)?
                 .into_iter()
@@ -203,38 +229,45 @@ fn index_style_rules<'a, E>(
         {
             checkpoint_loop(class_index, checkpoint)?;
             let style = class_styles.entry(class_name).or_default();
-            if style.text_fill.is_none() {
-                style.text_fill = if target.text_like {
-                    declarations.fill.or(declarations.color)
-                } else if target.inherited {
-                    declarations.color
-                } else {
-                    None
-                };
+            let text_fill = if target.text_like {
+                declarations.fill.or(declarations.color)
+            } else if target.inherited {
+                declarations.color
+            } else {
+                None
+            };
+            if text_fill.is_some() {
+                style.text_fill = text_fill;
             }
             if target.inherited {
-                style.font_size = style.font_size.or(declarations.font_size);
-                style.font_family = style.font_family.or(declarations.font_family);
-                style.font_weight = style.font_weight.or(declarations.font_weight);
-                style.font_style = style.font_style.or(declarations.font_style);
+                if declarations.font_size.is_some() {
+                    style.font_size = declarations.font_size;
+                }
+                if declarations.font_family.is_some() {
+                    style.font_family = declarations.font_family;
+                }
+                if declarations.font_weight.is_some() {
+                    style.font_weight = declarations.font_weight;
+                }
+                if declarations.font_style.is_some() {
+                    style.font_style = declarations.font_style;
+                }
             }
         }
 
-        if let Some(class_name) = trailing_exact_class_with_checkpoints(raw_selector, checkpoint)? {
+        if let Some(class_name) = trailing_exact_class_with_checkpoints(selector_list, checkpoint)?
+        {
             let style = class_styles.entry(class_name).or_default();
-            if style.background_color.is_none() {
-                style.background_color =
-                    extract_legacy_background_color_with_checkpoints(raw_declarations, checkpoint)?;
+            if declarations.background_color.is_some() {
+                style.background_color = declarations.background_color;
             }
         }
 
         if let Some(class_name) =
-            trailing_compact_text_class_with_checkpoints(raw_selector, checkpoint)?
+            trailing_compact_text_class_with_checkpoints(selector_list, checkpoint)?
         {
             let style = class_styles.entry(class_name).or_default();
-            if style.text_fill.is_none()
-                && let Some(after_fill) = raw_declarations.strip_prefix("fill:")
-            {
+            if let Some(after_fill) = raw_declarations.strip_prefix("fill:") {
                 let end =
                     find_with_checkpoints(after_fill, ";", checkpoint)?.unwrap_or(after_fill.len());
                 let value = trim_with_checkpoints(&after_fill[..end], checkpoint)?;
@@ -486,24 +519,19 @@ fn parse_style_declarations_with_checkpoints<'a, E>(
             let value =
                 strip_important_borrowed_with_checkpoints(&declaration[colon + 1..], checkpoint)?;
             if !value.is_empty() {
-                if declarations.fill.is_none() && name.eq_ignore_ascii_case("fill") {
+                if name.eq_ignore_ascii_case("background-color") {
+                    declarations.background_color = Some(value);
+                } else if name.eq_ignore_ascii_case("fill") {
                     declarations.fill = Some(value);
-                } else if declarations.color.is_none() && name.eq_ignore_ascii_case("color") {
+                } else if name.eq_ignore_ascii_case("color") {
                     declarations.color = Some(value);
-                } else if declarations.font_size.is_none() && name.eq_ignore_ascii_case("font-size")
-                {
+                } else if name.eq_ignore_ascii_case("font-size") {
                     declarations.font_size = Some(value);
-                } else if declarations.font_family.is_none()
-                    && name.eq_ignore_ascii_case("font-family")
-                {
+                } else if name.eq_ignore_ascii_case("font-family") {
                     declarations.font_family = Some(value);
-                } else if declarations.font_weight.is_none()
-                    && name.eq_ignore_ascii_case("font-weight")
-                {
+                } else if name.eq_ignore_ascii_case("font-weight") {
                     declarations.font_weight = Some(value);
-                } else if declarations.font_style.is_none()
-                    && name.eq_ignore_ascii_case("font-style")
-                {
+                } else if name.eq_ignore_ascii_case("font-style") {
                     declarations.font_style = Some(value);
                 }
             }
@@ -517,25 +545,13 @@ fn parse_style_declarations_with_checkpoints<'a, E>(
     Ok(declarations)
 }
 
-fn extract_legacy_background_color_with_checkpoints<'a, E>(
-    declarations: &'a str,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<&'a str>, E> {
-    let Some(start) = find_with_checkpoints(declarations, "background-color:", checkpoint)? else {
-        return Ok(None);
-    };
-    let after = &declarations[start + "background-color:".len()..];
-    let end = find_with_checkpoints(after, ";", checkpoint)?.unwrap_or(after.len());
-    let value = trim_with_checkpoints(&after[..end], checkpoint)?;
-    Ok((!value.is_empty()).then_some(value))
-}
-
 pub(super) fn extract_style_property_with_checkpoints<E>(
     style: &str,
     property: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<String>, E> {
     checkpoint()?;
+    let mut found = None;
     let mut search = 0usize;
     let mut declaration_index = 0usize;
     loop {
@@ -552,7 +568,7 @@ pub(super) fn extract_style_property_with_checkpoints<E>(
                     checkpoint,
                 )?;
                 if !value.is_empty() {
-                    return Ok(Some(value.to_owned()));
+                    found = Some(value.to_owned());
                 }
             }
         }
@@ -562,7 +578,7 @@ pub(super) fn extract_style_property_with_checkpoints<E>(
         search = end + 1;
     }
     checkpoint()?;
-    Ok(None)
+    Ok(found)
 }
 
 fn strip_important_borrowed_with_checkpoints<'a, E>(
@@ -596,4 +612,38 @@ pub(super) fn parse_css_px_value(value: &str) -> Option<f64> {
         .parse::<f64>()
         .ok()
         .filter(|value| value.is_finite() && *value > 0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fallback_style_index_uses_later_declarations_and_rules() {
+        let svg = r#"<svg id="root"><style>
+            #root { fill: red; fill: blue }
+            .label { color: red }
+            .label { color: blue }
+            .labelBkg { background-color: red; background-color: blue }
+        </style></svg>"#;
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        let index = FallbackStyleIndex::new(svg, &mut checkpoint).unwrap();
+
+        assert_eq!(index.root_text_fill(), Some("blue"));
+        assert_eq!(index.text_fill_for_class("label"), Some("blue"));
+        assert_eq!(index.background_color_for_class("labelBkg"), Some("blue"));
+    }
+
+    #[test]
+    fn inline_style_lookup_uses_the_later_declaration() {
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        let value = extract_style_property_with_checkpoints(
+            "font-size: 12px; font-size: 16px",
+            "font-size",
+            &mut checkpoint,
+        )
+        .unwrap();
+
+        assert_eq!(value.as_deref(), Some("16px"));
+    }
 }
