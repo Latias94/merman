@@ -1332,6 +1332,37 @@ mod tests {
     }
 
     #[test]
+    fn web_projection_uses_the_wasm_svg_backend_tree_depth_authority() {
+        let stable_id = merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID;
+        let native = binding_resource_contract();
+        let web = web_resource_contract();
+
+        for profile in &native.profiles {
+            assert_eq!(
+                profile.limits[stable_id],
+                Some(merman_render::resources::MAX_RESVG_TREE_DEPTH),
+                "native profile {}",
+                profile.id
+            );
+        }
+        for profile in &web.profiles {
+            assert_eq!(
+                profile.limits[stable_id],
+                Some(merman_render::resources::WASM_RESVG_TREE_DEPTH_HARD_CAP),
+                "web profile {}",
+                profile.id
+            );
+        }
+        let typescript = render_typescript(&web);
+        assert_eq!(
+            typescript
+                .matches(r#""svg_backend_tree_depth": 64,"#)
+                .count(),
+            web.profiles.len()
+        );
+    }
+
+    #[test]
     fn resource_projection_ownership_and_order_are_deterministic() {
         let paths = generated_artifacts()
             .expect("committed resource ids must have safe language projections")

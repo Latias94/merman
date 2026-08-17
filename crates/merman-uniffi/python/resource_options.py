@@ -26,6 +26,8 @@ class ResourceLimitId(str):
     MAX_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
     MAX_SVG_BYTES: ClassVar[ResourceLimitId]
     MAX_SVG_ELEMENTS: ClassVar[ResourceLimitId]
+    SVG_BACKEND_TREE_NODES: ClassVar[ResourceLimitId]
+    SVG_BACKEND_TREE_DEPTH: ClassVar[ResourceLimitId]
     MAX_DOCUMENT_DIAGRAMS: ClassVar[ResourceLimitId]
     MAX_ASCII_GRID_CELLS: ClassVar[ResourceLimitId]
     MAX_ASCII_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
@@ -46,8 +48,6 @@ class ResourceLimitId(str):
     MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES: ClassVar[ResourceLimitId]
     MAX_SVG_CONVERSION_SUBROOTS: ClassVar[ResourceLimitId]
     MAX_NESTED_SVG_IMAGES: ClassVar[ResourceLimitId]
-    SVG_BACKEND_TREE_NODES: ClassVar[ResourceLimitId]
-    SVG_BACKEND_TREE_DEPTH: ClassVar[ResourceLimitId]
     known_values: ClassVar[Tuple[ResourceLimitId, ...]]
 
     def __new__(cls, value: str) -> ResourceLimitId:
@@ -90,6 +90,8 @@ ResourceLimitId.MAX_MODEL_NESTING_DEPTH = ResourceLimitId("max_model_nesting_dep
 ResourceLimitId.MAX_LAYOUT_WORK_UNITS = ResourceLimitId("max_layout_work_units")
 ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
 ResourceLimitId.MAX_SVG_ELEMENTS = ResourceLimitId("max_svg_elements")
+ResourceLimitId.SVG_BACKEND_TREE_NODES = ResourceLimitId("svg_backend_tree_nodes")
+ResourceLimitId.SVG_BACKEND_TREE_DEPTH = ResourceLimitId("svg_backend_tree_depth")
 ResourceLimitId.MAX_DOCUMENT_DIAGRAMS = ResourceLimitId("max_document_diagrams")
 ResourceLimitId.MAX_ASCII_GRID_CELLS = ResourceLimitId("max_ascii_grid_cells")
 ResourceLimitId.MAX_ASCII_LAYOUT_WORK_UNITS = ResourceLimitId("max_ascii_layout_work_units")
@@ -110,8 +112,6 @@ ResourceLimitId.MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER = ResourceLimitI
 ResourceLimitId.MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES = ResourceLimitId("max_total_svg_conversion_filter_primitives")
 ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS = ResourceLimitId("max_svg_conversion_subroots")
 ResourceLimitId.MAX_NESTED_SVG_IMAGES = ResourceLimitId("max_nested_svg_images")
-ResourceLimitId.SVG_BACKEND_TREE_NODES = ResourceLimitId("svg_backend_tree_nodes")
-ResourceLimitId.SVG_BACKEND_TREE_DEPTH = ResourceLimitId("svg_backend_tree_depth")
 
 RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_SOURCE_BYTES,
@@ -121,6 +121,8 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_LAYOUT_WORK_UNITS,
     ResourceLimitId.MAX_SVG_BYTES,
     ResourceLimitId.MAX_SVG_ELEMENTS,
+    ResourceLimitId.SVG_BACKEND_TREE_NODES,
+    ResourceLimitId.SVG_BACKEND_TREE_DEPTH,
     ResourceLimitId.MAX_DOCUMENT_DIAGRAMS,
     ResourceLimitId.MAX_ASCII_GRID_CELLS,
     ResourceLimitId.MAX_ASCII_LAYOUT_WORK_UNITS,
@@ -141,8 +143,6 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES,
     ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS,
     ResourceLimitId.MAX_NESTED_SVG_IMAGES,
-    ResourceLimitId.SVG_BACKEND_TREE_NODES,
-    ResourceLimitId.SVG_BACKEND_TREE_DEPTH,
 )
 ResourceLimitId.known_values = RESOURCE_LIMIT_IDS
 _RESOURCE_LIMIT_BY_ID = {limit.id: limit for limit in RESOURCE_LIMIT_IDS}
@@ -154,6 +154,8 @@ _RESOURCE_LIMIT_METADATA = {
     "max_layout_work_units": ("layout_model", True, 1),
     "max_svg_bytes": ("svg_output", True, 1),
     "max_svg_elements": ("svg_postprocess", True, 1),
+    "svg_backend_tree_nodes": ("svg_postprocess", False, 1),
+    "svg_backend_tree_depth": ("svg_postprocess", False, 1),
     "max_document_diagrams": ("document_scan", True, 0),
     "max_ascii_grid_cells": ("ascii_layout", True, 1),
     "max_ascii_layout_work_units": ("ascii_layout_work", True, 1),
@@ -174,8 +176,6 @@ _RESOURCE_LIMIT_METADATA = {
     "max_total_svg_conversion_filter_primitives": ("svg_conversion", False, 1),
     "max_svg_conversion_subroots": ("svg_conversion", False, 1),
     "max_nested_svg_images": ("svg_conversion", False, 1),
-    "svg_backend_tree_nodes": ("svg_conversion", False, 1),
-    "svg_backend_tree_depth": ("svg_conversion", False, 1),
 }
 
 class ResourceOverrideId(str, Enum):

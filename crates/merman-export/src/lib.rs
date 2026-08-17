@@ -101,25 +101,37 @@ impl ExportError {
                 actual,
                 max,
             } => {
-                let limit_id = match *limit_name {
-                    "max_isolation_depth" => MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID,
-                    "max_filter_primitives_per_filter" => {
-                        MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER_RESOURCE_LIMIT_ID
+                let (limit_id, phase) = match *limit_name {
+                    "max_isolation_depth" => (
+                        MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID,
+                        "svg_conversion",
+                    ),
+                    "max_filter_primitives_per_filter" => (
+                        MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER_RESOURCE_LIMIT_ID,
+                        "svg_conversion",
+                    ),
+                    "max_total_filter_primitives" => (
+                        MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID,
+                        "svg_conversion",
+                    ),
+                    "max_subroots" => (
+                        MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID,
+                        "svg_conversion",
+                    ),
+                    "max_nested_svg_images" => {
+                        (MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID, "svg_conversion")
                     }
-                    "max_total_filter_primitives" => {
-                        MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID
-                    }
-                    "max_subroots" => MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID,
-                    "max_nested_svg_images" => MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID,
-                    merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID => {
-                        merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID
-                    }
-                    merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID => {
-                        merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID
-                    }
+                    limit_id @ merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID => (
+                        limit_id,
+                        merman_render::resources::ResourceLimitPhase::SvgPostprocess.as_str(),
+                    ),
+                    limit_id @ merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID => (
+                        limit_id,
+                        merman_render::resources::ResourceLimitPhase::SvgPostprocess.as_str(),
+                    ),
                     _ => return None,
                 };
-                (limit_id, "svg_conversion", *actual, *max)
+                (limit_id, phase, *actual, *max)
             }
             #[cfg(feature = "pdf")]
             Self::PdfFilterImageLimit { actual, max } => (
@@ -301,7 +313,7 @@ const PDF_RESOURCE_LIMIT_DESCRIPTORS: [ExportResourceLimitDescriptor; 1] =
 // These are backend recursion guards, not caller policy knobs. They remain active for the
 // trusted-input profile and are exposed only so resource failures have discoverable stable IDs.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-const SVG_CONVERSION_HARD_CAP_DESCRIPTORS: [ExportResourceLimitDescriptor; 7] = [
+const SVG_CONVERSION_HARD_CAP_DESCRIPTORS: [ExportResourceLimitDescriptor; 5] = [
     ExportResourceLimitDescriptor {
         stable_id: MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID,
         phase: "svg_conversion",
@@ -338,22 +350,6 @@ const SVG_CONVERSION_HARD_CAP_DESCRIPTORS: [ExportResourceLimitDescriptor; 7] = 
         stable_id: MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID,
         phase: "svg_conversion",
         description: "Maximum nested SVG images accepted by native export",
-        overridable: false,
-        hard_cap: true,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
-        phase: "svg_conversion",
-        description: "Maximum SVG backend tree nodes accepted by native export",
-        overridable: false,
-        hard_cap: true,
-        minimum_value: 1,
-    },
-    ExportResourceLimitDescriptor {
-        stable_id: merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
-        phase: "svg_conversion",
-        description: "Maximum SVG backend tree depth accepted by native export",
         overridable: false,
         hard_cap: true,
         minimum_value: 1,
@@ -442,12 +438,6 @@ pub fn export_resource_profile_value(
         }
         MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID => DEFAULT_MAX_SVG_SUBROOTS,
         MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID => DEFAULT_MAX_NESTED_SVG_IMAGES,
-        merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID => {
-            merman_render::resources::MAX_RESVG_TREE_NODES
-        }
-        merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID => {
-            merman_render::resources::MAX_RESVG_TREE_DEPTH
-        }
         _ => return None,
     };
     if SVG_CONVERSION_HARD_CAP_DESCRIPTORS
@@ -3081,6 +3071,35 @@ mod pdf_feature_tests {
 mod tests {
     use super::*;
     use base64::Engine as _;
+
+    #[test]
+    fn backend_tree_rechecks_preserve_the_render_owned_resource_phase() {
+        for limit_name in [
+            merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
+            merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
+        ] {
+            let details = ExportError::SvgConversionLimit {
+                limit_name,
+                actual: 2,
+                max: 1,
+            }
+            .resource_limit_details()
+            .expect("backend hard cap details");
+
+            assert_eq!(details.limit_id, limit_name);
+            assert_eq!(details.phase, "svg_postprocess");
+            assert_eq!(details.actual, 2);
+            assert_eq!(details.max, 1);
+            assert_eq!(export_resource_limit_output_ids(limit_name), None);
+            assert_eq!(
+                export_resource_profile_value(
+                    merman_render::resources::RenderResourceProfile::Interactive,
+                    limit_name,
+                ),
+                None
+            );
+        }
+    }
 
     fn compatible_svg(svg: &str) -> merman_render::svg::ResvgCompatibleSvg {
         let session = merman_render::environment::RenderEnvironment::deterministic()

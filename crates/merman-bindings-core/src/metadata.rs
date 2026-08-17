@@ -601,15 +601,30 @@ fn runtime_resource_contract_for(
         profiles: contract
             .profiles
             .into_iter()
-            .map(|profile| RuntimeResourceProfile {
-                id: profile.id,
-                purpose: profile.purpose,
-                trust_assumption: profile.trust_assumption,
-                recommended_binding_default: profile.recommended_binding_default,
-                limits: limits
-                    .iter()
-                    .map(|limit| (limit.stable_id, profile.limits[limit.stable_id]))
-                    .collect(),
+            .map(|profile| {
+                let profile_id = merman::resources::ResourceProfile::from_id(profile.id)
+                    .expect("compiled resource profile id");
+                RuntimeResourceProfile {
+                    id: profile.id,
+                    purpose: profile.purpose,
+                    trust_assumption: profile.trust_assumption,
+                    recommended_binding_default: profile.recommended_binding_default,
+                    limits: limits
+                        .iter()
+                        .map(|limit| {
+                            let value =
+                                crate::resource_contract::resource_profile_value_for_target(
+                                    profile_id,
+                                    limit.stable_id,
+                                    artifact_contract.target(),
+                                )
+                                .expect(
+                                    "compiled resource descriptor must have a target profile value",
+                                );
+                            (limit.stable_id, value)
+                        })
+                        .collect(),
+                }
             })
             .collect(),
     }
@@ -1196,7 +1211,12 @@ mod tests {
         assert_eq!(catalog.metadata_ids, expected_metadata_ids);
         assert_eq!(
             resources.limits.iter().any(|limit| limit.hard_cap),
-            cfg!(any(feature = "png", feature = "jpeg", feature = "pdf"))
+            cfg!(any(
+                feature = "svg",
+                feature = "png",
+                feature = "jpeg",
+                feature = "pdf"
+            ))
         );
         assert!(
             resources

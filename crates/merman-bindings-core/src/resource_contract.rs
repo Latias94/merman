@@ -182,6 +182,26 @@ pub(crate) fn resource_profile_value(
     None
 }
 
+pub(crate) fn resource_profile_value_for_target(
+    profile: merman::resources::ResourceProfile,
+    stable_id: &str,
+    target: crate::TargetKey,
+) -> Option<Option<usize>> {
+    let value = resource_profile_value(profile, stable_id)?;
+
+    #[cfg(feature = "svg")]
+    if matches!(target, crate::TargetKey::Web)
+        && stable_id == merman::svg::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID
+    {
+        return Some(Some(merman::svg::WASM_RESVG_TREE_DEPTH_HARD_CAP));
+    }
+
+    #[cfg(not(feature = "svg"))]
+    let _ = target;
+
+    Some(value)
+}
+
 #[allow(dead_code)]
 pub(crate) enum BindingResourceOwner {
     Artifact,
@@ -377,6 +397,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn svg_backend_tree_caps_are_render_owned_and_apply_to_svg_and_exports() {
+        let contract = binding_resource_contract();
+        for stable_id in ["svg_backend_tree_nodes", "svg_backend_tree_depth"] {
+            let descriptor = contract
+                .limits
+                .iter()
+                .find(|descriptor| descriptor.stable_id == stable_id)
+                .expect("SVG backend hard cap descriptor");
+            assert_eq!(descriptor.phase, "svg_postprocess");
+            assert!(!descriptor.overridable);
+            assert!(descriptor.hard_cap);
+            assert!(matches!(
+                resource_limit_owner(stable_id),
+                BindingResourceOwner::Capability("svg")
+            ));
+            for scope in [
+                BindingResourceScope::Svg,
+                BindingResourceScope::Png,
+                BindingResourceScope::Jpeg,
+                BindingResourceScope::Pdf,
+            ] {
+                assert!(scope.accepts(stable_id));
+            }
+        }
+    }
+
+    #[test]
     fn export_contract_separates_policy_limits_from_backend_hard_caps() {
         let contract = binding_resource_contract();
         let export_limits = contract
@@ -398,7 +445,7 @@ mod tests {
         );
         assert_eq!(
             export_limits.iter().filter(|limit| limit.hard_cap).count(),
-            6
+            5
         );
         assert!(
             export_limits

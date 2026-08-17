@@ -52,7 +52,7 @@ const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = merman_core::MAX_DIAGRAM_NESTING_D
 const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = 64;
 
 pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
-const RENDER_RESOURCE_LIMIT_COUNT: usize = 3;
+const RENDER_RESOURCE_LIMIT_COUNT: usize = 5;
 pub const RESOURCE_LIMIT_COUNT: usize =
     merman_core::resources::INPUT_RESOURCE_LIMIT_COUNT + RENDER_RESOURCE_LIMIT_COUNT;
 
@@ -112,6 +112,8 @@ pub enum RenderResourceLimitId {
     MaxSvgBytes,
     MaxSvgElements,
     MaxLayoutWorkUnits,
+    SvgBackendTreeNodes,
+    SvgBackendTreeDepth,
 }
 
 impl RenderResourceLimitId {
@@ -119,6 +121,8 @@ impl RenderResourceLimitId {
         Self::MaxSvgBytes,
         Self::MaxSvgElements,
         Self::MaxLayoutWorkUnits,
+        Self::SvgBackendTreeNodes,
+        Self::SvgBackendTreeDepth,
     ];
 
     const fn index(self) -> usize {
@@ -141,6 +145,8 @@ impl ResourceLimitId {
     pub const MaxSvgBytes: Self = Self::Render(RenderResourceLimitId::MaxSvgBytes);
     pub const MaxSvgElements: Self = Self::Render(RenderResourceLimitId::MaxSvgElements);
     pub const MaxLayoutWorkUnits: Self = Self::Render(RenderResourceLimitId::MaxLayoutWorkUnits);
+    pub const SvgBackendTreeNodes: Self = Self::Render(RenderResourceLimitId::SvgBackendTreeNodes);
+    pub const SvgBackendTreeDepth: Self = Self::Render(RenderResourceLimitId::SvgBackendTreeDepth);
 
     pub const ALL: [Self; RESOURCE_LIMIT_COUNT] = [
         Self::MaxSourceBytes,
@@ -150,6 +156,8 @@ impl ResourceLimitId {
         Self::MaxLayoutWorkUnits,
         Self::MaxSvgBytes,
         Self::MaxSvgElements,
+        Self::SvgBackendTreeNodes,
+        Self::SvgBackendTreeDepth,
     ];
 
     pub fn from_stable_id(id: &str) -> Option<Self> {
@@ -231,6 +239,24 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         hard_cap: false,
         minimum_value: 1,
     },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::SvgBackendTreeNodes,
+        stable_id: SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
+        phase: ResourceLimitPhase::SvgPostprocess,
+        description: "Maximum SVG backend tree nodes accepted by rendering backends",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::SvgBackendTreeDepth,
+        stable_id: SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
+        phase: ResourceLimitPhase::SvgPostprocess,
+        description: "Maximum SVG backend tree depth accepted by rendering backends",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
 ];
 
 pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_COUNT] = [
@@ -241,6 +267,8 @@ pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[2],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[0],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[1],
+    RENDER_RESOURCE_LIMIT_DESCRIPTORS[3],
+    RENDER_RESOURCE_LIMIT_DESCRIPTORS[4],
 ];
 
 const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
@@ -252,6 +280,8 @@ const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
     // ceiling admits the repository's normal large public fixtures with calibration
     // headroom while the constrained profile remains the untrusted-input boundary.
     [Some(800_000), Some(125_000), Some(1_000_000), None],
+    [Some(MAX_RESVG_TREE_NODES); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_RESVG_TREE_DEPTH); RESOURCE_PROFILE_COUNT],
 ];
 
 pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
@@ -537,35 +567,16 @@ impl RenderResourcePolicy {
             RenderResourceLimitId::MaxSvgElements,
             elements,
         )?;
-        if elements > MAX_RESVG_TREE_NODES {
-            return Err(ResourceLimitExceeded {
-                cause: ResourceLimitCause::Ceiling,
-                phase: ResourceLimitPhase::SvgPostprocess,
-                limit: SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
-                actual: elements,
-                max: MAX_RESVG_TREE_NODES,
-                profile: self.profile(),
-                explicit_overrides: self
-                    .explicit_overrides()
-                    .map(|(id, value)| ResourceLimitOverride { id, value })
-                    .collect(),
-            });
-        }
-        if tree_depth <= MAX_RESVG_TREE_DEPTH {
-            return Ok(());
-        }
-        Err(ResourceLimitExceeded {
-            cause: ResourceLimitCause::Ceiling,
-            phase: ResourceLimitPhase::SvgPostprocess,
-            limit: SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
-            actual: tree_depth,
-            max: MAX_RESVG_TREE_DEPTH,
-            profile: self.profile(),
-            explicit_overrides: self
-                .explicit_overrides()
-                .map(|(id, value)| ResourceLimitOverride { id, value })
-                .collect(),
-        })
+        self.check_render_limit(
+            ResourceLimitPhase::SvgPostprocess,
+            RenderResourceLimitId::SvgBackendTreeNodes,
+            elements,
+        )?;
+        self.check_render_limit(
+            ResourceLimitPhase::SvgPostprocess,
+            RenderResourceLimitId::SvgBackendTreeDepth,
+            tree_depth,
+        )
     }
 
     pub fn check_flowchart_complexity(
@@ -1003,12 +1014,15 @@ mod tests {
             limits.apply_override("future_limit", 1),
             Err(ResourceLimitOverrideError::UnknownLimit(_))
         ));
-        assert_eq!(
-            limits.apply_override("max_svg_tree_depth", 1),
-            Err(ResourceLimitOverrideError::UnknownLimit(
-                "max_svg_tree_depth".to_string()
-            ))
-        );
+        for hard_cap in [
+            SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
+            SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
+        ] {
+            assert_eq!(
+                limits.apply_override(hard_cap, 1),
+                Err(ResourceLimitOverrideError::HardCap(hard_cap))
+            );
+        }
         assert_eq!(
             limits.apply_override("max_svg_elements", 0),
             Err(ResourceLimitOverrideError::NonPositive("max_svg_elements"))
@@ -1018,14 +1032,33 @@ mod tests {
     }
 
     #[test]
-    fn resolved_svg_node_hard_cap_remains_active_for_unbounded_policy() {
-        let error = RenderResourcePolicy::unbounded_for_trusted_input()
-            .check_svg_structure(MAX_RESVG_TREE_NODES + 1, 0)
-            .unwrap_err();
+    fn resolved_svg_backend_hard_caps_remain_active_for_unbounded_policy() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        for (elements, tree_depth, limit, actual, max) in [
+            (
+                MAX_RESVG_TREE_NODES + 1,
+                0,
+                SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
+                MAX_RESVG_TREE_NODES + 1,
+                MAX_RESVG_TREE_NODES,
+            ),
+            (
+                0,
+                MAX_RESVG_TREE_DEPTH + 1,
+                SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
+                MAX_RESVG_TREE_DEPTH + 1,
+                MAX_RESVG_TREE_DEPTH,
+            ),
+        ] {
+            let error = policy
+                .check_svg_structure(elements, tree_depth)
+                .unwrap_err();
 
-        assert_eq!(error.limit, SVG_BACKEND_TREE_NODES_HARD_CAP_ID);
-        assert_eq!(error.actual, MAX_RESVG_TREE_NODES + 1);
-        assert_eq!(error.max, MAX_RESVG_TREE_NODES);
+            assert_eq!(error.phase, ResourceLimitPhase::SvgPostprocess);
+            assert_eq!(error.limit, limit);
+            assert_eq!(error.actual, actual);
+            assert_eq!(error.max, max);
+        }
     }
 
     #[test]

@@ -378,7 +378,7 @@ fn export_backend_errors_use_canonical_render_error_classification() {
         error,
         RenderError::ResourceLimitExceeded(limit)
             if limit.id == "svg_backend_tree_depth"
-                && limit.phase == "svg_conversion"
+                && limit.phase == "svg_postprocess"
                 && limit.actual == 2
                 && limit.maximum == 1
     ));

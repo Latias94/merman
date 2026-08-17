@@ -59,6 +59,18 @@ final class MermanResourceLimitId {
     true,
     1,
   );
+  static const svgBackendTreeNodes = MermanResourceLimitId._known(
+    'svg_backend_tree_nodes',
+    'svg_postprocess',
+    false,
+    1,
+  );
+  static const svgBackendTreeDepth = MermanResourceLimitId._known(
+    'svg_backend_tree_depth',
+    'svg_postprocess',
+    false,
+    1,
+  );
   static const maxDocumentDiagrams = MermanResourceLimitId._known(
     'max_document_diagrams',
     'document_scan',
@@ -181,18 +193,6 @@ final class MermanResourceLimitId {
     false,
     1,
   );
-  static const svgBackendTreeNodes = MermanResourceLimitId._known(
-    'svg_backend_tree_nodes',
-    'svg_conversion',
-    false,
-    1,
-  );
-  static const svgBackendTreeDepth = MermanResourceLimitId._known(
-    'svg_backend_tree_depth',
-    'svg_conversion',
-    false,
-    1,
-  );
 
   static const List<MermanResourceLimitId> knownValues =
       <MermanResourceLimitId>[
@@ -203,6 +203,8 @@ final class MermanResourceLimitId {
     maxLayoutWorkUnits,
     maxSvgBytes,
     maxSvgElements,
+    svgBackendTreeNodes,
+    svgBackendTreeDepth,
     maxDocumentDiagrams,
     maxAsciiGridCells,
     maxAsciiLayoutWorkUnits,
@@ -223,8 +225,6 @@ final class MermanResourceLimitId {
     maxTotalSvgConversionFilterPrimitives,
     maxSvgConversionSubroots,
     maxNestedSvgImages,
-    svgBackendTreeNodes,
-    svgBackendTreeDepth,
   ];
 
   const MermanResourceLimitId._known(

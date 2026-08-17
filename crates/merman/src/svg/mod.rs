@@ -31,7 +31,8 @@ pub use merman_render::resources::{
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
     ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
     ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    resource_limit_descriptors, resource_profile_descriptors,
+    SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID, WASM_RESVG_TREE_DEPTH_HARD_CAP, resource_limit_descriptors,
+    resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconPack,
