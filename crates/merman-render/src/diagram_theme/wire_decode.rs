@@ -638,8 +638,10 @@ fn decode_assets(
     for (asset_index, (font, declared_format)) in
         fonts.into_iter().zip(declared_formats).enumerate()
     {
-        let bytes = decode_canonical_base64(&font.data_base64)?;
-        let actual_format = detect_font_container(&bytes)
+        let projected_bytes = projected_canonical_base64_bytes(&font.data_base64)?;
+        let prefix_len = font.data_base64.len().min(8);
+        let prefix = decode_canonical_base64(&font.data_base64.as_bytes()[..prefix_len])?;
+        let actual_format = detect_font_container(&prefix)
             .ok_or(FontCatalogError::UnsupportedFontContainer { asset_index })?;
         if actual_format != declared_format {
             return Err(ThemeCompileValidationError::InvalidValue {
@@ -647,6 +649,13 @@ fn decode_assets(
             }
             .into());
         }
+        if actual_format == FontContainer::Woff2 {
+            resources.check_font_asset_compressed_bytes(projected_bytes)?;
+        } else {
+            resources.check_font_asset_decoded_bytes(projected_bytes)?;
+            resources.check_font_catalog_decoded_bytes(projected_bytes)?;
+        }
+        let bytes = decode_canonical_base64(font.data_base64.as_bytes())?;
         font_specs.push(FontAssetSpec::from_shared_bytes(
             font.id,
             Arc::<[u8]>::from(bytes),
@@ -669,7 +678,32 @@ fn decode_assets(
     Ok(Some(ThemeAssets::default().with_font_catalog(catalog)))
 }
 
-fn decode_canonical_base64(value: &str) -> Result<Vec<u8>, ThemeCompileError> {
+fn projected_canonical_base64_bytes(value: &str) -> Result<usize, ThemeCompileError> {
+    if value.len() % 4 != 0 {
+        return Err(ThemeCompileValidationError::InvalidValue {
+            field: "assets.fonts.data_base64",
+        }
+        .into());
+    }
+    let padding = if value.as_bytes().ends_with(b"==") {
+        2
+    } else if value.as_bytes().ends_with(b"=") {
+        1
+    } else {
+        0
+    };
+    value
+        .len()
+        .checked_div(4)
+        .and_then(|groups| groups.checked_mul(3))
+        .and_then(|bytes| bytes.checked_sub(padding))
+        .ok_or_else(|| ThemeCompileValidationError::InvalidValue {
+            field: "assets.fonts.data_base64",
+        })
+        .map_err(Into::into)
+}
+
+fn decode_canonical_base64(value: &[u8]) -> Result<Vec<u8>, ThemeCompileError> {
     base64::engine::general_purpose::STANDARD
         .decode(value)
         .map_err(|_| {

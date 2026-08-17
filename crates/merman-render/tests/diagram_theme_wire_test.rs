@@ -137,6 +137,52 @@ fn declared_font_container_must_match_the_payload_before_font_compilation() {
     ));
 }
 
+#[test]
+fn projected_font_bytes_are_checked_before_full_payload_decode() {
+    for (format, payload, limit, expected_phase, expected_id) in [
+        (
+            "woff2",
+            "d09GMgAA",
+            ThemeResourceLimitId::MaxFontAssetCompressedBytes,
+            ThemeResourceLimitPhase::FontDecode,
+            "max_font_asset_compressed_bytes",
+        ),
+        (
+            "truetype",
+            "AAEAAAAA",
+            ThemeResourceLimitId::MaxFontAssetDecodedBytes,
+            ThemeResourceLimitPhase::FontDecode,
+            "max_font_asset_decoded_bytes",
+        ),
+        (
+            "truetype",
+            "AAEAAAAA",
+            ThemeResourceLimitId::MaxFontCatalogDecodedBytes,
+            ThemeResourceLimitPhase::FontCatalog,
+            "max_font_catalog_decoded_bytes",
+        ),
+    ] {
+        let policy = ThemeResourcePolicy::interactive()
+            .with_limit(limit, 5)
+            .expect("valid projected-font test ceiling");
+
+        assert!(matches!(
+            DiagramThemeCompiler::new()
+                .with_resource_policy(policy)
+                .compile_spec_wire(font_spec("font", format, payload)),
+            Err(ThemeCompileError::ResourceLimit(
+                ThemeResourceLimitExceeded {
+                    phase,
+                    limit,
+                    actual: 6,
+                    max: 5,
+                    ..
+                }
+            )) if phase == expected_phase && limit == expected_id
+        ));
+    }
+}
+
 fn font_spec(id: &str, format: &str, data_base64: &str) -> DiagramThemeSpecWireV1 {
     DiagramThemeSpecWireV1 {
         assets: Some(ThemeAssetsWireV1 {
