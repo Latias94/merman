@@ -397,20 +397,19 @@ arbitrary complete recipe.
 The C7a error contract will use the closed `ThemeMaterializationDiagnosticV1` envelope. It carries
 `code`, `severity`, an RFC 6901 JSON Pointer `path`, bounded structured `details`, and a non-identity
 display message. Fatal failures will return `ThemeMaterializationErrorV1 { schema_version: 1,
-diagnostics }` and no `MaterializedThemeWireV1`. Diagnostics sort by UTF-8 path bytes, then code,
-then the canonical details encoding. Successful results omit diagnostics entirely; version 1 does
-not freeze an always-empty warning array. Until that envelope lands, the renderer-owned Rust error
-is an alpha implementation surface rather than a frozen cross-binding failure contract.
+diagnostics }` and no `MaterializedThemeWireV1`. Version 1 is deliberately fail-fast and requires
+exactly one diagnostic; aggregating multiple independently discovered failures requires a later
+error-schema version rather than a second validation pass. Successful results omit diagnostics
+entirely; version 1 does not freeze an always-empty warning array. Until that envelope lands, the
+renderer-owned Rust error is an alpha implementation surface rather than a frozen cross-binding
+failure contract.
 
 The version 1 fatal code registry is:
 
 | Code | Meaning |
 | --- | --- |
-| `theme-authoring.unsupported-schema-version` | The authoring schema version is unknown or illegal in the requested tuple. |
-| `theme-authoring.unsupported-expansion-version` | The expansion version is unknown or illegal in the requested tuple. |
-| `theme-authoring.missing-required-field` | A required field is absent. |
-| `theme-authoring.disallowed-null` | A non-clearable field is explicitly null. |
-| `theme-authoring.unknown-field` | A closed authoring object contains an unknown field. |
+| `theme-authoring.unsupported-version-tuple` | The complete authoring/expansion version tuple is not in the legal registry. |
+| `theme-authoring.invalid-definition-json` | The JSON is malformed, has duplicate members, or does not match the closed authoring wire shape. |
 | `theme-authoring.invalid-token-value` | A token or typography value is malformed or outside its numeric domain. |
 | `theme-authoring.empty-series` | The required series palette is empty. |
 | `theme-authoring.rule-budget-exceeded` | The derived `MAX_AUTHORED_RULES` limit was exceeded. |
@@ -418,12 +417,13 @@ The version 1 fatal code registry is:
 | `theme-authoring.effect-reference-not-supported` | An authored rule references an effect graph that the version 1 envelope cannot carry. |
 | `theme-authoring.resource-limit-exceeded` | Encoded bytes or a bounded string or collection exceeds the host admission ceiling. |
 
-Diagnostic `details` objects are closed per code. Version diagnostics carry `actual` and the legal
-tuple registry. Field diagnostics carry the offending field name. Value diagnostics carry only a
-bounded expected-domain ID, never raw unbounded input. Budget diagnostics carry stable `limit_id`,
-`actual`, and `max` values. Duplicate-palette diagnostics carry the target ID and both authored
-indices. These shapes are part of the same diagnostic schema version and have cross-binding golden
-vectors.
+Diagnostic `details` objects are closed per code. Version diagnostics carry the actual tuple and
+the legal tuple registry. Invalid-JSON diagnostics carry a bounded stable `reason_id` such as
+`malformed-json`, `duplicate-object-key`, or `contract-shape`; they never derive identity by parsing
+Serde display text. Value diagnostics carry only a bounded expected-domain ID, never raw unbounded
+input. Budget diagnostics carry stable `limit_id`, `actual`, and `max` values. Duplicate-palette
+diagnostics carry the target ID and both authored indices. These shapes are part of the same
+diagnostic schema version and have cross-binding golden vectors.
 
 Expansion trace is not part of either stable result envelope. An internal or explicitly alpha
 `inspect_theme_authoring` operation may return a versioned `ThemeAuthoringTrace` that points to
