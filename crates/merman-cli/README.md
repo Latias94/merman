@@ -386,6 +386,7 @@ Ctrl-C again before cooperative shutdown restores an immediate exit. Use
 merman-cli render diagram.mmd --operation-timeout-ms 5000
 merman-cli batch README.md --operation-timeout-ms 30000
 merman-cli mmdc -i diagram.mmd -o diagram.svg --operation-timeout-ms 5000
+merman-cli layout diagram.mmd --operation-timeout-ms 5000
 merman-cli rustdoc check --operation-timeout-ms 30000
 ```
 

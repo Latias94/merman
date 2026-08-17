@@ -340,6 +340,7 @@ constrained\t'Constrained rendering for untrusted or publicly submitted document
 trusted-native\t'Local CLI and controlled native batch rendering'
 unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining hard backend capabilities'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l pretty -d 'Pretty-print JSON output'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l suppress-errors -d 'Emit an error diagram instead of failing on parse errors'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l system-clock -d 'Use the system clock while keeping other runtime sources deterministic'

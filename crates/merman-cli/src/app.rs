@@ -266,7 +266,7 @@ pub(crate) fn cli_command() -> clap::Command {
     let command = command
         .mut_subcommand("layout", |subcommand| {
             subcommand.after_help(
-                "More options: `merman-cli layout --help` shows layout, configuration, runtime, and resource controls.",
+                "More options: `merman-cli layout --help` shows layout, configuration, runtime, operation, and resource controls.",
             )
         })
         .mut_subcommand("mmdc", |subcommand| {

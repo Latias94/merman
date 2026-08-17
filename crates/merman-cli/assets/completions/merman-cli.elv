@@ -327,6 +327,7 @@ set edit:completion:arg-completer[merman-cli] = {|@words|
             cand --height 'Available container height for size-sensitive layouts'
             cand --resource-profile 'Resource policy for input, semantic models, output, and CLI acquisition'
             cand --resource-limit 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated'
+            cand --operation-timeout-ms 'Cancel the complete command operation after this many milliseconds'
             cand --pretty 'Pretty-print JSON output'
             cand --suppress-errors 'Emit an error diagram instead of failing on parse errors'
             cand --system-clock 'Use the system clock while keeping other runtime sources deterministic'

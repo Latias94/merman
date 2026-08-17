@@ -244,6 +244,9 @@ pub(crate) struct LayoutArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(feature = "analysis")]

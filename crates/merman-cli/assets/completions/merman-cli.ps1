@@ -343,6 +343,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--height', '--height', [CompletionResultType]::ParameterName, 'Available container height for size-sensitive layouts')
             [CompletionResult]::new('--resource-profile', '--resource-profile', [CompletionResultType]::ParameterName, 'Resource policy for input, semantic models, output, and CLI acquisition')
             [CompletionResult]::new('--resource-limit', '--resource-limit', [CompletionResultType]::ParameterName, 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated')
+            [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
             [CompletionResult]::new('--pretty', '--pretty', [CompletionResultType]::ParameterName, 'Pretty-print JSON output')
             [CompletionResult]::new('--suppress-errors', '--suppress-errors', [CompletionResultType]::ParameterName, 'Emit an error diagram instead of failing on parse errors')
             [CompletionResult]::new('--system-clock', '--system-clock', [CompletionResultType]::ParameterName, 'Use the system clock while keeping other runtime sources deterministic')

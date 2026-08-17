@@ -176,8 +176,9 @@ pub(crate) struct ResolvedParse {
 pub(crate) struct ResolvedLayout {
     pub(crate) input: ResolvedInput,
     pub(crate) pretty: bool,
-    pub(crate) parse: ParseCliArgs,
-    pub(crate) render: crate::cli::LayoutRenderCliArgs,
+    pub(crate) operation_timeout: Option<Duration>,
+    pub(crate) parse: ResolvedParseOptions,
+    pub(crate) render: ResolvedRenderOptions,
     pub(crate) resources: ResolvedResourcePolicy,
 }
 
@@ -551,12 +552,13 @@ fn normalize_parse(args: ParseArgs, facts: &InvocationFacts) -> Result<ResolvedP
 
 #[cfg(feature = "svg")]
 fn normalize_layout(args: LayoutArgs, facts: &InvocationFacts) -> Result<ResolvedLayout, CliError> {
-    validate_parse_args(&args.parse)?;
+    let runtime_policy = resolve_render_runtime_policy(&args.parse, false)?;
     Ok(ResolvedLayout {
         input: resolve_native_input(args.input, facts.stdin_is_terminal, "layout")?,
         pretty: args.pretty,
-        parse: args.parse,
-        render: args.render,
+        operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
+        parse: resolve_parse_options(args.parse, runtime_policy),
+        render: resolve_render_options(args.render.into_render_args()),
         resources: resolve_resource_policy(args.resources)?,
     })
 }
@@ -2174,6 +2176,22 @@ mod tests {
             resolved.common.operation_timeout,
             Some(Duration::from_millis(37))
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn layout_resolves_the_same_host_operation_timeout() {
+        let cli =
+            Cli::try_parse_from(["merman-cli", "layout", "-", "--operation-timeout-ms", "39"])
+                .expect("parse layout operation timeout");
+
+        let ResolvedInvocation::Layout(resolved) =
+            resolve(cli, &facts(false)).expect("resolve layout operation timeout")
+        else {
+            panic!("expected layout invocation");
+        };
+
+        assert_eq!(resolved.operation_timeout, Some(Duration::from_millis(39)));
     }
 
     #[cfg(feature = "markdown")]

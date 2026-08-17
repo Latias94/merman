@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(feature = "svg")]
-use crate::cli::{MathRendererKind, RenderCliArgs, TextMeasurerKind};
+use crate::cli::{MathRendererKind, TextMeasurerKind};
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -216,25 +216,6 @@ fn parse_options_from_suppress_errors(suppress_errors: bool) -> ParseOptions {
 }
 
 #[cfg(feature = "svg")]
-pub(crate) fn renderer_for(
-    parse: &ParseCliArgs,
-    render: &RenderCliArgs,
-    icon_registry: Option<IconRegistry>,
-    resources: &ResolvedResourcePolicy,
-) -> Result<ConfiguredRenderer, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
-    let site_config = site_config_for(parse, resources)?;
-    renderer_from_config(
-        runtime,
-        site_config,
-        parse_options(parse),
-        RendererInputs::from_cli(render),
-        icon_registry,
-        resources,
-    )
-}
-
-#[cfg(feature = "svg")]
 pub(crate) fn renderer_for_resolved(
     parse: &ResolvedParseOptions,
     render: &ResolvedRenderOptions,
@@ -301,18 +282,6 @@ struct RendererInputs<'a> {
 
 #[cfg(feature = "svg")]
 impl<'a> RendererInputs<'a> {
-    fn from_cli(render: &'a RenderCliArgs) -> Self {
-        Self {
-            presentation_profile: render.presentation_profile,
-            text_measurer: render.text_measurer.unwrap_or(TextMeasurerKind::Vendored),
-            math_renderer: render.math_renderer,
-            container_width: render.container_width,
-            container_height: render.container_height,
-            svg_id: render.svg_id.as_deref(),
-            hand_drawn_seed: render.hand_drawn_seed,
-        }
-    }
-
     fn from_resolved(render: &'a ResolvedRenderOptions) -> Self {
         Self {
             presentation_profile: render.presentation_profile,
@@ -437,17 +406,40 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
+    fn default_resolved_parse() -> ResolvedParseOptions {
+        ResolvedParseOptions {
+            suppress_errors: false,
+            config_file: None,
+            theme: None,
+            runtime: ResolvedRuntimeOptions {
+                runtime_policy: RuntimePolicy::deterministic(),
+            },
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    fn resolved_render(math_renderer: Option<MathRendererKind>) -> ResolvedRenderOptions {
+        ResolvedRenderOptions {
+            presentation_profile: None,
+            text_measurer: TextMeasurerKind::Vendored,
+            math_renderer,
+            container_width: None,
+            container_height: None,
+            svg_id: None,
+            hand_drawn_seed: None,
+        }
+    }
+
+    #[cfg(feature = "svg")]
     #[test]
     fn none_math_renderer_disables_the_compiled_default() {
-        let render = RenderCliArgs {
-            math_renderer: Some(MathRendererKind::None),
-            ..RenderCliArgs::default()
-        };
-        let renderer = renderer_for(
-            &ParseCliArgs::default(),
-            &render,
+        let control = merman::OperationControl::new();
+        let renderer = renderer_for_resolved(
+            &default_resolved_parse(),
+            &resolved_render(Some(MathRendererKind::None)),
             None,
             &default_resources(),
+            &control,
         )
         .expect("CLI renderer");
         let error = renderer
@@ -471,11 +463,13 @@ mod tests {
     #[cfg(all(feature = "svg", feature = "math"))]
     #[test]
     fn unspecified_math_renderer_uses_the_compiled_default() {
-        let renderer = renderer_for(
-            &ParseCliArgs::default(),
-            &RenderCliArgs::default(),
+        let control = merman::OperationControl::new();
+        let renderer = renderer_for_resolved(
+            &default_resolved_parse(),
+            &resolved_render(None),
             None,
             &default_resources(),
+            &control,
         )
         .expect("CLI renderer");
         let output = renderer

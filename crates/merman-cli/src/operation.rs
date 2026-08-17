@@ -25,6 +25,8 @@ impl HostOperation {
             ResolvedInvocation::Batch(args) => Some(args.common.operation_timeout),
             #[cfg(feature = "svg")]
             ResolvedInvocation::Mmdc(args) => Some(args.common.operation_timeout),
+            #[cfg(feature = "svg")]
+            ResolvedInvocation::Layout(args) => Some(args.operation_timeout),
             #[cfg(feature = "rustdoc")]
             ResolvedInvocation::Rustdoc(args) => Some(args.operation_timeout),
             _ => None,

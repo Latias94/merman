@@ -383,6 +383,7 @@ constrained\:"Constrained rendering for untrusted or publicly submitted document
 trusted-native\:"Local CLI and controlled native batch rendering"
 unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
 '--pretty[Pretty-print JSON output]' \
 '--suppress-errors[Emit an error diagram instead of failing on parse errors]' \
 '--system-clock[Use the system clock while keeping other runtime sources deterministic]' \

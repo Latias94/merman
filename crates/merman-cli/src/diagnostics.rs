@@ -35,6 +35,21 @@ pub(crate) fn write_json_stdout<T: Serialize>(
     stdout.with_writer(|writer| write_json_to(writer, value, pretty))
 }
 
+#[cfg(feature = "svg")]
+pub(crate) fn write_json_stdout_controlled<T: Serialize>(
+    value: &T,
+    pretty: bool,
+    stdout: &SharedWriter,
+    control: &merman::OperationControl,
+) -> Result<(), CliError> {
+    stdout.with_writer(|writer| {
+        // Direct JSON serialization avoids a second complete buffer. Treat the final
+        // checkpoint as the stdout commit point and finish serialization once it succeeds.
+        crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
+        write_json_to(writer, value, pretty)
+    })
+}
+
 fn write_json_to(
     writer: &mut dyn Write,
     value: &impl Serialize,

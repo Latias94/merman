@@ -3,6 +3,8 @@ use crate::config::{engine_for, parse_options};
 use crate::error::CliError;
 use crate::input::InputLimit;
 use crate::invocation::{ResolvedDetect, ResolvedInput, ResolvedInvocation, ResolvedParse};
+#[cfg(feature = "svg")]
+use crate::io::read_input_controlled;
 #[cfg(any(feature = "analysis", feature = "shell-completions"))]
 use crate::io::write_stdout;
 use crate::io::{read_input, write_stdout_line};
@@ -37,7 +39,7 @@ use std::path::Path;
 #[cfg(feature = "shell-completions")]
 use crate::cli::CompletionArgs;
 #[cfg(feature = "svg")]
-use crate::config::renderer_for;
+use crate::config::renderer_for_resolved;
 #[cfg(feature = "svg")]
 use crate::invocation::ResolvedLayout;
 #[cfg(feature = "analysis")]
@@ -88,7 +90,7 @@ pub(crate) fn run(
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Layout(args) => {
-            run_layout(args, context)?;
+            run_layout(args, operation_control, context)?;
             0
         }
         #[cfg(feature = "analysis")]
@@ -226,28 +228,39 @@ fn run_parse(args: ResolvedParse, context: &mut ExecutionContext) -> Result<(), 
 }
 
 #[cfg(feature = "svg")]
-fn run_layout(args: ResolvedLayout, context: &mut ExecutionContext) -> Result<(), CliError> {
-    let text = read_resolved_input(
+fn run_layout(
+    args: ResolvedLayout,
+    operation_control: &merman::OperationControl,
+    context: &mut ExecutionContext,
+) -> Result<(), CliError> {
+    let text = read_resolved_input_controlled(
         &args.input,
         source_limit(&args.resources),
         context.stdin.as_mut(),
         &context.stderr,
+        operation_control,
     )?;
-    let configured = renderer_for(
+    let configured = renderer_for_resolved(
         &args.parse,
-        &args.render.into_render_args(),
+        &args.render,
         None,
         &args.resources,
+        operation_control,
     )?;
     let output = configured.renderer.render(configured.request(
         &text,
         merman::RenderTarget::LayoutJson(configured.svg.clone()),
-        merman::OperationControl::new(),
+        operation_control.clone(),
     ))?;
     let merman::RenderOutput::LayoutJson(Some(layout_json)) = output else {
         return Err(CliError::NoDiagram);
     };
-    print_json(layout_json.layout(), args.pretty, &context.stdout)
+    crate::diagnostics::write_json_stdout_controlled(
+        layout_json.layout(),
+        args.pretty,
+        &context.stdout,
+        operation_control,
+    )
 }
 
 #[cfg(feature = "analysis")]
@@ -552,6 +565,24 @@ fn read_resolved_input(
         source_input_limit(max_source_bytes),
         stdin,
         stderr,
+    )
+}
+
+#[cfg(feature = "svg")]
+fn read_resolved_input_controlled(
+    input: &ResolvedInput,
+    max_source_bytes: Option<usize>,
+    stdin: &mut dyn std::io::Read,
+    stderr: &SharedWriter,
+    control: &merman::OperationControl,
+) -> Result<String, CliError> {
+    read_input_controlled(
+        Some(resolved_input_path(input)),
+        true,
+        source_input_limit(max_source_bytes),
+        stdin,
+        stderr,
+        control,
     )
 }
 

@@ -1,6 +1,4 @@
 use crate::error::CliError;
-#[cfg(any(feature = "svg", feature = "ascii"))]
-use crate::input::IO_CHUNK_BYTES;
 use crate::input::{InputLimit, InputReadError, read_utf8, read_utf8_controlled};
 use crate::runtime::SharedWriter;
 use std::fs::File;
@@ -414,11 +412,11 @@ fn write_stdout_controlled(
     control: &merman::OperationControl,
 ) -> Result<(), CliError> {
     stdout.with_writer(|writer| {
-        for chunk in bytes.chunks(IO_CHUNK_BYTES) {
-            crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
-            writer.write_all(chunk).map_err(stdout_error)?;
-        }
-        crate::operation::checkpoint(control, merman::OperationPhase::Emit)
+        // Stdout cannot be rolled back. This checkpoint is the publication commit point;
+        // cancellation requested after it must not turn a complete or partial write into
+        // a cancellation failure.
+        crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
+        writer.write_all(bytes).map_err(stdout_error)
     })
 }
 
@@ -530,5 +528,81 @@ mod tests {
             Err(CliError::ConcurrentModification { .. })
         ));
         assert_eq!(std::fs::read(&path).unwrap(), b"linked replacement");
+    }
+}
+
+#[cfg(all(test, any(feature = "svg", feature = "ascii")))]
+mod controlled_stdout_tests {
+    use super::*;
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    struct CancelAfterWrite {
+        bytes: Arc<Mutex<Vec<u8>>>,
+        control: merman::OperationControl,
+    }
+
+    impl io::Write for CancelAfterWrite {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.bytes
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .extend_from_slice(bytes);
+            self.control.cancel();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn stdout_cancellation_before_publication_writes_nothing() {
+        let control = merman::OperationControl::new();
+        control.cancel();
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let stdout = SharedWriter::new(CancelAfterWrite {
+            bytes: Arc::clone(&bytes),
+            control: control.clone(),
+        });
+
+        assert!(matches!(
+            write_stdout_controlled(b"complete artifact", &stdout, &control),
+            Err(CliError::Render(merman::RenderError::Cancelled(
+                merman::OperationCancelled {
+                    phase: merman::OperationPhase::Emit,
+                    reason: merman::CancelReason::Requested,
+                }
+            )))
+        ));
+        assert!(
+            bytes
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn stdout_cancellation_after_publication_commit_returns_complete_artifact() {
+        let control = merman::OperationControl::new();
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let stdout = SharedWriter::new(CancelAfterWrite {
+            bytes: Arc::clone(&written),
+            control: control.clone(),
+        });
+        let artifact = vec![b'x'; crate::input::IO_CHUNK_BYTES + 1];
+
+        write_stdout_controlled(&artifact, &stdout, &control)
+            .expect("publication remains successful after its commit point");
+
+        assert!(control.is_cancelled());
+        assert_eq!(
+            *written
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            artifact
+        );
     }
 }

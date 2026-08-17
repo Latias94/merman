@@ -208,6 +208,10 @@ fn zero_operation_timeout_returns_structured_cancellation_without_output() {
             vec!["mmdc", "-i", "-", "-o", "-", "--operation-timeout-ms", "0"],
             "flowchart LR\nA-->B\n",
         ),
+        (
+            vec!["layout", "-", "--operation-timeout-ms", "0"],
+            "flowchart LR\nA-->B\n",
+        ),
     ] {
         let output = run_with_stdin(&args, input);
         assert_eq!(support::exit_code(output.status), 1, "{args:?}");
