@@ -128,6 +128,8 @@ impl DeterministicMathRandom {
 pub struct RoughMathRandom {
     initial_seed: u64,
     state: Arc<Mutex<DeterministicMathRandom>>,
+    #[cfg(feature = "host-random")]
+    uses_host_random: bool,
 }
 
 impl RoughMathRandom {
@@ -135,6 +137,29 @@ impl RoughMathRandom {
         Self {
             initial_seed: seed,
             state: Arc::new(Mutex::new(DeterministicMathRandom::new(seed))),
+            #[cfg(feature = "host-random")]
+            uses_host_random: false,
+        }
+    }
+
+    #[cfg(feature = "host-random")]
+    fn host() -> Self {
+        Self {
+            initial_seed: 0,
+            state: Arc::new(Mutex::new(DeterministicMathRandom::new(0))),
+            uses_host_random: true,
+        }
+    }
+
+    fn legacy(seed: u64) -> Self {
+        #[cfg(feature = "host-random")]
+        {
+            let _ = seed;
+            Self::host()
+        }
+        #[cfg(not(feature = "host-random"))]
+        {
+            Self::new(seed)
         }
     }
 
@@ -147,10 +172,18 @@ impl RoughMathRandom {
     /// This is reserved for non-emitting geometry estimates. Rendering code must clone the
     /// existing handle so all generated Rough.js shapes consume one ordered stream.
     pub fn isolated_copy(&self) -> Self {
+        #[cfg(feature = "host-random")]
+        if self.uses_host_random {
+            return Self::host();
+        }
         Self::new(self.initial_seed)
     }
 
     fn next(&self) -> f64 {
+        #[cfg(feature = "host-random")]
+        if self.uses_host_random {
+            return rand::random();
+        }
         self.state
             .lock()
             .expect("Rough Math.random stream mutex poisoned")
@@ -406,6 +439,19 @@ options_builder_setters! {
 }
 
 impl OptionsBuilder {
+    /// Restores the builder contract used by Merman 0.7 and `roughr-merman` 0.12.1.
+    ///
+    /// New callers should inject the complete operation-owned [`RoughRandomness`] contract with
+    /// [`Self::randomness`]. The compatibility path retains the historical host-random fallback
+    /// when the `host-random` feature is enabled.
+    pub fn seed(&mut self, value: u64) -> &mut Self {
+        self.randomness = Some(RoughRandomness::new(
+            RoughJsSeed::new(value as f64),
+            RoughMathRandom::legacy(value),
+        ));
+        self
+    }
+
     pub fn build(&self) -> Result<Options, OptionsBuilderError> {
         let randomness = self
             .randomness
@@ -599,6 +645,15 @@ mod tests {
         let got: Vec<f64> = (0..expected.len()).map(|_| opts.random()).collect();
 
         assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn legacy_seed_builder_matches_the_seeded_random_sequence() {
+        let explicit = sequence(1.0);
+        let mut legacy = OptionsBuilder::default().seed(1_u64).build().unwrap();
+        let actual: Vec<f64> = (0..explicit.len()).map(|_| legacy.random()).collect();
+
+        assert_eq!(actual, explicit);
     }
 }
 
