@@ -2474,12 +2474,12 @@ dependencies = [
 name = "merman-bindings-core"
 version = "0.8.0-alpha.5"
 dependencies = [
- "base64 0.22.1",
  "criterion",
  "merman",
  "merman-analysis",
  "merman-core",
  "merman-render",
+ "merman-theme-contract",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",

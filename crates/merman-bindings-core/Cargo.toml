@@ -28,7 +28,7 @@ native-runtime = [
 ]
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
-svg = ["dep:base64", "merman/svg"]
+svg = ["dep:merman-theme-contract", "merman/svg"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]
@@ -37,9 +37,9 @@ layout-elk = ["svg", "merman/layout-elk"]
 math = ["svg", "merman/math"]
 
 [dependencies]
-base64 = { workspace = true, optional = true }
 merman-analysis = { workspace = true, optional = true }
 merman.workspace = true
+merman-theme-contract = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
 
