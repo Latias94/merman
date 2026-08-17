@@ -1,11 +1,17 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use regex::Regex;
+use serde_json::json;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -58,6 +64,54 @@ fn try_render_er_svg_with_resource_policy(
     let rendered =
         artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
     Ok(rendered.svg().to_owned())
+}
+
+fn er_entity_paint_theme(fill: CanvasPaint, stroke: Option<CanvasPaint>) -> DiagramTheme {
+    let mut style = ThemeStylePatch::default().with_fill(fill);
+    if let Some(stroke) = stroke {
+        style = style.with_stroke(stroke);
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Entity, style)),
+        ))
+        .expect("compile ER entity fill theme")
+}
+
+fn prepare_er_family_with_theme_and_engine(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::FamilyRenderArtifact {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .expect("parse themed ER diagram")
+        .expect("detect themed ER diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable ER session");
+    family::prepare(parsed, &LayoutOptions::default(), session).expect("prepare themed ER artifact")
+}
+
+fn render_er_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
+    prepare_er_family_with_theme_and_engine(text, theme, Engine::new())
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed ER SVG")
+        .svg()
+        .to_owned()
+}
+
+fn render_er_svg_from_text_with_theme_and_engine(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> String {
+    prepare_er_family_with_theme_and_engine(text, theme, engine)
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed ER SVG")
+        .svg()
+        .to_owned()
 }
 
 #[test]
@@ -310,4 +364,188 @@ erDiagram
             && !edge_labels.contains("<foreignObject"),
         "expected ER relationship labels to switch to SVG text when flowchart htmlLabels=false and root htmlLabels is unset"
     );
+}
+
+#[test]
+fn er_static_entity_paint_reaches_plain_and_attribute_shells() {
+    let source = r#"erDiagram
+  PLAIN
+  TABLE {
+    string id PK
+  }
+  PLAIN ||--|| TABLE : owns
+"#;
+    let theme = er_entity_paint_theme(
+        CanvasPaint::solid("#123456").expect("valid entity fill"),
+        Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
+    );
+    let svg = render_er_svg_from_text_with_theme(source, &theme);
+
+    let plain_start = svg
+        .find(r#"id="merman-entity-PLAIN-0""#)
+        .expect("plain entity group");
+    let plain_end = svg[plain_start..]
+        .find("</g>")
+        .map(|offset| plain_start + offset)
+        .expect("plain entity group end");
+    let plain = &svg[plain_start..plain_end];
+    assert!(plain.contains(r#"class="basic label-container""#));
+    assert!(plain.contains("fill:#123456"), "{plain}");
+    assert!(plain.contains("stroke:#654321"), "{plain}");
+
+    let table_start = svg
+        .find(r#"id="merman-entity-TABLE-1""#)
+        .expect("attribute entity group");
+    let table_end = svg[table_start..]
+        .find("</g>")
+        .map(|offset| table_start + offset)
+        .expect("attribute entity group end");
+    let table = &svg[table_start..table_end];
+    assert!(table.contains(r#"class="outer-path""#), "{table}");
+    assert!(table.contains("fill:#123456"), "{table}");
+    assert!(table.contains("stroke:#654321"), "{table}");
+}
+
+#[test]
+fn er_source_entity_styles_outrank_typed_entity_paint() {
+    let source = r#"erDiagram
+  BARE
+  ASSIGNED
+  INLINE
+  classDef accent fill:#00aa00,stroke:#00bb00
+  class ASSIGNED accent
+  style INLINE fill:#0000aa,stroke:#0000bb
+"#;
+    let theme = er_entity_paint_theme(
+        CanvasPaint::solid("#123456").expect("valid entity fill"),
+        Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
+    );
+    let svg = render_er_svg_from_text_with_theme(source, &theme);
+
+    let entity_fragment = |id: &str| {
+        let start = svg
+            .find(&format!(r#"id="merman-entity-{id}-"#))
+            .unwrap_or_else(|| panic!("missing ER entity {id}: {svg}"));
+        let end = svg[start..]
+            .find(r#"class="node"#)
+            .and_then(|_| svg[start..].find("</g>"))
+            .map(|offset| start + offset)
+            .expect("entity fragment end");
+        &svg[start..end]
+    };
+
+    let bare = entity_fragment("BARE");
+    assert!(bare.contains("fill:#123456"), "{bare}");
+    assert!(bare.contains("stroke:#654321"), "{bare}");
+    let assigned = entity_fragment("ASSIGNED");
+    assert!(assigned.contains("fill:#00aa00"), "{assigned}");
+    assert!(assigned.contains("stroke:#00bb00"), "{assigned}");
+    let inline = entity_fragment("INLINE");
+    assert!(inline.contains("fill:#0000aa"), "{inline}");
+    assert!(inline.contains("stroke:#0000bb"), "{inline}");
+
+    let default_svg = render_er_svg_from_text_with_theme(
+        "erDiagram\n  DEFAULT\n  classDef default fill:#aa0000,stroke:#bb0000\n",
+        &theme,
+    );
+    assert!(default_svg.contains("fill:#aa0000"), "{default_svg}");
+    assert!(default_svg.contains("stroke:#bb0000"), "{default_svg}");
+}
+
+#[test]
+fn er_site_theme_variable_ownership_controls_typed_entity_paint() {
+    let source = "erDiagram\n  PLAIN\n  TABLE {\n    string id PK\n  }\n";
+    let theme = er_entity_paint_theme(
+        CanvasPaint::solid("#123456").expect("valid entity fill"),
+        Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": {
+            "mainBkg": "#112233",
+            "nodeBorder": "#445566"
+        }
+    })));
+    let svg = render_er_svg_from_text_with_theme_and_engine(source, &theme, engine);
+
+    assert!(svg.contains("#112233"), "{svg}");
+    assert!(svg.contains("#445566"), "{svg}");
+    assert!(
+        !svg.contains("#123456"),
+        "site fill must own ER entity fill: {svg}"
+    );
+    assert!(
+        !svg.contains("#654321"),
+        "site stroke must own ER entity stroke: {svg}"
+    );
+
+    let default_primary_border_svg = render_er_svg_from_text_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "default",
+            "themeVariables": {
+                "primaryBorderColor": "#abcdef"
+            }
+        }))),
+    );
+    assert!(
+        default_primary_border_svg.contains("#654321"),
+        "default primaryBorderColor is not the terminal ER entity stroke owner: {default_primary_border_svg}"
+    );
+
+    let base_primary_svg = render_er_svg_from_text_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": {
+                "primaryColor": "#fff4dd"
+            }
+        }))),
+    );
+    assert!(
+        !base_primary_svg.contains("#654321"),
+        "base primaryColor-derived nodeBorder must own ER entity stroke: {base_primary_svg}"
+    );
+}
+
+#[test]
+fn er_entity_ordinal_paint_fails_closed() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Entity,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").expect("valid entity fill")),
+                    )
+                    .with_ordinal(OrdinalSelector::exact(1).expect("valid ER entity ordinal")),
+                ),
+            ),
+        )
+        .expect("compile ordinal ER entity theme");
+    let error = match prepare_er_family_with_theme_and_engine(
+        "erDiagram\n  PLAIN\n",
+        &theme,
+        Engine::new(),
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("ER entity ordinal paint must remain unverified"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::ER, 1))
+    );
+}
+
+#[test]
+fn er_entity_paint_is_not_applicable_without_entities() {
+    let theme = er_entity_paint_theme(
+        CanvasPaint::solid("#123456").expect("valid entity fill"),
+        Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
+    );
+    let _ = render_er_svg_from_text_with_theme("erDiagram\n", &theme);
 }

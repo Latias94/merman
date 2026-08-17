@@ -739,6 +739,25 @@ fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::ER
+        && target == ThemeTarget::Entity
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -973,7 +992,7 @@ fn legacy_paint_variants(
             _ => &[],
         },
         Family::ER => match (target, channel) {
-            (Target::Requirement | Target::Relation, Fill | Stroke) => DEFAULT,
+            (Target::Relation, Fill | Stroke) => DEFAULT,
             (Target::Text | Target::Title, Fill) => DEFAULT,
             (Target::Table, Fill) => ODD_EVEN,
             _ => &[],
@@ -1075,6 +1094,46 @@ mod tests {
             compile_ordinal_palette_route(DiagramFamilyId::PIE, ThemeTarget::PieSlice)
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
+        );
+    }
+
+    #[test]
+    fn er_entity_scalar_paint_is_direct_for_static_default_selectors_only() {
+        for selector in [
+            FamilyThemeSelectorShape::Static { variant: None },
+            FamilyThemeSelectorShape::Static {
+                variant: Some(ThemeVariant::Default),
+            },
+        ] {
+            for facet in [
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent),
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+                FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Transparent),
+                FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Solid),
+            ] {
+                assert_eq!(
+                    classify_rule_facet(DiagramFamilyId::ER, ThemeTarget::Entity, selector, facet,),
+                    FamilyThemeDisposition::TypedAdapter
+                );
+            }
+        }
+
+        let ordinal = FamilyThemeSelectorShape::Ordinal {
+            variant: None,
+            selector: OrdinalSelector::exact(1).expect("valid ER entity ordinal"),
+        };
+        assert_eq!(
+            classify_rule_facet(
+                DiagramFamilyId::ER,
+                ThemeTarget::Entity,
+                ordinal,
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+            ),
+            FamilyThemeDisposition::Unsupported
+        );
+        assert!(
+            legacy_paint_variants(DiagramFamilyId::ER, ThemeTarget::Entity, PaintChannel::Fill,)
+                .is_empty()
         );
     }
 

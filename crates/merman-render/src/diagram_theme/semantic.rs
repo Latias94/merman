@@ -51,6 +51,7 @@ pub enum ThemeTarget {
     NoteLabel,
     Activation,
     Requirement,
+    Entity,
     Relation,
     PieSlice,
     ChartSeries,
@@ -101,6 +102,7 @@ impl ThemeTarget {
         Self::NoteLabel,
         Self::Activation,
         Self::Requirement,
+        Self::Entity,
         Self::Relation,
         Self::PieSlice,
         Self::ChartSeries,
@@ -147,6 +149,7 @@ impl ThemeTarget {
             Self::NoteLabel => "note-label",
             Self::Activation => "activation",
             Self::Requirement => "requirement",
+            Self::Entity => "entity",
             Self::Relation => "relation",
             Self::PieSlice => "pie-slice",
             Self::ChartSeries => "chart-series",
@@ -180,9 +183,9 @@ impl ThemeTarget {
             | Self::Activation => {
                 matches!(family, DiagramFamilyId::SEQUENCE)
             }
-            Self::Requirement | Self::Relation => {
-                matches!(family, DiagramFamilyId::REQUIREMENT | DiagramFamilyId::ER)
-            }
+            Self::Requirement => matches!(family, DiagramFamilyId::REQUIREMENT),
+            Self::Entity => matches!(family, DiagramFamilyId::ER),
+            Self::Relation => matches!(family, DiagramFamilyId::REQUIREMENT | DiagramFamilyId::ER),
             Self::PieSlice => matches!(family, DiagramFamilyId::PIE),
             Self::ChartSeries | Self::Axis | Self::Legend => matches!(
                 family,
@@ -857,5 +860,15 @@ mod tests {
         ] {
             assert!(!target.valid_for(DiagramFamilyId::ARCHITECTURE));
         }
+    }
+
+    #[test]
+    fn er_owns_entity_while_requirement_keeps_its_family_identity() {
+        assert!(ThemeTarget::Entity.valid_for(DiagramFamilyId::ER));
+        assert!(!ThemeTarget::Entity.valid_for(DiagramFamilyId::REQUIREMENT));
+        assert!(ThemeTarget::Requirement.valid_for(DiagramFamilyId::REQUIREMENT));
+        assert!(!ThemeTarget::Requirement.valid_for(DiagramFamilyId::ER));
+        assert!(ThemeTarget::Relation.valid_for(DiagramFamilyId::ER));
+        assert!(ThemeTarget::Relation.valid_for(DiagramFamilyId::REQUIREMENT));
     }
 }

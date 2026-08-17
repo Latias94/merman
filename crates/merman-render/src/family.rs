@@ -987,6 +987,7 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::CLASS
                 | DiagramFamilyId::GANTT
                 | DiagramFamilyId::PIE
+                | DiagramFamilyId::ER
                 | DiagramFamilyId::ARCHITECTURE
         ) && self
             .resolved_theme
@@ -1294,6 +1295,24 @@ pub(crate) struct PieFamilyArtifact {
     slice_paint: crate::pie::PieSlicePaintPlan,
 }
 
+#[derive(Debug)]
+pub(crate) struct ErFamilyArtifact {
+    pair: FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout>,
+    entity_theme: crate::er::ErEntityThemePlan,
+}
+
+impl ErFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn entity_theme(&self) -> &crate::er::ErEntityThemePlan {
+        &self.entity_theme
+    }
+}
+
 impl PieFamilyArtifact {
     pub(crate) const fn pair(
         &self,
@@ -1427,7 +1446,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Info(Box<FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>>),
     Treemap(Box<FamilyPair<diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>>),
     Block(Box<FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>>),
-    Er(Box<FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout>>),
+    Er(Box<ErFamilyArtifact>),
     QuadrantChart(
         Box<
             FamilyPair<
@@ -1682,6 +1701,13 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn er_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Er(artifact) => Some(artifact.entity_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     #[cfg(feature = "layout-cytoscape")]
     fn architecture_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
@@ -1723,7 +1749,7 @@ impl BuiltinFamilyArtifact {
             Self::Info(pair) => pair.compatibility_json(metadata),
             Self::Treemap(pair) => pair.compatibility_json(metadata),
             Self::Block(pair) => pair.compatibility_json(metadata),
-            Self::Er(pair) => pair.compatibility_json(metadata),
+            Self::Er(artifact) => artifact.pair.compatibility_json(metadata),
             Self::QuadrantChart(pair) => pair.compatibility_json(metadata),
             Self::XyChart(pair) => pair.compatibility_json(metadata),
             Self::GitGraph(pair) => pair.compatibility_json(metadata),
@@ -1764,7 +1790,7 @@ impl BuiltinFamilyArtifact {
             Self::Info(pair) => LayoutProjection::InfoDiagram(pair.layout()),
             Self::Treemap(pair) => LayoutProjection::TreemapDiagram(pair.layout()),
             Self::Block(pair) => LayoutProjection::BlockDiagram(pair.layout()),
-            Self::Er(pair) => LayoutProjection::ErDiagram(pair.layout()),
+            Self::Er(artifact) => LayoutProjection::ErDiagram(artifact.pair.layout()),
             Self::QuadrantChart(pair) => LayoutProjection::QuadrantChartDiagram(pair.layout()),
             Self::XyChart(pair) => LayoutProjection::XyChartDiagram(pair.layout()),
             Self::GitGraph(pair) => LayoutProjection::GitGraphDiagram(pair.layout()),
@@ -2345,6 +2371,7 @@ impl FamilyRenderArtifact {
             .class_theme_evidence(self.context.resolved_theme());
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let pie_theme_evidence = self.family.pie_theme_evidence();
+        let er_theme_evidence = self.family.er_theme_evidence();
         #[cfg(feature = "layout-cytoscape")]
         let architecture_theme_evidence = self.family.architecture_theme_evidence();
         let state_filter_receipt = match &self.family {
@@ -2372,6 +2399,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = pie_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::PIE, evidence);
+        }
+        if let Some(evidence) = er_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::ER, evidence);
         }
         #[cfg(feature = "layout-cytoscape")]
         if let Some(evidence) = architecture_theme_evidence {
@@ -2972,27 +3002,31 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Er(model) => {
+            let entity_theme = crate::er::ErEntityThemePlan::resolve(
+                execution.resolved_theme(),
+                &meta.effective_config,
+                &model.entities,
+                execution.work_meter_ref(),
+            )?;
             #[cfg(feature = "layout-elk")]
-            {
-                BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
-                    crate::er::layout_er_diagram_typed_with_elk_operation_seed(
-                        model,
-                        effective_config,
-                        execution.text_measurer(),
-                        execution.elk_operation_seed(),
-                        execution.work_meter(),
-                    )
-                })?)
-            }
+            let layout = crate::er::layout_er_diagram_typed_with_elk_operation_seed(
+                &model,
+                effective_config,
+                execution.text_measurer(),
+                execution.elk_operation_seed(),
+                execution.work_meter(),
+            )?;
             #[cfg(not(feature = "layout-elk"))]
-            BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
-                crate::er::layout_er_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                    execution.work_meter(),
-                )
-            })?)
+            let layout = crate::er::layout_er_diagram_typed(
+                &model,
+                effective_config,
+                execution.text_measurer(),
+                execution.work_meter(),
+            )?;
+            BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                entity_theme,
+            }))
         }
         RenderSemanticModel::QuadrantChart(model) => {
             BuiltinFamilyArtifact::QuadrantChart(prepare_pair(model, |model| {

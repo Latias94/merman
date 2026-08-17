@@ -603,9 +603,9 @@ fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyTheme
     contributions.add_theme_variables(
         "entity.paint",
         [
-            ("mainBkg", reader.fill(ThemeTarget::Requirement)),
-            ("primaryColor", reader.fill(ThemeTarget::Requirement)),
-            ("nodeBorder", reader.stroke(ThemeTarget::Requirement)),
+            ("mainBkg", reader.fill(ThemeTarget::Entity)),
+            ("primaryColor", reader.fill(ThemeTarget::Entity)),
+            ("nodeBorder", reader.stroke(ThemeTarget::Entity)),
         ],
     );
     contributions.add_theme_variables(

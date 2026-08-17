@@ -3042,9 +3042,11 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorErro
         Value::String(tertiary_color.clone()),
     );
 
-    if get_truthy_string(&tv, "primaryBorderColor").is_none() {
+    let derives_primary_border_from_primary = value_is_missing(&tv, "primaryBorderColor");
+    if derives_primary_border_from_primary {
         let color = mk_border(&primary_color, dark_mode)?;
         tv.insert("primaryBorderColor".to_string(), Value::String(color));
+        config.propagate_theme_variable_ownership("primaryColor", "primaryBorderColor");
     }
 
     if get_truthy_string(&tv, "secondaryBorderColor").is_none() {
@@ -3084,7 +3086,11 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorErro
     if derives_main_background_from_primary {
         config.propagate_theme_variable_ownership("primaryColor", "mainBkg");
     }
+    let derives_node_border_from_primary_border = value_is_missing(&tv, "nodeBorder");
     set_if_missing(&mut tv, "nodeBorder", Value::String(primary_border_color));
+    if derives_node_border_from_primary_border {
+        config.propagate_theme_variable_ownership("primaryBorderColor", "nodeBorder");
+    }
     set_if_missing(&mut tv, "clusterBkg", Value::String(tertiary_color.clone()));
     set_if_missing(
         &mut tv,
@@ -3335,7 +3341,7 @@ mod tests {
     }
 
     #[test]
-    fn theme_variable_derived_ownership_follows_primary_color_to_main_background_dependencies() {
+    fn theme_variable_derived_ownership_follows_base_primary_color_dependencies() {
         for (theme, derives_main_background) in [
             (MermaidThemeId::Base, true),
             (MermaidThemeId::Default, false),
@@ -3358,6 +3364,11 @@ mod tests {
 
             assert_eq!(
                 config.config_path_overrides_typed_default("themeVariables.mainBkg"),
+                derives_main_background,
+                "theme {theme}"
+            );
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.nodeBorder"),
                 derives_main_background,
                 "theme {theme}"
             );

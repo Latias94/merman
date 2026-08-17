@@ -734,10 +734,11 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
-        BuiltinFamilyArtifact::Er(pair) => er::render_er_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Er(artifact) => er::render_er_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.entity_theme(),
+            effective_config,
             title,
             measurer,
             options,

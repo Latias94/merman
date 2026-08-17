@@ -222,6 +222,24 @@ fn style_decls_with_important(decls: &[String]) -> String {
     style_decls_with_important_join(decls, "; ")
 }
 
+fn entity_rect_style_attr(
+    source_decls: &[String],
+    typed_fill: Option<&str>,
+    typed_stroke: Option<&str>,
+) -> String {
+    let mut declarations = Vec::new();
+    if !source_decls.is_empty() {
+        declarations.push(style_decls_with_important(source_decls));
+    }
+    if let Some(fill) = typed_fill {
+        declarations.push(format!("fill:{fill}"));
+    }
+    if let Some(stroke) = typed_stroke {
+        declarations.push(format!("stroke:{stroke}"));
+    }
+    format!(r#"style="{}""#, escape_attr(&declarations.join("; ")))
+}
+
 fn last_style_value(decls: &[String], key: &str) -> Option<String> {
     for d in decls.iter().rev() {
         let Some((k, v)) = parse_style_decl(d) else {
@@ -258,11 +276,13 @@ fn parse_px_f64(v: &str) -> Option<f64> {
 pub(crate) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    entity_theme: &crate::er::ErEntityThemePlan,
+    effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let effective_config = effective_config.as_value();
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
@@ -518,6 +538,7 @@ pub(crate) fn render_er_diagram_svg_model(
     for e in model.entities.values() {
         entity_by_id.insert(e.id.as_str(), e);
     }
+    let mut entity_theme_receipt = entity_theme.begin_terminal_receipt();
 
     fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
         let rest = edge_id.strip_prefix("er-rel-")?;
@@ -814,15 +835,25 @@ pub(crate) fn render_er_diagram_svg_model(
             continue;
         };
 
-        let (rect_style_decls, text_style_decls) = compile_er_entity_styles(entity, &model.classes);
-        let rect_style_attr = if rect_style_decls.is_empty() {
-            r#"style="""#.to_string()
-        } else {
-            format!(
-                r#"style="{}""#,
-                escape_xml(&style_decls_with_important(&rect_style_decls))
-            )
+        let Some(entity_index) = entity_theme.index_for_entity_id(&entity.id) else {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "ER entity theme plan is missing semantic entity {}",
+                    entity.id
+                ),
+            });
         };
+
+        let (rect_style_decls, text_style_decls) = compile_er_entity_styles(entity, &model.classes);
+        let source_fill = last_style_value(&rect_style_decls, "fill");
+        let source_stroke = last_style_value(&rect_style_decls, "stroke");
+        let typed_fill = entity_theme.typed_fill(entity_index, source_fill.is_some());
+        let typed_stroke = entity_theme.typed_stroke(entity_index, source_stroke.is_some());
+        let rect_style_attr = entity_rect_style_attr(
+            &rect_style_decls,
+            typed_fill.map(|(_, css)| css),
+            typed_stroke.map(|(_, css)| css),
+        );
         let label_style_attr = if text_style_decls.is_empty() {
             r#"style="""#.to_string()
         } else {
@@ -916,6 +947,13 @@ pub(crate) fn render_er_diagram_svg_model(
             );
             out.push_str("</g>");
             out.checkpoint()?;
+            entity_theme_receipt.record_checkpointed_entity(
+                entity_index,
+                source_fill.is_some(),
+                source_stroke.is_some(),
+                typed_fill,
+                typed_stroke,
+            );
             continue;
         }
 
@@ -971,10 +1009,14 @@ pub(crate) fn render_er_diagram_svg_model(
         let box_y1 = oy + h;
         let sep_y = oy + name_row_h;
 
-        let box_fill =
-            last_style_value(&rect_style_decls, "fill").unwrap_or_else(|| main_bkg.clone());
-        let box_stroke =
-            last_style_value(&rect_style_decls, "stroke").unwrap_or_else(|| node_border.clone());
+        let box_fill = source_fill
+            .clone()
+            .or_else(|| typed_fill.map(|(_, css)| css.to_string()))
+            .unwrap_or_else(|| main_bkg.clone());
+        let box_stroke = source_stroke
+            .clone()
+            .or_else(|| typed_stroke.map(|(_, css)| css.to_string()))
+            .unwrap_or_else(|| node_border.clone());
         let box_stroke_width = last_style_value(&rect_style_decls, "stroke-width")
             .and_then(|v| parse_px_f64(&v))
             .unwrap_or(1.3)
@@ -989,22 +1031,27 @@ pub(crate) fn render_er_diagram_svg_model(
             format!(r#"style="{}""#, escape_xml(&group_style))
         };
 
-        let mut override_decls: Vec<String> = Vec::new();
-        if let Some(v) = last_style_value(&rect_style_decls, "stroke") {
-            override_decls.push(format!("stroke:{v}"));
+        let mut override_decls = Vec::new();
+        if let Some(value) = source_stroke.as_deref() {
+            override_decls.push(format!("stroke:{value} !important"));
+        } else if let Some((_, value)) = typed_stroke {
+            override_decls.push(format!("stroke:{value}"));
         }
         if let Some(v) = last_style_value(&rect_style_decls, "stroke-width") {
-            override_decls.push(format!("stroke-width:{v}"));
+            override_decls.push(format!("stroke-width:{v} !important"));
         }
-        let override_style = if override_decls.is_empty() {
-            None
+        let override_style_attr = if override_decls.is_empty() {
+            String::new()
         } else {
-            Some(style_decls_with_important(&override_decls))
+            format!(r#" style="{}""#, escape_attr(&override_decls.join("; ")))
         };
-        let override_style_attr = override_style
-            .as_deref()
-            .map(|s| format!(r#" style="{}""#, escape_xml(s)))
-            .unwrap_or_default();
+        let base_fill_style_attr = if let Some(value) = source_fill.as_deref() {
+            format!(r#" style="fill:{} !important""#, escape_attr(value))
+        } else if let Some((_, value)) = typed_fill {
+            format!(r#" style="fill:{}""#, escape_attr(value))
+        } else {
+            String::new()
+        };
 
         // Mermaid erBox.ts uses Rough.js with `roughness=0` for default (non-handDrawn) nodes.
         //
@@ -1110,14 +1157,14 @@ pub(crate) fn render_er_diagram_svg_model(
             &mut out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
             roughjs46_rect_fill_path_d(box_x0, box_y0, box_x1, box_y1),
-            escape_xml(&box_fill),
-            override_style_attr
+            escape_attr(&box_fill),
+            base_fill_style_attr
         );
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
             rough_rect_border_path_d(&hand_drawn_seed, box_x0, box_y0, box_x1, box_y1),
-            escape_xml(&box_stroke),
+            escape_attr(&box_stroke),
             stroke_width_attr,
             override_style_attr
         );
@@ -1424,6 +1471,13 @@ pub(crate) fn render_er_diagram_svg_model(
 
         out.push_str("</g>");
         out.checkpoint()?;
+        entity_theme_receipt.record_checkpointed_entity(
+            entity_index,
+            source_fill.is_some(),
+            source_stroke.is_some(),
+            typed_fill,
+            typed_stroke,
+        );
     }
     out.push_str("</g>\n");
     out.checkpoint()?;
@@ -1458,7 +1512,13 @@ pub(crate) fn render_er_diagram_svg_model(
     push_er_shadow_defs(&mut out, diagram_id, effective_config)?;
 
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !entity_theme.record_terminal(entity_theme_receipt) {
+        return Err(Error::InvalidModel {
+            message: "ER entity theme terminal evidence could not be sealed".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 fn push_er_shadow_defs(
@@ -1551,6 +1611,7 @@ mod tests {
     use crate::DiagramFamilyId;
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use merman_core::MermaidConfig;
     use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
     use serde_json::json;
     use std::collections::BTreeMap;
@@ -1788,8 +1849,24 @@ mod tests {
             diagram_id: Some("er-colors".to_string()),
             ..SvgRenderOptions::default()
         };
+        let effective_config = MermaidConfig::from_value(config.clone());
         let svg = with_test_svg_execution(DiagramFamilyId::ER, &options, |options| {
-            super::render_er_diagram_svg_model(&layout, &model, &config, None, &measurer, options)
+            let entity_theme = crate::er::ErEntityThemePlan::resolve(
+                None,
+                &effective_config,
+                &model.entities,
+                options.work_meter(),
+            )
+            .expect("resolve baseline ER entity theme");
+            super::render_er_diagram_svg_model(
+                &layout,
+                &model,
+                &entity_theme,
+                &effective_config,
+                None,
+                &measurer,
+                options,
+            )
         })
         .and_then(|svg| svg.into_string_for(DiagramFamilyId::ER))
         .unwrap();
