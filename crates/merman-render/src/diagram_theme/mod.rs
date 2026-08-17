@@ -17,6 +17,7 @@ mod effects;
 mod family_mechanism_matrix;
 mod family_program;
 mod legacy_family_theme_bridge;
+mod materializer;
 mod mechanisms;
 mod mermaid_compatibility;
 mod presets;
@@ -66,6 +67,9 @@ pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape,
+};
+pub use materializer::{
+    MaterializedTheme, ThemeMaterializationDigest, ThemeMaterializationError, ThemeMaterializer,
 };
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
