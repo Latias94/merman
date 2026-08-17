@@ -122,6 +122,9 @@ impl TreeViewEdgeThemePlan {
                 } => {
                     let observation = observations.entry(rule_index).or_default();
                     let property = resolved_style_property_for_facet(facet);
+                    if !selector.ordinal_domain_intersects_occurrence_count(expected_line_count) {
+                        continue;
+                    }
                     let qualified_variant = matches!(
                         selector,
                         FamilyThemeSelectorShape::Static { variant: Some(_) }
@@ -131,8 +134,7 @@ impl TreeViewEdgeThemePlan {
                             }
                     );
                     let route_won = occurrence_winners.contains(&(rule_index, property));
-                    if expected_line_count == 0
-                        || (!route_won && !qualified_variant)
+                    if (!route_won && !qualified_variant)
                         || (mermaid_owns_line_thickness
                             && facet == FamilyThemeRuleFacet::StrokeWidth)
                     {

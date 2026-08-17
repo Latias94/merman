@@ -110,6 +110,9 @@ impl JourneyTaskTheme {
                 } => {
                     let observation = observations.entry(rule_index).or_default();
                     let property = resolved_style_property_for_facet(facet);
+                    if !selector.ordinal_domain_intersects_occurrence_count(task_count) {
+                        continue;
+                    }
                     let qualified_variant = matches!(
                         selector,
                         FamilyThemeSelectorShape::Static { variant: Some(_) }
@@ -127,7 +130,7 @@ impl JourneyTaskTheme {
                             occurrence_winners.contains(&(rule_index, property))
                         }
                     };
-                    if task_count == 0 || (!route_won && !qualified_variant) {
+                    if !route_won && !qualified_variant {
                         continue;
                     }
 

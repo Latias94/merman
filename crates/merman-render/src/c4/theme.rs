@@ -3,8 +3,8 @@ use std::sync::OnceLock;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, OrdinalSelector, ResolvedDiagramTheme, ResolvedStyleProperty,
-    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, Specified,
+    ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
@@ -104,7 +104,8 @@ impl C4ClusterThemePlan {
                     facet,
                 } => {
                     let observation = observations.entry(rule_index).or_default();
-                    if !selector_matches_any_boundary(selector, explicit_boundary_count) {
+                    if !selector.ordinal_domain_intersects_occurrence_count(explicit_boundary_count)
+                    {
                         continue;
                     }
 
@@ -247,23 +248,6 @@ impl C4ClusterThemePlan {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::RoundedGeometry]);
         }
         evidence
-    }
-}
-
-fn selector_matches_any_boundary(
-    selector: FamilyThemeSelectorShape,
-    explicit_boundary_count: usize,
-) -> bool {
-    match selector {
-        FamilyThemeSelectorShape::Static { .. } => explicit_boundary_count != 0,
-        FamilyThemeSelectorShape::Ordinal {
-            selector: OrdinalSelector::Exact(index),
-            ..
-        } => index <= explicit_boundary_count,
-        FamilyThemeSelectorShape::Ordinal {
-            selector: OrdinalSelector::Cycle { offset, .. },
-            ..
-        } => offset < explicit_boundary_count,
     }
 }
 

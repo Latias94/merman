@@ -509,6 +509,30 @@ fn tree_view_edge_width_rejects_qualified_ordinal_and_mixed_rules() {
             Some((merman_render::DiagramFamilyId::TREE_VIEW, 1))
         );
     }
+
+    let theme = tree_view_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(6.0)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            tree_view_edge_width_style(Specified::Value(99.0)),
+        )
+        .with_variant(ThemeVariant::Warning)
+        .with_ordinal(
+            OrdinalSelector::exact(999).expect("valid out-of-range Tree View edge ordinal"),
+        ),
+    ]);
+    let (_, svg) = try_render_tree_view_svg_with_theme(source, &theme)
+        .expect("an out-of-range Tree View selector must be not applicable");
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Tree View SVG XML");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+            .all(|line| line.attribute("stroke-width") == Some("6"))
+    );
 }
 
 #[test]

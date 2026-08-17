@@ -4,8 +4,9 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeGeometryPatch,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, Specified,
+    ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -334,6 +335,40 @@ fn quadrantchart_static_series_radius_reaches_svg_without_overriding_existing_ow
     assert!(view_box[1] <= cy - radius, "{view_box:?}");
     assert!(view_box[0] + view_box[2] >= cx + radius, "{view_box:?}");
     assert!(view_box[1] + view_box[3] >= cy + radius, "{view_box:?}");
+
+    let irrelevant_qualified_rule = ThemeRule::new(
+        ThemeTarget::ChartSeries,
+        ThemeStylePatch {
+            geometry: ThemeGeometryPatch {
+                radius: Specified::Value(99.0),
+            },
+            ..ThemeStylePatch::default()
+        },
+    )
+    .with_variant(ThemeVariant::Warning)
+    .with_ordinal(OrdinalSelector::exact(999).expect("valid out-of-range Quadrant Chart ordinal"));
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::ChartSeries,
+                        ThemeStylePatch {
+                            geometry: ThemeGeometryPatch {
+                                radius: Specified::Value(13.0),
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    ))
+                    .with_rule(irrelevant_qualified_rule),
+            ),
+        )
+        .expect("compile Quadrant Chart radius theme with an out-of-range selector");
+    let svg = render_quadrantchart_svg_with_theme("quadrantChart\nOnly: [0.5, 0.5]\n", &theme);
+    assert!(
+        first_quadrantchart_point_circle(&svg).contains(r#" r="13""#),
+        "an out-of-range qualified selector must not affect portability or terminal radius"
+    );
 }
 
 #[test]

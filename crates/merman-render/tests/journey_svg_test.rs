@@ -1,8 +1,9 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeGeometryPatch,
+    DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, Specified, ThemeGeometryPatch,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -11,18 +12,31 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 #[test]
 fn journey_task_radius_reaches_terminal_svg_without_changing_sections() {
     for (radius, expected_task_radius) in [(Specified::Value(9.0), "9"), (Specified::Clear, "3")] {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::JourneyTask,
-                        ThemeStylePatch {
-                            geometry: ThemeGeometryPatch { radius },
-                            ..ThemeStylePatch::default()
+        let styles = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::JourneyTask,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch { radius },
+                    ..ThemeStylePatch::default()
+                },
+            ))
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::JourneyTask,
+                    ThemeStylePatch {
+                        geometry: ThemeGeometryPatch {
+                            radius: Specified::Value(99.0),
                         },
-                    ),
-                )),
-            )
+                        ..ThemeStylePatch::default()
+                    },
+                )
+                .with_variant(ThemeVariant::Warning)
+                .with_ordinal(
+                    OrdinalSelector::exact(999).expect("valid out-of-range Journey ordinal"),
+                ),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
             .expect("compile Journey task radius theme");
         let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
             .parse_diagram_for_render_model_sync(

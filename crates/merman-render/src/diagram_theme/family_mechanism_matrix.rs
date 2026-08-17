@@ -161,6 +161,23 @@ impl FamilyThemeSelectorShape {
             Self::Ordinal { .. } => None,
         }
     }
+
+    pub(crate) const fn ordinal_domain_intersects_occurrence_count(
+        self,
+        occurrence_count: usize,
+    ) -> bool {
+        match self {
+            Self::Static { .. } => occurrence_count != 0,
+            Self::Ordinal {
+                selector: OrdinalSelector::Exact(index),
+                ..
+            } => index <= occurrence_count,
+            Self::Ordinal {
+                selector: OrdinalSelector::Cycle { offset, .. },
+                ..
+            } => offset < occurrence_count,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1303,6 +1320,26 @@ mod tests {
     use crate::diagram_theme::{
         TextStylePatch, ThemeColorValue, ThemeGeometryPatch, ThemePaintPatch, ThemeStylePatch,
     };
+
+    #[test]
+    fn selector_ordinal_domain_intersection_handles_exact_and_cycle_boundaries() {
+        let static_selector = FamilyThemeSelectorShape::Static { variant: None };
+        let exact = FamilyThemeSelectorShape::Ordinal {
+            variant: Some(ThemeVariant::Warning),
+            selector: OrdinalSelector::exact(3).expect("valid exact selector"),
+        };
+        let cycle = FamilyThemeSelectorShape::Ordinal {
+            variant: None,
+            selector: OrdinalSelector::cycle(5, 2).expect("valid cycle selector"),
+        };
+
+        assert!(!static_selector.ordinal_domain_intersects_occurrence_count(0));
+        assert!(static_selector.ordinal_domain_intersects_occurrence_count(1));
+        assert!(!exact.ordinal_domain_intersects_occurrence_count(2));
+        assert!(exact.ordinal_domain_intersects_occurrence_count(3));
+        assert!(!cycle.ordinal_domain_intersects_occurrence_count(2));
+        assert!(cycle.ordinal_domain_intersects_occurrence_count(3));
+    }
 
     #[test]
     fn pie_slice_palette_uses_the_direct_adapter() {

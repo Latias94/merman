@@ -81,6 +81,9 @@ impl TimelineEventTheme {
                     facet,
                 } => {
                     let observation = observations.entry(rule_index).or_default();
+                    if !selector.ordinal_domain_intersects_occurrence_count(event_count) {
+                        continue;
+                    }
                     let route_won = winner_properties
                         .contains(&(rule_index, resolved_style_property_for_facet(facet)));
                     let qualified_variant = matches!(
@@ -91,7 +94,7 @@ impl TimelineEventTheme {
                                 ..
                             }
                     );
-                    if event_count == 0 || (!route_won && !qualified_variant) {
+                    if !route_won && !qualified_variant {
                         continue;
                     }
                     observation.applicable = true;

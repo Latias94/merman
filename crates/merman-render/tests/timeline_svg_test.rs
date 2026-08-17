@@ -327,6 +327,28 @@ fn timeline_event_opacity_rejects_qualified_and_mixed_rules() {
             Some((merman_render::DiagramFamilyId::TIMELINE, 1))
         );
     }
+
+    let theme = timeline_event_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::TimelineEvent,
+            timeline_event_opacity_style(Specified::Value(0.5)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::TimelineEvent,
+            timeline_event_opacity_style(Specified::Value(0.9)),
+        )
+        .with_variant(ThemeVariant::Warning)
+        .with_ordinal(
+            OrdinalSelector::exact(999).expect("valid out-of-range Timeline event ordinal"),
+        ),
+    ]);
+    let svg = render_timeline_svg_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Timeline SVG XML");
+    let wrapper = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .expect("Timeline event wrapper");
+    assert_eq!(wrapper.attribute("opacity"), Some("0.5"));
 }
 
 #[test]

@@ -119,6 +119,9 @@ impl QuadrantChartPointThemePlan {
                 } => {
                     let observation = observations.entry(rule_index).or_default();
                     let property = resolved_style_property_for_facet(facet);
+                    if !selector.ordinal_domain_intersects_occurrence_count(point_count) {
+                        continue;
+                    }
                     let radius_facet = facet == FamilyThemeRuleFacet::Radius;
                     let applicable_point_count = if radius_facet {
                         unowned_point_count
