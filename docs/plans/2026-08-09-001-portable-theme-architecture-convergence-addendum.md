@@ -70,7 +70,7 @@ release when a statement below differs.
 | Built-in presets | A preset is a convenient, versioned materialization of the same typed recipe accepted from Rust, JSON, and bindings. The catalog is open to additional generally useful themes; Brutalist, Spotless, Cyberpunk, Modern Slate, or any later theme name is illustrative rather than a fixed roadmap or product-brand hierarchy. A preset must not select layout, Mermaid look, output pipeline, trusted postprocessors, or family-private behavior implicitly. | Alpha candidates may remain discovery-only while coverage is incomplete. Stable status is decided per preset from C6-backed family/target cells, allowed residuals, resource burden, and licensing rather than from theme name or catalog size. |
 | Preset cost boundary | Built-in presets should normally compile from static Merman-owned recipe data and reuse existing code and resources. They must not require a CSS/JavaScript interpreter, network access, brand crawler, application runtime, or substantial preset-only dependency/asset closure. Bundled fonts or other material assets require an explicit redistribution, size, resource-policy, and portability decision. | A heavier theme pack can live in an optional downstream package or host application instead of enlarging the core artifact. |
 | Published binding epochs | `0.8.0-alpha.5` published the leaked family and renderer taxonomy under UniFFI API 3 and Web/WASM transport API 3. The subtractive family-catalog correction therefore supersedes the August 2 FFI-plan KTD9 only for those two epochs: UniFFI advances to API 4 and Web/WASM advances to transport API 4. Native C ABI 3, runtime-catalog schema 1, Android transport API 1, Typst plugin ABI 2, and the Node transport remain unchanged. The incompatible post-alpha.5 Options grammar advances independently to schema 3 under KTD16. The next prerelease must carry the corrected projections; an already published alpha.5 artifact is never republished in place. | A later epoch requires another demonstrably incompatible transport change; additive catalog rows and fields continue to evolve inside the current schema rules. |
-| C5 versus C6 | C5 owns compilation, value-domain declarations, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns temporary route-cutover authorization and the representative C6a integration ledger. JPEG, PDF, and a future Browser SVG adapter use scoped smoke or release-qualification checks rather than an always-active equal-depth matrix. | A bridge route is removed only when an exact route-cutover receipt binds its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. That receipt authorizes only that route; it is not a C6 cell and cannot emit `C6aEligibilityReceipt`. After the bridge route is deleted through an explicit migration, the active row and dedicated proof are deleted in the same change while a compact tombstone preserves history. |
+| C5 versus C6 | C5 owns compilation, value-domain declarations, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns temporary route-cutover authorization and the representative C6a integration ledger. JPEG, PDF, and a future Browser SVG adapter use scoped smoke or release-qualification checks rather than an always-active equal-depth matrix. | The versioned route-cutover manifest governs only its declared scalar domain: static-unqualified atomic fill/stroke routes with solid/transparent values. Removing one of those bridge routes requires an exact receipt binding its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. Ordinal-palette breadth migrations follow the narrower C7b ledger in KTD18 rather than being misrepresented as scalar route pairs. Neither authorization is a C6 cell or can emit `C6aEligibilityReceipt`. |
 | Public surface timing | C7a-candidate may be declared only after C6a plus real pre-freeze family-writer/compiler round trips. C7a-rollout migrates bindings, Typst, examples, and native Merman CLI against that alpha candidate. C7a-contract freezes only after rollout verification. Fine-grained mechanism/evidence types and alpha preset IDs remain private or explicitly unstable. | A preset may gain only scoped claims for declared, proven family/target cells. Unqualified all-family or all-target claims require a later release-qualification plan. |
 | Official CLI | New theme selection belongs only to the Merman native render/batch surface. The official `mmdc` compatibility surface remains unchanged except for removal of provisional alpha fields. A document, Options JSON, or project config cannot self-authorize a trusted lane. | Any mmdc expansion requires a separate compatibility decision. |
 
@@ -379,9 +379,10 @@ Public presets declare per-target admission expectations and allowed residual ID
   without treating them as C6a cells.** (implementation-evidence-settled - chosen over either
   reverting every already-proven typed route until its full proof-theme cell exists or allowing a
   family-local renderer test to retire bridge ownership by itself.) The non-published acceptance
-  harness owns a separately versioned route manifest and reconciles it exactly against routes that
-  are classified `TypedAdapter` and replace a concrete legacy projection set. For each route it
-  binds family, target, static selector, facet, transparent/solid value class, and the complete
+  harness owns a separately versioned route manifest and reconciles it exactly against scalar routes
+  in its declared domain that are classified `TypedAdapter` and replace a concrete legacy
+  projection set. For each route it binds family, target, static selector, atomic fill/stroke facet,
+  transparent/solid value class, and the complete
   projection set to finalized Standalone SVG and PNG artifacts plus source, recipe, operation,
   document, resource, admission, and assertion digests. Production route deletion cannot
   implicitly shrink this manifest; removal requires an explicit manifest migration or tombstone.
@@ -390,6 +391,17 @@ Public presets declare per-target admission expectations and allowed residual ID
   claim, produce
   `C6aEligibilityReceipt`, or unblock C7a. Direct-only typed mechanisms that never had a bridge
   projection remain governed by family-local writer evidence and do not enter this inventory.
+- KTD18. **Keep ordinal-palette family breadth out of the scalar route-cutover harness.**
+  (implementation-evidence-settled - chosen over encoding an ordinal palette as artificial
+  solid/transparent scalar pairs or growing the private cutover harness into a second theme
+  interpreter.) `FamilyThemeMechanism::OrdinalPalette` migrations may suppress or delete a legacy
+  palette projection only through the explicit C7b migration ledger below. Each row binds the
+  family, target, mechanism, legacy contribution ID, complete projected variable range and limit,
+  terminal writer, source-precedence boundary, and family-local final-SVG evidence. The migration
+  must land atomically with the matrix disposition, bridge suppression/deletion, terminal evidence,
+  and ledger row for every migration introduced after KTD18. The initial ledger explicitly ratifies
+  the existing Pie migration and lands the current Mindmap migration. It does not enter the scalar
+  route manifest, require a PNG pair, create a C6 cell, or broaden a cross-target claim.
 
 ### Product Milestones
 
@@ -807,17 +819,19 @@ and public theme scope from the independent renderer taxonomy before adding face
      route-approved legacy winners. This matrix assigns responsibility; it never manufactures
      runtime `Applied` evidence. The program and State cutover are complete; the other primary
      families have partial direct slices while their uncovered mechanisms remain on explicitly
-     residual bridge routes. Any transition that replaces a concrete legacy projection set must
-     land with an exact private route-cutover receipt declared by the independent versioned manifest
-     and backed by finalized Standalone SVG plus PNG evidence. The runtime matrix must reconcile
-     exactly with that manifest; it is not the source of its own expected authorization set. A
-     direct-only route with no legacy projection does not enter that inventory.
+     residual bridge routes. Any scalar transition in KTD17's declared domain that replaces a
+     concrete legacy projection set must land with an exact private route-cutover receipt declared
+     by the independent versioned manifest and backed by finalized Standalone SVG plus PNG evidence.
+     The runtime matrix must reconcile exactly with that manifest; it is not the source of its own
+     expected authorization set. A direct-only route with no legacy projection does not enter that
+     inventory, and ordinal palettes use only the explicit KTD18 C7b ledger.
   4. Remove the default-typography path from the bridge only after direct Flowchart/Swimlane and
      Sequence layout/emission consumption is proven and its exact legacy-replacing routes receive
      cutover receipts. Keep the bridge for every remaining `LegacyCompatibility` mechanism until an
-     exact route receipt authorizes ownership deletion or a later family-breadth plan explicitly
-     drops that mechanism. This route-level authorization is C6 infrastructure, not the global
-     18-cell C6a eligibility gate.
+     exact scalar route receipt authorizes ownership deletion or the KTD18 C7b ordinal-palette
+     ledger explicitly records that migration. This route-level authorization is C6 infrastructure,
+     while the ordinal ledger is C7b family-breadth governance; neither is the global 18-cell C6a
+     eligibility gate.
 - **Files:** `crates/merman-render/src/diagram_theme/mermaid_compatibility.rs`,
   `crates/merman-render/src/diagram_theme/semantic.rs`,
   `crates/merman-render/src/diagram_theme/resolved.rs`, compiled-theme/session internals,
@@ -1078,6 +1092,19 @@ and public theme scope from the independent renderer taxonomy before adding face
   mechanism witnesses. A witness may remain test-only or become an alpha preset candidate according
   to its general usefulness and cost; no theme name is required to complete this gate. If this work
   exposes a missing public recipe shape, reopen C7a-contract before adding it.
+
+The following compact ledger is the complete KTD18 authority for ordinal-palette bridge migrations.
+It records semantic migrations that the scalar route manifest cannot represent without distorting
+their selector and value domains:
+
+| Family / target | Former legacy contribution and complete projection | Direct terminal owner and required evidence | Status |
+| --- | --- | --- | --- |
+| Pie / `PieSlice` | `merman.legacy-family-theme.v1.pie.slice.palette`; `pie1..pie12`, limit 12 | `PieSlicePaintPlan` shared by terminal slice paths and legend swatches; exact `pieN` source precedence; final-SVG family evidence for solid palette values | Migrated (pre-KTD18, ratified) |
+| Mindmap / `Node` | `merman.legacy-family-theme.v1.mindmap.node.palette`; `cScale0..cScale63`, limit 64 | `MindmapNodePalettePlan` bound to non-root branch-node shape CSS; exact `cScaleN` / `mainBkg` source precedence; gradient and raw-theme-CSS residuals; strict final-SVG evidence for solid/transparent palette values | Migrated |
+
+Adding another row requires a deliberate plan edit and the same atomic implementation boundary; the
+ledger is not a wildcard exemption for effects, typography, arbitrary selectors, or future
+non-scalar mechanisms.
 - **Verification:** Run the original U8-U11 matrices, platform feature checks, generated legal
   material checks, the complete mechanism-classification ledger, selected Modern/PR #28 visual
   reference comparisons, source/contributor attribution checks, simplification, and independent
@@ -1146,5 +1173,7 @@ product-boundary and preset decision. KTD15 records the narrow post-alpha.5 UniF
 epoch correction. KTD16 records the independent Options schema 3 correction without changing the
 C ABI, runtime-catalog schema, Android, Typst, Node, or the already-selected UniFFI/Web transport
 epochs. KTD17 records the exact-route native cutover authorization boundary without converting
-those receipts into C6 cells or eligibility progress. Other Product Contract requirements remain in
-force or are explicitly deferred to C7b/C7c rather than silently discarded.
+those receipts into C6 cells or eligibility progress. KTD18 records the separate C7b
+ordinal-palette migration ledger without forcing those mechanisms into the scalar cutover harness.
+Other Product Contract requirements remain in force or are explicitly deferred to C7b/C7c rather
+than silently discarded.

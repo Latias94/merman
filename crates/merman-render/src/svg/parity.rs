@@ -608,11 +608,12 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        BuiltinFamilyArtifact::Mindmap(pair) => {
+        BuiltinFamilyArtifact::Mindmap(artifact) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
                 effective_config,
+                artifact.node_palette(),
                 options,
             )
         }

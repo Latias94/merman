@@ -10,7 +10,13 @@ use merman_core::MermaidConfig;
 use serde_json::Value;
 use std::sync::Arc;
 
+mod theme;
 mod tidy_tree;
+
+pub(crate) use theme::{
+    MINDMAP_SECTION_COUNT, MindmapNodeFillOwnership, MindmapNodeFillSource, MindmapNodePalettePlan,
+    MindmapNodePaletteTerminalDecision,
+};
 
 pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
     config_f64_css_px(effective_config, &["mindmap", "maxNodeWidth"])

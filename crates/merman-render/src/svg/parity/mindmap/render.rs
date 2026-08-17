@@ -2,6 +2,8 @@ use super::super::*;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
 
+const MINDMAP_THEME_COLOR_LIMIT_DEFAULT: usize = crate::mindmap::MINDMAP_SECTION_COUNT + 1;
+
 #[derive(Debug, Clone, Copy)]
 enum MindmapPathNumberFormat {
     D3Path,
@@ -234,23 +236,20 @@ fn mindmap_viewport_bounds_from_layout(
     bounds
 }
 
-fn mindmap_model_look(model_look: &str, config: &merman_core::MermaidConfig) -> String {
+fn mindmap_model_look<'a>(model_look: &'a str, config: &'a merman_core::MermaidConfig) -> &'a str {
     let model_look = model_look.trim();
     if model_look.is_empty() || model_look == "default" {
-        crate::config::mermaid_config_diagram_look(config)
-            .as_str()
-            .to_string()
+        crate::config::mermaid_config_diagram_look(config).as_str()
     } else {
-        model_look.to_string()
+        model_look
     }
 }
 
-fn mindmap_data_look_attr(model_look: &str, config: &merman_core::MermaidConfig) -> String {
-    let look = mindmap_model_look(model_look, config);
+fn mindmap_data_look_attr(look: &str) -> String {
     if look.is_empty() {
         String::new()
     } else {
-        format!(r#" data-look="{}""#, escape_attr(&look))
+        format!(r#" data-look="{}""#, escape_attr(look))
     }
 }
 
@@ -263,7 +262,12 @@ fn mindmap_dom_id(diagram_id: &str, raw_id: &str) -> String {
 }
 
 fn mindmap_wrap_section_index(index: i64) -> i64 {
-    if index >= 11 { index % 11 } else { index }
+    let section_count = crate::mindmap::MINDMAP_SECTION_COUNT as i64;
+    if index >= section_count {
+        index % section_count
+    } else {
+        index
+    }
 }
 
 fn mindmap_normalize_section_class_token(token: &str) -> String {
@@ -287,8 +291,12 @@ fn mindmap_normalize_section_classes(classes: &str) -> String {
         .join(" ")
 }
 
-fn mindmap_gradient_defs(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+fn mindmap_gradient_defs(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    use_gradient: bool,
+) -> String {
+    if !use_gradient {
         return String::new();
     }
 
@@ -333,10 +341,18 @@ fn push_mindmap_shadow_defs(
     out.checkpoint()
 }
 
-fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn mindmap_css(
+    diagram_id: &str,
+    config: &merman_core::MermaidConfig,
+    node_palette: &crate::mindmap::MindmapNodePalettePlan,
+    theme_color_limit: usize,
+    use_gradient: bool,
+) -> String {
     // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
-    // Keep `:root` last (matches upstream fixtures).
+    // Keep `:root` last within the Mermaid baseline. The typed terminal overlay is appended after
+    // that baseline so its private owner attribute can win without interpreting user classes.
+    let effective_config = config.as_value();
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
@@ -346,7 +362,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
 
     // Mermaid default theme resolves `cScale0..11` into this palette for mindmap/kanban/timeline.
     // The first generated section is `section--1` (i=0).
-    const DEFAULT_FILLS: [&str; 12] = [
+    const DEFAULT_FILLS: [&str; MINDMAP_THEME_COLOR_LIMIT_DEFAULT] = [
         "hsl(240, 100%, 76.2745098039%)",
         "hsl(60, 100%, 73.5294117647%)",
         "hsl(80, 100%, 76.2745098039%)",
@@ -360,7 +376,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         "hsl(180, 100%, 76.2745098039%)",
         "hsl(210, 100%, 76.2745098039%)",
     ];
-    const DEFAULT_INV_FILLS: [&str; 12] = [
+    const DEFAULT_INV_FILLS: [&str; MINDMAP_THEME_COLOR_LIMIT_DEFAULT] = [
         "hsl(60, 100%, 86.2745098039%)",
         "hsl(240, 100%, 83.5294117647%)",
         "hsl(260, 100%, 86.2745098039%)",
@@ -387,13 +403,8 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         if i == 0 || i == 3 { "#ffffff" } else { "black" }
     }
 
-    let theme = config_string(effective_config, &["theme"]).unwrap_or_default();
-    let look = config_diagram_look(effective_config);
-    let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .map(|v| v.round() as i64)
-        .filter(|v| *v > 0)
-        .unwrap_or(DEFAULT_FILLS.len() as i64)
-        .clamp(1, 64) as usize;
+    let theme = config.get_str("theme").unwrap_or_default();
+    let look = crate::config::mermaid_config_diagram_look(config);
     let root_fill = theme_token(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
     let root_label = theme_token(effective_config, "gitBranchLabel0", "#ffffff");
     let node_border = theme_token(effective_config, "nodeBorder", root_label.as_str());
@@ -412,9 +423,6 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         "url(#drop-shadow)",
         &format!("url(#{fragment_id}-drop-shadow)"),
     );
-    let use_gradient =
-        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
-
     for i in 0..theme_color_limit {
         let section = i as i64 - 1;
         let c_scale = theme_token(
@@ -608,6 +616,21 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     }
 
     out.push_str(&parts.root_rule);
+
+    for section in 0..crate::mindmap::MINDMAP_SECTION_COUNT {
+        if let Some(fill) = node_palette.css_fill_for_section(section, theme_color_limit) {
+            let _ = write!(
+                &mut out,
+                r#"#{} [data-mindmap-section="{}"] rect,#{} [data-mindmap-section="{}"] path,#{} [data-mindmap-section="{}"] circle,#{} [data-mindmap-section="{}"] polygon{{fill:{};}}"#,
+                id, section, id, section, id, section, id, section, fill
+            );
+            let _ = write!(
+                &mut out,
+                r#"#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] rect,#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] path,#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] circle,#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] polygon{{fill:{};}}"#,
+                id, section, id, section, id, section, id, section, fill
+            );
+        }
+    }
     out
 }
 
@@ -624,6 +647,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
     config: &merman_core::MermaidConfig,
+    node_palette: &crate::mindmap::MindmapNodePalettePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let timing = options.timing();
@@ -804,10 +828,43 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     ..root_svg::RootChrome::new(diagram_id, "mindmap")
                 },
             )?;
-    let css = mindmap_css(diagram_id, config.as_value());
+    let theme_color_limit = config_f64(config.as_value(), &["themeVariables", "THEME_COLOR_LIMIT"])
+        .map(|value| value.round() as i64)
+        .filter(|value| *value > 0)
+        .unwrap_or(MINDMAP_THEME_COLOR_LIMIT_DEFAULT as i64)
+        .clamp(1, 64) as usize;
+    let use_gradient =
+        config_bool(config.as_value(), &["themeVariables", "useGradient"]).unwrap_or(false);
+    let neo_fill_source = if use_gradient {
+        crate::mindmap::MindmapNodeFillSource::Gradient
+    } else {
+        let theme = merman_core::MermaidThemeId::parse(config.get_str("theme").unwrap_or_default())
+            .unwrap_or_default();
+        if matches!(
+            theme,
+            merman_core::MermaidThemeId::Redux
+                | merman_core::MermaidThemeId::ReduxDark
+                | merman_core::MermaidThemeId::Neutral
+        ) {
+            crate::mindmap::MindmapNodeFillSource::MainBackground
+        } else {
+            crate::mindmap::MindmapNodeFillSource::ColorScale
+        }
+    };
+    let css = mindmap_css(
+        diagram_id,
+        config,
+        node_palette,
+        theme_color_limit,
+        use_gradient,
+    );
     let _ = write!(&mut out, "<style>{}</style>", css);
     drop(css);
-    out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));
+    out.push_str(&mindmap_gradient_defs(
+        diagram_id,
+        config.as_value(),
+        use_gradient,
+    ));
     out.push_str("<g>");
     out.checkpoint()?;
 
@@ -886,7 +943,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             e.thickness.trim(),
             edge_classes.trim()
         );
-        let data_look_attr = mindmap_data_look_attr(&e.look, config);
+        let look = mindmap_model_look(&e.look, config);
+        let data_look_attr = mindmap_data_look_attr(look);
         let edge_dom_id = mindmap_dom_id(diagram_id, &e.id);
         let _ = write!(
             &mut out,
@@ -913,7 +971,9 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
-    for n in &model.nodes {
+    let mut node_palette_receipt = node_palette.begin_terminal_receipt();
+    let node_fill_ownership = crate::mindmap::MindmapNodeFillOwnership::from_config(config);
+    for (node_index, n) in model.nodes.iter().enumerate() {
         let (x, y, w, h, label_w, label_h) = node_by_id
             .get(&n.id)
             .map(|ln| {
@@ -931,13 +991,43 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let half_padding = padding / 2.0;
         let node_classes = mindmap_normalize_section_classes(&n.css_classes);
         let class = format!("node {}", node_classes.trim());
-        let data_look_attr = mindmap_data_look_attr(&n.look, config);
+        let look = mindmap_model_look(&n.look, config);
+        let data_look_attr = mindmap_data_look_attr(look);
+        let fill_source = if look == "neo" {
+            neo_fill_source
+        } else {
+            crate::mindmap::MindmapNodeFillSource::ColorScale
+        };
+        let disabled_circle_owns_fill = look != "neo"
+            && n.shape == "mindmapCircle"
+            && node_classes
+                .split_whitespace()
+                .any(|class| class == "disabled");
+        let terminal_decision = if disabled_circle_owns_fill {
+            crate::mindmap::MindmapNodePaletteTerminalDecision::NotApplicable
+        } else {
+            node_palette.terminal_decision_for_node(
+                n.section,
+                fill_source,
+                &node_fill_ownership,
+                theme_color_limit,
+            )
+        };
         let node_dom_id = mindmap_dom_id(diagram_id, &n.dom_id);
         let _ = write!(
             &mut out,
-            r#"<g class="{class}" id="{dom_id}"{look_attr} transform="translate({x}, {y})">"#,
+            r#"<g class="{class}" id="{dom_id}""#,
             class = escape_xml(&class),
             dom_id = escape_xml(&node_dom_id),
+        );
+        if let crate::mindmap::MindmapNodePaletteTerminalDecision::Applied { section, .. } =
+            terminal_decision
+        {
+            let _ = write!(&mut out, r#" data-mindmap-section="{section}""#);
+        }
+        let _ = write!(
+            &mut out,
+            r#"{look_attr} transform="translate({x}, {y})">"#,
             look_attr = data_look_attr,
             x = fmt(x),
             y = fmt(y),
@@ -1217,6 +1307,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
         out.push_str("</g>");
         out.checkpoint()?;
+        node_palette_receipt.record_checkpointed_node(node_index, terminal_decision);
     }
     out.push_str("</g>");
 
@@ -1244,7 +1335,13 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         );
     }
 
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !node_palette.record_terminal(node_palette_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Mindmap Node palette terminal receipt could not be sealed".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
@@ -1361,7 +1458,9 @@ mod tests {
             }
         });
 
-        let css = mindmap_css("mm", &cfg);
+        let config = merman_core::MermaidConfig::from_value(cfg);
+        let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(None, []);
+        let css = mindmap_css("mm", &config, &node_palette, 3, false);
 
         assert!(css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
         assert!(css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));

@@ -4,6 +4,12 @@ use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
+#[cfg(not(feature = "layout-cytoscape"))]
+use merman_render::diagram_theme::{
+    DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
+    ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget,
+};
+
 fn parse_for_render(source: &str) -> ParsedDiagramRender {
     Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -90,18 +96,47 @@ fn architecture_reports_the_missing_cytoscape_layout_capability() {
 #[cfg(not(feature = "layout-cytoscape"))]
 #[test]
 fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
-    let parsed = match Engine::new().parse_diagram_for_render_model_with_type_sync(
-        "mindmap",
-        "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child\n",
-        ParseOptions::strict(),
-    ) {
+    let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+    let theme =
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
+            ))
+            .expect("compile default-feature Mindmap palette");
+    let parsed = match merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_with_type_sync(
+            "mindmap",
+            "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    Child\n",
+            ParseOptions::strict(),
+        ) {
         Ok(Some(parsed)) => parsed,
         Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
         result => panic!("unexpected Mindmap parse result: {result:?}"),
     };
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin default-feature Mindmap theme session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("tidy-tree Mindmap must not require layout-cytoscape");
     assert_eq!(artifact.family_id().as_str(), "mindmap");
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("typed-mindmap-tidy-tree".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render strict default-feature Mindmap palette");
+
+    assert!(rendered.svg().contains(r#"data-mindmap-section="0""#));
+    assert!(rendered.svg().contains("fill:#123456"));
+    let completion = rendered.into_completion();
+    assert_eq!(
+        merman_render::__private::family_evidence(completion.report()).applied_count(),
+        1
+    );
 }
 
 #[cfg(not(feature = "layout-elk"))]

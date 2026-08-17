@@ -983,6 +983,7 @@ impl ResolvedFamilyStylePlan {
             self.family_id,
             DiagramFamilyId::FLOWCHART
                 | DiagramFamilyId::SWIMLANE
+                | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::SEQUENCE
                 | DiagramFamilyId::CLASS
                 | DiagramFamilyId::GANTT
@@ -1296,6 +1297,24 @@ pub(crate) struct PieFamilyArtifact {
 }
 
 #[derive(Debug)]
+pub(crate) struct MindmapFamilyArtifact {
+    pair: FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>,
+    node_palette: crate::mindmap::MindmapNodePalettePlan,
+}
+
+impl MindmapFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn node_palette(&self) -> &crate::mindmap::MindmapNodePalettePlan {
+        &self.node_palette
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct ErFamilyArtifact {
     pair: FamilyPair<diagrams::er::ErDiagramRenderModel, ErDiagramLayout>,
     entity_theme: crate::er::ErEntityThemePlan,
@@ -1389,7 +1408,7 @@ impl ArchitectureFamilyArtifact {
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
-    Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
+    Mindmap(Box<MindmapFamilyArtifact>),
     State(Box<StateFamilyArtifact>),
     Sequence(
         Box<
@@ -1701,6 +1720,13 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn mindmap_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Mindmap(artifact) => Some(artifact.node_palette().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn er_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::Er(artifact) => Some(artifact.entity_theme().finish_evidence()),
@@ -1724,7 +1750,7 @@ impl BuiltinFamilyArtifact {
     ) -> merman_core::Result<serde_json::Value> {
         match self {
             Self::Error(pair) => pair.compatibility_json(metadata),
-            Self::Mindmap(pair) => pair.compatibility_json(metadata),
+            Self::Mindmap(artifact) => artifact.pair.compatibility_json(metadata),
             Self::State(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
@@ -1763,7 +1789,7 @@ impl BuiltinFamilyArtifact {
     fn layout_projection(&self) -> LayoutProjection<'_> {
         match self {
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
-            Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
+            Self::Mindmap(artifact) => LayoutProjection::MindmapDiagram(artifact.pair.layout()),
             Self::State(artifact) => LayoutProjection::StateDiagram(artifact.pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout().layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
@@ -2371,6 +2397,7 @@ impl FamilyRenderArtifact {
             .class_theme_evidence(self.context.resolved_theme());
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let pie_theme_evidence = self.family.pie_theme_evidence();
+        let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
         let er_theme_evidence = self.family.er_theme_evidence();
         #[cfg(feature = "layout-cytoscape")]
         let architecture_theme_evidence = self.family.architecture_theme_evidence();
@@ -2399,6 +2426,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = pie_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::PIE, evidence);
+        }
+        if let Some(evidence) = mindmap_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::MINDMAP, evidence);
         }
         if let Some(evidence) = er_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::ER, evidence);
@@ -2670,15 +2700,21 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Mindmap(model) => {
-            BuiltinFamilyArtifact::Mindmap(prepare_pair(model, |model| {
-                crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
-                    model,
-                    &meta.effective_config,
-                    execution.text_measurer(),
-                    execution.math_renderer(),
-                    execution.work_meter(),
-                )
-            })?)
+            let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(
+                execution.resolved_theme(),
+                model.nodes.iter().map(|node| node.section),
+            );
+            let layout = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
+                &model,
+                &meta.effective_config,
+                execution.text_measurer(),
+                execution.math_renderer(),
+                execution.work_meter(),
+            )?;
+            BuiltinFamilyArtifact::Mindmap(Box::new(MindmapFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                node_palette,
+            }))
         }
         RenderSemanticModel::State(model) => {
             let label_sidecar = crate::state::StateLabelSidecarBuilder::new_with_work_meter(

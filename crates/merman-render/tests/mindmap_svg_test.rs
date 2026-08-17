@@ -1,7 +1,12 @@
 #![cfg(feature = "layout-cytoscape")]
 
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
+use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, MermaidThemeCompatibility,
+    OrdinalPalette, ThemeAdmissionPolicy, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, TrustedThemeLane, TrustedThemeLanes,
+};
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::model::MindmapDiagramLayout;
@@ -9,6 +14,7 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use serde_json::json;
 
 fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -32,6 +38,156 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
         .expect("render svg")
         .svg()
         .to_owned()
+}
+
+fn mindmap_node_palette_theme(colors: &[&str]) -> DiagramTheme {
+    let palette = OrdinalPalette::new(
+        colors
+            .iter()
+            .map(|color| ThemeColorValue::parse(*color).expect("valid Mindmap palette color")),
+    )
+    .expect("non-empty Mindmap Node palette");
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
+            ),
+        )
+        .expect("compile Mindmap Node palette")
+}
+
+fn prepare_mindmap_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::FamilyRenderArtifact {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Mindmap")
+        .expect("detect themed Mindmap");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Mindmap session");
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare themed Mindmap")
+}
+
+fn render_mindmap_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+    portability: ThemePortabilityRequirement,
+) -> family::RenderedFamilySvg {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Mindmap")
+        .expect("detect themed Mindmap");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Mindmap session");
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare themed Mindmap")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Mindmap")
+}
+
+fn mindmap_node_attribute(svg: &str, node_dom_id: &str, attribute: &str) -> Option<String> {
+    let document = roxmltree::Document::parse(svg).expect("valid Mindmap SVG");
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(node_dom_id))
+        .and_then(|node| node.attribute(attribute))
+        .map(str::to_string)
+}
+
+fn mindmap_stylesheet(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Mindmap SVG");
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect::<String>()
+}
+
+fn mindmap_rule_fill<'a>(
+    stylesheet: &'a str,
+    prefix: &str,
+    terminator: &str,
+    expectation: &str,
+) -> &'a str {
+    stylesheet
+        .split_once(prefix)
+        .and_then(|(_, remaining)| remaining.split_once(terminator))
+        .map(|(fill, _)| fill)
+        .unwrap_or_else(|| panic!("{expectation}"))
+}
+
+fn mindmap_mermaid_section_shape_fill<'a>(
+    stylesheet: &'a str,
+    diagram_id: &str,
+    section: usize,
+) -> &'a str {
+    let prefix = format!(
+        "#{diagram_id} .section-{section} rect,#{diagram_id} .section-{section} path,#{diagram_id} .section-{section} circle,#{diagram_id} .section-{section} polygon,#{diagram_id} .section-{section} path{{fill:"
+    );
+    mindmap_rule_fill(stylesheet, &prefix, ";}", "Mindmap section shape fill rule")
+}
+
+fn mindmap_typed_section_shape_fill<'a>(
+    stylesheet: &'a str,
+    diagram_id: &str,
+    section: usize,
+) -> &'a str {
+    let prefix = format!(
+        "#{diagram_id} [data-mindmap-section=\"{section}\"] rect,#{diagram_id} [data-mindmap-section=\"{section}\"] path,#{diagram_id} [data-mindmap-section=\"{section}\"] circle,#{diagram_id} [data-mindmap-section=\"{section}\"] polygon{{fill:"
+    );
+    mindmap_rule_fill(
+        stylesheet,
+        &prefix,
+        ";}",
+        "typed Mindmap section shape fill rule",
+    )
+}
+
+fn mindmap_typed_neo_section_shape_fill<'a>(
+    stylesheet: &'a str,
+    diagram_id: &str,
+    section: usize,
+) -> &'a str {
+    let prefix = format!(
+        "#{diagram_id} [data-look=\"neo\"].mindmap-node[data-mindmap-section=\"{section}\"] rect,#{diagram_id} [data-look=\"neo\"].mindmap-node[data-mindmap-section=\"{section}\"] path,#{diagram_id} [data-look=\"neo\"].mindmap-node[data-mindmap-section=\"{section}\"] circle,#{diagram_id} [data-look=\"neo\"].mindmap-node[data-mindmap-section=\"{section}\"] polygon{{fill:"
+    );
+    mindmap_rule_fill(
+        stylesheet,
+        &prefix,
+        ";}",
+        "typed neo Mindmap section shape fill rule",
+    )
+}
+
+fn mindmap_neo_section_shape_fill<'a>(
+    stylesheet: &'a str,
+    diagram_id: &str,
+    section: usize,
+) -> &'a str {
+    let prefix = format!(
+        "#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} rect,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} path,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} circle,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} polygon{{fill:"
+    );
+    mindmap_rule_fill(
+        stylesheet,
+        &prefix,
+        ";",
+        "neo Mindmap section shape fill rule",
+    )
 }
 
 fn try_render_mindmap_svg_with_resource_policy(
@@ -152,6 +308,560 @@ fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
             && svg.contains(r#"id="m15-mindmap-drop-shadow-small""#),
         "expected Mermaid 11.15 Mindmap scoped drop-shadow defs: {svg}"
     );
+}
+
+#[test]
+fn mindmap_node_palette_reaches_branch_shapes_without_recoloring_the_root() {
+    let theme = mindmap_node_palette_theme(&[
+        "#123456",
+        "transparent",
+        "#dc2626",
+        "#ea580c",
+        "#ca8a04",
+        "#16a34a",
+        "#0891b2",
+        "#2563eb",
+        "#7c3aed",
+        "#c026d3",
+        "#db2777",
+    ]);
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    First:::section-root\n    Second\n    Third\n    Fourth\n    Fifth\n    Sixth\n    Seventh\n    Eighth\n    Ninth\n    Tenth\n    Eleventh\n    Disabled((Disabled))\n    :::disabled\n    DisabledRect[Disabled rect]\n    :::disabled\n",
+        &theme,
+        Engine::new(),
+        "mindmap-direct-palette",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-direct-palette-node_1",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("0")
+    );
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-direct-palette-node_2",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-direct-palette-node_11",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("10")
+    );
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-direct-palette-node_12",
+            "data-mindmap-section",
+        ),
+        None,
+        "the Mermaid disabled class must retain terminal fill ownership"
+    );
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-direct-palette-node_13",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("1"),
+        "a disabled rect still consumes the direct palette because Mermaid only owns circle fill"
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-direct-palette", 0),
+        "#123456"
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-direct-palette", 1),
+        "#00000000"
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-direct-palette", 10),
+        "#db2777"
+    );
+    assert!(
+        stylesheet
+            .find("#mindmap-direct-palette [data-mindmap-section=\"0\"] rect")
+            .unwrap()
+            > stylesheet
+                .find("#mindmap-direct-palette .section-root rect")
+                .unwrap(),
+        "the private section owner must outrank a colliding user class"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_site_color_scale_slot_outranks_only_its_typed_palette_entry() {
+    let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": { "cScale1": "#fedcba" }
+    })));
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    First\n    Second\n",
+        &theme,
+        engine,
+        "mindmap-source-palette",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-source-palette-node_1",
+            "data-mindmap-section",
+        ),
+        None
+    );
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-source-palette-node_2",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        mindmap_mermaid_section_shape_fill(&stylesheet, "mindmap-source-palette", 0),
+        "#fedcba"
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-source-palette", 1),
+        "#abcdef"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_explicit_mermaid_color_scale_slot_outranks_the_typed_palette() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#123456").unwrap(),
+        ThemeColorValue::parse("#abcdef").unwrap(),
+    ])
+    .unwrap();
+    let compatibility = MermaidThemeCompatibility::default()
+        .with_variable("cScale1", "#fedcba")
+        .expect("valid explicit Mindmap Mermaid compatibility");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(
+                    ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette),
+                )
+                .with_mermaid_compatibility(compatibility),
+        )
+        .expect("compile explicit Mermaid precedence fixture");
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    First\n    Second\n",
+        &theme,
+        Engine::new(),
+        "mindmap-explicit-mermaid",
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-explicit-mermaid-node_1",
+            "data-mindmap-section",
+        ),
+        None
+    );
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-explicit-mermaid-node_2",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        mindmap_mermaid_section_shape_fill(&stylesheet, "mindmap-explicit-mermaid", 0),
+        "#fedcba"
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-explicit-mermaid", 1),
+        "#abcdef"
+    );
+}
+
+#[test]
+fn mindmap_derived_color_scale_slot_retains_source_ownership() {
+    let theme = mindmap_node_palette_theme(&["#123456", "#abcdef"]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "theme": "base",
+        "themeVariables": { "secondaryColor": "#00ff00" }
+    })));
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    First\n    Second\n",
+        &theme,
+        engine,
+        "mindmap-derived-palette",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-derived-palette-node_1",
+            "data-mindmap-section",
+        ),
+        None
+    );
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-derived-palette-node_2",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        mindmap_mermaid_section_shape_fill(&stylesheet, "mindmap-derived-palette", 0),
+        "hsl(120, 100%, 25%)",
+        "the source-derived color scale must retain the exact terminal value"
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-derived-palette", 1),
+        "#abcdef"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_gradient_blocks_node_palette_only_on_the_neo_surface() {
+    let theme = mindmap_node_palette_theme(&["#123456"]);
+    let classic = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "look": "classic",
+            "themeVariables": { "useGradient": true }
+        }))),
+        "mindmap-classic-gradient",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let classic_stylesheet = mindmap_stylesheet(classic.svg());
+    assert_eq!(
+        mindmap_node_attribute(
+            classic.svg(),
+            "mindmap-classic-gradient-node_1",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("0")
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&classic_stylesheet, "mindmap-classic-gradient", 0),
+        "#123456"
+    );
+
+    let neo = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "look": "neo",
+            "themeVariables": { "useGradient": false }
+        }))),
+        "mindmap-neo-palette",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let neo_stylesheet = mindmap_stylesheet(neo.svg());
+    assert_eq!(
+        mindmap_node_attribute(
+            neo.svg(),
+            "mindmap-neo-palette-node_1",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("0")
+    );
+    assert_eq!(
+        mindmap_typed_neo_section_shape_fill(&neo_stylesheet, "mindmap-neo-palette", 0),
+        "#123456"
+    );
+    assert!(
+        neo_stylesheet
+            .find("#mindmap-neo-palette [data-look=\"neo\"].mindmap-node[data-mindmap-section=\"0\"] rect")
+            .unwrap()
+            > neo_stylesheet
+                .find("#mindmap-neo-palette [data-look=\"neo\"].mindmap-node.section-0 rect")
+                .unwrap(),
+        "the equal-specificity typed selector must follow the Mermaid neo baseline"
+    );
+
+    let neo_engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "look": "neo",
+        "themeVariables": { "useGradient": true }
+    })));
+    let error = match prepare_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        neo_engine,
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => {
+            panic!("Mindmap gradient surface must not claim direct Node palette application")
+        }
+        Err(error) => error,
+    };
+
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::MINDMAP, 1))
+    );
+
+    let best_effort_engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "look": "neo",
+        "themeVariables": { "useGradient": true }
+    })));
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, best_effort_engine)
+        .parse_diagram_for_render_model_sync("mindmap\n  Root\n    Child\n", ParseOptions::strict())
+        .expect("parse neo gradient Mindmap")
+        .expect("detect neo gradient Mindmap");
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .expect("begin best-effort neo gradient session");
+    let rendered = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare neo gradient Mindmap")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("mindmap-neo-gradient".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("best-effort rendering keeps the unsupported gradient surface");
+
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-neo-gradient-node_1",
+            "data-mindmap-section",
+        ),
+        None,
+        "an unsupported gradient surface must not match the typed palette selector"
+    );
+    assert!(
+        mindmap_stylesheet(rendered.svg()).contains("stroke:url(#mindmap-neo-gradient-gradient)"),
+        "the Mermaid neo gradient must remain in the terminal stylesheet"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() {
+    let theme = mindmap_node_palette_theme(&["#123456"]);
+    for (case, config) in [
+        (
+            "explicit",
+            json!({
+                "theme": "redux",
+                "look": "neo",
+                "themeVariables": { "mainBkg": "#fedcba" }
+            }),
+        ),
+        (
+            "neutral-derived",
+            json!({
+                "theme": "neutral",
+                "look": "neo",
+                "themeVariables": {
+                    "primaryColor": "#fedcba",
+                    "useGradient": false
+                }
+            }),
+        ),
+    ] {
+        let diagram_id = format!("mindmap-neo-main-background-{case}");
+        let rendered = render_mindmap_with_theme_and_engine(
+            "mindmap\n  Root\n    Child\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            &diagram_id,
+            ThemePortabilityRequirement::RequirePortable,
+        );
+
+        assert_eq!(
+            mindmap_node_attribute(
+                rendered.svg(),
+                &format!("{diagram_id}-node_1"),
+                "data-mindmap-section",
+            ),
+            None,
+            "a source-owned neo fill must not receive the typed terminal owner attribute"
+        );
+        assert_eq!(
+            mindmap_neo_section_shape_fill(&mindmap_stylesheet(rendered.svg()), &diagram_id, 0,),
+            "#fedcba"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn mindmap_palette_fails_closed_when_the_section_css_is_outside_the_color_limit() {
+    let theme = mindmap_node_palette_theme(&["#123456"]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": { "THEME_COLOR_LIMIT": 1 }
+    })));
+    let error =
+        match prepare_mindmap_with_theme_and_engine("mindmap\n  Root\n    Child\n", &theme, engine)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        {
+            Ok(_) => panic!("Mindmap palette must not be verified without a branch CSS rule"),
+            Err(error) => error,
+        };
+
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::MINDMAP, 1))
+    );
+}
+
+#[test]
+fn mindmap_legacy_cluster_fill_does_not_shadow_the_direct_node_palette() {
+    let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+    let styles = ThemeRuleSet::default()
+        .with_ordinal_palette(ThemeTarget::Node, palette)
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#fedcba").unwrap()),
+            )
+            .for_family(merman_render::DiagramFamilyId::MINDMAP),
+        );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile mixed direct and compatibility Mindmap theme");
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "theme": "base"
+    })));
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        engine,
+        "mindmap-mixed-route",
+        ThemePortabilityRequirement::BestEffort,
+    );
+
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-mixed-route-node_1",
+            "data-mindmap-section",
+        )
+        .as_deref(),
+        Some("0")
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-mixed-route", 0),
+        "#123456"
+    );
+}
+
+#[test]
+fn mindmap_classic_raw_theme_css_remains_the_terminal_node_fill_owner() {
+    let theme = mindmap_node_palette_theme(&["#123456"]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeCSS": ".custom rect { fill: #22c55e; }"
+    })));
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+        .parse_diagram_for_render_model_sync(
+            "mindmap\n  Root\n    Child[Child]\n    :::custom\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse Mindmap with raw theme CSS")
+        .expect("detect Mindmap with raw theme CSS");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
+            TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
+        ))
+        .begin_session_with_theme(&theme)
+        .expect("begin trusted raw-theme-CSS session");
+    let rendered = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Mindmap with raw theme CSS")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("mindmap-raw-theme-css".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render Mindmap with raw theme CSS");
+
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_eq!(
+        mindmap_node_attribute(
+            rendered.svg(),
+            "mindmap-raw-theme-css-node_1",
+            "data-mindmap-section",
+        ),
+        Some("0".to_string()),
+        "the typed palette remains composable with unrelated raw theme CSS"
+    );
+    assert_eq!(
+        mindmap_typed_section_shape_fill(&stylesheet, "mindmap-raw-theme-css", 0),
+        "#123456"
+    );
+    assert!(stylesheet.contains("#22c55e"));
+    assert!(
+        stylesheet.find("#22c55e").unwrap()
+            > stylesheet
+                .find("#mindmap-raw-theme-css [data-mindmap-section=\"0\"] rect")
+                .unwrap(),
+        "raw theme CSS must remain later in the cascade than the classic typed palette"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert!(evidence.output_mutated());
 }
 
 #[test]

@@ -342,13 +342,6 @@ fn compile_node_family(
                 PaletteProjection::Git { limit: 64 },
             );
         }
-        DiagramFamilyId::MINDMAP => {
-            contributions.add_palette(
-                "node.palette",
-                reader.palette(ThemeTarget::Node),
-                PaletteProjection::ColorScale { limit: 64 },
-            );
-        }
         _ => {}
     }
 
@@ -1335,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    fn color_scale_palette_delegates_derived_values_to_pinned_mermaid_theme() {
+    fn direct_mindmap_palette_does_not_project_legacy_color_scale_values() {
         let palette =
             super::super::OrdinalPalette::new([
                 super::super::ThemeColorValue::parse("#abcdef").expect("valid palette color")
@@ -1348,32 +1341,20 @@ mod tests {
                     .expect("valid Mermaid theme"),
             )
             .with_styles(ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette));
-        let parsed = parse_with_compatibility(
-            &spec,
+        let compatibility = spec.mermaid().to_mermaid_config();
+        let baseline = parse_with_compatibility(
+            &DiagramThemeSpec::new().with_mermaid_compatibility(spec.mermaid().clone()),
             "mindmap\nroot(Root)\n Child(Child)\n",
-            spec.mermaid().to_mermaid_config(),
+            compatibility.clone(),
         );
+        let parsed =
+            parse_with_compatibility(&spec, "mindmap\nroot(Root)\n Child(Child)\n", compatibility);
 
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.cScale0"),
-            Some("#abcdef")
+            baseline.effective_config.get_str("themeVariables.cScale0")
         );
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.cScalePeer0"),
-            Some("hsl(210, 68%, 90.3921568627%)")
-        );
-        assert_eq!(
-            parsed.effective_config.get_str("themeVariables.cScaleInv0"),
-            Some("#543210")
-        );
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.cScaleLabel0"),
-            Some("lightgrey")
-        );
+        assert_eq!(fallback_contribution_count(&parsed), 0);
     }
 
     #[test]
@@ -1472,7 +1453,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_family_palettes_create_family_local_contributions() {
+    fn legacy_family_palettes_create_family_local_contributions() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#ef4444").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#22c55e").expect("valid palette color"),
@@ -1485,10 +1466,6 @@ mod tests {
         let bridge = bridge(&spec);
 
         for (family, direct_id) in [
-            (
-                DiagramFamilyId::MINDMAP,
-                "merman.legacy-family-theme.v1.mindmap.node.palette",
-            ),
             (
                 DiagramFamilyId::GIT_GRAPH,
                 "merman.legacy-family-theme.v1.gitGraph.node.palette",

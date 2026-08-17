@@ -536,7 +536,7 @@ pub(super) fn compile_ordinal_palette_route(
         if family == DiagramFamilyId::STATE
             || (matches!(
                 family,
-                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::MINDMAP
             ) && target == ThemeTarget::Node)
             || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         {
@@ -1047,7 +1047,7 @@ fn legacy_paint_variants(
 
 fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> bool {
     match family {
-        DiagramFamilyId::MINDMAP | DiagramFamilyId::GIT_GRAPH => target == ThemeTarget::Node,
+        DiagramFamilyId::GIT_GRAPH => target == ThemeTarget::Node,
         DiagramFamilyId::KANBAN => target == ThemeTarget::Task,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::RADAR => target == ThemeTarget::ChartSeries,
         DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
@@ -1095,6 +1095,19 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
+    }
+
+    #[test]
+    fn mindmap_node_palette_uses_the_direct_adapter() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::MINDMAP, ThemeTarget::Node)
+                .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert!(!legacy_palette_supported(
+            DiagramFamilyId::MINDMAP,
+            ThemeTarget::Node
+        ));
     }
 
     #[test]
