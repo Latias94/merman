@@ -29,6 +29,13 @@ interface FitGeometry {
   readonly dimensions: SvgDimensions;
 }
 
+interface SvgBounds {
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+}
+
 interface RootOverflowSnapshot {
   readonly priority: string;
   readonly value: string;
@@ -1066,33 +1073,15 @@ function measureVisualFitGeometry(
     return null;
   }
 
-  let visualBounds: DOMRect;
-  try {
-    visualBounds = svg.getBBox();
-  } catch {
-    return null;
-  }
-  if (
-    !isFiniteRectangle(
-      visualBounds.x,
-      visualBounds.y,
-      visualBounds.width,
-      visualBounds.height
-    )
-  ) {
-    return null;
-  }
+  const visualBounds = measureConnectedVisualBounds(svg, {
+    bottom: viewBox.y + viewBox.height,
+    left: viewBox.x,
+    right: viewBox.x + viewBox.width,
+    top: viewBox.y,
+  });
+  if (!visualBounds) return null;
 
-  const left = Math.min(viewBox.x, visualBounds.x);
-  const top = Math.min(viewBox.y, visualBounds.y);
-  const right = Math.max(
-    viewBox.x + viewBox.width,
-    visualBounds.x + visualBounds.width
-  );
-  const bottom = Math.max(
-    viewBox.y + viewBox.height,
-    visualBounds.y + visualBounds.height
-  );
+  const { bottom, left, right, top } = visualBounds;
   const scaleX = intrinsicSize.width / viewBox.width;
   const scaleY = intrinsicSize.height / viewBox.height;
   const width = (right - left) * scaleX;
@@ -1115,6 +1104,145 @@ function measureVisualFitGeometry(
   return {
     centerOffset,
     dimensions: { width, height },
+  };
+}
+
+function measureConnectedVisualBounds(
+  svg: SVGSVGElement,
+  rootBounds: SvgBounds
+): SvgBounds | null {
+  const rootTransform = svg.getCTM();
+  if (!rootTransform) return null;
+
+  let toRoot: DOMMatrix;
+  try {
+    toRoot = rootTransform.inverse();
+  } catch {
+    return null;
+  }
+
+  let connectedBounds = rootBounds;
+  let pending = Array.from(svg.querySelectorAll<SVGGraphicsElement>("*"))
+    .filter(isMeasurableSvgGraphic)
+    .flatMap((element) => {
+      const bounds = measureSvgGraphicInRootSpace(element, toRoot);
+      return bounds ? [bounds] : [];
+    });
+
+  while (pending.length > 0) {
+    const disconnected: SvgBounds[] = [];
+    let foundConnection = false;
+    for (const candidate of pending) {
+      if (!boundsIntersect(connectedBounds, candidate)) {
+        disconnected.push(candidate);
+        continue;
+      }
+      connectedBounds = unionBounds(connectedBounds, candidate);
+      foundConnection = true;
+    }
+    if (!foundConnection) break;
+    pending = disconnected;
+  }
+
+  return connectedBounds;
+}
+
+function isMeasurableSvgGraphic(element: SVGGraphicsElement): boolean {
+  if (
+    element.localName === "a" ||
+    element.localName === "g" ||
+    element.localName === "svg" ||
+    element.localName === "switch"
+  ) {
+    return false;
+  }
+
+  for (
+    let ancestor = element.parentElement;
+    ancestor && ancestor instanceof SVGElement;
+    ancestor = ancestor.parentElement
+  ) {
+    if (
+      ancestor.localName === "clipPath" ||
+      ancestor.localName === "defs" ||
+      ancestor.localName === "marker" ||
+      ancestor.localName === "mask" ||
+      ancestor.localName === "pattern" ||
+      ancestor.localName === "symbol"
+    ) {
+      return false;
+    }
+  }
+
+  const style = getComputedStyle(element);
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.visibility !== "collapse"
+  );
+}
+
+function measureSvgGraphicInRootSpace(
+  element: SVGGraphicsElement,
+  rootInverse: DOMMatrix
+): SvgBounds | null {
+  try {
+    const box = element.getBBox();
+    const elementTransform = element.getCTM();
+    if (
+      !elementTransform ||
+      !isFiniteRectangle(box.x, box.y, box.width, box.height) ||
+      box.width < 0 ||
+      box.height < 0
+    ) {
+      return null;
+    }
+
+    const transform = rootInverse.multiply(elementTransform);
+    const corners = [
+      transformSvgPoint(transform, box.x, box.y),
+      transformSvgPoint(transform, box.x + box.width, box.y),
+      transformSvgPoint(transform, box.x, box.y + box.height),
+      transformSvgPoint(
+        transform,
+        box.x + box.width,
+        box.y + box.height
+      ),
+    ];
+    const left = Math.min(...corners.map((point) => point.x));
+    const right = Math.max(...corners.map((point) => point.x));
+    const top = Math.min(...corners.map((point) => point.y));
+    const bottom = Math.max(...corners.map((point) => point.y));
+    return [left, right, top, bottom].every(Number.isFinite)
+      ? { bottom, left, right, top }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function transformSvgPoint(matrix: DOMMatrix, x: number, y: number): Point {
+  return {
+    x: matrix.a * x + matrix.c * y + matrix.e,
+    y: matrix.b * x + matrix.d * y + matrix.f,
+  };
+}
+
+function boundsIntersect(left: SvgBounds, right: SvgBounds): boolean {
+  return (
+    left.left <= right.right &&
+    left.right >= right.left &&
+    left.top <= right.bottom &&
+    left.bottom >= right.top
+  );
+}
+
+function unionBounds(left: SvgBounds, right: SvgBounds): SvgBounds {
+  return {
+    bottom: Math.max(left.bottom, right.bottom),
+    left: Math.min(left.left, right.left),
+    right: Math.max(left.right, right.right),
+    top: Math.min(left.top, right.top),
   };
 }
 

@@ -298,7 +298,9 @@ test("Infinite Canvas reveals visual overflow while ViewBox Frame preserves root
     rect.setAttribute("opacity", "0");
     svg.append(rect);
   });
-  await page.getByRole("button", { name: "Fit", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Fit to view", exact: true })
+    .click();
   await expect
     .poll(() =>
       extremeOverflow.evaluate((element) => {
