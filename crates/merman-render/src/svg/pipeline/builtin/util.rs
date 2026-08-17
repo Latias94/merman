@@ -1,3 +1,130 @@
+const POSTPROCESS_CHECKPOINT_BATCH: usize = 64;
+
+pub(crate) fn checkpoint_loop<E>(
+    iteration: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<(), E> {
+    if iteration.is_multiple_of(POSTPROCESS_CHECKPOINT_BATCH) {
+        checkpoint()?;
+    }
+    Ok(())
+}
+
+fn pattern_prefix_table<E>(
+    pattern: &[u8],
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Vec<usize>, E> {
+    let mut prefix = vec![0usize; pattern.len()];
+    let mut matched = 0usize;
+    for index in 1..pattern.len() {
+        checkpoint_loop(index, checkpoint)?;
+        while matched > 0 && pattern[index] != pattern[matched] {
+            matched = prefix[matched - 1];
+        }
+        if pattern[index] == pattern[matched] {
+            matched += 1;
+            prefix[index] = matched;
+        }
+    }
+    Ok(prefix)
+}
+
+fn find_pattern_with_checkpoints<E>(
+    haystack: &str,
+    needle: &str,
+    find_last: bool,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    if needle.is_empty() {
+        checkpoint()?;
+        return Ok(Some(if find_last { haystack.len() } else { 0 }));
+    }
+
+    let needle = needle.as_bytes();
+    let prefix = pattern_prefix_table(needle, checkpoint)?;
+    let mut matched = 0usize;
+    let mut last_match = None;
+    for (index, byte) in haystack.bytes().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        while matched > 0 && byte != needle[matched] {
+            matched = prefix[matched - 1];
+        }
+        if byte != needle[matched] {
+            continue;
+        }
+        matched += 1;
+        if matched != needle.len() {
+            continue;
+        }
+
+        let start = index + 1 - needle.len();
+        if !find_last {
+            return Ok(Some(start));
+        }
+        last_match = Some(start);
+        matched = prefix[matched - 1];
+    }
+    checkpoint()?;
+    Ok(last_match)
+}
+
+/// Finds a UTF-8 substring in linear time while observing a cooperative checkpoint cadence.
+pub(crate) fn find_with_checkpoints<E>(
+    haystack: &str,
+    needle: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    find_pattern_with_checkpoints(haystack, needle, false, checkpoint)
+}
+
+/// Finds the last UTF-8 substring in linear time while observing a cooperative checkpoint cadence.
+pub(crate) fn rfind_with_checkpoints<E>(
+    haystack: &str,
+    needle: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    find_pattern_with_checkpoints(haystack, needle, true, checkpoint)
+}
+
+pub(crate) fn extract_exact_double_quoted_attr_with_checkpoints<'a, E>(
+    tag: &'a str,
+    name: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<&'a str>, E> {
+    let needle = format!(r#"{name}=""#);
+    let Some(start) = find_with_checkpoints(tag, &needle, checkpoint)? else {
+        return Ok(None);
+    };
+    let value_start = start + needle.len();
+    let Some(value_end) = find_with_checkpoints(&tag[value_start..], "\"", checkpoint)? else {
+        return Ok(None);
+    };
+    Ok(Some(tag[value_start..value_start + value_end].trim()))
+}
+
+pub(crate) fn find_tag_end_with_checkpoints<E>(
+    input: &str,
+    start: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    let Some(tail) = input.get(start..) else {
+        checkpoint()?;
+        return Ok(None);
+    };
+    let mut quote = None;
+    for (iteration, (offset, character)) in tail.char_indices().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        match character {
+            '\'' | '"' if quote == Some(character) => quote = None,
+            '\'' | '"' if quote.is_none() => quote = Some(character),
+            '>' if quote.is_none() => return Ok(Some(start + offset)),
+            _ => {}
+        }
+    }
+    checkpoint()?;
+    Ok(None)
+}
+
 pub(crate) fn find_matching_brace(text: &str, open: usize) -> Option<usize> {
     let mut depth = 0usize;
     for (offset, ch) in text[open..].char_indices() {
@@ -70,6 +197,27 @@ impl<'a> SvgTagScanner<'a> {
             end,
         })
     }
+
+    pub(crate) fn next_with_checkpoints<E>(
+        &mut self,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<SvgTag<'a>>, E> {
+        let Some(rel_start) = find_with_checkpoints(&self.source[self.cursor..], "<", checkpoint)?
+        else {
+            return Ok(None);
+        };
+        let start = self.cursor + rel_start;
+        let Some(end) = find_tag_end_with_checkpoints(self.source, start, checkpoint)? else {
+            self.cursor = start;
+            return Ok(None);
+        };
+        self.cursor = end + 1;
+        Ok(Some(SvgTag {
+            source: self.source,
+            start,
+            end,
+        }))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -98,6 +246,36 @@ pub(crate) fn next_svg_quoted_attr(tag: &str, from: usize) -> Option<SvgQuotedAt
         }
     }
     None
+}
+
+pub(crate) fn next_svg_quoted_attr_with_checkpoints<E>(
+    tag: &str,
+    from: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<SvgQuotedAttr>, E> {
+    let mut cursor = from;
+    let mut iteration = 0usize;
+    while cursor < tag.len() {
+        checkpoint_loop(iteration, checkpoint)?;
+        iteration = iteration.saturating_add(1);
+        let Some(ch) = tag.get(cursor..).and_then(|tail| tail.chars().next()) else {
+            return Ok(None);
+        };
+        if ch.is_whitespace() {
+            let full_start = cursor;
+            let name_start = skip_svg_attr_whitespace_with_checkpoints(tag, cursor, checkpoint)?;
+            if let Some(attr_match) =
+                svg_quoted_attr_at_with_checkpoints(tag, full_start, name_start, checkpoint)?
+            {
+                return Ok(Some(attr_match));
+            }
+            cursor = name_start;
+        } else {
+            cursor += ch.len_utf8();
+        }
+    }
+    checkpoint()?;
+    Ok(None)
 }
 
 pub(crate) fn start_tag_name(tag: &str) -> Option<&str> {
@@ -150,6 +328,55 @@ fn svg_quoted_attr_at(tag: &str, full_start: usize, name_start: usize) -> Option
     })
 }
 
+fn svg_quoted_attr_at_with_checkpoints<E>(
+    tag: &str,
+    full_start: usize,
+    name_start: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<SvgQuotedAttr>, E> {
+    let Some(first) = tag.as_bytes().get(name_start).copied() else {
+        return Ok(None);
+    };
+    if !is_svg_attr_name_start_byte(first) {
+        return Ok(None);
+    }
+
+    let name_end = consume_svg_attr_name_with_checkpoints(tag, name_start, checkpoint)?;
+    let mut cursor = skip_svg_attr_whitespace_with_checkpoints(tag, name_end, checkpoint)?;
+    if !tag.get(cursor..).is_some_and(|tail| tail.starts_with('=')) {
+        return Ok(None);
+    }
+    cursor += 1;
+    cursor = skip_svg_attr_whitespace_with_checkpoints(tag, cursor, checkpoint)?;
+
+    let Some(quote) = tag.get(cursor..).and_then(|tail| tail.chars().next()) else {
+        return Ok(None);
+    };
+    if !matches!(quote, '"' | '\'') {
+        return Ok(None);
+    }
+
+    let value_start = cursor + quote.len_utf8();
+    let quote = if quote == '"' { "\"" } else { "'" };
+    let Some(relative_end) = find_with_checkpoints(
+        tag.get(value_start..).unwrap_or_default(),
+        quote,
+        checkpoint,
+    )?
+    else {
+        return Ok(None);
+    };
+    let value_end = value_start + relative_end;
+    Ok(Some(SvgQuotedAttr {
+        full_start,
+        full_end: value_end + quote.len(),
+        name_start,
+        name_end,
+        value_start,
+        value_end,
+    }))
+}
+
 fn skip_svg_attr_whitespace(tag: &str, mut cursor: usize) -> usize {
     while let Some(ch) = tag.get(cursor..).and_then(|tail| tail.chars().next()) {
         if !ch.is_whitespace() {
@@ -160,6 +387,23 @@ fn skip_svg_attr_whitespace(tag: &str, mut cursor: usize) -> usize {
     cursor
 }
 
+fn skip_svg_attr_whitespace_with_checkpoints<E>(
+    tag: &str,
+    mut cursor: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<usize, E> {
+    let mut iteration = 0usize;
+    while let Some(ch) = tag.get(cursor..).and_then(|tail| tail.chars().next()) {
+        checkpoint_loop(iteration, checkpoint)?;
+        iteration = iteration.saturating_add(1);
+        if !ch.is_whitespace() {
+            break;
+        }
+        cursor += ch.len_utf8();
+    }
+    Ok(cursor)
+}
+
 fn consume_svg_attr_name(tag: &str, mut cursor: usize) -> usize {
     while let Some(b) = tag.as_bytes().get(cursor) {
         if !is_svg_attr_name_continue_byte(*b) {
@@ -168,6 +412,23 @@ fn consume_svg_attr_name(tag: &str, mut cursor: usize) -> usize {
         cursor += 1;
     }
     cursor
+}
+
+fn consume_svg_attr_name_with_checkpoints<E>(
+    tag: &str,
+    mut cursor: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<usize, E> {
+    let mut iteration = 0usize;
+    while let Some(byte) = tag.as_bytes().get(cursor) {
+        checkpoint_loop(iteration, checkpoint)?;
+        iteration = iteration.saturating_add(1);
+        if !is_svg_attr_name_continue_byte(*byte) {
+            break;
+        }
+        cursor += 1;
+    }
+    Ok(cursor)
 }
 
 fn is_svg_attr_name_start_byte(b: u8) -> bool {
@@ -234,8 +495,20 @@ pub(crate) fn set_or_insert_quoted_attr(tag: &str, name: &str, value: &str) -> S
 }
 
 pub(crate) fn escape_xml_attr(value: &str) -> String {
+    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+    match escape_xml_attr_with_checkpoints(value, &mut checkpoint) {
+        Ok(value) => value,
+        Err(error) => match error {},
+    }
+}
+
+pub(crate) fn escape_xml_attr_with_checkpoints<E>(
+    value: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<String, E> {
     let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
+    for (iteration, ch) in value.chars().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
         if !crate::xml::is_xml_1_0_char(ch) {
             continue;
         }
@@ -248,7 +521,8 @@ pub(crate) fn escape_xml_attr(value: &str) -> String {
             _ => out.push(ch),
         }
     }
-    out
+    checkpoint()?;
+    Ok(out)
 }
 
 #[cfg(test)]

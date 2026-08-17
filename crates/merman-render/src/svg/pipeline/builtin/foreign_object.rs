@@ -1,12 +1,17 @@
 use crate::Result;
 use crate::entities::decode_entities_minimal;
 use crate::environment::TextMeasurementPhase;
-use crate::svg::foreign_object_label_fallback_svg_text;
+use crate::svg::fallback::foreign_object_label_fallback_svg_text_controlled;
 use crate::text::TextMeasurer;
 use std::borrow::Cow;
 use std::collections::HashSet;
+#[cfg(test)]
+use std::convert::Infallible;
 
-use super::util::{extract_quoted_attr, find_tag_end};
+use super::util::{
+    checkpoint_loop, extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
+    rfind_with_checkpoints,
+};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -22,12 +27,22 @@ impl SvgPostprocessor for ForeignObjectFallbackPostprocessor {
         svg: Cow<'a, str>,
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        if !svg.contains("<foreignObject") {
-            return Ok(svg);
-        }
-        let measurer = ctx.text_measurer(TextMeasurementPhase::Wrap);
-        Ok(Cow::Owned(foreign_object_fallback_svg(&svg, &measurer)))
+        let measurer = ctx.controlled_text_measurer(TextMeasurementPhase::Wrap);
+        apply_foreign_object_fallback(svg, &measurer, || ctx.checkpoint())
     }
+}
+
+pub(crate) fn apply_foreign_object_fallback<'a>(
+    svg: Cow<'a, str>,
+    text_measurer: &dyn TextMeasurer,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<Cow<'a, str>> {
+    checkpoint()?;
+    if find_with_checkpoints(&svg, "<foreignObject", &mut checkpoint)?.is_none() {
+        return Ok(svg);
+    }
+    foreign_object_label_fallback_svg_text_controlled(&svg, text_measurer, checkpoint)
+        .map(Cow::Owned)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -41,26 +56,50 @@ impl SvgPostprocessor for StripForeignObjectPostprocessor {
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
+        ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        if !svg.contains("<foreignObject") {
-            return Ok(svg);
-        }
-        Ok(Cow::Owned(strip_foreign_objects(&svg)))
+        apply_strip_foreign_objects(svg, || ctx.checkpoint())
     }
 }
 
-pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
-    if !svg.contains(r#"data-merman-foreignobject-source="switch-native-fallback""#) {
-        return svg.to_string();
+pub(crate) fn apply_strip_foreign_objects<'a>(
+    svg: Cow<'a, str>,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<Cow<'a, str>> {
+    checkpoint()?;
+    if find_with_checkpoints(&svg, "<foreignObject", &mut checkpoint)?.is_none() {
+        return Ok(svg);
     }
+    strip_foreign_objects_with_checkpoints(&svg, &mut checkpoint).map(Cow::Owned)
+}
+
+pub(crate) fn apply_drop_switch_native_fallbacks<'a>(
+    svg: Cow<'a, str>,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<Cow<'a, str>> {
     let marker = r#"data-merman-foreignobject-source="switch-native-fallback""#;
+    checkpoint()?;
+    if find_with_checkpoints(&svg, marker, &mut checkpoint)?.is_none() {
+        return Ok(svg);
+    }
+    drop_switch_native_fallbacks_with_checkpoints(&svg, &mut checkpoint).map(Cow::Owned)
+}
+
+pub(crate) fn drop_switch_native_fallbacks_with_checkpoints<E>(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
+    let marker = r#"data-merman-foreignobject-source="switch-native-fallback""#;
+    if find_with_checkpoints(svg, marker, checkpoint)?.is_none() {
+        return Ok(svg.to_string());
+    }
     let mut out = String::with_capacity(svg.len());
     let mut cursor = 0;
 
-    while let Some(rel_start) = svg[cursor..].find(marker) {
+    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], marker, checkpoint)? {
         let attr_start = cursor + rel_start;
-        let Some(group_start) = svg[..attr_start].rfind("<g") else {
+        let Some(group_start) = rfind_with_checkpoints(&svg[..attr_start], "<g", checkpoint)?
+        else {
             out.push_str(&svg[cursor..attr_start]);
             cursor = attr_start + marker.len();
             continue;
@@ -70,7 +109,7 @@ pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
             cursor = attr_start + marker.len();
             continue;
         }
-        let Some((_, group_end)) = find_matching_g_end(svg, group_start) else {
+        let Some((_, group_end)) = find_matching_g_end(svg, group_start, checkpoint)? else {
             out.push_str(&svg[cursor..attr_start]);
             cursor = attr_start + marker.len();
             continue;
@@ -80,26 +119,51 @@ pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
     }
 
     out.push_str(&svg[cursor..]);
-    out
+    checkpoint()?;
+    Ok(out)
 }
 
+#[cfg(test)]
+use crate::svg::foreign_object_label_fallback_svg_text;
+
+#[cfg(test)]
 pub(crate) fn foreign_object_fallback_svg(svg: &str, text_measurer: &dyn TextMeasurer) -> String {
     foreign_object_label_fallback_svg_text(svg, text_measurer)
 }
 
-pub(crate) fn strip_foreign_objects(svg: &str) -> String {
+#[cfg(test)]
+fn infallible<T>(result: std::result::Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => match error {},
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
+    infallible(drop_switch_native_fallbacks_with_checkpoints(
+        svg,
+        &mut || Ok::<(), Infallible>(()),
+    ))
+}
+
+pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
     let mut out = String::with_capacity(svg.len());
     let mut cursor = 0;
 
-    while let Some(rel_start) = svg[cursor..].find("<foreignObject") {
+    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], "<foreignObject", checkpoint)?
+    {
         let start = cursor + rel_start;
 
-        let Some(open_end) = find_tag_end(svg, start) else {
+        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
             out.push_str(&svg[cursor..]);
-            return out;
+            return Ok(out);
         };
         let fo_tag = &svg[start..=open_end];
-        let switch_wrapper = find_wrapping_switch(svg, cursor, start, open_end);
+        let switch_wrapper = find_wrapping_switch(svg, cursor, start, open_end, checkpoint)?;
 
         if let Some((switch_start, switch_close_start, switch_close_end)) = switch_wrapper {
             // This foreignObject is part of a <switch> element with native SVG fallback text.
@@ -108,7 +172,9 @@ pub(crate) fn strip_foreign_objects(svg: &str) -> String {
             out.push_str(&svg[cursor..switch_start]);
             if !fo_tag.trim_end().ends_with("/>") {
                 let fo_close_start = open_end + 1;
-                if let Some(fo_close_rel) = svg[fo_close_start..].find("</foreignObject>") {
+                if let Some(fo_close_rel) =
+                    find_with_checkpoints(&svg[fo_close_start..], "</foreignObject>", checkpoint)?
+                {
                     let after_fo = fo_close_start + fo_close_rel + "</foreignObject>".len();
                     out.push_str(&svg[after_fo..switch_close_start]);
                 }
@@ -125,7 +191,9 @@ pub(crate) fn strip_foreign_objects(svg: &str) -> String {
         }
 
         let close_start = open_end + 1;
-        let Some(rel_close) = svg[close_start..].find("</foreignObject>") else {
+        let Some(rel_close) =
+            find_with_checkpoints(&svg[close_start..], "</foreignObject>", checkpoint)?
+        else {
             cursor = open_end + 1;
             continue;
         };
@@ -133,21 +201,37 @@ pub(crate) fn strip_foreign_objects(svg: &str) -> String {
     }
 
     out.push_str(&svg[cursor..]);
-    out
+    checkpoint()?;
+    Ok(out)
 }
 
-fn find_wrapping_switch(
+#[cfg(test)]
+pub(crate) fn strip_foreign_objects(svg: &str) -> String {
+    infallible(strip_foreign_objects_with_checkpoints(svg, &mut || {
+        Ok::<(), Infallible>(())
+    }))
+}
+
+fn find_wrapping_switch<E>(
     svg: &str,
     cursor: usize,
     foreign_object_start: usize,
     foreign_object_open_end: usize,
-) -> Option<(usize, usize, usize)> {
-    let switch_start = find_wrapping_switch_start(svg, cursor, foreign_object_start)?;
-    if svg[switch_start..foreign_object_start]
-        .find("</switch>")
-        .is_some()
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<(usize, usize, usize)>, E> {
+    let Some(switch_start) =
+        find_wrapping_switch_start(svg, cursor, foreign_object_start, checkpoint)?
+    else {
+        return Ok(None);
+    };
+    if find_with_checkpoints(
+        &svg[switch_start..foreign_object_start],
+        "</switch>",
+        checkpoint,
+    )?
+    .is_some()
     {
-        return None;
+        return Ok(None);
     }
 
     let foreign_object_end = if svg[foreign_object_start..=foreign_object_open_end]
@@ -157,29 +241,54 @@ fn find_wrapping_switch(
         foreign_object_open_end + 1
     } else {
         let close_search_start = foreign_object_open_end + 1;
-        close_search_start
-            + svg[close_search_start..].find("</foreignObject>")?
-            + "</foreignObject>".len()
+        let Some(relative) =
+            find_with_checkpoints(&svg[close_search_start..], "</foreignObject>", checkpoint)?
+        else {
+            return Ok(None);
+        };
+        close_search_start + relative + "</foreignObject>".len()
     };
 
-    let switch_close_start = foreign_object_end + svg[foreign_object_end..].find("</switch>")?;
-    if !svg[foreign_object_end..switch_close_start].contains("<text") {
-        return None;
+    let Some(switch_close_relative) =
+        find_with_checkpoints(&svg[foreign_object_end..], "</switch>", checkpoint)?
+    else {
+        return Ok(None);
+    };
+    let switch_close_start = foreign_object_end + switch_close_relative;
+    if find_with_checkpoints(
+        &svg[foreign_object_end..switch_close_start],
+        "<text",
+        checkpoint,
+    )?
+    .is_none()
+    {
+        return Ok(None);
     }
 
-    Some((
+    Ok(Some((
         switch_start,
         switch_close_start,
         switch_close_start + "</switch>".len(),
-    ))
+    )))
 }
 
-fn find_wrapping_switch_start(svg: &str, cursor: usize, before: usize) -> Option<usize> {
+fn find_wrapping_switch_start<E>(
+    svg: &str,
+    cursor: usize,
+    before: usize,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<usize>, E> {
     let mut search_end = before;
     while search_end > cursor {
-        let rel_start = svg[cursor..search_end].rfind("<switch")?;
+        let Some(rel_start) =
+            rfind_with_checkpoints(&svg[cursor..search_end], "<switch", checkpoint)?
+        else {
+            return Ok(None);
+        };
         let start = cursor + rel_start;
-        let open_end = find_tag_end(svg, start)?;
+        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
+            return Ok(None);
+        };
         if open_end >= before {
             search_end = start;
             continue;
@@ -187,25 +296,30 @@ fn find_wrapping_switch_start(svg: &str, cursor: usize, before: usize) -> Option
 
         let tag = &svg[start..=open_end];
         if is_start_switch_tag(tag) {
-            return Some(start);
+            return Ok(Some(start));
         }
 
         search_end = start;
     }
-    None
+    Ok(None)
 }
 
-pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
-    let native_text = collect_native_text_contents(svg);
+pub(crate) fn drop_native_duplicate_fallbacks_with_checkpoints<E>(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
+    let native_text = collect_native_text_contents(svg, checkpoint)?;
     if native_text.is_empty() {
-        return svg.to_string();
+        return Ok(svg.to_string());
     }
 
     let mut out = String::with_capacity(svg.len());
     let mut cursor = 0;
-    while let Some(rel_start) = svg[cursor..].find(r#"data-merman-foreignobject="fallback""#) {
+    let marker = r#"data-merman-foreignobject="fallback""#;
+    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], marker, checkpoint)? {
         let attr_start = cursor + rel_start;
-        let Some(group_start) = svg[..attr_start].rfind("<g") else {
+        let Some(group_start) = rfind_with_checkpoints(&svg[..attr_start], "<g", checkpoint)?
+        else {
             out.push_str(&svg[cursor..attr_start]);
             cursor = attr_start;
             continue;
@@ -215,18 +329,19 @@ pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
             cursor = attr_start;
             continue;
         }
-        let Some((close_start, group_end)) = find_matching_g_end(svg, group_start) else {
+        let Some((close_start, group_end)) = find_matching_g_end(svg, group_start, checkpoint)?
+        else {
             out.push_str(&svg[cursor..attr_start]);
             cursor = attr_start;
             continue;
         };
-        let Some(open_end) = find_tag_end(svg, group_start) else {
+        let Some(open_end) = find_tag_end_with_checkpoints(svg, group_start, checkpoint)? else {
             out.push_str(&svg[cursor..attr_start]);
             cursor = attr_start;
             continue;
         };
 
-        let fallback_text = normalize_text_content(&svg[open_end + 1..close_start]);
+        let fallback_text = normalize_text_content(&svg[open_end + 1..close_start], checkpoint)?;
         if native_text.contains(fallback_text.trim()) {
             out.push_str(&svg[cursor..group_start]);
         } else {
@@ -236,15 +351,27 @@ pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
     }
 
     out.push_str(&svg[cursor..]);
-    out
+    checkpoint()?;
+    Ok(out)
 }
 
-fn collect_native_text_contents(svg: &str) -> HashSet<String> {
+#[cfg(test)]
+pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
+    infallible(drop_native_duplicate_fallbacks_with_checkpoints(
+        svg,
+        &mut || Ok::<(), Infallible>(()),
+    ))
+}
+
+fn collect_native_text_contents<E>(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<HashSet<String>, E> {
     let mut contents = HashSet::new();
     let mut cursor = 0;
-    while let Some(rel_start) = svg[cursor..].find("<text") {
+    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], "<text", checkpoint)? {
         let start = cursor + rel_start;
-        let Some(open_end) = find_tag_end(svg, start) else {
+        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
             break;
         };
         let tag = &svg[start..=open_end];
@@ -254,18 +381,20 @@ fn collect_native_text_contents(svg: &str) -> HashSet<String> {
         }
 
         let close_start = open_end + 1;
-        let Some(rel_close) = svg[close_start..].find("</text>") else {
+        let Some(rel_close) = find_with_checkpoints(&svg[close_start..], "</text>", checkpoint)?
+        else {
             cursor = open_end + 1;
             continue;
         };
         let close = close_start + rel_close;
-        let text = normalize_text_content(&svg[close_start..close]);
+        let text = normalize_text_content(&svg[close_start..close], checkpoint)?;
         if !text.is_empty() {
             contents.insert(text);
         }
         cursor = close + "</text>".len();
     }
-    contents
+    checkpoint()?;
+    Ok(contents)
 }
 
 fn text_tag_is_fallback(tag: &str) -> bool {
@@ -276,16 +405,25 @@ fn text_tag_is_fallback(tag: &str) -> bool {
     })
 }
 
-fn normalize_text_content(fragment: &str) -> String {
-    decode_entities_minimal(&strip_tags(fragment))
-        .trim()
-        .to_string()
+fn normalize_text_content<E>(
+    fragment: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
+    let stripped = strip_tags(fragment, checkpoint)?;
+    checkpoint()?;
+    let normalized = decode_entities_minimal(&stripped).trim().to_string();
+    checkpoint()?;
+    Ok(normalized)
 }
 
-fn strip_tags(fragment: &str) -> String {
+fn strip_tags<E>(
+    fragment: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
     let mut out = String::with_capacity(fragment.len());
     let mut in_tag = false;
-    for ch in fragment.chars() {
+    for (iteration, ch) in fragment.chars().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
         match ch {
             '<' => in_tag = true,
             '>' => in_tag = false,
@@ -293,20 +431,27 @@ fn strip_tags(fragment: &str) -> String {
             _ => {}
         }
     }
-    out
+    checkpoint()?;
+    Ok(out)
 }
 
-fn find_matching_g_end(svg: &str, group_start: usize) -> Option<(usize, usize)> {
-    let open_end = find_tag_end(svg, group_start)?;
+fn find_matching_g_end<E>(
+    svg: &str,
+    group_start: usize,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<(usize, usize)>, E> {
+    let Some(open_end) = find_tag_end_with_checkpoints(svg, group_start, checkpoint)? else {
+        return Ok(None);
+    };
     if svg[group_start..=open_end].trim_end().ends_with("/>") {
-        return Some((group_start, open_end + 1));
+        return Ok(Some((group_start, open_end + 1)));
     }
 
     let mut depth = 1usize;
     let mut cursor = open_end + 1;
-    while let Some(rel_tag) = svg[cursor..].find('<') {
+    while let Some(rel_tag) = find_with_checkpoints(&svg[cursor..], "<", checkpoint)? {
         let tag_start = cursor + rel_tag;
-        let Some(tag_end) = find_tag_end(svg, tag_start) else {
+        let Some(tag_end) = find_tag_end_with_checkpoints(svg, tag_start, checkpoint)? else {
             break;
         };
         let tag = &svg[tag_start..=tag_end];
@@ -315,14 +460,17 @@ fn find_matching_g_end(svg: &str, group_start: usize) -> Option<(usize, usize)> 
                 depth += 1;
             }
         } else if is_end_g_tag(tag) {
-            depth = depth.checked_sub(1)?;
+            let Some(next_depth) = depth.checked_sub(1) else {
+                return Ok(None);
+            };
+            depth = next_depth;
             if depth == 0 {
-                return Some((tag_start, tag_end + 1));
+                return Ok(Some((tag_start, tag_end + 1)));
             }
         }
         cursor = tag_end + 1;
     }
-    None
+    Ok(None)
 }
 
 fn is_start_g_tag(tag: &str) -> bool {
@@ -353,12 +501,116 @@ fn is_start_switch_tag(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::environment::{
+        HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+        RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
     use crate::svg::pipeline::SvgPipeline;
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
+    use merman_core::{OperationControl, OperationPhase};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     fn render_session() -> crate::environment::RenderSession {
-        crate::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap()
+        RenderEnvironment::deterministic().begin_session().unwrap()
+    }
+
+    struct CancellingMissingHost {
+        calls: Arc<AtomicUsize>,
+        control: OperationControl,
+    }
+
+    impl HostTextMeasurer for CancellingMissingHost {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.control.cancel();
+            Ok(None)
+        }
+    }
+
+    struct CountingFallback(Arc<AtomicUsize>);
+
+    impl TextMeasurer for CountingFallback {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            TextMetrics {
+                width: 41.0,
+                height: 16.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn controlled_foreign_object_fallback_does_not_enter_backend_after_host_cancellation() {
+        let control = OperationControl::new();
+        let host_calls = Arc::new(AtomicUsize::new(0));
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let fallback_identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.svg-fallback").unwrap(),
+            "v1",
+        )
+        .unwrap();
+        let host_identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.svg-host").unwrap(),
+            "v1",
+        )
+        .unwrap();
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            host_identity,
+            Arc::new(CancellingMissingHost {
+                calls: Arc::clone(&host_calls),
+                control: control.clone(),
+            }),
+            [TextMeasurementPhase::Wrap],
+            TextMeasurementProfile::new(
+                fallback_identity,
+                Arc::new(CountingFallback(Arc::clone(&fallback_calls))),
+            ),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(policy)
+            .begin_session_with_control(control)
+            .unwrap();
+        let svg = r#"<svg><foreignObject width="120" height="24"><div style="white-space: break-spaces; width: 120px"><p>cancel me now</p></div></foreignObject></svg>"#;
+
+        let error = SvgPipeline::readable()
+            .process_to_string(svg, &session)
+            .unwrap_err();
+        let crate::Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+        assert_eq!(host_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(fallback_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn strip_foreign_object_stage_stops_during_a_long_structural_scan() {
+        let control = OperationControl::new().for_phase(OperationPhase::Postprocess);
+        let svg = format!(
+            "<svg>{}<foreignObject width=\"1\" height=\"1\"/></svg>",
+            "x".repeat(16 * 1024)
+        );
+        let mut checkpoints = 0usize;
+
+        let error = apply_strip_foreign_objects(Cow::Borrowed(svg.as_str()), || {
+            checkpoints = checkpoints.saturating_add(1);
+            if checkpoints == 5 {
+                control.cancel();
+            }
+            control.checkpoint().map_err(Into::into)
+        })
+        .unwrap_err();
+
+        let crate::Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Postprocess);
+        assert_eq!(checkpoints, 5);
     }
 
     #[test]

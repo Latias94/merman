@@ -5,6 +5,11 @@ mod policy;
 mod preset;
 mod static_validation;
 
+pub(crate) use builtin::util::{
+    checkpoint_loop, escape_xml_attr_with_checkpoints,
+    extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
+    find_with_checkpoints, rfind_with_checkpoints,
+};
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,

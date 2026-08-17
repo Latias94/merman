@@ -1,9 +1,9 @@
 use super::builtin::{
-    attr_sanitize::sanitize_element_attributes_cow,
-    css_sanitize::sanitize_style_elements,
+    attr_sanitize::sanitize_element_attributes_cow_with_checkpoints,
+    css_sanitize::apply_sanitize_style_elements,
     foreign_object::{
-        drop_native_duplicate_fallbacks, drop_switch_native_fallbacks, foreign_object_fallback_svg,
-        strip_foreign_objects,
+        apply_drop_switch_native_fallbacks, apply_foreign_object_fallback,
+        apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
     },
     presentation_fallback::resolve_resvg_presentation_fallbacks,
 };
@@ -49,37 +49,25 @@ impl BuiltinSvgStage {
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
-    ) -> Cow<'a, str> {
+    ) -> Result<Cow<'a, str>> {
+        let mut checkpoint = || session.checkpoint(OperationPhase::Postprocess);
         match self {
             Self::ForeignObjectFallback => {
-                if !svg.contains("<foreignObject") {
-                    return svg;
-                }
-                let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
-                Cow::Owned(foreign_object_fallback_svg(&svg, &measurer))
+                let measurer = session.controlled_text_measurer(
+                    TextMeasurementPhase::Wrap,
+                    OperationPhase::Postprocess,
+                );
+                apply_foreign_object_fallback(svg, &measurer, checkpoint)
             }
-            Self::StripForeignObject => {
-                if !svg.contains("<foreignObject") {
-                    return svg;
-                }
-                Cow::Owned(strip_foreign_objects(&svg))
-            }
-            Self::DropSwitchNativeFallbacks => {
-                if !svg.contains(r#"data-merman-foreignobject-source="switch-native-fallback""#) {
-                    return svg;
-                }
-                Cow::Owned(drop_switch_native_fallbacks(&svg))
-            }
-            Self::SanitizeCss => {
-                if !svg.contains("<style") {
-                    return svg;
-                }
-                Cow::Owned(sanitize_style_elements(&svg))
-            }
+            Self::StripForeignObject => apply_strip_foreign_objects(svg, checkpoint),
+            Self::DropSwitchNativeFallbacks => apply_drop_switch_native_fallbacks(svg, checkpoint),
+            Self::SanitizeCss => apply_sanitize_style_elements(svg, checkpoint),
             Self::ResolvePresentationFallbacks => {
-                resolve_resvg_presentation_fallbacks(svg, metadata)
+                Ok(resolve_resvg_presentation_fallbacks(svg, metadata))
             }
-            Self::SanitizeAttributes => sanitize_element_attributes_cow(svg),
+            Self::SanitizeAttributes => {
+                sanitize_element_attributes_cow_with_checkpoints(svg, &mut checkpoint)
+            }
         }
     }
 }
@@ -108,10 +96,13 @@ pub(crate) fn apply_preset_cow<'a>(
 ) -> Result<Cow<'a, str>> {
     for stage in builtin_stages_for_preset(preset) {
         session.checkpoint(OperationPhase::Postprocess)?;
-        current = stage.apply(current, metadata, session);
+        current = stage.apply(current, metadata, session)?;
         session.checkpoint(OperationPhase::Postprocess)?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
-            current = Cow::Owned(drop_native_duplicate_fallbacks(&current));
+            current = Cow::Owned(drop_native_duplicate_fallbacks_with_checkpoints(
+                &current,
+                &mut || session.checkpoint(OperationPhase::Postprocess),
+            )?);
             session.checkpoint(OperationPhase::Postprocess)?;
         }
     }

@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 use super::attr_sanitize::is_unsafe_render_resource_url_value;
-use super::util::find_tag_end;
+use super::util::{find_tag_end_with_checkpoints, find_with_checkpoints};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 const CSS_NESTING_HARD_LIMIT: u8 = 64;
@@ -23,51 +23,81 @@ impl SvgPostprocessor for SanitizeCssPostprocessor {
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
+        ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        if !svg.contains("<style") {
-            return Ok(svg);
-        }
-        Ok(Cow::Owned(sanitize_style_elements(&svg)))
+        apply_sanitize_style_elements(svg, || ctx.checkpoint())
     }
 }
 
-pub(crate) fn sanitize_style_elements(svg: &str) -> String {
+pub(crate) fn apply_sanitize_style_elements<'a>(
+    svg: Cow<'a, str>,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<Cow<'a, str>> {
+    checkpoint()?;
+    if find_with_checkpoints(&svg, "<style", &mut checkpoint)?.is_none() {
+        return Ok(svg);
+    }
+    sanitize_style_elements_with_checkpoints(&svg, &mut checkpoint).map(Cow::Owned)
+}
+
+pub(crate) fn sanitize_style_elements_with_checkpoints<E>(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
+    if find_with_checkpoints(svg, "<style", checkpoint)?.is_none() {
+        return Ok(svg.to_string());
+    }
     let mut out = String::with_capacity(svg.len());
     let mut cursor = 0;
 
-    while let Some(rel_start) = svg[cursor..].find("<style") {
+    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], "<style", checkpoint)? {
         let start = cursor + rel_start;
         out.push_str(&svg[cursor..start]);
 
-        let Some(open_end) = find_tag_end(svg, start) else {
+        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
             out.push_str(&svg[start..]);
-            return out;
+            return Ok(out);
         };
 
         let content_start = open_end + 1;
-        let Some(rel_close_start) = svg[content_start..].find("</style") else {
+        let Some(rel_close_start) =
+            find_with_checkpoints(&svg[content_start..], "</style", checkpoint)?
+        else {
             out.push_str(&svg[start..]);
-            return out;
+            return Ok(out);
         };
         let close_start = content_start + rel_close_start;
-        let Some(close_end) = find_tag_end(svg, close_start) else {
+        let Some(close_end) = find_tag_end_with_checkpoints(svg, close_start, checkpoint)? else {
             out.push_str(&svg[start..]);
-            return out;
+            return Ok(out);
         };
 
         out.push_str(&svg[start..=open_end]);
-        out.push_str(&sanitize_css(&svg[content_start..close_start]));
+        out.push_str(&sanitize_css_with_checkpoints(
+            &svg[content_start..close_start],
+            checkpoint,
+        )?);
         out.push_str(&svg[close_start..=close_end]);
         cursor = close_end + 1;
     }
 
     out.push_str(&svg[cursor..]);
-    out
+    checkpoint()?;
+    Ok(out)
 }
 
 pub(crate) fn sanitize_css(css: &str) -> String {
     process_stylesheet(css, CssProcessingMode::Sanitize).unwrap_or_default()
+}
+
+pub(super) fn sanitize_css_with_checkpoints<E>(
+    css: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
+    checkpoint()?;
+    let sanitized = sanitize_css(css);
+    checkpoint()?;
+    Ok(sanitized)
 }
 
 pub(super) fn sanitize_css_value(value: &str) -> Option<String> {
@@ -79,6 +109,16 @@ pub(super) fn sanitize_css_value(value: &str) -> Option<String> {
         CssNestingDepth::default(),
     )
     .ok()
+}
+
+pub(super) fn sanitize_css_value_with_checkpoints<E>(
+    value: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<String>, E> {
+    checkpoint()?;
+    let sanitized = sanitize_css_value(value);
+    checkpoint()?;
+    Ok(sanitized)
 }
 
 pub(in crate::svg::pipeline) fn validate_resvg_css_stylesheet(

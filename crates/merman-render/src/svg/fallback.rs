@@ -10,9 +10,14 @@ mod css;
 mod html;
 mod xml;
 
+use crate::svg::pipeline::{
+    checkpoint_loop, extract_exact_double_quoted_attr_with_checkpoints,
+    find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints,
+};
 use crate::text::{TextMeasurer, TextStyle};
+use std::convert::Infallible;
 
-use attr::{is_self_closing, parse_attr_f64, parse_attr_str};
+use attr::is_self_closing;
 use context::{
     GFrame, class_attr_tokens, extract_svg_font_style_from_context,
     extract_svg_text_fill_from_ancestors, fallback_text_class_attr_tokens, sum_translate,
@@ -38,8 +43,53 @@ pub fn foreign_object_label_fallback_svg_text(
     svg: &str,
     text_measurer: &dyn TextMeasurer,
 ) -> String {
-    if !svg.contains("<foreignObject") {
-        return svg.to_string();
+    let mut checkpoint = || Ok::<(), Infallible>(());
+    match foreign_object_label_fallback_svg_text_with_checkpoints(
+        svg,
+        text_measurer,
+        &mut checkpoint,
+    ) {
+        Ok(output) => output,
+        Err(error) => match error {},
+    }
+}
+
+/// Controlled variant used by the SVG postprocess pipeline.
+///
+/// The public helper above remains infallible for compatibility. Pipeline callers provide the
+/// operation-owned Postprocess checkpoint so a host measurement that declines, fails, or returns
+/// an invalid value cannot enter its fallback backend after cancellation.
+pub(crate) fn foreign_object_label_fallback_svg_text_controlled(
+    svg: &str,
+    text_measurer: &dyn TextMeasurer,
+    mut checkpoint: impl FnMut() -> crate::Result<()>,
+) -> crate::Result<String> {
+    foreign_object_label_fallback_svg_text_with_checkpoints(svg, text_measurer, &mut checkpoint)
+}
+
+fn parse_attr_f64<E>(
+    tag: &str,
+    name: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<f64>, E> {
+    let Some(value) = extract_exact_double_quoted_attr_with_checkpoints(tag, name, checkpoint)?
+    else {
+        return Ok(None);
+    };
+    checkpoint()?;
+    let value = value.parse::<f64>().ok();
+    checkpoint()?;
+    Ok(value)
+}
+
+fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
+    svg: &str,
+    text_measurer: &dyn TextMeasurer,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<String, E> {
+    checkpoint()?;
+    if find_with_checkpoints(svg, "<foreignObject", checkpoint)?.is_none() {
+        return Ok(svg.to_string());
     }
 
     let close_tag = "</foreignObject>";
@@ -47,19 +97,22 @@ pub fn foreign_object_label_fallback_svg_text(
     let mut overlays = String::new();
     let mut g_stack: Vec<GFrame> = Vec::new();
     let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
-    let label_bkg =
-        extract_css_background_color_for_class(svg, "labelBkg").unwrap_or(label_bkg_default);
+    let label_bkg = extract_css_background_color_for_class(svg, "labelBkg", checkpoint)?
+        .unwrap_or(label_bkg_default);
     let mut i = 0usize;
-    while let Some(lt_rel) = svg[i..].find('<') {
+    let mut iteration = 0usize;
+    while let Some(lt_rel) = find_with_checkpoints(&svg[i..], "<", checkpoint)? {
+        checkpoint_loop(iteration, checkpoint)?;
+        iteration = iteration.saturating_add(1);
         let lt = i + lt_rel;
         out.push_str(&svg[i..lt]);
 
-        let Some(gt_rel) = svg[lt..].find('>') else {
+        let Some(gt) = find_tag_end_with_checkpoints(svg, lt, checkpoint)? else {
             out.push_str(&svg[lt..]);
             i = svg.len();
             break;
         };
-        let gt = lt + gt_rel + 1;
+        let gt = gt + 1;
         let tag = &svg[lt..gt];
 
         // Comments / declarations: passthrough.
@@ -78,7 +131,7 @@ pub fn foreign_object_label_fallback_svg_text(
 
         if tag.starts_with("<g") {
             if !is_self_closing(tag) {
-                g_stack.push(GFrame::from_g_tag(tag));
+                g_stack.push(GFrame::from_g_tag(tag, checkpoint)?);
             }
             out.push_str(tag);
             i = gt;
@@ -87,7 +140,8 @@ pub fn foreign_object_label_fallback_svg_text(
 
         if tag.starts_with("<foreignObject") {
             let start_end = gt;
-            let Some(close_rel) = svg[start_end..].find(close_tag) else {
+            let Some(close_rel) = find_with_checkpoints(&svg[start_end..], close_tag, checkpoint)?
+            else {
                 out.push_str(&svg[lt..]);
                 i = svg.len();
                 break;
@@ -99,25 +153,31 @@ pub fn foreign_object_label_fallback_svg_text(
 
             out.push_str(&svg[lt..i_next]);
 
-            let from_switch = is_foreign_object_switch_native_fallback(svg, lt, i_next);
+            let from_switch =
+                is_foreign_object_switch_native_fallback(svg, lt, i_next, checkpoint)?;
 
-            let width = parse_attr_f64(tag, "width").unwrap_or(0.0);
-            let height = parse_attr_f64(tag, "height").unwrap_or(0.0);
+            let width = parse_attr_f64(tag, "width", checkpoint)?.unwrap_or(0.0);
+            let height = parse_attr_f64(tag, "height", checkpoint)?.unwrap_or(0.0);
             if width > 0.0 && height > 0.0 {
-                let x = parse_attr_f64(tag, "x").unwrap_or(0.0);
-                let y = parse_attr_f64(tag, "y").unwrap_or(0.0);
-                let base = sum_translate(&g_stack);
+                let x = parse_attr_f64(tag, "x", checkpoint)?.unwrap_or(0.0);
+                let y = parse_attr_f64(tag, "y", checkpoint)?.unwrap_or(0.0);
+                let base = sum_translate(&g_stack, checkpoint)?;
 
                 let abs_x = base.x + x;
                 let abs_y = base.y + y;
-                let (anchor, text_x) = match parse_attr_str(tag, "text-anchor") {
+                let (anchor, text_x) = match extract_exact_double_quoted_attr_with_checkpoints(
+                    tag,
+                    "text-anchor",
+                    checkpoint,
+                )? {
                     Some("start") => ("start", abs_x),
                     Some("end") => ("end", abs_x + width),
                     _ => ("middle", abs_x + width / 2.0),
                 };
                 let text_y = abs_y + height / 2.0;
 
-                let raw_lines = htmlish_to_text_lines(inner);
+                checkpoint()?;
+                let raw_lines = htmlish_to_text_lines(inner, checkpoint)?;
                 if !raw_lines.is_empty() {
                     let source_attr = if from_switch {
                         r#" data-merman-foreignobject-source="switch-native-fallback""#
@@ -127,7 +187,12 @@ pub fn foreign_object_label_fallback_svg_text(
                     overlays.push_str(&format!(
                         r#"<g data-merman-foreignobject="fallback"{source} class="{cls}">"#,
                         source = source_attr,
-                        cls = class_attr_tokens(&g_stack, inner, "merman-foreignobject-fallback")
+                        cls = class_attr_tokens(
+                            &g_stack,
+                            inner,
+                            "merman-foreignobject-fallback",
+                            checkpoint,
+                        )?
                     ));
 
                     let wants_label_bkg = inner.contains("labelBkg");
@@ -142,26 +207,53 @@ pub fn foreign_object_label_fallback_svg_text(
                         ));
                     }
 
-                    let font_size_value = extract_inline_html_style_property(inner, "font-size")
-                        .or_else(|| extract_svg_font_style_from_context(svg, &g_stack, "font-size"))
-                        .unwrap_or_else(|| "16px".to_string());
+                    let font_size_value =
+                        match extract_inline_html_style_property(inner, "font-size") {
+                            Some(value) => value,
+                            None => extract_svg_font_style_from_context(
+                                svg,
+                                &g_stack,
+                                "font-size",
+                                checkpoint,
+                            )?
+                            .unwrap_or_else(|| "16px".to_string()),
+                        };
                     let font_size = parse_css_px(&font_size_value, 16.0);
-                    let fill = extract_inline_html_color(inner)
-                        .or_else(|| extract_svg_text_fill_from_ancestors(svg, &g_stack))
-                        .unwrap_or_else(|| "#333".to_string());
-                    let font_family = extract_inline_html_style_property(inner, "font-family")
-                        .or_else(|| {
-                            extract_svg_font_style_from_context(svg, &g_stack, "font-family")
-                        })
-                        .unwrap_or_else(|| "trebuchet ms,verdana,arial,sans-serif".to_string());
-                    let font_weight = extract_inline_html_style_property(inner, "font-weight")
-                        .or_else(|| {
-                            extract_svg_font_style_from_context(svg, &g_stack, "font-weight")
-                        });
-                    let font_style = extract_inline_html_style_property(inner, "font-style")
-                        .or_else(|| {
-                            extract_svg_font_style_from_context(svg, &g_stack, "font-style")
-                        });
+                    let fill = match extract_inline_html_color(inner) {
+                        Some(value) => value,
+                        None => extract_svg_text_fill_from_ancestors(svg, &g_stack, checkpoint)?
+                            .unwrap_or_else(|| "#333".to_string()),
+                    };
+                    let font_family = match extract_inline_html_style_property(inner, "font-family")
+                    {
+                        Some(value) => value,
+                        None => extract_svg_font_style_from_context(
+                            svg,
+                            &g_stack,
+                            "font-family",
+                            checkpoint,
+                        )?
+                        .unwrap_or_else(|| "trebuchet ms,verdana,arial,sans-serif".to_string()),
+                    };
+                    let font_weight = match extract_inline_html_style_property(inner, "font-weight")
+                    {
+                        Some(value) => Some(value),
+                        None => extract_svg_font_style_from_context(
+                            svg,
+                            &g_stack,
+                            "font-weight",
+                            checkpoint,
+                        )?,
+                    };
+                    let font_style = match extract_inline_html_style_property(inner, "font-style") {
+                        Some(value) => Some(value),
+                        None => extract_svg_font_style_from_context(
+                            svg,
+                            &g_stack,
+                            "font-style",
+                            checkpoint,
+                        )?,
+                    };
                     let measure_style = TextStyle {
                         font_family: Some(font_family.clone()),
                         font_size,
@@ -174,7 +266,8 @@ pub fn foreign_object_label_fallback_svg_text(
                         wrap_width,
                         text_measurer,
                         &measure_style,
-                    );
+                        checkpoint,
+                    )?;
                     let line_height = font_size * 1.5;
                     let n = lines.len() as f64;
                     let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
@@ -191,9 +284,10 @@ pub fn foreign_object_label_fallback_svg_text(
                         text_style.push_str(&font_style);
                         text_style.push(';');
                     }
-                    let text_class = fallback_text_class_attr_tokens(&g_stack, inner);
+                    let text_class = fallback_text_class_attr_tokens(&g_stack, inner, checkpoint)?;
 
                     for (idx, line) in lines.iter().enumerate() {
+                        checkpoint_loop(idx, checkpoint)?;
                         let y_line = y0 + (idx as f64) * line_height;
                         let text = escape_xml_text(line);
                         overlays.push_str(&format!(
@@ -224,10 +318,11 @@ pub fn foreign_object_label_fallback_svg_text(
     }
 
     if overlays.is_empty() {
-        return out;
+        checkpoint()?;
+        return Ok(out);
     }
 
-    if let Some(idx) = out.rfind("</svg>") {
+    let result = if let Some(idx) = rfind_with_checkpoints(&out, "</svg>", checkpoint)? {
         let mut with_overlays = String::with_capacity(out.len() + overlays.len() + 64);
         with_overlays.push_str(&out[..idx]);
         with_overlays.push_str(&overlays);
@@ -235,32 +330,55 @@ pub fn foreign_object_label_fallback_svg_text(
         with_overlays
     } else {
         out
-    }
+    };
+    checkpoint()?;
+    Ok(result)
 }
 
-fn is_foreign_object_switch_native_fallback(
+fn is_foreign_object_switch_native_fallback<E>(
     svg: &str,
     foreign_object_start: usize,
     foreign_object_end: usize,
-) -> bool {
-    let Some(switch_start) = find_wrapping_switch_start(svg, foreign_object_start) else {
-        return false;
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    let Some(switch_start) = find_wrapping_switch_start(svg, foreign_object_start, checkpoint)?
+    else {
+        return Ok(false);
     };
-    let Some(switch_close_rel) = svg[foreign_object_end..].find("</switch>") else {
-        return false;
+    let Some(switch_close_rel) =
+        find_with_checkpoints(&svg[foreign_object_end..], "</switch>", checkpoint)?
+    else {
+        return Ok(false);
     };
 
-    svg[switch_start..foreign_object_start]
-        .find("</switch>")
-        .is_none()
-        && svg[foreign_object_end..foreign_object_end + switch_close_rel].contains("<text")
+    let has_intervening_close = find_with_checkpoints(
+        &svg[switch_start..foreign_object_start],
+        "</switch>",
+        checkpoint,
+    )?
+    .is_some();
+    let has_native_text = find_with_checkpoints(
+        &svg[foreign_object_end..foreign_object_end + switch_close_rel],
+        "<text",
+        checkpoint,
+    )?
+    .is_some();
+    Ok(!has_intervening_close && has_native_text)
 }
 
-fn find_wrapping_switch_start(svg: &str, before: usize) -> Option<usize> {
+fn find_wrapping_switch_start<E>(
+    svg: &str,
+    before: usize,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<usize>, E> {
     let mut search_end = before;
     while search_end > 0 {
-        let start = svg[..search_end].rfind("<switch")?;
-        let open_end = start + svg[start..before].find('>')?;
+        let Some(start) = rfind_with_checkpoints(&svg[..search_end], "<switch", checkpoint)? else {
+            return Ok(None);
+        };
+        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
+            return Ok(None);
+        };
         if open_end >= before {
             search_end = start;
             continue;
@@ -268,12 +386,12 @@ fn find_wrapping_switch_start(svg: &str, before: usize) -> Option<usize> {
 
         let tag = &svg[start..=open_end];
         if is_start_switch_tag(tag) {
-            return Some(start);
+            return Ok(Some(start));
         }
 
         search_end = start;
     }
-    None
+    Ok(None)
 }
 
 fn is_start_switch_tag(tag: &str) -> bool {
@@ -416,6 +534,15 @@ mod tests {
         assert!(out.contains(r##"fill="#ddeeff""##), "got: {out}");
         assert!(out.contains("font-size: 14px"), "got: {out}");
         assert!(out.contains("font-family: Inter,system-ui"), "got: {out}");
+    }
+
+    #[test]
+    fn foreign_object_overlay_reads_unicode_root_style_identity() {
+        let svg = r##"<svg id="图表-α" xmlns="http://www.w3.org/2000/svg"><style>#图表-α{font-family:Inter;font-size:14px;fill:#ddeeff;}</style><g><foreignObject width="80" height="21"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(out.contains(r##"fill="#ddeeff""##), "got: {out}");
+        assert!(out.contains("font-family: Inter"), "got: {out}");
     }
 
     #[test]

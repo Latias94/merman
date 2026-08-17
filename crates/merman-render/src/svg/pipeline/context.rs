@@ -2,6 +2,7 @@ use super::builtin::util::{extract_quoted_attr, root_svg_tag};
 use super::preset::SvgPipelinePreset;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::RenderFamilyKind;
+use merman_core::OperationPhase;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SvgPostprocessMetadata {
@@ -157,6 +158,19 @@ impl<'a> SvgPostprocessContext<'a> {
 
     pub fn text_measurer(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'a> {
         self.session.text_measurer(phase)
+    }
+
+    pub(crate) fn controlled_text_measurer(
+        &self,
+        phase: TextMeasurementPhase,
+    ) -> RoutedTextMeasurer<'a> {
+        self.session
+            .controlled_text_measurer(phase, OperationPhase::Postprocess)
+    }
+
+    /// Checks the operation-owned postprocess control for work performed by a built-in pass.
+    pub(crate) fn checkpoint(&self) -> crate::Result<()> {
+        self.session.checkpoint(OperationPhase::Postprocess)
     }
 }
 
