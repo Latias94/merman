@@ -62,10 +62,8 @@ mod completion;
 mod context;
 mod diagnostics;
 mod document_analysis;
-mod generated;
 mod snapshot;
 mod structure;
-mod token_planner;
 mod types;
 
 pub use code_actions::{
@@ -80,12 +78,10 @@ pub use diagnostics::{
     DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticRelated,
     analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,
 };
-pub use generated::{
-    PlannedTokenKind, PlannedTokenModifier, SEMANTIC_TOKEN_DESCRIPTOR,
-    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
-    SEMANTIC_TOKEN_VALID_MODIFIER_MASK, SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX,
-    SemanticTokenDescriptor, SemanticTokenKindDescriptor, SemanticTokenModifierDescriptor,
-    SemanticTokenPackedDescriptor, TokenOverlayKind, semantic_token_descriptor,
+pub use document_analysis::{
+    DocumentAnalysisContext, analyze_document_context_with_shared_text,
+    analyze_document_context_with_shared_text_cancellable,
+    analyze_document_snapshot_with_shared_text,
 };
 pub use merman_analysis::FenceTextIndexSource;
 pub use merman_core::{EditorSemanticKind, EditorSemanticRole};
@@ -99,17 +95,5 @@ pub use structure::{
     EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols, folding_ranges,
     goto_definition, hover, prepare_rename, references, rename, search_document_symbols,
     selection_range, selection_ranges,
-};
-pub use token_planner::{
-    PlannedToken, SemanticTokenPlan, SemanticTokenSupport, TokenPlanError,
-    plan_semantic_tokens_for_snapshot, plan_semantic_tokens_for_snapshot_range,
-    plan_semantic_tokens_for_snapshot_range_with_support,
-    plan_semantic_tokens_for_snapshot_with_support,
-};
-
-pub use document_analysis::{
-    DocumentAnalysisContext, analyze_document_context_with_shared_text,
-    analyze_document_context_with_shared_text_cancellable,
-    analyze_document_snapshot_with_shared_text,
 };
 pub use types::{DocumentKind, DocumentUri, Position, Range};

@@ -17,7 +17,23 @@ During `initialize`, the server advertises:
 {
   "experimental": {
     "merman": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
+      "editorLanguage": {
+        "renamePolicies": [
+          "none",
+          "identifier",
+          "qualified_identifier",
+          "event_modeling_id",
+          "event_modeling_frame_id",
+          "flowchart_node_id",
+          "git_graph_reference",
+          "architecture_identifier",
+          "railroad_ir_rule",
+          "railroad_ebnf_rule",
+          "railroad_peg_rule",
+          "railroad_abnf_rule"
+        ]
+      },
       "diagramSupport": {
         "families": [
           {
@@ -37,6 +53,10 @@ During `initialize`, the server advertises:
 ```
 
 Clients should feature-detect these fields instead of hard-coding extension availability.
+
+Schema 2 removes the parser-owned syntax-token descriptor fields from `editorLanguage`.
+`renamePolicies` remains semantic-parser metadata; standard LSP semantic-token capabilities now
+describe Tree-sitter syntax highlighting independently.
 
 Each `families` entry reports the canonical `diagramType` plus separate semantic-parser and
 render-parser availability. Every parser-capable Merman build reports the same complete pinned

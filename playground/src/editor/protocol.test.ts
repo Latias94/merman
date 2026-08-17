@@ -180,11 +180,6 @@ const queryProjectionCases: readonly QueryProjectionCase[] = [
     valid: workspaceEdit,
     malformed: { factSource, changes: [] },
   },
-  {
-    query: { kind: "semanticTokens" },
-    valid: new Uint32Array([0, 0, 3, 1, 0]),
-    malformed: [0, 0, 3, 1, 0],
-  },
 ];
 
 test("document identity projection owns the URI/version query boundary", () => {
@@ -203,7 +198,7 @@ test("document identity projection owns the URI/version query boundary", () => {
   );
 });
 
-test("all eleven editor queries and their precise result shapes project", () => {
+test("all semantic editor queries and their precise result shapes project", () => {
   for (const { query, valid, malformed } of queryProjectionCases) {
     assert.deepEqual(projectEditorWorkerQuery(query), query);
     assert.throws(
@@ -273,18 +268,6 @@ test("diagram detection rejects unknown families and blank identifiers", () => {
       /must not be blank/,
     );
   }
-});
-
-test("semantic token projection retains the typed-array transport value", () => {
-  const input = new Uint32Array([0, 0, 3, 1, 0]);
-  const projected = projectEditorWorkerQueryResult(
-    { kind: "semanticTokens" },
-    input,
-  );
-
-  assert.ok(projected instanceof Uint32Array);
-  assert.deepEqual(projected, input);
-  assert.equal(projected, input);
 });
 
 test("nullable editor query results remain valid without inventing data", () => {
@@ -362,7 +345,6 @@ test("request projection validates every envelope and query request shape", () =
       type: "query",
       uri: document.uri,
       version: 2,
-      legendDigest: "legend-digest",
       query,
     })),
     { protocol: EDITOR_WORKER_PROTOCOL, type: "dispose" },
@@ -380,7 +362,6 @@ test("request projection validates every envelope and query request shape", () =
         type: "query",
         uri: document.uri,
         version: 2,
-        legendDigest: "legend-digest",
         query: { kind: "hover", position: { line: -1, character: 0 } },
       }),
     /non-negative safe integer/,
@@ -403,7 +384,6 @@ test("request projection validates every envelope and query request shape", () =
         type: "query",
         uri: document.uri,
         version: 2,
-        legendDigest: "legend-digest",
         query: {
           kind: "hover",
           position: { line: 0, character: 0, extra: true },
@@ -419,10 +399,8 @@ test("response projection binds positive request IDs and null synchronization ac
     requestId: 1,
     type: "ready",
     completionTriggerCharacters,
-    transportApiVersion: 4,
+    transportApiVersion: 5,
     editorSchema: EDITOR_SCHEMA_VERSION,
-    legendDigest: "legend-digest",
-    legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
   });
   assert.equal(ready.type, "ready");
   assert.deepEqual(ready.completionTriggerCharacters, completionTriggerCharacters);
@@ -433,10 +411,8 @@ test("response projection binds positive request IDs and null synchronization ac
         requestId: 1,
         type: "ready",
         completionTriggerCharacters,
-        transportApiVersion: 5,
+        transportApiVersion: 4,
         editorSchema: EDITOR_SCHEMA_VERSION,
-        legendDigest: "legend-digest",
-        legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
       }),
     /transport API version is incompatible/u,
   );
@@ -447,10 +423,8 @@ test("response projection binds positive request IDs and null synchronization ac
         requestId: 1,
         type: "ready",
         completionTriggerCharacters: ["too long"],
-        transportApiVersion: 4,
+        transportApiVersion: 5,
         editorSchema: EDITOR_SCHEMA_VERSION,
-        legendDigest: "legend-digest",
-        legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
       }),
     /must contain one character each/u,
   );
@@ -491,37 +465,31 @@ test("response projection binds positive request IDs and null synchronization ac
   );
 });
 
-test("query response projection validates the result against its request kind", () => {
+test("query response projection validates semantic results against request kinds", () => {
   const response = {
     protocol: EDITOR_WORKER_PROTOCOL,
     requestId: 3,
     type: "queryResult",
     uri: "inmemory://model/1",
     version: 2,
-    legendDigest: "legend-digest",
-    result: new Uint32Array([0, 0, 3, 1, 0]),
+    result: diagnostics,
   };
   const projected = projectEditorWorkerResponse(response);
   assert.equal(projected.type, "queryResult");
-  assert.ok(
-    projectEditorWorkerQueryResult(
-      { kind: "semanticTokens" },
-      projected.result,
-    ) instanceof Uint32Array,
+  assert.deepEqual(
+    projectEditorWorkerQueryResult({ kind: "diagnostics" }, projected.result),
+    diagnostics,
   );
   assert.throws(
     () => {
       const malformed = projectEditorWorkerResponse({
         ...response,
-        result: [0, 0, 3, 1, 0],
+        result: { ...diagnostics, diagnostics: {} },
       });
       assert.equal(malformed.type, "queryResult");
-      projectEditorWorkerQueryResult(
-        { kind: "semanticTokens" },
-        malformed.result,
-      );
+      projectEditorWorkerQueryResult({ kind: "diagnostics" }, malformed.result);
     },
-    /Uint32Array/,
+    /array/,
   );
 });
 

@@ -609,20 +609,6 @@ State1 --> State2"#;
         .unwrap()
         .expect("state editor facts");
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    let embedded_marker = text.find("end note as part").unwrap();
-    assert!(facts.lexemes().iter().any(|lexeme| {
-        let span = lexeme.span();
-        lexeme.kind() == EditorLexemeKind::String
-            && span.start <= embedded_marker
-            && span.end >= embedded_marker + "end note".len()
-    }));
-    let closing_marker = text.rfind("end note").unwrap();
-    assert!(facts.lexemes().iter().any(|lexeme| {
-        let span = lexeme.span();
-        lexeme.kind() == EditorLexemeKind::Keyword
-            && span.start == closing_marker
-            && &text[span.start..span.end] == "end"
-    }));
 }
 
 #[test]
@@ -841,12 +827,9 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
         ),
     )
     .expect("combined State parse succeeds");
-    let family = crate::family::diagram_type_family_id(&standalone.meta.diagram_type)
-        .expect("State belongs to a catalog family");
     combined_editor.family_semantics =
         crate::family::diagram_type_editor_semantics(&standalone.meta.diagram_type)
             .expect("State has typed editor family semantics");
-    combined_editor.finalize_lexemes(family, &[]);
 
     assert_eq!(
         crate::diagrams::state::state_syntax_construction_count(),

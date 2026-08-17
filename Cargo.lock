@@ -2546,6 +2546,8 @@ dependencies = [
  "tower-lsp-server",
  "tracing",
  "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-mermaid",
 ]
 
 [[package]]

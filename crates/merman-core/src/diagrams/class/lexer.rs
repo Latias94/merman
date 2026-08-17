@@ -1,11 +1,7 @@
 use std::collections::VecDeque;
 
 use super::MERMAID_DOM_ID_PREFIX;
-use crate::SourceSpan;
 use crate::diagrams::scan::consume_line_ending;
-use crate::editor::{
-    EditorLexemeBatchResult, EditorLexemeJournal, EditorLexemeKind, EditorLexemeModifiers,
-};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
@@ -110,7 +106,6 @@ pub(super) struct Lexer<'input> {
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
-    lexemes: EditorLexemeJournal<'input>,
 }
 
 impl<'input> Lexer<'input> {
@@ -120,36 +115,11 @@ impl<'input> Lexer<'input> {
             pos: 0,
             pending: VecDeque::new(),
             mode: Mode::Default,
-            lexemes: EditorLexemeJournal::family_lexer(input),
         }
     }
 
     pub(super) fn position(&self) -> usize {
         self.pos
-    }
-
-    pub(super) fn finish_lexemes(self) -> EditorLexemeBatchResult {
-        self.lexemes.finish()
-    }
-
-    fn push_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
-        self.lexemes.push(
-            kind,
-            EditorLexemeModifiers::NONE,
-            SourceSpan::new(start, end),
-        );
-    }
-
-    fn push_trimmed_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
-        let Some(raw) = self.input.get(start..end) else {
-            self.push_lexeme(kind, start, end);
-            return;
-        };
-        let leading = raw.len() - raw.trim_start().len();
-        let trailing = raw.trim_end().len();
-        if leading < trailing {
-            self.push_lexeme(kind, start + leading, start + trailing);
-        }
     }
 
     fn peek(&self) -> Option<u8> {
@@ -213,9 +183,7 @@ impl<'input> Lexer<'input> {
 
     fn lex_comment(&mut self) -> bool {
         if self.starts_with("%%") {
-            let start = self.pos;
             let _ = self.read_to_newline();
-            self.push_lexeme(EditorLexemeKind::Comment, start, self.pos);
             return true;
         }
         false
@@ -231,11 +199,7 @@ impl<'input> Lexer<'input> {
         let colon = rest.find(':')?;
         let colon = after + colon;
         self.pos = colon + 1;
-        let value_start = self.pos;
         let value = self.read_to_newline();
-        self.push_lexeme(EditorLexemeKind::Keyword, start, after);
-        self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
-        self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
         Some((start, Tok::AccTitle(value.trim().to_string()), self.pos))
     }
 
@@ -252,23 +216,15 @@ impl<'input> Lexer<'input> {
             let opening = after + consumed_ws;
             self.pos = opening + 1;
             let Some(end_rel) = self.input[self.pos..].find('}') else {
-                self.push_lexeme(EditorLexemeKind::Keyword, start, after);
-                self.push_lexeme(EditorLexemeKind::Delimiter, opening, opening + 1);
-                self.push_trimmed_lexeme(EditorLexemeKind::String, self.pos, self.input.len());
                 self.pos = self.input.len();
                 return Some(Err(LexError::new(
                     "Unterminated accDescr block; missing '}'",
                     crate::SourceSpan::new(opening, opening + 1),
                 )));
             };
-            let body_start = self.pos;
             let closing = self.pos + end_rel;
             let body = self.input[self.pos..self.pos + end_rel].to_string();
             self.pos = closing + 1;
-            self.push_lexeme(EditorLexemeKind::Keyword, start, after);
-            self.push_lexeme(EditorLexemeKind::Delimiter, opening, opening + 1);
-            self.push_trimmed_lexeme(EditorLexemeKind::String, body_start, closing);
-            self.push_lexeme(EditorLexemeKind::Delimiter, closing, closing + 1);
             return Some(Ok((
                 start,
                 Tok::AccDescrMultiline(body.trim().to_string()),
@@ -278,11 +234,7 @@ impl<'input> Lexer<'input> {
         let colon = rest.find(':')?;
         let colon = after + colon;
         self.pos = colon + 1;
-        let value_start = self.pos;
         let value = self.read_to_newline();
-        self.push_lexeme(EditorLexemeKind::Keyword, start, after);
-        self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
-        self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
         Some(Ok((
             start,
             Tok::AccDescr(value.trim().to_string()),
@@ -361,7 +313,6 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "direction".len();
-        let keyword_end = self.pos;
         self.skip_ws();
         let direction_start = self.pos;
         while self
@@ -383,18 +334,12 @@ impl<'input> Lexer<'input> {
         } else if direction == "RL" {
             "RL"
         } else {
-            self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
-            if selection.start < selection.end {
-                self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
-            }
             return Some(Err(LexError::new("invalid class direction", selection)
                 .expecting(
                     crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
                     selection,
                 )));
         };
-        self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
-        self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
         Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
     }
 
@@ -590,10 +535,7 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += 1;
-        let value_start = self.pos;
         let s = self.read_to_newline();
-        self.push_lexeme(EditorLexemeKind::Delimiter, start, start + 1);
-        self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
         Some((start, Tok::Label(format!(":{}", s)), self.pos))
     }
 
@@ -722,7 +664,6 @@ impl<'input> Lexer<'input> {
         &mut self,
         token: (usize, Tok, usize),
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        record_class_token(&mut self.lexemes, &token.1, token.0, token.2);
         Some(Ok(token))
     }
 
@@ -730,9 +671,6 @@ impl<'input> Lexer<'input> {
         &mut self,
         token: std::result::Result<(usize, Tok, usize), LexError>,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        if let Ok((start, token, end)) = &token {
-            record_class_token(&mut self.lexemes, token, *start, *end);
-        }
         Some(token)
     }
 }
@@ -836,56 +774,4 @@ impl<'input> Iterator for Lexer<'input> {
             )));
         }
     }
-}
-
-fn record_class_token(
-    journal: &mut EditorLexemeJournal<'_>,
-    token: &Tok,
-    start: usize,
-    end: usize,
-) {
-    let kind = match token {
-        Tok::Newline
-        | Tok::Direction(_)
-        | Tok::Label(_)
-        | Tok::AccTitle(_)
-        | Tok::AccDescr(_)
-        | Tok::AccDescrMultiline(_) => return,
-        Tok::ClassDiagram
-        | Tok::ClassKw
-        | Tok::NamespaceKw
-        | Tok::Note
-        | Tok::NoteFor
-        | Tok::CssClass
-        | Tok::StyleKw
-        | Tok::ClassDefKw
-        | Tok::ClickKw
-        | Tok::LinkKw
-        | Tok::CallbackKw
-        | Tok::HrefKw
-        | Tok::CallKw => EditorLexemeKind::Keyword,
-        Tok::StructStart
-        | Tok::StructStop
-        | Tok::SquareStart
-        | Tok::SquareStop
-        | Tok::AnnotationStart
-        | Tok::AnnotationStop
-        | Tok::StyleSeparator => EditorLexemeKind::Delimiter,
-        Tok::Ext
-        | Tok::Dep
-        | Tok::Comp
-        | Tok::Agg
-        | Tok::Lollipop
-        | Tok::Line
-        | Tok::DottedLine => EditorLexemeKind::Operator,
-        Tok::Str(_) => EditorLexemeKind::String,
-        Tok::Name(_) | Tok::CallbackName(_) => EditorLexemeKind::Identifier,
-        Tok::Member(_) | Tok::CallbackArgs(_) | Tok::LinkTarget(_) => EditorLexemeKind::Literal,
-        Tok::RestOfLine(_) => EditorLexemeKind::Style,
-    };
-    journal.push(
-        kind,
-        EditorLexemeModifiers::NONE,
-        SourceSpan::new(start, end),
-    );
 }

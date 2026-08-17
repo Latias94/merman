@@ -1,12 +1,12 @@
 # Merman VS Code Extension
 
-Merman for VS Code provides local Mermaid authoring backed by `merman-lsp` and `merman-cli`. It is designed for parser-backed diagnostics, completion, hover, symbols, rename, references, code actions, semantic tokens, preview, and export without login, telemetry, cloud sync, or remote AI.
+Merman for VS Code provides local Mermaid authoring backed by `merman-lsp` and `merman-cli`. It is designed for Tree-sitter-backed syntax highlighting plus parser-backed diagnostics, completion, hover, symbols, rename, references, code actions, preview, and export without login, telemetry, cloud sync, or remote AI.
 
 ## What it supports
 
 - Mermaid source files: `.mmd`, `.mermaid`
 - Markdown-family documents: `markdown`, `.markdown`, `.mdx` Mermaid fences through the same LSP
-- Parser-backed completion, hover, symbols, references, rename, semantic tokens, readable diagnostics, and safe quick fixes where Merman analysis provides fix metadata
+- Tree-sitter-backed syntax highlighting together with parser-backed completion, hover, symbols, references, rename, readable diagnostics, and safe quick fixes where Merman analysis provides fix metadata
 - Static Mermaid snippets for common diagram skeletons, plus LSP snippets for context-sensitive helper inserts and diagram templates
 - Source-scoped CodeLens actions above Mermaid files and Markdown/MDX Mermaid fences for preview and a compact `Export / Copy` menu
 - Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped diagnostic status, multi-fence selection, zoom, display mode/theme/background controls, and local SVG copy/export controls
@@ -101,7 +101,7 @@ Keep Merman language intelligence while another preview extension owns editor ac
 }
 ```
 
-Keep Merman completion, hover, symbols, references, rename, and semantic tokens while another linter owns VS Code Problems:
+Keep Merman syntax highlighting, completion, hover, symbols, references, and rename while another linter owns VS Code Problems:
 
 ```json
 {
@@ -109,9 +109,9 @@ Keep Merman completion, hover, symbols, references, rename, and semantic tokens 
 }
 ```
 
-The extension consumes semantic tokens directly from `merman-lsp`. After LSP initialization it checks the server's generated editor schema, descriptor digest, packed encoding, and canonical negotiated legend projection before enabling language intelligence. A mismatched local or packaged server is stopped instead of letting VS Code interpret token indices with stale meanings.
+The extension consumes standard LSP semantic tokens from `merman-lsp`; their syntax captures come from the canonical Tree-sitter Mermaid query. Token legend negotiation remains standard LSP behavior owned by `vscode-languageclient`, while completion, hover, navigation, rename, and diagnostics continue to come from Merman's strict semantic analysis.
 
-Custom token declarations, theme supertypes, Mermaid TextMate fallback scopes, the Mermaid semantic-highlighting default, and analysis-setting constraints in `package.json` are generated or projected by `cargo run -p xtask -- gen-editor-language-contract`. Token metadata comes from `contracts/editor-language/token-descriptor-v1.json`; analysis constraints come from `merman_analysis::AnalysisConfigContract`. Do not maintain either semantic table independently in the extension manifest. Runtime negotiation may accept additive values from a newer server, while the bundled manifest remains the generated baseline used by VS Code Settings validation and completion.
+Analysis-setting constraints in `package.json` are projected by `cargo run -p xtask -- gen-editor-language-contract` from `merman_analysis::AnalysisConfigContract`. The same command maintains the independent parser-owned rename-policy contract used by Rust and Web analysis payload types; the extension does not copy that policy table or maintain a private semantic-token descriptor.
 
 JavaScript lint tools that want Merman parser-backed evidence can use `@mermanjs/web-analysis` `analyzeDocument(source, uri, options)` without adopting the LSP. See `docs/integrations/` for adapter guidance and coexistence examples.
 

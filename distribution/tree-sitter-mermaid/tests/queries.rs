@@ -55,10 +55,7 @@ const EXPECTED_NON_HEADER_CAPTURE_CLASSES: &[(&str, &str)] = &[
         "constant operator punctuation.bracket punctuation.delimiter string variable",
     ),
     ("gantt", "keyword number punctuation.delimiter string"),
-    (
-        "gitgraph",
-        "keyword property punctuation.delimiter string",
-    ),
+    ("gitgraph", "keyword property punctuation.delimiter string"),
     // `info` has no post-header body. Its fixture intentionally proves bounded
     // frontmatter highlighting instead of inventing diagram-body captures.
     ("info", "attribute punctuation.special"),
@@ -94,10 +91,7 @@ const EXPECTED_NON_HEADER_CAPTURE_CLASSES: &[(&str, &str)] = &[
         "railroadEbnf",
         "function operator string string.special variable",
     ),
-    (
-        "railroadPeg",
-        "constant function operator string variable",
-    ),
+    ("railroadPeg", "constant function operator string variable"),
     (
         "requirement",
         "constant property punctuation.bracket punctuation.delimiter string type variable",
@@ -462,7 +456,9 @@ fn portable_non_highlight_queries_execute_on_representative_sources() {
     let query = Query::new(&language, &query_source(query_path))
         .unwrap_or_else(|error| panic!("{query_path} does not compile: {error}"));
     let captures = capture_names(&mut parser, &query, query_path, event_modeling);
-    assert!(captures
-        .iter()
-        .any(|capture| capture == "injection.content"));
+    assert!(
+        captures
+            .iter()
+            .any(|capture| capture == "injection.content")
+    );
 }

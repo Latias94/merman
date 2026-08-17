@@ -151,7 +151,8 @@ and owner to every added, removed, or changed:
 - diagram family, alias, external diagram, and layout module;
 - grammar, preprocessing transform, recovery rule, semantic model, and resource limit;
 - config, theme, security, URL, sanitizer, viewport, DOM, and generated-id behavior;
-- lexical fact, diagnostic, completion, hover, symbol, rename, reference, and semantic token;
+- strict parser fact, diagnostic, completion, hover, symbol, rename, and reference;
+- Tree-sitter grammar/CST recovery and portable highlight captures;
 - fixture, example, browser requirement, package lock, runtime label, and provenance record.
 
 Text measurement, font rendering, `getBBox()`, `foreignObject`, RoughJS, and CSS inheritance are
@@ -160,10 +161,11 @@ heuristic parser, fixture constant, broad normalizer, or comparator whitelist to
 
 ## 5. Admit Through Family Ownership
 
-Parser-only support is incomplete. An admitted built-in family must close detection, grammar,
+Parser-only support is incomplete. An admitted built-in family must close detection, strict grammar,
 semantic construction, recovery, config/theme, layout, rendering, resources, editor facts, LSP,
-WASM, Playground, examples, fixtures, and provenance. All editor capabilities consume one cached
-family parse snapshot.
+Tree-sitter syntax, Playground, examples, fixtures, and provenance. Semantic editor capabilities
+consume one cached family parse snapshot; tolerant coloring consumes the independent canonical
+Tree-sitter grammar/query state.
 
 An external diagram additionally needs an exact plugin graph, typed runtime requirement, cold and
 reused registration, isolated execution, a source-observed closed artifact type, strict parent-side

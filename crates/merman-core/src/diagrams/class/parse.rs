@@ -39,7 +39,6 @@ type ClassGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
 struct ClassSyntax {
     events: Vec<ClassLexicalEvent>,
-    lexemes: crate::editor::EditorLexemeBatchResult,
 }
 
 impl ClassSyntax {
@@ -62,10 +61,8 @@ impl ClassSyntax {
             }
             last_position = current_position;
         }
-        let lexemes = lexer.finish_lexemes();
-
         control.checkpoint()?;
-        Ok(Self { events, lexemes })
+        Ok(Self { events })
     }
 
     fn into_editor_facts_and_actions(
@@ -76,8 +73,8 @@ impl ClassSyntax {
         EditorSemanticFacts,
         std::result::Result<Vec<super::Action>, ClassGrammarError>,
     )> {
-        let Self { events, lexemes } = self;
-        let editor_facts = collect_class_editor_facts_from_events(&events, code, lexemes, control)?;
+        let Self { events } = self;
+        let editor_facts = collect_class_editor_facts_from_events(&events, code, control)?;
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
@@ -238,11 +235,9 @@ pub(crate) fn parse_class_json_and_editor_facts(
 fn collect_class_editor_facts_from_events(
     events: &[ClassLexicalEvent],
     code: &str,
-    lexemes: crate::editor::EditorLexemeBatchResult,
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
-    facts.replace_family_lexemes(lexemes);
     let mut collector = ClassEditorFactCollector::new(code);
 
     for (index, event) in events.iter().enumerate() {

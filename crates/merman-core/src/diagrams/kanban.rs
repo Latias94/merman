@@ -1,9 +1,8 @@
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive, strip_line_ending};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result,
-    SourceSpan, editor::EditorLexemeJournal,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
+    ParseMetadata, Result, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -138,60 +137,6 @@ struct SpannedText {
     span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct KanbanLexeme {
-    kind: EditorLexemeKind,
-    modifiers: EditorLexemeModifiers,
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone, Default)]
-struct KanbanLexemeTrace {
-    lexemes: Vec<KanbanLexeme>,
-}
-
-impl KanbanLexemeTrace {
-    fn push(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
-        self.push_with_modifiers(kind, EditorLexemeModifiers::NONE, span);
-    }
-
-    fn push_with_modifier(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifier: EditorLexemeModifier,
-        span: SourceSpan,
-    ) {
-        self.push_with_modifiers(kind, EditorLexemeModifiers::from_modifier(modifier), span);
-    }
-
-    fn push_with_modifiers(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifiers: EditorLexemeModifiers,
-        span: SourceSpan,
-    ) {
-        if span.start < span.end {
-            self.lexemes.push(KanbanLexeme {
-                kind,
-                modifiers,
-                span,
-            });
-        }
-    }
-
-    fn extend(&mut self, other: Self) {
-        self.lexemes.extend(other.lexemes);
-    }
-
-    fn attach(self, source: &str, facts: &mut EditorSemanticFacts) {
-        let mut journal = EditorLexemeJournal::family_parser(source);
-        for lexeme in self.lexemes {
-            journal.push(lexeme.kind, lexeme.modifiers, lexeme.span);
-        }
-        facts.replace_family_lexemes(journal.finish());
-    }
-}
-
 #[derive(Debug, Clone)]
 struct KanbanNodeSpec {
     id_raw: String,
@@ -211,7 +156,7 @@ struct ParsedKanbanNode {
 struct KanbanMetadataField {
     key: SpannedText,
     value: Option<SpannedText>,
-    value_kind: Option<EditorLexemeKind>,
+    is_string_value: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -512,11 +457,7 @@ fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
-fn parse_node_spec_for_render(
-    input: &str,
-    input_start: usize,
-    lexemes: &mut KanbanLexemeTrace,
-) -> Result<ParsedKanbanNode> {
+fn parse_node_spec_for_render(input: &str, input_start: usize) -> Result<ParsedKanbanNode> {
     let input = input.trim_end();
     if input.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -528,14 +469,9 @@ fn parse_node_spec_for_render(
 
     if let Some((start, end)) = node_delimiter_pair_at_start(input) {
         let inner_start = input_start + start.len();
-        lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(input_start, inner_start),
-        );
         let (inner, tail) = match extract_delimited(input, start, end) {
             Ok(parts) => parts,
             Err(message) => {
-                parse_kanban_label(&input[start.len()..], inner_start, true, lexemes);
                 return Err(Error::diagram_parse_insertion_point(
                     "kanban",
                     message,
@@ -543,18 +479,13 @@ fn parse_node_spec_for_render(
                 ));
             }
         };
-        let label = parse_kanban_label(inner, inner_start, true, lexemes);
+        let label = parse_kanban_label(inner, inner_start);
         let closing_start = inner_start + inner.len();
-        lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(closing_start, closing_start + end.len()),
-        );
         if !tail.trim().is_empty() {
             let tail_start = input_start + input.len() - tail.len();
             let leading = tail.len() - tail.trim_start().len();
             let trailing = tail.trim_end().len();
             let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
-            lexemes.push(EditorLexemeKind::Literal, span);
             return Err(Error::diagram_parse_exact(
                 "kanban",
                 "unexpected trailing input",
@@ -579,11 +510,6 @@ fn parse_node_spec_for_render(
         text: id_raw.to_string(),
         span: SourceSpan::new(input_start, input_start + id_raw.len()),
     };
-    lexemes.push_with_modifier(
-        EditorLexemeKind::Identifier,
-        EditorLexemeModifier::Definition,
-        id.span,
-    );
     let rest = rest.trim_end();
     if rest.is_empty() {
         return Ok(ParsedKanbanNode {
@@ -608,14 +534,9 @@ fn parse_node_spec_for_render(
 
     let rest_start = input_start + id_raw.len();
     let inner_start = rest_start + start.len();
-    lexemes.push(
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(rest_start, inner_start),
-    );
     let (inner, tail) = match extract_delimited(rest, start, end) {
         Ok(parts) => parts,
         Err(message) => {
-            parse_kanban_label(&rest[start.len()..], inner_start, false, lexemes);
             return Err(Error::diagram_parse_insertion_point(
                 "kanban",
                 message,
@@ -623,18 +544,13 @@ fn parse_node_spec_for_render(
             ));
         }
     };
-    let label = parse_kanban_label(inner, inner_start, false, lexemes);
+    let label = parse_kanban_label(inner, inner_start);
     let closing_start = inner_start + inner.len();
-    lexemes.push(
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(closing_start, closing_start + end.len()),
-    );
     if !tail.trim().is_empty() {
         let tail_start = rest_start + rest.len() - tail.len();
         let leading = tail.len() - tail.trim_start().len();
         let trailing = tail.trim_end().len();
         let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
-        lexemes.push(EditorLexemeKind::Literal, span);
         return Err(Error::diagram_parse_exact(
             "kanban",
             "unexpected trailing input",
@@ -654,23 +570,10 @@ fn parse_node_spec_for_render(
     })
 }
 
-fn parse_kanban_label(
-    raw: &str,
-    raw_start: usize,
-    is_entity: bool,
-    lexemes: &mut KanbanLexemeTrace,
-) -> SpannedText {
+fn parse_kanban_label(raw: &str, raw_start: usize) -> SpannedText {
     let (text, span) = if let Some(raw) = raw.strip_prefix("\"`") {
-        lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(raw_start, raw_start + 2),
-        );
         if let Some(raw) = raw.strip_suffix("`\"") {
             let closing_start = raw_start + 2 + raw.len();
-            lexemes.push(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(closing_start, closing_start + 2),
-            );
             (
                 raw.to_string(),
                 SourceSpan::new(raw_start + 2, closing_start),
@@ -682,16 +585,8 @@ fn parse_kanban_label(
             )
         }
     } else if let Some(raw) = raw.strip_prefix('"') {
-        lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(raw_start, raw_start + 1),
-        );
         if let Some(raw) = raw.strip_suffix('"') {
             let closing_start = raw_start + 1 + raw.len();
-            lexemes.push(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(closing_start, closing_start + 1),
-            );
             (
                 raw.to_string(),
                 SourceSpan::new(raw_start + 1, closing_start),
@@ -708,15 +603,6 @@ fn parse_kanban_label(
             SourceSpan::new(raw_start, raw_start + raw.len()),
         )
     };
-    if is_entity {
-        lexemes.push_with_modifier(
-            EditorLexemeKind::String,
-            EditorLexemeModifier::Definition,
-            span,
-        );
-    } else {
-        lexemes.push(EditorLexemeKind::String, span);
-    }
     SpannedText { text, span }
 }
 
@@ -850,13 +736,10 @@ struct KanbanMetadataCursor<'a> {
     current_key: Option<SpannedText>,
     quote: Option<KanbanMetadataQuote>,
     fields: Vec<KanbanMetadataField>,
-    lexemes: KanbanLexemeTrace,
 }
 
 impl<'a> KanbanMetadataCursor<'a> {
-    fn new(source: &'a str, opening: SourceSpan) -> Self {
-        let mut lexemes = KanbanLexemeTrace::default();
-        lexemes.push(EditorLexemeKind::Delimiter, opening);
+    fn new(source: &'a str) -> Self {
         Self {
             source,
             mode: KanbanMetadataMode::Key,
@@ -864,7 +747,6 @@ impl<'a> KanbanMetadataCursor<'a> {
             current_key: None,
             quote: None,
             fields: Vec::new(),
-            lexemes,
         }
     }
 
@@ -873,21 +755,15 @@ impl<'a> KanbanMetadataCursor<'a> {
             if ch == quote.delimiter {
                 let span = SourceSpan::new(quote.content_start, offset);
                 if quote.is_key {
-                    self.lexemes.push(EditorLexemeKind::Identifier, span);
                     self.current_key = Some(SpannedText {
                         text: self.source[span.start..span.end].to_string(),
                         span,
                     });
                     self.mode = KanbanMetadataMode::AfterKey;
                 } else {
-                    self.lexemes.push(EditorLexemeKind::String, span);
-                    self.finish_field(Some(span), Some(EditorLexemeKind::String));
+                    self.finish_field(Some(span), true);
                     self.mode = KanbanMetadataMode::AfterValue;
                 }
-                self.lexemes.push(
-                    EditorLexemeKind::Delimiter,
-                    SourceSpan::new(offset, offset + ch.len_utf8()),
-                );
                 self.quote = None;
             }
             return;
@@ -897,24 +773,10 @@ impl<'a> KanbanMetadataCursor<'a> {
             KanbanMetadataMode::Key => match ch {
                 ':' => {
                     self.finish_key(offset);
-                    self.lexemes.push(
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(offset, offset + 1),
-                    );
                     self.mode = KanbanMetadataMode::Value;
                 }
-                ',' => {
-                    self.finish_invalid_token(offset);
-                    self.lexemes.push(
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(offset, offset + 1),
-                    );
-                }
+                ',' => self.finish_invalid_token(),
                 '"' | '\'' if self.token_start.is_none() => {
-                    self.lexemes.push(
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(offset, offset + ch.len_utf8()),
-                    );
                     self.quote = Some(KanbanMetadataQuote {
                         delimiter: ch,
                         content_start: offset + ch.len_utf8(),
@@ -928,10 +790,6 @@ impl<'a> KanbanMetadataCursor<'a> {
             },
             KanbanMetadataMode::AfterKey => match ch {
                 ':' => {
-                    self.lexemes.push(
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(offset, offset + 1),
-                    );
                     self.mode = KanbanMetadataMode::Value;
                 }
                 _ if ch.is_whitespace() => {}
@@ -943,17 +801,9 @@ impl<'a> KanbanMetadataCursor<'a> {
             KanbanMetadataMode::Value => match ch {
                 ',' => {
                     self.finish_bare_value(offset);
-                    self.lexemes.push(
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(offset, offset + 1),
-                    );
                     self.mode = KanbanMetadataMode::Key;
                 }
                 '"' | '\'' if self.token_start.is_none() => {
-                    self.lexemes.push(
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(offset, offset + ch.len_utf8()),
-                    );
                     self.quote = Some(KanbanMetadataQuote {
                         delimiter: ch,
                         content_start: offset + ch.len_utf8(),
@@ -967,10 +817,6 @@ impl<'a> KanbanMetadataCursor<'a> {
             },
             KanbanMetadataMode::AfterValue => match ch {
                 ',' => {
-                    self.lexemes.push(
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(offset, offset + 1),
-                    );
                     self.mode = KanbanMetadataMode::Key;
                 }
                 _ if ch.is_whitespace() => {}
@@ -988,7 +834,7 @@ impl<'a> KanbanMetadataCursor<'a> {
         }
         match self.mode {
             KanbanMetadataMode::Value => self.finish_bare_value(offset),
-            KanbanMetadataMode::Key => self.finish_invalid_token(offset),
+            KanbanMetadataMode::Key => self.finish_invalid_token(),
             KanbanMetadataMode::AfterKey | KanbanMetadataMode::AfterValue => {}
         }
         if self.mode != KanbanMetadataMode::AfterKey {
@@ -999,49 +845,29 @@ impl<'a> KanbanMetadataCursor<'a> {
     fn close(&mut self, offset: usize) {
         if let Some(quote) = self.quote.take() {
             let span = SourceSpan::new(quote.content_start, offset);
-            self.lexemes.push(
-                if quote.is_key {
-                    EditorLexemeKind::Identifier
-                } else {
-                    EditorLexemeKind::String
-                },
-                span,
-            );
             if !quote.is_key {
-                self.finish_field(Some(span), Some(EditorLexemeKind::String));
+                self.finish_field(Some(span), true);
             }
         } else {
             match self.mode {
                 KanbanMetadataMode::Value => self.finish_bare_value(offset),
-                KanbanMetadataMode::Key => self.finish_invalid_token(offset),
+                KanbanMetadataMode::Key => self.finish_invalid_token(),
                 KanbanMetadataMode::AfterKey | KanbanMetadataMode::AfterValue => {}
             }
         }
-        self.lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(offset, offset + 1),
-        );
     }
 
     fn finish_at_eof(&mut self, offset: usize) {
         if let Some(quote) = self.quote.take() {
             let span = SourceSpan::new(quote.content_start, offset);
-            self.lexemes.push(
-                if quote.is_key {
-                    EditorLexemeKind::Identifier
-                } else {
-                    EditorLexemeKind::String
-                },
-                span,
-            );
             if !quote.is_key {
-                self.finish_field(Some(span), Some(EditorLexemeKind::String));
+                self.finish_field(Some(span), true);
             }
             return;
         }
         match self.mode {
             KanbanMetadataMode::Value => self.finish_bare_value(offset),
-            KanbanMetadataMode::Key => self.finish_invalid_token(offset),
+            KanbanMetadataMode::Key => self.finish_invalid_token(),
             KanbanMetadataMode::AfterKey | KanbanMetadataMode::AfterValue => {}
         }
     }
@@ -1050,7 +876,6 @@ impl<'a> KanbanMetadataCursor<'a> {
         let Some(span) = self.trimmed_token_span(end) else {
             return;
         };
-        self.lexemes.push(EditorLexemeKind::Identifier, span);
         self.current_key = Some(SpannedText {
             text: self.source[span.start..span.end].to_string(),
             span,
@@ -1059,31 +884,18 @@ impl<'a> KanbanMetadataCursor<'a> {
 
     fn finish_bare_value(&mut self, end: usize) {
         let span = self.trimmed_token_span(end);
-        let kind = span.map(|span| {
+        let is_string_value = span.is_some_and(|span| {
             let raw = &self.source[span.start..span.end];
-            let kind = match raw {
-                "true" | "false" => EditorLexemeKind::Boolean,
-                "null" => EditorLexemeKind::Literal,
-                _ if is_kanban_inline_number(raw) => EditorLexemeKind::Number,
-                _ => EditorLexemeKind::String,
-            };
-            self.lexemes.push(kind, span);
-            kind
+            !matches!(raw, "true" | "false" | "null") && !is_kanban_inline_number(raw)
         });
-        self.finish_field(span, kind);
+        self.finish_field(span, is_string_value);
     }
 
-    fn finish_invalid_token(&mut self, end: usize) {
-        if let Some(span) = self.trimmed_token_span(end) {
-            self.lexemes.push(EditorLexemeKind::Literal, span);
-        }
+    fn finish_invalid_token(&mut self) {
+        self.token_start = None;
     }
 
-    fn finish_field(
-        &mut self,
-        value_span: Option<SourceSpan>,
-        value_kind: Option<EditorLexemeKind>,
-    ) {
+    fn finish_field(&mut self, value_span: Option<SourceSpan>, is_string_value: bool) {
         let Some(key) = self.current_key.take() else {
             return;
         };
@@ -1094,7 +906,7 @@ impl<'a> KanbanMetadataCursor<'a> {
         self.fields.push(KanbanMetadataField {
             key,
             value,
-            value_kind,
+            is_string_value,
         });
     }
 
@@ -1106,8 +918,8 @@ impl<'a> KanbanMetadataCursor<'a> {
         (leading < trailing).then(|| SourceSpan::new(start + leading, start + trailing))
     }
 
-    fn into_parts(self) -> (Vec<KanbanMetadataField>, KanbanLexemeTrace) {
-        (self.fields, self.lexemes)
+    fn into_fields(self) -> Vec<KanbanMetadataField> {
+        self.fields
     }
 }
 
@@ -1125,7 +937,6 @@ fn consume_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     first: &str,
     first_start: usize,
-    lexemes: &mut KanbanLexemeTrace,
 ) -> Result<KanbanShapeData> {
     let Some(mut rest) = first.strip_prefix("@{") else {
         return Ok(KanbanShapeData {
@@ -1140,10 +951,7 @@ fn consume_shape_data(
     let mut quoted = String::new();
     let block_start = first_start;
     let mut current_scan_start = first_start + "@{".len();
-    let mut metadata = KanbanMetadataCursor::new(
-        lines.source,
-        SourceSpan::new(block_start, current_scan_start),
-    );
+    let mut metadata = KanbanMetadataCursor::new(lines.source);
 
     loop {
         let it = rest.char_indices().peekable();
@@ -1151,8 +959,7 @@ fn consume_shape_data(
             let source_offset = current_scan_start + idx;
             if !in_quote && ch == '}' {
                 metadata.close(source_offset);
-                let (fields, metadata_lexemes) = metadata.into_parts();
-                lexemes.extend(metadata_lexemes);
+                let fields = metadata.into_fields();
                 let after_close = &rest[idx + ch.len_utf8()..];
                 let visible_tail = strip_inline_comment(after_close);
                 if !visible_tail.trim().is_empty() {
@@ -1160,7 +967,6 @@ fn consume_shape_data(
                     let trailing = visible_tail.trim_end().len();
                     let tail_start = source_offset + ch.len_utf8();
                     let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
-                    lexemes.push(EditorLexemeKind::Literal, span);
                     return Err(Error::diagram_parse_exact(
                         "kanban",
                         "unexpected trailing input",
@@ -1199,8 +1005,6 @@ fn consume_shape_data(
 
         let Some(next_line) = lines.next() else {
             metadata.finish_at_eof(lines.offset());
-            let (_, metadata_lexemes) = metadata.into_parts();
-            lexemes.extend(metadata_lexemes);
             return Err(Error::diagram_parse_insertion_point(
                 "kanban",
                 "unterminated @{ ... } metadata block",
@@ -1237,7 +1041,6 @@ fn split_node_and_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     rest: &str,
     rest_start: usize,
-    lexemes: &mut KanbanLexemeTrace,
 ) -> Result<(String, Option<KanbanShapeData>)> {
     let mut in_quote = false;
     let mut in_backtick_quote = false;
@@ -1270,7 +1073,7 @@ fn split_node_and_shape_data(
 
         if rest[idx..].starts_with("@{") {
             let node_part = rest[..idx].trim_end().to_string();
-            let shape_data = consume_shape_data(lines, &rest[idx..], rest_start + idx, lexemes)?;
+            let shape_data = consume_shape_data(lines, &rest[idx..], rest_start + idx)?;
             return Ok((node_part, Some(shape_data)));
         }
     }
@@ -1297,7 +1100,6 @@ fn construct_kanban_semantic_source_controlled(
 
     let mut db = KanbanDb::default();
     let mut editor_facts = EditorSemanticFacts::new();
-    let mut lexemes = KanbanLexemeTrace::default();
     let mut first_failure = None;
 
     let mut lines = KanbanLineCursor::new(code);
@@ -1305,7 +1107,6 @@ fn construct_kanban_semantic_source_controlled(
         control.checkpoint()?;
         let Some(line) = lines.next() else {
             let span = SourceSpan::new(lines.offset(), lines.offset());
-            lexemes.attach(code, &mut editor_facts);
             return Ok(Err(KanbanParseFailure {
                 error: Box::new(Error::diagram_parse_insertion_point(
                     meta.diagram_type.clone(),
@@ -1332,18 +1133,12 @@ fn construct_kanban_semantic_source_controlled(
             });
         if let Some(after_keyword) = after_keyword {
             let keyword_end = trimmed_start + "kanban".len();
-            lexemes.push(
-                EditorLexemeKind::Keyword,
-                SourceSpan::new(trimmed_start, keyword_end),
-            );
             if !after_keyword.trim().is_empty() {
                 break Some((after_keyword.to_string(), keyword_end));
             }
             break None;
         }
         let span = SourceSpan::new(trimmed_start, trimmed_start + trimmed.len());
-        lexemes.push(EditorLexemeKind::Literal, span);
-        lexemes.attach(code, &mut editor_facts);
         return Ok(Err(KanbanParseFailure {
             error: Box::new(Error::diagram_parse_exact(
                 meta.diagram_type.clone(),
@@ -1362,7 +1157,6 @@ fn construct_kanban_semantic_source_controlled(
             KanbanStatementContext {
                 db: &mut db,
                 facts: &mut editor_facts,
-                lexemes: &mut lexemes,
                 meta,
                 control,
             },
@@ -1382,7 +1176,6 @@ fn construct_kanban_semantic_source_controlled(
             KanbanStatementContext {
                 db: &mut db,
                 facts: &mut editor_facts,
-                lexemes: &mut lexemes,
                 meta,
                 control,
             },
@@ -1397,7 +1190,6 @@ fn construct_kanban_semantic_source_controlled(
         }
     }
 
-    lexemes.attach(code, &mut editor_facts);
     if let Some((error, span)) = first_failure {
         Ok(Err(KanbanParseFailure {
             error: Box::new(error),
@@ -1424,7 +1216,6 @@ fn record_kanban_failure(
 struct KanbanStatementContext<'a> {
     db: &'a mut KanbanDb,
     facts: &'a mut EditorSemanticFacts,
-    lexemes: &'a mut KanbanLexemeTrace,
     meta: &'a ParseMetadata,
     control: &'a crate::OperationControl,
 }
@@ -1438,7 +1229,6 @@ fn parse_kanban_statement(
     let KanbanStatementContext {
         db,
         facts,
-        lexemes,
         meta,
         control,
     } = context;
@@ -1455,15 +1245,6 @@ fn parse_kanban_statement(
     let rest_start = source_start + line.len() - rest.len();
 
     if starts_with_case_insensitive(rest, "::icon(") {
-        let keyword_end = rest_start + "::icon".len();
-        lexemes.push(
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(rest_start, keyword_end),
-        );
-        lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(keyword_end, keyword_end + 1),
-        );
         let value_start = "::icon(".len();
         let suffix = &rest[value_start..];
         let close = suffix
@@ -1487,10 +1268,6 @@ fn parse_kanban_statement(
             )));
         };
         let close_start = rest_start + value_start + close;
-        lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(close_start, close_start + 1),
-        );
         let after_close = &suffix[close + 1..];
         let visible_tail = strip_inline_comment(after_close);
         if !visible_tail.trim().is_empty() {
@@ -1498,7 +1275,6 @@ fn parse_kanban_statement(
             let trailing = visible_tail.trim_end().len();
             let tail_start = close_start + 1;
             let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
-            lexemes.push(EditorLexemeKind::Literal, span);
             return Ok(Err(Error::diagram_parse_exact(
                 "kanban",
                 "unexpected trailing input",
@@ -1509,7 +1285,6 @@ fn parse_kanban_statement(
         if icon.text.is_empty() {
             return Ok(Ok(()));
         }
-        lexemes.push(EditorLexemeKind::String, icon.span);
         db.decorate_last(None, Some(icon.text.clone()), &meta.effective_config);
         facts.push_symbol(EditorSemanticSymbol::payload(
             icon.text,
@@ -1531,15 +1306,6 @@ fn parse_kanban_statement(
                 rest_start + 3 + leading + class_raw.len(),
             ),
         };
-        lexemes.push(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(rest_start, rest_start + 3),
-        );
-        lexemes.push_with_modifier(
-            EditorLexemeKind::Identifier,
-            EditorLexemeModifier::Reference,
-            class_name.span,
-        );
         db.decorate_last(Some(class_name.text.clone()), None, &meta.effective_config);
         if !class_name.text.is_empty() {
             facts.push_directive_prefix(":::");
@@ -1554,15 +1320,14 @@ fn parse_kanban_statement(
         return Ok(Ok(()));
     }
 
-    let (node_part, shape_data) = match split_node_and_shape_data(lines, rest, rest_start, lexemes)
-    {
+    let (node_part, shape_data) = match split_node_and_shape_data(lines, rest, rest_start) {
         Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
     if node_part.trim().is_empty() {
         return Ok(Ok(()));
     }
-    let parsed = match parse_node_spec_for_render(&node_part, rest_start, lexemes) {
+    let parsed = match parse_node_spec_for_render(&node_part, rest_start) {
         Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
@@ -1638,7 +1403,7 @@ fn push_kanban_metadata_facts(facts: &mut EditorSemanticFacts, fields: &[KanbanM
             field.key.span,
             field.key.span,
         ));
-        if field.value_kind == Some(EditorLexemeKind::String)
+        if field.is_string_value
             && let Some(value) = &field.value
         {
             facts.push_symbol(EditorSemanticSymbol::payload(
@@ -1804,8 +1569,8 @@ pub(crate) fn parse_kanban_model_for_render(
 mod tests {
     use super::*;
     use crate::{
-        EditorLexeme, EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, MermaidConfig,
-        ParseDiagnosticSpanKind, ParseMetadata, ParseOptions,
+        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
+        ParseOptions,
     };
     use futures::executor::block_on;
 
@@ -1898,86 +1663,6 @@ mod tests {
     }
 
     #[test]
-    fn kanban_parser_lexemes_preserve_exact_spans_modifiers_and_provenance() {
-        let text = concat!(
-            "KaNbAn\r\n",
-            "%% global comment 🤓\r\n",
-            "  todo[\"重复\"]@{\r\n",
-            "    ticket: 2038\r\n",
-            "    assigned: \"重复\"\r\n",
-            "    priority: 'High'\r\n",
-            "    active: true\r\n",
-            "  }\r\n",
-            "    task((\"🤓 后续\"))\r\n",
-            "    ::ICON(star)\r\n",
-            "    :::urgent\r\n",
-        );
-        let engine = Engine::new();
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("kanban", text)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(facts.lexeme_failure(), None);
-        assert_kanban_lexemes_non_overlapping(&facts);
-
-        let header = exact_kanban_lexeme(&facts, text, "KaNbAn", 0, EditorLexemeKind::Keyword);
-        assert_eq!(
-            header.producer().kind(),
-            EditorLexemeProducerKind::FamilyParser
-        );
-        assert!(header.producer().family().is_some());
-
-        let comment_text = "%% global comment 🤓";
-        let comment_start = text.find(comment_text).unwrap();
-        let comment = facts
-            .lexemes()
-            .iter()
-            .find(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::Comment
-                    && lexeme.span().start == comment_start
-                    && lexeme.span().end >= comment_start + comment_text.len()
-            })
-            .expect("global comment lexeme");
-        assert_eq!(
-            comment.producer().kind(),
-            EditorLexemeProducerKind::GlobalPreprocess
-        );
-        assert_eq!(comment.producer().family(), None);
-        assert_eq!(
-            facts
-                .lexemes()
-                .iter()
-                .filter(|lexeme| lexeme.kind() == EditorLexemeKind::Comment)
-                .count(),
-            1
-        );
-
-        for occurrence in 0..2 {
-            exact_kanban_lexeme(&facts, text, "重复", occurrence, EditorLexemeKind::String);
-        }
-        for (needle, occurrence, kind) in [
-            ("ticket", 0, EditorLexemeKind::Identifier),
-            ("2038", 0, EditorLexemeKind::Number),
-            ("assigned", 0, EditorLexemeKind::Identifier),
-            ("priority", 0, EditorLexemeKind::Identifier),
-            ("High", 0, EditorLexemeKind::String),
-            ("active", 0, EditorLexemeKind::Identifier),
-            ("true", 0, EditorLexemeKind::Boolean),
-            ("::ICON", 0, EditorLexemeKind::Keyword),
-            ("star", 0, EditorLexemeKind::String),
-        ] {
-            exact_kanban_lexeme(&facts, text, needle, occurrence, kind);
-        }
-
-        let todo = exact_kanban_lexeme(&facts, text, "todo", 0, EditorLexemeKind::Identifier);
-        assert!(todo.modifiers().contains(EditorLexemeModifier::Definition));
-        let urgent = exact_kanban_lexeme(&facts, text, "urgent", 0, EditorLexemeKind::Identifier);
-        assert!(urgent.modifiers().contains(EditorLexemeModifier::Reference));
-    }
-
-    #[test]
     fn kanban_recovery_keeps_first_error_prefix_and_later_safe_statements() {
         let text = concat!(
             "kanban\r\n",
@@ -2001,64 +1686,11 @@ mod tests {
         );
         assert_eq!(kanban_syntax_construction_count(), 1);
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
         assert_eq!(facts.diagnostics.len(), 1);
         assert_eq!(facts.diagnostics[0].span, strict_diagnostic.span());
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "todo"));
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
         assert!(!facts.symbols.iter().any(|symbol| symbol.name == "invalid"));
-        assert_kanban_lexemes_non_overlapping(&facts);
-
-        let broken = exact_kanban_lexeme(&facts, text, "broken", 0, EditorLexemeKind::Identifier);
-        assert!(
-            broken
-                .modifiers()
-                .contains(EditorLexemeModifier::Definition)
-        );
-        exact_kanban_lexeme(&facts, text, "Open 🤓", 0, EditorLexemeKind::String);
-        exact_kanban_lexeme(&facts, text, "trailing", 0, EditorLexemeKind::Literal);
-        exact_kanban_lexeme(&facts, text, "42", 0, EditorLexemeKind::Number);
-        exact_kanban_lexeme(&facts, text, "false", 0, EditorLexemeKind::Boolean);
-
-        let later = exact_kanban_lexeme(&facts, text, "later", 0, EditorLexemeKind::Identifier);
-        assert!(later.modifiers().contains(EditorLexemeModifier::Definition));
-        assert!(facts.lexemes().iter().all(|lexeme| {
-            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-        }));
-    }
-
-    fn exact_kanban_lexeme<'a>(
-        facts: &'a EditorSemanticFacts,
-        source: &str,
-        needle: &str,
-        occurrence: usize,
-        kind: EditorLexemeKind,
-    ) -> &'a EditorLexeme {
-        let start = source
-            .match_indices(needle)
-            .nth(occurrence)
-            .map(|(start, _)| start)
-            .unwrap_or_else(|| panic!("missing occurrence {occurrence} of {needle:?}"));
-        let span = SourceSpan::new(start, start + needle.len());
-        facts
-            .lexemes()
-            .iter()
-            .find(|lexeme| lexeme.kind() == kind && lexeme.span() == span)
-            .unwrap_or_else(|| {
-                panic!(
-                    "missing {kind:?} lexeme for {needle:?} occurrence {occurrence}: {:?}",
-                    facts.lexemes()
-                )
-            })
-    }
-
-    fn assert_kanban_lexemes_non_overlapping(facts: &EditorSemanticFacts) {
-        for pair in facts.lexemes().windows(2) {
-            assert!(
-                pair[0].span().end <= pair[1].span().start,
-                "overlapping Kanban lexemes: {pair:?}"
-            );
-        }
     }
 
     fn sections(model: &Value) -> Vec<Value> {
@@ -2299,12 +1931,6 @@ mod tests {
         .unwrap();
         assert!(facts.directive_prefixes.iter().any(|value| value == "icon"));
         assert!(facts.symbols.iter().all(|symbol| symbol.name != "icon"));
-        assert!(
-            facts
-                .lexemes()
-                .iter()
-                .all(|lexeme| lexeme.span().start < lexeme.span().end)
-        );
     }
 
     #[test]

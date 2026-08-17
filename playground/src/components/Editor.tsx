@@ -5,15 +5,14 @@ import type { editor, IDisposable } from "monaco-editor";
 import { LoaderCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { localMonaco } from "@/src/editor/monaco";
-import { startMermanLanguageWorker } from "@/src/editor/worker-browser";
 import {
   ensureMermaidLanguageRegistered,
   MERMAID_DOCUMENT_URI,
   MERMAID_LANGUAGE_ID,
-  registerMermaidLanguage,
   type MermaidLanguageRequestRejection,
   type MermaidLanguageRegistration,
 } from "@/src/lib/mermaid-language";
+import { registerBrowserMermaidLanguage } from "@/src/lib/mermaid-language-browser";
 import { useAppStore } from "@/src/store";
 
 interface CodeEditorProps {
@@ -23,6 +22,7 @@ interface CodeEditorProps {
 type LanguageState =
   | { readonly status: "initializing" }
   | { readonly status: "ready" }
+  | { readonly status: "degraded"; readonly error: Error }
   | { readonly status: "reconnecting" }
   | { readonly status: "unavailable"; readonly error: Error };
 
@@ -33,6 +33,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
   const modelBindingRef = useRef<IDisposable | null>(null);
   const registrationRef = useRef<MermaidLanguageRegistration | null>(null);
   const languageGenerationRef = useRef(0);
+  const languageFailureRef = useRef<Error | null>(null);
   const code = useAppStore((state) => state.code);
   const setCode = useAppStore((state) => state.setCode);
   const resolvedTheme = useAppStore((state) => state.resolvedTheme);
@@ -80,7 +81,11 @@ export function CodeEditor({ className }: CodeEditorProps) {
         }
         modelBindingRef.current?.dispose();
         modelBindingRef.current = binding;
-        setLanguage({ status: "ready" });
+        setLanguage(
+          languageFailureRef.current
+            ? { status: "degraded", error: languageFailureRef.current }
+            : { status: "ready" },
+        );
         editorRef.current?.layout();
       } catch (error) {
         markLanguageUnavailable(error, generation);
@@ -89,59 +94,47 @@ export function CodeEditor({ className }: CodeEditorProps) {
     [markLanguageUnavailable],
   );
 
+  const markLanguageDegraded = useCallback(
+    (error: unknown, generation: number) => {
+      if (languageGenerationRef.current !== generation) return;
+      const failure = error instanceof Error ? error : new Error(String(error));
+      languageFailureRef.current = failure;
+      setLanguage({ status: "degraded", error: failure });
+    },
+    [],
+  );
+
   useEffect(() => {
     const generation = languageGenerationRef.current + 1;
     languageGenerationRef.current = generation;
     let active = true;
     let registration: MermaidLanguageRegistration | null = null;
-    let client: ReturnType<typeof startMermanLanguageWorker>["client"] | null =
-      null;
-    let failureSubscription: { dispose(): void } | null = null;
-
-    try {
-      const startup = startMermanLanguageWorker();
-      client = startup.client;
-      failureSubscription = startup.client.onDidFail((error) => {
+    languageFailureRef.current = null;
+    void registerBrowserMermaidLanguage(localMonaco, {
+      onRequestRejected: (rejection) => {
+        if (languageGenerationRef.current !== generation) return;
+        setRequestRejection(rejection);
+      },
+      onSemanticUnavailable: (error) => markLanguageDegraded(error, generation),
+      onSyntaxUnavailable: (error) => markLanguageDegraded(error, generation),
+    })
+      .then((nextRegistration) => {
+        if (!active || languageGenerationRef.current !== generation) {
+          nextRegistration.dispose();
+          return;
+        }
+        registration = nextRegistration;
+        registrationRef.current = registration;
+        const model = editorRef.current?.getModel();
+        if (model) void bindLanguageService(registration, model, generation);
+      })
+      .catch((error: unknown) => {
         if (!active || languageGenerationRef.current !== generation) return;
         markLanguageUnavailable(error, generation);
       });
-      void startup.ready
-        .then((identity) => {
-          if (!active || languageGenerationRef.current !== generation) {
-            startup.client.dispose();
-            return;
-          }
-          registration = registerMermaidLanguage(
-            localMonaco,
-            startup.client,
-            identity,
-            {
-              onRequestRejected: (rejection) => {
-                if (languageGenerationRef.current !== generation) return;
-                setRequestRejection(rejection);
-              },
-              onUnavailable: (error) =>
-                markLanguageUnavailable(error, generation),
-            },
-          );
-          registrationRef.current = registration;
-          const model = editorRef.current?.getModel();
-          if (model) {
-            void bindLanguageService(registration, model, generation);
-          }
-        })
-        .catch((error: unknown) => {
-          startup.client.dispose();
-          if (!active || languageGenerationRef.current !== generation) return;
-          markLanguageUnavailable(error, generation);
-        });
-    } catch (error) {
-      markLanguageUnavailable(error, generation);
-    }
 
     return () => {
       active = false;
-      failureSubscription?.dispose();
       if (languageGenerationRef.current === generation) {
         languageGenerationRef.current += 1;
       }
@@ -150,12 +143,12 @@ export function CodeEditor({ className }: CodeEditorProps) {
       } else {
         registration?.dispose();
       }
-      client?.dispose();
     };
   }, [
     bindLanguageService,
     disposeLanguageService,
     languageAttempt,
+    markLanguageDegraded,
     markLanguageUnavailable,
   ]);
 
@@ -197,6 +190,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
         cursorBlinking: "smooth",
         smoothScrolling: true,
         tabSize: 2,
+        "semanticHighlighting.enabled": true,
       });
 
       const model = instance.getModel();
@@ -240,10 +234,11 @@ export function CodeEditor({ className }: CodeEditorProps) {
   );
 
   const retryLanguageService = useCallback(() => {
-    if (language.status !== "unavailable") return;
+    if (language.status !== "unavailable" && language.status !== "degraded") return;
     languageGenerationRef.current += 1;
     disposeLanguageService();
     setRequestRejection(null);
+    languageFailureRef.current = null;
     setLanguage({ status: "reconnecting" });
     setLanguageAttempt((attempt) => attempt + 1);
   }, [disposeLanguageService, language.status]);
@@ -267,9 +262,11 @@ export function CodeEditor({ className }: CodeEditorProps) {
         options={{
           ariaLabel: t("editor.ariaLabel"),
           automaticLayout: false,
+          "semanticHighlighting.enabled": true,
         }}
       />
-      {language.status === "ready" && requestRejection && (
+      {(language.status === "ready" || language.status === "degraded") &&
+        requestRejection && (
         <div
           className="absolute bottom-2 left-2 right-2 z-10 max-h-24 overflow-auto break-words border border-destructive/50 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm"
           role="alert"
@@ -285,19 +282,26 @@ export function CodeEditor({ className }: CodeEditorProps) {
       {language.status !== "ready" && (
         <div
           className="absolute right-2 top-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-2 border bg-background/95 px-2 py-1 text-xs shadow-sm"
-          role={language.status === "unavailable" ? "alert" : "status"}
+          role={
+            language.status === "unavailable" || language.status === "degraded"
+              ? "alert"
+              : "status"
+          }
           aria-live="polite"
           aria-atomic="true"
         >
-          {language.status === "unavailable" ? (
+          {language.status === "unavailable" || language.status === "degraded" ? (
             <>
               <span
                 className="max-w-48 truncate text-destructive sm:max-w-80"
                 title={language.error.message}
               >
-                {t("editor.languageUnavailable", {
-                  message: language.error.message,
-                })}
+                {t(
+                  language.status === "degraded"
+                    ? "editor.languageDegraded"
+                    : "editor.languageUnavailable",
+                  { message: language.error.message },
+                )}
               </span>
               <Button
                 type="button"

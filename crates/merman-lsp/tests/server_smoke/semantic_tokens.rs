@@ -246,13 +246,7 @@ async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
         tokens
             .data
             .iter()
-            .all(|token| token.token_modifiers_bitset <= 1)
-    );
-    assert!(
-        tokens
-            .data
-            .iter()
-            .any(|token| token.token_modifiers_bitset == 1)
+            .all(|token| token.token_modifiers_bitset == 0)
     );
 
     let delta_request = Request::build("textDocument/semanticTokens/full/delta")
@@ -395,7 +389,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
                     version: 2,
                 },
                 content_changes: vec![TextDocumentContentChangeEvent {
-                    text: "flowchart TD\nAlpha-->B\n".to_string(),
+                    text: "flowchart TD\n%% changed\nAlpha-->B\n".to_string(),
                     range: None,
                     range_length: None,
                 }],
@@ -450,8 +444,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
     }
 }
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_semantic_tokens_delta_falls_back_to_full_after_snapshot_configuration_change()
-{
+async fn lsp_service_semantic_tokens_delta_survives_strict_analysis_configuration_change() {
     let (mut service, socket) = MermanLanguageServer::service();
     let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
@@ -577,11 +570,9 @@ async fn lsp_service_semantic_tokens_delta_falls_back_to_full_after_snapshot_con
         .expect("expected semantic tokens delta result");
     let delta_result: SemanticTokensFullDeltaResult =
         serde_json::from_value(delta_value.clone()).unwrap();
-    match delta_result {
-        SemanticTokensFullDeltaResult::Tokens(tokens) => {
-            assert!(tokens.result_id.is_some());
-            assert!(!tokens.data.is_empty());
-        }
-        other => panic!("unexpected semantic tokens delta result: {other:?}"),
-    }
+    let SemanticTokensFullDeltaResult::TokensDelta(delta) = delta_result else {
+        panic!("strict analysis configuration must not invalidate syntax token state");
+    };
+    assert!(delta.result_id.is_some());
+    assert!(delta.edits.is_empty());
 }

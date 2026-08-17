@@ -101,7 +101,7 @@ class PlannerTests(unittest.TestCase):
             "platforms/web/src/index.ts": {"hygiene", "npm", "web"},
             "platforms/node/package-lock.json": {"core", "hygiene", "node", "npm", "security"},
             "tools/vscode-extension/src/extension.ts": {"hygiene", "npm", "vscode"},
-            "contracts/editor-language/token-descriptor-v1.json": {
+            "contracts/editor-language/rename-policy-v1.json": {
                 "hygiene",
                 "npm",
                 "vscode",

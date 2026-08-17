@@ -2,7 +2,6 @@ use std::str::FromStr;
 
 use super::prelude::*;
 use merman_core::EditorRenamePolicy;
-use merman_editor_core::semantic_token_descriptor;
 
 #[test]
 fn published_server_constructors_use_tower_lsp_server_types() {
@@ -88,14 +87,9 @@ async fn lsp_service_smoke_handles_initialize() {
         response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
         CONFIG_SCHEMA_METHOD
     );
-    let descriptor = semantic_token_descriptor();
     assert_eq!(
         response.capabilities.experimental.as_ref().unwrap()["merman"]["editorLanguage"],
         serde_json::json!({
-            "schemaVersion": descriptor.schema_version,
-            "descriptorDigest": descriptor.digest,
-            "packedEncoding": descriptor.packed.encoding,
-            "wordsPerToken": descriptor.packed.words_per_token,
             "renamePolicies": EditorRenamePolicy::IDS,
         })
     );
@@ -145,20 +139,11 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
     let serialized = serde_json::to_value(semantic_tokens).unwrap();
     assert_eq!(
         serialized["legend"]["tokenTypes"],
-        serde_json::json!([
-            "string",
-            "namespace",
-            "class",
-            "struct",
-            "variable",
-            "property",
-            "event",
-            "function",
-        ])
+        serde_json::json!(["string", "namespace", "function", "variable", "property",])
     );
     assert_eq!(
         serialized["legend"]["tokenModifiers"],
-        serde_json::json!(["mermanEntity"])
+        serde_json::json!([])
     );
 }
 

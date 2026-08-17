@@ -350,7 +350,6 @@ mod tests {
             class_name: "hot".to_string(),
             class_name_span: None,
             editor_evidence: Default::default(),
-            lexeme_components: Vec::new(),
         })];
 
         assert!(matches!(

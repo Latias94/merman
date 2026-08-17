@@ -4,7 +4,8 @@ use std::sync::Arc;
 use super::{
     AnalyzerOptionsPreparation, ConfigurationUpdateOutcome, DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
     DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiagnosticState, DocumentSource, DocumentSyncLoss,
-    DocumentUnavailableDiagnostic, SessionState, default_lsp_analysis_options,
+    DocumentUnavailableDiagnostic, PreparedDocumentContent, SessionState,
+    default_lsp_analysis_options,
 };
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisConfigChange, AnalysisRuleConfig, DiagnosticSeverity,
@@ -20,6 +21,13 @@ fn new_session_state() -> SessionState {
 
 fn diagram_uri(name: &str) -> Uri {
     Uri::from_str(&format!("file:///tmp/{name}.mmd")).expect("test URI must be valid")
+}
+
+fn prepared_content(source: DocumentSource) -> PreparedDocumentContent {
+    PreparedDocumentContent {
+        source,
+        syntax_document: None,
+    }
 }
 
 #[test]
@@ -494,6 +502,47 @@ fn prepared_change_cannot_overwrite_a_newer_document_epoch() {
 }
 
 #[test]
+fn text_change_capture_invalidates_the_previous_syntax_snapshot() {
+    let mut state = new_session_state();
+    let uri = diagram_uri("syntax-change-invalidation");
+    state.open_document_source(
+        uri.clone(),
+        1,
+        DocumentSource::Available(Arc::from(DIAGRAM_SOURCE)),
+        DocumentKind::Diagram,
+    );
+    let previous = state
+        .syntax_document_snapshot(&uri)
+        .expect("available documents own syntax state");
+
+    let plan = state
+        .capture_text_changes(
+            uri.clone(),
+            2,
+            [TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart TD\nA-->C\n".to_owned(),
+            }],
+        )
+        .expect("valid changes create a preparation plan");
+
+    assert!(previous.cancellation().is_cancelled());
+    assert!(!state.is_syntax_document_current(&previous));
+    assert!(
+        state.commit_prepared_document_change(
+            plan.prepare()
+                .expect("syntax preparation should not be cancelled"),
+        )
+    );
+    let current = state
+        .syntax_document_snapshot(&uri)
+        .expect("committed changes replace syntax state");
+    assert!(!current.cancellation().is_cancelled());
+    assert!(state.is_syntax_document_current(&current));
+}
+
+#[test]
 fn session_cancellation_aborts_pending_text_change_preparation() {
     let cancellation = AnalysisCancellationToken::new();
     let mut state = SessionState::with_session_cancellation(cancellation.clone());
@@ -744,7 +793,7 @@ fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() 
     assert!(state.commit_open_document(
         ticket,
         1,
-        DocumentSource::Available(Arc::from(DIAGRAM_SOURCE)),
+        prepared_content(DocumentSource::Available(Arc::from(DIAGRAM_SOURCE))),
         DocumentKind::Diagram,
     ));
 
@@ -758,7 +807,9 @@ fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() 
     assert!(!state.commit_open_document(
         ticket,
         3,
-        DocumentSource::Available(Arc::from("flowchart TD\nA-->D\n")),
+        prepared_content(DocumentSource::Available(Arc::from(
+            "flowchart TD\nA-->D\n",
+        ))),
         DocumentKind::Diagram,
     ));
     assert_eq!(state.get(&uri).unwrap().version, 2);
@@ -779,7 +830,9 @@ fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() 
     assert!(!state.commit_open_document(
         ticket,
         3,
-        DocumentSource::Available(Arc::from("flowchart TD\nA-->D\n")),
+        prepared_content(DocumentSource::Available(Arc::from(
+            "flowchart TD\nA-->D\n",
+        ))),
         DocumentKind::Diagram,
     ));
 }
@@ -801,7 +854,9 @@ fn open_commit_rejects_absent_present_absent_aba() {
     assert!(!state.commit_open_document(
         ticket,
         2,
-        DocumentSource::Available(Arc::from("flowchart TD\nA-->C\n")),
+        prepared_content(DocumentSource::Available(Arc::from(
+            "flowchart TD\nA-->C\n",
+        ))),
         DocumentKind::Diagram,
     ));
     assert!(state.get(&uri).is_none());
@@ -834,7 +889,7 @@ fn open_tickets_share_a_uri_clock_until_the_last_ticket_finishes() {
     assert!(state.commit_open_document(
         second,
         1,
-        DocumentSource::Available(Arc::from(DIAGRAM_SOURCE)),
+        prepared_content(DocumentSource::Available(Arc::from(DIAGRAM_SOURCE))),
         DocumentKind::Diagram,
     ));
     assert!(crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty());

@@ -1,10 +1,9 @@
 use crate::diagrams::scan::LineCursor;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
-    editor::EditorLexemeJournal, family::CombinedSemanticFailure,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult,
+    ParseMetadata, Result, SourceSpan, family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -339,8 +338,6 @@ impl<'source> SourceSlice<'source> {
 struct ParsedText<'source> {
     value: String,
     content: SourceSlice<'source>,
-    opening: Option<SourceSpan>,
-    closing: Option<SourceSpan>,
 }
 
 fn parse_text_slice(input: SourceSlice<'_>) -> Result<ParsedText<'_>> {
@@ -356,8 +353,6 @@ fn parse_text_slice(input: SourceSlice<'_>) -> Result<ParsedText<'_>> {
         return Ok(ParsedText {
             value: content.text.to_string(),
             content,
-            opening: Some(SourceSpan::new(input.start, input.start + 2)),
-            closing: Some(SourceSpan::new(input.end() - 2, input.end())),
         });
     }
     if input.text.starts_with('"') {
@@ -371,15 +366,11 @@ fn parse_text_slice(input: SourceSlice<'_>) -> Result<ParsedText<'_>> {
         return Ok(ParsedText {
             value: content.text.to_string(),
             content,
-            opening: Some(SourceSpan::new(input.start, input.start + 1)),
-            closing: Some(SourceSpan::new(input.end() - 1, input.end())),
         });
     }
     Ok(ParsedText {
         value: input.text.to_string(),
         content: input,
-        opening: None,
-        closing: None,
     })
 }
 
@@ -445,12 +436,10 @@ fn parse_unit_interval_token(raw: &str) -> Result<f64> {
 
 struct ParsedStyleList<'source> {
     items: Vec<SourceSlice<'source>>,
-    commas: Vec<SourceSpan>,
 }
 
 fn split_style_slices(input: SourceSlice<'_>) -> ParsedStyleList<'_> {
     let mut styles = Vec::new();
-    let mut commas = Vec::new();
     let mut start = 0usize;
     for (index, ch) in input.text.char_indices() {
         if ch == ',' {
@@ -458,10 +447,6 @@ fn split_style_slices(input: SourceSlice<'_>) -> ParsedStyleList<'_> {
             if !style.text.is_empty() {
                 styles.push(style);
             }
-            commas.push(SourceSpan::new(
-                input.start + index,
-                input.start + index + ch.len_utf8(),
-            ));
             start = index + ch.len_utf8();
         }
     }
@@ -469,10 +454,7 @@ fn split_style_slices(input: SourceSlice<'_>) -> ParsedStyleList<'_> {
     if !style.text.is_empty() {
         styles.push(style);
     }
-    ParsedStyleList {
-        items: styles,
-        commas,
-    }
+    ParsedStyleList { items: styles }
 }
 
 fn find_point_colon(s: &str) -> Option<usize> {
@@ -532,16 +514,9 @@ struct ParsedPoint<'source> {
     label: ParsedText<'source>,
     class_name: Option<SourceSlice<'source>>,
     class_marker: Option<SourceSpan>,
-    colon: SourceSpan,
-    opening_bracket: SourceSpan,
-    closing_bracket: SourceSpan,
-    comma: SourceSpan,
-    x_token: SourceSlice<'source>,
-    y_token: SourceSlice<'source>,
     x: f64,
     y: f64,
     styles: Vec<SourceSlice<'source>>,
-    style_commas: Vec<SourceSpan>,
 }
 
 fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoint<'_>>> {
@@ -549,7 +524,6 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
         return Ok(None);
     };
     let head = statement.subslice(0, colon_idx).trim_end();
-    let colon = SourceSpan::new(statement.start + colon_idx, statement.start + colon_idx + 1);
     let tail = statement
         .subslice(colon_idx + 1, statement.text.len())
         .trim_start();
@@ -584,7 +558,6 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
             "expected '[' after ':'".to_string(),
         ));
     }
-    let opening_bracket = SourceSpan::new(tail.start, tail.start + 1);
     let after_bracket = tail.subslice(1, tail.text.len());
     let Some(close_rel) = after_bracket.text.find(']') else {
         return Err(Error::diagram_parse_fallback(
@@ -593,10 +566,6 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
         ));
     };
     let inside = after_bracket.subslice(0, close_rel);
-    let closing_bracket = SourceSpan::new(
-        after_bracket.start + close_rel,
-        after_bracket.start + close_rel + 1,
-    );
     let after = after_bracket.subslice(close_rel + 1, after_bracket.text.len());
     let Some(comma_rel) = inside.text.find(',') else {
         return Err(Error::diagram_parse_fallback(
@@ -612,7 +581,6 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
     }
     let x_token = inside.subslice(0, comma_rel).trim();
     let y_token = inside.subslice(comma_rel + 1, inside.text.len()).trim();
-    let comma = SourceSpan::new(inside.start + comma_rel, inside.start + comma_rel + 1);
     let x = parse_unit_interval_token(x_token.text)?;
     let y = parse_unit_interval_token(y_token.text)?;
 
@@ -621,21 +589,13 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
         label,
         class_name,
         class_marker,
-        colon,
-        opening_bracket,
-        closing_bracket,
-        comma,
-        x_token,
-        y_token,
         x,
         y,
         styles: styles.items,
-        style_commas: styles.commas,
     }))
 }
 
 struct KeywordRest<'source> {
-    keyword: SourceSlice<'source>,
     rest: SourceSlice<'source>,
 }
 
@@ -649,14 +609,11 @@ fn parse_keyword_rest_ci<'source>(
         return None;
     }
     Some(KeywordRest {
-        keyword: input.subslice(0, key.len()),
         rest: input.subslice(key.len(), input.text.len()).trim_start(),
     })
 }
 
 struct ColonDirective<'source> {
-    keyword: SourceSlice<'source>,
-    colon: SourceSpan,
     value: SourceSlice<'source>,
 }
 
@@ -669,15 +626,12 @@ fn parse_colon_value_ci<'source>(
         return None;
     }
     Some(ColonDirective {
-        keyword: matched.keyword,
-        colon: SourceSpan::new(matched.rest.start, matched.rest.start + 1),
         value: matched.rest.subslice(1, matched.rest.text.len()).trim(),
     })
 }
 
 struct QuadrantStatement<'source> {
     source: SourceSlice<'source>,
-    terminator: Option<SourceSpan>,
 }
 
 fn split_semicolons_spanned(line: SourceSlice<'_>) -> Vec<QuadrantStatement<'_>> {
@@ -699,7 +653,6 @@ fn split_semicolons_spanned(line: SourceSlice<'_>) -> Vec<QuadrantStatement<'_>>
         } else if !in_quotes && brace_depth == 0 && ch == ';' {
             out.push(QuadrantStatement {
                 source: line.subslice(start, i),
-                terminator: Some(SourceSpan::new(line.start + i, line.start + i + 1)),
             });
             start = i + 1;
         }
@@ -707,73 +660,8 @@ fn split_semicolons_spanned(line: SourceSlice<'_>) -> Vec<QuadrantStatement<'_>>
     }
     out.push(QuadrantStatement {
         source: line.subslice(start, line.text.len()),
-        terminator: None,
     });
     out
-}
-
-fn push_quadrant_lexeme(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    kind: EditorLexemeKind,
-    span: SourceSpan,
-) {
-    push_quadrant_lexeme_with_modifiers(lexemes, kind, EditorLexemeModifiers::NONE, span);
-}
-
-fn push_quadrant_lexeme_with_modifiers(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    kind: EditorLexemeKind,
-    modifiers: EditorLexemeModifiers,
-    span: SourceSpan,
-) {
-    if span.start < span.end {
-        lexemes.push(kind, modifiers, span);
-    }
-}
-
-fn push_quadrant_slice_lexeme(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    kind: EditorLexemeKind,
-    source: SourceSlice<'_>,
-) {
-    push_quadrant_lexeme(lexemes, kind, source.span());
-}
-
-fn record_quadrant_text(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    text: &ParsedText<'_>,
-    kind: EditorLexemeKind,
-) {
-    if let Some(opening) = text.opening {
-        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, opening);
-    }
-    push_quadrant_slice_lexeme(lexemes, kind, text.content);
-    if let Some(closing) = text.closing {
-        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, closing);
-    }
-}
-
-fn record_quadrant_style(lexemes: &mut EditorLexemeJournal<'_>, style: SourceSlice<'_>) {
-    let Some(colon) = style.text.find(':') else {
-        push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Style, style);
-        return;
-    };
-    let key = style.subslice(0, colon).trim();
-    let value = style.subslice(colon + 1, style.text.len()).trim();
-    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Style, key);
-    push_quadrant_lexeme(
-        lexemes,
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(style.start + colon, style.start + colon + 1),
-    );
-    let kind = if value.text.starts_with('#') {
-        EditorLexemeKind::Color
-    } else if value.text.chars().all(|ch| ch.is_ascii_digit()) {
-        EditorLexemeKind::Number
-    } else {
-        EditorLexemeKind::Style
-    };
-    push_quadrant_slice_lexeme(lexemes, kind, value);
 }
 
 fn push_quadrant_payload_fact(
@@ -897,37 +785,6 @@ fn push_quadrant_point_facts(
     ));
 }
 
-fn record_quadrant_point(lexemes: &mut EditorLexemeJournal<'_>, point: &ParsedPoint<'_>) {
-    record_quadrant_text(lexemes, &point.label, EditorLexemeKind::String);
-    if let Some(marker) = point.class_marker {
-        push_quadrant_lexeme(lexemes, EditorLexemeKind::Operator, marker);
-    }
-    if let Some(class_name) = point.class_name {
-        push_quadrant_lexeme_with_modifiers(
-            lexemes,
-            EditorLexemeKind::Identifier,
-            EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Reference),
-            class_name.span(),
-        );
-    }
-    for span in [
-        point.colon,
-        point.opening_bracket,
-        point.comma,
-        point.closing_bracket,
-    ] {
-        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, span);
-    }
-    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Number, point.x_token);
-    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Number, point.y_token);
-    for comma in &point.style_commas {
-        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, *comma);
-    }
-    for style in &point.styles {
-        record_quadrant_style(lexemes, *style);
-    }
-}
-
 fn construct_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
@@ -945,25 +802,12 @@ fn construct_quadrant_chart_semantic_source_controlled(
     #[cfg(test)]
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.set(QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let mut lexemes = EditorLexemeJournal::family_parser(code);
-    let result = parse_quadrant_chart_semantic_source(code, meta, &mut lexemes, control)?;
-    let lexemes = lexemes.finish();
-    Ok(match result {
-        Ok(mut source) => {
-            source.editor_facts.replace_family_lexemes(lexemes);
-            Ok(source)
-        }
-        Err(mut failure) => {
-            failure.replace_family_lexemes(lexemes);
-            Err(failure)
-        }
-    })
+    parse_quadrant_chart_semantic_source(code, meta, control)
 }
 
 fn parse_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-    lexemes: &mut EditorLexemeJournal<'_>,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
@@ -995,17 +839,7 @@ fn parse_quadrant_chart_semantic_source(
                         "quadrant chart accessibility description",
                         EditorSemanticKind::String,
                     );
-                    push_quadrant_lexeme(
-                        lexemes,
-                        EditorLexemeKind::String,
-                        SourceSpan::new(block.source_start, line.start + end),
-                    );
                 }
-                push_quadrant_lexeme(
-                    lexemes,
-                    EditorLexemeKind::Delimiter,
-                    SourceSpan::new(line.start + end, line.start + end + 1),
-                );
                 lines.resume_same_line_at(line.start + end + 1);
                 acc_descr = Some(text);
             } else {
@@ -1025,9 +859,6 @@ fn parse_quadrant_chart_semantic_source(
 
         for statement in split_semicolons_spanned(stripped) {
             control.checkpoint()?;
-            if let Some(terminator) = statement.terminator {
-                push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, terminator);
-            }
             let statement = statement.source;
             let statement_trimmed = statement.trim();
             if statement_trimmed.text.is_empty() || statement_trimmed.text.starts_with("%%") {
@@ -1039,14 +870,8 @@ fn parse_quadrant_chart_semantic_source(
             if !saw_header {
                 if statement_trimmed.text.eq_ignore_ascii_case("quadrantChart") {
                     saw_header = true;
-                    push_quadrant_slice_lexeme(
-                        lexemes,
-                        EditorLexemeKind::Keyword,
-                        statement_trimmed,
-                    );
                     continue;
                 }
-                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, statement_trimmed);
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_exact(
                         meta.diagram_type.clone(),
@@ -1059,10 +884,7 @@ fn parse_quadrant_chart_semantic_source(
 
             if let Some(directive) = parse_colon_value_ci(statement_trimmed, "accTitle") {
                 editor_facts.push_directive_prefix("accTitle");
-                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
-                push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, directive.colon);
                 if let Ok(value) = parse_text_slice(directive.value) {
-                    record_quadrant_text(lexemes, &value, EditorLexemeKind::String);
                     push_quadrant_payload_fact(
                         &mut editor_facts,
                         &value.value,
@@ -1071,8 +893,6 @@ fn parse_quadrant_chart_semantic_source(
                         "quadrant chart accessibility title",
                         EditorSemanticKind::String,
                     );
-                } else {
-                    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, directive.value);
                 }
                 acc_title = Some(directive.value.text.to_string());
                 continue;
@@ -1082,16 +902,6 @@ fn parse_quadrant_chart_semantic_source(
                 let rest = directive.rest;
                 if rest.text.starts_with('{') {
                     editor_facts.push_directive_prefix("accDescr");
-                    push_quadrant_slice_lexeme(
-                        lexemes,
-                        EditorLexemeKind::Keyword,
-                        directive.keyword,
-                    );
-                    push_quadrant_lexeme(
-                        lexemes,
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(rest.start, rest.start + 1),
-                    );
                     let content_start = rest.start + 1;
                     let after_brace = rest.subslice(1, rest.text.len());
                     if let Some(end) = after_brace.text.find('}') {
@@ -1106,20 +916,9 @@ fn parse_quadrant_chart_semantic_source(
                                 "quadrant chart accessibility description",
                                 EditorSemanticKind::String,
                             );
-                            push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::String, content);
                         }
-                        push_quadrant_lexeme(
-                            lexemes,
-                            EditorLexemeKind::Delimiter,
-                            SourceSpan::new(after_brace.start + end, after_brace.start + end + 1),
-                        );
                         let trailing = after_brace.subslice(end + 1, after_brace.text.len()).trim();
                         if !trailing.text.is_empty() {
-                            push_quadrant_slice_lexeme(
-                                lexemes,
-                                EditorLexemeKind::Literal,
-                                trailing,
-                            );
                             first_error.get_or_insert_with(|| {
                                 Error::diagram_parse_exact(
                                     meta.diagram_type.clone(),
@@ -1144,18 +943,7 @@ fn parse_quadrant_chart_semantic_source(
                 if rest.text.starts_with(':') {
                     let value = rest.subslice(1, rest.text.len()).trim();
                     editor_facts.push_directive_prefix("accDescr");
-                    push_quadrant_slice_lexeme(
-                        lexemes,
-                        EditorLexemeKind::Keyword,
-                        directive.keyword,
-                    );
-                    push_quadrant_lexeme(
-                        lexemes,
-                        EditorLexemeKind::Delimiter,
-                        SourceSpan::new(rest.start, rest.start + 1),
-                    );
                     if let Ok(parsed) = parse_text_slice(value) {
-                        record_quadrant_text(lexemes, &parsed, EditorLexemeKind::String);
                         push_quadrant_payload_fact(
                             &mut editor_facts,
                             &parsed.value,
@@ -1164,8 +952,6 @@ fn parse_quadrant_chart_semantic_source(
                             "quadrant chart accessibility description",
                             EditorSemanticKind::String,
                         );
-                    } else {
-                        push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, value);
                     }
                     acc_descr = Some(value.text.to_string());
                     continue;
@@ -1175,9 +961,7 @@ fn parse_quadrant_chart_semantic_source(
             if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "title") {
                 let value = directive.rest;
                 editor_facts.push_directive_prefix("title");
-                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
                 if let Ok(parsed) = parse_text_slice(value) {
-                    record_quadrant_text(lexemes, &parsed, EditorLexemeKind::String);
                     push_quadrant_payload_fact(
                         &mut editor_facts,
                         &parsed.value,
@@ -1186,29 +970,20 @@ fn parse_quadrant_chart_semantic_source(
                         "quadrant chart title",
                         EditorSemanticKind::String,
                     );
-                } else {
-                    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, value);
                 }
                 title = Some(value.text.to_string());
                 continue;
             }
 
             if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "x-axis") {
-                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
                 let axis = match parse_axis_text(directive.rest) {
                     Ok(axis) => axis,
                     Err(error) => {
-                        push_quadrant_slice_lexeme(
-                            lexemes,
-                            EditorLexemeKind::Literal,
-                            directive.rest,
-                        );
                         first_error
                             .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
                         continue;
                     }
                 };
-                record_quadrant_text(lexemes, &axis.left, EditorLexemeKind::String);
                 push_quadrant_outline_fact(
                     &mut editor_facts,
                     &axis.left.value,
@@ -1217,11 +992,7 @@ fn parse_quadrant_chart_semantic_source(
                     "quadrant chart x-axis",
                     EditorSemanticKind::String,
                 );
-                if let Some(operator) = axis.operator {
-                    push_quadrant_lexeme(lexemes, EditorLexemeKind::Operator, operator);
-                }
                 if let Some(right) = &axis.right {
-                    record_quadrant_text(lexemes, right, EditorLexemeKind::String);
                     push_quadrant_outline_fact(
                         &mut editor_facts,
                         &right.value,
@@ -1243,21 +1014,14 @@ fn parse_quadrant_chart_semantic_source(
             }
 
             if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "y-axis") {
-                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
                 let axis = match parse_axis_text(directive.rest) {
                     Ok(axis) => axis,
                     Err(error) => {
-                        push_quadrant_slice_lexeme(
-                            lexemes,
-                            EditorLexemeKind::Literal,
-                            directive.rest,
-                        );
                         first_error
                             .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
                         continue;
                     }
                 };
-                record_quadrant_text(lexemes, &axis.left, EditorLexemeKind::String);
                 push_quadrant_outline_fact(
                     &mut editor_facts,
                     &axis.left.value,
@@ -1266,11 +1030,7 @@ fn parse_quadrant_chart_semantic_source(
                     "quadrant chart y-axis",
                     EditorSemanticKind::String,
                 );
-                if let Some(operator) = axis.operator {
-                    push_quadrant_lexeme(lexemes, EditorLexemeKind::Operator, operator);
-                }
                 if let Some(top) = &axis.right {
-                    record_quadrant_text(lexemes, top, EditorLexemeKind::String);
                     push_quadrant_outline_fact(
                         &mut editor_facts,
                         &top.value,
@@ -1301,22 +1061,15 @@ fn parse_quadrant_chart_semantic_source(
                 let Some(directive) = parse_keyword_rest_ci(statement_trimmed, keyword) else {
                     continue;
                 };
-                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
                 let text = match parse_text_slice(directive.rest) {
                     Ok(text) => text,
                     Err(error) => {
-                        push_quadrant_slice_lexeme(
-                            lexemes,
-                            EditorLexemeKind::Literal,
-                            directive.rest,
-                        );
                         first_error
                             .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
                         matched_quadrant = true;
                         break;
                     }
                 };
-                record_quadrant_text(lexemes, &text, EditorLexemeKind::String);
                 push_quadrant_outline_fact(
                     &mut editor_facts,
                     &text.value,
@@ -1335,7 +1088,6 @@ fn parse_quadrant_chart_semantic_source(
 
             if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "classDef") {
                 let rest = directive.rest;
-                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
                 let name_end = rest
                     .text
                     .char_indices()
@@ -1354,18 +1106,6 @@ fn parse_quadrant_chart_semantic_source(
                 }
                 let style_text = rest.subslice(name_end, rest.text.len()).trim();
                 let styles = split_style_slices(style_text);
-                push_quadrant_lexeme_with_modifiers(
-                    lexemes,
-                    EditorLexemeKind::Identifier,
-                    EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Definition),
-                    name.span(),
-                );
-                for comma in &styles.commas {
-                    push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, *comma);
-                }
-                for style in &styles.items {
-                    record_quadrant_style(lexemes, *style);
-                }
                 push_quadrant_class_fact(&mut editor_facts, statement_span, name);
                 let style_values = styles
                     .items
@@ -1381,7 +1121,6 @@ fn parse_quadrant_chart_semantic_source(
 
             match parse_point_statement(statement_trimmed) {
                 Ok(Some(point)) => {
-                    record_quadrant_point(lexemes, &point);
                     push_quadrant_point_facts(&mut editor_facts, statement_span, &point);
                     let class_name = point.class_name.map(|class| class.text.to_string());
                     let styles = point
@@ -1404,18 +1143,12 @@ fn parse_quadrant_chart_semantic_source(
                 }
                 Ok(None) => {}
                 Err(error) => {
-                    push_quadrant_slice_lexeme(
-                        lexemes,
-                        EditorLexemeKind::Literal,
-                        statement_trimmed,
-                    );
                     first_error
                         .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
                     continue;
                 }
             }
 
-            push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, statement_trimmed);
             first_error.get_or_insert_with(|| {
                 Error::diagram_parse_exact(
                     meta.diagram_type.clone(),
@@ -1436,11 +1169,6 @@ fn parse_quadrant_chart_semantic_source(
                 code.len(),
                 "quadrant chart accessibility description",
                 EditorSemanticKind::String,
-            );
-            push_quadrant_lexeme(
-                lexemes,
-                EditorLexemeKind::String,
-                SourceSpan::new(block.source_start, code.len()),
             );
         }
         first_error.get_or_insert_with(|| {

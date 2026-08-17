@@ -1,12 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type {
-  CancellationToken,
-  Position,
-  Range,
-  editor,
-  languages,
-} from "monaco-editor";
+import type { CancellationToken, Position, editor, languages } from "monaco-editor";
 import type {
   EditorDocumentIdentity,
   EditorWorkerQuery,
@@ -16,7 +10,10 @@ import type {
   EditorLanguageIdentity,
   MermanLanguageWorkerClient,
 } from "../editor/worker-client.ts";
-import { EditorWorkerProtocolError } from "../editor/worker-client.ts";
+import type {
+  MermaidSyntaxWorkerClient,
+} from "../editor/syntax-worker-client.ts";
+import { MERMAID_SYNTAX_TOKEN_LEGEND } from "../editor/syntax-tokens.ts";
 import {
   MERMAID_DOCUMENT_URI,
   registerMermaidLanguage,
@@ -24,185 +21,235 @@ import {
 } from "./mermaid-language.ts";
 
 const IDENTITY: EditorLanguageIdentity = Object.freeze({
-  completionTriggerCharacters: Object.freeze([
-    " ",
-    "\n",
-    "-",
-    ">",
-    "%",
-    "[",
-    "(",
-    "{",
-    "/",
-    "\\",
-    "@",
-    ":",
-  ]),
-  legend: Object.freeze({
-    tokenTypes: Object.freeze(["string", "namespace"]),
-    tokenModifiers: Object.freeze(["payload", "entity"]),
-  }),
-  legendDigest: "sha256:test-generated-token-descriptor",
-  transportApiVersion: 4,
+  completionTriggerCharacters: Object.freeze([" ", "\n", "-", ":"]),
+  transportApiVersion: 5,
 });
 
-test("Monaco publishes planner-packed tokens without rereading source", async () => {
+test("Tree-sitter supplies Monaco tokens while semantic updates flush on demand", async () => {
   const providers: ProviderCapture = {};
-  const packed = new Uint32Array([0, 0, 4, 1, 2]);
-  const queries: EditorWorkerQuery["kind"][] = [];
-  const client = fakeLanguageClient((query) => {
-    queries.push(query.kind);
-    return resultForQuery(query, packed);
-  });
-  const model = reactiveModel("flowchart TD", 7);
-  const registration = registerMermaidLanguage(
+  const semantic = fakeSemanticClient();
+  const syntax = fakeSyntaxClient(new Uint32Array([0, 0, 9, 3, 0]));
+  const model = reactiveModel("flowchart TD", 1);
+  const registration = await registerMermaidLanguage(
     fakeMonaco(providers),
-    client,
-    IDENTITY,
+    startups(semantic, syntax),
   );
   const binding = await registration.bindModel(model.model);
   await Promise.resolve();
-  const readsAfterOpen = model.getValueCalls();
 
-  assert.equal(readsAfterOpen, 1);
-  assert.deepEqual(
-    providers.completions?.triggerCharacters,
-    IDENTITY.completionTriggerCharacters,
-  );
-  assert.deepEqual(providers.semantic?.getLegend(), IDENTITY.legend);
-  const result = await providers.semantic?.provideDocumentSemanticTokens(
+  assert.deepEqual(providers.tokens?.getLegend(), {
+    tokenTypes: [...MERMAID_SYNTAX_TOKEN_LEGEND.tokenTypes],
+    tokenModifiers: [],
+  });
+  const tokens = await providers.tokens?.provideDocumentSemanticTokens(
     model.model,
     null,
     uncancelledToken(),
   );
-  assert(result);
-  assert("data" in result);
-  assert.equal(result.data, packed);
-  assert.equal(model.getValueCalls(), readsAfterOpen);
-  assert(queries.includes("diagnostics"));
-  assert(queries.includes("semanticTokens"));
+  assert(tokens && "data" in tokens);
+  assert.deepEqual([...tokens.data], [0, 0, 9, 3, 0]);
+  assert.deepEqual(syntax.highlightVersions, [1]);
 
-  binding.dispose();
-  registration.dispose();
-  assert.equal(client.disposed, true);
-});
-
-test("every Monaco query path uses URI/version while source reads stay change-owned", async () => {
-  const providers: ProviderCapture = {};
-  const identities: EditorDocumentIdentity[] = [];
-  const client = fakeLanguageClient((query, identity) => {
-    identities.push(identity);
-    return resultForQuery(query, new Uint32Array());
-  });
-  const model = reactiveModel("flowchart TD\nA --> B", 1);
-  const registration = registerMermaidLanguage(
-    fakeMonaco(providers),
-    client,
-    IDENTITY,
-  );
-  const binding = await registration.bindModel(model.model);
+  model.change("flowchart TD\nA --> B");
   await Promise.resolve();
-  const readsAfterOpen = model.getValueCalls();
-  const position = monacoPosition(2, 1);
-  const token = uncancelledToken();
+  assert.equal(syntax.changedSnapshots.at(-1)?.version, 2);
+  assert.equal(semantic.changedSnapshots.length, 0);
 
   await providers.completions?.provideCompletionItems(
     model.model,
-    position,
+    monacoPosition(2, 1),
     { triggerKind: 0 as languages.CompletionTriggerKind },
-    token,
+    uncancelledToken(),
   );
-  await providers.hover?.provideHover(model.model, position, token);
-  await providers.codeActions?.provideCodeActions(
-    model.model,
-    monacoRange(2, 1, 2, 2),
-    { markers: [], trigger: 1 as languages.CodeActionTriggerType },
-    token,
+  assert.equal(semantic.changedSnapshots.at(-1)?.version, 2);
+  assert(semantic.queryKinds.includes("completions"));
+
+  binding.dispose();
+  registration.dispose();
+});
+
+test("syntax failure leaves Merman semantic features available", async () => {
+  const providers: ProviderCapture = {};
+  const semantic = fakeSemanticClient();
+  const syntax = fakeSyntaxClient();
+  syntax.highlights = async () => {
+    throw new Error("syntax crashed");
+  };
+  const syntaxFailures: Error[] = [];
+  const registration = await registerMermaidLanguage(
+    fakeMonaco(providers),
+    startups(semantic, syntax),
+    { onSyntaxUnavailable: (error) => syntaxFailures.push(error) },
   );
-  await providers.symbols?.provideDocumentSymbols(model.model, token);
-  await providers.definition?.provideDefinition(model.model, position, token);
-  await providers.references?.provideReferences(
-    model.model,
-    position,
-    { includeDeclaration: true },
-    token,
-  );
-  assert(providers.rename?.resolveRenameLocation);
-  await providers.rename.resolveRenameLocation(model.model, position, token);
-  await providers.rename?.provideRenameEdits(model.model, position, "B", token);
-  await providers.semantic?.provideDocumentSemanticTokens(
+  const model = reactiveModel("flowchart TD", 1);
+  const binding = await registration.bindModel(model.model);
+
+  const tokens = await providers.tokens?.provideDocumentSemanticTokens(
     model.model,
     null,
-    token,
+    uncancelledToken(),
   );
-
-  assert.equal(model.getValueCalls(), readsAfterOpen);
-  assert.deepEqual(
-    new Set(identities.map(({ version }) => version)),
-    new Set([1]),
+  assert(tokens && "data" in tokens);
+  assert.equal(tokens.data.length, 0);
+  assert.match(syntaxFailures[0]?.message ?? "", /syntax crashed/);
+  await providers.hover?.provideHover(
+    model.model,
+    monacoPosition(1, 1),
+    uncancelledToken(),
   );
-  assert.deepEqual(
-    new Set(client.queryKinds),
-    new Set([
-      "codeActions",
-      "completions",
-      "definition",
-      "diagnostics",
-      "documentSymbols",
-      "hover",
-      "prepareRename",
-      "references",
-      "rename",
-      "semanticTokens",
-    ]),
-  );
-
-  model.change("flowchart TD\nA --> C");
-  await Promise.resolve();
-  assert.equal(model.getValueCalls(), readsAfterOpen + 1);
-  assert.equal(client.changedSnapshots.at(-1)?.source, "flowchart TD\nA --> C");
+  assert(semantic.queryKinds.includes("hover"));
 
   binding.dispose();
   registration.dispose();
 });
 
-test("a source change is forwarded while didOpen is still pending", async () => {
-  let resolveOpen!: () => void;
-  const changes: { source: string; version: number }[] = [];
-  const client = fakeLanguageClient((query) =>
-    resultForQuery(query, new Uint32Array()),
-  );
-  client.openDocument = () =>
-    new Promise<void>((resolve) => {
-      resolveOpen = resolve;
-    });
-  client.changeDocument = async (document) => {
-    changes.push({ source: document.source, version: document.version });
-  };
-  const model = reactiveModel("flowchart TD", 1);
-  const registration = registerMermaidLanguage(
-    fakeMonaco({}),
-    client,
-    IDENTITY,
-  );
-
-  const bindingPromise = registration.bindModel(model.model);
-  model.change("flowchart TD\nA --> B");
-  await Promise.resolve();
-
-  assert.deepEqual(changes, [{ version: 2, source: "flowchart TD\nA --> B" }]);
-  resolveOpen();
-  const binding = await bindingPromise;
-  binding.dispose();
-  registration.dispose();
-});
-
-test("rename rejects workspace edits targeting an unmanaged URI", async () => {
+test("semantic startup failure leaves Tree-sitter highlighting available", async () => {
   const providers: ProviderCapture = {};
-  let rejection: MermaidLanguageRequestRejection | undefined;
-  const client = fakeLanguageClient((query) => {
-    if (query.kind !== "rename")
-      return resultForQuery(query, new Uint32Array());
+  const semantic = fakeSemanticClient();
+  const syntax = fakeSyntaxClient(new Uint32Array([0, 0, 4, 3, 0]));
+  const semanticFailures: Error[] = [];
+  const registration = await registerMermaidLanguage(
+    fakeMonaco(providers),
+    {
+      semantic: { client: semantic, ready: Promise.reject(new Error("semantic failed")) },
+      syntax: { client: syntax, ready: Promise.resolve() },
+    },
+    { onSemanticUnavailable: (error) => semanticFailures.push(error) },
+  );
+  const model = reactiveModel("flowchart TD", 1);
+  const binding = await registration.bindModel(model.model);
+
+  const tokens = await providers.tokens?.provideDocumentSemanticTokens(
+    model.model,
+    null,
+    uncancelledToken(),
+  );
+  assert(tokens && "data" in tokens);
+  assert.deepEqual([...tokens.data], [0, 0, 4, 3, 0]);
+  assert.match(semanticFailures[0]?.message ?? "", /semantic failed/);
+  const hover = await providers.hover?.provideHover(
+    model.model,
+    monacoPosition(1, 1),
+    uncancelledToken(),
+  );
+  assert.equal(hover, null);
+
+  binding.dispose();
+  registration.dispose();
+});
+
+test("pending semantic readiness does not block Tree-sitter highlighting", async () => {
+  const providers: ProviderCapture = {};
+  const semantic = fakeSemanticClient();
+  const syntax = fakeSyntaxClient(new Uint32Array([0, 0, 9, 3, 0]));
+  const registration = await settleWithin(
+    registerMermaidLanguage(fakeMonaco(providers), {
+      semantic: { client: semantic, ready: new Promise(() => {}) },
+      syntax: { client: syntax, ready: Promise.resolve() },
+    }),
+    "language registration",
+  );
+  const model = reactiveModel("flowchart TD", 1);
+  const binding = await settleWithin(
+    registration.bindModel(model.model),
+    "model binding",
+  );
+  const tokens = await settleWithin(
+    Promise.resolve(
+      providers.tokens!.provideDocumentSemanticTokens(
+        model.model,
+        null,
+        uncancelledToken(),
+      ),
+    ),
+    "syntax highlighting",
+  );
+
+  assert(tokens && "data" in tokens);
+  assert.deepEqual([...tokens.data], [0, 0, 9, 3, 0]);
+
+  binding.dispose();
+  registration.dispose();
+});
+
+test("pending semantic document open does not block Tree-sitter highlighting", async () => {
+  const providers: ProviderCapture = {};
+  const semantic = fakeSemanticClient();
+  semantic.openDocument = () => new Promise<void>(() => {});
+  const syntax = fakeSyntaxClient(new Uint32Array([0, 0, 9, 3, 0]));
+  const registration = await registerMermaidLanguage(
+    fakeMonaco(providers),
+    startups(semantic, syntax),
+  );
+  const model = reactiveModel("flowchart TD", 1);
+  const binding = await settleWithin(
+    registration.bindModel(model.model),
+    "model binding",
+  );
+  const tokens = await settleWithin(
+    Promise.resolve(
+      providers.tokens!.provideDocumentSemanticTokens(
+        model.model,
+        null,
+        uncancelledToken(),
+      ),
+    ),
+    "syntax highlighting",
+  );
+
+  assert(tokens && "data" in tokens);
+  assert.deepEqual([...tokens.data], [0, 0, 9, 3, 0]);
+
+  binding.dispose();
+  registration.dispose();
+});
+
+test("disposing a pending binding keeps the registration one-shot", async () => {
+  let resolveSemantic!: (identity: EditorLanguageIdentity) => void;
+  let resolveSyntax!: () => void;
+  const semanticReady = new Promise<EditorLanguageIdentity>((resolve) => {
+    resolveSemantic = resolve;
+  });
+  const syntaxReady = new Promise<void>((resolve) => {
+    resolveSyntax = resolve;
+  });
+  const semantic = fakeSemanticClient();
+  const syntax = fakeSyntaxClient();
+  let semanticOpens = 0;
+  let syntaxOpens = 0;
+  semantic.openDocument = async () => {
+    semanticOpens += 1;
+  };
+  syntax.openDocument = async () => {
+    syntaxOpens += 1;
+  };
+  const registration = await registerMermaidLanguage(fakeMonaco({}), {
+    semantic: { client: semantic, ready: semanticReady },
+    syntax: { client: syntax, ready: syntaxReady },
+  });
+  const binding = await registration.bindModel(
+    reactiveModel("flowchart TD", 1).model,
+  );
+
+  binding.dispose();
+  resolveSemantic(IDENTITY);
+  resolveSyntax();
+  await Promise.all([semanticReady, syntaxReady]);
+  await Promise.resolve();
+
+  assert.equal(semanticOpens, 0);
+  assert.equal(syntaxOpens, 0);
+  await assert.rejects(
+    registration.bindModel(reactiveModel("flowchart LR", 1).model),
+    /owns one model lifetime/,
+  );
+  registration.dispose();
+});
+
+test("rename still rejects edits targeting an unmanaged URI", async () => {
+  const providers: ProviderCapture = {};
+  const semantic = fakeSemanticClient((query) => {
+    if (query.kind !== "rename") return resultForQuery(query);
     return {
       changes: {
         "file:///elsewhere.mmd": [
@@ -217,14 +264,14 @@ test("rename rejects workspace edits targeting an unmanaged URI", async () => {
       },
     };
   });
-  const model = reactiveModel("flowchart TD\nA", 3);
-  const registration = registerMermaidLanguage(
+  const rejections: MermaidLanguageRequestRejection[] = [];
+  const registration = await registerMermaidLanguage(
     fakeMonaco(providers),
-    client,
-    IDENTITY,
-    { onRequestRejected: (value) => (rejection = value) },
+    startups(semantic, fakeSyntaxClient()),
+    { onRequestRejected: (value) => rejections.push(value) },
   );
-
+  const model = reactiveModel("flowchart TD\nA", 1);
+  const binding = await registration.bindModel(model.model);
   const result = await providers.rename?.provideRenameEdits(
     model.model,
     monacoPosition(2, 1),
@@ -232,90 +279,42 @@ test("rename rejects workspace edits targeting an unmanaged URI", async () => {
     uncancelledToken(),
   );
 
-  assert(result);
-  assert.equal(result.edits.length, 0);
-  assert.match(result.rejectReason ?? "", /current document/i);
-  assert.equal(
-    rejection?.message,
-    "Rename is limited to the current document; received an edit for file:///elsewhere.mmd.",
-  );
-  registration.dispose();
-});
-
-test("request-local query failure falls back without disconnecting language tools", async () => {
-  const providers: ProviderCapture = {};
-  let hoverAttempts = 0;
-  let unavailableCalls = 0;
-  const client = fakeLanguageClient((query) => {
-    if (query.kind === "hover" && hoverAttempts++ === 0) {
-      throw new EditorWorkerProtocolError(
-        "Hover failed for this request.",
-        "QUERY_FAILED",
-      );
-    }
-    return resultForQuery(query, new Uint32Array());
-  });
-  const model = reactiveModel("flowchart TD\nA --> B", 1);
-  const registration = registerMermaidLanguage(
-    fakeMonaco(providers),
-    client,
-    IDENTITY,
-    { onUnavailable: () => (unavailableCalls += 1) },
-  );
-  const binding = await registration.bindModel(model.model);
-  await Promise.resolve();
-
-  const position = monacoPosition(2, 1);
-  assert.equal(
-    await providers.hover?.provideHover(
-      model.model,
-      position,
-      uncancelledToken(),
-    ),
-    null,
-  );
-  assert.equal(unavailableCalls, 0);
-  assert.equal(
-    await providers.hover?.provideHover(
-      model.model,
-      position,
-      uncancelledToken(),
-    ),
-    null,
-  );
-  assert.equal(hoverAttempts, 2);
-  assert.equal(client.disposed, false);
-
+  assert.equal(result?.edits.length, 0);
+  assert.match(rejections[0]?.message ?? "", /current document/);
   binding.dispose();
   registration.dispose();
 });
 
 interface ProviderCapture {
-  codeActions?: languages.CodeActionProvider;
   completions?: languages.CompletionItemProvider;
-  definition?: languages.DefinitionProvider;
   hover?: languages.HoverProvider;
-  references?: languages.ReferenceProvider;
   rename?: languages.RenameProvider;
-  semantic?: languages.DocumentSemanticTokensProvider;
-  symbols?: languages.DocumentSymbolProvider;
+  tokens?: languages.DocumentSemanticTokensProvider;
 }
 
-interface FakeLanguageClient extends MermanLanguageWorkerClient {
-  changedSnapshots: { source: string; version: number }[];
-  disposed: boolean;
-  queryKinds: EditorWorkerQuery["kind"][];
+interface FakeSemanticClient extends MermanLanguageWorkerClient {
+  readonly changedSnapshots: { source: string; version: number }[];
+  readonly queryKinds: EditorWorkerQuery["kind"][];
 }
 
-function fakeLanguageClient(
-  runQuery: (
-    query: EditorWorkerQuery,
-    identity: EditorDocumentIdentity,
-  ) => unknown,
-): FakeLanguageClient {
+interface FakeSyntaxClient extends MermaidSyntaxWorkerClient {
+  readonly changedSnapshots: { source: string; version: number }[];
+  readonly highlightVersions: number[];
+  highlights(document: EditorDocumentIdentity): Promise<Uint32Array>;
+}
+
+function startups(semantic: FakeSemanticClient, syntax: FakeSyntaxClient) {
+  return {
+    semantic: { client: semantic, ready: Promise.resolve(IDENTITY) },
+    syntax: { client: syntax, ready: Promise.resolve() },
+  };
+}
+
+function fakeSemanticClient(
+  runQuery: (query: EditorWorkerQuery) => unknown = resultForQuery,
+): FakeSemanticClient {
   return {
     changedSnapshots: [],
-    disposed: false,
     queryKinds: [],
     async initialize() {
       return IDENTITY;
@@ -325,28 +324,40 @@ function fakeLanguageClient(
     },
     async openDocument() {},
     async changeDocument(document) {
-      this.changedSnapshots.push({
-        source: document.source,
-        version: document.version,
-      });
+      this.changedSnapshots.push({ source: document.source, version: document.version });
     },
     async query<Query extends EditorWorkerQuery>(
-      identity: EditorDocumentIdentity,
+      _identity: EditorDocumentIdentity,
       query: Query,
     ) {
       this.queryKinds.push(query.kind);
-      return runQuery(query, identity) as EditorWorkerQueryResult<Query>;
+      return runQuery(query) as EditorWorkerQueryResult<Query>;
     },
-    dispose() {
-      this.disposed = true;
-    },
+    dispose() {},
   };
 }
 
-function resultForQuery(
-  query: EditorWorkerQuery,
-  semanticTokens: Uint32Array,
-): unknown {
+function fakeSyntaxClient(tokens = new Uint32Array()): FakeSyntaxClient {
+  return {
+    changedSnapshots: [],
+    highlightVersions: [],
+    async initialize() {},
+    onDidFail() {
+      return { dispose() {} };
+    },
+    async openDocument() {},
+    async changeDocument(document) {
+      this.changedSnapshots.push({ source: document.source, version: document.version });
+    },
+    async highlights(document) {
+      this.highlightVersions.push(document.version);
+      return tokens;
+    },
+    dispose() {},
+  };
+}
+
+function resultForQuery(query: EditorWorkerQuery): unknown {
   switch (query.kind) {
     case "diagnostics":
       return {
@@ -376,8 +387,6 @@ function resultForQuery(
       return null;
     case "rename":
       return { changes: {} };
-    case "semanticTokens":
-      return semanticTokens;
   }
 }
 
@@ -385,19 +394,10 @@ function reactiveModel(initialSource: string, initialVersion: number) {
   let source = initialSource;
   let version = initialVersion;
   let listener = () => {};
-  let valueReads = 0;
   const model = {
     uri: { toString: () => MERMAID_DOCUMENT_URI },
-    getValue() {
-      valueReads += 1;
-      return source;
-    },
+    getValue: () => source,
     getVersionId: () => version,
-    getLineCount: () => source.split("\n").length,
-    getLineContent: (lineNumber: number) =>
-      source.split("\n")[lineNumber - 1] ?? "",
-    getLineMaxColumn: (lineNumber: number) =>
-      (source.split("\n")[lineNumber - 1] ?? "").length + 1,
     isDisposed: () => false,
     onDidChangeContent(next: () => void) {
       listener = next;
@@ -411,7 +411,6 @@ function reactiveModel(initialSource: string, initialVersion: number) {
       version += 1;
       listener();
     },
-    getValueCalls: () => valueReads,
   };
 }
 
@@ -423,21 +422,27 @@ function uncancelledToken(): CancellationToken {
 }
 
 function monacoPosition(lineNumber: number, column: number): Position {
-  return { lineNumber, column } as unknown as Position;
+  return { lineNumber, column } as Position;
 }
 
-function monacoRange(
-  startLineNumber: number,
-  startColumn: number,
-  endLineNumber: number,
-  endColumn: number,
-): Range {
-  return {
-    startLineNumber,
-    startColumn,
-    endLineNumber,
-    endColumn,
-  } as unknown as Range;
+async function settleWithin<Value>(
+  promise: Promise<Value>,
+  label: string,
+): Promise<Value> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${label} did not settle independently.`)),
+          100,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
 }
 
 function fakeMonaco(capture: ProviderCapture) {
@@ -460,50 +465,23 @@ function fakeMonaco(capture: ProviderCapture) {
     },
     getLanguages: () => [],
     register: disposable,
-    registerCodeActionProvider(
-      _id: string,
-      provider: languages.CodeActionProvider,
-    ) {
-      capture.codeActions = provider;
-      return disposable();
-    },
-    registerCompletionItemProvider(
-      _id: string,
-      provider: languages.CompletionItemProvider,
-    ) {
+    registerCodeActionProvider: disposable,
+    registerDefinitionProvider: disposable,
+    registerDocumentSymbolProvider: disposable,
+    registerReferenceProvider: disposable,
+    registerCompletionItemProvider(_id: string, provider: languages.CompletionItemProvider) {
       capture.completions = provider;
-      return disposable();
-    },
-    registerDefinitionProvider(
-      _id: string,
-      provider: languages.DefinitionProvider,
-    ) {
-      capture.definition = provider;
       return disposable();
     },
     registerDocumentSemanticTokensProvider(
       _id: string,
       provider: languages.DocumentSemanticTokensProvider,
     ) {
-      capture.semantic = provider;
-      return disposable();
-    },
-    registerDocumentSymbolProvider(
-      _id: string,
-      provider: languages.DocumentSymbolProvider,
-    ) {
-      capture.symbols = provider;
+      capture.tokens = provider;
       return disposable();
     },
     registerHoverProvider(_id: string, provider: languages.HoverProvider) {
       capture.hover = provider;
-      return disposable();
-    },
-    registerReferenceProvider(
-      _id: string,
-      provider: languages.ReferenceProvider,
-    ) {
-      capture.references = provider;
       return disposable();
     },
     registerRenameProvider(_id: string, provider: languages.RenameProvider) {
@@ -531,7 +509,7 @@ function fakeMonaco(capture: ProviderCapture) {
         this.endColumn = endColumn;
       }
     },
-    MarkerTag: { Deprecated: 2, Unnecessary: 1 },
+    MarkerTag: { Deprecated: 2 },
     MarkerSeverity: { Error: 8, Hint: 1, Info: 2, Warning: 4 },
     editor: { setModelMarkers() {} },
     languages,

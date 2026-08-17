@@ -297,40 +297,6 @@ impl SessionState {
         )
     }
 
-    pub(in crate::session) fn semantic_tokens_state_for_delta(
-        &self,
-        uri: &Uri,
-        previous_result_id: &str,
-    ) -> Option<Arc<SemanticTokensState>> {
-        self.documents
-            .get(uri)
-            .and_then(|record| record.semantic_tokens_state.as_ref())
-            .and_then(|stored| {
-                (stored.snapshot_generation == self.snapshot_generation
-                    && stored.state.result_id == previous_result_id)
-                    .then(|| Arc::clone(&stored.state))
-            })
-    }
-
-    pub(in crate::session) fn set_semantic_tokens_state_if_snapshot_current(
-        &mut self,
-        snapshot: &AcquiredSnapshot,
-        state: SemanticTokensState,
-    ) -> bool {
-        if !self.is_acquired_snapshot_current(snapshot) {
-            return false;
-        }
-
-        let Some(record) = self.documents.get_mut(snapshot.snapshot.uri()) else {
-            return false;
-        };
-        record.semantic_tokens_state = Some(StoredSemanticTokensState {
-            snapshot_generation: snapshot.stamp.snapshot_generation,
-            state: Arc::new(state),
-        });
-        true
-    }
-
     pub(in crate::session) fn diagnostic_state(
         &self,
         uri: &Uri,

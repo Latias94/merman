@@ -13,6 +13,7 @@ use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
     SnapshotContext, SnapshotGeneration,
 };
+use crate::syntax_highlighting::SyntaxDocumentState;
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisConfigChange, AnalysisConfigContract,
     AnalysisDiagnosticPolicy, AnalysisOptions, AnalysisRejection, AnalysisResourceLimit,
@@ -233,6 +234,61 @@ fn prepare_document_source_cancellable(
     Ok(DocumentSource::from_preflight(text, rejection))
 }
 
+fn prepare_syntax_document_cancellable(
+    uri: &Uri,
+    version: i32,
+    kind: DocumentKind,
+    source: &DocumentSource,
+    previous: Option<&SyntaxDocumentState>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Option<Arc<SyntaxDocumentState>>, AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let Some(text) = source.retained_text() else {
+        return Ok(None);
+    };
+    let parsed = match previous {
+        Some(previous) => previous.update(version, kind, Arc::clone(text), cancellation),
+        None => SyntaxDocumentState::parse(version, kind, Arc::clone(text), cancellation),
+    };
+    cancellation.checkpoint()?;
+    Ok(match parsed {
+        Ok(document) => Some(Arc::new(document)),
+        Err(error) => {
+            tracing::error!(
+                uri = uri.as_str(),
+                version,
+                %error,
+                "Tree-sitter syntax document preparation failed"
+            );
+            None
+        }
+    })
+}
+
+fn prepare_document_content_cancellable(
+    uri: &Uri,
+    version: i32,
+    kind: DocumentKind,
+    text: String,
+    resource_limits: AnalysisResourceLimits,
+    previous: Option<&SyntaxDocumentState>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<PreparedDocumentContent, AnalysisCancelled> {
+    let source_descriptor = document_source_descriptor(uri, kind);
+    let source = prepare_document_source_cancellable(
+        text,
+        resource_limits,
+        &source_descriptor,
+        cancellation,
+    )?;
+    let syntax_document =
+        prepare_syntax_document_cancellable(uri, version, kind, &source, previous, cancellation)?;
+    Ok(PreparedDocumentContent {
+        source,
+        syntax_document,
+    })
+}
+
 impl TextChangePlan {
     fn prepare(self) -> Result<PreparedDocumentChange, AnalysisCancelled> {
         let Self {
@@ -243,6 +299,7 @@ impl TextChangePlan {
             expected_configuration_revision,
             resource_limits,
             source,
+            syntax_document,
             changes,
             cancellation,
         } = self;
@@ -261,17 +318,26 @@ impl TextChangePlan {
                 kind,
                 expected_epoch,
                 expected_configuration_revision,
-                source: source.with_incremental_sync_lost(),
+                content: PreparedDocumentContent {
+                    source: source.with_incremental_sync_lost(),
+                    syntax_document: None,
+                },
             });
         };
-        let source = match prepared_text {
-            Ok(text) => prepare_document_source_cancellable(
+        let content = match prepared_text {
+            Ok(text) => prepare_document_content_cancellable(
+                &uri,
+                version,
+                kind,
                 text,
                 resource_limits,
-                &document_source_descriptor(&uri, kind),
+                syntax_document.as_deref(),
                 &cancellation,
             )?,
-            Err(()) => DocumentSource::SyncError,
+            Err(()) => PreparedDocumentContent {
+                source: DocumentSource::SyncError,
+                syntax_document: None,
+            },
         };
         cancellation.checkpoint()?;
         Ok(PreparedDocumentChange {
@@ -280,7 +346,7 @@ impl TextChangePlan {
             kind,
             expected_epoch,
             expected_configuration_revision,
-            source,
+            content,
         })
     }
 }
@@ -354,6 +420,7 @@ struct TextChangePlan {
     expected_configuration_revision: ConfigurationRevision,
     resource_limits: AnalysisResourceLimits,
     source: DocumentSource,
+    syntax_document: Option<Arc<SyntaxDocumentState>>,
     changes: Vec<TextDocumentContentChangeEvent>,
     cancellation: AnalysisCancellationToken,
 }
@@ -365,7 +432,13 @@ struct PreparedDocumentChange {
     kind: DocumentKind,
     expected_epoch: DocumentEpoch,
     expected_configuration_revision: ConfigurationRevision,
+    content: PreparedDocumentContent,
+}
+
+#[derive(Debug)]
+struct PreparedDocumentContent {
     source: DocumentSource,
+    syntax_document: Option<Arc<SyntaxDocumentState>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -550,6 +623,20 @@ pub(crate) struct SemanticTokensState {
     pub packed: Vec<u32>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct SyntaxDocumentSnapshot {
+    pub(crate) uri: Uri,
+    pub(crate) document: Arc<SyntaxDocumentState>,
+    document_epoch: DocumentEpoch,
+    cancellation: AnalysisCancellationToken,
+}
+
+impl SyntaxDocumentSnapshot {
+    pub(crate) fn cancellation(&self) -> &AnalysisCancellationToken {
+        &self.cancellation
+    }
+}
+
 impl SemanticTokensState {
     pub fn new(result_id: String, packed: Vec<u32>) -> Self {
         Self { result_id, packed }
@@ -615,8 +702,11 @@ impl SessionState {
         DocumentEpoch(self.next_document_epoch)
     }
 
-    fn capture_open_document(&self, uri: Uri) -> OpenDocumentTicket {
+    fn capture_open_document(&mut self, uri: Uri) -> OpenDocumentTicket {
         let expected_uri_revision = self.open_document_tracker.capture(&uri);
+        if let Some(record) = self.documents.get(&uri) {
+            record.syntax_cancellation.cancel();
+        }
         OpenDocumentTicket {
             expected_document_epoch: self.documents.get(&uri).map(|record| record.epoch),
             uri,
@@ -631,7 +721,7 @@ impl SessionState {
         &mut self,
         ticket: OpenDocumentTicket,
         version: i32,
-        source: DocumentSource,
+        content: PreparedDocumentContent,
         kind: DocumentKind,
     ) -> bool {
         if self.configuration_revision != ticket.expected_configuration_revision
@@ -643,10 +733,37 @@ impl SessionState {
         {
             return false;
         }
-        self.open_document_source(ticket.uri.clone(), version, source, kind);
+        self.open_prepared_document(ticket.uri.clone(), version, content, kind, false);
         true
     }
 
+    fn open_prepared_document(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        content: PreparedDocumentContent,
+        kind: DocumentKind,
+        preserve_semantic_tokens_state: bool,
+    ) -> StoredDocument {
+        let PreparedDocumentContent {
+            source,
+            syntax_document,
+        } = content;
+        let document = StoredDocument {
+            uri: uri.clone(),
+            version,
+            kind,
+            source,
+        };
+        self.upsert_document(
+            uri,
+            document,
+            syntax_document,
+            preserve_semantic_tokens_state,
+        )
+    }
+
+    #[cfg(test)]
     fn open_document_source(
         &mut self,
         uri: Uri,
@@ -654,32 +771,55 @@ impl SessionState {
         source: DocumentSource,
         kind: DocumentKind,
     ) -> StoredDocument {
-        let document = StoredDocument {
-            uri: uri.clone(),
+        let syntax_document = source.retained_text().and_then(|text| {
+            SyntaxDocumentState::parse(version, kind, Arc::clone(text), &self.session_cancellation)
+                .ok()
+                .map(Arc::new)
+        });
+        self.open_prepared_document(
+            uri,
             version,
+            PreparedDocumentContent {
+                source,
+                syntax_document,
+            },
             kind,
-            source,
-        };
-        self.upsert_document(uri, document)
+            false,
+        )
     }
 
-    fn upsert_document(&mut self, uri: Uri, document: StoredDocument) -> StoredDocument {
+    fn upsert_document(
+        &mut self,
+        uri: Uri,
+        document: StoredDocument,
+        syntax_document: Option<Arc<SyntaxDocumentState>>,
+        preserve_semantic_tokens_state: bool,
+    ) -> StoredDocument {
         self.open_document_tracker.advance(&uri);
         self.analysis_executor.invalidate(&uri);
         self.analysis_cache.remove(&uri);
         let epoch = self.next_document_epoch();
+        let syntax_cancellation = self.session_cancellation.child();
         match self.documents.entry(uri) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 let record = entry.get_mut();
+                record.syntax_cancellation.cancel();
                 record.document = document.clone();
                 record.epoch = epoch;
                 record.diagnostic_state = None;
+                record.syntax_document = syntax_document;
+                record.syntax_cancellation = syntax_cancellation;
+                if !preserve_semantic_tokens_state {
+                    record.semantic_tokens_state = None;
+                }
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(DocumentRecord {
                     document: document.clone(),
                     epoch,
                     diagnostic_state: None,
+                    syntax_document,
+                    syntax_cancellation,
                     semantic_tokens_state: None,
                 });
             }
@@ -689,29 +829,34 @@ impl SessionState {
     }
 
     fn capture_text_changes(
-        &self,
+        &mut self,
         uri: Uri,
         version: i32,
         changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
     ) -> Option<Box<TextChangePlan>> {
-        let record = self.documents.get(&uri)?;
-        let current = &record.document;
-        if version <= current.version {
+        let record = self.documents.get_mut(&uri)?;
+        if version <= record.document.version {
             return None;
         }
         let changes = changes.into_iter().collect::<Vec<_>>();
         if changes.is_empty() {
             return None;
         }
+        let kind = record.document.kind;
+        let expected_epoch = record.epoch;
+        let source = record.document.source.clone();
+        let syntax_document = record.syntax_document.as_ref().map(Arc::clone);
+        record.syntax_cancellation.cancel();
 
         Some(Box::new(TextChangePlan {
             uri,
             version,
-            kind: current.kind,
-            expected_epoch: record.epoch,
+            kind,
+            expected_epoch,
             expected_configuration_revision: self.configuration_revision,
             resource_limits: self.analyzer.options().resource_limits(),
-            source: current.source.clone(),
+            source,
+            syntax_document,
             changes,
             cancellation: self.session_cancellation.child(),
         }))
@@ -727,11 +872,12 @@ impl SessionState {
             return false;
         }
 
-        self.open_document_source(
+        self.open_prepared_document(
             prepared.uri,
             prepared.version,
-            prepared.source,
+            prepared.content,
             prepared.kind,
+            true,
         );
         true
     }
@@ -740,10 +886,64 @@ impl SessionState {
         self.documents.get(uri).map(|record| &record.document)
     }
 
+    pub(in crate::session) fn syntax_document_snapshot(
+        &self,
+        uri: &Uri,
+    ) -> Option<SyntaxDocumentSnapshot> {
+        let record = self.documents.get(uri)?;
+        Some(SyntaxDocumentSnapshot {
+            uri: uri.clone(),
+            document: Arc::clone(record.syntax_document.as_ref()?),
+            document_epoch: record.epoch,
+            cancellation: record.syntax_cancellation.clone(),
+        })
+    }
+
+    pub(in crate::session) fn is_syntax_document_current(
+        &self,
+        snapshot: &SyntaxDocumentSnapshot,
+    ) -> bool {
+        self.documents.get(&snapshot.uri).is_some_and(|record| {
+            record.epoch == snapshot.document_epoch
+                && !record.syntax_cancellation.is_cancelled()
+                && record
+                    .syntax_document
+                    .as_ref()
+                    .is_some_and(|document| Arc::ptr_eq(document, &snapshot.document))
+        })
+    }
+
+    pub(in crate::session) fn semantic_tokens_state_for_delta(
+        &self,
+        uri: &Uri,
+        previous_result_id: &str,
+    ) -> Option<Arc<SemanticTokensState>> {
+        self.documents
+            .get(uri)
+            .and_then(|record| record.semantic_tokens_state.as_ref())
+            .and_then(|state| (state.result_id == previous_result_id).then(|| Arc::clone(state)))
+    }
+
+    pub(in crate::session) fn set_semantic_tokens_state_if_syntax_current(
+        &mut self,
+        snapshot: &SyntaxDocumentSnapshot,
+        state: SemanticTokensState,
+    ) -> bool {
+        if !self.is_syntax_document_current(snapshot) {
+            return false;
+        }
+        let Some(record) = self.documents.get_mut(&snapshot.uri) else {
+            return false;
+        };
+        record.semantic_tokens_state = Some(Arc::new(state));
+        true
+    }
+
     pub(super) fn remove(&mut self, uri: &Uri) {
         self.analysis_executor.forget(uri);
         self.open_document_tracker.advance(uri);
-        if self.documents.remove(uri).is_some() {
+        if let Some(record) = self.documents.remove(uri) {
+            record.syntax_cancellation.cancel();
             self.advance_documents_revision();
         }
         self.analysis_cache.remove(uri);
@@ -755,13 +955,9 @@ struct DocumentRecord {
     document: StoredDocument,
     epoch: DocumentEpoch,
     diagnostic_state: Option<StoredDiagnosticState>,
-    semantic_tokens_state: Option<StoredSemanticTokensState>,
-}
-
-#[derive(Debug, Clone)]
-struct StoredSemanticTokensState {
-    snapshot_generation: SnapshotGeneration,
-    state: Arc<SemanticTokensState>,
+    syntax_document: Option<Arc<SyntaxDocumentState>>,
+    syntax_cancellation: AnalysisCancellationToken,
+    semantic_tokens_state: Option<Arc<SemanticTokensState>>,
 }
 
 #[derive(Debug, Clone)]
@@ -920,10 +1116,18 @@ impl LanguageSession {
             ticket
         };
         let resource_limits = ticket.resource_limits;
-        let source = document_source_descriptor(&uri, kind);
         let cancellation = self.inner.cancellation.child();
+        let preparation_uri = uri.clone();
         let prepared = match tokio::task::spawn_blocking(move || {
-            prepare_document_source_cancellable(text, resource_limits, &source, &cancellation)
+            prepare_document_content_cancellable(
+                &preparation_uri,
+                version,
+                kind,
+                text,
+                resource_limits,
+                None,
+                &cancellation,
+            )
         })
         .await
         {

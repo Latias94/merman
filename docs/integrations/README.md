@@ -71,9 +71,9 @@ when a subprocess integration is a better fit.
 ## Editors
 
 Use [`merman-lsp`](../../crates/merman-lsp/README.md) for completion, hover, document symbols,
-navigation, rename, selection and folding ranges, semantic tokens, diagnostics, and fix-backed code
-actions. The LSP does not render previews; let the editor's Markdown preview, another Mermaid
-preview extension, or `merman-cli` own rendering.
+navigation, rename, selection and folding ranges, Tree-sitter syntax highlighting, diagnostics, and
+fix-backed code actions. The LSP does not render previews; let the editor's Markdown preview,
+another Mermaid preview extension, or `merman-cli` own rendering.
 
 The [VS Code extension](../../tools/vscode-extension/README.md) combines the local LSP with optional
 preview and export. Disable only the overlapping surface when another tool owns it:

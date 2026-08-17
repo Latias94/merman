@@ -96,6 +96,11 @@ Downstream Neovim, Helix, and Zed changes happen only after the immutable GitHub
 Those repositories pin the release commit and their own query copies; they do not consume the npm
 or Cargo package directly.
 
+Publish the Cargo package before any workspace release whose `merman-lsp` manifest names that exact
+version. The Playground's monorepo build consumes the distribution source tree directly. External
+browser consumers use the npm package's WASM and query surface, so installation instructions must
+not assume those registry assets exist until the npm publication completes.
+
 ## Semver before 1.0
 
 Use a minor release for named-node or field removals, canonical capture removals, language ABI

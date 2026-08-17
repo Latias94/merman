@@ -52,16 +52,6 @@ impl LanguageSession {
         interactive_result(self.try_acquire_snapshot(uri).await?, structure_stale_error)
     }
 
-    pub(super) async fn acquire_semantic_token_snapshot(
-        &self,
-        uri: &Uri,
-    ) -> Result<Option<AcquiredSnapshot>> {
-        interactive_result(
-            self.try_acquire_snapshot(uri).await?,
-            semantic_tokens_stale_error,
-        )
-    }
-
     pub(super) async fn acquire_code_action_context(
         &self,
         uri: &Uri,
@@ -308,10 +298,6 @@ fn interactive_result<T>(
         AcquisitionAttempt::Unavailable | AcquisitionAttempt::Missing => Ok(None),
         AcquisitionAttempt::Stale => Err(stale_error()),
     }
-}
-
-pub(super) fn semantic_tokens_stale_error() -> tower_lsp_server::jsonrpc::Error {
-    stale_error("semantic tokens document changed while computing")
 }
 
 fn structure_stale_error() -> tower_lsp_server::jsonrpc::Error {

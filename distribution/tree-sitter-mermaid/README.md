@@ -57,8 +57,10 @@ const parser = new Parser();
 parser.setLanguage(language);
 ```
 
-Merman's Playground continues to use its existing semantic-token provider by default. A future
-Tree-sitter CST or query inspector can load this WASM lazily without replacing the semantic path.
+Merman's Playground loads this WASM and the canonical portable highlight query in a dedicated
+syntax worker. Strict diagnostics, completion, navigation, and rename still come from Merman's
+separate semantic worker; browser consumers can adopt the same split without a grammar-specific
+JavaScript SDK.
 
 ## Rust
 

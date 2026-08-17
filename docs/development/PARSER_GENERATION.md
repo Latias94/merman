@@ -45,9 +45,10 @@ Fresh output only proves that generation is reproducible. A grammar change must 
 behavioral surface it affects:
 
 1. Run the focused parser tests for the changed diagram family.
-2. Run the corresponding analysis and editor tests when token spans, recovery, diagnostics,
-   completion, or semantic tokens can change.
-3. Run LSP tests when the new parser behavior is exposed through an editor request.
+2. Run the corresponding analysis and editor tests when semantic spans, recovery, diagnostics, or
+   completion can change.
+3. Run LSP tests when the new parser behavior is exposed through a semantic editor request.
+   Syntax-highlighting changes belong to `distribution/tree-sitter-mermaid` and its query tests.
 4. Run the workspace and strict gates before release.
 
 Parser generation belongs to the maintainer toolchain in `xtask`; published `merman-core` builds

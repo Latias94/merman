@@ -14,7 +14,9 @@ Merman for VS Code is a local Mermaid authoring tool. It can run beside VS Code'
 - `merman.diagnostics.enabled` controls whether Merman diagnostics are published to VS Code Problems.
 - `merman.sourceActions.enabled` controls Merman CodeLens rows above `.mmd` files and Markdown/MDX Mermaid fences.
 
-Neither setting disables the language server. Completion, hover, document symbols, references, rename, semantic tokens, rule catalog, and config schema requests remain available while the server is running. Workspace symbols are not currently registered with clients.
+Neither setting disables the language server. Tree-sitter syntax highlighting, completion, hover,
+document symbols, references, rename, rule catalog, and config schema requests remain available
+while the server is running. Workspace symbols are not currently registered with clients.
 
 ## Common Modes
 

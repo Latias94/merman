@@ -398,6 +398,10 @@ Verification claim:
 
 ### 2026-08-05 - R16 Editor Worker Artifact Decision
 
+> Superseded on 2026-08-17. The dual-build receipt, semantic-token equivalence matrix, and
+> artifact-selection scripts described below were removed when Tree-sitter became the sole syntax
+> highlighter. This section remains only as historical evidence for the earlier artifact decision.
+
 Changes:
 
 - Replaced the VM/transpile semantic-token harness with importable TypeScript protocol, client,
@@ -450,7 +454,8 @@ Results:
   and the current dependency/lockfile/Worker-import topology without recomputing historical content
   digests. Routine implementation drift uses ordinary build, provenance, semantic, and contract
   tests rather than a browser-measurement gate. The complete receipt is checked in at
-  [`playground/editor-artifact-receipt-v2.json`](../../../playground/editor-artifact-receipt-v2.json).
+  `playground/editor-artifact-receipt-v2.json`; that receipt was deleted with the superseded
+  pipeline on 2026-08-17.
 
 ### 2026-08-06 - Behavior-Owned Evidence Boundaries
 

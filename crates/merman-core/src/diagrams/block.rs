@@ -1,10 +1,9 @@
 use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
-    editor::{EditorLexemeJournal, trailing_ascii_whitespace_slot},
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult,
+    ParseMetadata, Result, SourceSpan, editor::trailing_ascii_whitespace_slot,
 };
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
@@ -1295,7 +1294,6 @@ struct Parser<'input, 'control> {
     gen_counter: i64,
     declared_entities: HashSet<String>,
     editor_facts: EditorSemanticFacts,
-    lexemes: EditorLexemeJournal<'input>,
 }
 
 impl<'input, 'control> Parser<'input, 'control> {
@@ -1307,60 +1305,11 @@ impl<'input, 'control> Parser<'input, 'control> {
             gen_counter: 0,
             declared_entities: HashSet::new(),
             editor_facts: EditorSemanticFacts::new(),
-            lexemes: EditorLexemeJournal::family_parser(input),
         }
     }
 
-    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+    fn into_editor_facts(self) -> EditorSemanticFacts {
         self.editor_facts
-            .replace_family_lexemes(self.lexemes.finish());
-        self.editor_facts
-    }
-
-    fn record_lexeme(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
-        self.record_lexeme_with_modifiers(kind, EditorLexemeModifiers::NONE, span);
-    }
-
-    fn record_lexeme_with_modifier(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifier: EditorLexemeModifier,
-        span: SourceSpan,
-    ) {
-        self.record_lexeme_with_modifiers(
-            kind,
-            EditorLexemeModifiers::from_modifier(modifier),
-            span,
-        );
-    }
-
-    fn record_lexeme_with_modifiers(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifiers: EditorLexemeModifiers,
-        span: SourceSpan,
-    ) {
-        if span.start < span.end {
-            self.lexemes.push(kind, modifiers, span);
-        }
-    }
-
-    fn record_keyword(&mut self, start: usize, keyword: &str) {
-        if let Some(keyword) = keyword.strip_suffix(':') {
-            self.record_lexeme(
-                EditorLexemeKind::Keyword,
-                SourceSpan::new(start, start + keyword.len()),
-            );
-            self.record_lexeme(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(start + keyword.len(), start + keyword.len() + 1),
-            );
-        } else {
-            self.record_lexeme(
-                EditorLexemeKind::Keyword,
-                SourceSpan::new(start, start + keyword.len()),
-            );
-        }
     }
 
     fn is_eof(&self) -> bool {
@@ -1482,9 +1431,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         if !self.peek_keyword(kw) {
             return false;
         }
-        let start = self.pos;
         self.pos += kw.len();
-        self.record_keyword(start, kw);
         true
     }
 
@@ -1500,9 +1447,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             return false;
         }
         if kw.ends_with(':') {
-            let start = self.pos;
             self.pos += kw.len();
-            self.record_keyword(start, kw);
             return true;
         }
         let after = &self.input[self.pos + kw.len()..];
@@ -1511,9 +1456,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             .next()
             .is_none_or(|c| c.is_whitespace() || c == ':')
         {
-            let start = self.pos;
             self.pos += kw.len();
-            self.record_keyword(start, kw);
             return true;
         }
         false
@@ -1524,12 +1467,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         if !self.starts_with(s) {
             return false;
         }
-        let start = self.pos;
         self.pos += s.len();
-        self.record_lexeme(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(start, self.pos),
-        );
         true
     }
 
@@ -1775,16 +1713,6 @@ impl<'input, 'control> Parser<'input, 'control> {
         let id = self.parse_classdef_id()?;
         let rest_start = self.pos;
         let css = self.take_rest_of_line_trimmed();
-        if id.text == "default" {
-            self.record_lexeme(EditorLexemeKind::Keyword, id.span);
-        } else {
-            self.record_lexeme_with_modifier(
-                EditorLexemeKind::Identifier,
-                EditorLexemeModifier::Definition,
-                id.span,
-            );
-        }
-        self.record_lexeme(EditorLexemeKind::Style, css.span);
         push_block_class_definition(
             &mut self.editor_facts,
             id.clone(),
@@ -1826,22 +1754,15 @@ impl<'input, 'control> Parser<'input, 'control> {
                 EditorExpectedSyntaxKind::Directive,
                 SourceSpan::new(directive_start, line_end),
             ));
-        let ids = self
-            .parse_identifier_list(EditorLexemeModifier::Reference)
-            .inspect_err(|_| {
-                self.editor_facts
-                    .push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::IdList,
-                        SourceSpan::new(line_end, line_end),
-                    ));
-            })?;
+        let ids = self.parse_identifier_list().inspect_err(|_| {
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::IdList,
+                    SourceSpan::new(line_end, line_end),
+                ));
+        })?;
         let rest_start = self.pos;
         let style_class = self.take_rest_of_line_trimmed();
-        self.record_lexeme_with_modifier(
-            EditorLexemeKind::Identifier,
-            EditorLexemeModifier::Reference,
-            style_class.span,
-        );
         push_block_id_list(
             &mut self.editor_facts,
             ids.clone(),
@@ -1886,18 +1807,15 @@ impl<'input, 'control> Parser<'input, 'control> {
                 EditorExpectedSyntaxKind::Directive,
                 SourceSpan::new(directive_start, line_end),
             ));
-        let ids = self
-            .parse_identifier_list(EditorLexemeModifier::Reference)
-            .inspect_err(|_| {
-                self.editor_facts
-                    .push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::IdList,
-                        SourceSpan::new(line_end, line_end),
-                    ));
-            })?;
+        let ids = self.parse_identifier_list().inspect_err(|_| {
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::IdList,
+                    SourceSpan::new(line_end, line_end),
+                ));
+        })?;
         let rest_start = self.pos;
         let styles_str = self.take_rest_of_line_trimmed();
-        self.record_lexeme(EditorLexemeKind::Style, styles_str.span);
         push_block_id_list(
             &mut self.editor_facts,
             ids.clone(),
@@ -1950,12 +1868,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             let mut width = 1;
             self.skip_inline_whitespace();
             if self.peek_char() == Some(':') {
-                let delimiter_start = self.pos;
                 self.bump();
-                self.record_lexeme(
-                    EditorLexemeKind::Delimiter,
-                    SourceSpan::new(delimiter_start, self.pos),
-                );
                 self.skip_inline_whitespace();
                 let start = self.pos;
                 while self.peek_char().is_some_and(|c| c.is_ascii_digit()) {
@@ -1976,7 +1889,6 @@ impl<'input, 'control> Parser<'input, 'control> {
                     )
                 })?;
                 validate_block_space_width(width, SourceSpan::new(start, self.pos))?;
-                self.record_lexeme(EditorLexemeKind::Number, SourceSpan::new(start, self.pos));
                 push_block_payload(
                     &mut self.editor_facts,
                     BlockSpannedText {
@@ -2120,15 +2032,13 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
 
         let snapshot = self.pos;
-        let mut partial_start_marker = None;
-        if let Some(start_marker) = self.try_read_link_start_marker() {
+        let mut saw_partial_start_marker = false;
+        if self.try_read_link_start_marker().is_some() {
             self.skip_ws_and_comments();
             if self.peek_char() == Some('"') {
-                self.record_lexeme(EditorLexemeKind::Operator, start_marker.span);
                 let label = self.parse_string_literal()?;
                 self.skip_ws_and_comments();
                 if let Some(edge_marker) = self.try_read_link_full_marker() {
-                    self.record_lexeme(EditorLexemeKind::Operator, edge_marker.span);
                     return Ok(Some((Some(label), edge_marker.text)));
                 }
                 self.pos = snapshot;
@@ -2137,16 +2047,14 @@ impl<'input, 'control> Parser<'input, 'control> {
                     "expected edge marker after block edge label".to_string(),
                 ));
             }
-            partial_start_marker = Some(start_marker);
+            saw_partial_start_marker = true;
             self.pos = snapshot;
         }
 
         if let Some(edge_marker) = self.try_read_link_full_marker() {
-            self.record_lexeme(EditorLexemeKind::Operator, edge_marker.span);
             return Ok(Some((None, edge_marker.text)));
         }
-        if let Some(start_marker) = partial_start_marker {
-            self.record_lexeme(EditorLexemeKind::Operator, start_marker.span);
+        if saw_partial_start_marker {
             self.pos = snapshot;
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
@@ -2221,12 +2129,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
         if self.starts_with("<[") {
             self.push_block_node_occurrence(&id, detail, kind, BlockNodeOccurrence::Definition);
-            let delimiter_start = self.pos;
             self.pos += 2;
-            self.record_lexeme(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(delimiter_start, self.pos),
-            );
             self.skip_ws_and_comments();
             let label = self.parse_string_literal()?;
             push_block_payload(
@@ -2271,12 +2174,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         if let Some(delims) = node_delims_at_start(&self.input[self.pos..]) {
             self.push_block_node_occurrence(&id, detail, kind, BlockNodeOccurrence::Definition);
             let start_delim = delims.start;
-            let delimiter_start = self.pos;
             self.pos += start_delim.len();
-            self.record_lexeme(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(delimiter_start, self.pos),
-            );
             self.skip_ws_and_comments();
             let label = self.parse_string_literal_or_md()?;
             push_block_payload(
@@ -2341,12 +2239,6 @@ impl<'input, 'control> Parser<'input, 'control> {
             }
             BlockNodeOccurrence::RelationEndpoint => self.declared_entities.insert(id.text.clone()),
         };
-        let modifier = if is_entity {
-            EditorLexemeModifier::Definition
-        } else {
-            EditorLexemeModifier::Reference
-        };
-        self.record_lexeme_with_modifier(EditorLexemeKind::Identifier, modifier, id.span);
         if is_entity {
             push_block_entity(&mut self.editor_facts, id.clone(), detail, kind);
         } else {
@@ -2397,21 +2289,15 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
         let dir = self.input[start..self.pos].trim().to_string();
         match dir.as_str() {
-            "right" | "left" | "x" | "y" | "up" | "down" => {
-                self.record_lexeme(EditorLexemeKind::Keyword, SourceSpan::new(start, self.pos));
-                Ok(BlockSpannedText {
-                    text: dir,
-                    span: SourceSpan::new(start, self.pos),
-                })
-            }
-            _ => {
-                self.record_lexeme(EditorLexemeKind::Literal, SourceSpan::new(start, self.pos));
-                Err(Error::diagram_parse_exact(
-                    "block",
-                    format!("invalid direction: {dir}"),
-                    SourceSpan::new(start, self.pos),
-                ))
-            }
+            "right" | "left" | "x" | "y" | "up" | "down" => Ok(BlockSpannedText {
+                text: dir,
+                span: SourceSpan::new(start, self.pos),
+            }),
+            _ => Err(Error::diagram_parse_exact(
+                "block",
+                format!("invalid direction: {dir}"),
+                SourceSpan::new(start, self.pos),
+            )),
         }
     }
 
@@ -2472,33 +2358,14 @@ impl<'input, 'control> Parser<'input, 'control> {
         Ok(BlockSpannedText { text, span })
     }
 
-    fn parse_identifier_list(
-        &mut self,
-        modifier: EditorLexemeModifier,
-    ) -> Result<BlockSpannedText> {
+    fn parse_identifier_list(&mut self) -> Result<BlockSpannedText> {
         self.skip_inline_whitespace();
         let start = self.pos;
-        let mut identifier_start = self.pos;
         while let Some(c) = self.peek_char() {
             if c.is_whitespace() || c == '\n' || c == '\r' {
                 break;
             }
-            if c == ',' {
-                self.record_lexeme_with_modifier(
-                    EditorLexemeKind::Identifier,
-                    modifier,
-                    SourceSpan::new(identifier_start, self.pos),
-                );
-                let delimiter_start = self.pos;
-                self.bump();
-                self.record_lexeme(
-                    EditorLexemeKind::Delimiter,
-                    SourceSpan::new(delimiter_start, self.pos),
-                );
-                identifier_start = self.pos;
-            } else {
-                self.bump();
-            }
+            self.bump();
         }
         if self.pos == start {
             return Err(Error::diagram_parse_fallback(
@@ -2506,11 +2373,6 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected identifier".to_string(),
             ));
         }
-        self.record_lexeme_with_modifier(
-            EditorLexemeKind::Identifier,
-            modifier,
-            SourceSpan::new(identifier_start, self.pos),
-        );
         Ok(BlockSpannedText {
             text: self.input[start..self.pos].to_string(),
             span: SourceSpan::new(start, self.pos),
@@ -2533,7 +2395,6 @@ impl<'input, 'control> Parser<'input, 'control> {
         let value = text
             .parse::<i64>()
             .map_err(|e| Error::diagram_parse_fallback("block".to_string(), e.to_string()))?;
-        self.record_lexeme(EditorLexemeKind::Number, SourceSpan::new(start, self.pos));
         Ok((
             value,
             BlockSpannedText {
@@ -2546,18 +2407,12 @@ impl<'input, 'control> Parser<'input, 'control> {
     fn parse_string_literal_or_md(&mut self) -> Result<BlockSpannedText> {
         self.skip_ws_and_comments();
         if self.starts_with("\"`") {
-            let opening_start = self.pos;
             self.pos += 2;
-            self.record_lexeme(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(opening_start, self.pos),
-            );
             let start = self.pos;
             while self.pos < self.input.len() && !self.input[self.pos..].starts_with("`\"") {
                 self.bump();
             }
             if self.pos >= self.input.len() {
-                self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, self.pos));
                 return Err(Error::diagram_parse_fallback(
                     "block".to_string(),
                     "unterminated markdown string".to_string(),
@@ -2566,8 +2421,6 @@ impl<'input, 'control> Parser<'input, 'control> {
             let end = self.pos;
             let inner = self.input[start..end].to_string();
             self.pos += 2;
-            self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, end));
-            self.record_lexeme(EditorLexemeKind::Delimiter, SourceSpan::new(end, self.pos));
             return Ok(BlockSpannedText {
                 text: inner,
                 span: SourceSpan::new(start, end),
@@ -2584,12 +2437,7 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected string literal".to_string(),
             ));
         }
-        let opening_start = self.pos;
         self.bump();
-        self.record_lexeme(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(opening_start, self.pos),
-        );
         let start = self.pos;
         while let Some(c) = self.peek_char() {
             if c == '"' {
@@ -2598,7 +2446,6 @@ impl<'input, 'control> Parser<'input, 'control> {
             self.bump();
         }
         if self.peek_char() != Some('"') {
-            self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, self.pos));
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
                 "unterminated string literal".to_string(),
@@ -2607,8 +2454,6 @@ impl<'input, 'control> Parser<'input, 'control> {
         let end = self.pos;
         let inner = self.input[start..end].to_string();
         self.bump();
-        self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, end));
-        self.record_lexeme(EditorLexemeKind::Delimiter, SourceSpan::new(end, self.pos));
         Ok(BlockSpannedText {
             text: inner,
             span: SourceSpan::new(start, end),
@@ -2680,8 +2525,8 @@ pub(crate) fn parse_block_with_warning_facts(
 mod tests {
     use super::*;
     use crate::{
-        EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, ParseDiagnosticSpanKind,
-        ParseOptions, RenderSemanticModel,
+        EditorSemanticCompleteness, Engine, ParseDiagnosticSpanKind, ParseOptions,
+        RenderSemanticModel,
     };
     use futures::executor::block_on;
 
@@ -3103,104 +2948,7 @@ C<["Route"]>(left,down)
     }
 
     #[test]
-    fn block_parser_emits_exact_lexemes_for_the_complete_grammar_surface() {
-        let text = concat!(
-            "block-beta\r\n",
-            "  columns 3\r\n",
-            "  block:容器[\"组\"]\r\n",
-            "    columns auto\r\n",
-            "    user((\"用户\")):2\r\n",
-            "    route<[\"流\"]>(right, down)\r\n",
-            "    user -- \"发送\" --> api[\"接口\"]\r\n",
-            "  end\r\n",
-            "  classDef hot fill:#f00,stroke:#111\r\n",
-            "  class user,api hot\r\n",
-            "  style api fill:#0f0\r\n",
-            "  space:2\r\n",
-        );
-        parse_block(text, &meta()).expect("grammar-surface fixture must stay render-compatible");
-        let facts = crate::family::test_support::editor_facts(
-            parse_block_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(facts.lexeme_failure(), None);
-        assert!(!facts.lexemes().is_empty());
-        assert!(
-            facts.lexemes().iter().all(|lexeme| {
-                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
-            })
-        );
-        assert!(
-            facts
-                .lexemes()
-                .windows(2)
-                .all(|pair| pair[0].span().end <= pair[1].span().start)
-        );
-
-        let assert_lexeme = |needle: &str, kind: EditorLexemeKind| {
-            let start = text
-                .find(needle)
-                .unwrap_or_else(|| panic!("missing fixture slice {needle:?}"));
-            let span = SourceSpan::new(start, start + needle.len());
-            assert!(
-                facts
-                    .lexemes()
-                    .iter()
-                    .any(|lexeme| lexeme.kind() == kind && lexeme.span() == span),
-                "missing {kind:?} lexeme for {needle:?} at {span:?}"
-            );
-        };
-
-        assert_lexeme("block-beta", EditorLexemeKind::Keyword);
-        assert_lexeme("3", EditorLexemeKind::Number);
-        assert_lexeme("容器", EditorLexemeKind::Identifier);
-        assert_lexeme("组", EditorLexemeKind::String);
-        assert_lexeme("auto", EditorLexemeKind::Keyword);
-        assert_lexeme("<[", EditorLexemeKind::Delimiter);
-        assert_lexeme("流", EditorLexemeKind::String);
-        assert_lexeme("right", EditorLexemeKind::Keyword);
-        assert_lexeme(",", EditorLexemeKind::Delimiter);
-        assert_lexeme("--", EditorLexemeKind::Operator);
-        assert_lexeme("发送", EditorLexemeKind::String);
-        assert_lexeme("-->", EditorLexemeKind::Operator);
-        assert_lexeme("fill:#f00,stroke:#111", EditorLexemeKind::Style);
-
-        let class_targets = text.find("user,api hot").unwrap();
-        for (start, end) in [
-            (class_targets, class_targets + "user".len()),
-            (
-                class_targets + "user,".len(),
-                class_targets + "user,api".len(),
-            ),
-        ] {
-            let lexeme = facts
-                .lexemes()
-                .iter()
-                .find(|lexeme| {
-                    lexeme.kind() == EditorLexemeKind::Identifier
-                        && lexeme.span() == SourceSpan::new(start, end)
-                })
-                .expect("class target must be emitted as its own identifier");
-            assert!(lexeme.modifiers().contains(EditorLexemeModifier::Reference));
-        }
-
-        let unicode_span = facts
-            .lexemes()
-            .iter()
-            .find(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::String
-                    && &text[lexeme.span().start..lexeme.span().end] == "接口"
-            })
-            .expect("Unicode label must retain caller-source byte coordinates")
-            .span();
-        assert_eq!(unicode_span.end - unicode_span.start, "接口".len());
-    }
-
-    #[test]
-    fn block_recovery_keeps_confirmed_prefix_and_later_parser_lexemes() {
+    fn block_recovery_keeps_confirmed_prefix_and_later_semantics() {
         let text = concat!(
             "block-beta\r\n",
             "  A<[\"方向\"]>(right, sideways)\r\n",
@@ -3222,25 +2970,9 @@ C<["Route"]>(left,down)
             &meta(),
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
-        assert!(facts.lexemes().iter().all(|lexeme| {
-            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-        }));
-
-        for (needle, kind) in [
-            ("A", EditorLexemeKind::Identifier),
-            ("方向", EditorLexemeKind::String),
-            ("right", EditorLexemeKind::Keyword),
-            ("sideways", EditorLexemeKind::Literal),
-            ("后续", EditorLexemeKind::Identifier),
-            ("完成", EditorLexemeKind::String),
-        ] {
-            let start = text.find(needle).unwrap();
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == SourceSpan::new(start, start + needle.len())
-            }));
-        }
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "后续"));
+        assert_eq!(facts.diagnostics[0].span, Some(invalid_span));
     }
 
     #[test]
@@ -3254,19 +2986,8 @@ C<["Route"]>(left,down)
         );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
-        for (needle, kind) in [
-            ("o--", EditorLexemeKind::Operator),
-            ("label", EditorLexemeKind::String),
-            ("B", EditorLexemeKind::Identifier),
-            ("later", EditorLexemeKind::String),
-        ] {
-            let start = text.find(needle).unwrap();
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == SourceSpan::new(start, start + needle.len())
-            }));
-        }
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "B"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
     }
 
     #[test]

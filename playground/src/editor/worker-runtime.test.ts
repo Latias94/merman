@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   BrowserEditorSession,
-  EditorSemanticTokenDescriptor,
   RuntimeCatalog,
 } from "@mermanjs/web";
 import {
@@ -18,7 +17,6 @@ import {
 } from "./worker-runtime.ts";
 
 const URI = "file:///merman/runtime-test.mmd";
-const LEGEND_DIGEST = "sha256:runtime-test";
 const COMPLETION_TRIGGER_CHARACTERS = [
   " ",
   "\n",
@@ -58,7 +56,7 @@ class RuntimePort implements EditorWorkerRuntimePort {
   }
 }
 
-test("runtime owns one native session and projects all eleven query kinds", async () => {
+test("runtime owns one native session and projects all semantic query kinds", async () => {
   const port = new RuntimePort();
   const calls: string[] = [];
   const session = createSession(calls);
@@ -70,10 +68,8 @@ test("runtime owns one native session and projects all eleven query kinds", asyn
     type: "ready",
     requestId: 1,
     completionTriggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
-    transportApiVersion: 4,
+    transportApiVersion: 5,
     editorSchema: EDITOR_SCHEMA_VERSION,
-    legendDigest: LEGEND_DIGEST,
-    legend: { tokenTypes: ["keyword"], tokenModifiers: ["entity"] },
   });
 
   await runtime.receive({
@@ -98,7 +94,6 @@ test("runtime owns one native session and projects all eleven query kinds", asyn
     { kind: "references", position: position(), includeDeclaration: true },
     { kind: "prepareRename", position: position() },
     { kind: "rename", position: position(), newName: "Renamed" },
-    { kind: "semanticTokens" },
   ];
 
   for (const [index, query] of queries.entries()) {
@@ -106,11 +101,6 @@ test("runtime owns one native session and projects all eleven query kinds", asyn
     await runtime.receive(queryRequest(requestId, query, 7));
     const response = port.take(requestId);
     assert.equal(response.type, "queryResult");
-    if (query.kind === "semanticTokens") {
-      assert(response.type === "queryResult");
-      assert(response.result instanceof Uint32Array);
-      assert.deepEqual([...response.result], [0, 0, 4, 0, 0]);
-    }
   }
 
   assert.deepEqual(calls, [
@@ -127,48 +117,11 @@ test("runtime owns one native session and projects all eleven query kinds", asyn
     "references",
     "prepareRename",
     "rename",
-    "semanticTokens",
   ]);
 
   await runtime.receive({ protocol: EDITOR_WORKER_PROTOCOL, type: "dispose" });
   assert.equal(calls.at(-1), "dispose");
   assert.equal(port.closeCalls, 1);
-});
-
-test("semantic token response transfers the projected typed-array buffer", async () => {
-  const port = new RuntimePort();
-  const runtime = createEditorWorkerRuntime(
-    port,
-    bindings(createSession([]), []),
-  );
-  await openRuntime(runtime, port);
-
-  await runtime.receive(queryRequest(3, { kind: "semanticTokens" }));
-  const responseIndex = port.messages.findIndex(
-    (message) => message.requestId === 3,
-  );
-  assert.notEqual(responseIndex, -1);
-  const response = port.messages[responseIndex];
-  const transfer = port.transfers[responseIndex];
-  assert(response.type === "queryResult");
-  assert(response.result instanceof Uint32Array);
-  assert.deepEqual(transfer, [response.result.buffer]);
-});
-
-test("initialization rejects semantic descriptor drift before ready", async () => {
-  const port = new RuntimePort();
-  const runtimeBindings = bindings(createSession([]), []);
-  const runtime = createEditorWorkerRuntime(port, {
-    ...runtimeBindings,
-    editorSemanticTokenDescriptor: () =>
-      semanticTokenDescriptor("sha256:drifted"),
-  });
-
-  await runtime.receive(request(1, "initialize"));
-  const response = port.take(1);
-  assert.equal(response.type, "error");
-  assert.equal(response.code, "PROTOCOL_MISMATCH");
-  assert.match(response.message, /does not match/);
 });
 
 test("initialization rejects an unsupported Web transport API", async () => {
@@ -178,17 +131,17 @@ test("initialization rejects an unsupported Web transport API", async () => {
     ...runtimeBindings,
     runtimeCatalog: () =>
       ({
-        transport_api_version: 5,
+        transport_api_version: 6,
         capabilities: { capability_ids: ["editor"] },
       }) as RuntimeCatalog,
-    transportApiVersion: () => 5,
+    transportApiVersion: () => 6,
   });
 
   await runtime.receive(request(1, "initialize"));
   const response = port.take(1);
   assert.equal(response.type, "error");
   assert.equal(response.code, "PROTOCOL_MISMATCH");
-  assert.match(response.message, /incompatible with 4/u);
+    assert.match(response.message, /incompatible with 5/u);
 });
 
 test("invalid rename remains request-local and later diagnostics still work", async () => {
@@ -241,7 +194,7 @@ test("malformed messages fail closed and release the native session", async (t) 
       type: "query",
       uri: URI,
       version: 1,
-      legendDigest: LEGEND_DIGEST,
+      removedTokenContract: true,
       query: { kind: "references", position: position() },
     });
 
@@ -300,28 +253,16 @@ function bindings(
     async initMerman() {
       calls.push("init");
     },
-    editorSemanticTokenDescriptor: () => semanticTokenDescriptor(),
     editorCompletionTriggerCharacters: () => [
       ...COMPLETION_TRIGGER_CHARACTERS,
     ],
-    legendDigest: LEGEND_DIGEST,
     runtimeCatalog: () =>
       ({
-        transport_api_version: 4,
+        transport_api_version: 5,
         capabilities: { capability_ids: ["editor"] },
       }) as RuntimeCatalog,
-    transportApiVersion: () => 4,
+    transportApiVersion: () => 5,
   };
-}
-
-function semanticTokenDescriptor(
-  digest = LEGEND_DIGEST,
-): EditorSemanticTokenDescriptor {
-  return {
-    digest,
-    modifierLspNames: ["entity"],
-    tokenTypeLspNames: ["keyword"],
-  } as unknown as EditorSemanticTokenDescriptor;
 }
 
 function createSession(calls: string[]): BrowserEditorSession {
@@ -331,7 +272,7 @@ function createSession(calls: string[]): BrowserEditorSession {
     get version() {
       return version;
     },
-    update(source, nextVersion) {
+    update(source: string, nextVersion: number) {
       calls.push(`update:${nextVersion}:${source}`);
       version = nextVersion;
     },
@@ -384,14 +325,10 @@ function createSession(calls: string[]): BrowserEditorSession {
       calls.push("rename");
       return null;
     },
-    semanticTokens() {
-      calls.push("semanticTokens");
-      return new Uint32Array([0, 0, 4, 0, 0]);
-    },
     dispose() {
       calls.push("dispose");
     },
-  };
+  } as unknown as BrowserEditorSession;
 }
 
 function diagnosticsResult() {
@@ -422,7 +359,6 @@ function queryRequest(
     type: "query",
     uri: URI,
     version,
-    legendDigest: LEGEND_DIGEST,
     query,
   };
 }
