@@ -705,7 +705,6 @@ pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value)
 }
 
 #[cfg(test)]
-#[cfg(test)]
 pub(super) fn treemap_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
