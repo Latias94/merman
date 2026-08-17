@@ -25,6 +25,7 @@ import {
   projectError,
   type ErrorProjection,
 } from "../error-projection.ts";
+import { applyScreenAvailableWidth } from "./screen-environment.ts";
 
 export async function startCompareRealm(
   boot: RealmBootIdentity,
@@ -192,6 +193,7 @@ export function serveCompareRealmPort(
           reportStage("adapter-import");
           let engine: CompareEngineModule;
           try {
+            applyScreenAvailableWidth(request.payload.screenAvailableWidth);
             engine = await loadEngine();
           } catch (error) {
             throw new RealmOperationError("adapter-import", projectError(error));

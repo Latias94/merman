@@ -159,32 +159,6 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   errors.assertNone();
 });
 
-test("Host viewport gives both Compare engines the measured Preview allocation", async ({
-  page,
-}) => {
-  const errors = monitorBrowserErrors(page);
-  await openPlayground(page);
-  await waitForPreviewSvg(page);
-
-  const control = page.getByTestId("render-viewport-control");
-  await control.getByRole("button", { name: "Host", exact: true }).click();
-  await expect(control).toHaveAttribute("data-viewport-status", "host");
-  const viewport = {
-    width: Number(await control.getAttribute("data-viewport-width")),
-    height: Number(await control.getAttribute("data-viewport-height")),
-  };
-  expect(viewport.width).toBeGreaterThan(0);
-  expect(viewport.height).toBeGreaterThan(0);
-
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
-  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
-    1,
-  );
-  await expect.poll(() => compareRealmUsesViewport(page, viewport)).toBe(true);
-  await expect.poll(() => compareSvgTexts(page)).toHaveLength(2);
-  errors.assertNone();
-});
-
 test("Compare detection and rendering share external ELK configuration", async ({
   page,
 }) => {

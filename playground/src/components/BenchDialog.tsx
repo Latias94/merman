@@ -43,6 +43,7 @@ import type {
   BenchmarkRunRequest,
 } from "@/src/benchmark/controller";
 import type { BenchmarkDocumentLifecycle } from "@/src/benchmark/document-lifecycle";
+import { createCanonicalBenchmarkPayload } from "@/src/benchmark/input";
 import {
   MERMAID_JS_VERSION,
   mermaidExternalRequirementsFor,
@@ -51,7 +52,6 @@ import {
   selectMermanFacade,
   useMermanRuntime,
 } from "@/src/runtime/use-merman-runtime";
-import { CANONICAL_RENDER_VIEWPORT } from "@/src/runtime/render-viewport";
 import {
   projectError,
   type ErrorProjection,
@@ -220,14 +220,13 @@ export function BenchDialog({
       );
       const commonRequest = {
         iterations,
-        payload: {
+        payload: createCanonicalBenchmarkPayload({
           source: code,
           configJson: mermaidConfig,
           theme: diagramTheme,
           diagramFont,
           externalRequirements: mermaidExternalRequirementsFor(detection),
-          viewport: CANONICAL_RENDER_VIEWPORT,
-        },
+        }),
         detection,
         versions: {
           merman: facade.packageVersion,

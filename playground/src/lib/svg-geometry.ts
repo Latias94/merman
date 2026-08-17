@@ -18,6 +18,7 @@ export interface SvgDimensions {
 
 interface PreparedSvgPreview {
   readonly dimensions: SvgDimensions | null;
+  readonly rootSizing: "responsive" | "intrinsic" | "unknown";
   takeNode(): Element;
 }
 
@@ -67,14 +68,27 @@ export function prepareSvgForResponsivePreview(
   if (!parsed) return null;
   const root = ownerDocument.importNode(parsed.root, true) as Element;
 
+  removeDefaultPreviewBackground(root);
   const dimensions = resolveSvgDimensions(root);
-  if (dimensions) {
-    ensureViewBox(root, dimensions);
+  const hasViewBox = parseViewBox(root.getAttribute("viewBox")) !== null;
+  let rootSizing: PreparedSvgPreview["rootSizing"] = "unknown";
+  if (dimensions && hasViewBox) {
+    rootSizing = "responsive";
     root.setAttribute("width", "100%");
     root.setAttribute("height", "100%");
     appendRootStyle(
       root,
       "display:block;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important"
+    );
+  } else if (dimensions) {
+    rootSizing = "intrinsic";
+    const width = formatSvgNumber(dimensions.width);
+    const height = formatSvgNumber(dimensions.height);
+    root.setAttribute("width", width);
+    root.setAttribute("height", height);
+    appendRootStyle(
+      root,
+      `display:block;width:${width}px!important;height:${height}px!important;max-width:none!important;max-height:none!important`
     );
   }
 
@@ -82,6 +96,7 @@ export function prepareSvgForResponsivePreview(
   template.remove();
   return Object.freeze({
     dimensions: dimensions ? Object.freeze({ ...dimensions }) : null,
+    rootSizing,
     takeNode(): Element {
       const node = template.parentNode
         ? (template.cloneNode(true) as Element)
@@ -181,6 +196,13 @@ function appendRootStyle(root: Element, declarations: string): void {
   const existing = root.getAttribute("style")?.trim();
   const prefix = existing ? `${existing.replace(/;+$/u, "")};` : "";
   root.setAttribute("style", `${prefix}${declarations}`);
+}
+
+function removeDefaultPreviewBackground(root: Element): void {
+  const style = (root as SVGElement).style;
+  if (style?.backgroundColor.trim().toLowerCase() === "white") {
+    style.removeProperty("background-color");
+  }
 }
 
 function setRootBackground(root: Element, color: string): void {

@@ -26,8 +26,8 @@ import type {
   MermaidRealmRenderResult,
 } from "./mermaid-realm-controller.ts";
 
-test("freezes one Host viewport into Merman and Mermaid inputs", async () => {
-  const compare = fakeCompare([Promise.resolve(mermaidSuccess("host"))]);
+test("freezes one canonical environment into Merman and Mermaid inputs", async () => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("canonical"))]);
   const renderedOperations: FrozenRenderOperation[] = [];
   const domainFacade: MermanDomainFacade = {
     ...facade(),
@@ -40,10 +40,10 @@ test("freezes one Host viewport into Merman and Mermaid inputs", async () => {
   coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
   coordinator.setInput(
     input(
-      "host",
+      "canonical",
       domainFacade,
       {},
-      captureRenderViewport("host", { width: 960, height: 540 }, 1440),
+      captureRenderViewport(),
     ),
   );
 
@@ -51,15 +51,16 @@ test("freezes one Host viewport into Merman and Mermaid inputs", async () => {
 
   const renderedOperation = renderedOperations[0];
   assert.ok(renderedOperation);
-  assert.equal(renderedOperation.renderViewportMode, "host");
-  assert.equal(renderedOperation.renderViewportStatus, "host");
+  assert.equal("renderViewportMode" in renderedOperation, false);
+  assert.equal("renderViewportStatus" in renderedOperation, false);
   assert.deepEqual(renderedOperation.layoutEnvironment, {
-    containerWidth: 960,
-    containerHeight: 540,
-    screenAvailableWidth: 1440,
+    containerWidth: 800,
+    containerHeight: 600,
+    screenAvailableWidth: 800,
   });
-  assert.deepEqual(renderedOperation.viewport, { width: 960, height: 540 });
-  assert.deepEqual(compare.calls[0]?.viewport, { width: 960, height: 540 });
+  assert.deepEqual(renderedOperation.viewport, { width: 800, height: 600 });
+  assert.deepEqual(compare.calls[0]?.viewport, { width: 800, height: 600 });
+  assert.equal(compare.calls[0]?.screenAvailableWidth, 800);
 });
 
 test("latest request publishes Merman and Mermaid as one coherent batch", async () => {
@@ -273,7 +274,7 @@ test("passes one frozen operation to every Merman projection", async () => {
   assert.equal(Reflect.set(state, "publishedAt", 99), false);
 });
 
-test("freezes browser layout geometry into each render snapshot", async () => {
+test("external pane geometry cannot change operation identity or enqueue another render", async () => {
   const renderOperations: FrozenRenderOperation[] = [];
   const domainFacade: MermanDomainFacade = {
     ...facade(),
@@ -300,14 +301,14 @@ test("freezes browser layout geometry into each render snapshot", async () => {
       "layout-environment",
       domainFacade,
       {},
-      captureRenderViewport("canonical", null, 1280),
+      captureRenderViewport(),
     ),
   );
   await waitFor(() => renderOperations.length === 1);
   assert.deepEqual(renderOperations[0].layoutEnvironment, {
     containerWidth: 800,
     containerHeight: 600,
-    screenAvailableWidth: 1280,
+    screenAvailableWidth: 800,
   });
   assert.equal(Object.isFrozen(renderOperations[0].layoutEnvironment), true);
 
@@ -316,11 +317,11 @@ test("freezes browser layout geometry into each render snapshot", async () => {
       "layout-environment",
       domainFacade,
       {},
-      captureRenderViewport("canonical", null, 1440),
+      captureRenderViewport(),
     ),
   );
-  await waitFor(() => renderOperations.length === 2);
-  assert.equal(renderOperations[1].layoutEnvironment.screenAvailableWidth, 1440);
+  await Promise.resolve();
+  assert.equal(renderOperations.length, 1);
 });
 
 test("keeps a successful render when SVG plan collection fails", async () => {
@@ -959,11 +960,7 @@ function input(
   source: string,
   domainFacade: MermanDomainFacade = facade(),
   workspace: Partial<WorkspaceSnapshot> = {},
-  renderViewport: CapturedRenderViewport = captureRenderViewport(
-    "canonical",
-    null,
-    1440,
-  ),
+  renderViewport: CapturedRenderViewport = captureRenderViewport(),
 ): RenderCoordinatorInput {
   return {
     facade: domainFacade,

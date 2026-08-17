@@ -2155,7 +2155,7 @@ dependencies = [
  "png",
  "rustc-hash",
  "rustybuzz",
- "siphasher",
+ "siphasher 1.0.3",
  "skrifa",
  "smallvec",
  "subsetter",
@@ -2179,6 +2179,15 @@ dependencies = [
  "smallvec",
  "tiny-skia",
  "usvg",
+]
+
+[[package]]
+name = "kurbo"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd85a5776cd9500c2e2059c8c76c3b01528566b7fcbaf8098b55a33fc298849b"
+dependencies = [
+ "arrayvec",
 ]
 
 [[package]]
@@ -2517,7 +2526,7 @@ dependencies = [
  "png",
  "quick-xml",
  "resvg",
- "svgtypes",
+ "svgtypes 0.16.1",
  "thiserror 2.0.19",
  "tiny-skia",
  "usvg",
@@ -2586,7 +2595,7 @@ dependencies = [
  "icu_collator",
  "icu_locale_core",
  "indexmap",
- "kurbo",
+ "kurbo 0.13.1",
  "libm",
  "manatee",
  "merman-core",
@@ -2606,7 +2615,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "svgtypes",
+ "svgtypes 0.16.1",
  "thiserror 2.0.19",
  "unicode-linebreak",
  "unicode-segmentation",
@@ -3075,7 +3084,7 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
 dependencies = [
- "siphasher",
+ "siphasher 1.0.3",
 ]
 
 [[package]]
@@ -3084,7 +3093,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
 dependencies = [
- "siphasher",
+ "siphasher 1.0.3",
 ]
 
 [[package]]
@@ -3365,6 +3374,8 @@ version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22f6172bdec972074665ed81ed53b71da00bfc44b65a753cfde883ec4c702a1a"
 dependencies = [
+ "libc",
+ "rand_chacha 0.3.1",
  "rand_core 0.6.4",
 ]
 
@@ -3374,7 +3385,7 @@ version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
 dependencies = [
- "rand_chacha",
+ "rand_chacha 0.9.0",
  "rand_core 0.9.5",
 ]
 
@@ -3387,6 +3398,16 @@ dependencies = [
  "chacha20",
  "getrandom 0.4.3",
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -3404,6 +3425,9 @@ name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom 0.2.17",
+]
 
 [[package]]
 name = "rand_core"
@@ -3702,7 +3726,7 @@ dependencies = [
  "log",
  "pico-args",
  "rgb",
- "svgtypes",
+ "svgtypes 0.16.1",
  "tiny-skia",
  "usvg",
  "zune-jpeg",
@@ -3749,12 +3773,15 @@ dependencies = [
 
 [[package]]
 name = "roughr-merman"
-version = "0.12.2"
+version = "0.12.3"
 dependencies = [
  "euclid",
+ "getrandom 0.2.17",
  "num-traits",
  "palette",
- "svgtypes",
+ "rand 0.8.7",
+ "svgtypes 0.11.0",
+ "svgtypes 0.16.1",
 ]
 
 [[package]]
@@ -4221,6 +4248,12 @@ dependencies = [
 
 [[package]]
 name = "siphasher"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38b58827f4464d87d377d175e90bf58eb00fd8716ff0a62f80356b5e61555d0d"
+
+[[package]]
+name = "siphasher"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
@@ -4350,7 +4383,7 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38803281d1c23166c5ebcb455439a5d2afe711cc909cf88af72448c297756ad6"
 dependencies = [
- "kurbo",
+ "kurbo 0.13.1",
  "rustc-hash",
  "skrifa",
  "write-fonts",
@@ -4364,12 +4397,22 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svgtypes"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed4b0611e7f3277f68c0fa18e385d9e2d26923691379690039548f867cef02a7"
+dependencies = [
+ "kurbo 0.9.5",
+ "siphasher 0.3.11",
+]
+
+[[package]]
+name = "svgtypes"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "695b5790b3131dafa99b3bbfd25a216edb3d216dad9ca208d4657bfb8f2abc3d"
 dependencies = [
- "kurbo",
- "siphasher",
+ "kurbo 0.13.1",
+ "siphasher 1.0.3",
 ]
 
 [[package]]
@@ -5008,7 +5051,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78de021f5547e56ab16c665a49d67d4fd3d31e77422f7739a2e9359d328cd9e7"
 dependencies = [
  "anyhow",
- "siphasher",
+ "siphasher 1.0.3",
  "uniffi_internal_macros",
  "uniffi_pipeline",
 ]
@@ -5067,15 +5110,15 @@ dependencies = [
  "flate2",
  "fontdb",
  "imagesize",
- "kurbo",
+ "kurbo 0.13.1",
  "log",
  "pico-args",
  "roxmltree 0.21.1",
  "rustybuzz",
  "simplecss",
- "siphasher",
+ "siphasher 1.0.3",
  "strict-num",
- "svgtypes",
+ "svgtypes 0.16.1",
  "tiny-skia-path",
  "ttf-parser",
  "unicode-bidi",
@@ -5521,7 +5564,7 @@ checksum = "cb731d4c4d93eacc69a1ad2f270f905788a98e4a3438267bcafbe08d3431c8d8"
 dependencies = [
  "font-types",
  "indexmap",
- "kurbo",
+ "kurbo 0.13.1",
  "log",
  "read-fonts",
 ]
@@ -5578,7 +5621,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "sha2 0.10.9",
- "svgtypes",
+ "svgtypes 0.16.1",
  "tempfile",
  "thiserror 2.0.19",
  "toml",

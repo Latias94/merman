@@ -141,3 +141,85 @@
 .preview-container svg text {
   pointer-events: none;
 }
+
+.preview-canvas[data-preview-canvas-tone="light"] {
+  --preview-canvas-surface: oklch(0.985 0.004 160);
+  --preview-canvas-grid: oklch(0.38 0.025 165 / 0.1);
+  --preview-canvas-status: oklch(0.2 0.018 165);
+  --preview-canvas-status-muted: oklch(0.43 0.02 165);
+  --preview-canvas-border: oklch(0.74 0.025 165);
+  --preview-canvas-bounds: oklch(0.56 0.18 45);
+  --preview-transparency-surface: oklch(0.97 0.004 160);
+  --preview-transparency-cell: oklch(0.91 0.008 160);
+  --preview-viewbox-shadow: oklch(0.2 0.018 165 / 0.16);
+}
+
+.preview-canvas[data-preview-canvas-tone="dark"] {
+  --preview-canvas-surface: oklch(0.15 0.014 255);
+  --preview-canvas-grid: oklch(0.82 0.02 220 / 0.1);
+  --preview-canvas-status: oklch(0.94 0.008 220);
+  --preview-canvas-status-muted: oklch(0.75 0.018 220);
+  --preview-canvas-border: oklch(0.42 0.025 220);
+  --preview-canvas-bounds: oklch(0.78 0.17 70);
+  --preview-transparency-surface: oklch(0.18 0.014 255);
+  --preview-transparency-cell: oklch(0.23 0.018 240);
+  --preview-viewbox-shadow: oklch(0 0 0 / 0.42);
+}
+
+.preview-canvas {
+  background-color: var(--preview-canvas-surface);
+  background-image:
+    linear-gradient(to right, var(--preview-canvas-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--preview-canvas-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+  color: var(--preview-canvas-status);
+}
+
+.preview-canvas[data-svg-presentation-mode="viewbox"] {
+  background-image: none;
+}
+
+.preview-container[data-svg-presentation-mode="viewbox"] {
+  background-color: var(--preview-transparency-surface);
+  background-image: conic-gradient(
+    var(--preview-transparency-cell) 25%,
+    var(--preview-transparency-surface) 0 50%,
+    var(--preview-transparency-cell) 0 75%,
+    var(--preview-transparency-surface) 0
+  );
+  background-size: 16px 16px;
+  outline: 1px solid var(--preview-canvas-border);
+  box-shadow: 0 14px 36px var(--preview-viewbox-shadow);
+}
+
+.preview-canvas-frame {
+  border-color: var(--border);
+  background-color: var(--preview-canvas-surface);
+  color: var(--preview-canvas-status);
+}
+
+.preview-canvas-frame:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+
+.preview-canvas-toolbar {
+  border-color: var(--border);
+  background-color: var(--card);
+  color: var(--card-foreground);
+}
+
+.preview-canvas-status {
+  color: var(--preview-canvas-status, var(--foreground));
+}
+
+.preview-canvas-status-muted {
+  color: var(--preview-canvas-status-muted, var(--muted-foreground));
+}
+
+.preview-svg-bounds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  outline: 2px dashed var(--preview-canvas-bounds);
+  outline-offset: 0;
+}

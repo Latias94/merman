@@ -51,6 +51,7 @@ import {
   projectError,
   type ErrorProjection,
 } from "../../runtime/error-projection.ts";
+import { applyScreenAvailableWidth } from "../../runtime/realm/screen-environment.ts";
 export type BenchmarkAdapterLoader = (
   engine: BenchmarkEngine
 ) => Promise<BenchmarkEngineAdapter>;
@@ -422,6 +423,9 @@ async function executeSample(
   let session = existingSession;
 
   try {
+    stage = "adapter-import";
+    applyScreenAvailableWidth(request.payload.screenAvailableWidth);
+    stage = "fonts";
     mark("fonts_wait_start");
     const fontsReady = Promise.resolve(document.fonts.ready).then(
       () => mark("fonts_wait_end"),

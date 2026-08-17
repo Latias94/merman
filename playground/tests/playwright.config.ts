@@ -70,5 +70,11 @@ export default defineConfig({
       testMatch: /cross-browser\.smoke\.spec\.ts/u,
       use: { ...devices["Desktop Safari"] },
     },
+    {
+      name: "webkit-mobile-smoke",
+      testMatch: /mobile\.interactions\.spec\.ts/u,
+      grep: /WebKit mobile smoke/u,
+      use: { ...devices["iPhone 13"] },
+    },
   ],
 });

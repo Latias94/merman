@@ -15,6 +15,8 @@ import {
   prepareSvgForResponsivePreview,
   type SvgDimensions,
 } from "@/src/lib/svg-geometry";
+import type { MermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
+import type { SvgPresentationMode } from "@/src/lib/svg-presentation";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 
 interface Point {
@@ -169,12 +171,15 @@ interface PreparedSvgPresentation {
 
 interface SvgViewportProps {
   artifact: NavigableInlineSvg | null;
+  canvasTone: MermaidCanvasTone;
   presentationKey: number | null;
   controller: SvgViewportController;
   empty?: ReactNode;
   navigationEnabled?: boolean;
   onPresentationReady?: (at: number) => void;
   renderMountError?: (error: Error) => ReactNode;
+  showSvgBounds: boolean;
+  presentationMode: SvgPresentationMode;
 }
 
 const PAN_ACTIVATION_DISTANCE = 6;
@@ -183,12 +188,15 @@ const NAVIGATION_ARIA_DISABLED_STATE = new WeakMap<Element, string | null>();
 
 export function SvgViewport({
   artifact,
+  canvasTone,
   presentationKey,
   controller,
   empty,
   navigationEnabled = true,
   onPresentationReady,
   renderMountError,
+  showSvgBounds,
+  presentationMode,
 }: SvgViewportProps) {
   const prepared = useMemo<PreparedSvgPresentation>(() => {
     if (!artifact) return { error: null, preview: null };
@@ -417,15 +425,21 @@ export function SvgViewport({
         availableSvgHeight / intrinsicSize.height
       );
       if (!isPositiveFinite(nextZoom)) return false;
-      shadowHost.style.width = `${Math.max(
-        1,
-        intrinsicSize.width * nextZoom
-      )}px`;
-      shadowHost.style.height = `${Math.max(
-        1,
-        intrinsicSize.height * nextZoom
-      )}px`;
-      scaleBaseZoom = nextZoom;
+      if (currentPreview.rootSizing === "responsive") {
+        shadowHost.style.width = `${Math.max(
+          1,
+          intrinsicSize.width * nextZoom
+        )}px`;
+        shadowHost.style.height = `${Math.max(
+          1,
+          intrinsicSize.height * nextZoom
+        )}px`;
+        scaleBaseZoom = nextZoom;
+      } else {
+        shadowHost.style.width = `${intrinsicSize.width}px`;
+        shadowHost.style.height = `${intrinsicSize.height}px`;
+        scaleBaseZoom = 1;
+      }
     } else {
       shadowHost.style.removeProperty("width");
       shadowHost.style.removeProperty("height");
@@ -853,10 +867,12 @@ export function SvgViewport({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full cursor-grab touch-none select-none overflow-hidden"
+      className="preview-canvas relative h-full w-full cursor-grab touch-none select-none overflow-hidden"
       data-dragging="false"
       data-auto-fit="true"
       data-merman-svg-viewport="true"
+      data-preview-canvas-tone={canvasTone}
+      data-svg-presentation-mode={presentationMode}
       data-zoom="1"
       onAuxClickCapture={handleAnchorClickCapture}
       onClickCapture={handleAnchorClickCapture}
@@ -892,9 +908,17 @@ export function SvgViewport({
           >
             <div
               ref={contentRef}
-              className="preview-container inline-flex rounded-lg bg-white p-4 shadow-sm"
+              className="preview-container relative inline-flex"
+              data-svg-presentation-mode={presentationMode}
             >
               <div ref={shadowHostRef} className="block shrink-0" />
+              {showSvgBounds && (
+                <div
+                  aria-hidden="true"
+                  className="preview-svg-bounds"
+                  data-merman-svg-bounds="true"
+                />
+              )}
             </div>
           </div>
         </div>

@@ -313,11 +313,13 @@ function ExportDialog({
   useEffect(() => {
     const generation = ++encodeGenerationRef.current;
     if (!prepared) {
+      setEncoded(null);
       setBusy(false);
       setDownloaded(false);
       setEncodeFailure(null);
       return;
     }
+    setEncoded(null);
     setDownloaded(false);
     setEncodeFailure(null);
     if (prepared.kind === "svg") {
@@ -370,9 +372,11 @@ function ExportDialog({
     };
   }, [prepared, t, target.svgArtifact]);
 
-  const ready = Boolean(
-    prepared && encoded?.key === prepared.key && !busy && !encodeFailure,
-  );
+  const activeEncoded =
+    prepared && encoded?.key === prepared.key && !encodeFailure
+      ? encoded
+      : null;
+  const ready = Boolean(activeEncoded && !busy);
   const activePlan = prepared?.kind === "raster" ? prepared.plan : null;
   const selectedBackground =
     format === "jpeg" ? jpegBackground : pngBackground;
@@ -388,9 +392,9 @@ function ExportDialog({
         : "";
 
   const download = () => {
-    if (!ready || !encoded || !prepared) return;
+    if (!ready || !activeEncoded || !prepared) return;
     const extension = prepared.kind === "svg" ? "svg" : prepared.plan.extension;
-    downloadBlob(encoded.blob, `${target.filename}.${extension}`);
+    downloadBlob(activeEncoded.blob, `${target.filename}.${extension}`);
     setDownloaded(true);
   };
 
@@ -626,7 +630,7 @@ function ExportDialog({
 
           <div className="flex min-h-[260px] flex-col lg:min-h-0">
             <ExportPreview
-              blob={encoded?.blob ?? null}
+              blob={activeEncoded?.blob ?? null}
               busy={busy}
               label={t("export.previewAlt")}
             />
