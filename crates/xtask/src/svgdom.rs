@@ -1544,6 +1544,7 @@ fn normalize_browser_text_length(node: &mut SvgDomNode) {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn dom_signature_for_comparison(
     svg: &str,
     profile: DomComparisonProfile,
