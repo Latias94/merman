@@ -230,11 +230,7 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
             }
         },
         merman_core::Error::RuntimePolicy(error) => safe_runtime_policy_error(error),
-        merman_core::Error::DetectType(error) => bounded_message(
-            "No diagram type detected matching given configuration for text: ",
-            &error.text,
-            "",
-        ),
+        merman_core::Error::DetectType(_) => "No Mermaid diagram type detected".to_string(),
         merman_core::Error::UnsupportedDiagram { diagram_type } => {
             bounded_message("Unsupported diagram type: ", diagram_type, "")
         }
@@ -531,10 +527,7 @@ mod tests {
                 text: "not-a-diagram".to_string(),
             },
         ));
-        assert_eq!(
-            detect_error.to_string(),
-            "No diagram type detected matching given configuration for text: not-a-diagram"
-        );
+        assert_eq!(detect_error.to_string(), "No Mermaid diagram type detected");
     }
 
     #[test]

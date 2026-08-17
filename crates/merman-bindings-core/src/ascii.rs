@@ -393,19 +393,14 @@ mod tests {
     }
 
     #[test]
-    fn render_ascii_parse_error_preserves_safe_mermaid_baseline_message() {
+    fn render_ascii_parse_error_omits_authored_source() {
         let source = b"not-a-diagram\x1b]8;;https://example.invalid\x07link";
 
         let error = render_ascii(source, b"").expect_err("source should not detect as Mermaid");
 
         assert_eq!(error.status(), BindingStatus::ParseError);
-        assert!(
-            error
-                .message()
-                .starts_with("No diagram type detected matching given configuration for text: ")
-        );
-        assert!(error.message().contains("\\u{1B}"));
-        assert!(error.message().contains("\\u{7}"));
+        assert_eq!(error.message(), "No Mermaid diagram type detected");
+        assert!(!error.message().contains("not-a-diagram"));
         assert!(!error.message().as_bytes().contains(&0x1b));
         assert!(!error.message().as_bytes().contains(&0x07));
         let diagnostic = error
