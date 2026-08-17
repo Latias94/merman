@@ -121,7 +121,7 @@ impl DiagramThemeCompiler {
         &self,
         preset: super::ThemePreset,
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
-        self.compile(preset.spec())
+        self.compile_spec_wire(preset.spec_wire())
     }
 }
 

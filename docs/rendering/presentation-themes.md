@@ -91,7 +91,9 @@ the materialization digest. It does not inspect family capabilities or render ou
 JSON still requires an encoded-byte admission boundary before ordinary Serde decoding; the typed
 Rust constructor above is the currently supported authoring facade. Render-time bindings remain
 limited to either a preset reference or a complete `theme.spec` until their authoring operations
-adopt the same contract.
+adopt the same contract. Built-in preset recipes remain alpha inventory: this migration preserves
+their resolved visual winners but intentionally does not freeze prior recipe fingerprints or rule
+indices.
 
 `DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
 typography, semantic rules and ordinal palettes, canvas, effects, resource assets, and declared

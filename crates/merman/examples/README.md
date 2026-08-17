@@ -22,7 +22,7 @@ cargo run -p merman --example render_svg > diagram.svg
 | Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
 | Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
 | Apply a compiled theme preset | [`theme_preset.rs`](theme_preset.rs) | Compiles one first-party `ThemePreset` and installs it on a reusable renderer. |
-| Build a complete custom diagram theme | [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | Defines typed typography, semantic rules, canvas paint, and capability requirements. |
+| Author a compact custom diagram theme | [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | Materializes versioned cross-family tokens into the complete typed recipe accepted by the compiler. |
 | Control consumer SVG cleanup and styling | [`custom_svg_pipeline.rs`](custom_svg_pipeline.rs) | Builds an explicit resvg-safe, background, and scoped-CSS pipeline. |
 
 Use `Renderer` with a typed `RenderRequest` for every source-to-target operation. SVG request IDs can be normalized with `merman::svg::sanitize_svg_id`; dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. The same request seam also carries layout, diagram-theme, resource, pipeline, and cancellation policy.

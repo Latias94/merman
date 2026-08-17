@@ -1,4 +1,10 @@
-use super::{DiagramThemeSpec, MermaidThemeCompatibility, ThemeTokens};
+use merman_theme_contract::{
+    DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, SpecifiedWireV1,
+    ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeRuleSetWireV1,
+    ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
+};
+
+use super::ThemeMaterializer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
@@ -58,42 +64,112 @@ impl ThemePreset {
             .ok_or_else(|| ThemePresetParseError { id: id.to_string() })
     }
 
-    pub(crate) fn spec(self) -> DiagramThemeSpec {
+    pub(crate) fn spec_wire(self) -> DiagramThemeSpecWireV1 {
         let palette = preset_palette(self);
-        let tokens = ThemeTokens::default()
-            .with_canvas(palette.canvas)
-            .and_then(|tokens| tokens.with_surface(palette.surface))
-            .and_then(|tokens| tokens.with_surface_alt(palette.surface_alt))
-            .and_then(|tokens| tokens.with_surface_muted(palette.surface_muted))
-            .and_then(|tokens| tokens.with_text(palette.text))
-            .and_then(|tokens| tokens.with_subtle_text(palette.subtle_text))
-            .and_then(|tokens| tokens.with_border(palette.border))
-            .and_then(|tokens| tokens.with_line(palette.line))
-            .and_then(|tokens| tokens.with_accent(palette.accent))
-            .and_then(|tokens| tokens.with_edge_label_background(palette.edge_label_background))
-            .and_then(|tokens| tokens.with_cluster_background(palette.cluster_background))
-            .and_then(|tokens| tokens.with_cluster_border(palette.cluster_border))
-            .and_then(|tokens| tokens.with_note_background(palette.note_background))
-            .and_then(|tokens| tokens.with_note_border(palette.note_border))
-            .and_then(|tokens| tokens.with_note_text(palette.note_text))
-            .and_then(|tokens| tokens.with_actor_background(palette.actor_background))
-            .and_then(|tokens| tokens.with_actor_border(palette.actor_border))
-            .and_then(|tokens| tokens.with_actor_text(palette.actor_text))
-            .and_then(|tokens| tokens.with_activation_background(palette.activation_background))
-            .and_then(|tokens| tokens.with_activation_border(palette.activation_border))
-            .and_then(|tokens| tokens.with_error(palette.error))
-            .and_then(|tokens| tokens.with_warning(palette.warning))
-            .and_then(|tokens| tokens.with_success(palette.success))
-            .and_then(|tokens| tokens.with_series(palette.series))
-            .expect("built-in theme preset values are statically valid");
-        let compatibility = MermaidThemeCompatibility::default()
-            .with_theme("base")
-            .expect("built-in Mermaid compatibility values are statically valid")
-            .with_dark_mode(self.is_dark())
-            .expect("built-in Mermaid dark mode is not conflicting");
-        tokens
-            .into_theme_spec()
-            .with_mermaid_compatibility(compatibility)
+        let tokens = ThemeTokensV1::default()
+            .with_color(ThemeColorTokenV1::Canvas, palette.canvas)
+            .with_color(ThemeColorTokenV1::Surface, palette.surface)
+            .with_color(ThemeColorTokenV1::SurfaceAlt, palette.surface_alt)
+            .with_color(ThemeColorTokenV1::SurfaceMuted, palette.surface_muted)
+            .with_color(ThemeColorTokenV1::Text, palette.text)
+            .with_color(ThemeColorTokenV1::SubtleText, palette.subtle_text)
+            .with_color(ThemeColorTokenV1::Border, palette.border)
+            .with_color(ThemeColorTokenV1::Line, palette.line)
+            .with_color(ThemeColorTokenV1::Accent, palette.accent)
+            .with_color(ThemeColorTokenV1::Error, palette.error)
+            .with_color(ThemeColorTokenV1::Warning, palette.warning)
+            .with_color(ThemeColorTokenV1::Success, palette.success)
+            .with_series(
+                palette
+                    .series
+                    .iter()
+                    .map(|color| (*color).to_owned())
+                    .collect(),
+            );
+        let definition = ThemeDefinitionV1::new(tokens).with_styles(vec![
+            preset_rule("node", Some(palette.surface), None),
+            preset_rule(
+                "edge-label-background",
+                Some(palette.edge_label_background),
+                None,
+            ),
+            preset_rule(
+                "cluster",
+                Some(palette.cluster_background),
+                Some(palette.cluster_border),
+            ),
+            preset_rule(
+                "actor",
+                Some(palette.actor_background),
+                Some(palette.actor_border),
+            ),
+            preset_rule("actor-label", Some(palette.actor_text), None),
+            preset_rule(
+                "lifeline",
+                Some(palette.actor_border),
+                Some(palette.actor_border),
+            ),
+            preset_rule("loop-label", Some(palette.actor_text), None),
+            preset_rule(
+                "transition-label-background",
+                Some(palette.edge_label_background),
+                None,
+            ),
+            preset_rule(
+                "note",
+                Some(palette.note_background),
+                Some(palette.note_border),
+            ),
+            preset_rule("note-label", Some(palette.note_text), None),
+            preset_rule(
+                "activation",
+                Some(palette.activation_background),
+                Some(palette.activation_border),
+            ),
+            preset_rule("axis", Some(palette.text), Some(palette.line)),
+            preset_rule("legend", Some(palette.subtle_text), None),
+            preset_palette_rule("task", palette.series),
+            preset_palette_rule("chart-series", palette.series),
+            preset_palette_rule("timeline-event", palette.series),
+            preset_palette_rule("journey-task", palette.series),
+        ]);
+        let mut spec = ThemeMaterializer::new()
+            .materialize_theme(&definition)
+            .expect("built-in theme preset values must remain statically valid")
+            .into_spec();
+        spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
+            theme: Some("base".to_owned()),
+            dark_mode: Some(self.is_dark()),
+            variables: None,
+        });
+        spec
+    }
+}
+
+fn preset_rule(target: &str, fill: Option<&str>, stroke: Option<&str>) -> ThemeRuleSetWireV1 {
+    let mut style = ThemeStylePatchWireV1::default();
+    if let Some(fill) = fill {
+        style.fill = SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned()));
+    }
+    if let Some(stroke) = stroke {
+        style.stroke = Some(ThemeStrokePatchWireV1 {
+            paint: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(stroke.to_owned())),
+            ..ThemeStrokePatchWireV1::default()
+        });
+    }
+    ThemeRuleSetWireV1::Rule {
+        target: target.to_owned(),
+        family: None,
+        variant: None,
+        ordinal: None,
+        style,
+    }
+}
+
+fn preset_palette_rule(target: &str, colors: &[&str]) -> ThemeRuleSetWireV1 {
+    ThemeRuleSetWireV1::OrdinalPalette {
+        target: target.to_owned(),
+        colors: colors.iter().map(|color| (*color).to_owned()).collect(),
     }
 }
 
@@ -413,8 +489,8 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, ResolvedDiagramTheme, ThemeColorValue, ThemeTarget,
-        ThemeVariant,
+        CanvasPaint, DiagramTheme, DiagramThemeCompiler, ResolvedDiagramTheme, ThemeColorValue,
+        ThemeTarget, ThemeVariant,
     };
 
     fn solid_color(paint: &CanvasPaint) -> Option<String> {
@@ -430,6 +506,27 @@ mod tests {
             .expect("built-in theme preset should compile");
         let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         (theme, resolved)
+    }
+
+    fn assert_style(
+        theme: &DiagramTheme,
+        family: DiagramFamilyId,
+        target: ThemeTarget,
+        expected_fill: Option<&str>,
+        expected_stroke: Option<&str>,
+    ) {
+        let resolved = theme.resolve(family);
+        let style = resolved.style(target, ThemeVariant::Default, None);
+        assert_eq!(
+            style.fill().and_then(solid_color).as_deref(),
+            expected_fill,
+            "{family} {target:?} fill"
+        );
+        assert_eq!(
+            style.stroke().and_then(solid_color).as_deref(),
+            expected_stroke,
+            "{family} {target:?} stroke"
+        );
     }
 
     #[test]
@@ -500,6 +597,92 @@ mod tests {
                     .as_deref(),
                 Some(first_series)
             );
+        }
+    }
+
+    #[test]
+    fn built_in_presets_preserve_family_specific_winners_and_all_ordinal_palettes() {
+        for preset in ThemePreset::ALL.iter().copied() {
+            let palette = preset_palette(preset);
+            let theme = DiagramThemeCompiler::new()
+                .compile_preset(preset)
+                .expect("built-in theme preset should compile");
+
+            assert_style(
+                &theme,
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Node,
+                Some(palette.surface),
+                Some(palette.border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Cluster,
+                Some(palette.cluster_background),
+                Some(palette.cluster_border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Actor,
+                Some(palette.actor_background),
+                Some(palette.actor_border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Lifeline,
+                Some(palette.actor_border),
+                Some(palette.actor_border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Note,
+                Some(palette.note_background),
+                Some(palette.note_border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Activation,
+                Some(palette.activation_background),
+                Some(palette.activation_border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Axis,
+                Some(palette.text),
+                Some(palette.line),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::Legend,
+                Some(palette.subtle_text),
+                None,
+            );
+
+            for (family, target) in [
+                (DiagramFamilyId::MINDMAP, ThemeTarget::Node),
+                (DiagramFamilyId::KANBAN, ThemeTarget::Task),
+                (DiagramFamilyId::XY_CHART, ThemeTarget::ChartSeries),
+                (DiagramFamilyId::PIE, ThemeTarget::PieSlice),
+                (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent),
+                (DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask),
+            ] {
+                let resolved = theme.resolve(family);
+                assert_eq!(
+                    resolved
+                        .series_color(target, 1)
+                        .map(ThemeColorValue::as_css)
+                        .as_deref(),
+                    palette.series.first().copied(),
+                    "{family} {target:?} palette"
+                );
+            }
         }
     }
 }

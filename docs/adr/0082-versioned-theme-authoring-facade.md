@@ -460,9 +460,9 @@ admission results.
 - First-party bindings call the Rust-owned operation through the existing `merman` facade; they do
   not import renderer internals, expand tokens, reorder rules, or resolve palette collisions
   locally.
-- The current alpha `ThemeTokens::into_theme_spec`, `ThemePreset::spec`, and
-  `DiagramThemeCompiler::compile_preset` paths are deleted or reduced to thin delegation through the
-  same versioned materializer. Family-specific token fields and duplicate expansion tables are not
+- The former alpha `ThemeTokens::into_theme_spec` and `ThemePreset::spec` paths are deleted;
+  `DiagramThemeCompiler::compile_preset` delegates through the same versioned materializer and
+  complete-spec decoder. Family-specific token fields and duplicate expansion tables are not
   retained as compatibility implementations.
 - The renderer and private family adapters remain unaware of the original authoring form.
 - Full asset-bearing complete specs remain subject to encoded-byte and effective runtime resource

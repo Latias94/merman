@@ -686,7 +686,7 @@ mod tests {
         FontAssetSpec, FontCatalogSpec, GradientStop, LinearGradient, MermaidThemeCompatibility,
         OrdinalPalette, PatternSpec, RadialGradient, StrokeLineCap, StrokeLineJoin, ThemeAssets,
         ThemeCapability, ThemeCompileValidationError, ThemeRule, ThemeRuleSet, ThemeTarget,
-        ThemeTokens, ThemeVariant, TypographySpec,
+        ThemeVariant, TypographySpec,
     };
 
     fn compile(spec: DiagramThemeSpec) -> super::super::ThemeRecipeFingerprint {
@@ -847,52 +847,23 @@ mod tests {
 
     #[test]
     fn public_spec_fields_fully_determine_recipe_identity() {
-        let from_tokens = ThemeTokens::default().into_theme_spec();
+        let source = DiagramThemeSpec::new()
+            .with_typography(TypographySpec::default().with_default(TextStyle::default()))
+            .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(CanvasPaint::Solid(color("#e2e8f0"))),
+            )))
+            .with_canvas(CanvasSpec::default().with_base(CanvasPaint::Solid(color("#ffffff"))));
         let rebuilt = DiagramThemeSpec::new()
-            .with_mermaid_compatibility(from_tokens.mermaid().clone())
-            .with_typography(from_tokens.typography().clone())
-            .with_styles(from_tokens.styles().clone())
-            .with_canvas(from_tokens.canvas().clone())
-            .with_effects(from_tokens.effects().clone())
-            .with_assets(from_tokens.assets().clone())
-            .with_requirements(from_tokens.requirements().clone());
+            .with_mermaid_compatibility(source.mermaid().clone())
+            .with_typography(source.typography().clone())
+            .with_styles(source.styles().clone())
+            .with_canvas(source.canvas().clone())
+            .with_effects(source.effects().clone())
+            .with_assets(source.assets().clone())
+            .with_requirements(source.requirements().clone());
 
-        assert_eq!(compile(from_tokens), compile(rebuilt));
-    }
-
-    #[test]
-    fn replacing_styles_and_canvas_discards_prior_token_semantics() {
-        let styles = ThemeRuleSet::default().with_rule(ThemeRule::new(
-            ThemeTarget::Node,
-            ThemeStylePatch::default().with_fill(CanvasPaint::Solid(color("#e2e8f0"))),
-        ));
-        let canvas = CanvasSpec::transparent();
-        let left = ThemeTokens::default()
-            .with_canvas("#111827")
-            .unwrap()
-            .with_series(["#ef4444", "#22c55e"])
-            .unwrap()
-            .into_theme_spec()
-            .with_styles(styles.clone())
-            .with_canvas(canvas.clone());
-        let right = ThemeTokens::default()
-            .with_canvas("#f8fafc")
-            .unwrap()
-            .with_series(["#3b82f6", "#a855f7"])
-            .unwrap()
-            .into_theme_spec()
-            .with_styles(styles)
-            .with_canvas(canvas);
-
-        assert_eq!(left.mermaid(), right.mermaid());
-        assert_eq!(left.typography(), right.typography());
-        assert_eq!(left.styles(), right.styles());
-        assert_eq!(left.canvas(), right.canvas());
-        assert_eq!(left.effects(), right.effects());
-        assert!(left.assets().font_catalog().is_none());
-        assert!(right.assets().font_catalog().is_none());
-        assert_eq!(left.requirements(), right.requirements());
-        assert_eq!(compile(left), compile(right));
+        assert_eq!(compile(source), compile(rebuilt));
     }
 
     #[test]

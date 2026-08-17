@@ -1,7 +1,7 @@
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec, FontStack,
     TextLayoutCapability, TextTransform, ThemeAssets, ThemeCapability, ThemePreset, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeTokens, TypographySpec,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
     theme_preset_descriptors,
 };
 
@@ -39,24 +39,6 @@ fn built_in_presets_compile_without_selecting_layout_or_look() {
             .compile_preset(descriptor.preset())
             .expect("built-in theme preset should compile");
     }
-}
-
-#[test]
-fn compiled_theme_is_reusable_and_custom_tokens_fail_closed() {
-    let spec = ThemeTokens::default()
-        .with_canvas("#010203")
-        .expect("valid canvas")
-        .into_theme_spec();
-    let compiler = DiagramThemeCompiler::new();
-    let first = compiler.compile(spec.clone()).expect("compile theme");
-    let second = compiler.compile(spec).expect("compile theme again");
-
-    assert_eq!(first.recipe_fingerprint(), second.recipe_fingerprint());
-    assert!(
-        ThemeTokens::default()
-            .with_canvas("white; color: red")
-            .is_err()
-    );
 }
 
 #[test]

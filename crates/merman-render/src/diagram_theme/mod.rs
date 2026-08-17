@@ -26,7 +26,6 @@ mod resources;
 mod semantic;
 mod source_styles;
 mod spec;
-mod tokens;
 mod typography;
 mod wire_decode;
 
@@ -98,7 +97,6 @@ pub use semantic::{
     ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
-pub use tokens::ThemeTokens;
 pub(crate) use typography::is_css_wide_keyword;
 pub use typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,
@@ -316,80 +314,6 @@ pub enum ThemeCompileValidationError {
 mod tests {
     use super::*;
     use crate::DiagramFamilyId;
-
-    #[test]
-    fn tokens_compile_into_one_reusable_typed_theme() {
-        let spec = ThemeTokens::default()
-            .with_canvas("#0f172a")
-            .unwrap()
-            .with_surface("#1e293b")
-            .unwrap()
-            .with_text("#f8fafc")
-            .unwrap()
-            .into_theme_spec();
-
-        let first = DiagramThemeCompiler::new().compile(spec.clone()).unwrap();
-        let second = DiagramThemeCompiler::new().compile(spec).unwrap();
-
-        assert_eq!(
-            first.recipe_fingerprint(),
-            second.recipe_fingerprint(),
-            "canonical recipe identity must be explicit"
-        );
-        assert!(
-            first
-                .report()
-                .requires_capability(ThemeCapability::SemanticRules)
-        );
-        assert!(
-            first
-                .report()
-                .requires_capability(ThemeCapability::OrdinalPalette)
-        );
-        assert!(
-            first
-                .report()
-                .requires_capability(ThemeCapability::SolidPaint)
-        );
-        assert!(
-            first
-                .report()
-                .requires_capability(ThemeCapability::Typography)
-        );
-        let mermaid_config = first.spec().mermaid().to_mermaid_config();
-        assert_eq!(
-            mermaid_config.get_str("theme"),
-            None,
-            "theme selection stays in explicit Mermaid compatibility inputs; typed themes use the family bridge only as a residual"
-        );
-        assert_eq!(
-            mermaid_config.get_str("themeVariables.primaryColor"),
-            None,
-            "typed semantic values must not enter the global Mermaid compatibility lane"
-        );
-        assert_eq!(
-            mermaid_config.get_bool("themeVariables.darkMode"),
-            None,
-            "typed token colors do not infer an official Mermaid darkMode input"
-        );
-
-        let flowchart = first.resolve(DiagramFamilyId::FLOWCHART);
-        assert_eq!(
-            flowchart
-                .style(ThemeTarget::Node, ThemeVariant::Default, None)
-                .fill()
-                .and_then(solid_color),
-            Some("#1e293b".to_string())
-        );
-        assert_eq!(flowchart.series_color(ThemeTarget::ChartSeries, 5), None);
-        let chart = first.resolve(DiagramFamilyId::XY_CHART);
-        assert_eq!(
-            chart
-                .series_color(ThemeTarget::ChartSeries, 5)
-                .map(ThemeColorValue::as_css),
-            Some("#2563eb".to_string())
-        );
-    }
 
     #[test]
     fn inferred_capabilities_are_retained_as_theme_requirements() {
