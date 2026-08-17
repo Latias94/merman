@@ -1,10 +1,9 @@
 use merman::diagram_theme::{
-    DiagramFamilyId, DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionAdmissionError,
-    ThemeDefinitionBuilderV1, ThemeDefinitionCompileError, ThemeDefinitionV1,
-    ThemeMaterializationError, ThemeMaterializer, ThemeRuleBuilderV1, ThemeRuleFacetV1,
-    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
-    ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant, compile_theme_definition,
-    compile_theme_definition_json, describe_theme_support,
+    DiagramFamilyId, DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionBuilderV1,
+    ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeMaterializer, ThemeRuleBuilderV1,
+    ThemeRuleFacetV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1,
+    ThemeSupportQueryV1, ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant,
+    compile_theme_definition, compile_theme_definition_json, describe_theme_support,
 };
 use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
@@ -469,10 +468,11 @@ fn rust_facade_preserves_materialization_and_compilation_error_sources() {
         &ThemeDefinitionV1::new(ThemeTokensV1::default().with_series(Vec::new())),
     )
     .expect_err("an empty authored series should fail during materialization");
-    assert!(matches!(
-        materialization_error,
-        ThemeDefinitionCompileError::Materialization(ThemeMaterializationError::EmptySeries)
-    ));
+    let ThemeDefinitionCompileError::Materialization(error) = materialization_error else {
+        panic!("empty series must retain the materialization error source")
+    };
+    assert_eq!(error.diagnostic().code(), "theme-authoring.empty-series");
+    assert_eq!(error.diagnostic().path(), "/tokens/series");
 
     let compilation_error = compile_theme_definition(
         &DiagramThemeCompiler::new(),
@@ -509,15 +509,14 @@ fn json_authoring_rejects_the_first_rule_beyond_the_v1_budget_before_typed_decod
     );
     let error = compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized.as_bytes())
         .expect_err("the first rule beyond the V1 budget must fail during streaming admission");
-    assert!(matches!(
-        error,
-        ThemeDefinitionCompileError::Materialization(
-            ThemeMaterializationError::RuleBudgetExceeded {
-                actual: 490,
-                max: 489
-            }
-        )
-    ));
+    let ThemeDefinitionCompileError::Materialization(error) = error else {
+        panic!("oversized authoring rules must fail during materialization")
+    };
+    let diagnostic = error.diagnostic();
+    assert_eq!(diagnostic.code(), "theme-authoring.rule-budget-exceeded");
+    assert_eq!(diagnostic.limit_id(), Some("max_authored_rules"));
+    assert_eq!(diagnostic.actual(), Some(490));
+    assert_eq!(diagnostic.max(), Some(489));
 }
 
 #[test]
@@ -533,14 +532,16 @@ fn json_authoring_collection_limits_accept_the_exact_boundary_and_reject_the_nex
     let oversized_series = format!(
         r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{"series":[{colors},{{"typed":"decode must not reach this value"}}]}}}}"#
     );
-    assert!(matches!(
-        compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized_series.as_bytes()),
-        Err(ThemeDefinitionCompileError::Materialization(
-            ThemeMaterializationError::InvalidTokenValue {
-                path: "/tokens/series"
-            }
-        ))
-    ));
+    let error =
+        compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized_series.as_bytes())
+            .expect_err("the first series color beyond the bound must fail during admission");
+    assert_materialization_resource_limit(
+        error,
+        "/tokens/series",
+        "max_theme_palette_colors",
+        257,
+        256,
+    );
 
     let families = (0..32)
         .map(|index| format!("\"Authoring Font {index}\""))
@@ -554,14 +555,16 @@ fn json_authoring_collection_limits_accept_the_exact_boundary_and_reject_the_nex
     let oversized_fonts = format!(
         r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{"typography":{{"font_stack":[{families},{{"typed":"decode must not reach this value"}}]}}}}}}"#
     );
-    assert!(matches!(
-        compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized_fonts.as_bytes()),
-        Err(ThemeDefinitionCompileError::Materialization(
-            ThemeMaterializationError::InvalidTokenValue {
-                path: "/tokens/typography/font_stack"
-            }
-        ))
-    ));
+    let error =
+        compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized_fonts.as_bytes())
+            .expect_err("the first font family beyond the bound must fail during admission");
+    assert_materialization_resource_limit(
+        error,
+        "/tokens/typography/font_stack",
+        "max_theme_font_stack_entries",
+        33,
+        32,
+    );
 
     let exact_palette = format!(
         r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{{"kind":"ordinal-palette","target":"node","colors":[{colors}]}}]}}"#
@@ -571,12 +574,16 @@ fn json_authoring_collection_limits_accept_the_exact_boundary_and_reject_the_nex
     let oversized_palette = format!(
         r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{{"kind":"ordinal-palette","target":"node","colors":[{colors},{{"typed":"decode must not reach this value"}}]}}]}}"#
     );
-    assert!(matches!(
-        compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized_palette.as_bytes()),
-        Err(ThemeDefinitionCompileError::Admission(
-            ThemeDefinitionAdmissionError::InvalidJson { .. }
-        ))
-    ));
+    let error =
+        compile_theme_definition_json(&DiagramThemeCompiler::new(), oversized_palette.as_bytes())
+            .expect_err("the first ordinal color beyond the bound must fail during admission");
+    assert_materialization_resource_limit(
+        error,
+        "/styles/ordinal-palette/colors",
+        "max_theme_palette_colors",
+        257,
+        256,
+    );
 }
 
 #[test]
@@ -589,14 +596,13 @@ fn typed_compact_paint_obeys_the_decoded_string_ceiling() {
     let error = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)
         .expect_err("compact paint strings must use the shared decoded-string ceiling");
 
-    assert!(matches!(
+    assert_materialization_resource_limit(
         error,
-        ThemeDefinitionCompileError::Admission(ThemeDefinitionAdmissionError::CollectionLimit {
-            path: "/styles/rule/style/paint/color",
-            actual: 65_537,
-            max: 65_536,
-        })
-    ));
+        "/styles/rule/style/paint/color",
+        "max_theme_definition_string_bytes",
+        65_537,
+        65_536,
+    );
 }
 
 #[test]
@@ -611,10 +617,23 @@ fn typed_authoring_uses_the_caller_owned_encoded_input_policy_before_expansion()
                 "the typed facade must apply the compiler policy before materialization expands",
             );
 
-    assert!(matches!(
-        error,
-        ThemeDefinitionCompileError::Admission(ThemeDefinitionAdmissionError::ResourceLimit(
-            ref error
-        )) if error.limit == "max_theme_encoded_bytes" && error.actual == 2 && error.max == 1
-    ));
+    assert_materialization_resource_limit(error, "", "max_theme_encoded_bytes", 2, 1);
+}
+
+fn assert_materialization_resource_limit(
+    error: ThemeDefinitionCompileError,
+    path: &str,
+    limit_id: &str,
+    actual: u64,
+    max: u64,
+) {
+    let ThemeDefinitionCompileError::Materialization(error) = error else {
+        panic!("resource admission must retain the materialization error source")
+    };
+    let diagnostic = error.diagnostic();
+    assert_eq!(diagnostic.code(), "theme-authoring.resource-limit-exceeded");
+    assert_eq!(diagnostic.path(), path);
+    assert_eq!(diagnostic.limit_id(), Some(limit_id));
+    assert_eq!(diagnostic.actual(), Some(actual));
+    assert_eq!(diagnostic.max(), Some(max));
 }

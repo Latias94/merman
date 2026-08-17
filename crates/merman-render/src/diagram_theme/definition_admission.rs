@@ -1,18 +1,19 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::io;
 
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeCanvasPaintObjectWireV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1,
-    ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1,
-    ThemeTextStylePatchWireV1,
+    ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeMaterializationDiagnosticV1,
+    ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1,
+    ThemeTextStylePatchWireV1, resolve_authoring_version,
 };
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
 use super::materializer::{
     GENERATED_PALETTE_TARGETS, MAX_AUTHORED_RULES, ThemeMaterializationError, ThemeMaterializer,
-    validate_definition_shape,
+    first_rejected_actual,
 };
 use super::{
     DiagramTheme, DiagramThemeCompiler, ThemeCompileError, ThemeResourceLimitExceeded,
@@ -26,13 +27,31 @@ const MAX_TOTAL_COLLECTION_ITEMS: usize = 65_536;
 const MAX_JSON_STRING_BYTES: usize = 64 * 1_024;
 const PREFLIGHT_SENTINEL: &str = "theme definition JSON preflight failed";
 
-/// Materializes and compiles one admitted versioned theme definition.
+pub(super) fn decode_bounded_theme_definition_json(
+    resources: &ThemeResourcePolicy,
+    bytes: &[u8],
+) -> Result<ThemeDefinitionV1, ThemeMaterializationErrorV1> {
+    resources
+        .check_theme_encoded_bytes(bytes.len())
+        .map_err(encoded_bytes_contract_error)?;
+    preflight_json(bytes)?;
+    serde_json::from_slice::<ThemeDefinitionV1>(bytes).map_err(|_| {
+        invalid_json_contract_error(
+            "contract-shape",
+            "theme definition does not match the closed version one contract",
+        )
+    })
+}
+
+/// Admits, materializes, and compiles one typed versioned theme definition.
 pub fn compile_theme_definition(
     compiler: &DiagramThemeCompiler,
     definition: &ThemeDefinitionV1,
 ) -> Result<DiagramTheme, ThemeDefinitionCompileError> {
-    admit_typed_definition(compiler.resource_policy(), definition)?;
-    compile_admitted_definition(compiler, definition)
+    let materialized = ThemeMaterializer::new()
+        .with_resource_policy(compiler.resource_policy().clone())
+        .materialize_theme(definition)?;
+    Ok(compiler.compile_spec_wire(materialized.into_spec())?)
 }
 
 /// Decodes, admits, materializes, and compiles one versioned theme-definition JSON document.
@@ -40,60 +59,31 @@ pub fn compile_theme_definition_json(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<DiagramTheme, ThemeDefinitionCompileError> {
-    compiler.check_encoded_input_bytes(bytes.len())?;
-    preflight_json(bytes)?;
-    let definition = serde_json::from_slice::<ThemeDefinitionV1>(bytes).map_err(|error| {
-        ThemeDefinitionAdmissionError::InvalidJson {
-            message: format!("definition does not match ThemeDefinitionV1: {error}"),
-        }
-    })?;
-    admit_typed_definition(compiler.resource_policy(), &definition)?;
-    compile_admitted_definition(compiler, &definition)
-}
-
-fn compile_admitted_definition(
-    compiler: &DiagramThemeCompiler,
-    definition: &ThemeDefinitionV1,
-) -> Result<DiagramTheme, ThemeDefinitionCompileError> {
-    let materialized = ThemeMaterializer::new().materialize_theme(definition)?;
+    let materialized = ThemeMaterializer::new()
+        .with_resource_policy(compiler.resource_policy().clone())
+        .materialize_theme_json(bytes)?;
     Ok(compiler.compile_spec_wire(materialized.into_spec())?)
 }
 
-/// A fatal failure while admitting, materializing, or compiling a theme definition.
+/// A fatal failure while materializing or compiling a theme definition.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ThemeDefinitionCompileError {
-    /// The encoded or typed definition exceeded an input admission limit.
-    #[error(transparent)]
-    Admission(#[from] ThemeDefinitionAdmissionError),
     /// The authoring definition could not be expanded into a complete theme recipe.
     #[error("theme definition materialization failed: {0}")]
-    Materialization(#[from] ThemeMaterializationError),
+    Materialization(#[from] ThemeMaterializationErrorV1),
     /// The complete theme recipe did not satisfy compiler semantics or resource policy.
     #[error("theme definition compilation failed: {0}")]
     Compilation(#[from] ThemeCompileError),
 }
 
-impl From<ThemeResourceLimitExceeded> for ThemeDefinitionCompileError {
-    fn from(error: ThemeResourceLimitExceeded) -> Self {
-        Self::Admission(ThemeDefinitionAdmissionError::ResourceLimit(error))
-    }
-}
-
-/// One definition-input failure detected before materialization allocates an expanded recipe.
+/// Internal definition-input failure detected before materialization expands a recipe.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[non_exhaustive]
-pub enum ThemeDefinitionAdmissionError {
-    /// The JSON document was malformed, duplicated a member, or violated a structural ceiling.
-    #[error("invalid theme definition JSON: {message}")]
-    InvalidJson {
-        /// A bounded display message. It is not a stable diagnostic identity.
-        message: String,
-    },
+pub(super) enum ThemeDefinitionAdmissionError {
     /// The typed definition could not be serialized for resource accounting.
     #[error("theme definition could not be encoded for admission: {message}")]
     TypedEncoding {
-        /// A bounded display message from the typed serializer.
+        /// A fixed bounded display message; serializer text is not propagated.
         message: String,
     },
     /// One typed collection exceeded its versioned implementation ceiling.
@@ -111,11 +101,84 @@ pub enum ThemeDefinitionAdmissionError {
     ResourceLimit(#[from] ThemeResourceLimitExceeded),
 }
 
-fn admit_typed_definition(
+pub(super) fn admission_contract_error(
+    error: ThemeDefinitionAdmissionError,
+) -> ThemeMaterializationErrorV1 {
+    match error {
+        ThemeDefinitionAdmissionError::TypedEncoding { .. } => {
+            contract_error(ThemeMaterializationDiagnosticV1::invalid_token_value(
+                "",
+                "finite-theme-definition",
+                "typed theme definition cannot be encoded for bounded admission",
+            ))
+        }
+        ThemeDefinitionAdmissionError::CollectionLimit { path, actual, max } => {
+            contract_error(ThemeMaterializationDiagnosticV1::resource_limit_exceeded(
+                path,
+                admission_limit_id(path, max),
+                actual,
+                max,
+                "theme definition exceeds a bounded collection or string limit",
+            ))
+        }
+        ThemeDefinitionAdmissionError::ResourceLimit(error) => encoded_bytes_contract_error(error),
+    }
+}
+
+fn encoded_bytes_contract_error(error: ThemeResourceLimitExceeded) -> ThemeMaterializationErrorV1 {
+    contract_error(ThemeMaterializationDiagnosticV1::resource_limit_exceeded(
+        "",
+        encoded_bytes_limit_id(error.limit),
+        first_rejected_actual(error.max),
+        error.max,
+        "theme definition exceeds the caller-owned resource policy",
+    ))
+}
+
+fn encoded_bytes_limit_id(limit: &str) -> &'static str {
+    if limit == "theme_encoded_bytes_hard_cap" {
+        "theme_encoded_bytes_hard_cap"
+    } else {
+        "max_theme_encoded_bytes"
+    }
+}
+
+fn invalid_json_contract_error(
+    reason_id: &'static str,
+    message: &'static str,
+) -> ThemeMaterializationErrorV1 {
+    contract_error(ThemeMaterializationDiagnosticV1::invalid_definition_json(
+        reason_id, message,
+    ))
+}
+
+fn contract_error(diagnostic: ThemeMaterializationDiagnosticV1) -> ThemeMaterializationErrorV1 {
+    ThemeMaterializationErrorV1::from_diagnostic(diagnostic)
+}
+
+fn admission_limit_id(path: &str, max: usize) -> &'static str {
+    match path {
+        "" => "max_theme_definition_collection_items",
+        "/tokens/series" | "/styles/ordinal-palette/colors" => "max_theme_palette_colors",
+        "/styles/rule/style/paint/stops" => "max_theme_gradient_stops",
+        "/styles/rule/style/stroke/dasharray" => "max_theme_definition_array_items",
+        "/tokens/typography/font_stack" | "/styles/rule/style/typography/font_stack"
+            if max == super::typography::MAX_FONT_FAMILY_BYTES =>
+        {
+            "max_theme_font_family_bytes"
+        }
+        "/tokens/typography/font_stack" | "/styles/rule/style/typography/font_stack" => {
+            "max_theme_font_stack_entries"
+        }
+        _ if max == MAX_JSON_STRING_BYTES => "max_theme_definition_string_bytes",
+        _ => "max_theme_definition_collection_items",
+    }
+}
+
+pub(super) fn admit_typed_definition(
     resources: &ThemeResourcePolicy,
     definition: &ThemeDefinitionV1,
-) -> Result<(), ThemeDefinitionCompileError> {
-    validate_definition_shape(definition)?;
+) -> Result<(), ThemeDefinitionAdmissionError> {
     let mut usage = TypedUsage::default();
 
     usage.charge_collection_items(definition.styles().len())?;
@@ -188,10 +251,10 @@ fn admit_typed_definition(
     let mut writer = BoundedCountingWriter::new(resources);
     let encoded = serde_json::to_writer(&mut writer, definition);
     if let Some(error) = writer.take_resource_error() {
-        return Err(error.into());
+        return Err(ThemeDefinitionAdmissionError::ResourceLimit(error));
     }
-    encoded.map_err(|error| ThemeDefinitionAdmissionError::TypedEncoding {
-        message: error.to_string(),
+    encoded.map_err(|_| ThemeDefinitionAdmissionError::TypedEncoding {
+        message: "typed theme definition cannot be encoded for bounded admission".to_owned(),
     })?;
     Ok(())
 }
@@ -209,8 +272,8 @@ impl TypedUsage {
         self.total_collection_items = self.total_collection_items.saturating_add(actual);
         if self.total_collection_items > MAX_TOTAL_COLLECTION_ITEMS {
             return Err(ThemeDefinitionAdmissionError::CollectionLimit {
-                path: "/",
-                actual: self.total_collection_items,
+                path: "",
+                actual: first_rejected_actual(MAX_TOTAL_COLLECTION_ITEMS),
                 max: MAX_TOTAL_COLLECTION_ITEMS,
             });
         }
@@ -251,7 +314,11 @@ impl TypedUsage {
     ) -> Result<(), ThemeDefinitionAdmissionError> {
         let max = field_max.min(MAX_JSON_ARRAY_ITEMS);
         if actual > max {
-            return Err(ThemeDefinitionAdmissionError::CollectionLimit { path, actual, max });
+            return Err(ThemeDefinitionAdmissionError::CollectionLimit {
+                path,
+                actual: first_rejected_actual(max),
+                max,
+            });
         }
         self.charge_collection_items(actual)
     }
@@ -413,8 +480,7 @@ impl io::Write for BoundedCountingWriter<'_> {
             ));
         }
         let projected = self.bytes.saturating_add(buffer.len());
-        if let Err(mut error) = self.resources.check_theme_encoded_bytes(projected) {
-            error.actual = error.max.saturating_add(1);
+        if let Err(error) = self.resources.check_theme_encoded_bytes(projected) {
             self.resource_error = Some(error);
             return Err(io::Error::other(
                 "theme definition encoded-byte limit exceeded",
@@ -457,10 +523,13 @@ enum StyleKind {
     OrdinalPalette,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 struct JsonMarker {
     style_kind: Option<StyleKind>,
     replaces_generated_palette: Option<bool>,
+    palette_target: Option<String>,
+    authoring_schema_version: Option<u32>,
+    expansion_version: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -468,11 +537,22 @@ enum JsonCapture {
     None,
     StyleKind,
     PaletteTarget,
+    AuthoringSchemaVersion,
+    ExpansionVersion,
 }
 
 #[derive(Debug)]
 enum PreflightFailure {
-    Json(String),
+    InvalidJson {
+        reason_id: &'static str,
+        message: &'static str,
+    },
+    ResourceLimit {
+        path: &'static str,
+        limit_id: &'static str,
+        actual: usize,
+        max: usize,
+    },
     Materialization(ThemeMaterializationError),
 }
 
@@ -480,6 +560,8 @@ struct PreflightState {
     total_collection_items: usize,
     authored_rules: usize,
     materialized_palettes: usize,
+    style_entries: usize,
+    palette_targets: BTreeMap<String, usize>,
     failure: Option<PreflightFailure>,
 }
 
@@ -489,34 +571,88 @@ impl PreflightState {
             total_collection_items: 0,
             authored_rules: 0,
             materialized_palettes: GENERATED_PALETTE_TARGETS.len(),
+            style_entries: 0,
+            palette_targets: BTreeMap::new(),
             failure: None,
         }
     }
 
-    fn fail_json<E: de::Error>(&mut self, message: impl Into<String>) -> E {
-        if self.failure.is_none() {
-            self.failure = Some(PreflightFailure::Json(message.into()));
+    fn fail_invalid_json<E: de::Error>(
+        &mut self,
+        reason_id: &'static str,
+        message: &'static str,
+    ) -> E {
+        if self.failure.is_none()
+            || matches!(
+                self.failure.as_ref(),
+                Some(PreflightFailure::Materialization(_))
+            )
+        {
+            self.failure = Some(PreflightFailure::InvalidJson { reason_id, message });
         }
         E::custom(PREFLIGHT_SENTINEL)
     }
 
-    fn fail_materialization<E: de::Error>(&mut self, error: ThemeMaterializationError) -> E {
-        if self.failure.is_none() {
+    fn fail_resource<E: de::Error>(
+        &mut self,
+        path: &'static str,
+        limit_id: &'static str,
+        actual: usize,
+        max: usize,
+    ) -> E {
+        if self.failure.is_none()
+            || matches!(
+                self.failure.as_ref(),
+                Some(PreflightFailure::Materialization(_))
+            )
+        {
+            self.failure = Some(PreflightFailure::ResourceLimit {
+                path,
+                limit_id,
+                actual,
+                max,
+            });
+        }
+        E::custom(PREFLIGHT_SENTINEL)
+    }
+
+    fn record_materialization(&mut self, error: ThemeMaterializationError) {
+        let replaces_existing = matches!(
+            (&self.failure, &error),
+            (
+                Some(PreflightFailure::Materialization(existing)),
+                ThemeMaterializationError::RuleBudgetExceeded { .. }
+            ) if !matches!(existing, ThemeMaterializationError::RuleBudgetExceeded { .. })
+        );
+        if self.failure.is_none() || replaces_existing {
             self.failure = Some(PreflightFailure::Materialization(error));
         }
-        E::custom(PREFLIGHT_SENTINEL)
     }
 
-    fn check_depth<E: de::Error>(&mut self, depth: usize) -> Result<(), E> {
+    fn check_depth<E: de::Error>(&mut self, context: JsonContext, depth: usize) -> Result<(), E> {
         if depth > MAX_JSON_DEPTH {
-            return Err(self.fail_json("nesting depth limit exceeded"));
+            return Err(self.fail_resource(
+                context_path(context),
+                "max_theme_definition_json_depth",
+                depth,
+                MAX_JSON_DEPTH,
+            ));
         }
         Ok(())
     }
 
-    fn check_object_members<E: de::Error>(&mut self, members: usize) -> Result<(), E> {
+    fn check_object_members<E: de::Error>(
+        &mut self,
+        context: JsonContext,
+        members: usize,
+    ) -> Result<(), E> {
         if members > MAX_JSON_OBJECT_MEMBERS {
-            return Err(self.fail_json("object member limit exceeded"));
+            return Err(self.fail_resource(
+                context_path(context),
+                "max_theme_definition_object_members",
+                members,
+                MAX_JSON_OBJECT_MEMBERS,
+            ));
         }
         Ok(())
     }
@@ -524,14 +660,24 @@ impl PreflightState {
     fn charge_collection_item<E: de::Error>(&mut self) -> Result<(), E> {
         self.total_collection_items = self.total_collection_items.saturating_add(1);
         if self.total_collection_items > MAX_TOTAL_COLLECTION_ITEMS {
-            return Err(self.fail_json("total collection item limit exceeded"));
+            return Err(self.fail_resource(
+                "",
+                "max_theme_definition_collection_items",
+                self.total_collection_items,
+                MAX_TOTAL_COLLECTION_ITEMS,
+            ));
         }
         Ok(())
     }
 
-    fn check_string<E: de::Error>(&mut self, value: &str) -> Result<(), E> {
+    fn check_string<E: de::Error>(&mut self, context: JsonContext, value: &str) -> Result<(), E> {
         if value.len() > MAX_JSON_STRING_BYTES {
-            return Err(self.fail_json("decoded string byte limit exceeded"));
+            return Err(self.fail_resource(
+                context_path(context),
+                "max_theme_definition_string_bytes",
+                value.len(),
+                MAX_JSON_STRING_BYTES,
+            ));
         }
         Ok(())
     }
@@ -541,74 +687,61 @@ impl PreflightState {
         context: JsonContext,
         items: usize,
     ) -> Result<(), E> {
-        let max = match context {
-            JsonContext::Series | JsonContext::PaletteColors => {
-                super::semantic::MAX_THEME_PALETTE_COLORS
-            }
-            JsonContext::TokenFontStack | JsonContext::StyleFontStack => {
-                super::typography::MAX_FONT_STACK_ENTRIES
-            }
-            JsonContext::GradientStops => super::canvas::MAX_GRADIENT_STOPS,
-            _ => MAX_JSON_ARRAY_ITEMS,
-        };
+        let (path, limit_id, max) = sequence_limit(context);
         if items <= max {
             return Ok(());
         }
-        match context {
-            JsonContext::Series => Err(self.fail_materialization(
-                ThemeMaterializationError::InvalidTokenValue {
-                    path: "/tokens/series",
-                },
-            )),
-            JsonContext::TokenFontStack => Err(self.fail_materialization(
-                ThemeMaterializationError::InvalidTokenValue {
-                    path: "/tokens/typography/font_stack",
-                },
-            )),
-            JsonContext::StyleFontStack => Err(self.fail_materialization(
-                ThemeMaterializationError::InvalidTokenValue {
-                    path: "/styles/rule/style/typography/font_stack",
-                },
-            )),
-            JsonContext::PaletteColors => {
-                Err(self.fail_json("ordinal palette color limit exceeded"))
-            }
-            JsonContext::GradientStops => Err(self.fail_json("gradient stop limit exceeded")),
-            _ => Err(self.fail_json("array item limit exceeded")),
-        }
+        Err(self.fail_resource(path, limit_id, first_rejected_actual(max), max))
     }
 
-    fn charge_style_entry<E: de::Error>(&mut self, marker: JsonMarker) -> Result<(), E> {
+    fn charge_style_entry(&mut self, marker: &JsonMarker) {
+        let authored_index = self.style_entries;
+        self.style_entries = self.style_entries.saturating_add(1);
         match marker.style_kind {
             Some(StyleKind::Rule) => {
                 self.authored_rules = self.authored_rules.saturating_add(1);
                 if self.authored_rules > MAX_AUTHORED_RULES {
-                    return Err(self.fail_materialization(
-                        ThemeMaterializationError::RuleBudgetExceeded {
-                            actual: self.authored_rules,
-                            max: MAX_AUTHORED_RULES,
-                        },
-                    ));
+                    self.record_materialization(ThemeMaterializationError::RuleBudgetExceeded {
+                        actual: first_rejected_actual(MAX_AUTHORED_RULES),
+                        max: MAX_AUTHORED_RULES,
+                    });
                 }
             }
-            Some(StyleKind::OrdinalPalette) if marker.replaces_generated_palette == Some(false) => {
+            Some(StyleKind::OrdinalPalette) => {
+                if let Some(target) = marker.palette_target.as_ref()
+                    && let Some(first_authored_index) =
+                        self.palette_targets.insert(target.clone(), authored_index)
+                {
+                    self.record_materialization(
+                        ThemeMaterializationError::DuplicatePaletteTarget {
+                            target: target.clone(),
+                            first_authored_index,
+                            duplicate_authored_index: authored_index,
+                        },
+                    );
+                    return;
+                }
+                if marker.replaces_generated_palette != Some(false) {
+                    return;
+                }
                 self.materialized_palettes = self.materialized_palettes.saturating_add(1);
                 if self.materialized_palettes > super::semantic::MAX_THEME_ORDINAL_PALETTES {
-                    return Err(self.fail_materialization(
+                    self.record_materialization(
                         ThemeMaterializationError::OrdinalPaletteBudgetExceeded {
-                            actual: self.materialized_palettes,
+                            actual: first_rejected_actual(
+                                super::semantic::MAX_THEME_ORDINAL_PALETTES,
+                            ),
                             max: super::semantic::MAX_THEME_ORDINAL_PALETTES,
                         },
-                    ));
+                    );
                 }
             }
             _ => {}
         }
-        Ok(())
     }
 }
 
-fn preflight_json(bytes: &[u8]) -> Result<(), ThemeDefinitionCompileError> {
+fn preflight_json(bytes: &[u8]) -> Result<(), ThemeMaterializationErrorV1> {
     let mut state = PreflightState::new();
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let result = JsonValueSeed {
@@ -618,24 +751,114 @@ fn preflight_json(bytes: &[u8]) -> Result<(), ThemeDefinitionCompileError> {
         capture: JsonCapture::None,
     }
     .deserialize(&mut deserializer);
-    if let Err(error) = result {
-        return Err(match state.failure {
-            Some(PreflightFailure::Json(message)) => {
-                ThemeDefinitionAdmissionError::InvalidJson { message }.into()
-            }
-            Some(PreflightFailure::Materialization(error)) => error.into(),
-            None => ThemeDefinitionAdmissionError::InvalidJson {
-                message: format!("invalid JSON: {error}"),
-            }
-            .into(),
-        });
-    }
-    deserializer.end().map_err(|error| {
-        ThemeDefinitionAdmissionError::InvalidJson {
-            message: format!("invalid JSON: {error}"),
+    let marker = match result {
+        Ok(marker) => marker,
+        Err(_) => {
+            return Err(match state.failure {
+                Some(PreflightFailure::InvalidJson { reason_id, message }) => {
+                    invalid_json_contract_error(reason_id, message)
+                }
+                Some(PreflightFailure::ResourceLimit {
+                    path,
+                    limit_id,
+                    actual,
+                    max,
+                }) => contract_error(ThemeMaterializationDiagnosticV1::resource_limit_exceeded(
+                    path,
+                    limit_id,
+                    actual,
+                    max,
+                    "theme definition JSON exceeds a bounded structural limit",
+                )),
+                Some(PreflightFailure::Materialization(_)) | None => invalid_json_contract_error(
+                    "malformed-json",
+                    "theme definition JSON is malformed",
+                ),
+            });
         }
-        .into()
-    })
+    };
+    deserializer.end().map_err(|_| {
+        invalid_json_contract_error("malformed-json", "theme definition JSON is malformed")
+    })?;
+    if let (Some(authoring_schema_version), Some(expansion_version)) =
+        (marker.authoring_schema_version, marker.expansion_version)
+        && resolve_authoring_version(authoring_schema_version, expansion_version).is_err()
+    {
+        return Err(contract_error(
+            ThemeMaterializationDiagnosticV1::unsupported_version_tuple(
+                authoring_schema_version,
+                expansion_version,
+                "theme authoring version tuple is not supported",
+            ),
+        ));
+    }
+    if let Some(PreflightFailure::Materialization(error)) = state.failure {
+        return Err(error.into_contract_error());
+    }
+    Ok(())
+}
+
+const fn sequence_limit(context: JsonContext) -> (&'static str, &'static str, usize) {
+    match context {
+        JsonContext::Series => (
+            "/tokens/series",
+            "max_theme_palette_colors",
+            super::semantic::MAX_THEME_PALETTE_COLORS,
+        ),
+        JsonContext::PaletteColors => (
+            "/styles/ordinal-palette/colors",
+            "max_theme_palette_colors",
+            super::semantic::MAX_THEME_PALETTE_COLORS,
+        ),
+        JsonContext::TokenFontStack => (
+            "/tokens/typography/font_stack",
+            "max_theme_font_stack_entries",
+            super::typography::MAX_FONT_STACK_ENTRIES,
+        ),
+        JsonContext::StyleFontStack => (
+            "/styles/rule/style/typography/font_stack",
+            "max_theme_font_stack_entries",
+            super::typography::MAX_FONT_STACK_ENTRIES,
+        ),
+        JsonContext::GradientStops => (
+            "/styles/rule/style/paint/stops",
+            "max_theme_gradient_stops",
+            super::canvas::MAX_GRADIENT_STOPS,
+        ),
+        JsonContext::Dasharray => (
+            "/styles/rule/style/stroke/dasharray",
+            "max_theme_definition_array_items",
+            MAX_JSON_ARRAY_ITEMS,
+        ),
+        _ => (
+            context_path(context),
+            "max_theme_definition_array_items",
+            MAX_JSON_ARRAY_ITEMS,
+        ),
+    }
+}
+
+const fn context_path(context: JsonContext) -> &'static str {
+    match context {
+        JsonContext::Root | JsonContext::Other => "",
+        JsonContext::Tokens => "/tokens",
+        JsonContext::TokenTypography => "/tokens/typography",
+        JsonContext::StyleTypography => "/styles/rule/style/typography",
+        JsonContext::Styles | JsonContext::StyleEntry => "/styles",
+        JsonContext::StylePatch => "/styles/rule/style",
+        JsonContext::Stroke => "/styles/rule/style/stroke",
+        JsonContext::Paint => "/styles/rule/style/paint",
+        JsonContext::Series => "/tokens/series",
+        JsonContext::PaletteColors => "/styles/ordinal-palette/colors",
+        JsonContext::TokenFontStack | JsonContext::TokenFontFamily => {
+            "/tokens/typography/font_stack"
+        }
+        JsonContext::StyleFontStack | JsonContext::StyleFontFamily => {
+            "/styles/rule/style/typography/font_stack"
+        }
+        JsonContext::GradientStops => "/styles/rule/style/paint/stops",
+        JsonContext::Dasharray => "/styles/rule/style/stroke/dasharray",
+    }
 }
 
 struct JsonValueSeed<'a> {
@@ -670,7 +893,7 @@ struct JsonValueVisitor<'a> {
 
 impl JsonValueVisitor<'_> {
     fn visit_string_value<E: de::Error>(self, value: &str) -> Result<JsonMarker, E> {
-        self.state.check_string(value)?;
+        self.state.check_string(self.context, value)?;
         let font_family_path = match self.context {
             JsonContext::TokenFontFamily => Some("/tokens/typography/font_stack"),
             JsonContext::StyleFontFamily => Some("/styles/rule/style/typography/font_stack"),
@@ -679,9 +902,12 @@ impl JsonValueVisitor<'_> {
         if value.len() > super::typography::MAX_FONT_FAMILY_BYTES
             && let Some(path) = font_family_path
         {
-            return Err(self
-                .state
-                .fail_materialization(ThemeMaterializationError::InvalidTokenValue { path }));
+            return Err(self.state.fail_resource(
+                path,
+                "max_theme_font_family_bytes",
+                value.len(),
+                super::typography::MAX_FONT_FAMILY_BYTES,
+            ));
         }
         let mut marker = JsonMarker::default();
         match self.capture {
@@ -693,15 +919,35 @@ impl JsonValueVisitor<'_> {
                 };
             }
             JsonCapture::PaletteTarget => {
+                marker.palette_target = Some(value.to_owned());
                 marker.replaces_generated_palette = Some(
                     GENERATED_PALETTE_TARGETS
                         .iter()
                         .any(|target| target.id() == value),
                 );
             }
-            JsonCapture::None => {}
+            JsonCapture::None
+            | JsonCapture::AuthoringSchemaVersion
+            | JsonCapture::ExpansionVersion => {}
         }
         Ok(marker)
+    }
+
+    fn visit_unsigned_value(self, value: u64) -> JsonMarker {
+        let Ok(value) = u32::try_from(value) else {
+            return JsonMarker::default();
+        };
+        let mut marker = JsonMarker::default();
+        match self.capture {
+            JsonCapture::AuthoringSchemaVersion => {
+                marker.authoring_schema_version = Some(value);
+            }
+            JsonCapture::ExpansionVersion => {
+                marker.expansion_version = Some(value);
+            }
+            JsonCapture::None | JsonCapture::StyleKind | JsonCapture::PaletteTarget => {}
+        }
+        marker
     }
 }
 
@@ -716,12 +962,14 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
         Ok(JsonMarker::default())
     }
 
-    fn visit_i64<E>(self, _value: i64) -> Result<Self::Value, E> {
-        Ok(JsonMarker::default())
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+        Ok(u64::try_from(value)
+            .map(|value| self.visit_unsigned_value(value))
+            .unwrap_or_default())
     }
 
-    fn visit_u64<E>(self, _value: u64) -> Result<Self::Value, E> {
-        Ok(JsonMarker::default())
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+        Ok(self.visit_unsigned_value(value))
     }
 
     fn visit_f64<E>(self, _value: f64) -> Result<Self::Value, E> {
@@ -758,7 +1006,7 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
         A: SeqAccess<'de>,
     {
         let depth = self.parent_depth.saturating_add(1);
-        self.state.check_depth(depth)?;
+        self.state.check_depth(self.context, depth)?;
         let mut item_count = 0usize;
         loop {
             let next_count = item_count.saturating_add(1);
@@ -789,7 +1037,7 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
         A: MapAccess<'de>,
     {
         let depth = self.parent_depth.saturating_add(1);
-        self.state.check_depth(depth)?;
+        self.state.check_depth(self.context, depth)?;
         let mut member_count = 0usize;
         let mut seen = HashSet::<Cow<'de, str>>::new();
         let mut marker = JsonMarker::default();
@@ -797,14 +1045,22 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
             state: &mut *self.state,
         })? {
             member_count = member_count.saturating_add(1);
-            self.state.check_object_members(member_count)?;
+            self.state
+                .check_object_members(self.context, member_count)?;
             if !seen.insert(key.clone()) {
-                return Err(self.state.fail_json("duplicate object key"));
+                return Err(self.state.fail_invalid_json(
+                    "duplicate-object-key",
+                    "theme definition JSON contains a duplicate object key",
+                ));
             }
             let child_context = child_context(self.context, &key);
             let capture = match (self.context, key.as_ref()) {
                 (JsonContext::StyleEntry, "kind") => JsonCapture::StyleKind,
                 (JsonContext::StyleEntry, "target") => JsonCapture::PaletteTarget,
+                (JsonContext::Root, "authoring_schema_version") => {
+                    JsonCapture::AuthoringSchemaVersion
+                }
+                (JsonContext::Root, "expansion_version") => JsonCapture::ExpansionVersion,
                 _ => JsonCapture::None,
             };
             let captured = map.next_value_seed(JsonValueSeed {
@@ -817,9 +1073,14 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
             marker.replaces_generated_palette = marker
                 .replaces_generated_palette
                 .or(captured.replaces_generated_palette);
+            marker.palette_target = marker.palette_target.or(captured.palette_target);
+            marker.authoring_schema_version = marker
+                .authoring_schema_version
+                .or(captured.authoring_schema_version);
+            marker.expansion_version = marker.expansion_version.or(captured.expansion_version);
         }
         if self.context == JsonContext::StyleEntry {
-            self.state.charge_style_entry(marker)?;
+            self.state.charge_style_entry(&marker);
         }
         Ok(marker)
     }
@@ -901,7 +1162,7 @@ impl<'de> Visitor<'de> for JsonKeyVisitor<'_> {
     where
         E: de::Error,
     {
-        self.state.check_string(value)?;
+        self.state.check_string(JsonContext::Other, value)?;
         Ok(Cow::Borrowed(value))
     }
 
@@ -909,7 +1170,7 @@ impl<'de> Visitor<'de> for JsonKeyVisitor<'_> {
     where
         E: de::Error,
     {
-        self.state.check_string(value)?;
+        self.state.check_string(JsonContext::Other, value)?;
         Ok(Cow::Owned(value.to_owned()))
     }
 
@@ -917,7 +1178,7 @@ impl<'de> Visitor<'de> for JsonKeyVisitor<'_> {
     where
         E: de::Error,
     {
-        self.state.check_string(&value)?;
+        self.state.check_string(JsonContext::Other, &value)?;
         Ok(Cow::Owned(value))
     }
 }

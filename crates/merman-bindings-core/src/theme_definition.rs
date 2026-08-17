@@ -1,8 +1,8 @@
 use merman::diagram_theme::{
-    ThemeDefinitionAdmissionError, ThemeDefinitionCompileError,
+    ThemeDefinitionCompileError, ThemeMaterializationErrorV1,
     compile_theme_definition_json as compile_theme_definition_json_with_renderer,
 };
-use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourcePolicy};
+use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourceLimitId, ThemeResourcePolicy};
 
 use crate::common::BindingError;
 
@@ -20,26 +20,53 @@ pub fn compile_theme_definition_json_with(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<DiagramTheme, BindingError> {
-    compile_theme_definition_json_with_renderer(compiler, bytes).map_err(definition_compile_error)
+    compile_theme_definition_json_with_renderer(compiler, bytes)
+        .map_err(|error| definition_compile_error(compiler.resource_policy(), error))
 }
 
-fn definition_compile_error(error: ThemeDefinitionCompileError) -> BindingError {
+fn definition_compile_error(
+    policy: &ThemeResourcePolicy,
+    error: ThemeDefinitionCompileError,
+) -> BindingError {
     match error {
-        ThemeDefinitionCompileError::Admission(ThemeDefinitionAdmissionError::ResourceLimit(
-            error,
-        )) => crate::theme::theme_resource_error(error),
-        ThemeDefinitionCompileError::Admission(ThemeDefinitionAdmissionError::InvalidJson {
-            ..
-        }) => BindingError::invalid_options_json(error.to_string()),
-        ThemeDefinitionCompileError::Admission(
-            error @ ThemeDefinitionAdmissionError::CollectionLimit { .. },
-        ) => BindingError::invalid_argument(error.to_string()),
-        ThemeDefinitionCompileError::Materialization(error) => {
-            BindingError::invalid_argument(format!("invalid theme definition: {error}"))
-        }
+        ThemeDefinitionCompileError::Materialization(error) => materialization_error(policy, error),
         ThemeDefinitionCompileError::Compilation(error) => {
             crate::theme::theme_definition_compile_error(error)
         }
         error => BindingError::invalid_argument(format!("invalid theme definition: {error}")),
     }
+}
+
+fn materialization_error(
+    policy: &ThemeResourcePolicy,
+    error: ThemeMaterializationErrorV1,
+) -> BindingError {
+    let diagnostic = error.diagnostic();
+    if diagnostic.code() == "theme-authoring.invalid-definition-json" {
+        return BindingError::invalid_options_json(error.to_string());
+    }
+    if diagnostic.code() == "theme-authoring.resource-limit-exceeded"
+        && let (Some(limit), Some(actual), Some(max)) = (
+            diagnostic
+                .limit_id()
+                .and_then(ThemeResourceLimitId::from_stable_id),
+            diagnostic.actual(),
+            diagnostic.max(),
+        )
+    {
+        let descriptor = limit.descriptor();
+        let profile = policy
+            .profile()
+            .map(merman::resources::ResourceProfile::id)
+            .unwrap_or("custom-theme-policy");
+        return BindingError::resource_limit(
+            descriptor.phase.as_str(),
+            descriptor.stable_id,
+            actual,
+            max,
+            profile,
+            error.to_string(),
+        );
+    }
+    BindingError::invalid_argument(format!("invalid theme definition: {error}"))
 }

@@ -3,11 +3,14 @@ use std::collections::BTreeMap;
 use merman_theme_contract::{
     DiagramThemeSpecWireV1, MaterializedThemeWireV1, SpecifiedWireV1, ThemeCanvasPaintWireV1,
     ThemeCanvasSpecWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeLineHeightWireV1,
-    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTextStyleWireV1,
-    ThemeTypographySpecWireV1,
+    ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1, ThemeRuleSetWireV1,
+    ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTextStyleWireV1, ThemeTypographySpecWireV1,
 };
 
-use super::{FontStack, LineHeight, ThemeColorValue, ThemeTarget, ThemeTextStyle, ThemeVariant};
+use super::{
+    FontStack, LineHeight, ThemeColorValue, ThemeResourcePolicy, ThemeTarget, ThemeTextStyle,
+    ThemeVariant,
+};
 
 const DEFAULT_SERIES: [&str; 4] = ["#2563eb", "#16a34a", "#d97706", "#9333ea"];
 const DEFAULT_FONT_STACK: [&str; 4] = ["Inter", "ui-sans-serif", "system-ui", "sans-serif"];
@@ -190,18 +193,61 @@ const GENERATED_RULES: [GeneratedRule; 23] = [
 pub(crate) const MAX_AUTHORED_RULES: usize =
     super::semantic::MAX_THEME_RULES - GENERATED_RULES.len();
 
-/// Pure versioned lowering from a compact authoring definition to a complete theme-spec wire.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ThemeMaterializer;
+pub(super) const fn first_rejected_actual(max: usize) -> usize {
+    max.saturating_add(1)
+}
+
+/// Resource-bounded versioned lowering from compact authoring input to a complete theme-spec wire.
+#[derive(Debug, Clone)]
+pub struct ThemeMaterializer {
+    resources: ThemeResourcePolicy,
+}
+
+impl Default for ThemeMaterializer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ThemeMaterializer {
-    /// Creates the versioned materializer.
+    /// Creates the versioned materializer with the interactive resource policy.
     pub const fn new() -> Self {
-        Self
+        Self {
+            resources: ThemeResourcePolicy::interactive(),
+        }
     }
 
-    /// Applies versioned defaults and expansion without inspecting render-time capabilities.
+    /// Replaces the caller-owned resource policy used for typed and JSON admission.
+    pub fn with_resource_policy(mut self, resources: ThemeResourcePolicy) -> Self {
+        self.resources = resources;
+        self
+    }
+
+    /// Admits and materializes one typed definition without compiling render-time capabilities.
     pub fn materialize_theme(
+        &self,
+        definition: &ThemeDefinitionV1,
+    ) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
+        super::definition_admission::admit_typed_definition(&self.resources, definition)
+            .map_err(super::definition_admission::admission_contract_error)?;
+        self.materialize_admitted_theme(definition)
+            .map_err(ThemeMaterializationError::into_contract_error)
+    }
+
+    /// Decodes, admits, and materializes one JSON definition without compiling it.
+    pub fn materialize_theme_json(
+        &self,
+        bytes: &[u8],
+    ) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
+        let definition = super::definition_admission::decode_bounded_theme_definition_json(
+            &self.resources,
+            bytes,
+        )?;
+        self.materialize_admitted_theme(&definition)
+            .map_err(ThemeMaterializationError::into_contract_error)
+    }
+
+    pub(crate) fn materialize_admitted_theme(
         &self,
         definition: &ThemeDefinitionV1,
     ) -> Result<MaterializedThemeWireV1, ThemeMaterializationError> {
@@ -265,7 +311,7 @@ impl ThemeMaterializer {
 /// A fatal authoring error. Failures never carry a partial spec.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum ThemeMaterializationError {
+pub(crate) enum ThemeMaterializationError {
     /// One token could not be lowered into its typed theme domain.
     #[error("theme authoring value at `{path}` is invalid")]
     InvalidTokenValue {
@@ -312,18 +358,77 @@ pub enum ThemeMaterializationError {
 }
 
 impl ThemeMaterializationError {
-    /// Returns the stable diagnostic code for this fatal error.
-    pub const fn code(&self) -> &'static str {
-        match self {
-            Self::InvalidTokenValue { .. } => "theme-authoring.invalid-token-value",
-            Self::EmptySeries => "theme-authoring.empty-series",
-            Self::DuplicatePaletteTarget { .. } => "theme-authoring.duplicate-palette-target",
-            Self::RuleBudgetExceeded { .. } => "theme-authoring.rule-budget-exceeded",
-            Self::EffectReferenceNotSupported { .. } => {
-                "theme-authoring.effect-reference-not-supported"
+    pub(crate) fn into_contract_error(self) -> ThemeMaterializationErrorV1 {
+        let diagnostic = match self {
+            Self::InvalidTokenValue { path } => {
+                ThemeMaterializationDiagnosticV1::invalid_token_value(
+                    path,
+                    expected_domain_id(path),
+                    "theme authoring value is outside its expected domain",
+                )
             }
-            Self::OrdinalPaletteBudgetExceeded { .. } => "theme-authoring.resource-limit-exceeded",
+            Self::EmptySeries => ThemeMaterializationDiagnosticV1::empty_series(
+                "theme authoring series must not be empty",
+            ),
+            Self::DuplicatePaletteTarget {
+                target,
+                first_authored_index,
+                duplicate_authored_index,
+            } => ThemeMaterializationDiagnosticV1::duplicate_palette_target(
+                format!("/styles/{duplicate_authored_index}/target"),
+                target,
+                first_authored_index,
+                duplicate_authored_index,
+                "authored palette target is duplicated",
+            ),
+            Self::RuleBudgetExceeded { actual, max } => {
+                ThemeMaterializationDiagnosticV1::rule_budget_exceeded(
+                    "max_authored_rules",
+                    actual,
+                    max,
+                    "authored rule budget is exceeded",
+                )
+            }
+            Self::EffectReferenceNotSupported { authored_index } => {
+                ThemeMaterializationDiagnosticV1::effect_reference_not_supported(
+                    format!("/styles/{authored_index}/style/effect"),
+                    authored_index,
+                    "effect references are not supported by authoring version one",
+                )
+            }
+            Self::OrdinalPaletteBudgetExceeded { actual, max } => {
+                ThemeMaterializationDiagnosticV1::resource_limit_exceeded(
+                    "/styles",
+                    "max_theme_ordinal_palettes",
+                    actual,
+                    max,
+                    "materialized ordinal palette budget is exceeded",
+                )
+            }
+        };
+        ThemeMaterializationErrorV1::from_diagnostic(diagnostic)
+    }
+}
+
+fn expected_domain_id(path: &str) -> &'static str {
+    match path {
+        "/tokens/canvas"
+        | "/tokens/surface"
+        | "/tokens/surface_alt"
+        | "/tokens/surface_muted"
+        | "/tokens/text"
+        | "/tokens/border"
+        | "/tokens/line"
+        | "/tokens/accent" => "css-color",
+        "/tokens/series" | "/styles/ordinal-palette/colors" => "theme-color-series",
+        "/tokens/typography/font_stack" | "/styles/rule/style/typography/font_stack" => {
+            "font-stack"
         }
+        "/tokens/typography/font_size_px" => "positive-finite-pixels",
+        "/tokens/typography/font_weight" => "font-weight-1-1000",
+        "/tokens/typography/line_height" => "line-height",
+        "/styles" => "finite-theme-style-values",
+        _ => "theme-authoring-value",
     }
 }
 
@@ -336,7 +441,7 @@ fn validate_authored_styles(
         .count();
     if authored_rule_count > MAX_AUTHORED_RULES {
         return Err(ThemeMaterializationError::RuleBudgetExceeded {
-            actual: authored_rule_count,
+            actual: first_rejected_actual(MAX_AUTHORED_RULES),
             max: MAX_AUTHORED_RULES,
         });
     }

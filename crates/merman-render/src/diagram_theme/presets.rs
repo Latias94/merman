@@ -130,7 +130,7 @@ impl ThemePreset {
             preset_palette_rule("journey-task", palette.series),
         ]);
         let mut spec = ThemeMaterializer::new()
-            .materialize_theme(&definition)
+            .materialize_admitted_theme(&definition)
             .expect("built-in theme preset values must remain statically valid")
             .into_spec();
         spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {

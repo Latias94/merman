@@ -1,6 +1,4 @@
-use merman_render::diagram_theme::{
-    DiagramThemeCompiler, ThemeMaterializationError, ThemeMaterializer,
-};
+use merman_render::diagram_theme::{DiagramThemeCompiler, ThemeMaterializer};
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeAuthoringTypographyV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1,
     ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1,
@@ -235,15 +233,15 @@ fn duplicate_authored_palette_targets_fail_without_a_partial_spec() {
     let error = ThemeMaterializer::new()
         .materialize_theme(&definition)
         .expect_err("duplicate authored palette targets must fail closed");
-    assert_eq!(error.code(), "theme-authoring.duplicate-palette-target");
-    assert!(matches!(
-        error,
-        ThemeMaterializationError::DuplicatePaletteTarget {
-            ref target,
-            first_authored_index: 0,
-            duplicate_authored_index: 1,
-        } if target == "node"
-    ));
+    let diagnostic = error.diagnostic();
+    assert_eq!(
+        diagnostic.code(),
+        "theme-authoring.duplicate-palette-target"
+    );
+    assert_eq!(diagnostic.path(), "/styles/1/target");
+    assert_eq!(diagnostic.target_id(), Some("node"));
+    assert_eq!(diagnostic.first_authored_index(), Some(0));
+    assert_eq!(diagnostic.duplicate_authored_index(), Some(1));
 }
 
 #[test]
@@ -278,14 +276,11 @@ fn authored_rule_budget_accepts_489_and_rejects_490_before_expansion() {
     let error = ThemeMaterializer::new()
         .materialize_theme(&exceeded)
         .expect_err("the exact-plus-one authored rule must fail closed");
-    assert_eq!(error.code(), "theme-authoring.rule-budget-exceeded");
-    assert!(matches!(
-        error,
-        ThemeMaterializationError::RuleBudgetExceeded {
-            actual: 490,
-            max: 489,
-        }
-    ));
+    let diagnostic = error.diagnostic();
+    assert_eq!(diagnostic.code(), "theme-authoring.rule-budget-exceeded");
+    assert_eq!(diagnostic.limit_id(), Some("max_authored_rules"));
+    assert_eq!(diagnostic.actual(), Some(490));
+    assert_eq!(diagnostic.max(), Some(489));
 }
 
 #[test]
@@ -305,13 +300,12 @@ fn authored_palette_budget_counts_generated_replacements_before_expansion() {
     let error = ThemeMaterializer::new()
         .materialize_theme(&exceeded)
         .expect_err("the 65th materialized palette must fail before expansion");
-    assert!(matches!(
-        error,
-        ThemeMaterializationError::OrdinalPaletteBudgetExceeded {
-            actual: 65,
-            max: 64,
-        }
-    ));
+    let diagnostic = error.diagnostic();
+    assert_eq!(diagnostic.code(), "theme-authoring.resource-limit-exceeded");
+    assert_eq!(diagnostic.path(), "/styles");
+    assert_eq!(diagnostic.limit_id(), Some("max_theme_ordinal_palettes"));
+    assert_eq!(diagnostic.actual(), Some(65));
+    assert_eq!(diagnostic.max(), Some(64));
 }
 
 #[test]
@@ -334,14 +328,13 @@ fn concrete_effect_references_are_rejected_but_explicit_clear_is_preserved() {
     let error = ThemeMaterializer::new()
         .materialize_theme(&rejected)
         .expect_err("version one authoring carries no effect graph authority");
+    let diagnostic = error.diagnostic();
     assert_eq!(
-        error.code(),
+        diagnostic.code(),
         "theme-authoring.effect-reference-not-supported"
     );
-    assert!(matches!(
-        error,
-        ThemeMaterializationError::EffectReferenceNotSupported { authored_index: 0 }
-    ));
+    assert_eq!(diagnostic.path(), "/styles/0/style/effect");
+    assert_eq!(diagnostic.authored_index(), Some(0));
 
     let cleared = ThemeDefinitionV1::new(ThemeTokensV1::default())
         .with_styles(vec![rule_with_effect(SpecifiedWireV1::Clear)]);
@@ -362,8 +355,8 @@ fn explicitly_empty_series_uses_the_dedicated_authoring_error() {
     let error = ThemeMaterializer::new()
         .materialize_theme(&definition)
         .expect_err("an explicitly empty series cannot produce ordinal palettes");
-    assert_eq!(error.code(), "theme-authoring.empty-series");
-    assert!(matches!(error, ThemeMaterializationError::EmptySeries));
+    assert_eq!(error.diagnostic().code(), "theme-authoring.empty-series");
+    assert_eq!(error.diagnostic().path(), "/tokens/series");
 }
 
 #[test]
@@ -410,16 +403,18 @@ fn authored_non_finite_style_numbers_fail_before_materialization_returns() {
             .materialize_theme(&definition)
             .unwrap_err();
         assert_eq!(
-            error.code(),
+            error.diagnostic().code(),
             "theme-authoring.invalid-token-value",
             "{facet}"
         );
-        assert!(
-            matches!(
-                error,
-                ThemeMaterializationError::InvalidTokenValue { path: "/styles" }
-            ),
-            "{facet} must fail through the materialized-wire construction gate"
+        assert_eq!(
+            error.diagnostic().path(),
+            "",
+            "{facet} must fail before a materialized wire is returned"
+        );
+        assert_eq!(
+            error.diagnostic().expected_domain_id(),
+            Some("finite-theme-definition")
         );
     }
 }

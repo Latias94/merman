@@ -37,8 +37,10 @@ use std::sync::Arc;
 
 pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
 pub use merman_theme_contract::{
-    DiagramThemeSpecWireV1, MaterializedThemeWireV1, ThemeCapabilityDescriptorV1, ThemeRuleFacetV1,
-    ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
+    DiagramThemeSpecWireV1, MaterializedThemeWireV1, ThemeCapabilityDescriptorV1,
+    ThemeDefinitionV1, ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1,
+    ThemeRuleFacetV1, ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
+    ThemeSupportStateV1,
 };
 
 pub(crate) use admission::ResolvedThemeAdmission;
@@ -66,8 +68,7 @@ pub use canvas::{
 };
 pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
 pub use definition_admission::{
-    ThemeDefinitionAdmissionError, ThemeDefinitionCompileError, compile_theme_definition,
-    compile_theme_definition_json,
+    ThemeDefinitionCompileError, compile_theme_definition, compile_theme_definition_json,
 };
 pub use effects::{DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive};
 #[cfg(feature = "internal-theme-acceptance")]
@@ -76,7 +77,7 @@ pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape,
 };
-pub use materializer::{ThemeMaterializationError, ThemeMaterializer};
+pub use materializer::ThemeMaterializer;
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };

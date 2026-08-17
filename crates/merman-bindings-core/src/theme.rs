@@ -475,6 +475,37 @@ mod tests {
     }
 
     #[test]
+    fn authoring_resource_errors_only_project_discoverable_theme_limits() {
+        let policy = ThemeResourcePolicy::default()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+            .expect("one byte is a valid encoded-theme ceiling");
+        let compiler = DiagramThemeCompiler::new().with_resource_policy(policy);
+        let error = crate::compile_theme_definition_json_with(&compiler, br#"{}"#)
+            .expect_err("the caller-owned encoded byte limit must fail before decoding");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("catalogued theme limit details");
+        assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(details.phase, "theme_input");
+        assert_eq!(details.actual, 2);
+        assert_eq!(details.max, 1);
+        assert_eq!(details.profile, "interactive");
+
+        let colors = std::iter::repeat_n(r##""#123456""##, 257)
+            .collect::<Vec<_>>()
+            .join(",");
+        let json = format!(
+            r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{"series":[{colors}]}}}}"#
+        );
+        let error = crate::compile_theme_definition_json(json.as_bytes())
+            .expect_err("an authoring-only palette ceiling must remain an authoring diagnostic");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert_eq!(error.resource_details(), None);
+        assert!(error.message().contains("invalid theme definition"));
+    }
+
+    #[test]
     fn authoring_definition_rejects_duplicate_members_before_typed_projection() {
         let duplicate = br##"{
             "authoring_schema_version": 1,
