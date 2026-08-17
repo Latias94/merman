@@ -12,6 +12,7 @@ import {
   useSvgViewportZoom,
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
+import type { WorkbenchEditorThemeName } from "@/src/editor/workbench-editor-theme";
 
 export function ViewportControls({
   controller,
@@ -51,10 +52,10 @@ function formatZoomPercent(zoom: number): string {
 
 export function SvgSourceEditor({
   svg,
-  isDarkMode,
+  editorTheme,
 }: {
   svg: string | null;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
 }) {
   if (!svg) {
     return (
@@ -69,7 +70,7 @@ export function SvgSourceEditor({
       height="100%"
       language="xml"
       value={svg}
-      theme={isDarkMode ? "vs-dark" : "light"}
+      theme={editorTheme}
       options={{
         readOnly: true,
         domReadOnly: true,

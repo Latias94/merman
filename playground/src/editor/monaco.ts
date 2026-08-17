@@ -3,6 +3,7 @@ import type { IDisposable } from "monaco-editor";
 import * as monacoApi from "monaco-editor/esm/vs/editor/editor.api.js";
 import "monaco-editor/esm/vs/editor/editor.all.js";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import { registerWorkbenchEditorThemes } from "./workbench-editor-theme";
 
 export const localMonaco = monacoApi as typeof import("monaco-editor");
 
@@ -55,6 +56,7 @@ export function configureLocalMonaco(): MonacoEnvironmentOwner {
       return new EditorWorker({ name: "monaco-editor" });
     },
   };
+  registerWorkbenchEditorThemes(localMonaco);
   loader.config({ monaco: localMonaco });
 
   return {

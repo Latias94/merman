@@ -5,6 +5,7 @@ import type { editor, IDisposable } from "monaco-editor";
 import { LoaderCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { localMonaco } from "@/src/editor/monaco";
+import { WORKBENCH_EDITOR_THEMES } from "@/src/editor/workbench-editor-theme";
 import {
   ensureMermaidLanguageRegistered,
   MERMAID_DOCUMENT_URI,
@@ -37,6 +38,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
   const code = useAppStore((state) => state.code);
   const setCode = useAppStore((state) => state.setCode);
   const resolvedTheme = useAppStore((state) => state.resolvedTheme);
+  const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
   const [language, setLanguage] = useState<LanguageState>({
     status: "initializing",
   });
@@ -169,10 +171,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
   );
 
   const handleEditorDidMount = useCallback(
-    (
-      instance: editor.IStandaloneCodeEditor,
-      monaco: typeof import("monaco-editor"),
-    ) => {
+    (instance: editor.IStandaloneCodeEditor) => {
       editorRef.current = instance;
       layoutBindingRef.current?.dispose();
       layoutBindingRef.current = observeEditorLayout(instance);
@@ -206,7 +205,6 @@ export function CodeEditor({ className }: CodeEditorProps) {
         return;
       }
 
-      monaco.editor.setTheme(resolvedTheme === "dark" ? "vs-dark" : "light");
       instance.layout();
       const registration = registrationRef.current;
       if (registration) {
@@ -217,13 +215,8 @@ export function CodeEditor({ className }: CodeEditorProps) {
         );
       }
     },
-    [bindLanguageService, markLanguageUnavailable, resolvedTheme, t],
+    [bindLanguageService, markLanguageUnavailable, t],
   );
-
-  useEffect(() => {
-    localMonaco.editor.setTheme(resolvedTheme === "dark" ? "vs-dark" : "light");
-    editorRef.current?.layout();
-  }, [resolvedTheme]);
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
@@ -249,7 +242,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
         height="100%"
         language={MERMAID_LANGUAGE_ID}
         path={MERMAID_DOCUMENT_URI}
-        theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
+        theme={editorTheme}
         value={code}
         onChange={handleEditorChange}
         beforeMount={handleEditorWillMount}

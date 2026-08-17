@@ -65,6 +65,8 @@ import {
   SvgSourceEditor,
   ViewportControls,
 } from "@/src/components/PreviewArtifactViews";
+import { WORKBENCH_EDITOR_THEMES } from "@/src/editor/workbench-editor-theme";
+import type { WorkbenchEditorThemeName } from "@/src/editor/workbench-editor-theme";
 import { cn } from "@/lib/utils";
 import {
   Loader2,
@@ -109,7 +111,8 @@ export function Preview({ className }: PreviewProps) {
   const code = useAppStore((state) => state.code);
   const diagramTheme = useAppStore((state) => state.diagramTheme);
   const mermaidConfig = useAppStore((state) => state.mermaidConfig);
-  const isDarkMode = useAppStore((state) => state.resolvedTheme === "dark");
+  const resolvedTheme = useAppStore((state) => state.resolvedTheme);
+  const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
   const previewMode = useAppStore((state) => state.previewMode);
   const setPreviewMode = useAppStore((state) => state.setPreviewMode);
   const svgPresentationMode = useAppStore(
@@ -525,7 +528,7 @@ export function Preview({ className }: PreviewProps) {
           <>
             {previewMode === "svg" &&
               (svgDisplayMode === "source" ? (
-                <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
+                <SvgSourceEditor svg={svg} editorTheme={editorTheme} />
               ) : (
                 <SvgViewport
                   artifact={svgArtifact}
@@ -579,7 +582,7 @@ export function Preview({ className }: PreviewProps) {
                   },
                 }}
                 canvasTone={canvasTone}
-                isDarkMode={isDarkMode}
+                editorTheme={editorTheme}
                 showSvgBounds={showSvgBounds}
                 presentationMode={svgPresentationMode}
                 t={t}
@@ -591,7 +594,7 @@ export function Preview({ className }: PreviewProps) {
                 activeTab={diagnosticTab}
                 diagnostics={diagnostics}
                 loading={diagnosticsLoading}
-                isDarkMode={isDarkMode}
+                editorTheme={editorTheme}
                 onActiveTabChange={setDiagnosticTab}
                 t={t}
               />
@@ -604,7 +607,7 @@ export function Preview({ className }: PreviewProps) {
                 capability={asciiCapability}
                 supportLabel={asciiSupportLabel}
                 supportLimit={asciiSupportLimit}
-                isDarkMode={isDarkMode}
+                editorTheme={editorTheme}
                 t={t}
               />
             )}
@@ -722,7 +725,7 @@ function AsciiArtifactView({
   capability,
   supportLabel,
   supportLimit,
-  isDarkMode,
+  editorTheme,
   t,
 }: {
   result: MermanAsciiBatchResult | null;
@@ -730,7 +733,7 @@ function AsciiArtifactView({
   capability: AsciiCapability | null;
   supportLabel: string;
   supportLimit: string;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
   t: (key: string) => string;
 }) {
   if (rendering) {
@@ -794,7 +797,7 @@ function AsciiArtifactView({
           height="100%"
           language="plaintext"
           value={result.artifact}
-          theme={isDarkMode ? "vs-dark" : "light"}
+          theme={editorTheme}
           options={{
             readOnly: true,
             minimap: { enabled: false },
@@ -933,14 +936,14 @@ function DiagnosticsView({
   activeTab,
   diagnostics,
   loading,
-  isDarkMode,
+  editorTheme,
   onActiveTabChange,
   t,
 }: {
   activeTab: DiagnosticKey;
   diagnostics: Record<DiagnosticKey, DiagnosticArtifact>;
   loading: boolean;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
   onActiveTabChange(tab: DiagnosticKey): void;
   t: (key: string) => string;
 }) {
@@ -985,7 +988,7 @@ function DiagnosticsView({
             artifact={diagnostics[tab]}
             stage={tab}
             loading={loading}
-            isDarkMode={isDarkMode}
+            editorTheme={editorTheme}
             t={t}
           />
         </TabsContent>
@@ -998,13 +1001,13 @@ function DiagnosticArtifactView({
   artifact,
   stage,
   loading,
-  isDarkMode,
+  editorTheme,
   t,
 }: {
   artifact: DiagnosticArtifact;
   stage: DiagnosticKey;
   loading: boolean;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
   t: (key: string) => string;
 }) {
   if (loading) {
@@ -1038,7 +1041,7 @@ function DiagnosticArtifactView({
       height="100%"
       language="json"
       value={artifact.json}
-      theme={isDarkMode ? "vs-dark" : "light"}
+      theme={editorTheme}
       options={{
         readOnly: true,
         domReadOnly: true,
