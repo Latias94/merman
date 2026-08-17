@@ -1,12 +1,50 @@
 # Tree-sitter Mermaid Development
 
-`distribution/tree-sitter-mermaid` is an independently versioned syntax package. It is not a
-replacement for Merman's strict parsers and must not enter the production dependency closure of
-`merman-core`, `merman-analysis`, `merman-editor-core`, or `merman-lsp`.
+`distribution/tree-sitter-mermaid` is an independently versioned syntax package and the canonical
+syntax-highlighting implementation for Merman's native LSP and Playground. It is not a replacement
+for Merman's strict parsers.
 
 Tree-sitter owns tolerant CST structure, recovery, incremental reparsing, queries, generated
-artifacts, and distribution bindings. Merman remains the sole authority for semantic construction,
-diagnostics, IR, rendering, navigation identity, and safe refactoring.
+artifacts, distribution bindings, and base syntax captures. Merman remains the sole authority for
+strict validity, semantic construction, diagnostics, completion, navigation identity, safe
+refactoring, IR, and rendering. A recovered Tree-sitter tree is useful editor state, not proof that
+Mermaid accepts the source.
+
+See ADR-0083 for the superseding highlighting decision and ADR-0082 for the preserved strict
+language boundary.
+
+## Runtime adapters and ownership
+
+The grammar and `queries/portable/highlights.scm` are shared; runtime lifecycle and coordinate
+projection are platform-local:
+
+- `merman-lsp` uses the Rust grammar crate and Tree-sitter runtime, owns incremental syntax state,
+  maps portable captures to the standard LSP legend, and preserves full/range/delta protocol state;
+- the Playground uses `web-tree-sitter`, the language WASM, and the same query in a dedicated
+  syntax worker, then projects captures to Monaco's UTF-16 token transport; and
+- neither adapter may infer Mermaid syntax from regular expressions or Merman semantic facts, nor
+  use `locals.scm` or `tags.scm` as navigation or rename evidence.
+
+Syntax state is independent of `AnalysisGeneration` and semantic-worker readiness. Markdown and MDX
+hosts use a lightweight syntax-side fence segmenter and parse only Mermaid fence bodies. Tree-sitter
+failure is explicit; adapters do not fall back to the retired Merman lexical highlighter.
+
+## Production dependency boundary
+
+Native Tree-sitter dependencies are allowed only in these exact artifact profiles:
+
+- `lsp-library`;
+- `lsp-stdio-release`.
+
+They remain forbidden from core, analysis, editor-core, render, IR, Web and WebAssembly, CLI, and
+language-binding artifact closures. The Playground loads the external browser runtime and staged
+grammar/query assets; it does not add Tree-sitter to Merman's Rust WebAssembly closure.
+
+The repository-owned closure check enforces this exception by profile identity:
+
+```console
+python3 scripts/verify_artifact_dependency_closures.py --profile lsp-library --profile lsp-stdio-release
+```
 
 ## Local setup
 
@@ -68,7 +106,8 @@ The maintained test layers are intentionally small:
 - `tests/scanner_protocol.rs`: scanner serialization, restart, maximum depth/indentation, overflow,
   corruption reset, and representative family switching;
 - `tests/queries.rs`: compile every shipped query, execute canonical highlights for the 35 small
-  family sources, and run a few applicable injection/locals/tags examples;
+  family sources with compact expected body capture classes, cover a small exact-span set, and run
+  a few applicable injection/locals/tags examples;
 - one representative load/parse smoke for Rust, Node, C, and language WASM.
 
 Do not recreate support tiers, artifact/header receipts, schema snapshots, edit-trace DSLs,
@@ -79,9 +118,15 @@ when the shared machine is busy.
 
 ## Queries and editor adoption
 
-`queries/portable` is the canonical package query contract referenced by `tree-sitter.json`.
-Neovim, Helix, and Zed directories are pre-1.0 adoption assets. Editors ultimately own their
-runtime query copies, so publication of the npm or Cargo package does not update editor users.
+`queries/portable` is the canonical package query contract referenced by `tree-sitter.json` and by
+Merman's LSP and Playground adapters. Neovim, Helix, and Zed directories are pre-1.0 adoption
+assets. External editors ultimately own their runtime query copies, so publication of the npm or
+Cargo package does not update those editor users.
+
+The monorepo Playground stages the canonical language WASM and query through its build instead of
+installing the package root and invoking the native Node binding hook. External browser consumers
+use the published npm package. Registry publication remains a protected release action and must not
+be inferred from ordinary development work.
 
 After an immutable grammar release exists, update downstream integrations to the release commit
 and the monorepo subdirectory:

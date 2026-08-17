@@ -27,6 +27,7 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     NATIVE_BINDING_FORBIDDEN_PACKAGES,
     NATIVE_BINDING_PROFILE_IDS,
     PROFILE_TARGET_SCOPE,
+    TREE_SITTER_ALLOWED_PROFILE_IDS,
     TREE_SITTER_FORBIDDEN_PACKAGES,
     SEMANTIC_CLAIMS,
     ClosureClaim,
@@ -220,7 +221,7 @@ def write_descriptor(
 
 
 class VerificationCaseTests(unittest.TestCase):
-    def test_tree_sitter_packages_are_forbidden_from_every_production_profile(self) -> None:
+    def test_tree_sitter_packages_are_forbidden_from_non_lsp_profiles(self) -> None:
         loaded_case = case(
             loaded_claim=claim(
                 "fixture",
@@ -245,6 +246,50 @@ class VerificationCaseTests(unittest.TestCase):
             ["forbidden packages present: tree-sitter"],
         )
         self.assertIn("tree-sitter-mermaid", TREE_SITTER_FORBIDDEN_PACKAGES)
+
+    def test_tree_sitter_packages_are_allowed_in_exact_lsp_profiles(self) -> None:
+        for profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS:
+            with self.subTest(profile=profile_id):
+                loaded_case = case(
+                    profile_id,
+                    loaded_recipe=recipe(profile_id, package="merman-lsp"),
+                    loaded_claim=claim(
+                        profile_id,
+                        required=("merman-lsp",),
+                    ),
+                )
+                closure = parse_cargo_metadata(
+                    metadata_document(
+                        "merman-lsp",
+                        {
+                            "merman-lsp": (),
+                            "tree-sitter": (),
+                            "tree-sitter-language": (),
+                            "tree-sitter-mermaid": (),
+                        },
+                    ),
+                    root_package="merman-lsp",
+                )
+
+                failures, _observation = check_case(loaded_case, closure)
+
+                self.assertEqual(failures, [])
+
+    def test_tree_sitter_exception_profile_ids_are_reserved_for_merman_lsp(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            descriptor = write_descriptor(
+                Path(temporary_directory),
+                "lsp-library",
+            )
+
+            with self.assertRaisesRegex(
+                ClosureVerificationError,
+                "must build package 'merman-lsp'",
+            ):
+                load_verification_cases(
+                    descriptor_path=descriptor,
+                    semantic_claims=(),
+                )
 
     def test_repository_cases_cover_governed_profiles_and_declared_targets(self) -> None:
         profiles = load_artifact_profiles()
@@ -324,7 +369,7 @@ class VerificationCaseTests(unittest.TestCase):
             ),
         )
 
-    def test_every_artifact_profile_has_a_tree_sitter_exclusion_case(self) -> None:
+    def test_repository_cases_keep_tree_sitter_exception_lsp_only(self) -> None:
         cases = load_verification_cases()
         profiles = load_artifact_profiles()
         semantic_profiles = {claim.profile_id for claim in SEMANTIC_CLAIMS}
@@ -345,7 +390,10 @@ class VerificationCaseTests(unittest.TestCase):
                     else PROFILE_TARGET_SCOPE
                 )
                 self.assertEqual(current.closure_scope, expected_scope)
-                if current.recipe.profile_id in NATIVE_BINDING_PROFILE_IDS:
+                if current.recipe.profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS:
+                    self.assertEqual(current.recipe.package, "merman-lsp")
+                    self.assertEqual(current.claim.forbidden_packages, ())
+                elif current.recipe.profile_id in NATIVE_BINDING_PROFILE_IDS:
                     self.assertEqual(
                         current.claim.required_packages,
                         (current.recipe.package,),
@@ -355,6 +403,26 @@ class VerificationCaseTests(unittest.TestCase):
                         current.claim.forbidden_packages,
                         TREE_SITTER_FORBIDDEN_PACKAGES,
                     )
+
+                closure = parse_cargo_metadata(
+                    metadata_document(
+                        current.recipe.package,
+                        {
+                            current.recipe.package: (),
+                            "tree-sitter": (),
+                        },
+                    ),
+                    root_package=current.recipe.package,
+                )
+                failures, _observation = check_case(current, closure)
+                rejects_tree_sitter = any(
+                    failure == "forbidden packages present: tree-sitter"
+                    for failure in failures
+                )
+                self.assertEqual(
+                    rejects_tree_sitter,
+                    current.recipe.profile_id not in TREE_SITTER_ALLOWED_PROFILE_IDS,
+                )
 
     def test_native_binding_profiles_share_one_dependency_denylist(self) -> None:
         claims = {

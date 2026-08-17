@@ -57,6 +57,12 @@ TREE_SITTER_FORBIDDEN_PACKAGES = (
     "tree-sitter-language",
     "tree-sitter-mermaid",
 )
+TREE_SITTER_ALLOWED_PROFILE_IDS = frozenset(
+    {
+        "lsp-library",
+        "lsp-stdio-release",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -363,6 +369,15 @@ def load_verification_cases(
         profile_id = profile.profile_id
         recipe = profile.cargo
 
+        if (
+            profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS
+            and recipe.package != "merman-lsp"
+        ):
+            raise ClosureVerificationError(
+                f"Tree-sitter exception profile {profile_id!r} must build "
+                "package 'merman-lsp'"
+            )
+
         if recipe.build_target_kind == "host":
             expected_targets = (HOST_CLOSURE_REFERENCE_TARGET,)
         elif recipe.build_target_kind == "target-set":
@@ -380,6 +395,13 @@ def load_verification_cases(
                 profile_id=profile_id,
                 required_packages=(recipe.package,),
                 forbidden_packages=NATIVE_BINDING_FORBIDDEN_PACKAGES,
+            )
+        if claim is None and profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS:
+            claim = ClosureClaim(
+                claim_id=f"{profile_id}-tree-sitter-lsp-boundary",
+                profile_id=profile_id,
+                required_packages=(recipe.package,),
+                forbidden_packages=(),
             )
         if claim is None:
             claim = ClosureClaim(
@@ -899,7 +921,13 @@ def check_case(
     claim = case.claim
     failures: list[str] = []
     required = set(claim.required_packages)
-    forbidden = set(claim.forbidden_packages) | set(TREE_SITTER_FORBIDDEN_PACKAGES)
+    forbidden = set(claim.forbidden_packages)
+    tree_sitter_allowed = (
+        case.recipe.profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS
+        and case.recipe.package == "merman-lsp"
+    )
+    if not tree_sitter_allowed:
+        forbidden.update(TREE_SITTER_FORBIDDEN_PACKAGES)
 
     overlaps = sorted(required & forbidden)
     if overlaps:
