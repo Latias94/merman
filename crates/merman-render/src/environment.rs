@@ -948,7 +948,7 @@ pub struct RoutedTextMeasurer<'a> {
     policy: &'a TextMeasurementPolicy,
     recorder: &'a TextMeasurementRecorder,
     work_meter: &'a OperationWorkMeter,
-    fallback_operation_phase: Option<OperationPhase>,
+    controlled_operation_phase: Option<OperationPhase>,
 }
 
 trait CancelledTextMeasurement: Sized {
@@ -1039,7 +1039,7 @@ impl RoutedTextMeasurer<'_> {
     ) -> T {
         let phase = request.phase;
         let operation = request.operation;
-        if let Some(operation_phase) = self.fallback_operation_phase
+        if let Some(operation_phase) = self.controlled_operation_phase
             && self.work_meter.checkpoint(operation_phase).is_err()
         {
             return T::cancelled();
@@ -1077,7 +1077,7 @@ impl RoutedTextMeasurer<'_> {
                 // control before entering another opaque backend; the caller-owned phase
                 // checkpoint immediately after this trait call projects the structured
                 // cancellation. The neutral value is never consumed by that controlled path.
-                if let Some(operation_phase) = self.fallback_operation_phase
+                if let Some(operation_phase) = self.controlled_operation_phase
                     && self.work_meter.checkpoint(operation_phase).is_err()
                 {
                     return T::cancelled();
@@ -1713,14 +1713,14 @@ impl RenderSession {
     fn routed_text_measurer(
         &self,
         default_phase: TextMeasurementPhase,
-        fallback_operation_phase: Option<OperationPhase>,
+        controlled_operation_phase: Option<OperationPhase>,
     ) -> RoutedTextMeasurer<'_> {
         RoutedTextMeasurer {
             default_phase,
             policy: &self.text_measurement,
             recorder: &self.measurement_recorder,
             work_meter: self.work_meter.as_ref(),
-            fallback_operation_phase,
+            controlled_operation_phase,
         }
     }
 
@@ -2846,7 +2846,7 @@ mod tests {
     }
 
     #[test]
-    fn host_cancellation_skips_measurement_fallback() {
+    fn host_cancellation_skips_fallback_and_future_primary_calls() {
         let control = OperationControl::new();
         let host_calls = Arc::new(AtomicUsize::new(0));
         let fallback_calls = Arc::new(AtomicUsize::new(0));
@@ -2868,13 +2868,17 @@ mod tests {
             .begin_session_with_control(control)
             .expect("begin controlled render session");
 
-        let measured = session
-            .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout)
-            .measure("label", &TextStyle::default());
+        let measurer =
+            session.controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout);
+        let measured = measurer.measure("label", &TextStyle::default());
+        let measured_after_cancellation = measurer.measure("second label", &TextStyle::default());
 
         assert_eq!(measured.width, 0.0);
         assert_eq!(measured.height, 0.0);
         assert_eq!(measured.line_count, 1);
+        assert_eq!(measured_after_cancellation.width, 0.0);
+        assert_eq!(measured_after_cancellation.height, 0.0);
+        assert_eq!(measured_after_cancellation.line_count, 1);
         assert_eq!(host_calls.load(Ordering::Relaxed), 1);
         assert_eq!(fallback_calls.load(Ordering::Relaxed), 0);
         assert!(matches!(
