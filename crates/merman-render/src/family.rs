@@ -986,6 +986,7 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::SEQUENCE
                 | DiagramFamilyId::CLASS
+                | DiagramFamilyId::KANBAN
                 | DiagramFamilyId::GANTT
                 | DiagramFamilyId::PIE
                 | DiagramFamilyId::ER
@@ -1713,6 +1714,13 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn kanban_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Kanban(pair) => Some(pair.layout().task_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn pie_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::Pie(artifact) => Some(artifact.slice_paint().finish_evidence()),
@@ -2395,6 +2403,7 @@ impl FamilyRenderArtifact {
         let class_theme_evidence = self
             .family
             .class_theme_evidence(self.context.resolved_theme());
+        let kanban_theme_evidence = self.family.kanban_theme_evidence();
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let pie_theme_evidence = self.family.pie_theme_evidence();
         let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
@@ -2420,6 +2429,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = class_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::CLASS, evidence);
+        }
+        if let Some(evidence) = kanban_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::KANBAN, evidence);
         }
         if let Some(evidence) = gantt_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::GANTT, evidence);
@@ -2909,6 +2921,7 @@ fn prepare_non_class_render(
                 crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
                     model,
                     &meta.effective_config,
+                    execution.resolved_theme(),
                     execution.text_measurer(),
                     execution.work_meter_ref(),
                 )

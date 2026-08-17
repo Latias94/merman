@@ -137,6 +137,40 @@ struct KanbanLabelGroup<'a> {
     wrap_title: bool,
 }
 
+struct KanbanTaskRectEmission {
+    rx: f64,
+    ry: f64,
+}
+
+impl KanbanTaskRectEmission {
+    fn matches_radius(&self, expected_radius: f64) -> bool {
+        self.rx == expected_radius && self.ry == expected_radius
+    }
+}
+
+fn write_kanban_task_rect(
+    out: &mut impl SvgOutput,
+    item: &crate::model::KanbanItemLayout,
+    rect_x: f64,
+    rect_y: f64,
+) -> KanbanTaskRectEmission {
+    let emission = KanbanTaskRectEmission {
+        rx: item.rx,
+        ry: item.ry,
+    };
+    let _ = write!(
+        out,
+        r##"<rect class="basic label-container __APA__" style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/>"##,
+        rx = fmt(emission.rx),
+        ry = fmt(emission.ry),
+        x = fmt(rect_x),
+        y = fmt(rect_y),
+        w = fmt(item.width),
+        h = fmt(item.height),
+    );
+    emission
+}
+
 fn write_kanban_label_group(
     out: &mut impl SvgOutput,
     context: &KanbanLabelRenderContext,
@@ -209,6 +243,7 @@ pub(crate) fn render_kanban_diagram_svg(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_sections, prepared_items) = prepared.render_parts();
+    let task_theme = prepared.task_theme();
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
     debug_assert_eq!(layout.items.len(), prepared_items.len());
     let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
@@ -305,6 +340,7 @@ pub(crate) fn render_kanban_diagram_svg(
 
     out.push_str(r#"<g class="items">"#);
     out.checkpoint()?;
+    let mut task_radius_receipt = task_theme.begin_terminal_receipt();
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
     let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
@@ -319,7 +355,7 @@ pub(crate) fn render_kanban_diagram_svg(
         }
     }
 
-    for (n, prepared_item) in layout.items.iter().zip(prepared_items) {
+    for (item_index, (n, prepared_item)) in layout.items.iter().zip(prepared_items).enumerate() {
         let max_w = (n.width - item_label_inset_x).max(0.0);
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
@@ -350,16 +386,7 @@ pub(crate) fn render_kanban_diagram_svg(
             x = fmt(n.center_x),
             y = fmt(n.center_y),
         );
-        let _ = write!(
-            &mut out,
-            r##"<rect class="basic label-container __APA__" style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/>"##,
-            rx = fmt(n.rx),
-            ry = fmt(n.ry),
-            x = fmt(rect_x),
-            y = fmt(rect_y),
-            w = fmt(n.width),
-            h = fmt(n.height),
-        );
+        let task_rect_emission = write_kanban_task_rect(&mut out, n, rect_x, rect_y);
 
         let label_context = KanbanLabelRenderContext {
             max_width: max_w,
@@ -468,11 +495,25 @@ pub(crate) fn render_kanban_diagram_svg(
 
         out.push_str("</g>");
         out.checkpoint()?;
+        if let Some(receipt) = task_radius_receipt.as_mut() {
+            receipt.record_checkpointed_item(
+                item_index,
+                task_theme
+                    .radius_px(item_index)
+                    .is_some_and(|expected| task_rect_emission.matches_radius(expected)),
+            );
+        }
     }
 
     out.push_str("</g>");
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if task_radius_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Kanban task radius receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]

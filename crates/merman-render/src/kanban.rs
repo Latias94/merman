@@ -4,11 +4,10 @@ use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionL
 use crate::resources::RenderResourcePolicy;
 use crate::resources::{ModelComplexity, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
-use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+use merman_core::diagrams::kanban::KanbanDiagramRenderModel;
 use merman_core::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
 };
-use std::collections::HashMap;
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
 pub(crate) const KANBAN_SECTION_PADDING_PX: f64 = 10.0;
@@ -56,14 +55,17 @@ impl<'a> KanbanMarkdown<'a> {
 }
 
 mod config;
+mod theme;
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
+pub(crate) use theme::KanbanTaskTheme;
 
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedArtifact {
     layout: KanbanDiagramLayout,
     sections: Vec<KanbanPreparedMarkdownLabel>,
     items: Vec<KanbanPreparedItem>,
+    task_theme: KanbanTaskTheme,
 }
 
 impl KanbanPreparedArtifact {
@@ -79,6 +81,10 @@ impl KanbanPreparedArtifact {
         &[KanbanPreparedItem],
     ) {
         (&self.layout, &self.sections, &self.items)
+    }
+
+    pub(crate) const fn task_theme(&self) -> &KanbanTaskTheme {
+        &self.task_theme
     }
 }
 
@@ -235,14 +241,21 @@ pub(crate) fn layout_kanban_diagram_typed(
 ) -> Result<KanbanDiagramLayout> {
     let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
-    prepare_kanban_diagram_typed_with_work_meter(model, &effective_config, measurer, &work_meter)
-        .map(|prepared| prepared.layout)
+    prepare_kanban_diagram_typed_with_work_meter(
+        model,
+        &effective_config,
+        None,
+        measurer,
+        &work_meter,
+    )
+    .map(|prepared| prepared.layout)
 }
 
 /// Prepares a Kanban model under the cumulative work meter owned by the render operation.
 pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     model: &KanbanDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
+    theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
     measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
 ) -> Result<KanbanPreparedArtifact> {
@@ -266,26 +279,38 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     let item_two_row_height = KANBAN_ITEM_TWO_ROW_HEIGHT_PX * font_scale;
     let markdown = KanbanMarkdown::new(effective_config);
 
-    let section_nodes: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|n| n.is_group).collect();
-    let item_capacity = model
-        .nodes
+    let mut section_inputs = Vec::new();
+    let mut node_index = 0;
+    while node_index < model.nodes.len() {
+        if !model.nodes[node_index].is_group {
+            node_index += 1;
+            continue;
+        }
+        let item_start = node_index + 1;
+        let mut item_end = item_start;
+        while item_end < model.nodes.len() && !model.nodes[item_end].is_group {
+            item_end += 1;
+        }
+        section_inputs.push((&model.nodes[node_index], item_start..item_end));
+        node_index = item_end;
+    }
+    let item_capacity = section_inputs
         .iter()
-        .filter(|node| node.parent_id.is_some())
-        .count();
+        .map(|(_, items)| {
+            model.nodes[items.start..items.end]
+                .iter()
+                .filter(|node| node.parent_id.is_some())
+                .count()
+        })
+        .sum();
+    let task_theme = KanbanTaskTheme::resolve(theme, item_capacity, work_meter)?;
     let mut max_label_height = section_label_height_baseline;
-    let mut sections: Vec<KanbanSectionLayout> = Vec::with_capacity(section_nodes.len());
+    let mut sections: Vec<KanbanSectionLayout> = Vec::with_capacity(section_inputs.len());
     let mut items: Vec<KanbanItemLayout> = Vec::with_capacity(item_capacity);
-    let mut prepared_sections = Vec::with_capacity(section_nodes.len());
+    let mut prepared_sections = Vec::with_capacity(section_inputs.len());
     let mut prepared_items = Vec::with_capacity(item_capacity);
 
-    let mut items_by_section: HashMap<&str, Vec<&KanbanRenderNode>> =
-        HashMap::with_capacity(section_nodes.len());
-    for node in &model.nodes {
-        if let Some(parent_id) = node.parent_id.as_deref() {
-            items_by_section.entry(parent_id).or_default().push(node);
-        }
-    }
-    for (i, section) in section_nodes.iter().enumerate() {
+    for (i, (section, _)) in section_inputs.iter().enumerate() {
         let index = (i + 1) as i64;
         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
         let center_y = 0.0;
@@ -317,14 +342,13 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         prepared_sections.push(prepared_label);
     }
 
-    for section in sections.iter_mut() {
+    for (section, (_, item_range)) in sections.iter_mut().zip(&section_inputs) {
         let top = section_rect_y + max_label_height;
         let mut y = top;
 
-        for &item in items_by_section
-            .get(section.id.as_str())
-            .map(Vec::as_slice)
-            .unwrap_or_default()
+        for item in model.nodes[item_range.start..item_range.end]
+            .iter()
+            .filter(|node| node.parent_id.is_some())
         {
             let width = (section_width - 1.5 * padding).max(1.0);
             let inner_max_w = (width - padding).max(0.0);
@@ -352,6 +376,10 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
             let center_x = section.center_x;
             let center_y = y + height / 2.0;
 
+            let item_index = items.len();
+            let radius = task_theme
+                .radius_px(item_index)
+                .unwrap_or(theme::MERMAID_TASK_RADIUS_PX);
             items.push(KanbanItemLayout {
                 id: item.id.clone(),
                 label: item.label.clone(),
@@ -360,8 +388,8 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 center_y,
                 width,
                 height: height.max(1.0),
-                rx: 5.0,
-                ry: 5.0,
+                rx: radius,
+                ry: radius,
                 ticket: item.ticket.clone(),
                 assigned: item.assigned.clone(),
                 priority: item.priority.clone(),
@@ -437,6 +465,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         layout,
         sections: prepared_sections,
         items: prepared_items,
+        task_theme,
     })
 }
 
@@ -488,6 +517,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         layout: layout.clone(),
         sections,
         items,
+        task_theme: KanbanTaskTheme::baseline(layout.items.len()),
     }
 }
 
