@@ -734,6 +734,10 @@ fn native_engine_execute<'local>(
     native_engine_execute_impl(env, handle, operation_id, source, options_json, uri, None)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "JNI entry point parameters must match the registered Java native method signature"
+)]
 fn native_engine_execute_controlled<'local>(
     env: &mut Env<'local>,
     _class: JClass<'local>,
@@ -838,9 +842,6 @@ fn operation_control_timeout_ms(
         JNI_TRUE => u64::try_from(timeout_ms).map(Some).map_err(|_| {
             BindingError::invalid_argument("operation-control timeoutMs must be non-negative")
         }),
-        _ => Err(BindingError::invalid_argument(
-            "operation-control hasTimeoutMs must be a JNI boolean",
-        )),
     }
 }
 
