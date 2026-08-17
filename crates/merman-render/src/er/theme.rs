@@ -3,8 +3,8 @@ use std::sync::OnceLock;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
-    ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
+    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
@@ -102,13 +102,10 @@ impl ErEntityThemePlan {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
                     target: ThemeTarget::Entity,
-                    selector,
                     facet,
+                    ..
                 } => {
                     let observation = observations.entry(rule_index).or_default();
-                    if !selector_matches_entities(selector, entity_count) {
-                        continue;
-                    }
                     let property = resolved_style_property_for_facet(facet);
                     if !winner_properties.contains(&(rule_index, property)) {
                         continue;
@@ -325,19 +322,6 @@ fn typed_stroke_expectation(
         rule_index: origin.rule_index(),
         css,
     })
-}
-
-fn selector_matches_entities(selector: FamilyThemeSelectorShape, entity_count: usize) -> bool {
-    match selector {
-        FamilyThemeSelectorShape::Static {
-            variant: None | Some(ThemeVariant::Default),
-        } => entity_count != 0,
-        FamilyThemeSelectorShape::Ordinal {
-            variant: None | Some(ThemeVariant::Default),
-            selector,
-        } => (1..=entity_count).any(|index| selector.matches(index)),
-        FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => false,
-    }
 }
 
 fn mermaid_owns_entity_fill(config: &merman_core::MermaidConfig) -> bool {

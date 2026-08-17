@@ -2,7 +2,8 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeMaterializer, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -10,6 +11,7 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
 use regex::Regex;
 use serde_json::json;
 use std::path::PathBuf;
@@ -404,6 +406,53 @@ fn er_static_entity_paint_reaches_plain_and_attribute_shells() {
     assert!(table.contains(r#"class="outer-path""#), "{table}");
     assert!(table.contains("fill:#123456"), "{table}");
     assert!(table.contains("stroke:#654321"), "{table}");
+}
+
+#[test]
+fn er_tokens_only_definition_reaches_the_model_owned_entity_surface() {
+    let definition = ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_color(ThemeColorTokenV1::Surface, "#123456")
+            .with_color(ThemeColorTokenV1::Border, "#654321"),
+    );
+    let materialized = ThemeMaterializer::new()
+        .materialize_theme(&definition)
+        .expect("materialize tokens-only ER theme");
+    let theme = DiagramThemeCompiler::new()
+        .compile_spec_wire(materialized.into_spec())
+        .expect("compile tokens-only ER theme");
+
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync("erDiagram\n  CUSTOMER\n", ParseOptions::strict())
+        .expect("parse tokens-only ER diagram")
+        .expect("detect tokens-only ER diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+        .begin_session_with_theme(&theme)
+        .expect("begin tokens-only ER session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare tokens-only ER artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render tokens-only ER SVG");
+    let entity_start = rendered
+        .svg()
+        .find(r#"id="merman-entity-CUSTOMER-0""#)
+        .expect("ER entity group");
+    let entity_end = rendered.svg()[entity_start..]
+        .find("</g>")
+        .map(|offset| entity_start + offset)
+        .expect("ER entity group end");
+    let entity = &rendered.svg()[entity_start..entity_end];
+
+    assert!(entity.contains("fill:#123456"), "tokens.surface: {entity}");
+    assert!(entity.contains("stroke:#654321"), "tokens.border: {entity}");
+    assert!(
+        merman_render::__private::family_evidence(rendered.into_completion().report())
+            .applied_count()
+            > 0,
+        "the Entity adapter must own at least one terminal mechanism"
+    );
 }
 
 #[test]

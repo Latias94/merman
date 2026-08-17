@@ -2703,7 +2703,8 @@ fn prepare_non_class_render(
             let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(
                 execution.resolved_theme(),
                 model.nodes.iter().map(|node| node.section),
-            );
+                execution.work_meter_ref(),
+            )?;
             let layout = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
                 &model,
                 &meta.effective_config,

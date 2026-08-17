@@ -112,72 +112,93 @@ fn write_er_style(
     out.checkpoint()
 }
 
+type ErStyleDeclaration = crate::diagram_theme::PreparedSourceStyleDeclaration;
+
+fn write_er_style_declaration(
+    out: &mut String,
+    declaration: &ErStyleDeclaration,
+    force_important: bool,
+) {
+    let _ = write!(
+        out,
+        "{}:{}",
+        declaration.property_css(),
+        declaration.value()
+    );
+    if force_important || declaration.important() {
+        out.push_str(" !important");
+    }
+}
+
+fn insert_er_box_declaration(
+    rect_map: &mut std::collections::BTreeMap<String, ErStyleDeclaration>,
+    text_map: &mut std::collections::BTreeMap<String, ErStyleDeclaration>,
+    declaration: ErStyleDeclaration,
+) {
+    let property = declaration.property();
+    if is_rect_style_key(property) {
+        rect_map.insert(property.to_owned(), declaration.clone());
+    }
+    // Mermaid treats `color:` as HTML label text color even when it comes from box styles.
+    if property == "color" {
+        text_map.insert(property.to_owned(), declaration);
+    }
+}
+
+fn insert_er_text_declaration(
+    text_map: &mut std::collections::BTreeMap<String, ErStyleDeclaration>,
+    declaration: ErStyleDeclaration,
+) {
+    let property = declaration.property();
+    if is_text_style_key(property) {
+        text_map.insert(property.to_owned(), declaration);
+    }
+}
+
 fn compile_er_entity_styles(
     entity: &crate::er::ErEntity,
     classes: &std::collections::BTreeMap<String, crate::er::ErClassDef>,
-) -> (Vec<String>, Vec<String>) {
-    let mut compiled_box: Vec<String> = Vec::new();
-    let mut compiled_text: Vec<String> = Vec::new();
+) -> (Vec<ErStyleDeclaration>, Vec<ErStyleDeclaration>) {
     let mut seen_classes: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for class_name in entity.css_classes.split_whitespace() {
-        if !seen_classes.insert(class_name) {
-            continue;
-        }
-        let Some(def) = classes.get(class_name) else {
-            continue;
-        };
-        for s in &def.styles {
-            let t = s.trim();
-            if t.is_empty() {
-                continue;
-            }
-            compiled_box.push(t.to_string());
-        }
-        for s in &def.text_styles {
-            let t = s.trim();
-            if t.is_empty() {
-                continue;
-            }
-            compiled_text.push(t.to_string());
-        }
-    }
+    let class_defs: Vec<_> = entity
+        .css_classes
+        .split_whitespace()
+        .filter(|class_name| seen_classes.insert(*class_name))
+        .filter_map(|class_name| classes.get(class_name))
+        .collect();
 
-    let mut rect_map: std::collections::BTreeMap<String, String> =
+    let mut rect_map: std::collections::BTreeMap<String, ErStyleDeclaration> =
         std::collections::BTreeMap::new();
-    let mut text_map: std::collections::BTreeMap<String, String> =
+    let mut text_map: std::collections::BTreeMap<String, ErStyleDeclaration> =
         std::collections::BTreeMap::new();
 
-    // Box styles: classDef styles + `style` statements.
-    for s in compiled_box.iter().chain(entity.css_styles.iter()) {
-        let Some((k, v)) = parse_style_decl(s) else {
+    // Preserve Mermaid precedence: all class box styles, then all class text styles, then
+    // entity-local styles over both channels.
+    for raw in class_defs.iter().flat_map(|class_def| &class_def.styles) {
+        let Some(declaration) = ErStyleDeclaration::parse(raw) else {
             continue;
         };
-        if is_rect_style_key(k) {
-            rect_map.insert(k.to_string(), v.to_string());
-        }
-        // Mermaid treats `color:` as the HTML label text color (even if it comes from the style list).
-        if k == "color" {
-            text_map.insert("color".to_string(), v.to_string());
-        }
+        insert_er_box_declaration(&mut rect_map, &mut text_map, declaration);
     }
-
-    // Text styles: classDef textStyles + `style` statements (only text-related keys).
-    for s in compiled_text.iter().chain(entity.css_styles.iter()) {
-        let Some((k, v)) = parse_style_decl(s) else {
+    for raw in class_defs
+        .iter()
+        .flat_map(|class_def| &class_def.text_styles)
+    {
+        let Some(declaration) = ErStyleDeclaration::parse(raw) else {
             continue;
         };
-        if !is_text_style_key(k) {
+        insert_er_text_declaration(&mut text_map, declaration);
+    }
+    for raw in &entity.css_styles {
+        let Some(declaration) = ErStyleDeclaration::parse(raw) else {
             continue;
-        }
-        if k == "color" {
-            text_map.insert("color".to_string(), v.to_string());
-        } else {
-            text_map.insert(k.to_string(), v.to_string());
-        }
+        };
+        insert_er_box_declaration(&mut rect_map, &mut text_map, declaration.clone());
+        insert_er_text_declaration(&mut text_map, declaration);
     }
 
-    let mut rect_decls: Vec<String> = Vec::new();
-    for k in [
+    let mut rect_decls = Vec::new();
+    for property in [
         "fill",
         "stroke",
         "stroke-width",
@@ -186,82 +207,121 @@ fn compile_er_entity_styles(
         "fill-opacity",
         "stroke-opacity",
     ] {
-        if let Some(v) = rect_map.get(k) {
-            rect_decls.push(format!("{k}:{v}"));
+        if let Some(declaration) = rect_map.get(property) {
+            rect_decls.push(declaration.clone());
         }
     }
 
-    let mut text_decls: Vec<String> = Vec::new();
-    for k in [
+    let mut text_decls = Vec::new();
+    for property in [
         "color",
         "font-family",
         "font-size",
         "font-weight",
         "opacity",
     ] {
-        if let Some(v) = text_map.get(k) {
-            text_decls.push(format!("{k}:{v}"));
+        if let Some(declaration) = text_map.get(property) {
+            text_decls.push(declaration.clone());
         }
     }
 
     (rect_decls, text_decls)
 }
 
-fn style_decls_with_important_join(decls: &[String], join: &str) -> String {
-    let mut out: Vec<String> = Vec::new();
-    for d in decls {
-        let Some((k, v)) = parse_style_decl(d) else {
-            continue;
-        };
-        out.push(format!("{k}:{v} !important"));
+fn style_decls_with_important_join(decls: &[ErStyleDeclaration], join: &str) -> String {
+    let mut out = String::new();
+    for (index, declaration) in decls.iter().enumerate() {
+        if index != 0 {
+            out.push_str(join);
+        }
+        write_er_style_declaration(&mut out, declaration, true);
     }
-    out.join(join)
+    out
 }
 
-fn style_decls_with_important(decls: &[String]) -> String {
+fn style_decls_with_important(decls: &[ErStyleDeclaration]) -> String {
     style_decls_with_important_join(decls, "; ")
 }
 
-fn entity_rect_style_attr(
-    source_decls: &[String],
-    typed_fill: Option<&str>,
-    typed_stroke: Option<&str>,
-) -> String {
+#[derive(Debug, Clone, Copy)]
+struct ErEntityPaintEmission<'a> {
+    source_owns_fill: bool,
+    source_owns_stroke: bool,
+    emitted_fill: Option<(usize, &'a str)>,
+    emitted_stroke: Option<(usize, &'a str)>,
+}
+
+fn er_entity_paint_emission<'a>(
+    source_fill: Option<&'a str>,
+    source_stroke: Option<&'a str>,
+    typed_fill: Option<(usize, &'a str)>,
+    typed_stroke: Option<(usize, &'a str)>,
+) -> ErEntityPaintEmission<'a> {
+    ErEntityPaintEmission {
+        source_owns_fill: source_fill.is_some(),
+        source_owns_stroke: source_stroke.is_some(),
+        emitted_fill: source_fill.is_none().then_some(typed_fill).flatten(),
+        emitted_stroke: source_stroke.is_none().then_some(typed_stroke).flatten(),
+    }
+}
+
+fn entity_rect_style_attr<'a>(
+    source_decls: &[ErStyleDeclaration],
+    source_fill: Option<&'a str>,
+    source_stroke: Option<&'a str>,
+    typed_fill: Option<(usize, &'a str)>,
+    typed_stroke: Option<(usize, &'a str)>,
+) -> (String, ErEntityPaintEmission<'a>) {
     let mut declarations = Vec::new();
     if !source_decls.is_empty() {
         declarations.push(style_decls_with_important(source_decls));
     }
-    if let Some(fill) = typed_fill {
+    if let Some((_, fill)) = typed_fill {
         declarations.push(format!("fill:{fill}"));
     }
-    if let Some(stroke) = typed_stroke {
+    if let Some((_, stroke)) = typed_stroke {
         declarations.push(format!("stroke:{stroke}"));
     }
-    format!(r#"style="{}""#, escape_attr(&declarations.join("; ")))
+    (
+        format!(r#"style="{}""#, escape_attr(&declarations.join("; "))),
+        er_entity_paint_emission(source_fill, source_stroke, typed_fill, typed_stroke),
+    )
 }
 
-fn last_style_value(decls: &[String], key: &str) -> Option<String> {
-    for d in decls.iter().rev() {
-        let Some((k, v)) = parse_style_decl(d) else {
-            continue;
-        };
-        if k == key {
-            return Some(v.to_string());
-        }
-    }
-    None
+fn last_style_declaration<'a>(
+    decls: &'a [ErStyleDeclaration],
+    key: &str,
+) -> Option<&'a ErStyleDeclaration> {
+    decls
+        .iter()
+        .rev()
+        .find(|declaration| declaration.property() == key)
 }
 
-fn concat_style_keys(decls: &[String], keys: &[&str]) -> String {
+fn last_style_value<'a>(decls: &'a [ErStyleDeclaration], key: &str) -> Option<&'a str> {
+    last_style_declaration(decls, key).map(ErStyleDeclaration::value)
+}
+
+fn style_keys_join(
+    decls: &[ErStyleDeclaration],
+    keys: &[&str],
+    join: &str,
+    force_important: bool,
+) -> String {
     let mut out = String::new();
-    for k in keys {
-        if let Some(v) = last_style_value(decls, k) {
-            out.push_str(k);
-            out.push(':');
-            out.push_str(&v);
+    for key in keys {
+        if let Some(declaration) = last_style_declaration(decls, key) {
+            if !out.is_empty() {
+                out.push_str(join);
+            }
+            write_er_style_declaration(&mut out, declaration, force_important);
         }
     }
     out
+}
+
+fn concat_style_keys(decls: &[ErStyleDeclaration], keys: &[&str]) -> String {
+    style_keys_join(decls, keys, ";", false)
 }
 
 fn parse_px_f64(v: &str) -> Option<f64> {
@@ -849,19 +909,12 @@ pub(crate) fn render_er_diagram_svg_model(
         let source_stroke = last_style_value(&rect_style_decls, "stroke");
         let typed_fill = entity_theme.typed_fill(entity_index, source_fill.is_some());
         let typed_stroke = entity_theme.typed_stroke(entity_index, source_stroke.is_some());
-        let rect_style_attr = entity_rect_style_attr(
-            &rect_style_decls,
-            typed_fill.map(|(_, css)| css),
-            typed_stroke.map(|(_, css)| css),
-        );
-        let label_style_attr = if text_style_decls.is_empty() {
-            r#"style="""#.to_string()
-        } else {
-            format!(
-                r#"style="{}""#,
-                escape_xml(&style_decls_with_important(&text_style_decls))
-            )
-        };
+        let escaped_text_style = (!text_style_decls.is_empty())
+            .then(|| escape_xml(&style_decls_with_important(&text_style_decls)));
+        let label_style_attr = escaped_text_style
+            .as_deref()
+            .map(|style| format!(r#"style="{style}""#))
+            .unwrap_or_else(|| r#"style="""#.to_string());
 
         let measure = crate::er::measure_entity_box(
             entity,
@@ -910,16 +963,26 @@ pub(crate) fn render_er_diagram_svg_model(
         out.checkpoint()?;
 
         if entity.attributes.is_empty() {
-            let _ = write!(
-                &mut out,
-                r#"<rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/>"#,
-                rect_style_attr,
-                fmt(ox),
-                fmt(oy),
-                fmt(w),
-                fmt(h)
-            );
-            out.checkpoint()?;
+            let paint_emission = {
+                let (rect_style_attr, paint_emission) = entity_rect_style_attr(
+                    &rect_style_decls,
+                    source_fill,
+                    source_stroke,
+                    typed_fill,
+                    typed_stroke,
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/>"#,
+                    rect_style_attr,
+                    fmt(ox),
+                    fmt(oy),
+                    fmt(w),
+                    fmt(h)
+                );
+                out.checkpoint()?;
+                paint_emission
+            };
             let wrap_mode = entity_wrap_mode;
             let label_metrics = measurer.measure_wrapped(
                 measure.label.rendered_text(),
@@ -949,10 +1012,10 @@ pub(crate) fn render_er_diagram_svg_model(
             out.checkpoint()?;
             entity_theme_receipt.record_checkpointed_entity(
                 entity_index,
-                source_fill.is_some(),
-                source_stroke.is_some(),
-                typed_fill,
-                typed_stroke,
+                paint_emission.source_owns_fill,
+                paint_emission.source_owns_stroke,
+                paint_emission.emitted_fill,
+                paint_emission.emitted_stroke,
             );
             continue;
         }
@@ -988,18 +1051,14 @@ pub(crate) fn render_er_diagram_svg_model(
             .map(|value| {
                 format!(
                     "color: {} !important; ",
-                    super::super::util::cssom_color_value(&value)
+                    super::super::util::cssom_color_value(value)
                 )
             })
             .unwrap_or_default();
-        let span_style_attr = if text_style_decls.is_empty() {
-            String::new()
-        } else {
-            format!(
-                r#" style="{}""#,
-                escape_xml(&style_decls_with_important(&text_style_decls))
-            )
-        };
+        let span_style_attr = escaped_text_style
+            .as_deref()
+            .map(|style| format!(r#" style="{style}""#))
+            .unwrap_or_default();
 
         // Mermaid ER attribute tables (erBox.ts) use HTML labels (`foreignObject`) and paths for the table rows.
         let name_row_h = (measure.label_height + measure.text_padding).max(1.0);
@@ -1010,18 +1069,15 @@ pub(crate) fn render_er_diagram_svg_model(
         let sep_y = oy + name_row_h;
 
         let box_fill = source_fill
-            .clone()
-            .or_else(|| typed_fill.map(|(_, css)| css.to_string()))
-            .unwrap_or_else(|| main_bkg.clone());
+            .or_else(|| typed_fill.map(|(_, css)| css))
+            .unwrap_or(main_bkg.as_str());
         let box_stroke = source_stroke
-            .clone()
-            .or_else(|| typed_stroke.map(|(_, css)| css.to_string()))
-            .unwrap_or_else(|| node_border.clone());
+            .or_else(|| typed_stroke.map(|(_, css)| css))
+            .unwrap_or(node_border.as_str());
         let box_stroke_width = last_style_value(&rect_style_decls, "stroke-width")
-            .and_then(|v| parse_px_f64(&v))
+            .and_then(parse_px_f64)
             .unwrap_or(1.3)
             .max(0.0);
-
         let stroke_width_attr = fmt(box_stroke_width);
 
         let group_style = concat_style_keys(&rect_style_decls, &["fill", "stroke", "stroke-width"]);
@@ -1032,7 +1088,7 @@ pub(crate) fn render_er_diagram_svg_model(
         };
 
         let mut override_decls = Vec::new();
-        if let Some(value) = source_stroke.as_deref() {
+        if let Some(value) = source_stroke {
             override_decls.push(format!("stroke:{value} !important"));
         } else if let Some((_, value)) = typed_stroke {
             override_decls.push(format!("stroke:{value}"));
@@ -1045,7 +1101,7 @@ pub(crate) fn render_er_diagram_svg_model(
         } else {
             format!(r#" style="{}""#, escape_attr(&override_decls.join("; ")))
         };
-        let base_fill_style_attr = if let Some(value) = source_fill.as_deref() {
+        let base_fill_style_attr = if let Some(value) = source_fill {
             format!(r#" style="fill:{} !important""#, escape_attr(value))
         } else if let Some((_, value)) = typed_fill {
             format!(r#" style="fill:{}""#, escape_attr(value))
@@ -1170,6 +1226,8 @@ pub(crate) fn render_er_diagram_svg_model(
         );
         out.push_str("</g>");
         out.checkpoint()?;
+        let paint_emission =
+            er_entity_paint_emission(source_fill, source_stroke, typed_fill, typed_stroke);
 
         // Row rectangles
         let odd_fill = theme_token(effective_config, "rowOdd", "hsl(240, 100%, 100%)");
@@ -1178,6 +1236,21 @@ pub(crate) fn render_er_diagram_svg_model(
             "rowEven",
             "hsl(240, 100%, 97.2745098039%)",
         );
+        let even_row_override_style_attr = if source_fill.is_some() {
+            let style = style_keys_join(
+                &rect_style_decls,
+                &["fill", "stroke", "stroke-width"],
+                ";",
+                true,
+            );
+            if style.is_empty() {
+                override_style_attr.clone()
+            } else {
+                format!(r#" style="{}""#, escape_xml(&style))
+            }
+        } else {
+            override_style_attr.clone()
+        };
         let mut y = sep_y;
         for (idx, row) in measure.rows.iter().enumerate() {
             let row_h = row.height.max(1.0);
@@ -1200,27 +1273,11 @@ pub(crate) fn render_er_diagram_svg_model(
                 r#"<g {} class="{}">"#,
                 group_style_attr, row_class
             );
-            let row_override_style_attr =
-                if !is_odd && last_style_value(&rect_style_decls, "fill").is_some() {
-                    let mut decls: Vec<String> = Vec::new();
-                    if let Some(v) = last_style_value(&rect_style_decls, "fill") {
-                        decls.push(format!("fill:{v}"));
-                    }
-                    if let Some(v) = last_style_value(&rect_style_decls, "stroke") {
-                        decls.push(format!("stroke:{v}"));
-                    }
-                    if let Some(v) = last_style_value(&rect_style_decls, "stroke-width") {
-                        decls.push(format!("stroke-width:{v}"));
-                    }
-                    if decls.is_empty() {
-                        override_style_attr.clone()
-                    } else {
-                        let s = style_decls_with_important_join(&decls, ";");
-                        format!(r#" style="{}""#, escape_xml(&s))
-                    }
-                } else {
-                    override_style_attr.clone()
-                };
+            let row_override_style_attr = if is_odd {
+                override_style_attr.as_str()
+            } else {
+                even_row_override_style_attr.as_str()
+            };
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
@@ -1473,10 +1530,10 @@ pub(crate) fn render_er_diagram_svg_model(
         out.checkpoint()?;
         entity_theme_receipt.record_checkpointed_entity(
             entity_index,
-            source_fill.is_some(),
-            source_stroke.is_some(),
-            typed_fill,
-            typed_stroke,
+            paint_emission.source_owns_fill,
+            paint_emission.source_owns_stroke,
+            paint_emission.emitted_fill,
+            paint_emission.emitted_stroke,
         );
     }
     out.push_str("</g>\n");
@@ -1675,6 +1732,26 @@ mod tests {
                 Ok(())
             }
         }
+    }
+
+    #[test]
+    fn er_source_important_declarations_are_serialized_once() {
+        let entity = ErEntityRenderModel {
+            css_styles: vec![
+                "fill:#123456 !important".to_string(),
+                "stroke:#654321 !important".to_string(),
+            ],
+            ..ErEntityRenderModel::default()
+        };
+        let (rect_decls, _) = super::compile_er_entity_styles(&entity, &BTreeMap::new());
+        let css = super::style_decls_with_important(&rect_decls);
+
+        assert_eq!(
+            super::last_style_value(&rect_decls, "fill"),
+            Some("#123456")
+        );
+        assert_eq!(css.matches("!important").count(), 2, "{css}");
+        assert!(!css.contains("!important !important"), "{css}");
     }
 
     #[test]

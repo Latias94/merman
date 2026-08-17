@@ -836,7 +836,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let use_gradient =
         config_bool(config.as_value(), &["themeVariables", "useGradient"]).unwrap_or(false);
     let neo_fill_source = if use_gradient {
-        crate::mindmap::MindmapNodeFillSource::Gradient
+        crate::mindmap::MindmapNodeFillSource::MainBackground
     } else {
         let theme = merman_core::MermaidThemeId::parse(config.get_str("theme").unwrap_or_default())
             .unwrap_or_default();
@@ -1459,7 +1459,11 @@ mod tests {
         });
 
         let config = merman_core::MermaidConfig::from_value(cfg);
-        let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(None, []);
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let node_palette =
+            crate::mindmap::MindmapNodePalettePlan::resolve(None, [], &work_meter).unwrap();
         let css = mindmap_css("mm", &config, &node_palette, 3, false);
 
         assert!(css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));

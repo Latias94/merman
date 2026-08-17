@@ -179,15 +179,16 @@ fn mindmap_neo_section_shape_fill<'a>(
     diagram_id: &str,
     section: usize,
 ) -> &'a str {
-    let prefix = format!(
-        "#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} rect,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} path,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} circle,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} polygon{{fill:"
+    let selector = format!(
+        "#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} rect,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} path,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} circle,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} polygon"
     );
-    mindmap_rule_fill(
-        stylesheet,
-        &prefix,
-        ";",
-        "neo Mindmap section shape fill rule",
-    )
+    stylesheet
+        .rsplit_once(&selector)
+        .and_then(|(_, remaining)| remaining.split_once('}'))
+        .and_then(|(declarations, _)| declarations.split_once("fill:"))
+        .and_then(|(_, fill)| fill.split_once(';'))
+        .map(|(fill, _)| fill)
+        .expect("final neo Mindmap section shape fill rule")
 }
 
 fn try_render_mindmap_svg_with_resource_policy(
@@ -561,7 +562,7 @@ fn mindmap_derived_color_scale_slot_retains_source_ownership() {
 }
 
 #[test]
-fn mindmap_gradient_blocks_node_palette_only_on_the_neo_surface() {
+fn mindmap_gradient_changes_neo_stroke_without_stealing_node_fill() {
     let theme = mindmap_node_palette_theme(&["#123456"]);
     let classic = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
@@ -622,68 +623,41 @@ fn mindmap_gradient_blocks_node_palette_only_on_the_neo_surface() {
         "the equal-specificity typed selector must follow the Mermaid neo baseline"
     );
 
-    let neo_engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-        "look": "neo",
-        "themeVariables": { "useGradient": true }
-    })));
-    let error = match prepare_mindmap_with_theme_and_engine(
+    let gradient = render_mindmap_with_theme_and_engine(
         "mindmap\n  Root\n    Child\n",
         &theme,
-        neo_engine,
-    )
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    {
-        Ok(_) => {
-            panic!("Mindmap gradient surface must not claim direct Node palette application")
-        }
-        Err(error) => error,
-    };
-
-    assert_eq!(
-        error.unverified_family_theme(),
-        Some((merman_render::DiagramFamilyId::MINDMAP, 1))
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "look": "neo",
+            "themeVariables": { "useGradient": true }
+        }))),
+        "mindmap-neo-gradient",
+        ThemePortabilityRequirement::RequirePortable,
     );
-
-    let best_effort_engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-        "look": "neo",
-        "themeVariables": { "useGradient": true }
-    })));
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, best_effort_engine)
-        .parse_diagram_for_render_model_sync("mindmap\n  Root\n    Child\n", ParseOptions::strict())
-        .expect("parse neo gradient Mindmap")
-        .expect("detect neo gradient Mindmap");
-    let session = RenderEnvironment::deterministic()
-        .begin_session_with_theme(&theme)
-        .expect("begin best-effort neo gradient session");
-    let rendered = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare neo gradient Mindmap")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("mindmap-neo-gradient".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("best-effort rendering keeps the unsupported gradient surface");
+    let gradient_stylesheet = mindmap_stylesheet(gradient.svg());
 
     assert_eq!(
         mindmap_node_attribute(
-            rendered.svg(),
+            gradient.svg(),
             "mindmap-neo-gradient-node_1",
             "data-mindmap-section",
-        ),
-        None,
-        "an unsupported gradient surface must not match the typed palette selector"
+        )
+        .as_deref(),
+        Some("0"),
+        "the typed palette still owns fill while Mermaid's gradient owns stroke"
+    );
+    assert_eq!(
+        mindmap_typed_neo_section_shape_fill(&gradient_stylesheet, "mindmap-neo-gradient", 0,),
+        "#123456"
     );
     assert!(
-        mindmap_stylesheet(rendered.svg()).contains("stroke:url(#mindmap-neo-gradient-gradient)"),
+        gradient_stylesheet.contains("stroke:url(#mindmap-neo-gradient-gradient)"),
         "the Mermaid neo gradient must remain in the terminal stylesheet"
     );
 
-    let completion = rendered.into_completion();
+    let completion = gradient.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -693,19 +667,22 @@ fn mindmap_neo_main_background_keeps_terminal_ownership_over_the_node_palette() 
         (
             "explicit",
             json!({
-                "theme": "redux",
+                "theme": "base",
                 "look": "neo",
-                "themeVariables": { "mainBkg": "#fedcba" }
+                "themeVariables": {
+                    "mainBkg": "#fedcba",
+                    "useGradient": true
+                }
             }),
         ),
         (
-            "neutral-derived",
+            "derived",
             json!({
-                "theme": "neutral",
+                "theme": "base",
                 "look": "neo",
                 "themeVariables": {
                     "primaryColor": "#fedcba",
-                    "useGradient": false
+                    "useGradient": true
                 }
             }),
         ),

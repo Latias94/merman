@@ -8,6 +8,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 pub(crate) const MINDMAP_SECTION_COUNT: usize = 11;
 const MINDMAP_COLOR_SCALE_PATHS: [&str; MINDMAP_SECTION_COUNT] = [
@@ -32,7 +33,6 @@ const MINDMAP_COLOR_SCALE_PATHS: [&str; MINDMAP_SECTION_COUNT] = [
 pub(crate) enum MindmapNodeFillSource {
     ColorScale,
     MainBackground,
-    Gradient,
 }
 
 /// Fixed-size ownership view for the Mermaid tokens that can win Mindmap node fill.
@@ -65,7 +65,6 @@ impl MindmapNodeFillOwnership {
         match fill_source {
             MindmapNodeFillSource::ColorScale => self.color_scale[section],
             MindmapNodeFillSource::MainBackground => self.main_background,
-            MindmapNodeFillSource::Gradient => false,
         }
     }
 }
@@ -109,7 +108,8 @@ impl MindmapNodePalettePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         sections: impl IntoIterator<Item = Option<i32>>,
-    ) -> Self {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
         let mut node_count = 0;
         let mut visited = [false; MINDMAP_SECTION_COUNT];
         for section in sections {
@@ -121,13 +121,13 @@ impl MindmapNodePalettePlan {
         }
 
         let Some(theme) = theme else {
-            return Self::baseline(node_count);
+            return Ok(Self::baseline(node_count));
         };
 
         let mut plan = Self::baseline(node_count);
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let Some(disposition) = theme.ordinal_palette_disposition(ThemeTarget::Node) else {
-            return plan;
+            return Ok(plan);
         };
         let key = FamilyThemeMechanismKey::OrdinalPalette {
             target: ThemeTarget::Node,
@@ -140,8 +140,12 @@ impl MindmapNodePalettePlan {
                         continue;
                     }
                     let ordinal = section + 1;
-                    let style =
-                        theme.style(ThemeTarget::Node, ThemeVariant::Default, Some(ordinal));
+                    let style = theme.style_with_work_meter(
+                        ThemeTarget::Node,
+                        ThemeVariant::Default,
+                        Some(ordinal),
+                        work_meter,
+                    )?;
                     if !matches!(style.fill_resolution().specified(), Specified::Unspecified) {
                         continue;
                     }
@@ -152,7 +156,7 @@ impl MindmapNodePalettePlan {
                         );
                         plan.palette_key = None;
                         plan.fills_by_section = std::array::from_fn(|_| None);
-                        return plan;
+                        return Ok(plan);
                     };
                     plan.fills_by_section[section] = Some(MindmapNodePaletteFill {
                         css: color.as_css(),
@@ -170,7 +174,7 @@ impl MindmapNodePalettePlan {
             }
             FamilyThemeDisposition::LegacyCompatibility => {}
         }
-        plan
+        Ok(plan)
     }
 
     fn baseline(node_count: usize) -> Self {
@@ -197,9 +201,6 @@ impl MindmapNodePalettePlan {
             return MindmapNodePaletteTerminalDecision::NotApplicable;
         };
         if section + 1 >= generated_color_rule_limit {
-            return MindmapNodePaletteTerminalDecision::Unsupported;
-        }
-        if fill_source == MindmapNodeFillSource::Gradient {
             return MindmapNodePaletteTerminalDecision::Unsupported;
         }
         if ownership.owns(fill_source, section) {
@@ -316,9 +317,10 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
-        ThemeRule, ThemeRuleSet, ThemeStylePatch,
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, OrdinalSelector,
+        ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch,
     };
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use serde_json::{Value, json};
 
     fn effective_config(site_config: Value) -> MermaidConfig {
@@ -327,6 +329,10 @@ mod tests {
             .parse_metadata_sync("mindmap\n  root\n    child\n")
             .expect("parse Mindmap config fixture")
             .effective_config
+    }
+
+    fn work_meter() -> OperationWorkMeter {
+        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
     }
 
     fn resolved_node_palette(colors: &[&str], static_fill: Option<&str>) -> ResolvedDiagramTheme {
@@ -361,7 +367,9 @@ mod tests {
         let plan = MindmapNodePalettePlan::resolve(
             Some(&theme),
             [None, Some(-1), Some(0), Some(1), Some(10), Some(11)],
-        );
+            &work_meter(),
+        )
+        .expect("resolve Mindmap palette plan");
         let ownership = MindmapNodeFillOwnership::from_config(&config);
 
         assert_eq!(
@@ -435,7 +443,8 @@ mod tests {
     fn static_node_fill_winner_blocks_palette_fallback() {
         let theme = resolved_node_palette(&["#ef4444"], Some("#111827"));
         let config = effective_config(json!({}));
-        let plan = MindmapNodePalettePlan::resolve(Some(&theme), [Some(0), Some(1)]);
+        let plan = MindmapNodePalettePlan::resolve(Some(&theme), [Some(0), Some(1)], &work_meter())
+            .expect("resolve Mindmap palette plan");
         let ownership = MindmapNodeFillOwnership::from_config(&config);
 
         assert_eq!(
@@ -462,7 +471,8 @@ mod tests {
     fn transparent_palette_color_reports_transparent_paint() {
         let theme = resolved_node_palette(&["transparent"], None);
         let config = effective_config(json!({}));
-        let plan = MindmapNodePalettePlan::resolve(Some(&theme), [Some(0)]);
+        let plan = MindmapNodePalettePlan::resolve(Some(&theme), [Some(0)], &work_meter())
+            .expect("resolve Mindmap palette plan");
         let ownership = MindmapNodeFillOwnership::from_config(&config);
 
         assert_eq!(
@@ -477,5 +487,48 @@ mod tests {
                 capability: ThemeCapability::TransparentPaint,
             }
         );
+    }
+
+    #[test]
+    fn palette_plan_has_an_exact_ordinal_work_boundary() {
+        let palette = OrdinalPalette::new([ThemeColorValue::parse("#ef4444").unwrap()]).unwrap();
+        let styles = ThemeRuleSet::default()
+            .with_ordinal_palette(ThemeTarget::Node, palette)
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#111827").unwrap()),
+                )
+                .for_family(DiagramFamilyId::MINDMAP)
+                .with_ordinal(OrdinalSelector::exact(99).unwrap()),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile metered Mindmap palette")
+            .resolve(DiagramFamilyId::MINDMAP);
+        let sections = [Some(0), Some(1)];
+        let unbounded = work_meter();
+
+        MindmapNodePalettePlan::resolve(Some(&theme), sections, &unbounded)
+            .expect("resolve unbounded Mindmap palette plan");
+        let exact = unbounded.used();
+        assert!(exact > 0);
+
+        let exact_meter = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact)
+                .unwrap(),
+        );
+        MindmapNodePalettePlan::resolve(Some(&theme), sections, &exact_meter)
+            .expect("exact Mindmap ordinal work budget must succeed");
+        assert_eq!(exact_meter.used(), exact);
+
+        let short_meter = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+                .unwrap(),
+        );
+        assert!(MindmapNodePalettePlan::resolve(Some(&theme), sections, &short_meter).is_err());
+        assert_eq!(short_meter.used(), exact - 1);
     }
 }
