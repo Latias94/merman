@@ -385,10 +385,13 @@ impl<'a> DeferredTextRegistry<'a> {
             let mut total_plain_bytes = 0usize;
             let mut total_html_bytes = 0usize;
             let mut quoted_line_count = 0usize;
+            let mut second_pass_work = producer_work;
             resources.charge_layout_work(producer_work)?;
             produce(&mut |part| {
                 let metrics =
                     self.deferred_part_metrics_and_charge(part, width_profile, resources)?;
+                second_pass_work =
+                    resources.checked_work_add(second_pass_work, metrics.replay_work_units)?;
                 part_count = part_count
                     .checked_add(1)
                     .ok_or_else(layout_allocation_failed)?;
@@ -410,6 +413,7 @@ impl<'a> DeferredTextRegistry<'a> {
                 }
                 Ok(())
             })?;
+            resources.check_usage(second_pass_work, 0)?;
 
             let final_entry_count = self
                 .entries
@@ -811,19 +815,30 @@ fn visit_plain_output_with_resources(
 ) -> Result<()> {
     let mut chunk_start = 0usize;
     let mut scalars_until_checkpoint = DEFERRED_REPLAY_CHECKPOINT_INTERVAL;
-    for (byte_index, _) in value.char_indices() {
-        if scalars_until_checkpoint == 0 {
-            resources.checkpoint()?;
-            visit(&value[chunk_start..byte_index])?;
-            chunk_start = byte_index;
-            scalars_until_checkpoint = DEFERRED_REPLAY_CHECKPOINT_INTERVAL;
+    for (grapheme_start, grapheme) in value.grapheme_indices(true) {
+        let mut checkpointed = false;
+        for _ in grapheme.chars() {
+            if scalars_until_checkpoint == 0 {
+                resources.checkpoint()?;
+                scalars_until_checkpoint = DEFERRED_REPLAY_CHECKPOINT_INTERVAL;
+                checkpointed = true;
+            }
+            scalars_until_checkpoint -= 1;
         }
-        scalars_until_checkpoint -= 1;
+        if checkpointed {
+            let grapheme_end = grapheme_start + grapheme.len();
+            visit(&value[chunk_start..grapheme_end])?;
+            chunk_start = grapheme_end;
+        }
     }
     if chunk_start > 0 {
         resources.checkpoint()?;
     }
-    visit(&value[chunk_start..])
+    if chunk_start < value.len() {
+        visit(&value[chunk_start..])
+    } else {
+        Ok(())
+    }
 }
 
 fn visit_html_output_with_resources(
@@ -997,6 +1012,51 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 0);
         assert!(deferred.entries.is_empty());
+    }
+
+    #[test]
+    fn deferred_parts_preflight_the_complete_second_pass() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("the work limit should be valid");
+        let resources = ResourceContext::new(policy);
+        let mut deferred = DeferredTextRegistry::new();
+
+        let error = deferred
+            .try_register_parts(TerminalWidthProfile::Unicode, &resources, 1, |push| {
+                push(DeferredTextPart::Static("A"))
+            })
+            .expect_err("both producer passes must fit before registry allocation");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == 4
+                    && details.max == 3
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert!(deferred.entries.is_empty());
+    }
+
+    #[test]
+    fn controlled_plain_replay_keeps_checkpoint_chunks_on_grapheme_boundaries() {
+        let mut value = String::from("A");
+        value.extend(std::iter::repeat_n(
+            '\u{301}',
+            DEFERRED_REPLAY_CHECKPOINT_INTERVAL * 2,
+        ));
+        assert_eq!(value.graphemes(true).count(), 1);
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut fragments = Vec::new();
+
+        visit_plain_output_with_resources(&value, &resources, &mut |fragment| {
+            fragments.push(fragment.to_string());
+            Ok(())
+        })
+        .expect("controlled replay should succeed");
+
+        assert_eq!(fragments, [value]);
     }
 
     #[test]
