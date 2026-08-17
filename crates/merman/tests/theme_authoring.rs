@@ -9,6 +9,276 @@ use merman::diagram_theme::{
 use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
 
+struct AuthoringRenderWitness {
+    name: &'static str,
+    diagram_id: &'static str,
+    source: &'static str,
+}
+
+const AUTHORING_RENDER_WITNESSES: [AuthoringRenderWitness; 3] = [
+    AuthoringRenderWitness {
+        name: "Flowchart",
+        diagram_id: "authoring-flowchart",
+        source: "flowchart LR\nA[Alpha] --> B[Beta]\n",
+    },
+    AuthoringRenderWitness {
+        name: "State",
+        diagram_id: "authoring-state",
+        source: "stateDiagram-v2\n[*] --> Active\nActive --> [*]\n",
+    },
+    AuthoringRenderWitness {
+        name: "Sequence",
+        diagram_id: "authoring-sequence",
+        source: "sequenceDiagram\nAlice->>Bob: Hello\nBob-->>Alice: World\n",
+    },
+];
+
+fn light_authoring_witness() -> ThemeDefinitionV1 {
+    ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_canvas("#fffdf5")
+            .with_surface("#fef3c7")
+            .with_surface_alt("#fde68a")
+            .with_surface_muted("#fef9c3")
+            .with_text("#3f2d20")
+            .with_border("#b45309")
+            .with_line("#92400e")
+            .with_accent("#c2410c")
+            .with_series(vec![
+                "#f59e0b".to_owned(),
+                "#84cc16".to_owned(),
+                "#06b6d4".to_owned(),
+            ]),
+    )
+}
+
+fn dark_authoring_witness() -> ThemeDefinitionV1 {
+    ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_canvas("#07111f")
+            .with_surface("#172554")
+            .with_surface_alt("#1e3a8a")
+            .with_surface_muted("#0f172a")
+            .with_text("#e0f2fe")
+            .with_border("#38bdf8")
+            .with_line("#7dd3fc")
+            .with_accent("#f472b6")
+            .with_series(vec![
+                "#22d3ee".to_owned(),
+                "#a78bfa".to_owned(),
+                "#fb7185".to_owned(),
+            ]),
+    )
+}
+
+fn materialize_pretty_json_round_trip(
+    definition: &ThemeDefinitionV1,
+    witness_name: &str,
+) -> merman::diagram_theme::MaterializedThemeWireV1 {
+    let pretty_json = serde_json::to_string_pretty(definition)
+        .unwrap_or_else(|error| panic!("{witness_name} definition should serialize: {error}"));
+    let decoded: ThemeDefinitionV1 = serde_json::from_str(&pretty_json)
+        .unwrap_or_else(|error| panic!("{witness_name} definition should decode: {error}"));
+    assert_eq!(
+        definition
+            .canonical_json_bytes()
+            .expect("the typed definition should canonicalize"),
+        decoded
+            .canonical_json_bytes()
+            .expect("the JSON definition should canonicalize"),
+        "{witness_name} canonical definition bytes must survive pretty JSON",
+    );
+
+    let materializer = ThemeMaterializer::new();
+    let typed = materializer
+        .materialize_theme(definition)
+        .unwrap_or_else(|error| {
+            panic!("{witness_name} typed definition should materialize: {error}")
+        });
+    let imported = materializer
+        .materialize_theme(&decoded)
+        .unwrap_or_else(|error| {
+            panic!("{witness_name} JSON definition should materialize: {error}")
+        });
+    assert_eq!(
+        typed.spec(),
+        imported.spec(),
+        "{witness_name} materialized spec must survive pretty JSON",
+    );
+    imported
+}
+
+fn witness_svg_request(diagram_id: &str) -> merman::SvgRequest {
+    merman::SvgRequest {
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_owned()),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn render_authoring_svg(
+    renderer: &Renderer,
+    witness: &AuthoringRenderWitness,
+    theme: &merman::diagram_theme::DiagramTheme,
+) -> String {
+    let output = renderer
+        .render(
+            RenderRequest::svg(
+                witness.source,
+                OperationControl::new(),
+                witness_svg_request(witness.diagram_id),
+            )
+            .with_theme(theme.clone()),
+        )
+        .unwrap_or_else(|error| panic!("{} SVG should render: {error}", witness.name));
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("{} should produce an SVG", witness.name);
+    };
+    output.svg().to_owned()
+}
+
+#[cfg(feature = "png")]
+fn render_authoring_png(
+    renderer: &Renderer,
+    witness: &AuthoringRenderWitness,
+    theme: &merman::diagram_theme::DiagramTheme,
+) -> Vec<u8> {
+    let output = renderer
+        .render(
+            RenderRequest::png(
+                witness.source,
+                OperationControl::new(),
+                merman::PngRequest {
+                    svg: witness_svg_request(witness.diagram_id),
+                    options: merman::svg::export::RasterOptions::default(),
+                },
+            )
+            .with_theme(theme.clone()),
+        )
+        .unwrap_or_else(|error| panic!("{} PNG should render: {error}", witness.name));
+    let RenderOutput::Png(Some(output)) = output else {
+        panic!("{} should produce a PNG", witness.name);
+    };
+    assert!(output.bytes().starts_with(b"\x89PNG\r\n\x1a\n"));
+    output.into_bytes()
+}
+
+#[test]
+fn prefreeze_tokens_only_themes_round_trip_and_render_without_state_leakage() {
+    let light_definition = light_authoring_witness();
+    let dark_definition = dark_authoring_witness();
+    assert!(light_definition.styles().is_empty());
+    assert!(dark_definition.styles().is_empty());
+    let light_materialized = materialize_pretty_json_round_trip(&light_definition, "light");
+    let dark_materialized = materialize_pretty_json_round_trip(&dark_definition, "dark");
+    let compiler = DiagramThemeCompiler::new();
+    let light_theme = compiler
+        .compile_spec_wire(light_materialized.into_spec())
+        .expect("the light materialized spec should compile once");
+    let dark_theme = compiler
+        .compile_spec_wire(dark_materialized.into_spec())
+        .expect("the dark materialized spec should compile once");
+    let first_renderer = Renderer::new();
+    let second_renderer = Renderer::new();
+
+    for witness in &AUTHORING_RENDER_WITNESSES {
+        let first_light = render_authoring_svg(&first_renderer, witness, &light_theme);
+        let first_dark = render_authoring_svg(&first_renderer, witness, &dark_theme);
+        let repeated_light = render_authoring_svg(&first_renderer, witness, &light_theme);
+        let independent_light = render_authoring_svg(&second_renderer, witness, &light_theme);
+        let independent_dark = render_authoring_svg(&second_renderer, witness, &dark_theme);
+
+        assert_eq!(
+            first_light, repeated_light,
+            "{} light -> dark -> light SVG rendering must not leak state",
+            witness.name,
+        );
+        assert_eq!(
+            first_light, independent_light,
+            "{} light SVG must be stable across Renderer instances",
+            witness.name,
+        );
+        assert_eq!(
+            first_dark, independent_dark,
+            "{} dark SVG must be stable across Renderer instances",
+            witness.name,
+        );
+        assert_ne!(
+            first_light, first_dark,
+            "{} light and dark SVGs must differ",
+            witness.name,
+        );
+    }
+
+    #[cfg(feature = "png")]
+    for witness in &AUTHORING_RENDER_WITNESSES {
+        let first_light = render_authoring_png(&first_renderer, witness, &light_theme);
+        let first_dark = render_authoring_png(&first_renderer, witness, &dark_theme);
+        let repeated_light = render_authoring_png(&first_renderer, witness, &light_theme);
+        let independent_light = render_authoring_png(&second_renderer, witness, &light_theme);
+        let independent_dark = render_authoring_png(&second_renderer, witness, &dark_theme);
+
+        assert_eq!(
+            first_light, repeated_light,
+            "{} light -> dark -> light PNG rendering must not leak state",
+            witness.name,
+        );
+        assert_eq!(
+            first_light, independent_light,
+            "{} light PNG must be stable across Renderer instances",
+            witness.name,
+        );
+        assert_eq!(
+            first_dark, independent_dark,
+            "{} dark PNG must be stable across Renderer instances",
+            witness.name,
+        );
+        assert_ne!(
+            first_light, first_dark,
+            "{} light and dark PNGs must differ",
+            witness.name,
+        );
+    }
+}
+
+#[test]
+fn complete_spec_can_cold_start_without_authoring_materialization() {
+    const COLD_START_COLOR: &str = "#dc2626";
+    let style = merman::svg::ThemeStylePatch::default().with_fill(
+        merman::svg::CanvasPaint::solid(COLD_START_COLOR)
+            .expect("the cold-start fixture color should be valid"),
+    );
+    let spec = merman::svg::DiagramThemeSpec::new().with_styles(
+        merman::svg::ThemeRuleSet::default().with_rule(
+            merman::svg::ThemeRule::new(merman::svg::ThemeTarget::Node, style)
+                .for_family(DiagramFamilyId::FLOWCHART),
+        ),
+    );
+    let theme = DiagramThemeCompiler::new()
+        .compile(spec)
+        .expect("the complete spec should compile without authoring materialization");
+    let svg = render_authoring_svg(&Renderer::new(), &AUTHORING_RENDER_WITNESSES[0], &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid cold-start Flowchart SVG");
+    let node_style = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "label-container")
+                })
+        })
+        .and_then(|node| node.attribute("style"))
+        .expect("the cold-start Flowchart node style");
+    assert!(
+        node_style.contains(&format!("fill:{COLD_START_COLOR} !important")),
+        "the complete-spec rule must own the terminal node fill: {node_style}",
+    );
+}
+
 #[test]
 fn typed_family_rule_matches_the_equivalent_shareable_json() {
     let typed = ThemeDefinitionBuilderV1::new(ThemeTokensV1::default())

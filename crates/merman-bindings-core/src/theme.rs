@@ -260,6 +260,10 @@ fn invalid_options(message: impl Into<String>) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman::diagram_theme::{
+        ThemeAuthoringTypographyV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializer,
+        ThemeTokensV1, compile_theme_definition,
+    };
     use merman::svg::{ThemeCapability, ThemeResourceLimitId};
 
     #[test]
@@ -338,28 +342,90 @@ mod tests {
     }
 
     #[test]
-    fn authoring_definition_materializes_through_the_shared_rust_authority() {
-        let theme = crate::compile_theme_definition_json(
-            br##"{
+    fn authoring_definition_json_matches_the_typed_rust_definition() {
+        const DEFINITION_JSON: &[u8] = br##"{
                 "authoring_schema_version": 1,
                 "expansion_version": 1,
                 "tokens": {
                     "canvas": "#0f172a",
                     "surface": "#111827",
+                    "surface_alt": "#1f2937",
+                    "surface_muted": "#334155",
                     "text": "#e5e7eb",
-                    "border": "#475569"
+                    "border": "#475569",
+                    "line": "#94a3b8",
+                    "accent": "#60a5fa",
+                    "series": ["#60a5fa", "#34d399", "#f59e0b"],
+                    "typography": {
+                        "font_stack": ["Inter", "system-ui", "sans-serif"],
+                        "font_size_px": 15,
+                        "font_weight": 500
+                    }
                 }
-            }"##,
-        )
-        .expect("a shared authoring definition should materialize and compile");
+            }"##;
+        let typed_definition = ThemeDefinitionV1::new(
+            ThemeTokensV1::default()
+                .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
+                .with_color(ThemeColorTokenV1::Surface, "#111827")
+                .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
+                .with_color(ThemeColorTokenV1::SurfaceMuted, "#334155")
+                .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
+                .with_color(ThemeColorTokenV1::Border, "#475569")
+                .with_color(ThemeColorTokenV1::Line, "#94a3b8")
+                .with_color(ThemeColorTokenV1::Accent, "#60a5fa")
+                .with_series(vec![
+                    "#60a5fa".to_owned(),
+                    "#34d399".to_owned(),
+                    "#f59e0b".to_owned(),
+                ])
+                .with_typography(
+                    ThemeAuthoringTypographyV1::default()
+                        .with_font_stack(vec![
+                            "Inter".to_owned(),
+                            "system-ui".to_owned(),
+                            "sans-serif".to_owned(),
+                        ])
+                        .with_font_size_px(15.0)
+                        .with_font_weight(500),
+                ),
+        );
+        let decoded_definition: ThemeDefinitionV1 = serde_json::from_slice(DEFINITION_JSON)
+            .expect("the readable binding definition should decode through the shared contract");
+
+        assert_eq!(
+            decoded_definition
+                .canonical_json_bytes()
+                .expect("the JSON definition should canonicalize"),
+            typed_definition
+                .canonical_json_bytes()
+                .expect("the typed definition should canonicalize"),
+        );
+
+        let materializer = ThemeMaterializer::new();
+        let decoded_materialized = materializer
+            .materialize_theme(&decoded_definition)
+            .expect("the JSON definition should materialize");
+        let typed_materialized = materializer
+            .materialize_theme(&typed_definition)
+            .expect("the typed definition should materialize");
+        assert_eq!(decoded_materialized.spec(), typed_materialized.spec());
+
+        let binding_theme = crate::compile_theme_definition_json(DEFINITION_JSON)
+            .expect("the binding definition should materialize and compile");
+        let typed_theme = compile_theme_definition(&DiagramThemeCompiler::new(), &typed_definition)
+            .expect("the typed definition should materialize and compile");
+        assert_eq!(
+            binding_theme.recipe_fingerprint(),
+            typed_theme.recipe_fingerprint(),
+        );
 
         assert!(
-            theme
+            binding_theme
                 .report()
                 .requires_capability(ThemeCapability::SemanticRules)
         );
         assert!(
-            theme
+            binding_theme
                 .report()
                 .requires_capability(ThemeCapability::SolidPaint)
         );

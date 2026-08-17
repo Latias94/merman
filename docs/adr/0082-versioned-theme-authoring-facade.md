@@ -83,7 +83,7 @@ The only valid authority chain is:
 ```text
 ThemeDefinitionV1
     -> ThemeMaterializer
-    -> MaterializedTheme with a complete DiagramThemeSpec
+    -> MaterializedThemeWireV1 with a complete DiagramThemeSpec
 
 DiagramThemeSpec
     -> DiagramThemeCompiler
@@ -142,7 +142,7 @@ The contract registry owns the legal version tuple. Version 1 accepts exactly
 `(authoring_schema_version = 1, expansion_version = 1)` and produces
 `DiagramThemeSpecWireV1` with `spec_schema_version = 1`. Bindings project this registry; they do not
 independently accept any pair of known integers. `DiagramThemeSpecWireV1` is the canonical closed
-wire used by `theme.spec`, materialization results, golden vectors, and digest calculation.
+wire used by `theme.spec`, materialization results, and golden vectors.
 
 Canonical `ThemeDefinitionV1` bytes use RFC 8785 JSON Canonicalization Scheme over the Rust-owned
 wire: UTF-8, JCS property ordering, typed array order, no insignificant whitespace, and JCS number
@@ -355,21 +355,34 @@ The ordinary user-facing hierarchy is:
 
 ```text
 ThemeDefinitionV1 = authored, saved, and shared value
-MaterializedTheme = inspectable deterministic expansion
+MaterializedThemeWireV1 = inspectable deterministic expansion
 DiagramThemeSpec = advanced complete recipe and low-level render input
 DiagramTheme = compiled executable theme
 ```
 
-`MaterializedTheme` carries the authoring and expansion versions, complete-spec schema version,
-editable complete spec, and bounded diagnostics. Canonical `ThemeDefinitionV1` bytes identify the
-shared authored value. A `ThemeMaterializationDigest` may additionally bind the version tuple and
-canonical complete spec for cache or replay use, but it excludes diagnostics and display messages
-and is not the primary share identity. It remains alpha until a first-party cache or replay consumer
-demonstrates that it must be a stable public field.
+`MaterializedThemeWireV1` carries only the authoring and expansion versions, complete-spec schema
+version, and editable complete spec. Canonical `ThemeDefinitionV1` bytes identify the shared
+authored value; canonical complete-spec bytes identify the expanded value. Successful
+materialization does not carry diagnostics, provenance, capability results, portability claims, or
+render receipts.
 
-The materialization digest is not the compiler-owned `ThemeRecipeFingerprint`, a preset
-qualification receipt, an artifact digest, or runtime evidence. If a future caller needs a hash of
-only canonical spec bytes, that type must be named `CanonicalThemeSpecDigest`.
+Its serialized form is a closed object with five required, non-null fields:
+
+```text
+schema_version = 1
+authoring_schema_version = 1
+expansion_version = 1
+spec_schema_version = 1
+spec = DiagramThemeSpecWireV1
+```
+
+The envelope `schema_version` versions this result shape independently from the authoring,
+expansion, and complete-spec contracts that produced its payload.
+
+Version 1 does not expose a materialization digest. No first-party cache or replay consumer needs
+one, and freezing another identity beside canonical definition/spec bytes would add contract cost
+without user value. If a future real consumer needs a hash of only canonical spec bytes, that type
+must be proposed separately and named `CanonicalThemeSpecDigest`.
 
 Preset revision, maturity, and qualification metadata belong to the preset catalog and release
 governance, not to the version 1 authoring envelope. Version 1 therefore does not add
@@ -381,11 +394,13 @@ arbitrary complete recipe.
 
 ### 8. Keep diagnostics and expansion traces at different maturity levels
 
-Materialization uses the closed `ThemeMaterializationDiagnosticV1` envelope. It carries
+The C7a error contract will use the closed `ThemeMaterializationDiagnosticV1` envelope. It carries
 `code`, `severity`, an RFC 6901 JSON Pointer `path`, bounded structured `details`, and a non-identity
-display message. Fatal failures return `ThemeMaterializationErrorV1 { schema_version: 1,
-diagnostics }` and no `MaterializedTheme`. Diagnostics sort by UTF-8 path bytes, then code, then the
-canonical details encoding.
+display message. Fatal failures will return `ThemeMaterializationErrorV1 { schema_version: 1,
+diagnostics }` and no `MaterializedThemeWireV1`. Diagnostics sort by UTF-8 path bytes, then code,
+then the canonical details encoding. Successful results omit diagnostics entirely; version 1 does
+not freeze an always-empty warning array. Until that envelope lands, the renderer-owned Rust error
+is an alpha implementation surface rather than a frozen cross-binding failure contract.
 
 The version 1 fatal code registry is:
 
@@ -421,7 +436,7 @@ reorder rules, expose family writer ledgers, or claim runtime application or por
 The candidate operations are:
 
 ```text
-materialize_theme(definition) -> MaterializedTheme
+materialize_theme(definition) -> MaterializedThemeWireV1
 describe_theme_support(query) -> ThemeCapabilityDescriptor
 ```
 

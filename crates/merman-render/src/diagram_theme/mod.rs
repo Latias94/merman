@@ -37,8 +37,8 @@ use std::sync::Arc;
 
 pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
 pub use merman_theme_contract::{
-    DiagramThemeSpecWireV1, ThemeCapabilityDescriptorV1, ThemeRuleFacetV1, ThemeSupportFacetV1,
-    ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
+    DiagramThemeSpecWireV1, MaterializedThemeWireV1, ThemeCapabilityDescriptorV1, ThemeRuleFacetV1,
+    ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
 };
 
 pub(crate) use admission::ResolvedThemeAdmission;
@@ -76,9 +76,7 @@ pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape,
 };
-pub use materializer::{
-    MaterializedTheme, ThemeMaterializationDigest, ThemeMaterializationError, ThemeMaterializer,
-};
+pub use materializer::{ThemeMaterializationError, ThemeMaterializer};
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };

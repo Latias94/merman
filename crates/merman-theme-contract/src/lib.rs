@@ -6,6 +6,7 @@ mod authoring;
 mod canonical_json;
 mod facet;
 mod finite;
+mod materialized;
 mod spec;
 mod support;
 mod version;
@@ -16,6 +17,7 @@ pub use authoring::{
 };
 pub use canonical_json::{CanonicalJsonError, CanonicalJsonErrorKind};
 pub use facet::ThemeRuleFacetV1;
+pub use materialized::MaterializedThemeWireV1;
 pub use spec::{
     DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, MermaidThemeValueWireV1,
     ThemeAssetsWireV1, ThemeCanvasLayerWireV1, ThemeCanvasSpecWireV1, ThemeEffectEntryWireV1,

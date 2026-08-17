@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
-use std::fmt;
 
 use merman_theme_contract::{
-    CanonicalJsonError, DiagramThemeSpecWireV1, SpecifiedWireV1, ThemeCanvasPaintWireV1,
+    DiagramThemeSpecWireV1, MaterializedThemeWireV1, SpecifiedWireV1, ThemeCanvasPaintWireV1,
     ThemeCanvasSpecWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeLineHeightWireV1,
     ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTextStyleWireV1,
     ThemeTypographySpecWireV1,
 };
-use sha2::{Digest as _, Sha256};
 
 use super::{FontStack, LineHeight, ThemeColorValue, ThemeTarget, ThemeTextStyle, ThemeVariant};
 
@@ -15,7 +13,6 @@ const DEFAULT_SERIES: [&str; 4] = ["#2563eb", "#16a34a", "#d97706", "#9333ea"];
 const DEFAULT_FONT_STACK: [&str; 4] = ["Inter", "ui-sans-serif", "system-ui", "sans-serif"];
 const DEFAULT_FONT_SIZE_PX: f32 = 16.0;
 const DEFAULT_FONT_WEIGHT: u16 = 400;
-const MATERIALIZATION_DIGEST_DOMAIN: &[u8] = b"merman.theme-materialization.v1\0";
 pub(crate) const GENERATED_PALETTE_TARGETS: [ThemeTarget; 2] =
     [ThemeTarget::Node, ThemeTarget::PieSlice];
 
@@ -207,7 +204,7 @@ impl ThemeMaterializer {
     pub fn materialize_theme(
         &self,
         definition: &ThemeDefinitionV1,
-    ) -> Result<MaterializedTheme, ThemeMaterializationError> {
+    ) -> Result<MaterializedThemeWireV1, ThemeMaterializationError> {
         validate_definition_shape(definition)?;
         let tokens = ResolvedTokensV1::resolve(definition)?;
         let mut styles = GENERATED_RULES
@@ -260,96 +257,8 @@ impl ThemeMaterializer {
             }),
             ..DiagramThemeSpecWireV1::default()
         };
-        let digest = ThemeMaterializationDigest::new(definition, &spec)?;
-        Ok(MaterializedTheme {
-            authoring_schema_version: definition.authoring_schema_version(),
-            expansion_version: definition.expansion_version(),
-            spec_schema_version: DiagramThemeSpecWireV1::spec_schema_version(),
-            spec,
-            theme_materialization_digest: digest,
-        })
-    }
-}
-
-/// One successfully materialized versioned authoring definition.
-#[derive(Debug, Clone, PartialEq)]
-pub struct MaterializedTheme {
-    authoring_schema_version: u32,
-    expansion_version: u32,
-    spec_schema_version: u32,
-    spec: DiagramThemeSpecWireV1,
-    theme_materialization_digest: ThemeMaterializationDigest,
-}
-
-impl MaterializedTheme {
-    /// Returns the source authoring schema version.
-    pub const fn authoring_schema_version(&self) -> u32 {
-        self.authoring_schema_version
-    }
-
-    /// Returns the deterministic expansion-table version.
-    pub const fn expansion_version(&self) -> u32 {
-        self.expansion_version
-    }
-
-    /// Returns the complete-spec schema version.
-    pub const fn spec_schema_version(&self) -> u32 {
-        self.spec_schema_version
-    }
-
-    /// Borrows the complete editable theme-spec wire.
-    pub const fn spec(&self) -> &DiagramThemeSpecWireV1 {
-        &self.spec
-    }
-
-    /// Consumes the result and returns the complete editable theme-spec wire.
-    pub fn into_spec(self) -> DiagramThemeSpecWireV1 {
-        self.spec
-    }
-
-    /// Returns the replay identity of the version tuple and complete canonical spec.
-    pub const fn theme_materialization_digest(&self) -> ThemeMaterializationDigest {
-        self.theme_materialization_digest
-    }
-}
-
-/// Replay identity for one versioned theme materialization result.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ThemeMaterializationDigest([u8; 32]);
-
-impl ThemeMaterializationDigest {
-    fn new(
-        definition: &ThemeDefinitionV1,
-        spec: &DiagramThemeSpecWireV1,
-    ) -> Result<Self, CanonicalJsonError> {
-        let canonical_spec = spec.canonical_json_bytes()?;
-        let mut hasher = Sha256::new();
-        hasher.update(MATERIALIZATION_DIGEST_DOMAIN);
-        hasher.update(definition.authoring_schema_version().to_be_bytes());
-        hasher.update(definition.expansion_version().to_be_bytes());
-        hasher.update(DiagramThemeSpecWireV1::spec_schema_version().to_be_bytes());
-        hasher.update((canonical_spec.len() as u64).to_be_bytes());
-        hasher.update(canonical_spec);
-        Ok(Self(hasher.finalize().into()))
-    }
-
-    /// Returns the fixed-width digest bytes.
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-
-    /// Formats the digest as lower-case hexadecimal.
-    pub fn to_hex(self) -> String {
-        self.0.iter().map(|byte| format!("{byte:02x}")).collect()
-    }
-}
-
-impl fmt::Debug for ThemeMaterializationDigest {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_tuple("ThemeMaterializationDigest")
-            .field(&self.to_hex())
-            .finish()
+        MaterializedThemeWireV1::try_new(spec)
+            .map_err(|_| ThemeMaterializationError::InvalidTokenValue { path: "/styles" })
     }
 }
 
@@ -400,9 +309,6 @@ pub enum ThemeMaterializationError {
         /// Maximum palettes accepted by the complete theme-spec contract.
         max: usize,
     },
-    /// Canonical result serialization failed, so no replay identity can be issued.
-    #[error(transparent)]
-    Canonicalization(#[from] CanonicalJsonError),
 }
 
 impl ThemeMaterializationError {
@@ -417,7 +323,6 @@ impl ThemeMaterializationError {
                 "theme-authoring.effect-reference-not-supported"
             }
             Self::OrdinalPaletteBudgetExceeded { .. } => "theme-authoring.resource-limit-exceeded",
-            Self::Canonicalization(_) => "theme-authoring.invalid-token-value",
         }
     }
 }

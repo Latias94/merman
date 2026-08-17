@@ -114,7 +114,7 @@ family capability-dependent lowering.
 
 While proposed, ADR-0082 is the sole candidate source of truth for the version 1 authoring envelope,
 token defaults, expansion rows and order, palette-collision behavior, materialization result types,
-digest domains, and trace maturity. Moving the ADR to `accepted` records design approval only; it
+canonical identity domains, and trace maturity. Moving the ADR to `accepted` records design approval only; it
 does not certify the implementation or freeze those candidate tables. The exact C7a candidate and
 rollout bind one executable table revision, but compatibility and expansion-version freezing begin
 only at `C7a-contract`. This plan owns sequencing and gates and does not define a second copy of
@@ -125,7 +125,7 @@ The authority chain is fixed:
 ```text
 ThemeDefinitionV1
     -> ThemeMaterializer
-    -> MaterializedTheme with a complete DiagramThemeSpec
+    -> MaterializedThemeWireV1 with a complete DiagramThemeSpec
 
 DiagramThemeSpec
     -> DiagramThemeCompiler
@@ -178,17 +178,19 @@ family writers remain visible through capability discovery instead of forcing sh
 adapters solely for the gate. The surviving table freezes only at `C7a-contract`. Individual
 preset retain/remove decisions remain a later catalog gate.
 
-`ThemeDefinitionV1` is the ordinary authored and shared value. `MaterializedTheme` binds its
-authoring schema version, expansion version, complete-spec schema version, editable spec, and
-bounded diagnostics. Canonical definition bytes identify the shared value. A separate
-materialization digest remains alpha until a first-party cache or replay consumer demonstrates a
-stable need. Preset revision, maturity, and qualification remain catalog metadata rather than a
-second authoring result type. No authoring result contains authoritative required capabilities,
-admission, or portability.
+`ThemeDefinitionV1` is the ordinary authored and shared value. `MaterializedThemeWireV1` binds its
+own result schema version, authoring schema version, expansion version, complete-spec schema
+version, and editable spec. All five fields are required and non-null in the closed success object.
+Canonical definition bytes identify the shared value, and canonical complete-spec bytes identify
+the expanded value. Successful materialization carries no diagnostics. Version 1 exposes no
+materialization digest because no first-party cache or replay consumer requires another identity.
+Preset revision, maturity, and qualification remain catalog metadata rather than a second
+authoring result type. No authoring result contains authoritative required capabilities, admission,
+or portability.
 
 Authoring inspection, static discovery, and runtime evidence are separate surfaces. An alpha
 `inspect_theme_authoring` may explain token/default/rule provenance. Its expansion trace is a
-separate alpha/debug result and is not part of the stable `MaterializedTheme` envelope. It may report a theme-internal winner only by joining that trace with
+separate alpha/debug result and is not part of the stable `MaterializedThemeWireV1` envelope. It may report a theme-internal winner only by joining that trace with
 compiler-owned resolution and provenance; it never
 re-matches selectors, reorders rules, or implements a second cascade. Without a compiler result it
 returns expansion sources only. It cannot say `Applied`, `Portable`, or `Rejected`.
@@ -609,7 +611,7 @@ Downstream products may build all of these capabilities around Merman's typed in
 coarse reports, and optional future semantic annotations. They do not require the core renderer to
 own those product decisions.
 
-## Implementation Checkpoint - 2026-08-15
+## Implementation Checkpoint - 2026-08-17
 
 | Gate | Status | Current evidence and remaining boundary |
 | --- | --- | --- |
@@ -622,7 +624,7 @@ own those product decisions.
 | C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; Flowchart and Swimlane consume narrow typed Node/NodeLabel/Edge tranches while retaining bridge routes for uncovered mechanisms; Sequence directly consumes selected Actor, Lifeline, Note, and Activation paint routes plus Message stroke with post-emission evidence, while signal, loop, message fill, family typography, and other label routes remain on the bridge. The core family catalog is now the sole family-ID/alias/detection authority. Every current typed route that replaces a manifest-declared legacy projection set is covered by a private exact-route Standalone SVG plus PNG cutover receipt; those receipts authorize ownership only and do not close C6a. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
 | C6a | Complete; `18/18` representative native cells execute and the eligibility receipt is issued | Schema v4 is the current 18-cell authority and binds the immutable schema-v3 predecessor, which remains fixed at its historical 12 enforced and 6 deferred cells. The loader rejects lineage shrinkage, and the private unique issuer emits `C6aEligibilityReceipt` only after all nine Brutalist/Spotless/Cyberpunk by Flowchart/State/Sequence render groups pass on Standalone SVG and PNG with target-owned receipts. Each render group projects both targets from one `RenderedDocument`; Flowchart and Sequence also retain prepared terminal text through their production font seals. The separate route-cutover manifest remains a non-cell ownership proof and does not increase C6a progress. |
 | C6b | Paused; no active denominator | Four historical Brutalist/State cross-target observations exist, but the 45-cell equal-depth certification program is not active. JPEG/PDF retain representative smoke coverage; Browser SVG starts only after a real adapter and release requirement exist. |
-| C7a | Not eligible; intentionally blocked | The coarse Rust support-discovery candidate now derives Standalone SVG claims from renderer-owned family routes; Browser SVG and native export qualification plus bindings rollout remain open. Design-system, cold-start complete-spec, pre-freeze family-consumer, expansion-row, and authoring witnesses are C7a inputs, not C6 cells. Do not declare the alpha contract candidate before C1-C3, C4a, C5, and the representative C6a checkpoint close plus those witnesses. Do not freeze the contract until the mandatory author-task rollout verification passes. Unqualified cross-target claims require a separate release-qualification plan. |
+| C7a | Not eligible; intentionally blocked | Coarse Rust support discovery, the contract-owned `MaterializedThemeWireV1`, independent tokens-only light/dark definitions, readable/canonical/materialized equivalence, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, complete-spec cold start, the shared `series[0]` Flowchart/Pie terminal witness, and Rust/binding JSON equivalence have landed. A stable bounded public materialize operation, the versioned authoring diagnostic envelope, required first-party transport rollout, continued C5 family migration, and the mandatory author-task verification remain open. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
 | C7b/C7c | Deferred independently | Remaining family/preset/showcase breadth proceeds under C7b without waiting for external assurance. External-host assurance fields remain a separately triggered C7c plan. |
 
 The public alpha migration scaffold already spans Rust, Options JSON, Web/UniFFI, Typst, Playground,
@@ -1012,8 +1014,10 @@ and public theme scope from the independent renderer taxonomy before adding face
   `ThemeDefinitionV1` JSON is the ordinary portable share value; readable JSON, canonical JSON,
   typed constructors, files, and optional Playground URLs are projections of the same value rather
   than separate formats. `merman-render` alone decodes `ThemeRuleSetWireV1[]` into the existing
-  typed `ThemeRuleSet` and owns the semantic `ThemeMaterializer` and expansion. A materialization
-  digest remains alpha until a first-party cache or replay consumer requires it as a stable field.
+  typed `ThemeRuleSet` and owns the semantic `ThemeMaterializer` and expansion. The materialized
+  success wire contains only the version tuple and complete spec; fatal diagnostics use a separate
+  error envelope, and version 1 publishes no materialization digest without a concrete cache or
+  replay consumer.
   `merman-bindings-core` owns transport admission and external envelopes, and generated
   SDKs project from the dependency-neutral wire contract. This ownership introduces no
   dependency from `merman-bindings-core` to `merman-render` for authoring wire or canonicalization;

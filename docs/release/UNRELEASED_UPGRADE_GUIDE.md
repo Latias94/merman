@@ -84,7 +84,8 @@ Expansion version 1 now emits only rows with a direct family consumer and termin
 generated rules followed by the `node` and `pie-slice` ordinal palettes. The derived authored-rule
 budget is therefore 489, and the 490th authored rule is rejected before materialization. Definitions
 persisted from a pre-freeze development snapshot should be re-materialized and must not compare old
-materialization digests or generated rule indices as stable identities.
+development-only materialization digests or generated rule indices as stable identities. The
+current version 1 success wire does not publish a materialization digest.
 
 `Renderer` is the only source-to-output operation owner. Target-local service configuration stays
 inside `SvgRequest` or `AsciiRequest`, while runtime policy, input admission, cancellation, and the

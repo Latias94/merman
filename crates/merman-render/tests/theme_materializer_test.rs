@@ -3,8 +3,8 @@ use merman_render::diagram_theme::{
 };
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeAuthoringTypographyV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1,
-    ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1,
-    ThemeTokensV1,
+    ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1,
+    ThemeStylePatchWireV1, ThemeTokensV1,
 };
 
 #[test]
@@ -14,23 +14,11 @@ fn tokens_only_definition_materializes_the_complete_version_one_spec() {
     let first = ThemeMaterializer::new()
         .materialize_theme(&definition)
         .expect("version one defaults should materialize");
-    let replayed: ThemeDefinitionV1 = serde_json::from_slice(
-        &definition
-            .canonical_json_bytes()
-            .expect("the admitted definition should canonicalize"),
-    )
-    .expect("canonical authoring JSON should replay through the contract wire");
-    let second = ThemeMaterializer::new()
-        .materialize_theme(&replayed)
-        .expect("the same definition should replay");
 
+    assert_eq!(first.schema_version(), 1);
     assert_eq!(first.authoring_schema_version(), 1);
     assert_eq!(first.expansion_version(), 1);
     assert_eq!(first.spec_schema_version(), 1);
-    assert_eq!(
-        first.theme_materialization_digest(),
-        second.theme_materialization_digest()
-    );
 
     let spec = first.spec();
     assert_eq!(
@@ -229,15 +217,6 @@ fn authored_rules_append_and_authored_palettes_replace_or_extend_generated_slots
         ThemeRuleSetWireV1::OrdinalPalette { target, colors }
             if target == "chart-series" && colors == &["#555555"]
     ));
-
-    let defaults = ThemeMaterializer::new()
-        .materialize_theme(&ThemeDefinitionV1::new(ThemeTokensV1::default()))
-        .expect("defaults");
-    assert_ne!(
-        defaults.theme_materialization_digest(),
-        materialized.theme_materialization_digest(),
-        "changing tokens and authored styles must change replay identity"
-    );
 }
 
 #[test]
@@ -385,4 +364,62 @@ fn explicitly_empty_series_uses_the_dedicated_authoring_error() {
         .expect_err("an explicitly empty series cannot produce ordinal palettes");
     assert_eq!(error.code(), "theme-authoring.empty-series");
     assert!(matches!(error, ThemeMaterializationError::EmptySeries));
+}
+
+#[test]
+fn authored_non_finite_style_numbers_fail_before_materialization_returns() {
+    let cases = [
+        (
+            "radius",
+            ThemeStylePatchWireV1 {
+                radius: SpecifiedWireV1::Value(f32::NAN),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        (
+            "opacity",
+            ThemeStylePatchWireV1 {
+                opacity: SpecifiedWireV1::Value(f32::INFINITY),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+        (
+            "stroke.width",
+            ThemeStylePatchWireV1 {
+                stroke: Some(ThemeStrokePatchWireV1 {
+                    width: SpecifiedWireV1::Value(f32::NEG_INFINITY),
+                    ..ThemeStrokePatchWireV1::default()
+                }),
+                ..ThemeStylePatchWireV1::default()
+            },
+        ),
+    ];
+
+    for (facet, style) in cases {
+        let definition = ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![
+            ThemeRuleSetWireV1::Rule {
+                target: "node".to_owned(),
+                family: None,
+                variant: None,
+                ordinal: None,
+                style,
+            },
+        ]);
+
+        let error = ThemeMaterializer::new()
+            .materialize_theme(&definition)
+            .unwrap_err();
+        assert_eq!(
+            error.code(),
+            "theme-authoring.invalid-token-value",
+            "{facet}"
+        );
+        assert!(
+            matches!(
+                error,
+                ThemeMaterializationError::InvalidTokenValue { path: "/styles" }
+            ),
+            "{facet} must fail through the materialized-wire construction gate"
+        );
+    }
 }

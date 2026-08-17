@@ -89,9 +89,10 @@ let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)?
 `merman::diagram_theme` selectively re-exports the dependency-neutral authoring wire used by the
 renderer. The name is intentionally visual: terminal/ASCII styling is not part of this contract.
 `ThemeMaterializer` remains available when callers need to inspect or edit the complete materialized
-spec. It owns defaults, expansion order, palette replacement, and the materialization digest; the
-facade above delegates to that same implementation before compilation. It does not inspect family
-capabilities or render output. Raw untrusted JSON still requires the bounded
+spec. It owns defaults, expansion order, palette replacement, and the closed
+`MaterializedThemeWireV1` success value; the facade above delegates to that same implementation
+before compilation. Version 1 intentionally publishes no materialization digest. The materializer
+does not inspect family capabilities or render output. Raw untrusted JSON still requires the bounded
 `compile_theme_definition_json` entry point rather than ordinary Serde decoding. Render-time
 bindings remain limited to either a preset reference or a complete `theme.spec` until their
 authoring operations adopt the same contract.

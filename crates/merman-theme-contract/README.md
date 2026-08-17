@@ -1,8 +1,8 @@
 # merman-theme-contract
 
 `merman-theme-contract` is the pre-freeze owner for Merman's candidate theme authoring version
-registry, version 1 authoring wire, and canonical JSON implementation. It is intentionally
-independent from the parser, renderer, bindings, and host runtime crates.
+registry, version 1 authoring and materialized-success wires, and canonical JSON implementation.
+It is intentionally independent from the parser, renderer, bindings, and host runtime crates.
 
 The wire is closed at every object boundary. Persisted definitions must carry the exact supported
 `authoring_schema_version` and `expansion_version` tuple, must contain a non-null `tokens` object,
@@ -68,6 +68,25 @@ assert_eq!(typed.canonical_json_bytes()?, decoded.canonical_json_bytes()?);
 Clearable facets use `SpecifiedWireV1`: omission is `Unspecified`, JSON `null` is `Clear`, and a
 non-null payload is `Value`. Semantic target IDs, colors, numeric domains, empty palettes, and
 effect references are intentionally left for the materializer to validate.
+
+## Materialized success wire
+
+`MaterializedThemeWireV1` is the closed, versioned success value returned after deterministic
+authoring expansion. Every version field and the complete `spec` are required and non-null. The
+wire intentionally carries no digest, diagnostics, trace, capability result, portability claim,
+preset metadata, or render receipt.
+
+```rust
+use merman_theme_contract::{DiagramThemeSpecWireV1, MaterializedThemeWireV1};
+
+let materialized = MaterializedThemeWireV1::try_new(DiagramThemeSpecWireV1::default())?;
+assert_eq!(materialized.schema_version(), 1);
+assert_eq!(materialized.authoring_schema_version(), 1);
+assert_eq!(materialized.expansion_version(), 1);
+assert_eq!(materialized.spec_schema_version(), 1);
+let spec = materialized.into_spec();
+assert_eq!(spec, DiagramThemeSpecWireV1::default());
+```
 
 ## Canonical JSON
 

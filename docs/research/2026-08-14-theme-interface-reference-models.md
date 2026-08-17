@@ -348,8 +348,9 @@ namespaces, and inspector tooling. ADR-0082 separates their maturity:
 
 - materialization diagnostics use versioned codes, severity, and authoring paths;
 - fatal errors return no partial spec;
-- `ThemeMaterializationDigest` and `PresetMaterializationDigest` are materializer-owned integrity
-  identities, not compiler or portability proof;
+- canonical authored-definition and complete-spec bytes are the current identity surfaces; a
+  separate materialization or preset digest should exist only after a real cache or replay consumer
+  requires it;
 - expansion trace is returned only by an internal or explicitly alpha inspection operation; and
 - only compiler resolution may identify a theme-internal winner, while only a concrete render report
   may claim actual application, residuals, portability, or admission.
