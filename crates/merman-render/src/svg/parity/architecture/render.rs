@@ -301,6 +301,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     out.push_str("</g>");
     out.checkpoint()?;
 
+    let mut group_theme_receipt = group_theme.begin_terminal_receipt();
     {
         let mut node_render_ctx = ArchitectureNodeRenderContext {
             out: &mut out,
@@ -319,6 +320,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             &mut node_render_ctx,
             &group_rects,
             group_theme.inline_style(),
+            group_theme_receipt.as_mut(),
         )?;
     }
 
@@ -338,6 +340,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         trust_content_bounds: options.icon_registry().is_none(),
     })?;
     let rooted_svg = root_document.complete(out.finish()?)?;
+    if let Some(receipt) = group_theme_receipt {
+        let _ = group_theme.record_terminal(receipt);
+    }
 
     drop(_g_render_svg);
 

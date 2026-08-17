@@ -1866,9 +1866,7 @@ impl BuiltinFamilyArtifact {
     #[cfg(feature = "layout-cytoscape")]
     fn architecture_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Architecture(artifact) => {
-                Some(artifact.group_theme().finish_evidence_after_svg())
-            }
+            Self::Architecture(artifact) => Some(artifact.group_theme().finish_evidence()),
             _ => None,
         }
     }

@@ -171,6 +171,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     ctx: &mut ArchitectureNodeRenderContext<'a, M, O>,
     group_rects: &[GroupRect<'a>],
     group_inline_style: Option<&str>,
+    mut terminal_receipt: Option<&mut crate::architecture::ArchitectureGroupThemeReceipt>,
 ) -> crate::Result<()> {
     let out = &mut *ctx.out;
     let settings = ctx.settings;
@@ -182,7 +183,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     } else {
         out.push_str(r#"<g class="architecture-groups">"#);
 
-        for grp in group_rects {
+        for (group_index, grp) in group_rects.iter().enumerate() {
             let x = grp.x;
             let y = grp.y;
             let w = grp.w;
@@ -203,11 +204,14 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                 w = fmt(w.max(1.0)),
                 h = fmt(h.max(1.0))
             );
-            if let Some(style) = group_inline_style {
+            let emitted_inline_style = if let Some(style) = group_inline_style {
                 out.push_str(r#" style=""#);
                 escape_attr_into(out, style);
                 out.push('"');
-            }
+                Some(style)
+            } else {
+                None
+            };
             out.push_str("/>");
 
             out.push_str("<g>");
@@ -277,6 +281,9 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
 
             out.push_str("</g>");
             out.checkpoint()?;
+            if let Some(receipt) = terminal_receipt.as_deref_mut() {
+                receipt.record_checkpointed_group(group_index, emitted_inline_style);
+            }
         }
 
         out.push_str("</g>");

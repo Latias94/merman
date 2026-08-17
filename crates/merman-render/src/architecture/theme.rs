@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -15,9 +16,11 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 /// Final Architecture group paint shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct ArchitectureGroupThemePlan {
+    group_count: usize,
     inline_style: Option<String>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
+    terminal_receipt: OnceLock<()>,
 }
 
 impl ArchitectureGroupThemePlan {
@@ -39,9 +42,11 @@ impl ArchitectureGroupThemePlan {
                 }
             }
             return Ok(Self {
+                group_count,
                 inline_style: None,
                 evidence,
                 pending,
+                terminal_receipt: OnceLock::new(),
             });
         }
 
@@ -176,17 +181,21 @@ impl ArchitectureGroupThemePlan {
         }
 
         Ok(Self {
+            group_count,
             inline_style,
             evidence,
             pending,
+            terminal_receipt: OnceLock::new(),
         })
     }
 
     fn baseline() -> Self {
         Self {
+            group_count: 0,
             inline_style: None,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
+            terminal_receipt: OnceLock::new(),
         }
     }
 
@@ -194,13 +203,68 @@ impl ArchitectureGroupThemePlan {
         self.inline_style.as_deref()
     }
 
-    /// Returns terminal evidence after the caller has completed the Architecture SVG.
-    pub(crate) fn finish_evidence_after_svg(&self) -> FamilyThemeEvidence {
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<ArchitectureGroupThemeReceipt> {
+        (!self.pending.is_empty()).then(|| {
+            ArchitectureGroupThemeReceipt::new(
+                self.group_count,
+                self.inline_style.clone().map(String::into_boxed_str),
+            )
+        })
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: ArchitectureGroupThemeReceipt) -> bool {
+        !self.pending.is_empty()
+            && receipt.proves(self.group_count)
+            && self.terminal_receipt.set(()).is_ok()
+    }
+
+    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        for (key, capabilities) in &self.pending {
-            evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
+        if self.terminal_receipt.get().is_some() {
+            for (key, capabilities) in &self.pending {
+                evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
+            }
         }
         evidence
+    }
+}
+
+/// Writer-owned proof that every Architecture group rect emitted the resolved inline paint state.
+#[derive(Debug)]
+pub(crate) struct ArchitectureGroupThemeReceipt {
+    expected_group_count: usize,
+    expected_inline_style: Option<Box<str>>,
+    next_group_index: usize,
+    styles_match: bool,
+}
+
+impl ArchitectureGroupThemeReceipt {
+    fn new(expected_group_count: usize, expected_inline_style: Option<Box<str>>) -> Self {
+        Self {
+            expected_group_count,
+            expected_inline_style,
+            next_group_index: 0,
+            styles_match: true,
+        }
+    }
+
+    pub(crate) fn record_checkpointed_group(
+        &mut self,
+        group_index: usize,
+        emitted_inline_style: Option<&str>,
+    ) {
+        if group_index != self.next_group_index || group_index >= self.expected_group_count {
+            self.styles_match = false;
+            return;
+        }
+        self.next_group_index = self.next_group_index.saturating_add(1);
+        self.styles_match &= emitted_inline_style == self.expected_inline_style.as_deref();
+    }
+
+    fn proves(&self, expected_group_count: usize) -> bool {
+        self.expected_group_count == expected_group_count
+            && self.next_group_index == expected_group_count
+            && self.styles_match
     }
 }
 
@@ -323,4 +387,35 @@ struct ArchitectureGroupRuleObservation {
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     capabilities: BTreeSet<ThemeCapability>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ArchitectureGroupThemeReceipt;
+
+    #[test]
+    fn group_theme_receipt_requires_each_terminal_group_once_with_the_resolved_style() {
+        let mut complete = ArchitectureGroupThemeReceipt::new(2, Some("fill:#123456;".into()));
+        complete.record_checkpointed_group(0, Some("fill:#123456;"));
+        complete.record_checkpointed_group(1, Some("fill:#123456;"));
+        assert!(complete.proves(2));
+
+        let mut incomplete = ArchitectureGroupThemeReceipt::new(2, None);
+        incomplete.record_checkpointed_group(0, None);
+        assert!(!incomplete.proves(2));
+
+        let mut duplicate = ArchitectureGroupThemeReceipt::new(1, None);
+        duplicate.record_checkpointed_group(0, None);
+        duplicate.record_checkpointed_group(0, None);
+        assert!(!duplicate.proves(1));
+
+        let mut out_of_order = ArchitectureGroupThemeReceipt::new(2, None);
+        out_of_order.record_checkpointed_group(1, None);
+        out_of_order.record_checkpointed_group(0, None);
+        assert!(!out_of_order.proves(2));
+
+        let mut mismatch = ArchitectureGroupThemeReceipt::new(1, Some("stroke:#123456;".into()));
+        mismatch.record_checkpointed_group(0, Some("stroke:#abcdef;"));
+        assert!(!mismatch.proves(1));
+    }
 }
