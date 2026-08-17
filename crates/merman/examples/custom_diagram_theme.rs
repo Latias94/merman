@@ -1,5 +1,5 @@
 use merman::diagram_theme::{
-    DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializer, ThemeTokensV1,
+    DiagramThemeCompiler, ThemeDefinitionV1, ThemeMaterializer, ThemeTokensV1,
 };
 use merman::svg::{CssOverridePolicy, SvgOutputPolicy, SvgPipelinePreset};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
@@ -14,14 +14,14 @@ const SOURCE: &str = r#"sequenceDiagram
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let definition = ThemeDefinitionV1::new(
         ThemeTokensV1::default()
-            .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
-            .with_color(ThemeColorTokenV1::Surface, "#111827")
-            .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
-            .with_color(ThemeColorTokenV1::SurfaceMuted, "#334155")
-            .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
-            .with_color(ThemeColorTokenV1::SubtleText, "#cbd5e1")
-            .with_color(ThemeColorTokenV1::Border, "#475569")
-            .with_color(ThemeColorTokenV1::Line, "#94a3b8")
+            .with_canvas("#0f172a")
+            .with_surface("#111827")
+            .with_surface_alt("#1f2937")
+            .with_surface_muted("#334155")
+            .with_text("#e5e7eb")
+            .with_subtle_text("#cbd5e1")
+            .with_border("#475569")
+            .with_line("#94a3b8")
             .with_series(
                 ["#60a5fa", "#34d399", "#f59e0b"]
                     .map(str::to_owned)

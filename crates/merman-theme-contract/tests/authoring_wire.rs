@@ -348,3 +348,46 @@ fn typed_canonical_json_rejects_rust_constructed_non_finite_numbers() {
     );
     assert!(serde_json::to_vec(&definition).is_err());
 }
+
+#[test]
+fn named_token_setters_are_the_same_shareable_wire_value_as_generic_construction() {
+    let named = ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_canvas("#0f172a")
+            .with_surface("#111827")
+            .with_surface_alt("#1f2937")
+            .with_surface_muted("#334155")
+            .with_text("#e5e7eb")
+            .with_subtle_text("#cbd5e1")
+            .with_border("#475569")
+            .with_line("#94a3b8")
+            .with_accent("#60a5fa")
+            .with_error("#ef4444")
+            .with_warning("#f59e0b")
+            .with_success("#34d399"),
+    );
+    let generic = ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_color(ThemeColorTokenV1::Canvas, "#0f172a")
+            .with_color(ThemeColorTokenV1::Surface, "#111827")
+            .with_color(ThemeColorTokenV1::SurfaceAlt, "#1f2937")
+            .with_color(ThemeColorTokenV1::SurfaceMuted, "#334155")
+            .with_color(ThemeColorTokenV1::Text, "#e5e7eb")
+            .with_color(ThemeColorTokenV1::SubtleText, "#cbd5e1")
+            .with_color(ThemeColorTokenV1::Border, "#475569")
+            .with_color(ThemeColorTokenV1::Line, "#94a3b8")
+            .with_color(ThemeColorTokenV1::Accent, "#60a5fa")
+            .with_color(ThemeColorTokenV1::Error, "#ef4444")
+            .with_color(ThemeColorTokenV1::Warning, "#f59e0b")
+            .with_color(ThemeColorTokenV1::Success, "#34d399"),
+    );
+
+    assert_eq!(
+        named
+            .canonical_json_bytes()
+            .expect("named token construction should canonicalize"),
+        generic
+            .canonical_json_bytes()
+            .expect("generic token construction should canonicalize")
+    );
+}

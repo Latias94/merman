@@ -18,16 +18,22 @@ compatibility promise before the C7a contract gate.
 Rust callers can construct the current ephemeral envelope without spelling version numbers:
 
 ```rust
-use merman_theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
+use merman_theme_contract::{ThemeDefinitionV1, ThemeTokensV1};
 
 let definition = ThemeDefinitionV1::new(
-    ThemeTokensV1::default().with_color(ThemeColorTokenV1::Accent, "#2563eb"),
+    ThemeTokensV1::default()
+        .with_canvas("#0f172a")
+        .with_surface("#111827")
+        .with_text("#e5e7eb")
+        .with_border("#475569")
+        .with_accent("#60a5fa"),
 );
 assert_eq!(definition.authoring_schema_version(), 1);
 assert_eq!(definition.expansion_version(), 1);
 ```
 
-Serde decoding remains strict for persisted JSON:
+Serde decoding remains strict. Call it directly only for trusted or externally size-limited JSON;
+untrusted transport entry points must apply their encoded-byte and collection ceilings first:
 
 ```rust
 use merman_theme_contract::ThemeDefinitionV1;
@@ -37,6 +43,25 @@ let definition: ThemeDefinitionV1 = serde_json::from_str(
 )?;
 assert!(definition.styles().is_empty());
 # Ok::<(), serde_json::Error>(())
+```
+
+Readable JSON, canonical JSON, Rust construction, and generated SDK construction are projections of
+the same `ThemeDefinitionV1` value. A theme can be shared as one ordinary JSON file without a
+manifest, package, registry, or installation step:
+
+```rust
+use merman_theme_contract::{ThemeDefinitionV1, ThemeTokensV1};
+
+let typed = ThemeDefinitionV1::new(
+    ThemeTokensV1::default()
+        .with_canvas("#0f172a")
+        .with_text("#e5e7eb")
+        .with_accent("#60a5fa"),
+);
+let readable = serde_json::to_string_pretty(&typed)?;
+let decoded: ThemeDefinitionV1 = serde_json::from_str(&readable)?;
+assert_eq!(typed.canonical_json_bytes()?, decoded.canonical_json_bytes()?);
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 `ThemeRuleSetWireV1` preserves the existing flat `kind: "rule" | "ordinal-palette"` JSON shape.

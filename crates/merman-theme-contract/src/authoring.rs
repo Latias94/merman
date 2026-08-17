@@ -289,6 +289,66 @@ impl ThemeTokensV1 {
         self
     }
 
+    /// Sets the diagram canvas color.
+    pub fn with_canvas(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Canvas, value)
+    }
+
+    /// Sets the primary surface color.
+    pub fn with_surface(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Surface, value)
+    }
+
+    /// Sets the alternate surface color.
+    pub fn with_surface_alt(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::SurfaceAlt, value)
+    }
+
+    /// Sets the muted surface color.
+    pub fn with_surface_muted(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::SurfaceMuted, value)
+    }
+
+    /// Sets the primary text color.
+    pub fn with_text(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Text, value)
+    }
+
+    /// Sets the secondary text color.
+    pub fn with_subtle_text(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::SubtleText, value)
+    }
+
+    /// Sets the border color.
+    pub fn with_border(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Border, value)
+    }
+
+    /// Sets the line color.
+    pub fn with_line(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Line, value)
+    }
+
+    /// Sets the accent color.
+    pub fn with_accent(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Accent, value)
+    }
+
+    /// Sets the error color.
+    pub fn with_error(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Error, value)
+    }
+
+    /// Sets the warning color.
+    pub fn with_warning(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Warning, value)
+    }
+
+    /// Sets the success color.
+    pub fn with_success(self, value: impl Into<String>) -> Self {
+        self.with_color(ThemeColorTokenV1::Success, value)
+    }
+
     /// Returns one authored color token, or `None` when it was omitted.
     pub fn color(&self, token: ThemeColorTokenV1) -> Option<&str> {
         match token {
