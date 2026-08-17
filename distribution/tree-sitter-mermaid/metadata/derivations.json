@@ -36,12 +36,10 @@
     },
     {
       "localPaths": [
-        "grammar/shared/header.js",
-        "metadata/headers.json"
+        "grammar/shared/header.js"
       ],
       "localSymbols": [
-        "terminatedHeader",
-        "cases"
+        "terminatedHeader"
       ],
       "sources": [
         {
@@ -432,9 +430,10 @@
     },
     {
       "localPaths": [
+        "CMakeLists.txt",
+        "Makefile",
         "binding.gyp",
         "bindings/c/tree-sitter-mermaid.pc.in",
-        "bindings/c/tree_sitter/tree-sitter-mermaid.h.in",
         "bindings/c/tree_sitter/tree-sitter-mermaid.h",
         "bindings/node/binding.cc",
         "bindings/node/index.js",
@@ -445,6 +444,7 @@
       ],
       "localSymbols": [
         "targets",
+        "tree-sitter-mermaid",
         "prefix",
         "TREE_SITTER_MERMAID_H_",
         "Initialize",
@@ -460,6 +460,8 @@
           "relationship": "modified",
           "sourcePaths": [
             "crates/cli/src/templates/binding.gyp",
+            "crates/cli/src/templates/CMakeLists.txt",
+            "crates/cli/src/templates/Makefile",
             "crates/cli/src/templates/PARSER_NAME.pc.in",
             "crates/cli/src/templates/PARSER_NAME.h",
             "crates/cli/src/templates/js-binding.cc",
@@ -500,7 +502,7 @@
         "scripts/generate.py"
       ],
       "localSymbols": [
-        "build_wasm_artifact",
+        "build_wasm",
         "resolve_wasi_clang"
       ],
       "sources": [

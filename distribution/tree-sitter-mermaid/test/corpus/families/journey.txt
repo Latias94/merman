@@ -96,6 +96,30 @@ Only task: 3
         (journey_score)))))
 
 ==================
+accepted opaque task data suffix stays structured
+==================
+
+journey
+section Layout options
+size: 2rem
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))
+    (journey_body
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)
+        (journey_score_suffix)))))
+
+==================
 keyword prefixes remain task names
 ==================
 

@@ -1,14 +1,10 @@
 'use strict';
 
 const path = require('node:path');
-const { loadQueryProfiles } = require('../query-profiles');
 
 const packageRoot = path.join(__dirname, '..', '..');
-const binding = require('node-gyp-build')(packageRoot);
-const artifactReceipt = require('../../metadata/artifact-receipt.json');
+const language = require('node-gyp-build')(packageRoot);
 
-binding.nodeTypeInfo = require('../../src/node-types.json');
-binding.artifactReceipt = artifactReceipt;
-binding.queryProfiles = loadQueryProfiles(packageRoot, artifactReceipt);
+language.nodeTypeInfo = require('../../src/node-types.json');
 
-module.exports = binding;
+module.exports = language;

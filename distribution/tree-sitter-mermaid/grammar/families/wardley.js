@@ -414,7 +414,13 @@ const wardleyRules = {
   ),
 
   wardley_parenthesized_name_part: ($) => seq(
-    '(',
+    choice(
+      '(',
+      // Langium's NAME_WITH_SPACES keeps ` (name)` inside the current name.
+      // Match the gap and opening delimiter together so a link tail cannot
+      // claim this boundary first.
+      token(prec(1, /[ \t]+\(/)),
+    ),
     repeat1(choice($.wardley_name_word, $.wardley_name_hyphen)),
     ')',
   ),

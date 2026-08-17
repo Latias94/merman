@@ -18,6 +18,13 @@ const taskName = ($) => field('name', choice(
   alias($._gantt_keyword_prefixed_task_name, $.gantt_task_name),
 ));
 
+const trailingTrivia = ($) => optional(choice(
+  $.comment,
+  $.directive,
+  alias($._gantt_hash_comment, $.comment),
+  $.gantt_semicolon_suffix,
+));
+
 const ganttRules = {
   gantt_diagram: ($) => choice(
     seq(
@@ -56,7 +63,7 @@ const ganttRules = {
   _gantt_line_item: ($) => choice(
     seq(
       $._gantt_statement,
-      optional(choice($.comment, $.directive)),
+      trailingTrivia($),
       $._line_ending,
     ),
     seq(choice($.comment, $.directive), $._line_ending),
@@ -64,7 +71,7 @@ const ganttRules = {
   ),
 
   _gantt_eof_item: ($) => choice(
-    seq($._gantt_statement, optional(choice($.comment, $.directive))),
+    seq($._gantt_statement, trailingTrivia($)),
     $.comment,
     $.directive,
   ),
@@ -174,6 +181,7 @@ const ganttRules = {
       optional($._gantt_task_spacing),
       field('item', $.gantt_task_item),
     )),
+    optional(','),
   ),
 
   _gantt_task_spacing: (_) => token.immediate(prec(30, /[ \t]+/)),
@@ -182,6 +190,7 @@ const ganttRules = {
     field('status', $.gantt_task_status),
     field('constraint', $.gantt_dependency_clause),
     field('constraint', $.gantt_until_clause),
+    field('date', alias($._gantt_datetime, $.gantt_date)),
     field('date', $.gantt_date),
     field('duration', $.gantt_duration),
     field('value', $.gantt_task_atom),
@@ -209,6 +218,13 @@ const ganttRules = {
     statementKeyword($, $._gantt_click_keyword),
     $._gantt_required_space,
     field('task', $.gantt_reference),
+    repeat(seq(
+      field('delimiter', token.immediate(',')),
+      field(
+        'task',
+        alias($._gantt_immediate_reference, $.gantt_reference),
+      ),
+    )),
     $._gantt_required_space,
     choice(
       field('action', $.gantt_href_action),
@@ -225,6 +241,10 @@ const ganttRules = {
         field('action', $.gantt_href_action),
       ),
     ),
+    repeat(seq(
+      $._gantt_required_space,
+      field('tooltip', $.gantt_url),
+    )),
   )),
 
   gantt_href_action: ($) => seq(
@@ -293,12 +313,22 @@ const ganttRules = {
 
   gantt_date: (_) => token(prec(1, /[0-9]{4}-[0-9]{2}-[0-9]{2}/)),
 
+  _gantt_datetime: (_) => token(prec(
+    20,
+    /[0-9]{4}-[0-9]{2}-[0-9]{2}[ \t]+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?(?:[ \t]+[aApP][mM])?/,
+  )),
+
   gantt_duration: (_) => token(prec(
     1,
     /[0-9]+(?:\.[0-9]+)?(?:ms|[Mdhmswy])/,
   )),
 
   gantt_reference: (_) => token(prec(10, /[^\s,#;()"\r\n]+/)),
+
+  _gantt_immediate_reference: (_) => token.immediate(prec(
+    10,
+    /[^\s,#;()"\r\n]+/,
+  )),
 
   gantt_task_atom: ($) => repeat1($._gantt_task_atom_part),
 
@@ -317,6 +347,10 @@ const ganttRules = {
   gantt_setting_value: (_) => token(prec(-5, /[^#;\r\n]+/)),
 
   gantt_today_marker_value: (_) => token(prec(-5, /[^;\r\n]+/)),
+
+  _gantt_hash_comment: (_) => token(prec(20, /#[^\r\n]*/)),
+
+  gantt_semicolon_suffix: (_) => token(prec(1, /;[^\r\n]*/)),
 
   gantt_accessibility_block_text: (_) => token(seq('{', /[^}]*/, '}')),
 

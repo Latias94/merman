@@ -211,3 +211,38 @@ ERDIAGRAM
   (entity_relationship_diagram
     (entity_relationship_header
       (diagram_keyword))))
+
+==================
+attribute comments remain structured
+==================
+
+erDiagram
+  BOOK {
+    string title "Title"
+    float price PK "Price"
+    text notes
+  }
+
+---
+
+(source_file
+  (entity_relationship_diagram
+    (entity_relationship_header
+      (diagram_keyword))
+    (entity_relationship_body
+      (er_entity_declaration
+        (er_entity_name)
+        (er_attribute_block
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_quoted_text))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_attribute_key_list
+              (er_attribute_key))
+            (er_quoted_text))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)))))))

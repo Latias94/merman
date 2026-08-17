@@ -1,179 +1,149 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 
 use serde::Deserialize;
-use tree_sitter_mermaid::{LANGUAGE, QUERY_PROFILES};
-
-const PROFILES: [&str; 4] = ["portable", "neovim", "helix", "zed"];
-const SURFACES: [&str; 9] = [
-    "highlights",
-    "folds",
-    "indents",
-    "injections",
-    "locals",
-    "tags",
-    "brackets",
-    "outline",
-    "textobjects",
-];
+use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter_mermaid::LANGUAGE;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Support {
-    families: Vec<SupportFamily>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SupportFamily {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FamilyFixture {
     public_id: String,
-    query_applicability: BTreeMap<String, BTreeMap<String, SupportCell>>,
+    #[serde(rename = "root")]
+    _root: String,
+    source: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct SupportCell {
-    status: String,
-    #[serde(default)]
-    evidence: Vec<String>,
-    rationale: Option<String>,
+fn language() -> Language {
+    LANGUAGE.into()
 }
 
-#[derive(Debug, Deserialize)]
-struct Matrix {
-    #[serde(rename = "schemaVersion")]
-    schema_version: u32,
-    profile: String,
-    surfaces: Option<Vec<String>>,
-    families: Vec<MatrixFamily>,
+fn parser() -> Parser {
+    let language = language();
+    let mut parser = Parser::new();
+    parser
+        .set_language(&language)
+        .expect("generated Mermaid language must load");
+    parser
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MatrixFamily {
-    public_id: String,
-    surfaces: BTreeMap<String, MatrixCell>,
+fn query_source(relative_path: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
+    fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
 }
 
-#[derive(Debug, Deserialize)]
-struct MatrixCell {
-    status: String,
-    query: Option<String>,
-    rationale: Option<String>,
+fn family_fixtures() -> Vec<FamilyFixture> {
+    serde_json::from_str(include_str!("../test/fixtures/family-roots.json"))
+        .expect("family root fixtures must be valid JSON")
 }
 
-fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> T {
-    let source = fs::read_to_string(path)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-    serde_json::from_str(&source)
-        .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()))
+fn capture_names(
+    parser: &mut Parser,
+    query: &Query,
+    query_path: &str,
+    source: &str,
+) -> Vec<String> {
+    let tree = parser
+        .parse(source, None)
+        .expect("query fixture must parse");
+    assert!(!tree.root_node().has_error(), "{query_path}: {source}");
+
+    let capture_names = query.capture_names();
+    let mut cursor = QueryCursor::new();
+    let mut captures = cursor.captures(query, tree.root_node(), source.as_bytes());
+    let mut names = Vec::new();
+    while let Some((query_match, capture_index)) = captures.next() {
+        let capture = query_match.captures[*capture_index];
+        let capture_index = usize::try_from(capture.index).expect("capture index fits usize");
+        names.push(capture_names[capture_index].to_owned());
+    }
+    names
+}
+
+fn scm_files(root: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    let mut directories = vec![root.to_path_buf()];
+    while let Some(directory) = directories.pop() {
+        for entry in fs::read_dir(&directory)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", directory.display()))
+        {
+            let path = entry.expect("query directory entry").path();
+            if path.is_dir() {
+                directories.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "scm") {
+                files.push(
+                    path.strip_prefix(Path::new(env!("CARGO_MANIFEST_DIR")))
+                        .expect("query path belongs to the package")
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                );
+            }
+        }
+    }
+    files.sort();
+    files
 }
 
 #[test]
-fn query_profiles_compile_and_match_the_complete_applicability_contract() {
+fn every_packaged_query_compiles() {
     let package = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let language: tree_sitter::Language = LANGUAGE.into();
-    let packaged = QUERY_PROFILES
+    let files = scm_files(&package.join("queries"));
+    assert!(!files.is_empty());
+
+    let language = language();
+    for path in files {
+        Query::new(&language, &query_source(&path))
+            .unwrap_or_else(|error| panic!("{path} does not compile: {error}"));
+    }
+}
+
+#[test]
+fn canonical_highlights_cover_every_public_family() {
+    let fixtures = family_fixtures();
+    assert_eq!(fixtures.len(), 35);
+    let language = language();
+    let query_path = "queries/portable/highlights.scm";
+    let query = Query::new(&language, &query_source(query_path))
+        .unwrap_or_else(|error| panic!("{query_path} does not compile: {error}"));
+    let mut parser = parser();
+
+    for fixture in fixtures {
+        let captures = capture_names(&mut parser, &query, query_path, &fixture.source);
+        assert!(
+            captures.iter().any(|capture| capture == "keyword"),
+            "{} has no canonical keyword highlight",
+            fixture.public_id
+        );
+    }
+}
+
+#[test]
+fn portable_non_highlight_queries_execute_on_representative_sources() {
+    let fixtures = family_fixtures();
+    let architecture = fixtures
         .iter()
-        .map(|profile| {
-            tree_sitter::Query::new(&language, profile.source).unwrap_or_else(|error| {
-                panic!(
-                    "{}/{} query does not compile: {error}",
-                    profile.profile, profile.surface
-                )
-            });
-            assert_eq!(
-                profile.path,
-                format!("queries/{}/{}.scm", profile.profile, profile.surface)
-            );
-            (profile.profile.to_string(), profile.surface.to_string())
-        })
-        .collect::<BTreeSet<_>>();
-    assert_eq!(packaged.len(), QUERY_PROFILES.len());
+        .find(|fixture| fixture.public_id == "architecture")
+        .expect("architecture fixture");
 
-    let support: Support = read_json(&package.join("metadata/support.json"));
-    assert_eq!(support.families.len(), 35);
-    let support_by_id = support
-        .families
-        .into_iter()
-        .map(|family| (family.public_id.clone(), family))
-        .collect::<BTreeMap<_, _>>();
-    assert_eq!(support_by_id.len(), 35);
-
-    let expected_surfaces = SURFACES
-        .into_iter()
-        .map(str::to_string)
-        .collect::<BTreeSet<_>>();
-    let mut asserted_profiles = BTreeSet::new();
-    for profile in PROFILES {
-        let matrix_path = package
-            .join("test/queries")
-            .join(profile)
-            .join("applicability.json");
-        let matrix: Matrix = read_json(&matrix_path);
-        assert_eq!(matrix.schema_version, 1, "{profile}");
-        assert_eq!(matrix.profile, profile);
-        if let Some(surfaces) = matrix.surfaces {
-            assert_eq!(
-                surfaces.into_iter().collect::<BTreeSet<_>>(),
-                expected_surfaces
-            );
-        }
-        assert_eq!(matrix.families.len(), 35, "{profile}");
-        let mut family_ids = BTreeSet::new();
-
-        for family in matrix.families {
-            assert!(family_ids.insert(family.public_id.clone()), "{profile}");
-            assert_eq!(
-                family.surfaces.keys().cloned().collect::<BTreeSet<_>>(),
-                expected_surfaces,
-                "{profile}/{}",
-                family.public_id
-            );
-            let support = support_by_id
-                .get(&family.public_id)
-                .unwrap_or_else(|| panic!("{profile}: unknown family {}", family.public_id));
-            let support_surfaces = support
-                .query_applicability
-                .get(profile)
-                .unwrap_or_else(|| panic!("{} lacks {profile}", family.public_id));
-
-            for (surface, cell) in family.surfaces {
-                let support_cell = support_surfaces
-                    .get(&surface)
-                    .unwrap_or_else(|| panic!("{} lacks {profile}/{surface}", family.public_id));
-                match cell.status.as_str() {
-                    "applicable" => {
-                        assert_eq!(support_cell.status, "asserted");
-                        assert!(!support_cell.evidence.is_empty());
-                        assert!(support_cell.rationale.is_none());
-                        assert_eq!(
-                            cell.query.as_deref(),
-                            Some(format!("queries/{profile}/{surface}.scm").as_str())
-                        );
-                        assert!(
-                            packaged.contains(&(profile.to_string(), surface.clone())),
-                            "{profile}/{surface} is applicable but not packaged"
-                        );
-                        asserted_profiles.insert((profile.to_string(), surface));
-                    }
-                    "not_applicable" => {
-                        assert_eq!(support_cell.status, "not_applicable");
-                        assert!(support_cell.evidence.is_empty());
-                        assert_eq!(support_cell.rationale, cell.rationale);
-                        assert!(
-                            cell.rationale
-                                .as_deref()
-                                .is_some_and(|rationale| !rationale.trim().is_empty())
-                        );
-                        assert!(cell.query.is_none());
-                    }
-                    status => panic!("{profile}/{}/{surface}: {status}", family.public_id),
-                }
-            }
-        }
-        assert_eq!(family_ids, support_by_id.keys().cloned().collect());
+    let language = language();
+    let mut parser = parser();
+    for query_path in ["queries/portable/locals.scm", "queries/portable/tags.scm"] {
+        let query = Query::new(&language, &query_source(query_path))
+            .unwrap_or_else(|error| panic!("{query_path} does not compile: {error}"));
+        assert!(
+            !capture_names(&mut parser, &query, query_path, &architecture.source).is_empty(),
+            "{query_path} produced no captures"
+        );
     }
 
-    assert_eq!(asserted_profiles, packaged);
+    let event_modeling = "eventmodeling\ndata Payload `json` {\n  {\"id\": 1}\n}\n";
+    let query_path = "queries/portable/injections.scm";
+    let query = Query::new(&language, &query_source(query_path))
+        .unwrap_or_else(|error| panic!("{query_path} does not compile: {error}"));
+    let captures = capture_names(&mut parser, &query, query_path, event_modeling);
+    assert!(
+        captures
+            .iter()
+            .any(|capture| capture == "injection.content")
+    );
 }

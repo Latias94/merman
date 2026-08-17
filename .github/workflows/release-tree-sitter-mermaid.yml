@@ -1,0 +1,510 @@
+name: Release Tree-sitter Mermaid
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tree-sitter Mermaid tag, for example tree-sitter-mermaid-v0.1.0"
+        required: true
+        type: string
+      source_ref:
+        description: "Reviewed full commit SHA, matching release tag, or main for build-only"
+        required: true
+        default: "main"
+        type: string
+      publish:
+        description: "Publish the verified crate, npm package, and GitHub release"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-24.04
+    outputs:
+      npm_dist_tag: ${{ steps.release.outputs.npm_dist_tag }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_tree: ${{ steps.source.outputs.source_tree }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          DISPATCH_PUBLISH: ${{ inputs.publish }}
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          release_tag="$DISPATCH_RELEASE_TAG"
+          source_ref="$DISPATCH_SOURCE_REF"
+          prefix=tree-sitter-mermaid-v
+          [[ "$release_tag" == "$prefix"* ]] || {
+            echo "::error::release_tag must start with $prefix" >&2
+            exit 1
+          }
+          version="${release_tag#"$prefix"}"
+          canonical="$(python3 scripts/release-version.py canonical --version "$version")"
+          test "$canonical" = "$version"
+          npm_dist_tag="$(python3 scripts/release-version.py npm-dist-tag --version "$version")"
+
+          [[ "$source_ref" != *$'\n'* && "$source_ref" != *$'\r'* ]] || {
+            echo "::error::source_ref must be one line" >&2
+            exit 1
+          }
+          if [[ "$source_ref" =~ ^[0-9a-f]{40}$ ]]; then
+            validated_source_ref="$source_ref"
+          elif [[ "$source_ref" == "main" || "$source_ref" == "refs/heads/main" ]]; then
+            [[ "$DISPATCH_PUBLISH" == "false" ]] || {
+              echo "::error::main is build-only; publish from the matching release tag" >&2
+              exit 1
+            }
+            validated_source_ref="$source_ref"
+          elif [[ "$source_ref" == "$release_tag" || "$source_ref" == "refs/tags/$release_tag" ]]; then
+            validated_source_ref="refs/tags/$release_tag"
+          else
+            echo "::error::source_ref must be a full SHA, main for build-only, or the matching release tag" >&2
+            exit 1
+          fi
+          if [[ "$DISPATCH_PUBLISH" == "true" && "$validated_source_ref" != "refs/tags/$release_tag" ]]; then
+            echo "::error::publishing requires source_ref to be the matching immutable tag" >&2
+            exit 1
+          fi
+
+          {
+            printf 'npm_dist_tag=%s\n' "$npm_dist_tag"
+            printf 'release_tag=%s\n' "$release_tag"
+            printf 'source_ref=%s\n' "$validated_source_ref"
+            printf 'version=%s\n' "$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.source_ref }}
+          path: release-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve immutable source
+        id: source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REF: ${{ steps.release.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git -C release-source rev-parse 'HEAD^{commit}')"
+          source_tree="$(git -C release-source rev-parse 'HEAD^{tree}')"
+          if [[ "$EXPECTED_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            test "$source_sha" = "$EXPECTED_SOURCE_REF"
+          fi
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
+          } >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify source and package versions
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          python3 - "$VERSION" <<'PY'
+          import json
+          import re
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          version = sys.argv[1]
+          root = Path("distribution/tree-sitter-mermaid")
+          cmake = re.search(
+              r'project\(tree-sitter-mermaid\s+VERSION\s+"([^"]+)"',
+              (root / "CMakeLists.txt").read_text(),
+          )
+          make = re.search(
+              r"(?m)^VERSION\s*:=\s*(\S+)\s*$", (root / "Makefile").read_text()
+          )
+          if cmake is None or make is None:
+              raise SystemExit("could not read the public C package versions")
+          versions = {
+              "Cargo.toml": tomllib.loads((root / "Cargo.toml").read_text())["package"][
+                  "version"
+              ],
+              "package.json": json.loads((root / "package.json").read_text())["version"],
+              "tree-sitter.json": json.loads(
+                  (root / "tree-sitter.json").read_text()
+              )["metadata"]["version"],
+              "metadata/provenance.json": json.loads(
+                  (root / "metadata/provenance.json").read_text()
+              )["package"]["version"],
+              "CMakeLists.txt": cmake.group(1),
+              "Makefile": make.group(1),
+          }
+          mismatches = {path: found for path, found in versions.items() if found != version}
+          if mismatches:
+              raise SystemExit(f"version mismatch for {mismatches}; requested={version}")
+          PY
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
+
+      - name: Install grammar toolchain
+        run: |
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
+          npm run build:node --prefix distribution/tree-sitter-mermaid
+
+      - name: Verify language package
+        run: |
+          npm run check:generated --prefix distribution/tree-sitter-mermaid
+          npm run check:wasm --prefix distribution/tree-sitter-mermaid
+          npm run test:corpus --prefix distribution/tree-sitter-mermaid
+          cargo fmt --all -- --check
+          cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
+          cargo clippy --locked -p tree-sitter-mermaid --all-targets -- -D warnings
+          npm run test:node --prefix distribution/tree-sitter-mermaid
+          npm run test:wasm --prefix distribution/tree-sitter-mermaid
+          npm run test:c --prefix distribution/tree-sitter-mermaid
+          python3 scripts/verify-third-party-licenses.py
+          python3 scripts/verify_crate_package_legal_materials.py
+
+  prebuild:
+    needs: validate-inputs
+    name: prebuild (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: win32-x64
+            runner: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Build N-API prebuild
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          npm run prebuild --prefix distribution/tree-sitter-mermaid
+          test "$(find distribution/tree-sitter-mermaid/prebuilds -name '*.node' -type f | wc -l | tr -d ' ')" -ge 1
+          PREBUILDS_ONLY=1 npm run test:node --prefix distribution/tree-sitter-mermaid
+          tar -czf "$RUNNER_TEMP/tree-sitter-mermaid-prebuild-$TARGET.tar.gz" \
+            -C distribution/tree-sitter-mermaid prebuilds
+
+      - name: Upload prebuild
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: tree-sitter-mermaid-prebuild-${{ matrix.target }}
+          path: ${{ runner.temp }}/tree-sitter-mermaid-prebuild-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  assemble:
+    needs: [validate-inputs, verify, prebuild]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Download native prebuilds
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: tree-sitter-mermaid-prebuild-*
+          path: ${{ runner.temp }}/tree-sitter-mermaid-prebuilds
+
+      - name: Assemble and smoke exact release packages
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          package=distribution/tree-sitter-mermaid
+          release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
+          mkdir -p "$release_dir"
+          while IFS= read -r archive; do
+            tar -xzf "$archive" -C "$package"
+          done < <(find "$RUNNER_TEMP/tree-sitter-mermaid-prebuilds" -name '*.tar.gz' -type f | sort)
+
+          npm ci --ignore-scripts --prefix "$package"
+          git archive \
+            --format=tar.gz \
+            --prefix="tree-sitter-mermaid-$VERSION/" \
+            --output="$release_dir/tree-sitter-mermaid-$VERSION-source.tar.gz" \
+            "$SOURCE_SHA:$package"
+          TREE_SITTER_MERMAID_REQUIRE_PREBUILDS=1 \
+            npm run test:package-smoke --prefix "$package" -- \
+              --output-dir "$release_dir" \
+              --c-source-archive "$release_dir/tree-sitter-mermaid-$VERSION-source.tar.gz"
+          cp "$package/tree-sitter-mermaid.wasm" "$release_dir/tree-sitter-mermaid.wasm"
+          cp "$package/metadata/provenance.json" "$release_dir/tree-sitter-mermaid-provenance.json"
+          (cd "$release_dir" && sha256sum ./* > SHA256SUMS)
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
+          path: ${{ runner.temp }}/tree-sitter-mermaid-release/*
+          if-no-files-found: error
+
+  attest:
+    needs: [validate-inputs, assemble]
+    runs-on: ubuntu-24.04
+    environment: github-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download release candidate
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
+          path: ${{ runner.temp }}/tree-sitter-mermaid-release
+      - name: Attest release candidate
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/tree-sitter-mermaid-release/*
+
+  publish-crates:
+    needs: [validate-inputs, assemble, attest]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-24.04
+    environment: crates.io
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+      - name: Download release candidate
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
+          path: ${{ runner.temp }}/tree-sitter-mermaid-release
+      - name: Verify the Cargo package matches the staged candidate
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
+          (cd "$release_dir" && sha256sum --check SHA256SUMS)
+          cargo package --locked --no-verify -p tree-sitter-mermaid
+          cmp \
+            "$release_dir/tree-sitter-mermaid-$VERSION.crate" \
+            "target/package/tree-sitter-mermaid-$VERSION.crate"
+      - name: Publish crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
+          candidate="$release_dir/tree-sitter-mermaid-$VERSION.crate"
+          registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.crate"
+          registry_url="https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download"
+
+          if curl --fail --silent --show-error --location \
+            --output "$registry_copy" "$registry_url"; then
+            cmp "$candidate" "$registry_copy"
+            echo "crates.io already contains the verified candidate"
+            exit 0
+          fi
+
+          publish_status=0
+          cargo publish --locked --no-verify -p tree-sitter-mermaid \
+            --registry crates-io --token "$CARGO_REGISTRY_TOKEN" || publish_status=$?
+          for _ in {1..6}; do
+            if curl --fail --silent --show-error --location \
+              --output "$registry_copy" "$registry_url"; then
+              cmp "$candidate" "$registry_copy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::crates.io did not expose the verified candidate; cargo status=$publish_status" >&2
+          exit 1
+
+  publish-npm:
+    needs: [validate-inputs, assemble, attest]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          registry-url: https://registry.npmjs.org
+      - name: Download release candidate
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
+          path: ${{ runner.temp }}/tree-sitter-mermaid-release
+      - name: Publish npm package
+        env:
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
+          candidates=("$release_dir"/tree-sitter-mermaid-*.tgz)
+          test "${#candidates[@]}" -eq 1
+          candidate="${candidates[0]}"
+          registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.tgz"
+
+          registry_url="$(npm view "tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
+          if [[ -n "$registry_url" ]]; then
+            curl --fail --silent --show-error --location \
+              --output "$registry_copy" "$registry_url"
+            cmp "$candidate" "$registry_copy"
+            echo "npm already contains the verified candidate"
+            exit 0
+          fi
+
+          publish_status=0
+          npm publish "$candidate" --access public --provenance --tag "$NPM_DIST_TAG" || \
+            publish_status=$?
+          for _ in {1..6}; do
+            registry_url="$(npm view "tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
+            if [[ -n "$registry_url" ]]; then
+              curl --fail --silent --show-error --location \
+                --output "$registry_copy" "$registry_url"
+              cmp "$candidate" "$registry_copy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::npm did not expose the verified candidate; npm status=$publish_status" >&2
+          exit 1
+
+  publish-github:
+    needs: [validate-inputs, assemble, attest, publish-crates, publish-npm]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-24.04
+    environment: github-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download release candidate
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
+          path: ${{ runner.temp }}/tree-sitter-mermaid-release
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
+          verify_existing_release() {
+            local existing="$RUNNER_TEMP/tree-sitter-mermaid-existing-release"
+            test "$(gh release view "$RELEASE_TAG" --json tagName --jq .tagName)" = "$RELEASE_TAG" || \
+              return 1
+            mkdir -p "$existing"
+            gh release download "$RELEASE_TAG" --dir "$existing"
+            python3 - "$release_dir" "$existing" <<'PY'
+          import filecmp
+          import sys
+          from pathlib import Path
+
+          expected = Path(sys.argv[1])
+          actual = Path(sys.argv[2])
+          expected_files = {path.name: path for path in expected.iterdir() if path.is_file()}
+          actual_files = {path.name: path for path in actual.iterdir() if path.is_file()}
+          if expected_files.keys() != actual_files.keys():
+              raise SystemExit(
+                  f"release asset mismatch: expected={sorted(expected_files)}, "
+                  f"actual={sorted(actual_files)}"
+              )
+          for name, expected_file in expected_files.items():
+              if not filecmp.cmp(expected_file, actual_files[name], shallow=False):
+                  raise SystemExit(f"release asset differs: {name}")
+          PY
+          }
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            verify_existing_release
+            echo "GitHub already contains the verified release assets"
+            exit 0
+          fi
+          if gh release create "$RELEASE_TAG" "$release_dir"/* \
+            --verify-tag --generate-notes --title "$RELEASE_TAG"; then
+            exit 0
+          fi
+          sleep 10
+          verify_existing_release

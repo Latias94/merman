@@ -1,7 +1,0 @@
-eventmodeling
-title Checkout timeline
-entity Sales.Order
-tf 01 cmd Sales.Update ->> 007 [[payload]] `json`{ready: true}
-data payload `json` {
-  { "ready": true }
-}

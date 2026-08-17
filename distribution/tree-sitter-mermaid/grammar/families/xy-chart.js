@@ -134,7 +134,6 @@ const xyChartRules = {
       $.xy_chart_line_statement,
       $.xy_chart_bar_statement,
     )),
-    $._xy_chart_inline_space,
     field('trailing', $.xy_chart_trailing_text),
   )),
 
@@ -440,7 +439,7 @@ const xyChartRules = {
 
   xy_chart_trailing_text: (_) => token.immediate(prec(
     -100,
-    /[^%;\r\n][^;\r\n]*/,
+    /[ \t]+[^ \t%;\r\n][^;\r\n]*/,
   )),
 
   xy_chart_malformed_text: (_) => token(prec(

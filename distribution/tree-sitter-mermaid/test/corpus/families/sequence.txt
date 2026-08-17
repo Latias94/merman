@@ -310,6 +310,97 @@ destroy Queue
           (sequence_actor_reference))))))
 
 ==================
+cross arrows keyword prefixes comments and parenthesized ids
+==================
+
+sequenceDiagram
+participant A
+participant B
+participant (end) as end
+A-xB: solid cross
+A--xB: dotted cross
+Parser->>B: keyword prefix
+opt # comment
+  A->>(end): start
+end
+alt
+  (end)-->>A: done
+else # comment
+  A->>(end): retry
+end
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name))
+      (sequence_participant_declaration
+        (sequence_statement_keyword)
+        (sequence_participant_name)
+        (sequence_statement_keyword)
+        (sequence_line_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text))
+      (sequence_opt_block
+        (sequence_block_keyword)
+        (sequence_hash_comment)
+        (sequence_message_statement
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_operator)
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_text))
+        (sequence_block_end))
+      (sequence_alt_block
+        (sequence_block_keyword)
+        (sequence_message_statement
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_operator)
+          (sequence_endpoint
+            (sequence_actor_reference))
+          (sequence_message_text))
+        (sequence_else_branch
+          (sequence_block_keyword)
+          (sequence_hash_comment)
+          (sequence_message_statement
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_operator)
+            (sequence_endpoint
+              (sequence_actor_reference))
+            (sequence_message_text)))
+        (sequence_block_end)))))
+
+==================
 header at eof
 ==================
 
@@ -320,3 +411,29 @@ sequenceDiagram
   (sequence_diagram
     (sequence_header
       (diagram_keyword))))
+
+==================
+body directives do not consume following messages
+==================
+
+%%{init: { 'logLevel': 0}}%%
+sequenceDiagram
+%%{wrap}%%
+Alice->Bob: Hello Bob
+
+---
+
+(source_file
+  (directive)
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))
+    (sequence_body
+      (directive)
+      (sequence_message_statement
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_operator)
+        (sequence_endpoint
+          (sequence_actor_reference))
+        (sequence_message_text)))))

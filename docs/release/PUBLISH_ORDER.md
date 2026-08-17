@@ -29,7 +29,8 @@ PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a surface
 registry or that separately published alpha.5 channels share one source snapshot. The
 independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
 release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis,
-but it remains dry-run-only until registry naming and ownership are explicitly admitted.
+and is prepared for protected crates.io, npm, and GitHub publication through its dedicated release
+workflow. Its initial `0.1.0` publication has not yet been executed.
 
 ## Publish Order
 
@@ -50,9 +51,10 @@ release-order database.
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
 `tree-sitter-mermaid` starts at `0.1.0` as a separately packaged Cargo/npm language distribution.
-The independent-crate workflow may run `cargo package` and `npm pack --dry-run`, but its publish job
-is fail-closed for this package. Do not publish either registry identity until a later release
-decision records ownership, package names, and the corresponding provenance path.
+Use `release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native
+Node prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a
+grammar-subdirectory source archive and checksums, and publishes only when the matching immutable
+`tree-sitter-mermaid-vX.Y.Z` tag passes the protected crates.io, npm, and GitHub environments.
 
 ## Binding Release Chain
 

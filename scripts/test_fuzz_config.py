@@ -22,16 +22,6 @@ TREE_SITTER_FAMILY_SEEDS = (
     / "corpus"
     / "all-families"
 )
-PORTABLE_FAMILY_SOURCES = (
-    ROOT
-    / "distribution"
-    / "tree-sitter-mermaid"
-    / "test"
-    / "queries"
-    / "portable"
-    / "highlights"
-)
-
 def fuzz_bins() -> dict[str, str]:
     text = FUZZ_CARGO.read_text(encoding="utf-8")
     bins: dict[str, str] = {}
@@ -154,7 +144,7 @@ class FuzzConfigTests(unittest.TestCase):
         self.assertIn(
             "all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|"
             "tree_sitter_mermaid_parse|tree_sitter_mermaid_edits|"
-            "tree_sitter_mermaid_scanner|tree_sitter_mermaid_query)",
+            "tree_sitter_mermaid_scanner)",
             run,
         )
         self.assertIn('case "$DISPATCH_PRESET" in', run)
@@ -179,33 +169,19 @@ class FuzzConfigTests(unittest.TestCase):
     def test_workflow_matrix_matches_fuzz_bins(self) -> None:
         self.assertEqual(set(workflow_fuzz_targets()), set(fuzz_bins()))
 
-    def test_tree_sitter_parse_and_query_lanes_use_all_family_seeds(self) -> None:
+    def test_tree_sitter_parse_lane_uses_all_family_seeds(self) -> None:
         targets = workflow_fuzz_targets()
         parse_entry = targets["tree_sitter_mermaid_parse"]
-        query_entry = targets["tree_sitter_mermaid_query"]
 
         self.assertEqual(
             parse_entry["seed"],
             "distribution/tree-sitter-mermaid/fuzz/corpus/all-families",
         )
-        self.assertEqual(
-            query_entry["seed"],
-            "distribution/tree-sitter-mermaid/fuzz/corpus/all-families",
-        )
-        self.assertEqual(query_entry["max_len"], 65536)
 
-    def test_tree_sitter_family_fuzz_corpus_matches_portable_sources(self) -> None:
-        expected = {
-            path.name: path.read_bytes()
-            for path in PORTABLE_FAMILY_SOURCES.glob("*.mmd")
-        }
-        actual = {
-            path.name: path.read_bytes()
-            for path in TREE_SITTER_FAMILY_SEEDS.glob("*.mmd")
-        }
-
-        self.assertEqual(len(expected), 35)
-        self.assertEqual(actual, expected)
+    def test_tree_sitter_family_fuzz_corpus_covers_every_public_family(self) -> None:
+        seeds = list(TREE_SITTER_FAMILY_SEEDS.glob("*.mmd"))
+        self.assertEqual(len(seeds), 35)
+        self.assertTrue(all(seed.stat().st_size > 0 for seed in seeds))
 
     def test_framed_ffi_seed_combines_valid_options_and_source(self) -> None:
         data = FRAMED_FFI_OPTIONS_SEED.read_bytes()

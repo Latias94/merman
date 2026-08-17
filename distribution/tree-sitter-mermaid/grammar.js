@@ -81,6 +81,7 @@ module.exports = grammar({
   externals: ($) => [
     ...indentationExternals($),
     $._end_of_input,
+    $._directive_body,
   ],
 
   conflicts: ($) => [

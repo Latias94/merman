@@ -3,8 +3,10 @@
 // commit 7ecca0cd7f1658ef74f4e7e91f925724ef403bbf.
 
 const familyRule = (prefix, suffix) => `${prefix}_${suffix}`;
+const privateFamilyRule = (prefix, suffix) => `_${familyRule(prefix, suffix)}`;
 
 const ref = ($, prefix, suffix) => $[familyRule(prefix, suffix)];
+const privateRef = ($, prefix, suffix) => $[privateFamilyRule(prefix, suffix)];
 
 const diagramKeyword = ($, keywords) => field(
   'keyword',
@@ -16,10 +18,24 @@ const diagramKeyword = ($, keywords) => field(
 
 const statementKeyword = ($, prefix, keyword) => field(
   'keyword',
-  alias(token(prec(30, keyword)), ref($, prefix, 'statement_keyword')),
+  alias(
+    token(prec(keyword === 'classDef' ? 50 : 30, keyword)),
+    ref($, prefix, 'statement_keyword'),
+  ),
 );
 
 const optionalInlineGap = () => optional(token.immediate(/[ \t]+/));
+
+const keywordPrefixedIdentifier = () => choice(
+  token(prec(
+    60,
+    /classDef(?:[A-Za-z0-9_.!?$%#\u00c0-\uffff]|-[A-Za-z0-9_\u00c0-\uffff])+/
+  )),
+  token(prec(
+    40,
+    /(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\u00c0-\uffff]|-[A-Za-z0-9_\u00c0-\uffff])+/
+  )),
+);
 
 const headerDirection = ($) => seq(
   token.immediate(/[ \t]+/),
@@ -142,7 +158,10 @@ const createFlowFamilyRules = ({
 
   [familyRule(prefix, 'line_item')]: ($) => choice(
     seq(
-      field('statement', ref($, prefix, 'statement')),
+      field('statement', choice(
+        ref($, prefix, 'statement'),
+        ref($, prefix, 'incomplete_edge_statement'),
+      )),
       field('terminator', $._statement_terminator),
     ),
     seq(choice($.comment, $.directive), $._line_ending),
@@ -150,7 +169,10 @@ const createFlowFamilyRules = ({
   ),
 
   [familyRule(prefix, 'eof_item')]: ($) => choice(
-    field('statement', ref($, prefix, 'statement')),
+    field('statement', choice(
+      ref($, prefix, 'statement'),
+      ref($, prefix, 'incomplete_edge_statement'),
+    )),
     $.comment,
     $.directive,
   ),
@@ -158,7 +180,6 @@ const createFlowFamilyRules = ({
   [familyRule(prefix, 'statement')]: ($) => choice(
     ref($, prefix, 'subgraph'),
     ref($, prefix, 'edge_statement'),
-    ref($, prefix, 'incomplete_edge_statement'),
     ref($, prefix, 'node_statement'),
     ref($, prefix, 'direction_statement'),
     ref($, prefix, 'class_definition_statement'),
@@ -222,10 +243,7 @@ const createFlowFamilyRules = ({
   [familyRule(prefix, 'incomplete_edge_statement')]: ($) => prec(-30, seq(
     field('source', ref($, prefix, 'node')),
     field('edge', ref($, prefix, 'edge')),
-    optional(field('recovery', ref($, prefix, 'edge_recovery'))),
   )),
-
-  [familyRule(prefix, 'edge_recovery')]: (_) => token(prec(-100, /[^;%\r\n]+/)),
 
   [familyRule(prefix, 'node_statement')]: ($) => field(
     'node',
@@ -274,7 +292,10 @@ const createFlowFamilyRules = ({
   [familyRule(prefix, 'double_circle_label')]: ($) => shape($, prefix, '(((', ')))', 'round_label_text'),
   [familyRule(prefix, 'diamond_label')]: ($) => shape($, prefix, '{', '}', 'curly_label_text'),
   [familyRule(prefix, 'hexagon_label')]: ($) => shape($, prefix, '{{', '}}', 'curly_label_text'),
-  [familyRule(prefix, 'odd_label')]: ($) => shape($, prefix, '>', ']', 'square_label_text'),
+  [familyRule(prefix, 'odd_label')]: ($) => seq(
+    optional(token.immediate('-')),
+    shape($, prefix, '>', ']', 'square_label_text'),
+  ),
   [familyRule(prefix, 'slash_label')]: ($) => shape(
     $,
     prefix,
@@ -361,16 +382,44 @@ const createFlowFamilyRules = ({
       field('label', ref($, prefix, 'middle_edge_label')),
       field('operator_end', ref($, prefix, 'arrow')),
     )),
-    seq(
-      optional(field('id', ref($, prefix, 'edge_id'))),
-      field('operator', ref($, prefix, 'arrow')),
-      optional(field('label', ref($, prefix, 'edge_label'))),
-    ),
-    seq(
-      field('operator', ref($, prefix, 'continued_arrow')),
-      optional(field('label', ref($, prefix, 'edge_label'))),
-    ),
+    privateRef($, prefix, 'labeled_edge'),
+    privateRef($, prefix, 'continued_labeled_edge'),
+    privateRef($, prefix, 'unlabeled_edge'),
+    privateRef($, prefix, 'continued_unlabeled_edge'),
   )),
+
+  [privateFamilyRule(prefix, 'labeled_edge')]: ($) => seq(
+    optional(field('id', ref($, prefix, 'edge_id'))),
+    field('operator', ref($, prefix, 'arrow')),
+    choice(
+      seq(
+        token.immediate(/[ \t]+/),
+        field('label', ref($, prefix, 'edge_label')),
+      ),
+      field('label', ref($, prefix, 'edge_label')),
+    ),
+  ),
+
+  [privateFamilyRule(prefix, 'continued_labeled_edge')]: ($) => seq(
+    field('operator', ref($, prefix, 'continued_arrow')),
+    choice(
+      seq(
+        token.immediate(/[ \t]+/),
+        field('label', ref($, prefix, 'edge_label')),
+      ),
+      field('label', ref($, prefix, 'edge_label')),
+    ),
+  ),
+
+  [privateFamilyRule(prefix, 'unlabeled_edge')]: ($) => seq(
+    optional(field('id', ref($, prefix, 'edge_id'))),
+    field('operator', ref($, prefix, 'arrow')),
+  ),
+
+  [privateFamilyRule(prefix, 'continued_unlabeled_edge')]: ($) => field(
+    'operator',
+    ref($, prefix, 'continued_arrow'),
+  ),
 
   [familyRule(prefix, 'edge_id')]: ($) => seq(
     field('name', alias(ref($, prefix, 'identifier'), ref($, prefix, 'edge_name'))),
@@ -603,13 +652,25 @@ const createFlowFamilyRules = ({
 
   [familyRule(prefix, 'accessibility_block_text')]: (_) => token.immediate(/[^}]+/),
 
-  [familyRule(prefix, 'identifier')]: (_) => token(prec(
-    -5,
-    /[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*(?:-[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*)*/,
-  )),
+  [familyRule(prefix, 'identifier')]: (_) => choice(
+    keywordPrefixedIdentifier(),
+    token(prec(
+      -5,
+      /[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*(?:-[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*)*/,
+    )),
+  ),
 });
 
-const createFlowFamilyConflicts = () => [];
+const createFlowFamilyConflicts = ($, prefix) => [
+  [
+    privateRef($, prefix, 'labeled_edge'),
+    privateRef($, prefix, 'unlabeled_edge'),
+  ],
+  [
+    privateRef($, prefix, 'continued_labeled_edge'),
+    privateRef($, prefix, 'continued_unlabeled_edge'),
+  ],
+];
 
 const flowchartRules = createFlowFamilyRules({
   prefix: 'flow',

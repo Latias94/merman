@@ -299,16 +299,6 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path.startswith("distribution/tree-sitter-mermaid/"):
         owners = {"grammar", "hygiene"}
-        if (
-            path == "distribution/tree-sitter-mermaid/grammar.js"
-            or path.startswith("distribution/tree-sitter-mermaid/grammar/")
-            or path
-            in {
-                "distribution/tree-sitter-mermaid/src/parser.c",
-                "distribution/tree-sitter-mermaid/src/scanner.c",
-            }
-        ):
-            owners.add("fuzz")
         if path.endswith(("package.json", "package-lock.json")):
             owners.update({"npm", "security"})
         elif (
@@ -325,13 +315,6 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         return _ALL_OWNERS, f"shared runtime authority changed: {path}", True
     if path.startswith("scripts/"):
         return _ALL_OWNERS, f"shared repository owner changed: {path}", True
-
-    if path.startswith("contracts/tree-sitter/"):
-        return (
-            frozenset({"grammar", "hygiene"}),
-            f"Tree-sitter Mermaid contract changed: {path}",
-            False,
-        )
 
     if path == "docs/release/THIRD_PARTY_COMPONENTS.json":
         return (

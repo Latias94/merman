@@ -47,6 +47,37 @@ A --> B
                 (flow_node_id)))))))))
 
 ==================
+adjacent directives stay distinct
+==================
+
+%%{init: {"theme": "neutral"}}%%
+%%{wrap}%%
+flowchart TD
+A --> B
+
+---
+
+(source_file
+  (directive)
+  (directive)
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))))))))
+
+==================
 architecture header
 ==================
 

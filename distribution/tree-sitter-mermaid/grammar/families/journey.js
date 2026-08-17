@@ -122,6 +122,7 @@ const journeyRules = {
     field('delimiter', alias(':', $.journey_task_delimiter)),
     optional(token.immediate(/[ \t]+/)),
     field('score', $.journey_score),
+    optional(field('score_suffix', $.journey_score_suffix)),
     optional(seq(
       field('actors_delimiter', alias(':', $.journey_actor_delimiter)),
       optional(token.immediate(/[ \t]+/)),
@@ -171,6 +172,8 @@ const journeyRules = {
     20,
     /[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/,
   )),
+
+  journey_score_suffix: (_) => token.immediate(/[A-Za-z_][A-Za-z0-9_.-]*/),
 
   journey_title_text: (_) => token(prec(
     -5,

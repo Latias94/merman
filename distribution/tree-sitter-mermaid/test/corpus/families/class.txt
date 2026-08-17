@@ -182,6 +182,33 @@ B --> A : follows
         (class_relationship_label)))))
 
 ==================
+class keyword prefixes remain relationship identifiers
+==================
+
+classDiagram
+classA -- classB : Inheritance
+class classC
+
+---
+
+(source_file
+  (class_diagram
+    (class_header
+      (diagram_keyword))
+    (class_body
+      (class_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator)
+        (class_reference
+          (identifier))
+        (class_relationship_label))
+      (class_declaration
+        (class_statement_keyword)
+        (class_name
+          (identifier))))))
+
+==================
 header-only input is rejected without a class body
 ==================
 

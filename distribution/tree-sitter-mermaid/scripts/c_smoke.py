@@ -11,7 +11,11 @@ import tempfile
 from pathlib import Path
 
 
-TREE_SITTER_RUNTIME_VERSION = "0.26.12"
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+PROVENANCE = json.loads(
+    (PACKAGE_ROOT / "metadata/provenance.json").read_text(encoding="utf-8")
+)
+TREE_SITTER_RUNTIME_VERSION = PROVENANCE["toolchain"]["rustRuntime"]
 
 
 def runtime_directory(package: Path) -> Path:
@@ -98,21 +102,9 @@ def find_compiler() -> list[str]:
 
 
 def main() -> int:
-    package = Path(__file__).resolve().parents[1]
+    package = PACKAGE_ROOT
     compiler = find_compiler()
     runtime = runtime_directory(package)
-    fixtures = json.loads(
-        (package / "metadata/fixtures/family-roots.json").read_text(encoding="utf-8")
-    )
-    if len(fixtures) != 35:
-        raise SystemExit(f"expected 35 public family fixtures, found {len(fixtures)}")
-    receipt = json.loads(
-        (package / "metadata/artifact-receipt.json").read_text(encoding="utf-8")
-    )
-    receipt_id = receipt["receiptId"]
-    query_paths = [profile["path"] for profile in receipt["queryProfiles"]]
-    if "queries/portable/highlights.scm" not in query_paths:
-        raise SystemExit("artifact receipt lacks portable highlights")
 
     output_name = (
         "tree-sitter-mermaid-c-smoke.exe"
@@ -123,23 +115,7 @@ def main() -> int:
         output = Path(directory) / output_name
         command = compiler_command(compiler, runtime, output)
         subprocess.run(command, cwd=package, check=True)
-        for index, fixture in enumerate(fixtures):
-            fixture_queries = (
-                query_paths
-                if index == 0
-                else ["queries/portable/highlights.scm"]
-            )
-            subprocess.run(
-                [
-                    str(output),
-                    fixture["source"],
-                    fixture["root"],
-                    receipt_id,
-                    *fixture_queries,
-                ],
-                cwd=package,
-                check=True,
-            )
+        subprocess.run([str(output)], cwd=package, check=True)
     return 0
 
 

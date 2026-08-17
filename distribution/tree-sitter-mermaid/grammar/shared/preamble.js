@@ -14,11 +14,11 @@ const preambleRules = {
 
   frontmatter_content: (_) => token(prec(-1, /[^\r\n]+/)),
 
-  directive: (_) => token(prec(10, seq(
-    '%%{',
-    /[^%]*(?:%+[^}%][^%]*)*/,
-    '}%%',
-  ))),
+  directive: ($) => seq(
+    token(prec(10, '%%{')),
+    optional($._directive_body),
+    token.immediate('}%%'),
+  ),
 
   comment: (_) => token(seq('%%', /[^\r\n]*/)),
 };

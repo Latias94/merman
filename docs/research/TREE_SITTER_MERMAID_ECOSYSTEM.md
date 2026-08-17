@@ -8,6 +8,10 @@
 grammar repositories; official Neovim/nvim-treesitter, Helix, Zed, and Monaco documentation or
 source; and the checked-in `distribution/tree-sitter-mermaid` package.
 
+> **Implementation note (2026-08-17):** Sections that describe the local package record the
+> pre-refactor audit baseline from 2026-08-16. The accepted post-audit boundary and current package
+> contract live in ADR-0082 and `distribution/tree-sitter-mermaid/README.md`.
+
 This report deliberately separates **Facts** (directly supported by the cited source or the local
 tree) from **Recommendations** (the proposed Merman release and adoption policy). Verifiable raw
 URLs are listed in the source ledger, with commit pins wherever the source owner provides them.

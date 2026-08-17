@@ -20,6 +20,7 @@ const inlineComment = ($) => choice(
 
 const periodValue = ($) => field('period', choice(
   $.timeline_period,
+  alias($._timeline_accessibility_keyword_period, $.timeline_period),
   alias($._timeline_keyword_prefixed_period, $.timeline_period),
 ));
 
@@ -67,6 +68,11 @@ const timelineRules = {
       $._line_ending,
     ),
     seq(
+      optional(token.immediate(/[ \t]+/)),
+      $.timeline_incomplete_event_statement,
+      $._line_ending,
+    ),
+    seq(
       token.immediate(/[ \t]+/),
       $._line_ending,
     ),
@@ -79,6 +85,7 @@ const timelineRules = {
 
   _timeline_eof_item: ($) => choice(
     seq($._timeline_statement, optional(inlineComment($))),
+    $.timeline_incomplete_event_statement,
     $.comment,
     $.directive,
     $.timeline_hash_comment,
@@ -155,12 +162,16 @@ const timelineRules = {
   timeline_period_statement: ($) => prec.right(seq(
     periodValue($),
     repeat(field('event', $.timeline_event)),
-    optional(field('event', $.timeline_incomplete_event)),
   )),
 
-  timeline_event_statement: ($) => prec.right(seq(
+  timeline_event_statement: ($) => prec.right(
     repeat1(field('event', $.timeline_event)),
-    optional(field('event', $.timeline_incomplete_event)),
+  ),
+
+  timeline_incomplete_event_statement: ($) => prec.right(-20, seq(
+    optional(periodValue($)),
+    repeat(field('event', $.timeline_event)),
+    field('event', $.timeline_incomplete_event),
   )),
 
   timeline_event: ($) => seq(
@@ -202,6 +213,11 @@ const timelineRules = {
   timeline_period: (_) => token(prec(
     5,
     /[^:#%\s\r\n](?:[^:#%\r\n]|%[^%\r\n])*/
+  )),
+
+  _timeline_accessibility_keyword_period: (_) => token(prec(
+    40,
+    /(?:accTitle|accDescr)[ \t]+[^:#%\r\n](?:[^:#%\r\n]|%[^%\r\n])*/i,
   )),
 
   _timeline_keyword_prefixed_period: (_) => seq(

@@ -10,30 +10,19 @@ rust-version.workspace = true
 description = "Tolerant Tree-sitter grammar and editor queries for Mermaid"
 keywords = ["incremental", "mermaid", "parser", "tree-sitter"]
 categories = ["parsing", "text-editors"]
-publish = false
 build = "bindings/rust/build.rs"
 include = [
-    "/binding.gyp",
-    "/bindings/**",
+    "/bindings/rust/**",
     "/grammar.js",
-    "/grammar/**",
-    "/metadata/**",
-    "/queries/**",
+    "/metadata/derivations.json",
+    "/metadata/provenance.json",
+    "/queries/portable/**",
     "/src/**",
-    "/test/**",
-    "/tests/**",
-    "/scripts/*.js",
-    "/scripts/*.py",
-    "/scripts/header-oracle/package.json",
-    "/scripts/header-oracle/package-lock.json",
-    "/wasm/**",
     "/Cargo.toml",
     "/LICENSE",
     "/README.md",
     "/THIRD_PARTY_LICENSES/**",
     "/THIRD_PARTY_NOTICES.md",
-    "/package.json",
-    "/package-lock.json",
     "/tree-sitter.json",
 ]
 
@@ -47,16 +36,11 @@ tree-sitter-language = "=0.1.7"
 cc = "1.2"
 
 [dev-dependencies]
+merman-core = { path = "../../crates/merman-core", features = ["system-clock", "system-timezone"] }
+merman-fixture-render-context = { path = "../../crates/merman-fixture-render-context" }
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 tree-sitter = "=0.26.12"
-
-[package.metadata.tree-sitter-mermaid]
-language-abi = 14
-node-schema-version = 1
-query-schema-version = 1
-release-state = "dry-run-only"
 
 [package.metadata.merman-legal]
 third-party-bundle = true

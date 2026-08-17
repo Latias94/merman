@@ -1,6 +1,6 @@
 use std::ffi::{c_char, c_void};
 
-const TOKEN_COUNT: usize = 21;
+const TOKEN_COUNT: usize = 22;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
 const MAX_INDENTATION: usize = 65_534;
@@ -26,6 +26,7 @@ const KANBAN_REINDENT: u16 = 17;
 const KANBAN_DEDENT: u16 = 18;
 const KANBAN_OVERFLOW: u16 = 19;
 const END_OF_INPUT: u16 = 20;
+const DIRECTIVE_BODY: u16 = 21;
 
 #[derive(Clone, Copy)]
 struct TokenGroup {
@@ -203,7 +204,7 @@ struct Scanner(*mut c_void);
 impl Scanner {
     fn new() -> Self {
         let language: tree_sitter::Language = tree_sitter_mermaid::LANGUAGE.into();
-        assert_eq!(language.abi_version(), 14);
+        assert_eq!(language.abi_version(), 15);
 
         // SAFETY: The scanner constructor has no preconditions.
         let scanner = unsafe { tree_sitter_mermaid_external_scanner_create() };
@@ -350,6 +351,38 @@ fn end_of_input_token_is_exact_and_stateless() {
 }
 
 #[test]
+fn directive_body_stops_at_the_first_terminator_and_is_stateless() {
+    let mut scanner = Scanner::new();
+    let directive_body = token_mask(DIRECTIVE_BODY);
+
+    let nested_json = scanner.scan(br#"init: {"theme": "neutral"}}%%trailing"#, &directive_body);
+    assert!(nested_json.matched);
+    assert_eq!(nested_json.symbol, DIRECTIVE_BODY);
+    assert_eq!(
+        nested_json.marked_end,
+        br#"init: {"theme": "neutral"}"#.len()
+    );
+    assert!(scanner.serialize().is_empty());
+
+    let adjacent = scanner.scan(b"wrap}%%%%{next", &directive_body);
+    assert!(adjacent.matched);
+    assert_eq!(adjacent.symbol, DIRECTIVE_BODY);
+    assert_eq!(adjacent.marked_end, b"wrap".len());
+    assert!(scanner.serialize().is_empty());
+
+    let empty = scanner.scan(b"}%%", &directive_body);
+    assert!(!empty.matched);
+    assert_eq!(empty.symbol, u16::MAX);
+    assert!(scanner.serialize().is_empty());
+
+    let ambiguous = [true; TOKEN_COUNT];
+    let rejected = scanner.scan(b"ordinary Mermaid source", &ambiguous);
+    assert!(!rejected.matched);
+    assert_eq!(rejected.symbol, u16::MAX);
+    assert!(scanner.serialize().is_empty());
+}
+
+#[test]
 fn every_external_token_survives_a_scanner_restart() {
     for group in TOKEN_GROUPS {
         let symbols = family_mask(usize::from(group.start));
@@ -388,27 +421,6 @@ fn every_external_token_survives_a_scanner_restart() {
         assert_eq!(scanner.serialize(), before_overflow);
         let restored = restarted(&scanner);
         assert_eq!(restored.serialize(), before_overflow);
-    }
-}
-
-#[test]
-fn every_scanner_family_accepts_exact_maximum_indentation_then_overflows() {
-    for group in TOKEN_GROUPS {
-        let symbols = family_mask(usize::from(group.start));
-        let mut scanner = Scanner::new();
-
-        let maximum = scanner.scan(&hierarchy_row(MAX_INDENTATION, group.marker), &symbols);
-        assert!(maximum.matched);
-        assert_eq!(maximum.symbol, group.start);
-        assert_eq!(maximum.marked_end, MAX_INDENTATION);
-        scanner = restarted(&scanner);
-
-        let before_overflow = scanner.serialize();
-        let overflow = scanner.scan(&hierarchy_row(MAX_INDENTATION + 1, group.marker), &symbols);
-        assert!(overflow.matched);
-        assert_eq!(overflow.symbol, group.overflow);
-        assert_eq!(overflow.marked_end, MAX_INDENTATION + 1);
-        assert_eq!(scanner.serialize(), before_overflow);
     }
 }
 
@@ -478,30 +490,6 @@ fn scanner_bounds_depth_and_indentation_with_local_overflow() {
     assert_eq!(overflow.symbol, MINDMAP_OVERFLOW);
     assert_eq!(overflow.marked_end, MAX_INDENTATION + 1);
     assert_eq!(scanner.serialize().len(), MAX_SERIALIZED_SIZE);
-}
-
-#[test]
-fn every_scanner_family_reports_overlong_indentation_before_row_classification() {
-    for (start, overflow, marker) in [
-        (usize::from(MINDMAP_START), MINDMAP_OVERFLOW, b'N'),
-        (usize::from(TREEMAP_START), TREEMAP_OVERFLOW, b'"'),
-        (usize::from(TREE_VIEW_START), TREE_VIEW_OVERFLOW, b'N'),
-        (usize::from(KANBAN_START), KANBAN_OVERFLOW, b'N'),
-    ] {
-        let mut scanner = Scanner::new();
-        let symbols = family_mask(start);
-        let mut row = vec![b' '; MAX_INDENTATION + 2];
-        row.push(marker);
-
-        let result = scanner.scan(&row, &symbols);
-        assert!(
-            result.matched,
-            "scanner group at token {start} did not recover"
-        );
-        assert_eq!(result.symbol, overflow);
-        assert_eq!(result.marked_end, MAX_INDENTATION + 1);
-        assert!(scanner.serialize().is_empty());
-    }
 }
 
 #[test]

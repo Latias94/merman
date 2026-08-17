@@ -227,6 +227,37 @@ stateDiagram
             (state_marker)))))))
 
 ==================
+descriptions allow whitespace before the colon
+==================
+
+stateDiagram-v2
+  Root : root description
+  state Parent {
+    Child : nested description with colon: detail
+  }
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_description_statement
+        (state_endpoint
+          (state_reference))
+        (state_description_text
+          (state_description_fragment)))
+      (state_composite_declaration
+        (state_statement_keyword)
+        (state_name)
+        (state_description_statement
+          (state_endpoint
+            (state_reference))
+          (state_description_text
+            (state_description_fragment)))))))
+
+==================
 malformed transition stays local
 ==================
 
@@ -271,3 +302,32 @@ stateDiagram
   (state_diagram
     (state_header
       (diagram_keyword))))
+
+==================
+Jison same-line splitting compatibility stays explicit
+==================
+
+stateDiagram-v2
+Decide -->|ok| Join
+N1 .. A
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))
+    (state_body
+      (state_jison_split_transition_statement
+        (state_endpoint
+          (state_reference))
+        (state_transition_operator)
+        (state_jison_pipe_target)
+        (state_endpoint
+          (state_reference)))
+      (state_jison_split_reference_statement
+        (state_endpoint
+          (state_reference))
+        (state_jison_split_operator)
+        (state_endpoint
+          (state_reference))))))

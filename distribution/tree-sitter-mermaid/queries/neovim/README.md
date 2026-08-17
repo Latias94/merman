@@ -1,16 +1,16 @@
 # Neovim query profile
 
-This profile targets Neovim `v0.12.4` and the language ABI exposed by the
-committed Mermaid parser. The fixed version is intentionally blocking; probes
-against newer Neovim releases are compatibility signals, not a reason to
-silently change the query contract.
+This profile is a pre-1.0 adoption asset for Neovim and nvim-treesitter. It
+targets the language ABI exposed by the committed Mermaid parser, but the
+downstream integration remains responsible for pinning a released repository
+revision and validating it against the Neovim version it supports.
 
 `highlights.scm` is an adapter loaded after `queries/portable/highlights.scm`.
 It adds only Neovim's `@spell` capture, so portable syntax captures remain the
 single semantic vocabulary. The other files are complete Neovim query groups.
-The fixed-editor smoke compiles the raw profile, including Neovim's `#offset!`
-directive. The Node structural verifier removes only those host-owned offset
-lines because the pinned Node runtime rejects predicates it does not execute.
+Merman's package tests compile the shipped queries against the generated
+language; real Neovim loader behavior is validated when preparing a downstream
+adoption change rather than through a second package-owned capture matrix.
 
 The profile follows established consumer conventions:
 
@@ -23,7 +23,6 @@ The profile follows established consumer conventions:
   `@conditional.*`, `@loop.*`, `@assignment.*`, `@parameter.*`, and
   `@comment.*`.
 
-`test/queries/neovim/applicability.json` is the executable, explicit 35-by-9
-matrix. Every `applicable` cell names its query and the captures that must occur
-on its representative source. A `not_applicable` cell must provide a non-empty
-rationale; an empty query file is never evidence of non-applicability.
+Query and capture changes are pre-1.0 API changes. Keep them source-reviewed and
+compile-clean, then exercise the affected behavior in the downstream editor
+repository that owns its runtime contract.

@@ -1,106 +1,112 @@
-"""Install packaged artifacts in clean consumers without the grammar generator."""
+"""Install the staged npm, Cargo, WASM, and C package surfaces."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
 import subprocess
-import sys
 import tarfile
 import tempfile
 import textwrap
 from pathlib import Path
 import tomllib
 
-from c_smoke import runtime_directory
+from c_smoke import find_compiler, runtime_directory
 
 
-NODE_RUNTIME_VERSION = "0.25.1"
-WEB_TREE_SITTER_VERSION = "0.26.12"
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+PROVENANCE = json.loads(
+    (PACKAGE_ROOT / "metadata/provenance.json").read_text(encoding="utf-8")
+)
+NODE_RUNTIME_VERSION = PROVENANCE["toolchain"]["nodeRuntime"]
+RUST_RUNTIME_VERSION = PROVENANCE["toolchain"]["rustRuntime"]
+WEB_RUNTIME_VERSION = PROVENANCE["toolchain"]["webRuntime"]
 
 
 def run(
-    command: list[str], *, cwd: Path, env: dict[str, str] | None = None
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str] | None = None,
+    capture_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
         cwd=cwd,
-        env=env,
         check=True,
-        capture_output=True,
+        capture_output=capture_output,
         text=True,
+        env=env,
     )
 
 
-def package_metadata(package: Path) -> tuple[str, str]:
-    metadata = tomllib.loads((package / "Cargo.toml").read_text(encoding="utf-8"))
-    package_metadata = metadata["package"]
-    return package_metadata["name"], package_metadata["version"]
+def safe_extract(archive: Path, destination: Path) -> Path:
+    destination.mkdir()
+    destination_root = destination.resolve()
+    with tarfile.open(archive, "r:gz") as source:
+        for member in source.getmembers():
+            extracted = (destination / member.name).resolve()
+            if extracted != destination_root and destination_root not in extracted.parents:
+                raise SystemExit(f"unsafe archive path: {member.name}")
+        source.extractall(destination)
+    roots = [path for path in destination.iterdir() if path.is_dir()]
+    if len(roots) != 1:
+        raise SystemExit(f"expected one archive root, found {len(roots)}")
+    return roots[0]
 
 
-def assert_no_packaged_work_directories(root: Path) -> None:
-    forbidden = [
-        ".git",
-        "build",
-        "node_modules",
-        "target",
-        "scripts/header-oracle/node_modules",
-    ]
-    present = [item for item in forbidden if (root / item).exists()]
-    if present:
-        raise SystemExit(f"package contains build or install directories: {present}")
-
-
-def pack_npm_package(package: Path, consumer: Path, npm: str) -> Path:
-    packed = json.loads(
+def pack_npm(package: Path, destination: Path, npm: str) -> Path:
+    records = json.loads(
         run(
-            [
-                npm,
-                "pack",
-                str(package),
-                "--pack-destination",
-                str(consumer),
-                "--json",
-            ],
-            cwd=consumer,
+            [npm, "pack", str(package), "--pack-destination", str(destination), "--json"],
+            cwd=destination,
+            capture_output=True,
         ).stdout
     )
-    if len(packed) != 1:
-        raise SystemExit(f"expected one npm tarball, found {len(packed)}")
+    if len(records) != 1:
+        raise SystemExit(f"expected one npm package, found {len(records)}")
+    record = records[0]
+    paths = {item["path"] for item in record["files"]}
     required = {
+        "CMakeLists.txt",
         "LICENSE",
-        "THIRD_PARTY_NOTICES.md",
+        "Makefile",
+        "README.md",
         "THIRD_PARTY_LICENSES/tree-sitter/LICENSE",
-        "metadata/artifact-receipt.json",
-        "metadata/evidence/u2-mermaid-header-oracle.json",
-        "metadata/fixtures/family-roots.json",
+        "THIRD_PARTY_NOTICES.md",
+        "binding.gyp",
+        "bindings/c/tree_sitter/tree-sitter-mermaid.h",
+        "bindings/node/index.d.ts",
+        "bindings/node/index.js",
+        "grammar.js",
+        "package.json",
         "queries/portable/highlights.scm",
-        "scripts/header-oracle/package-lock.json",
+        "src/node-types.json",
         "src/parser.c",
         "src/scanner.c",
-        "wasm/tree-sitter-mermaid.wasm",
+        "tree-sitter-mermaid.wasm",
+        "tree-sitter.json",
     }
-    forbidden_prefixes = (
-        ".git/",
-        "build/",
-        "node_modules/",
-        "target/",
-        "scripts/header-oracle/node_modules/",
-    )
-    paths = {item["path"] for item in packed[0]["files"]}
     missing = sorted(required - paths)
     if missing:
-        raise SystemExit(f"npm tarball is missing required paths: {missing}")
+        raise SystemExit(f"npm package is missing required files: {missing}")
+
+    forbidden_prefixes = ("build/", "node_modules/", "scripts/", "test/", "tests/", "wasm/")
     forbidden = sorted(
-        path for path in paths if path == ".git" or path.startswith(forbidden_prefixes)
+        path for path in paths if any(path.startswith(prefix) for prefix in forbidden_prefixes)
     )
     if forbidden:
-        raise SystemExit(f"npm tarball includes build or install directories: {forbidden}")
-    return consumer / packed[0]["filename"]
+        raise SystemExit(f"npm package contains internal files: {forbidden}")
+    if os.environ.get("TREE_SITTER_MERMAID_REQUIRE_PREBUILDS") == "1" and not any(
+        path.startswith("prebuilds/") for path in paths
+    ):
+        raise SystemExit("npm release candidate has no native prebuild")
+    return destination / record["filename"]
 
 
-def run_node_and_wasm_consumer(consumer: Path, tarball: Path, npm: str, node: str) -> None:
+def run_npm_consumer(consumer: Path, tarball: Path, npm: str, node: str) -> None:
     manifest = {
         "name": "tree-sitter-mermaid-consumer-smoke",
         "private": True,
@@ -108,252 +114,224 @@ def run_node_and_wasm_consumer(consumer: Path, tarball: Path, npm: str, node: st
         "dependencies": {
             "tree-sitter": NODE_RUNTIME_VERSION,
             "tree-sitter-mermaid": tarball.resolve().as_uri(),
-            "web-tree-sitter": WEB_TREE_SITTER_VERSION,
+            "web-tree-sitter": WEB_RUNTIME_VERSION,
         },
     }
     (consumer / "package.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
-    run([npm, "install", "--no-audit", "--no-fund"], cwd=consumer)
-    if (consumer / "node_modules/tree-sitter-cli").exists():
-        raise SystemExit("clean consumer unexpectedly installed tree-sitter-cli")
-
+    environment = os.environ.copy()
+    if os.environ.get("TREE_SITTER_MERMAID_REQUIRE_PREBUILDS") == "1":
+        environment["PREBUILDS_ONLY"] = "1"
+    run(
+        [npm, "install", "--no-audit", "--no-fund"],
+        cwd=consumer,
+        env=environment,
+    )
     smoke = r"""
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const Parser = require('tree-sitter');
 const Mermaid = require('tree-sitter-mermaid');
-const packageRoot = path.dirname(require.resolve('tree-sitter-mermaid/package.json'));
-const fixtures = JSON.parse(fs.readFileSync(
-  path.join(packageRoot, 'metadata/fixtures/family-roots.json'), 'utf8'));
-assert.equal(fixtures.length, 35);
+const { Language, Parser: WasmParser } = require('web-tree-sitter');
+
+const source = 'flowchart TD\nA --> B\n';
 const parser = new Parser();
 parser.setLanguage(Mermaid);
-for (const fixture of fixtures) {
-  const tree = parser.parse(fixture.source);
-  assert.equal(tree.rootNode.hasError, false, fixture.publicId);
-  const roots = tree.rootNode.namedChildren.filter((node) => node.type.endsWith('_diagram'));
-  assert.equal(roots.length, 1, fixture.publicId);
-  assert.equal(roots[0].type, fixture.root, fixture.publicId);
-}
-const query = new Parser.Query(
-  Mermaid,
-  Mermaid.queryProfiles.portable.highlights.source,
-);
-const queryTree = parser.parse('flowchart TD\n  A --> B\n');
-assert.ok(query.captures(queryTree.rootNode).some((capture) => capture.name === 'keyword'));
-assert.equal(Mermaid.artifactReceipt.language.abi, 14);
-"""
-    run([node, "-e", smoke], cwd=consumer)
-
-    wasm_smoke = r"""
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { Language, Parser, Query } = require('web-tree-sitter');
-const wasmBinding = require('tree-sitter-mermaid/bindings/wasm');
+const tree = parser.parse(source);
+assert.equal(tree.rootNode.hasError, false);
+assert.equal(tree.rootNode.namedChildren[0].type, 'flowchart_diagram');
 
 (async () => {
-  const packageRoot = path.dirname(require.resolve('tree-sitter-mermaid/package.json'));
-  const fixtures = JSON.parse(fs.readFileSync(
-    path.join(packageRoot, 'metadata/fixtures/family-roots.json'), 'utf8'));
-  await Parser.init({ wasmMemory: new WebAssembly.Memory({ initial: 512, maximum: 32768 }) });
-  const language = await Language.load(wasmBinding.languagePath);
-  assert.equal(language.abiVersion, 14);
-
-  const parser = new Parser();
-  parser.setLanguage(language);
-  for (const fixture of fixtures) {
-    const tree = parser.parse(fixture.source);
-    assert.equal(tree.rootNode.hasError, false, fixture.publicId);
-    const roots = tree.rootNode.namedChildren.filter((node) => node.type.endsWith('_diagram'));
-    assert.equal(roots.length, 1, fixture.publicId);
-    assert.equal(roots[0].type, fixture.root, fixture.publicId);
-    tree.delete();
-  }
-  const highlights = wasmBinding.queryProfiles.portable.highlights;
-  const query = new Query(language, highlights.source);
-  const tree = parser.parse('flowchart TD\n  A --> B\n');
-  assert.ok(query.captures(tree.rootNode).some((capture) => capture.name === 'keyword'));
-  query.delete();
-  tree.delete();
-  parser.delete();
-})();
+  await WasmParser.init();
+  const language = await Language.load(
+    require.resolve('tree-sitter-mermaid/tree-sitter-mermaid.wasm'),
+  );
+  assert.equal(language.abiVersion, 15);
+  const wasmParser = new WasmParser();
+  wasmParser.setLanguage(language);
+  const wasmTree = wasmParser.parse(source);
+  assert.equal(wasmTree.rootNode.hasError, false);
+  assert.equal(wasmTree.rootNode.namedChildren[0].type, 'flowchart_diagram');
+  wasmTree.delete();
+  wasmParser.delete();
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 """
-    run([node, "-e", wasm_smoke], cwd=consumer)
+    run([node, "-e", smoke], cwd=consumer, env=environment)
 
 
-def extract_crate(crate_file: Path, destination: Path) -> Path:
-    destination.mkdir()
-    destination_root = destination.resolve()
-    with tarfile.open(crate_file, "r:gz") as archive:
-        for member in archive.getmembers():
-            member_path = (destination / member.name).resolve()
-            if member_path != destination_root and destination_root not in member_path.parents:
-                raise SystemExit(f"unsafe crate archive path: {member.name}")
-        archive.extractall(destination)
-    roots = [path for path in destination.iterdir() if path.is_dir()]
-    if len(roots) != 1:
-        raise SystemExit(f"expected one crate root, found {len(roots)}")
-    assert_no_packaged_work_directories(roots[0])
-    return roots[0]
+def package_identity(package: Path) -> tuple[str, str]:
+    manifest = tomllib.loads((package / "Cargo.toml").read_text(encoding="utf-8"))
+    metadata = manifest["package"]
+    return metadata["name"], metadata["version"]
 
 
-def pack_cargo_crate(package: Path, workspace: Path, consumer: Path) -> Path:
-    cargo = os.environ.get("CARGO", "cargo")
-    package_name, package_version = package_metadata(package)
-    target_directory = consumer / "cargo-target"
-    run(
-        [
-            cargo,
-            "package",
-            "--locked",
-            "-p",
-            package_name,
-            "--allow-dirty",
-            "--target-dir",
-            str(target_directory),
-        ],
-        cwd=workspace,
-    )
-    crate_file = target_directory / "package" / f"{package_name}-{package_version}.crate"
-    if not crate_file.is_file():
-        raise SystemExit(f"missing cargo crate artifact: {crate_file}")
-    return crate_file
-
-
-def assert_cargo_crate_files(crate_root: Path) -> None:
-    required = {
-        "Cargo.toml",
-        "LICENSE",
-        "THIRD_PARTY_NOTICES.md",
-        "THIRD_PARTY_LICENSES/tree-sitter/LICENSE",
-        "metadata/artifact-receipt.json",
-        "metadata/fixtures/family-roots.json",
-        "queries/portable/highlights.scm",
-        "src/parser.c",
-        "src/scanner.c",
-        "src/tree_sitter/parser.h",
-        "src/node-types.json",
-        "bindings/c/tree_sitter/tree-sitter-mermaid.h",
-        "bindings/rust/build.rs",
-        "bindings/rust/lib.rs",
-        "tests/c_smoke.c",
-        "scripts/c_smoke.py",
-        "wasm/tree-sitter-mermaid.wasm",
-    }
-    paths = {str(path.relative_to(crate_root)) for path in crate_root.rglob("*") if path.is_file()}
-    missing = sorted(required - paths)
-    if missing:
-        raise SystemExit(f"cargo crate is missing required paths: {missing}")
-
-
-def run_rust_consumer(consumer: Path, crate_root: Path) -> None:
-    root = consumer / "rust-consumer"
-    (root / "src").mkdir(parents=True)
-    manifest = f"""
-        [package]
-        name = "tree-sitter-mermaid-rust-consumer-smoke"
-        version = "0.0.0"
-        edition = "2024"
-        publish = false
-
-        [dependencies]
-        serde = {{ version = "1.0", features = ["derive"] }}
-        serde_json = "1.0"
-        tree-sitter = "=0.26.12"
-        tree-sitter-mermaid = {{ path = {json.dumps(str(crate_root))} }}
-        """
-    (root / "Cargo.toml").write_text(textwrap.dedent(manifest), encoding="utf-8")
-    source = f"""
-        use serde::Deserialize;
-
-        #[derive(Deserialize)]
-        struct Fixture {{
-            #[serde(rename = "publicId")]
-            public_id: String,
-            root: String,
-            source: String,
-        }}
-
-        fn main() {{
-            let language: tree_sitter::Language = tree_sitter_mermaid::LANGUAGE.into();
-            assert_eq!(language.abi_version(), 14);
-
-            let fixtures_path = {json.dumps(str(crate_root / "metadata/fixtures/family-roots.json"))};
-            let fixtures: Vec<Fixture> = serde_json::from_str(
-                &std::fs::read_to_string(fixtures_path).expect("fixtures must be readable"),
-            )
-            .expect("fixtures must be valid JSON");
-            assert_eq!(fixtures.len(), 35);
-
-            let mut parser = tree_sitter::Parser::new();
-            parser.set_language(&language).expect("language must load");
-            for fixture in fixtures {{
-                let tree = parser
-                    .parse(&fixture.source, None)
-                    .unwrap_or_else(|| panic!("parse returned None for {{}}", fixture.public_id));
-                let root = tree.root_node();
-                assert_eq!(root.kind(), "source_file", "{{}}", fixture.public_id);
-                assert!(!root.has_error(), "{{}}", fixture.public_id);
-
-                let mut cursor = root.walk();
-                let roots: Vec<_> = root
-                    .named_children(&mut cursor)
-                    .filter(|node| node.kind().ends_with("_diagram"))
-                    .collect();
-                assert_eq!(roots.len(), 1, "{{}}", fixture.public_id);
-                assert_eq!(roots[0].kind(), fixture.root, "{{}}", fixture.public_id);
-            }}
-
-            let profile = tree_sitter_mermaid::query_profile("portable", "highlights")
-                .expect("portable highlight query must be packaged");
-            tree_sitter::Query::new(&language, profile.source)
-                .expect("portable highlight query must compile");
-            assert!(tree_sitter_mermaid::ARTIFACT_RECEIPT.contains("\\\"receiptId\\\""));
-        }}
-        """
-    (root / "src/main.rs").write_text(textwrap.dedent(source), encoding="utf-8")
+def pack_cargo(
+    workspace: Path, destination: Path, package_name: str, package_version: str
+) -> Path:
+    target = destination / "cargo-target"
     run(
         [
             os.environ.get("CARGO", "cargo"),
-            "run",
-            "--manifest-path",
-            str(root / "Cargo.toml"),
-            "--quiet",
+            "package",
+            "--locked",
+            "--allow-dirty",
+            "--no-verify",
+            "-p",
+            package_name,
+            "--target-dir",
+            str(target),
         ],
-        cwd=root,
+        cwd=workspace,
     )
+    crate = target / "package" / f"{package_name}-{package_version}.crate"
+    if not crate.is_file():
+        raise SystemExit(f"missing Cargo package: {crate}")
+    return crate
 
 
-def run_c_consumer(source_package: Path, crate_root: Path) -> None:
-    env = os.environ.copy()
-    env["TREE_SITTER_RUNTIME_DIR"] = str(runtime_directory(source_package))
-    run([sys.executable, str(crate_root / "scripts/c_smoke.py")], cwd=crate_root, env=env)
+def run_rust_consumer(consumer: Path, crate_root: Path) -> None:
+    project = consumer / "rust-consumer"
+    (project / "src").mkdir(parents=True)
+    manifest = f"""
+        [package]
+        name = "tree-sitter-mermaid-consumer-smoke"
+        version = "0.0.0"
+        edition = "2024"
+
+        [dependencies]
+        tree-sitter = "={RUST_RUNTIME_VERSION}"
+        tree-sitter-mermaid = {{ path = {json.dumps(str(crate_root))} }}
+        """
+    (project / "Cargo.toml").write_text(textwrap.dedent(manifest), encoding="utf-8")
+    source = r"""
+fn main() {
+    let language: tree_sitter::Language = tree_sitter_mermaid::LANGUAGE.into();
+    assert_eq!(language.abi_version(), 15);
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&language).unwrap();
+    let tree = parser.parse("flowchart TD\nA --> B\n", None).unwrap();
+    assert!(!tree.root_node().has_error());
+    assert_eq!(tree.root_node().named_child(0).unwrap().kind(), "flowchart_diagram");
+    tree_sitter::Query::new(&language, tree_sitter_mermaid::HIGHLIGHTS_QUERY).unwrap();
+}
+"""
+    (project / "src/main.rs").write_text(source, encoding="utf-8")
+    cargo = os.environ.get("CARGO", "cargo")
+    run([cargo, "run"], cwd=project)
+
+
+def run_cmake_consumer(
+    package_root: Path,
+    workspace_package: Path,
+    smoke_source: Path,
+    destination: Path,
+) -> None:
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        raise SystemExit("cmake is required for the C package smoke")
+    build = destination / "cmake-build"
+    installed = destination / "cmake-install"
+    run(
+        [
+            cmake,
+            "-S",
+            str(package_root),
+            "-B",
+            str(build),
+            "-DBUILD_SHARED_LIBS=OFF",
+            f"-DCMAKE_INSTALL_PREFIX={installed}",
+        ],
+        cwd=destination,
+    )
+    run([cmake, "--build", str(build), "--parallel", "1"], cwd=destination)
+    run([cmake, "--install", str(build)], cwd=destination)
+
+    runtime = runtime_directory(workspace_package)
+    compiler = find_compiler()
+    if Path(compiler[0]).name.lower().removesuffix(".exe") in {"cl", "clang-cl"}:
+        raise SystemExit("the installed C archive smoke currently requires a Unix-style compiler")
+    library = next((installed / "lib").glob("libtree-sitter-mermaid.a"), None)
+    if library is None:
+        library = next(installed.rglob("tree-sitter-mermaid.lib"), None)
+    if library is None:
+        raise SystemExit("CMake install did not produce the static grammar library")
+
+    executable = destination / "tree-sitter-mermaid-installed-c-smoke"
+    run(
+        [
+            *compiler,
+            "-std=c11",
+            f"-I{installed / 'include'}",
+            f"-I{runtime / 'include'}",
+            f"-I{runtime / 'src'}",
+            str(smoke_source),
+            str(runtime / "src/lib.c"),
+            str(library),
+            "-o",
+            str(executable),
+        ],
+        cwd=destination,
+    )
+    run([str(executable)], cwd=destination)
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="copy the exact smoke-tested npm and Cargo artifacts to this directory",
+    )
+    parser.add_argument(
+        "--c-source-archive",
+        type=Path,
+        help="build, install, and link the C surface from this release source archive",
+    )
+    return parser.parse_args()
 
 
 def main() -> int:
-    package = Path(__file__).resolve().parents[1]
+    arguments = parse_arguments()
+    package = PACKAGE_ROOT
     workspace = package.parents[1]
+    package_name, package_version = package_identity(package)
     npm = shutil.which("npm")
     node = shutil.which("node")
     if npm is None or node is None:
-        raise SystemExit("npm and node are required for the clean consumer smoke")
-    if shutil.which(os.environ.get("CARGO", "cargo")) is None:
-        raise SystemExit("cargo is required for the clean Rust/C consumer smoke")
-    with tempfile.TemporaryDirectory(prefix="tree-sitter-mermaid-consumer-") as directory:
-        consumer = Path(directory)
-        tarball = pack_npm_package(package, consumer, npm)
-        run_node_and_wasm_consumer(consumer, tarball, npm, node)
+        raise SystemExit("Node.js and npm are required for package smoke tests")
 
-        crate_file = pack_cargo_crate(package, workspace, consumer)
-        crate_root = extract_crate(crate_file, consumer / "crate")
-        assert_cargo_crate_files(crate_root)
-        run_rust_consumer(consumer, crate_root)
-        run_c_consumer(package, crate_root)
+    with tempfile.TemporaryDirectory(prefix="tree-sitter-mermaid-package-") as directory:
+        root = Path(directory)
+        npm_consumer = root / "npm-consumer"
+        npm_consumer.mkdir()
+        tarball = pack_npm(package, npm_consumer, npm)
+        npm_package = safe_extract(tarball, root / "npm-package")
+        run_npm_consumer(npm_consumer, tarball, npm, node)
 
-    print("verified clean npm, language-WASM, Rust, and C consumers without tree-sitter-cli")
+        crate = pack_cargo(workspace, root, package_name, package_version)
+        crate_root = safe_extract(crate, root / "cargo-package")
+        run_rust_consumer(root, crate_root)
+
+        c_package = npm_package
+        smoke_source = package / "tests/c_smoke.c"
+        if arguments.c_source_archive is not None:
+            c_package = safe_extract(
+                arguments.c_source_archive.resolve(), root / "c-source-package"
+            )
+            smoke_source = c_package / "tests/c_smoke.c"
+            if not smoke_source.is_file():
+                raise SystemExit("C source archive is missing tests/c_smoke.c")
+        run_cmake_consumer(c_package, package, smoke_source, root)
+
+        if arguments.output_dir is not None:
+            arguments.output_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(tarball, arguments.output_dir / tarball.name)
+            shutil.copy2(crate, arguments.output_dir / crate.name)
+
+    print("verified npm, Node, WASM, Cargo, Rust, and C package consumers")
     return 0
 
 

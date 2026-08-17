@@ -191,38 +191,31 @@ Merman's semantic parser and its selected Mermaid/ZenUML baselines do not move i
 repository reference graph.
 
 - If the repository Mermaid or ZenUML baseline changes while the Tree-sitter package stays pinned,
-  set the corresponding `repositoryAlignment` value in
-  `distribution/tree-sitter-mermaid/metadata/support.json` to `mermaid_drifted`, `zenuml_drifted`,
-  or both. Do not rewrite `selectedBaselines` or historical family tiers merely to make the two
-  graphs appear aligned.
-- If maintainers deliberately select a new Tree-sitter package baseline, update
-  `selectedBaselines` only from exact source and companion identities. Demote each affected family
-  to the highest tier whose existing evidence is still valid; never carry `conformant` across a
-  baseline change by default.
-- Re-earn `conformant` family by family after detector/header dispatch, grammar and recovery,
-  admitted fixtures, incremental traces, node schema, query applicability and captures, native and
-  WASM bindings, fixed fuzz seeds, and resource metrics all bind the new baseline and generated
-  receipt. Merman remains a one-way strict-valid fixture oracle; Tree-sitter CST results never feed
-  semantic facts back into Merman.
+  leave `metadata/provenance.json` unchanged and call out the intentional lag in the workspace
+  release notes. Do not rewrite the package's historical source identity to make it appear aligned.
+- If maintainers deliberately select a new Tree-sitter package baseline, update the exact Mermaid
+  and companion source identities, translate the affected family grammar from those sources, and
+  update the standard Tree-sitter corpus.
+- Run Merman's strict-valid fixture corpus as a one-way oracle. Every accepted fixture must select
+  the expected Tree-sitter family root without errors or broad recovery. Tree-sitter results never
+  feed semantic facts back into Merman.
+- Review named-node, field, and canonical capture changes as pre-1.0 semver decisions. ABI or
+  selected-baseline changes require a minor release.
 
-Run the package-owned gates before restoring an aligned claim:
+Run the package-owned gates before releasing the new baseline:
 
 ```bash
-npm run check:header-oracle --prefix distribution/tree-sitter-mermaid
-npm run check:header-evidence --prefix distribution/tree-sitter-mermaid
 npm run check:generated --prefix distribution/tree-sitter-mermaid
-npm run test:queries --prefix distribution/tree-sitter-mermaid
-npm run test:mechanics --prefix distribution/tree-sitter-mermaid
-python3 -m unittest scripts.test_fuzz_config
-cargo nextest run --locked -p tree-sitter-mermaid --test conformance \
-  --test incremental --test queries --test adversarial --no-fail-fast
-cargo run --locked -p xtask -- verify-tree-sitter-mermaid --all-fixtures
+npm run test:corpus --prefix distribution/tree-sitter-mermaid
+cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
+npm run check:wasm --prefix distribution/tree-sitter-mermaid
+npm run test:node --prefix distribution/tree-sitter-mermaid
+npm run test:wasm --prefix distribution/tree-sitter-mermaid
+npm run test:c --prefix distribution/tree-sitter-mermaid
 ```
 
-Fixed fuzz regressions are blocking. Randomized sanitizer discovery may run in its scheduled owner,
-but a missing scheduled result cannot be represented as a local pass. Regenerate support metadata,
-the composed contract, artifact/header receipts, and metrics only through their owning commands;
-an edited version string or self-reported tier is not alignment evidence.
+The normal stable tests own fixed regressions. Randomized sanitizer discovery remains a bounded
+scheduled workflow and is not represented as a package-local receipt or support claim.
 
 ## 6. Decide Feature Ownership With Measurements
 

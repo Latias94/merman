@@ -68,10 +68,3 @@ path = "fuzz_targets/tree_sitter_mermaid_scanner.rs"
 test = false
 doc = false
 bench = false
-
-[[bin]]
-name = "tree_sitter_mermaid_query"
-path = "fuzz_targets/tree_sitter_mermaid_query.rs"
-test = false
-doc = false
-bench = false

@@ -7,6 +7,7 @@ Accepted
 ## Dates
 
 - Accepted: 2026-08-14
+- Amended: 2026-08-16
 
 ## Context
 
@@ -39,27 +40,27 @@ The following ownership rules are mandatory:
   order, IR, diagnostics, navigation identity, and refactoring safety.
 - The Tree-sitter package owns named CST nodes and fields, family root nodes, recovery nodes,
   portable queries, editor query adapters, generated parsers, bindings, WASM, and package metadata.
-- Merman's public family IDs, internal variants, and authoring-header suggestions are projected
-  read-only from the existing family catalog. Complete accepted syntax remains source-backed by the
-  pinned Mermaid and ZenUML authorities. The package stores only foreign-key IDs plus its own roots,
-  maturity, evidence, and query applicability. A deterministic composed contract binds both
-  authority digests.
+- Merman's public family IDs and strict-valid fixture corpus are projected read-only through one
+  Rust integration test. Complete accepted syntax remains source-backed by the pinned Mermaid and
+  ZenUML authorities; the Tree-sitter package does not define another semantic contract.
 - The conformance harness is one-way: Merman may classify strict-valid fixtures and expected public
   families, then inspect Tree-sitter output. No Merman production crate may consume Tree-sitter CST
   nodes as semantic facts or depend on Tree-sitter.
 - Tree-sitter recovery is useful editing behavior, not proof of Mermaid validity. A tree without an
   `ERROR` node does not imply strict validity.
 
-Support claims use an executable monotonic lattice: `recognized`, `structured`, `query-complete`,
-and `conformant`. A separate `planned` lifecycle has no support tier. Internal variants and aliases
-do not increase the 35-family count. Generic body fallbacks may be used only during construction,
-remain visible as below `structured`, and must be deleted before full conformance.
+The standard Tree-sitter corpus owns CST/recovery expectations. A single strict-valid fixture
+oracle, focused incremental/scanner tests, query compilation, and one representative consumer smoke
+per binding are the complete maintenance boundary. The package must not grow a second test engine,
+support-tier lattice, receipt graph, duplicated schema snapshot, or per-editor capture matrix.
+Generic body fallbacks may be used only during construction and must be deleted before a family is
+claimed as structured.
 
 The package pins each consumer runtime independently: Tree-sitter CLI, Rust runtime, and web
-runtime `0.26.12`; source-built Node runtime `0.25.1`; generated language ABI 14. Package version,
-CST schema version, and query schema version are independent axes. Publication is blocked until a
-separate registry-ownership decision; package assembly and release workflow paths remain dry-run
-only in the meantime.
+runtime `0.26.12`; native Node runtime `0.25.x`; generated language ABI 15. It is publishable as
+`tree-sitter-mermaid` on crates.io and npm and as a GitHub source/WASM release, subject to protected
+release authorization. Browser consumers use the external `web-tree-sitter` runtime and the
+package's root language WASM; the package does not add a grammar-specific TypeScript runtime.
 
 Existing semantic parser code may be deleted only under a later superseding ADR with strict parse,
 recovery, mutation-order, IR, render, analysis, and editor equivalence evidence. This decision does
@@ -73,10 +74,10 @@ not authorize deleting LALRPOP or handwritten family parsers.
   changes still run all affected owners.
 - The repository pays for generated C/WASM size, binding tests, corpus tests, fuzzing, and package
   maintenance even though production Merman artifacts remain Tree-sitter-free.
-- Pre-1.0 CST and capture changes may break consumers, but schema receipts and migration notes make
-  those changes explicit.
-- Mermaid or ZenUML baseline movement does not silently rewrite historical package claims. Package
-  support and repository alignment are separate machine-readable states.
+- Pre-1.0 CST and capture changes may break consumers; semver and migration notes make those
+  changes explicit.
+- Mermaid or ZenUML baseline movement requires a deliberate package version and a rerun of the
+  one-way fixture oracle rather than automatic coupling to the workspace release.
 
 ## Rejected Alternatives
 
@@ -98,8 +99,14 @@ stable.
 
 ### Claim coverage through a generic line fallback
 
-Rejected. Recognition without useful named structure is represented honestly as `recognized`, not
-`structured` or `conformant`.
+Rejected. Recognition without useful named structure does not provide the editor value that
+justifies maintaining the second syntax implementation.
+
+### Maintain a proof platform around the grammar
+
+Rejected. Receipts, support tiers, schema mirrors, metrics evidence, editor applicability matrices,
+and duplicate capture goldens increase maintenance cost without improving the parser product. Use
+the existing Tree-sitter, Rust, Node, Cargo, npm, CMake, and fuzz tools directly.
 
 ## Related Decisions
 

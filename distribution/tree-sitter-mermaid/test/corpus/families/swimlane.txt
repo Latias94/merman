@@ -230,13 +230,12 @@ swimlane-beta
               (swimlane_vertex
                 (swimlane_node_id))))))
       (swimlane_line_item
-        (swimlane_statement
-          (swimlane_incomplete_edge_statement
-            (swimlane_node
-              (swimlane_vertex
-                (swimlane_node_id)))
-            (swimlane_edge
-              (swimlane_arrow)))))
+        (swimlane_incomplete_edge_statement
+          (swimlane_node
+            (swimlane_vertex
+              (swimlane_node_id)))
+          (swimlane_edge
+            (swimlane_arrow))))
       (swimlane_line_item
         (swimlane_statement
           (swimlane_edge_statement

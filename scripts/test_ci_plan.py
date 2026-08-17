@@ -125,19 +125,7 @@ class PlannerTests(unittest.TestCase):
                 actual = {name for name, enabled in plan["owners"].items() if enabled}
                 self.assertEqual(actual, selected)
 
-    def test_tree_sitter_contract_selects_grammar_and_hygiene_owners(self) -> None:
-        plan = plan_changes(
-            parse_name_status_z(
-                b"M\0contracts/tree-sitter/mermaid-language-v1.json\0"
-            ),
-            base="a" * 40,
-            head="b" * 40,
-        )
-
-        selected = {name for name, enabled in plan["owners"].items() if enabled}
-        self.assertEqual(selected, {"grammar", "hygiene"})
-
-    def test_tree_sitter_grammar_mechanics_select_fuzz_regressions(self) -> None:
+    def test_tree_sitter_grammar_mechanics_use_the_focused_owner(self) -> None:
         for path in (
             "distribution/tree-sitter-mermaid/grammar.js",
             "distribution/tree-sitter-mermaid/grammar/families/flowchart.js",
@@ -153,7 +141,7 @@ class PlannerTests(unittest.TestCase):
                 selected = {
                     name for name, enabled in plan["owners"].items() if enabled
                 }
-                self.assertEqual(selected, {"fuzz", "grammar", "hygiene"})
+                self.assertEqual(selected, {"grammar", "hygiene"})
 
     def test_tree_sitter_manifests_select_dependency_owners(self) -> None:
         fixtures = {

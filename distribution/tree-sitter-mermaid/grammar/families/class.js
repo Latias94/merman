@@ -15,6 +15,11 @@ const statementKeyword = ($, keyword) => field(
   alias(token(prec(20, keyword)), $.class_statement_keyword),
 );
 
+const classDeclarationKeyword = ($) => field(
+  'keyword',
+  alias('class', $.class_statement_keyword),
+);
+
 const className = ($, fieldName = 'name') => field(
   fieldName,
   alias($._class_identifier, $.class_name),
@@ -115,7 +120,7 @@ const classRules = {
   )),
 
   class_declaration: ($) => prec.right(seq(
-    statementKeyword($, 'class'),
+    classDeclarationKeyword($),
     token.immediate(/[ \t]+/),
     className($),
     optional(field('label', $.class_label)),

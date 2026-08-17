@@ -939,16 +939,16 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "f223ff2ffe7b062a2d01ed4e2783afecba5da106166584d3ef8525326081bdf4"
+          "sha256": "fd4aea27cc44b602bf8e0ac15c238528219155c4267b0f17323da3c56b6eea32"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "cd553fa6914e80765e4f1c98230e952d04e01c7c6624d56e8649643ee631d7ae"
+          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
         },
         {
           "type": "pinned-file",
-          "path": "distribution/tree-sitter-mermaid/metadata/fixtures/family-roots.json",
+          "path": "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json",
           "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
         }
       ],
@@ -980,16 +980,16 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "f223ff2ffe7b062a2d01ed4e2783afecba5da106166584d3ef8525326081bdf4"
+          "sha256": "fd4aea27cc44b602bf8e0ac15c238528219155c4267b0f17323da3c56b6eea32"
         },
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "cd553fa6914e80765e4f1c98230e952d04e01c7c6624d56e8649643ee631d7ae"
+          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
         },
         {
           "type": "pinned-file",
-          "path": "distribution/tree-sitter-mermaid/metadata/fixtures/family-roots.json",
+          "path": "distribution/tree-sitter-mermaid/test/fixtures/family-roots.json",
           "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
         }
       ],
@@ -1049,7 +1049,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/derivations.json",
-          "sha256": "cd553fa6914e80765e4f1c98230e952d04e01c7c6624d56e8649643ee631d7ae"
+          "sha256": "cd3acb16e9c6f0fc77f2bd2ef61ba73143c830f8238f38329ae8346330779691"
         }
       ],
       "notice": "The language package modifies selected grammar helpers and Flowchart/Mindmap seeds; metadata/derivations.json records each local path and source range."

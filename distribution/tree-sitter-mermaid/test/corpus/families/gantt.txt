@@ -327,3 +327,63 @@ section Preserved
       (gantt_section_statement
         (statement_keyword)
         (gantt_line_text)))))
+
+==================
+strict fixture boundaries stay structural
+==================
+
+gantt
+dateFormat YYYY-MM-DD HH:mm:ss # ignored
+excludes weekends; ignored
+todayMarker stroke:#00f;opacity:0.5
+section Runtime
+Timed: id1, 2025-07-04 20:30:30, 1h
+Marker: vert, 01,
+click id1,id2 href "https://example.test/" "details"
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (comment)
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (gantt_semicolon_suffix)
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_today_marker_value))
+      (gantt_semicolon_suffix)
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_date))
+          (gantt_task_item
+            (gantt_duration))))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_status))
+          (gantt_task_item
+            (gantt_task_atom))))
+      (gantt_click_statement
+        (statement_keyword)
+        (gantt_reference)
+        (gantt_reference)
+        (gantt_href_action
+          (gantt_action_keyword)
+          (gantt_url))
+        (gantt_url)))))

@@ -1,4 +1,4 @@
-; Portable mechanics profile. Family-complete highlight coverage is admitted in U8.
+; Canonical portable highlights, covered across every public family by tests/queries.rs.
 
 (diagram_keyword) @keyword
 (comment) @comment

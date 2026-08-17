@@ -1,8 +1,8 @@
 # Zed query profile
 
-This directory is a Zed-specific adapter, not a portable Tree-sitter query
-ABI. Its contract is frozen against Zed `1.16.0` at commit
-`38ca9106c5306ef93e52c35643df015a27f15b72` (2026-08-07).
+This directory is a pre-1.0 Zed-specific adapter, not a portable Tree-sitter
+query ABI. A downstream Zed extension must pin a released grammar revision and
+validate these queries against the Zed version it supports.
 
 Zed's loader at `crates/language_core/src/queries.rs` recognizes ten query
 prefixes. Six of the nine project surfaces are native to that loader:
@@ -42,10 +42,7 @@ XY Chart also exposes delimiter-free Markdown payload nodes as
 `markdown-inline`. Outline and text-object fixtures exercise every family;
 bracket and indent fixtures exist only for applicable cells.
 
-`test/queries/zed/applicability.json` enumerates every one of the 35 x 9 cells.
-Each applicable cell has a query path and a source/capture golden pair. Run the
-profile-local executable contract with:
-
-```text
-node test/queries/zed/verify.js
-```
+Merman's package tests compile every shipped query against the generated
+language. Loader-specific behavior and representative captures belong in the
+downstream Zed extension change rather than a duplicated package-owned 35 x 9
+matrix.

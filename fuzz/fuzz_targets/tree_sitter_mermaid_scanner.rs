@@ -7,8 +7,10 @@ use libfuzzer_sys::fuzz_target;
 const MAX_INPUT_BYTES: usize = 1031;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
-const TOKEN_COUNT: usize = 21;
+const TOKEN_COUNT: usize = 22;
+const DIRECTIVE_BODY: usize = 21;
 const REGRESSION_SEED_PREFIX: &[u8] = b"seed\n";
+const DIRECTIVE_SEED_PREFIX: &[u8] = b"directive\n";
 
 #[repr(C)]
 struct TsLexer {
@@ -135,7 +137,7 @@ struct Scanner(*mut c_void);
 impl Scanner {
     fn new() -> Self {
         let language: tree_sitter::Language = tree_sitter_mermaid::LANGUAGE.into();
-        assert_eq!(language.abi_version(), 14);
+        assert_eq!(language.abi_version(), 15);
         // SAFETY: The scanner constructor has no preconditions.
         let scanner = unsafe { tree_sitter_mermaid_external_scanner_create() };
         assert!(!scanner.is_null());
@@ -203,6 +205,16 @@ impl Drop for Scanner {
 }
 
 fn split_input(data: &[u8]) -> Option<FuzzInput<'_>> {
+    if let Some(row) = data.strip_prefix(DIRECTIVE_SEED_PREFIX) {
+        let mut symbols = [false; TOKEN_COUNT];
+        symbols[DIRECTIVE_BODY] = true;
+        return Some(FuzzInput {
+            state: &[],
+            valid_symbols: symbols,
+            rows: row,
+            seed_valid_state: false,
+        });
+    }
     if let Some(row) = data.strip_prefix(REGRESSION_SEED_PREFIX) {
         let mut symbols = [false; TOKEN_COUNT];
         symbols[..5].fill(true);

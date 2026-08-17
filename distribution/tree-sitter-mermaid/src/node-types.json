@@ -1670,7 +1670,7 @@
     "fields": {
       "delimiter": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": ":",
@@ -3988,6 +3988,11 @@
     "fields": {}
   },
   {
+    "type": "comment",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "cynefin_body",
     "named": true,
     "fields": {},
@@ -4261,6 +4266,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "directive",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "entity_relationship_body",
@@ -7082,11 +7092,6 @@
     "fields": {}
   },
   {
-    "type": "flow_edge_recovery",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "flow_edge_statement",
     "named": true,
     "fields": {
@@ -7194,6 +7199,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "flow_incomplete_edge_statement",
+            "named": true
+          },
           {
             "type": "flow_statement",
             "named": true
@@ -7331,16 +7340,6 @@
           }
         ]
       },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "flow_edge_recovery",
-            "named": true
-          }
-        ]
-      },
       "source": {
         "multiple": false,
         "required": true,
@@ -7394,6 +7393,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "flow_incomplete_edge_statement",
+            "named": true
+          },
           {
             "type": "flow_statement",
             "named": true
@@ -8093,10 +8096,6 @@
           "named": true
         },
         {
-          "type": "flow_incomplete_edge_statement",
-          "named": true
-        },
-        {
           "type": "flow_link_style_statement",
           "named": true
         },
@@ -8749,6 +8748,10 @@
           "named": true
         },
         {
+          "type": "gantt_semicolon_suffix",
+          "named": true
+        },
+        {
           "type": "gantt_setting_statement",
           "named": true
         },
@@ -8854,6 +8857,16 @@
           }
         ]
       },
+      "delimiter": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          }
+        ]
+      },
       "keyword": {
         "multiple": false,
         "required": true,
@@ -8865,11 +8878,21 @@
         ]
       },
       "task": {
-        "multiple": false,
+        "multiple": true,
         "required": true,
         "types": [
           {
             "type": "gantt_reference",
+            "named": true
+          }
+        ]
+      },
+      "tooltip": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "gantt_url",
             "named": true
           }
         ]
@@ -10893,6 +10916,16 @@
         "types": [
           {
             "type": "journey_score",
+            "named": true
+          }
+        ]
+      },
+      "score_suffix": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "journey_score_suffix",
             "named": true
           }
         ]
@@ -16479,6 +16512,11 @@
     }
   },
   {
+    "type": "railroad_peg_comment",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "railroad_peg_diagram",
     "named": true,
     "fields": {
@@ -19047,6 +19085,11 @@
     }
   },
   {
+    "type": "sequence_actor_reference",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "sequence_alt_block",
     "named": true,
     "fields": {
@@ -19689,12 +19732,36 @@
     "type": "sequence_box_block",
     "named": true,
     "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          },
+          {
+            "type": "sequence_hash_comment",
+            "named": true
+          }
+        ]
+      },
       "declaration": {
         "multiple": true,
         "required": false,
         "types": [
           {
             "type": "sequence_participant_declaration",
+            "named": true
+          }
+        ]
+      },
+      "directive": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "directive",
             "named": true
           }
         ]
@@ -21678,6 +21745,11 @@
     }
   },
   {
+    "type": "sequence_participant_name",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "sequence_recovered_statement",
     "named": true,
     "fields": {
@@ -21945,6 +22017,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "sequence_unknown_statement_head",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "source_file",
@@ -22419,6 +22496,14 @@
             "named": true
           },
           {
+            "type": "state_jison_split_reference_statement",
+            "named": true
+          },
+          {
+            "type": "state_jison_split_transition_statement",
+            "named": true
+          },
+          {
             "type": "state_named_declaration",
             "named": true
           },
@@ -22764,6 +22849,14 @@
           },
           {
             "type": "state_incomplete_transition_statement",
+            "named": true
+          },
+          {
+            "type": "state_jison_split_reference_statement",
+            "named": true
+          },
+          {
+            "type": "state_jison_split_transition_statement",
             "named": true
           },
           {
@@ -23183,6 +23276,88 @@
     }
   },
   {
+    "type": "state_jison_split_reference_statement",
+    "named": true,
+    "fields": {
+      "compatibility_operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "state_jison_split_operator",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "state_endpoint",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "state_endpoint",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "state_jison_split_transition_statement",
+    "named": true,
+    "fields": {
+      "compatibility_target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "state_jison_pipe_target",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "state_transition_operator",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "state_endpoint",
+            "named": true
+          }
+        ]
+      },
+      "trailing_state": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "state_endpoint",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "state_multiline_note",
     "named": true,
     "fields": {
@@ -23498,11 +23673,6 @@
         ]
       }
     }
-  },
-  {
-    "type": "state_transition_recovery",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "state_transition_statement",
@@ -24436,11 +24606,6 @@
     "fields": {}
   },
   {
-    "type": "swimlane_edge_recovery",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "swimlane_edge_statement",
     "named": true,
     "fields": {
@@ -24548,6 +24713,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "swimlane_incomplete_edge_statement",
+            "named": true
+          },
           {
             "type": "swimlane_statement",
             "named": true
@@ -24741,16 +24910,6 @@
           }
         ]
       },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "swimlane_edge_recovery",
-            "named": true
-          }
-        ]
-      },
       "source": {
         "multiple": false,
         "required": true,
@@ -24804,6 +24963,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "swimlane_incomplete_edge_statement",
+            "named": true
+          },
           {
             "type": "swimlane_statement",
             "named": true
@@ -25503,10 +25666,6 @@
           "named": true
         },
         {
-          "type": "swimlane_incomplete_edge_statement",
-          "named": true
-        },
-        {
           "type": "swimlane_link_style_statement",
           "named": true
         },
@@ -26056,6 +26215,10 @@
           "named": true
         },
         {
+          "type": "timeline_incomplete_event_statement",
+          "named": true
+        },
+        {
           "type": "timeline_incomplete_section_statement",
           "named": true
         },
@@ -26145,10 +26308,6 @@
           {
             "type": "timeline_event",
             "named": true
-          },
-          {
-            "type": "timeline_incomplete_event",
-            "named": true
           }
         ]
       }
@@ -26200,6 +26359,36 @@
         "types": [
           {
             "type": "timeline_event_delimiter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "timeline_incomplete_event_statement",
+    "named": true,
+    "fields": {
+      "event": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "timeline_event",
+            "named": true
+          },
+          {
+            "type": "timeline_incomplete_event",
+            "named": true
+          }
+        ]
+      },
+      "period": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "timeline_period",
             "named": true
           }
         ]
@@ -26269,10 +26458,6 @@
         "types": [
           {
             "type": "timeline_event",
-            "named": true
-          },
-          {
-            "type": "timeline_incomplete_event",
             "named": true
           }
         ]
@@ -33092,6 +33277,10 @@
     "named": false
   },
   {
+    "type": "%%{",
+    "named": false
+  },
+  {
     "type": "&",
     "named": false
   },
@@ -33452,10 +33641,6 @@
     "named": false
   },
   {
-    "type": "comment",
-    "named": true
-  },
-  {
     "type": "const",
     "named": false
   },
@@ -33473,10 +33658,6 @@
   },
   {
     "type": "direction",
-    "named": true
-  },
-  {
-    "type": "directive",
     "named": true
   },
   {
@@ -33668,6 +33849,10 @@
     "named": true
   },
   {
+    "type": "gantt_semicolon_suffix",
+    "named": true
+  },
+  {
     "type": "gantt_setting_value",
     "named": true
   },
@@ -33753,6 +33938,10 @@
   },
   {
     "type": "journey_score",
+    "named": true
+  },
+  {
+    "type": "journey_score_suffix",
     "named": true
   },
   {
@@ -34024,10 +34213,6 @@
     "named": true
   },
   {
-    "type": "railroad_peg_comment",
-    "named": true
-  },
-  {
     "type": "railroad_peg_prefix_operator",
     "named": true
   },
@@ -34144,10 +34329,6 @@
     "named": true
   },
   {
-    "type": "sequence_actor_reference",
-    "named": true
-  },
-  {
     "type": "sequence_autonumber_action",
     "named": true
   },
@@ -34192,19 +34373,11 @@
     "named": true
   },
   {
-    "type": "sequence_participant_name",
-    "named": true
-  },
-  {
     "type": "sequence_recovery_keyword",
     "named": true
   },
   {
     "type": "sequence_statement_keyword",
-    "named": true
-  },
-  {
-    "type": "sequence_unknown_statement_head",
     "named": true
   },
   {
@@ -34229,6 +34402,14 @@
   },
   {
     "type": "state_encoded_colon",
+    "named": true
+  },
+  {
+    "type": "state_jison_pipe_target",
+    "named": true
+  },
+  {
+    "type": "state_jison_split_operator",
     "named": true
   },
   {
@@ -34269,6 +34450,10 @@
   },
   {
     "type": "state_transition_operator",
+    "named": true
+  },
+  {
+    "type": "state_transition_recovery",
     "named": true
   },
   {
@@ -34677,6 +34862,10 @@
   },
   {
     "type": "}",
+    "named": false
+  },
+  {
+    "type": "}%%",
     "named": false
   }
 ]

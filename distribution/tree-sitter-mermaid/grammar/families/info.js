@@ -65,7 +65,13 @@ const infoRules = {
 
   info_recovery_statement: ($) => field('text', $.info_recovery_text),
 
-  info_recovery_text: (_) => token(prec(1, /[^%\r\n][^\r\n]*/)),
+  // Horizontal layout is an extra, not an invalid statement. Requiring the
+  // first visible character keeps whitespace-only lines in NEWLINE* while
+  // preserving line-local recovery for actual malformed content.
+  info_recovery_text: (_) => token(prec(
+    1,
+    /[^ \t\f\u00a0%\r\n][^\r\n]*/,
+  )),
 };
 
 module.exports = { infoRules };

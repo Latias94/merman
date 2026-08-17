@@ -10,7 +10,7 @@ async function main() {
 
   await Parser.init();
   const language = await Language.load(path.resolve(candidate));
-  assert.equal(language.abiVersion, 14);
+  assert.equal(language.abiVersion, 15);
 
   const parser = new Parser();
   parser.setLanguage(language);

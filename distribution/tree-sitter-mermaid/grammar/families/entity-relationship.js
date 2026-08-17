@@ -32,6 +32,17 @@ const trailingTrivia = ($) => optional(choice(
 
 const optionalInlineGap = () => optional(token.immediate(/[ \t]+/));
 
+const attributeComment = ($) => field('comment', choice(
+  alias(
+    token(seq('"', /[^"\r\n]*/, '"')),
+    $.er_quoted_text,
+  ),
+  alias(
+    token(prec(-10, seq('"', /[^"\r\n]*/))),
+    $.er_unclosed_quoted_text,
+  ),
+));
+
 const entityRelationshipRules = {
   entity_relationship_diagram: ($) => choice(
     seq(
@@ -48,7 +59,7 @@ const entityRelationshipRules = {
     diagramKeyword($),
     optional(token.immediate(/[ \t]+/)),
     trailingTrivia($),
-    field('terminator', $._line_ending),
+    field('terminator', $._er_line_ending),
   ),
 
   _entity_relationship_header_eof: ($) => seq(
@@ -65,9 +76,9 @@ const entityRelationshipRules = {
     seq(
       field('statement', $._er_statement),
       trailingTrivia($),
-      $._line_ending,
+      $._er_line_ending,
     ),
-    seq(choice($.comment, $.directive), $._line_ending),
+    seq(choice($.comment, $.directive), $._er_line_ending),
     $._blank_line,
   ),
 
@@ -156,11 +167,11 @@ const entityRelationshipRules = {
   _er_attribute_block_line: ($) => seq(
     optionalInlineGap(),
     choice(
-      seq(field('attribute', $.er_attribute), $._line_ending),
-      seq(field('recovery', $.er_incomplete_attribute), $._line_ending),
-      seq(field('recovery', $.er_malformed_attribute), $._line_ending),
-      seq(choice($.comment, $.directive), $._line_ending),
-      $._line_ending,
+      seq(field('attribute', $.er_attribute), $._er_line_ending),
+      seq(field('recovery', $.er_incomplete_attribute), $._er_line_ending),
+      seq(field('recovery', $.er_malformed_attribute), $._er_line_ending),
+      seq(choice($.comment, $.directive), $._er_line_ending),
+      $._er_line_ending,
     ),
   ),
 
@@ -171,19 +182,15 @@ const entityRelationshipRules = {
     field('name', alias($._er_attribute_word, $.er_attribute_name)),
     optional(seq(
       token.immediate(/[ \t]+/),
-      field('keys', $.er_attribute_key_list),
-    )),
-    optional(seq(
-      token.immediate(/[ \t]+/),
-      field('comment', choice(
-        alias(
-          token.immediate(seq('"', /[^"\r\n]*/, '"')),
-          $.er_quoted_text,
+      optional(choice(
+        seq(
+          field('keys', $.er_attribute_key_list),
+          optional(seq(
+            token.immediate(/[ \t]+/),
+            attributeComment($),
+          )),
         ),
-        alias(
-          token.immediate(prec(-10, seq('"', /[^"\r\n]*/))),
-          $.er_unclosed_quoted_text,
-        ),
+        attributeComment($),
       )),
     )),
   )),
@@ -210,6 +217,8 @@ const entityRelationshipRules = {
   )),
 
   er_malformed_attribute_text: (_) => token(prec(-100, /[^{}|:\r\n]+/)),
+
+  _er_line_ending: (_) => token(/[ \t]*(?:\r\n|\n|\r)/),
 
   er_relationship: ($) => prec(40, seq(
     entityReference($, 'source'),

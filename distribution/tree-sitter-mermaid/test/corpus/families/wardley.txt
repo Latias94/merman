@@ -17,6 +17,7 @@ component foo--bar [0.30, 0.40]
 component foo- [0.20, 0.30]
 real-time processing +<> Database; 约束
 "Database" "foo--bar"
+byte pair encoding (BPE) -> UTF8
 evolve real-time processing 0.62
 pipeline real-time processing {
   component batch-loader [0.20] label [-10, 5]
@@ -158,6 +159,16 @@ deaccelerator Legacy-Data [0.40, 0.35]
         (wardley_name
           (quoted_string))
         (quoted_string))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word)
+          (wardley_name_word)
+          (wardley_name_word)
+          (wardley_parenthesized_name_part
+            (wardley_name_word)))
+        (wardley_link_operator)
+        (wardley_name
+          (wardley_name_word)))
       (wardley_evolve_statement
         (statement_keyword)
         (wardley_name

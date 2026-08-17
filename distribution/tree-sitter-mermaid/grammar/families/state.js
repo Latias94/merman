@@ -69,6 +69,8 @@ const stateRules = {
     $.state_pseudostate_declaration,
     $.state_alias_declaration,
     $.state_named_declaration,
+    $.state_jison_split_transition_statement,
+    $.state_jison_split_reference_statement,
     $.state_transition_statement,
     $.state_incomplete_transition_statement,
     $.state_description_statement,
@@ -139,6 +141,32 @@ const stateRules = {
     optional(field('class', $.state_class_annotation)),
   ),
 
+  // Mermaid's Jison grammar treats newlines as statements rather than mandatory
+  // separators. These two authored forms therefore become adjacent statements
+  // in the semantic parser even though they resemble unsupported operators.
+  state_jison_split_transition_statement: ($) => prec(60, seq(
+    stateReference($, 'source'),
+    optionalInlineGap(),
+    field('operator', $.state_transition_operator),
+    optionalInlineGap(),
+    field('compatibility_target', $.state_jison_pipe_target),
+    token.immediate(/[ \t]+/),
+    stateReference($, 'trailing_state'),
+  )),
+
+  state_jison_pipe_target: (_) => token.immediate(prec(40, /\|[^|;%\r\n]*\|/)),
+
+  state_jison_split_reference_statement: ($) => prec(60, seq(
+    stateReference($, 'source'),
+    token.immediate(/[ \t]+/),
+    field('compatibility_operator', alias(
+      token.immediate('..'),
+      $.state_jison_split_operator,
+    )),
+    token.immediate(/[ \t]+/),
+    stateReference($, 'target'),
+  )),
+
   state_transition_statement: ($) => prec(50, seq(
     stateReference($, 'source'),
     optionalInlineGap(),
@@ -174,6 +202,7 @@ const stateRules = {
 
   state_description_statement: ($) => seq(
     stateReference($, 'state'),
+    optionalInlineGap(),
     field('delimiter', ':'),
     optionalInlineGap(),
     optional(field('description', $.state_description_text)),

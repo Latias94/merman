@@ -39,7 +39,7 @@ distribution/tree-sitter-mermaid/src/grammar.json linguist-generated=true
 distribution/tree-sitter-mermaid/src/node-types.json linguist-generated=true
 distribution/tree-sitter-mermaid/src/parser.c linguist-generated=true
 distribution/tree-sitter-mermaid/src/tree_sitter/** linguist-generated=true
-distribution/tree-sitter-mermaid/wasm/*.wasm binary linguist-generated=true
+distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm binary linguist-generated=true
 
 # Legal mirrors preserve upstream license bytes; do not flag their verbatim whitespace.
 THIRD_PARTY_LICENSES/** text eol=lf -whitespace

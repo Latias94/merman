@@ -27,6 +27,7 @@ enum TokenType {
   KANBAN_DEDENT,
   KANBAN_INDENTATION_OVERFLOW,
   END_OF_INPUT,
+  DIRECTIVE_BODY,
 };
 
 enum ScannerMode {
@@ -142,6 +143,19 @@ static const TokenGroup *requested_group(const bool *valid_symbols) {
   return selected;
 }
 
+static bool directive_body_is_unambiguous(const bool *valid_symbols) {
+  if (!valid_symbols[DIRECTIVE_BODY] || valid_symbols[END_OF_INPUT]) {
+    return false;
+  }
+  for (unsigned index = 0;
+       index < sizeof(TOKEN_GROUPS) / sizeof(TOKEN_GROUPS[0]); index++) {
+    if (token_group_requested(valid_symbols, &TOKEN_GROUPS[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool is_box_drawing_prefix(int32_t lookahead) {
   return lookahead == 0x2502 || lookahead == 0x251c || lookahead == 0x2514 ||
          lookahead == 0x2503 || lookahead == 0x2523 || lookahead == 0x2517 ||
@@ -175,6 +189,40 @@ static bool consume_literal(TSLexer *lexer, const char *literal) {
 static bool is_horizontal_space(int32_t lookahead) {
   return lookahead == ' ' || lookahead == '\t' || lookahead == '\f' ||
          lookahead == 0xa0;
+}
+
+static bool scan_directive_body(TSLexer *lexer) {
+  bool consumed = false;
+
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '}') {
+      lexer->mark_end(lexer);
+      lexer->advance(lexer, false);
+      if (lexer->lookahead == '%') {
+        lexer->advance(lexer, false);
+        if (lexer->lookahead == '%') {
+          if (!consumed) {
+            return false;
+          }
+          lexer->result_symbol = DIRECTIVE_BODY;
+          return true;
+        }
+      }
+      consumed = true;
+      lexer->mark_end(lexer);
+      continue;
+    }
+
+    lexer->advance(lexer, false);
+    consumed = true;
+    lexer->mark_end(lexer);
+  }
+
+  if (!consumed) {
+    return false;
+  }
+  lexer->result_symbol = DIRECTIVE_BODY;
+  return true;
 }
 
 static bool is_tree_view_metadata_row(TSLexer *lexer) {
@@ -375,6 +423,10 @@ bool tree_sitter_mermaid_external_scanner_scan(void *payload, TSLexer *lexer,
     lexer->mark_end(lexer);
     lexer->result_symbol = END_OF_INPUT;
     return true;
+  }
+
+  if (directive_body_is_unambiguous(valid_symbols)) {
+    return scan_directive_body(lexer);
   }
 
   const TokenGroup *group = requested_group(valid_symbols);

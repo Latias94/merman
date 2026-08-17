@@ -43,6 +43,25 @@ const shape = ($, open, close) => seq(
   field('close', shapeDelimiter($, close)),
 );
 
+const blockItem = ($) => choice(
+  $.block_composite_statement,
+  $.block_columns_statement,
+  $.block_space_statement,
+  $.block_edge_statement,
+  $.block_incomplete_edge_statement,
+  $.block_class_definition_statement,
+  $.block_class_assignment_statement,
+  $.block_style_statement,
+  $.block_accessibility_title_statement,
+  $.block_accessibility_description_statement,
+  $.block_node_statement,
+  $.comment,
+  $.directive,
+  $._block_indented_blank_line,
+  $._line_ending,
+  ';',
+);
+
 const blockRules = {
   block_diagram: ($) => seq(
     field('header', $.block_header),
@@ -61,23 +80,14 @@ const blockRules = {
   // and use only newlines/semicolons as synchronization tokens for recovery.
   block_body: ($) => repeat1($._block_item),
 
-  _block_item: ($) => choice(
-    $.block_composite_statement,
-    $.block_columns_statement,
-    $.block_space_statement,
-    $.block_edge_statement,
-    $.block_incomplete_edge_statement,
-    $.block_class_definition_statement,
-    $.block_class_assignment_statement,
-    $.block_style_statement,
-    $.block_accessibility_title_statement,
-    $.block_accessibility_description_statement,
-    $.block_node_statement,
-    $.comment,
-    $.directive,
+  _block_item: blockItem,
+
+  // Consume layout-only lines atomically. Otherwise their indentation can be
+  // taken as the prefix of a node or statement before the newline is visible.
+  _block_indented_blank_line: ($) => prec(60, seq(
+    token.immediate(/[ \t]+/),
     $._line_ending,
-    ';',
-  ),
+  )),
 
   block_columns_statement: ($) => prec(40, seq(
     statementKeyword($, 'columns'),
@@ -111,23 +121,7 @@ const blockRules = {
     field('end', $.block_end),
   )),
 
-  _block_nested_item: ($) => choice(
-    $.block_composite_statement,
-    $.block_columns_statement,
-    $.block_space_statement,
-    $.block_edge_statement,
-    $.block_incomplete_edge_statement,
-    $.block_class_definition_statement,
-    $.block_class_assignment_statement,
-    $.block_style_statement,
-    $.block_accessibility_title_statement,
-    $.block_accessibility_description_statement,
-    $.block_node_statement,
-    $.comment,
-    $.directive,
-    $._line_ending,
-    ';',
-  ),
+  _block_nested_item: blockItem,
 
   block_end: (_) => token(prec(40, 'end')),
 
@@ -316,8 +310,18 @@ const blockRules = {
 
   block_style_declaration: ($) => seq(
     field('property', $.block_style_property),
-    field('delimiter', token.immediate(':')),
-    field('value', $.block_style_value),
+    choice(
+      seq(
+        field('delimiter', token.immediate(':')),
+        field('value', $.block_style_value),
+      ),
+      // Upstream lexes the style payload as opaque text, including accepted
+      // no-colon forms such as `fill#969`.
+      field('value', alias(
+        token.immediate(/[^,;:\r\n][^,;\r\n]*/),
+        $.block_style_value,
+      )),
+    ),
   ),
 
   block_style_property: (_) => token(/[A-Za-z_][A-Za-z0-9_-]*/),

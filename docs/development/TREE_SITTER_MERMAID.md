@@ -1,123 +1,105 @@
 # Tree-sitter Mermaid Development
 
-`distribution/tree-sitter-mermaid` is an independently versioned Tree-sitter language package for
-Mermaid source. It is adjacent to Merman's semantic parser stack and must stay out of the
-production dependency closure for `merman-core`, `merman-analysis`, `merman-editor-core`, and
-`merman-lsp`.
+`distribution/tree-sitter-mermaid` is an independently versioned syntax package. It is not a
+replacement for Merman's strict parsers and must not enter the production dependency closure of
+`merman-core`, `merman-analysis`, `merman-editor-core`, or `merman-lsp`.
 
-The package owns tolerant CST structure, generated Tree-sitter artifacts, query profiles, bindings,
-WASM, support metadata, and release dry-runs. Merman's existing parsers remain the authority for
-strict validity, semantic models, diagnostics, navigation identity, refactoring safety, and
-rendering.
+Tree-sitter owns tolerant CST structure, recovery, incremental reparsing, queries, generated
+artifacts, and distribution bindings. Merman remains the sole authority for semantic construction,
+diagnostics, IR, rendering, navigation identity, and safe refactoring.
 
 ## Local setup
 
-Install the package-local Node toolchain from the repository root:
+Install the pinned package-local generator without running the native install hook:
 
 ```console
-npm ci --prefix distribution/tree-sitter-mermaid
-npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid/scripts/header-oracle
-node distribution/tree-sitter-mermaid/node_modules/tree-sitter-cli/install.js
+npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
 npm run build:node --prefix distribution/tree-sitter-mermaid
 ```
 
-The generator is intentionally package-local and pinned. Do not use a globally installed
-`tree-sitter` CLI for committed artifacts.
+Committed parser artifacts must always be generated through the package-local CLI. Do not use a
+global Tree-sitter installation.
 
-## Regeneration
+## Grammar changes
 
-After changing `grammar.js`, `grammar/**`, `queries/**`, package metadata, generated binding
-templates, `src/scanner.c`, or package allowlists, regenerate through the package script:
+For a Mermaid syntax change:
+
+1. identify the exact rule in the pinned Mermaid 11.16.1 or ZenUML Core 3.50.1 source;
+2. change the smallest family-local grammar rule and add or update a standard Tree-sitter corpus
+   case;
+3. regenerate the ABI-15 native parser;
+4. run the focused family corpus and the Rust integration suite;
+5. run the one-way full-fixture oracle before merge.
 
 ```console
 npm run generate --prefix distribution/tree-sitter-mermaid
-```
-
-For review, prove the checked-in artifacts are current without writing:
-
-```console
-npm run generate:check --prefix distribution/tree-sitter-mermaid
-```
-
-Generation is treated as a whole artifact transaction. The receipt binds source inputs, generated C
-and JSON, C headers, WASM, query profiles, metadata, package manifests, and the exact selected
-Mermaid/ZenUML and Tree-sitter runtime identities. Extra, missing, stale, or cross-version generated
-files are failures, not warnings.
-
-## Focused verification
-
-Use these checks while iterating on package-owned code:
-
-```console
 npm run test:corpus --prefix distribution/tree-sitter-mermaid
-npm run test:corpus:wasm --prefix distribution/tree-sitter-mermaid
-npm run test:queries --prefix distribution/tree-sitter-mermaid
-npm run test:incremental --prefix distribution/tree-sitter-mermaid
-npm run test:adversarial --prefix distribution/tree-sitter-mermaid
-npm run metrics:check --prefix distribution/tree-sitter-mermaid
 cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
-cargo run --locked -p xtask -- verify-tree-sitter-mermaid --all-fixtures
 ```
 
-Use `cargo fmt --all -- --check` and package-local JavaScript/Python syntax checks before a commit
-that edits mixed-language tooling. Prefer serial Cargo runs when the machine is already busy.
+The corpus is the CST and recovery golden authority. Do not duplicate expected trees in JSON,
+Rust, Node, WASM, or editor-specific fixtures. Valid structured input must not pass through a broad
+`unstructured_body`, `catch_all_body`, `raw_line`, or generic `unknown_statement` fallback.
 
-## Support tiers
+## Generated artifacts
 
-`metadata/support.json` is executable release evidence. A family may only move upward when its
-own evidence rows support the higher tier:
-
-- `recognized`: accepted headers route to the correct public family root.
-- `structured`: legal source exposes named family structure and does not rely on a broad fallback.
-- `query-complete`: structured plus every profile/surface has asserted captures or explicit N/A.
-- `conformant`: query-complete plus admitted fixtures, recovery, incremental equivalence, schema,
-  binding, fuzz, and metrics evidence.
-
-Do not promote a family by prose. Run the metadata gate:
+Native generation and language-WASM generation are deliberately separate:
 
 ```console
-cargo run --locked -p xtask -- verify-tree-sitter-mermaid
+npm run check:generated --prefix distribution/tree-sitter-mermaid
+npm run generate:wasm --prefix distribution/tree-sitter-mermaid
+npm run check:wasm --prefix distribution/tree-sitter-mermaid
 ```
 
-## Recovery and fallback policy
+Both paths explicitly select ABI 15. Native freshness is an ordinary grammar gate. WASM freshness
+is a slower CI/release lane because it requires the pinned WASI SDK. The generator keeps only wide
+gross size ceilings; noisy timing and RSS receipts are not release contracts.
 
-Valid structured source must not be accepted through a generic body fallback such as
-`unstructured_body`, `catch_all_body`, `raw_line`, or generic `unknown_statement`. Family-local
-malformed recovery nodes are allowed when they are named, finite, and preserve unaffected siblings.
+## Test ownership
 
-The current retained names `git_graph_unknown_statement_keyword` and
-`sequence_unknown_statement_head` are malformed-line recovery heads, not tier-enabling fallback
-bodies. If a new family needs a similar recovery form, add a targeted conformance test explaining
-why valid input cannot pass through it.
+The maintained test layers are intentionally small:
 
-## Downstream queries
+- `tree-sitter test`: CST structure and local recovery;
+- `tests/conformance.rs`: every strict-valid Merman fixture maps to the expected Tree-sitter family
+  root without errors or broad recovery;
+- `tests/incremental.rs`: a family switch, an ordinary edit, an indentation-scanner edit, parser
+  cancellation/reuse, and invalid UTF-8 stability;
+- `tests/scanner_protocol.rs`: scanner serialization, restart, maximum depth/indentation, overflow,
+  corruption reset, and representative family switching;
+- `tests/queries.rs`: compile every shipped query, execute canonical highlights for the 35 small
+  family sources, and run a few applicable injection/locals/tags examples;
+- one representative load/parse smoke for Rust, Node, C, and language WASM.
 
-Portable queries are the schema baseline. Neovim, Helix, and Zed profiles adapt that schema for
-their consumers and carry separate applicability matrices under `test/queries/`.
+Do not recreate support tiers, artifact/header receipts, schema snapshots, edit-trace DSLs,
+per-editor applicability matrices, exact capture forests, or timing/RSS proof runners.
 
-Run the downstream matrix after any public named node, field, capture, or query-profile change:
+Use `cargo fmt --all -- --check` and `git diff --check` before committing. Prefer serial Cargo runs
+when the shared machine is busy.
 
-```console
-npm run test:downstream --prefix distribution/tree-sitter-mermaid
-```
+## Queries and editor adoption
 
-The Zed fixture pins a repository commit because Zed consumes grammars from Git. If generated parser
-bytes change, first commit the generated parser, then update
-`distribution/tree-sitter-mermaid/test/downstream/zed/extension.toml` to a commit that contains the
-matching parser.
+`queries/portable` is the canonical package query contract referenced by `tree-sitter.json`.
+Neovim, Helix, and Zed directories are pre-1.0 adoption assets. Editors ultimately own their
+runtime query copies, so publication of the npm or Cargo package does not update editor users.
 
-## Robustness
+After an immutable grammar release exists, update downstream integrations to the release commit
+and the monorepo subdirectory:
 
-Tree-sitter fuzzing is split by parser behavior:
+- nvim-treesitter: `location = "distribution/tree-sitter-mermaid"`;
+- Helix: `subpath = "distribution/tree-sitter-mermaid"`;
+- Zed: `path = "distribution/tree-sitter-mermaid"`.
 
-- `tree_sitter_mermaid_parse`: arbitrary Mermaid inputs over all package-owned families.
-- `tree_sitter_mermaid_edits`: byte/point edit sequences and fresh-tree equivalence.
-- `tree_sitter_mermaid_scanner`: external scanner state, restart, overflow, and UTF-8 boundaries.
-- `tree_sitter_mermaid_query`: arbitrary-tree query execution across all query profiles.
+Compile all shipped queries locally in Rust; do not download and execute a fixed editor version
+matrix for every grammar change.
 
-Run the bounded committed regression pass before release-oriented changes:
+## Fuzzing
 
-```console
-npm run fuzz:regression --prefix distribution/tree-sitter-mermaid
-```
+Tree-sitter keeps three bounded cargo-fuzz targets:
 
+- `tree_sitter_mermaid_parse` for arbitrary input and deterministic spans;
+- `tree_sitter_mermaid_edits` for incremental/fresh tree equivalence;
+- `tree_sitter_mermaid_scanner` for external scanner state and valid-symbol masks.
+
+The scheduled workflow owns randomized discovery. Stable regressions belong in the corpus or
+focused Rust tests rather than in a second package-local fuzz runner.

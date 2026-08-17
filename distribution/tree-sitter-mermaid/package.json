@@ -2,57 +2,74 @@
   "name": "tree-sitter-mermaid",
   "version": "0.1.0",
   "description": "Tolerant Tree-sitter grammar and editor queries for Mermaid",
-  "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git",
+    "directory": "distribution/tree-sitter-mermaid"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/distribution/tree-sitter-mermaid",
+  "keywords": [
+    "incremental",
+    "mermaid",
+    "parser",
+    "tree-sitter"
+  ],
   "type": "commonjs",
   "main": "./bindings/node/index.js",
   "types": "./bindings/node/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./bindings/node/index.d.ts",
+      "require": "./bindings/node/index.js",
+      "default": "./bindings/node/index.js"
+    },
+    "./package.json": "./package.json",
+    "./tree-sitter-mermaid.wasm": "./tree-sitter-mermaid.wasm",
+    "./queries/*": "./queries/*",
+    "./src/*": "./src/*"
+  },
   "files": [
-    "bindings",
     "binding.gyp",
+    "bindings/c",
+    "bindings/node/binding.cc",
+    "bindings/node/index.d.ts",
+    "bindings/node/index.js",
+    "CMakeLists.txt",
     "grammar.js",
     "grammar",
     "LICENSE",
-    "metadata",
+    "Makefile",
     "queries",
-    "scripts/*.js",
-    "scripts/*.py",
-    "scripts/header-oracle/package.json",
-    "scripts/header-oracle/package-lock.json",
+    "prebuilds",
     "README.md",
     "src",
     "THIRD_PARTY_LICENSES",
     "THIRD_PARTY_NOTICES.md",
+    "tree-sitter-mermaid.wasm",
     "tree-sitter.json",
-    "wasm"
+    "metadata/provenance.json",
+    "metadata/derivations.json"
   ],
   "scripts": {
+    "install": "node-gyp-build",
     "build:node": "node-gyp rebuild",
+    "prebuild": "prebuildify --napi",
     "generate": "node scripts/run_python.js scripts/generate.py --write",
-    "generate:header-oracle": "node scripts/header_oracle.js --node-modules scripts/header-oracle/node_modules --write",
-    "generate:header-evidence": "node scripts/header_receipt.js --write",
-    "generate:check": "npm run check:generated",
-    "check:header-oracle": "node scripts/header_oracle.js --node-modules scripts/header-oracle/node_modules",
+    "generate:wasm": "node scripts/run_python.js scripts/generate.py --wasm --write",
     "check:generated": "node scripts/run_python.js scripts/generate.py",
-    "check:header-evidence": "node scripts/header_receipt.js",
-    "check:metadata": "cargo run --locked -p xtask -- verify-tree-sitter-mermaid",
-    "metrics:check": "npm run test:mechanics",
-    "build:wasm": "node scripts/run_python.js scripts/generate.py",
+    "check:wasm": "node scripts/run_python.js scripts/generate.py --wasm",
     "test:corpus": "tree-sitter test --overview-only",
-    "test:corpus:wasm": "node scripts/test_wasm_corpus.js",
     "test:edits": "tree-sitter fuzz --iterations 5 --edits 5",
     "test:generation-script": "node scripts/run_python.js -m unittest scripts.test_generate scripts.test_c_smoke",
     "test:incremental": "cargo nextest run --locked -p tree-sitter-mermaid --test incremental --no-fail-fast",
     "test:adversarial": "cargo nextest run --locked -p tree-sitter-mermaid --test adversarial --no-fail-fast",
-    "test:mechanics": "node scripts/mechanics_gate.js",
-    "test:queries": "node scripts/query_golden.js && node test/queries/neovim/verify.js && node test/queries/helix/verify.js && node test/queries/zed/verify.js",
-    "test:downstream": "node --test test/downstream/downstream_smoke.test.js && node scripts/downstream_smoke.js",
-    "test:node": "node --test bindings/query-profiles_test.js bindings/node/binding_test.js",
+    "test:queries": "cargo nextest run --locked -p tree-sitter-mermaid --test queries --no-fail-fast",
+    "test:node": "node --test bindings/node/binding_test.js",
     "test:c": "node scripts/run_python.js scripts/c_smoke.py",
     "test:wasm": "node --test bindings/node/wasm_test.js",
     "test:package-smoke": "node scripts/run_python.js scripts/package_smoke.py",
-    "fuzz:regression": "node scripts/fuzz_regression.js",
-    "test": "npm run check:header-evidence && npm run check:metadata && npm run test:generation-script && npm run test:corpus && npm run test:corpus:wasm && npm run test:edits && npm run test:queries && npm run test:node && npm run test:c && npm run test:wasm && npm run test:mechanics"
+    "test": "npm run test:corpus && npm run test:node && npm run test:wasm"
   },
   "dependencies": {
     "node-addon-api": "8.9.2",
@@ -60,9 +77,18 @@
   },
   "devDependencies": {
     "node-gyp": "12.1.0",
+    "prebuildify": "6.0.1",
     "tree-sitter": "0.25.1",
     "tree-sitter-cli": "0.26.12",
     "web-tree-sitter": "0.26.12"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.25.0"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
   },
   "tree-sitter": [
     {

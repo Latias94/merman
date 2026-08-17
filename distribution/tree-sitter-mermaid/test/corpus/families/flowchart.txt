@@ -329,13 +329,12 @@ flowchart TD
               (flow_vertex
                 (flow_node_id))))))
       (flow_line_item
-        (flow_statement
-          (flow_incomplete_edge_statement
-            (flow_node
-              (flow_vertex
-                (flow_node_id)))
-            (flow_edge
-              (flow_arrow)))))
+        (flow_incomplete_edge_statement
+          (flow_node
+            (flow_vertex
+              (flow_node_id)))
+          (flow_edge
+            (flow_arrow))))
       (flow_line_item
         (flow_statement
           (flow_edge_statement
@@ -361,3 +360,59 @@ graph LR
     (flowchart_header
       (diagram_keyword)
       (direction))))
+
+==================
+keyword-prefixed node identifiers stay ordinary nodes
+==================
+
+flowchart TD
+  stylesTS --> StyleOptions[Options]
+  classA --> B
+  classDefX --> C
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_square_label
+                    (flow_shape_delimiter)
+                    (flow_square_label_text)
+                    (flow_shape_delimiter))))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))))))))

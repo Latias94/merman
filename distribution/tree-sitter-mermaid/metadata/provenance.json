@@ -3,11 +3,11 @@
   "package": {
     "name": "tree-sitter-mermaid",
     "version": "0.1.0",
-    "releaseState": "dry-run-only"
+    "releaseState": "candidate"
   },
   "language": {
     "symbol": "mermaid",
-    "abi": 14,
+    "abi": 15,
     "cstSchemaVersion": 1,
     "querySchemaVersion": 1
   },
@@ -25,9 +25,7 @@
       "kind": "one-way-conformance-oracle",
       "version": "0.8.0-alpha.5",
       "repository": "https://github.com/Latias94/merman.git",
-      "ref": "e4d3169a614f4eca3e4897fe9ee1fd578136db92",
-      "commit": "e4d3169a614f4eca3e4897fe9ee1fd578136db92",
-      "usage": "Public family catalog, authoring-header suggestions, strict-valid fixtures, and semantic-only conformance evidence",
+      "usage": "Public family catalog and strict-valid fixture corpus used by the one-way conformance test",
       "license": "MIT OR Apache-2.0"
     },
     {

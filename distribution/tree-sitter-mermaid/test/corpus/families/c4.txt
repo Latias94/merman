@@ -568,4 +568,4 @@ C4Deployment
     (c4_header
       (diagram_keyword))
     (c4_body
-      (MISSING directive))))
+      (MISSING comment))))

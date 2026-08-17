@@ -7,14 +7,25 @@ const diagramKeyword = ($) => field(
   alias(token(prec(50, /sequenceDiagram/i)), $.diagram_keyword),
 );
 
-const statementKeyword = ($, keyword) => field(
+const statementKeyword = ($, keyword, lexicalPrecedence = 40) => field(
   'keyword',
-  alias(token(prec(40, keyword)), $.sequence_statement_keyword),
+  alias(
+    token(prec(lexicalPrecedence, keyword)),
+    $.sequence_statement_keyword,
+  ),
 );
 
-const blockKeyword = ($, keyword) => field(
+const blockKeyword = ($, keyword, lexicalPrecedence = 40) => field(
   'keyword',
-  alias(token(prec(40, keyword)), $.sequence_block_keyword),
+  alias(
+    token(prec(lexicalPrecedence, keyword)),
+    $.sequence_block_keyword,
+  ),
+);
+
+const blockEnd = ($) => field(
+  'end',
+  alias(token(prec(40, /end/i)), $.sequence_block_end),
 );
 
 const actorReference = ($, fieldName) => field(
@@ -27,6 +38,12 @@ const trailingTrivia = ($) => optional(choice(
   field('comment', $.sequence_hash_comment),
   field('directive', $.directive),
 ));
+
+const blockLineTerminator = ($, fieldName) => seq(
+  // Jison discards same-line comments before it returns the line terminator.
+  trailingTrivia($),
+  field(fieldName, $._statement_terminator),
+);
 
 const sequenceRules = {
   sequence_diagram: ($) => choice(
@@ -101,7 +118,7 @@ const sequenceRules = {
 
   sequence_participant_declaration: ($) => prec(40, seq(
     field('kind', choice(
-      statementKeyword($, /participant/i),
+      statementKeyword($, /participant/i, 60),
       statementKeyword($, /actor/i),
     )),
     field('name', alias($._sequence_actor_identifier, $.sequence_participant_name)),
@@ -148,9 +165,21 @@ const sequenceRules = {
     $.sequence_actor_reference,
   ),
 
-  _sequence_actor_identifier: (_) => token(prec(
-    30,
-    /[A-Za-z0-9_\u00c0-\uffff](?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-Za-z0-9_=.\u00c0-\uffff])*/,
+  _sequence_actor_identifier: ($) => choice(
+    $._sequence_keyword_prefixed_actor_identifier,
+    token(prec(30, choice(
+      // Reserve `-x` for cross arrows while retaining ordinary hyphenated ids.
+      /[A-Za-z0-9_\u00c0-\uffff](?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])*/,
+      // Merman keeps this local parser extension even though Mermaid rejects it.
+      /\([^(),:;+ \t\f\r\n]+\)/,
+    ))),
+  ),
+
+  // Jison only recognizes block keywords at word boundaries. Give a longer
+  // actor such as `Parser` priority over the shorter `par` token.
+  _sequence_keyword_prefixed_actor_identifier: (_) => token(prec(
+    50,
+    /(?:loop|rect|opt|alt|else|par_over|par|and|critical|option|break|box|end)(?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])(?:[A-Za-z0-9_=.\u00c0-\uffff]|-[A-WYZa-wyz0-9_=.\u00c0-\uffff])*/i,
   )),
 
   sequence_participant_config: (_) => token(prec(30, /@\{[^}\r\n]*\}/)),
@@ -234,95 +263,95 @@ const sequenceRules = {
   sequence_loop_block: ($) => seq(
     blockKeyword($, /loop/i),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('statement', $._sequence_line_item)),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_opt_block: ($) => seq(
     blockKeyword($, /opt/i),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('statement', $._sequence_line_item)),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_alt_block: ($) => seq(
     blockKeyword($, /alt/i),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('statement', $._sequence_line_item)),
     repeat(field('branch', $.sequence_else_branch)),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_else_branch: ($) => seq(
     blockKeyword($, /else/i),
     optional(field('label', $.sequence_block_label)),
-    field('terminator', $._statement_terminator),
+    blockLineTerminator($, 'terminator'),
     repeat(field('statement', $._sequence_line_item)),
   ),
 
   sequence_par_block: ($) => seq(
     field('kind', choice(
-      blockKeyword($, /par_over/i),
+      blockKeyword($, /par_over/i, 60),
       blockKeyword($, /par/i),
     )),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('statement', $._sequence_line_item)),
     repeat(field('branch', $.sequence_and_branch)),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_and_branch: ($) => seq(
     blockKeyword($, /and/i),
     optional(field('label', $.sequence_block_label)),
-    field('terminator', $._statement_terminator),
+    blockLineTerminator($, 'terminator'),
     repeat(field('statement', $._sequence_line_item)),
   ),
 
   sequence_critical_block: ($) => seq(
     blockKeyword($, /critical/i),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('statement', $._sequence_line_item)),
     repeat(field('branch', $.sequence_option_branch)),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_option_branch: ($) => seq(
-    blockKeyword($, /option/i),
+    blockKeyword($, /option/i, 60),
     optional(field('label', $.sequence_block_label)),
-    field('terminator', $._statement_terminator),
+    blockLineTerminator($, 'terminator'),
     repeat(field('statement', $._sequence_line_item)),
   ),
 
   sequence_break_block: ($) => seq(
     blockKeyword($, /break/i),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('statement', $._sequence_line_item)),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_rect_block: ($) => seq(
     blockKeyword($, /rect/i),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('statement', $._sequence_line_item)),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_box_block: ($) => seq(
     blockKeyword($, /box/i),
     optional(field('label', $.sequence_block_label)),
-    field('open_terminator', $._statement_terminator),
+    blockLineTerminator($, 'open_terminator'),
     repeat(field('participant', seq(
       field('declaration', $.sequence_participant_declaration),
       field('terminator', $._statement_terminator),
     ))),
-    field('end', alias(token(prec(40, /end/i)), $.sequence_block_end)),
+    blockEnd($),
   ),
 
   sequence_block_label: (_) => token(prec(-5, /[^#; \t\f\r\n][^#;\r\n]*/)),

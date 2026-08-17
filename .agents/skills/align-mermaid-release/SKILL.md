@@ -185,11 +185,13 @@ Implement each admitted delta through the family-owned path appropriate to its k
   completions, hover, symbols, rename/reference behavior, fixtures, and migration documentation.
 - **Independent Tree-sitter package**: keep `distribution/tree-sitter-mermaid` outside Merman's
   semantic parser and production dependency closure. A repository Mermaid/ZenUML move records
-  `repositoryAlignment` drift without rewriting the package's selected baseline or historical
-  tiers. A deliberate package-baseline move demotes each affected family to the highest still-
-  proven tier, then re-earns `conformant` only after exact detector/header, grammar/recovery,
-  admitted-fixture, incremental, schema, query, binding, fuzz, metrics, generated-artifact, and
-  companion evidence has been replayed against the new identities.
+  intentional drift without rewriting the package's selected baseline. A deliberate package-
+  baseline move updates `metadata/provenance.json`, ports the affected family-local grammar from
+  the pinned sources, refreshes the standard Tree-sitter corpus, and runs Merman's strict-valid
+  fixture corpus as a one-way oracle. Tree-sitter results never become semantic input to Merman.
+  Review named-node, field, and canonical query changes as pre-1.0 API decisions, then regenerate
+  the ABI-15 native and language-WASM artifacts and exercise the published Rust, npm, C, and WASM
+  surfaces.
 
 When a changed syntax path uses a checked-in LALRPOP grammar, treat the `.lalrpop` source and its
 generated Rust parser as one atomic projection. Run `cargo run -p xtask -- gen-lalrpop-parsers`;
@@ -238,11 +240,21 @@ cargo run -p xtask -- verify-playground-example-catalog
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- check-alignment
 cargo run -p xtask -- verify-lalrpop-parsers
-cargo run --locked -p xtask -- verify-tree-sitter-mermaid --all-fixtures
 cargo run -p xtask -- verify --strict
 cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+When the independent Tree-sitter baseline or package surface changes, also run its maintained
+package-owned gates:
+
+```bash
+npm run check:generated --prefix distribution/tree-sitter-mermaid
+npm run test:corpus --prefix distribution/tree-sitter-mermaid
+cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
+npm run check:wasm --prefix distribution/tree-sitter-mermaid
+npm run test:package-smoke --prefix distribution/tree-sitter-mermaid
 ```
 
 The strict command owns release DOM comparisons in `structure`, `parity`, and `parity-root`, Web
@@ -250,9 +262,9 @@ contract/build/smoke/prepack, Playground unit/lint/build/browser, and VS Code pa
 reference CLI, LSP, platform, and extension-host matrices whenever those surfaces changed. Run the
 WASM size matrix and target build matrix whenever dependency or feature ownership changed. Use
 `npm ls --all` in the Playground and reference CLI to prove that materialized companion graphs match
-the descriptor. For a Tree-sitter package baseline change, also run its header oracle/evidence,
-generated-artifact, query, mechanics, fixed-fuzz configuration, package conformance, incremental,
-and adversarial gates. Use `cargo nextest` for Rust tests.
+the descriptor. The Tree-sitter Rust suite owns its one-way fixture conformance, incremental,
+scanner, query, and adversarial checks; do not recreate those guarantees in an `xtask` verifier or
+a second package-local evidence engine. Use `cargo nextest` for Rust tests.
 
 Update the upgrade playbook, relevant ADRs and family/editor records, package surfaces, Playground
 design, generated status, and provenance. Report selected versus rejected companions, workflow

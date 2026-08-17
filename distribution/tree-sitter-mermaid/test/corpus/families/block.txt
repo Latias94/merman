@@ -395,6 +395,33 @@ a b c; wide:2; classDef blue fill:#66f; class a,b blue
           (block_identifier))))))
 
 ==================
+opaque upstream style payload stays inside a style declaration
+==================
+
+block
+A
+style A fill#969;
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (block_node_statement
+        (block_node
+          (block_identifier)))
+      (block_style_statement
+        (block_statement_keyword)
+        (block_identifier_list
+          (block_identifier))
+        (block_style_list
+          (block_style_declaration
+            (block_style_property)
+            (block_style_value)))))))
+
+==================
 header-only beta alias is rejected without a body
 ==================
 
@@ -407,7 +434,7 @@ block-beta
     (block_header
       (diagram_keyword))
     (block_body
-      (MISSING directive))))
+      (MISSING comment))))
 
 ==================
 header-only legacy alias is rejected without a body
@@ -422,4 +449,4 @@ block
     (block_header
       (diagram_keyword))
     (block_body
-      (MISSING directive))))
+      (MISSING comment))))
