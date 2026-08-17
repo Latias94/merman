@@ -28,23 +28,6 @@ pub(crate) fn wrap_sequence_label_like_mermaid_lines(
     crate::text::wrap_label_like_mermaid_lines(label, &sequence_measurer, style, max_width_px)
 }
 
-fn sequence_drawn_text_style(style: &TextStyle) -> TextStyle {
-    let mut effective = style.clone();
-    if let Some(font_family) = effective.font_family.as_mut()
-        && font_family.trim_end().ends_with(';')
-    {
-        // Mermaid's final Sequence text rejects the same invalid inline declaration used by
-        // `calculateTextDimensions`, then inherits the normalized diagram-root declaration.
-        // Keep that terminal DOM measurement distinct from the body-attached wrap probe.
-        *font_family = font_family
-            .trim_end()
-            .trim_end_matches(';')
-            .trim_end()
-            .to_string();
-    }
-    effective
-}
-
 pub(super) fn measure_svg_like_with_html_br(
     measurer: &dyn TextMeasurer,
     text: &str,
@@ -63,10 +46,9 @@ pub(super) enum SequenceDrawnTextNode {
 pub(super) fn measure_drawn_svg_like_with_html_br(
     measurer: &dyn TextMeasurer,
     text: &str,
-    style: &TextStyle,
+    terminal_style: &TextStyle,
     node: SequenceDrawnTextNode,
 ) -> (f64, f64) {
-    let effective_style = sequence_drawn_text_style(style);
     let lines = split_html_br_lines(text);
     let mut width = 0.0_f64;
     let mut height = 0.0_f64;
@@ -74,19 +56,19 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
         let measured_line = if line.is_empty() { "\u{200b}" } else { line };
         let line_width = match node {
             SequenceDrawnTextNode::Direct => {
-                measurer.measure_svg_raw_text_bbox_width_px(measured_line, &effective_style)
+                measurer.measure_svg_raw_text_bbox_width_px(measured_line, terminal_style)
             }
             SequenceDrawnTextNode::Tspan => {
-                measurer.measure_svg_tspan_text_bbox_width_px(measured_line, &effective_style)
+                measurer.measure_svg_tspan_text_bbox_width_px(measured_line, terminal_style)
             }
         }
         .max(0.0);
         let line_height = match node {
             SequenceDrawnTextNode::Direct => {
-                measurer.measure_svg_simple_text_bbox_height_px(measured_line, &effective_style)
+                measurer.measure_svg_simple_text_bbox_height_px(measured_line, terminal_style)
             }
             SequenceDrawnTextNode::Tspan => {
-                measurer.measure_svg_tspan_text_bbox_height_px(measured_line, &effective_style)
+                measurer.measure_svg_tspan_text_bbox_height_px(measured_line, terminal_style)
             }
         }
         .max(0.0);
@@ -393,6 +375,13 @@ mod tests {
         }
     }
 
+    fn terminal_sequence_style() -> TextStyle {
+        TextStyle {
+            font_family: Some("Excalifont".to_string()),
+            ..default_sequence_style()
+        }
+    }
+
     #[test]
     fn sequence_mixed_math_metrics_preserve_fragment_precision() {
         let config = merman_core::MermaidConfig::default();
@@ -491,12 +480,11 @@ mod tests {
 
     #[test]
     fn sequence_drawn_dimensions_route_dom_shapes_with_the_terminal_cssom_font() {
-        let style = default_sequence_style();
         let direct = OperationProbe::default();
         let direct_dimensions = super::measure_drawn_svg_like_with_html_br(
             &direct,
             "alpha<br><br>beta",
-            &style,
+            &terminal_sequence_style(),
             super::SequenceDrawnTextNode::Direct,
         );
         assert_eq!(direct_dimensions, (101.0, 57.0));
@@ -511,7 +499,7 @@ mod tests {
         assert!(
             direct_calls
                 .iter()
-                .all(|(_, _, family)| family == "\"trebuchet ms\", verdana, arial, sans-serif")
+                .all(|(_, _, family)| family == "Excalifont")
         );
         assert!(direct_calls.iter().any(|(_, text, _)| text == "\u{200b}"));
 
@@ -519,7 +507,7 @@ mod tests {
         let tspan_dimensions = super::measure_drawn_svg_like_with_html_br(
             &tspan,
             "alpha",
-            &style,
+            &terminal_sequence_style(),
             super::SequenceDrawnTextNode::Tspan,
         );
         assert_eq!(tspan_dimensions, (202.0, 23.0));
@@ -574,7 +562,7 @@ mod tests {
         let (_, raw_height) = super::measure_drawn_svg_like_with_html_br(
             &SmallFontProbe,
             &text,
-            &default_sequence_style(),
+            &terminal_sequence_style(),
             super::SequenceDrawnTextNode::Tspan,
         );
 

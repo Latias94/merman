@@ -198,6 +198,7 @@ pub(super) struct SequenceNoteLayoutContext<'a> {
     pub(super) cursor_y: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) note_text_style: &'a TextStyle,
+    pub(super) note_terminal_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
 }
@@ -244,7 +245,7 @@ pub(super) fn layout_sequence_note(
         measure_drawn_svg_like_with_html_br(
             ctx.measurer,
             &horizontal.effective_text,
-            ctx.note_text_style,
+            ctx.note_terminal_text_style,
             SequenceDrawnTextNode::Tspan,
         )
     };

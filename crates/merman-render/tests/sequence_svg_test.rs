@@ -2446,6 +2446,40 @@ end"#;
         );
     }
 
+    for (text_fragment, operations) in [
+        (
+            "CSSOM Message",
+            [
+                TextMeasurementOperation::RawBBoxWidth,
+                TextMeasurementOperation::SimpleBBoxHeight,
+            ],
+        ),
+        (
+            "CSSOM Note",
+            [
+                TextMeasurementOperation::TspanBBoxWidth,
+                TextMeasurementOperation::TspanBBoxHeight,
+            ],
+        ),
+    ] {
+        for operation in operations {
+            let matching = requests
+                .iter()
+                .filter(|exchange| {
+                    exchange.request.text.contains(text_fragment)
+                        && exchange.request.operation == operation
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                !matching.is_empty()
+                    && matching.iter().all(|exchange| {
+                        exchange.request.font_family.as_deref() == Some("Excalifont")
+                    }),
+                "terminal {operation:?} requests must use the CSSOM-effective inherited font for {text_fragment:?}: {matching:#?}"
+            );
+        }
+    }
+
     let theme = sequence_excalifont_asset_theme();
     let render_engine =
         merman_render::__private::install_parse_compatibility(&theme, engine.clone());

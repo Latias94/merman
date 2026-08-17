@@ -161,6 +161,10 @@ impl SequenceResolvedTypography {
         &self.measurement_style
     }
 
+    pub(crate) const fn terminal_text_style(&self) -> &TextStyle {
+        &self.terminal_text_style
+    }
+
     pub(crate) const fn prepared_typography(&self) -> &ThemeTextStyle {
         &self.prepared_typography
     }

@@ -212,6 +212,7 @@ pub(super) struct SequenceMessageLayoutContext<'a> {
     pub(super) cursor_y: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
+    pub(super) msg_terminal_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,
@@ -625,7 +626,7 @@ fn message_label(
         measure_drawn_svg_like_with_html_br(
             ctx.measurer,
             effective_text,
-            ctx.msg_text_style,
+            ctx.msg_terminal_text_style,
             SequenceDrawnTextNode::Direct,
         )
     };
