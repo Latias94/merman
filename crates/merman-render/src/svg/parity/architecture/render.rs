@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::architecture_metrics::architecture_estimate_service_bounds;
-use crate::model::ArchitectureCytoscapeServiceBounds;
+use crate::model::{ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout};
 
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
@@ -46,6 +46,7 @@ struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     model: &'a M,
     effective_config: &'a serde_json::Value,
     sanitize_config: &'a merman_core::MermaidConfig,
+    group_theme: &'a crate::architecture::ArchitectureGroupThemePlan,
     options: &'a SvgExecution<'a>,
 }
 
@@ -59,6 +60,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
+    group_theme: &crate::architecture::ArchitectureGroupThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let timing = options.timing();
@@ -71,6 +73,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             model,
             effective_config: effective_config.as_value(),
             sanitize_config: effective_config,
+            group_theme,
             options,
         },
         ArchitectureTimingState {
@@ -90,6 +93,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         model,
         effective_config,
         sanitize_config,
+        group_theme,
         options,
     } = req;
     let ArchitectureTimingState {
@@ -311,7 +315,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             content_bounds: &mut content_bounds,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
-        push_architecture_groups(&mut node_render_ctx, &group_rects)?;
+        push_architecture_groups(
+            &mut node_render_ctx,
+            &group_rects,
+            group_theme.inline_style(),
+        )?;
     }
 
     out.push_str("</svg>\n");

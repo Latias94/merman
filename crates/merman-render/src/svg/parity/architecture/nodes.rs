@@ -1,7 +1,7 @@
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
-use super::super::{SvgOutput, escape_xml_into, fmt};
+use super::super::{SvgOutput, escape_attr_into, escape_xml_into, fmt};
 use super::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
 };
@@ -170,6 +170,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
 pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOutput>(
     ctx: &mut ArchitectureNodeRenderContext<'a, M, O>,
     group_rects: &[GroupRect<'a>],
+    group_inline_style: Option<&str>,
 ) -> crate::Result<()> {
     let out = &mut *ctx.out;
     let settings = ctx.settings;
@@ -196,12 +197,18 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
             escape_xml_into(out, grp.id);
             let _ = write!(
                 out,
-                r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg"/>"#,
+                r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg""#,
                 x = fmt(x),
                 y = fmt(y),
                 w = fmt(w.max(1.0)),
                 h = fmt(h.max(1.0))
             );
+            if let Some(style) = group_inline_style {
+                out.push_str(r#" style=""#);
+                escape_attr_into(out, style);
+                out.push('"');
+            }
+            out.push_str("/>");
 
             out.push_str("<g>");
 

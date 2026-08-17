@@ -987,6 +987,7 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::CLASS
                 | DiagramFamilyId::GANTT
                 | DiagramFamilyId::PIE
+                | DiagramFamilyId::ARCHITECTURE
         ) && self
             .resolved_theme
             .as_deref()
@@ -1340,6 +1341,32 @@ impl StateFamilyArtifact {
     }
 }
 
+#[cfg(feature = "layout-cytoscape")]
+#[derive(Debug)]
+pub(crate) struct ArchitectureFamilyArtifact {
+    pair: FamilyPair<
+        diagrams::architecture::ArchitectureDiagramRenderModel,
+        ArchitectureDiagramLayout,
+    >,
+    group_theme: crate::architecture::ArchitectureGroupThemePlan,
+}
+
+#[cfg(feature = "layout-cytoscape")]
+impl ArchitectureFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<
+        diagrams::architecture::ArchitectureDiagramRenderModel,
+        ArchitectureDiagramLayout,
+    > {
+        &self.pair
+    }
+
+    pub(crate) const fn group_theme(&self) -> &crate::architecture::ArchitectureGroupThemePlan {
+        &self.group_theme
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
@@ -1364,14 +1391,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Flowchart(Box<FlowchartFamilyArtifact<FlowchartLayout>>),
     Swimlane(Box<FlowchartFamilyArtifact<SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
-    Architecture(
-        Box<
-            FamilyPair<
-                diagrams::architecture::ArchitectureDiagramRenderModel,
-                ArchitectureDiagramLayout,
-            >,
-        >,
-    ),
+    Architecture(Box<ArchitectureFamilyArtifact>),
     Class(Box<ClassFamilyArtifact>),
     C4(Box<FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>>),
     Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
@@ -1662,6 +1682,16 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    #[cfg(feature = "layout-cytoscape")]
+    fn architecture_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Architecture(artifact) => {
+                Some(artifact.group_theme().finish_evidence_after_svg())
+            }
+            _ => None,
+        }
+    }
+
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
@@ -1675,7 +1705,7 @@ impl BuiltinFamilyArtifact {
             Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
-            Self::Architecture(pair) => pair.compatibility_json(metadata),
+            Self::Architecture(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Class(artifact) => artifact.pair.compatibility_json(metadata),
             Self::C4(pair) => pair.compatibility_json(metadata),
             Self::Cynefin(pair) => pair.compatibility_json(metadata),
@@ -1714,7 +1744,9 @@ impl BuiltinFamilyArtifact {
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
-            Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
+            Self::Architecture(artifact) => {
+                LayoutProjection::ArchitectureDiagram(artifact.pair.layout())
+            }
             Self::Class(artifact) => LayoutProjection::ClassDiagram(artifact.pair.layout()),
             Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
@@ -2313,6 +2345,8 @@ impl FamilyRenderArtifact {
             .class_theme_evidence(self.context.resolved_theme());
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let pie_theme_evidence = self.family.pie_theme_evidence();
+        #[cfg(feature = "layout-cytoscape")]
+        let architecture_theme_evidence = self.family.architecture_theme_evidence();
         let state_filter_receipt = match &self.family {
             BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
             _ => None,
@@ -2338,6 +2372,10 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = pie_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::PIE, evidence);
+        }
+        #[cfg(feature = "layout-cytoscape")]
+        if let Some(evidence) = architecture_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::ARCHITECTURE, evidence);
         }
         context.observe_output_visibility(debug);
         if let Some(emitted) = state_filter_receipt {
@@ -2383,9 +2421,9 @@ fn render_family_artifact_svg(
     let options = request.normalized();
     let execution = artifact.context.execution();
     #[cfg(feature = "layout-cytoscape")]
-    if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
+    if let BuiltinFamilyArtifact::Architecture(architecture) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
-            pair,
+            architecture,
             &artifact.metadata.effective_config,
             execution,
             &options,
@@ -2730,15 +2768,23 @@ fn prepare_non_class_render(
         },
         #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {
-            BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
-                crate::architecture::layout_architecture_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                    execution.operation_seed(),
-                    execution.work_meter().as_ref(),
-                )
-            })?)
+            let group_theme = crate::architecture::ArchitectureGroupThemePlan::resolve(
+                execution.resolved_theme(),
+                &meta.effective_config,
+                model.groups.len(),
+                execution.work_meter().as_ref(),
+            )?;
+            let layout = crate::architecture::layout_architecture_diagram_typed(
+                &model,
+                effective_config,
+                execution.text_measurer(),
+                execution.operation_seed(),
+                execution.work_meter().as_ref(),
+            )?;
+            BuiltinFamilyArtifact::Architecture(Box::new(ArchitectureFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                group_theme,
+            }))
         }
         #[cfg(not(feature = "layout-cytoscape"))]
         RenderSemanticModel::Architecture(_) => {

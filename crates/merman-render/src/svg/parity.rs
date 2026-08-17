@@ -2,7 +2,6 @@ use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadat
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::FamilyExecutionView;
 #[cfg(feature = "layout-cytoscape")]
-use crate::model::ArchitectureDiagramLayout;
 use crate::model::{
     BlockDiagramLayout, Bounds, ClassDiagramLayout, CynefinDiagramLayout, ErDiagramLayout,
     ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartLayout, InfoDiagramLayout,
@@ -521,10 +520,7 @@ pub(crate) fn render_builtin_family_artifact(
 #[cfg(feature = "layout-cytoscape")]
 #[inline(never)]
 pub(crate) fn render_architecture_family_artifact(
-    pair: &crate::family::FamilyPair<
-        merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
-        ArchitectureDiagramLayout,
-    >,
+    artifact: &crate::family::ArchitectureFamilyArtifact,
     effective_config: &merman_core::MermaidConfig,
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
@@ -534,9 +530,10 @@ pub(crate) fn render_architecture_family_artifact(
     // the renderer's supported low-stack worker budget.
     let execution = SvgExecution::new(options, debug, family_execution)?;
     let rooted_svg = architecture::render_architecture_diagram_svg_typed_with_config(
-        pair.layout(),
-        pair.semantic(),
+        artifact.pair().layout(),
+        artifact.pair().semantic(),
         effective_config,
+        artifact.group_theme(),
         &execution,
     )?;
     let (rooted_svg, root_theme) =
@@ -576,11 +573,12 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "layout-cytoscape")]
-        BuiltinFamilyArtifact::Architecture(pair) => {
+        BuiltinFamilyArtifact::Architecture(artifact) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
                 effective_config,
+                artifact.group_theme(),
                 options,
             )
         }

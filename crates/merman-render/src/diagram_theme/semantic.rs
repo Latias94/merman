@@ -205,7 +205,6 @@ impl ThemeTarget {
             | Self::Edge
             | Self::EdgeLabel
             | Self::EdgeLabelBackground
-            | Self::Cluster
             | Self::ClusterLabel
             | Self::Marker => {
                 matches!(
@@ -219,6 +218,17 @@ impl ThemeTarget {
                         | DiagramFamilyId::GIT_GRAPH
                 )
             }
+            Self::Cluster => matches!(
+                family,
+                DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::SWIMLANE
+                    | DiagramFamilyId::ARCHITECTURE
+                    | DiagramFamilyId::CLASS
+                    | DiagramFamilyId::MINDMAP
+                    | DiagramFamilyId::TREE_VIEW
+                    | DiagramFamilyId::BLOCK
+                    | DiagramFamilyId::GIT_GRAPH
+            ),
             Self::Canvas | Self::Title | Self::Text => true,
             Self::Note | Self::NoteLabel => {
                 matches!(family, DiagramFamilyId::SEQUENCE | DiagramFamilyId::STATE)
@@ -831,5 +841,21 @@ mod tests {
                 field: "styles.ordinal_palettes",
             })
         );
+    }
+
+    #[test]
+    fn architecture_admits_only_cluster_from_the_shared_node_family_targets() {
+        assert!(ThemeTarget::Cluster.valid_for(DiagramFamilyId::ARCHITECTURE));
+        for target in [
+            ThemeTarget::Node,
+            ThemeTarget::NodeLabel,
+            ThemeTarget::Edge,
+            ThemeTarget::EdgeLabel,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeTarget::ClusterLabel,
+            ThemeTarget::Marker,
+        ] {
+            assert!(!target.valid_for(DiagramFamilyId::ARCHITECTURE));
+        }
     }
 }

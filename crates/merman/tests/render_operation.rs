@@ -149,6 +149,27 @@ fn portable_pie_palette_theme() -> merman::svg::DiagramTheme {
         .expect("portable Pie theme should compile")
 }
 
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+fn architecture_group_paint_theme() -> merman::svg::DiagramTheme {
+    let style = merman::svg::ThemeStylePatch::default()
+        .with_fill(
+            merman::svg::CanvasPaint::solid("#0f172a").expect("valid Architecture group fill"),
+        )
+        .with_stroke(
+            merman::svg::CanvasPaint::solid("#22d3ee").expect("valid Architecture group stroke"),
+        );
+    merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default().with_rule(
+                    merman::svg::ThemeRule::new(merman::svg::ThemeTarget::Cluster, style)
+                        .for_family(merman::DiagramFamilyId::ARCHITECTURE),
+                ),
+            ),
+        )
+        .expect("Architecture group paint theme should compile")
+}
+
 #[cfg(feature = "svg")]
 fn flowchart_paint_theme() -> merman::svg::DiagramTheme {
     let styles = merman::svg::ThemeRuleSet::default().with_rule(
@@ -527,6 +548,135 @@ fn pie_site_palette_slot_outranks_the_typed_default() {
         output.evidence().theme_evidence().status(),
         ThemeEvidenceStatus::Verified
     );
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+#[test]
+fn architecture_group_paint_reaches_the_terminal_rect_and_verified_evidence() {
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(architecture_group_paint_theme()),
+        )
+        .expect("themed Architecture SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Architecture SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Architecture SVG");
+    let group = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-group-core"))
+        })
+        .expect("Architecture group rect");
+    let style = group.attribute("style").expect("typed inline group paint");
+    assert!(
+        style.contains("fill:#0f172a"),
+        "unexpected group style: {style}"
+    );
+    assert!(
+        style.contains("stroke:#22d3ee"),
+        "unexpected group style: {style}"
+    );
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
+    );
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+#[test]
+fn architecture_site_group_border_outranks_typed_stroke_without_shadowing_typed_fill() {
+    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"primaryBorderColor": "#f97316"}
+        })),
+    ));
+    let output = renderer
+        .render(
+            RenderRequest::svg(
+                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(architecture_group_paint_theme()),
+        )
+        .expect("source-owned Architecture group border should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed Architecture SVG");
+    };
+
+    let document = roxmltree::Document::parse(output.svg()).expect("valid Architecture SVG");
+    let group = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-group-core"))
+        })
+        .expect("Architecture group rect");
+    assert_eq!(group.attribute("style"), Some("fill:#0f172a;"));
+    assert!(
+        output.svg().contains(".node-bkg{fill:none;stroke:#f97316;"),
+        "source-owned group border should remain in the Mermaid CSS"
+    );
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Verified
+    );
+}
+
+#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+#[test]
+fn architecture_group_ordinal_paint_remains_fail_closed() {
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default().with_rule(
+                    merman::svg::ThemeRule::new(
+                        merman::svg::ThemeTarget::Cluster,
+                        merman::svg::ThemeStylePatch::default().with_fill(
+                            merman::svg::CanvasPaint::solid("#7c3aed")
+                                .expect("valid Architecture ordinal fill"),
+                        ),
+                    )
+                    .for_family(merman::DiagramFamilyId::ARCHITECTURE)
+                    .with_ordinal(
+                        merman::svg::OrdinalSelector::exact(1)
+                            .expect("valid Architecture group ordinal"),
+                    ),
+                ),
+            ),
+        )
+        .expect("Architecture ordinal theme should compile");
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme),
+        )
+        .expect("unsupported Architecture ordinal paint should remain observable");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected an Architecture SVG");
+    };
+
+    assert_eq!(
+        output.evidence().theme_evidence().status(),
+        ThemeEvidenceStatus::Residual
+    );
+    assert!(!output.svg().contains("fill:#7c3aed"));
 }
 
 #[cfg(feature = "svg")]

@@ -21,6 +21,10 @@ use merman_core::diagrams::architecture::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
+mod theme;
+
+pub(crate) use theme::ArchitectureGroupThemePlan;
+
 struct ArchitectureManateeWorkControl<'a> {
     meter: &'a OperationWorkMeter,
     denied: Option<OperationWorkError>,
