@@ -182,6 +182,8 @@ pub struct SvgPipeline {
     preset: SvgPipelinePreset,
     postprocessors: Vec<Arc<dyn SvgPostprocessor>>,
     drop_native_duplicate_fallbacks: bool,
+    static_inline_admission: bool,
+    static_inline_validation: bool,
 }
 
 impl fmt::Debug for SvgPipeline {
@@ -199,6 +201,8 @@ impl fmt::Debug for SvgPipeline {
                 "drop_native_duplicate_fallbacks",
                 &self.drop_native_duplicate_fallbacks,
             )
+            .field("static_inline_admission", &self.static_inline_admission)
+            .field("static_inline_validation", &self.static_inline_validation)
             .finish()
     }
 }
@@ -227,6 +231,8 @@ impl SvgPipeline {
             preset,
             postprocessors: Vec::new(),
             drop_native_duplicate_fallbacks: false,
+            static_inline_admission: false,
+            static_inline_validation: false,
         }
     }
 
@@ -246,6 +252,25 @@ impl SvgPipeline {
 
     pub fn with_drop_native_duplicate_fallbacks(mut self, drop: bool) -> Self {
         self.drop_native_duplicate_fallbacks = drop;
+        self
+    }
+
+    /// Adds Merman's static-inline publication contract to this pipeline.
+    ///
+    /// Admission runs before any lossy compatibility transform. Final validation runs after all
+    /// configured transforms and XML 1.0 character cleanup, while the renderer-owned session is
+    /// still available for cancellation and cumulative resource accounting.
+    #[doc(hidden)]
+    pub fn with_static_inline_contract(mut self, id_prefix: impl Into<String>) -> Self {
+        self.static_inline_admission = true;
+        self.static_inline_validation = true;
+        self.postprocessors
+            .push(Arc::new(ForeignObjectFallbackPostprocessor));
+        self.postprocessors.push(Arc::new(SanitizeCssPostprocessor));
+        self.postprocessors
+            .push(Arc::new(SanitizeSvgAttributesPostprocessor));
+        self.postprocessors
+            .push(Arc::new(RebaseSvgIdsPostprocessor::new(id_prefix)));
         self
     }
 
@@ -307,6 +332,9 @@ impl SvgPipeline {
         execution
             .resource_policy()
             .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+        if self.static_inline_admission {
+            static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
+        }
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
             execution.checkpoint()?;
@@ -351,6 +379,9 @@ impl SvgPipeline {
         execution
             .resource_policy()
             .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+        if self.static_inline_validation {
+            static_validation::validate_rustdoc_static_svg(finalized.as_ref(), execution)?;
+        }
         let reference_plan = if self.preset == SvgPipelinePreset::ResvgSafe {
             Some(
                 final_validation::validate_resvg_compatible_svg_with_execution(

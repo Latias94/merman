@@ -1,6 +1,6 @@
 use super::config::{self, Config, Fragment, SourceDisplay};
 use super::html::{diagram_html_len, write_diagram_html};
-use super::svg::{prepare_static_svg, svg_content_error, validate_static_svg};
+use super::svg::static_inline_pipeline;
 use crate::error::{CliError, FileOperation, safe_path};
 use crate::input::InputLimit;
 use crate::input::InputReadError;
@@ -99,12 +99,7 @@ struct GenerationState<'a> {
     resources: &'a ResolvedResourcePolicy,
     control: &'a OperationControl,
     stderr: &'a SharedWriter,
-    // Renderer targets keep their family-local sessions. Rustdoc owns one publication session for
-    // admission, fallback, ID rebasing, and final validation so those stages share one ledger.
-    svg_session: merman_render::environment::RenderSession,
     renderers: crate::render::PreparedRustdocRenderers,
-    light_cache: HashMap<String, Arc<str>>,
-    dark_cache: HashMap<String, Arc<str>>,
     same_source_occurrences: HashMap<(String, String), u64>,
     staged_bytes: CheckedBytes,
     input_bytes: CheckedBytes,
@@ -127,11 +122,6 @@ pub(crate) fn generate(
     stderr: &SharedWriter,
 ) -> Result<GeneratedRustdocBundle, CliError> {
     let renderers = crate::render::prepare_rustdoc_renderers(resources, control)?;
-    let svg_session = merman_render::environment::RenderEnvironment::deterministic()
-        .with_resource_policy(resources.render_policy())
-        .begin_session_with_control(control.clone())
-        .map_err(merman::RenderError::from)
-        .map_err(CliError::from)?;
     let mut input_bytes = resources.checked_bytes(ByteLedgerKind::RustdocInput);
     input_bytes
         .try_add(config.acquired_input_bytes())
@@ -141,10 +131,7 @@ pub(crate) fn generate(
         resources,
         control,
         stderr,
-        svg_session,
         renderers,
-        light_cache: HashMap::new(),
-        dark_cache: HashMap::new(),
         same_source_occurrences: HashMap::new(),
         staged_bytes: resources.checked_bytes(ByteLedgerKind::StagedOutput),
         input_bytes,
@@ -554,24 +541,20 @@ impl GenerationState<'_> {
         *occurrence = occurrence.saturating_add(1);
         let base_id = stable_base_id(logical_path, &source_hash, current_occurrence);
 
-        let light = self.render_cached(RustdocTheme::Light, source, diagnostic_path, location)?;
-        let dark = self.render_cached(RustdocTheme::Dark, source, diagnostic_path, location)?;
-        let light = rebase_rustdoc_svg_ids(
-            &light,
+        let light = self.render_svg(
+            RustdocTheme::Light,
+            source,
             format!("{base_id}-light"),
-            &self.svg_session,
             diagnostic_path,
             location,
         )?;
-        let dark = rebase_rustdoc_svg_ids(
-            &dark,
+        let dark = self.render_svg(
+            RustdocTheme::Dark,
+            source,
             format!("{base_id}-dark"),
-            &self.svg_session,
             diagnostic_path,
             location,
         )?;
-        validate_static_svg(&light, diagnostic_path, location, &self.svg_session)?;
-        validate_static_svg(&dark, diagnostic_path, location, &self.svg_session)?;
         let wrapper_id = format!("{base_id}-wrapper");
         let output_bytes = diagram_html_len(&wrapper_id, source, &light, &dark, source_display)
             .ok_or_else(|| {
@@ -595,60 +578,45 @@ impl GenerationState<'_> {
         )
     }
 
-    fn render_cached(
-        &mut self,
+    fn render_svg(
+        &self,
         theme: RustdocTheme,
         source: &str,
+        id_prefix: String,
         diagnostic_path: &Path,
         location: MarkdownFenceLocation,
-    ) -> Result<Arc<str>, CliError> {
-        let cache = match theme {
-            RustdocTheme::Light => &self.light_cache,
-            RustdocTheme::Dark => &self.dark_cache,
-        };
-        if let Some(svg) = cache.get(source) {
-            return Ok(Arc::clone(svg));
-        }
-
+    ) -> Result<String, CliError> {
         let renderer = match theme {
             RustdocTheme::Light => &self.renderers.light,
             RustdocTheme::Dark => &self.renderers.dark,
         };
-        let bytes =
-            crate::render::execute_rustdoc_svg_raw(renderer, source, self.control, self.stderr)
-                .map_err(|error| {
-                    rustdoc_render_error(
-                        error,
-                        diagnostic_path,
-                        location,
-                        format!(
-                            "failed to render Mermaid source near {:?}",
-                            source_preview(source)
-                        ),
-                    )
-                })?;
-        let svg = String::from_utf8(bytes).map_err(|error| {
+        let pipeline = static_inline_pipeline(id_prefix);
+        let bytes = crate::render::execute_rustdoc_svg_raw(
+            renderer,
+            &pipeline,
+            source,
+            self.control,
+            self.stderr,
+        )
+        .map_err(|error| {
+            rustdoc_render_error(
+                error,
+                diagnostic_path,
+                location,
+                format!(
+                    "failed to render Mermaid source near {:?}",
+                    source_preview(source)
+                ),
+            )
+        })?;
+        String::from_utf8(bytes).map_err(|error| {
             CliError::rustdoc_content(
                 diagnostic_path,
                 location.line,
                 location.column,
                 format!("renderer returned non-UTF-8 SVG: {error}"),
             )
-        })?;
-        let svg: Arc<str> = prepare_static_svg(
-            &svg,
-            diagnostic_path,
-            location,
-            &self.svg_session,
-            self.control,
-        )?
-        .into();
-        let cache = match theme {
-            RustdocTheme::Light => &mut self.light_cache,
-            RustdocTheme::Dark => &mut self.dark_cache,
-        };
-        cache.insert(source.to_string(), Arc::clone(&svg));
-        Ok(svg)
+        })
     }
 
     fn charge_staged_output(
@@ -721,17 +689,6 @@ fn rustdoc_render_error(
             format!("{context}: {error}"),
         ),
     }
-}
-
-fn rebase_rustdoc_svg_ids(
-    svg: &str,
-    prefix: impl Into<String>,
-    session: &merman_render::environment::RenderSession,
-    diagnostic_path: &Path,
-    location: MarkdownFenceLocation,
-) -> Result<String, CliError> {
-    merman_render::svg::rebase_svg_ids(svg, prefix, session)
-        .map_err(|error| svg_content_error(diagnostic_path, location, error))
 }
 
 struct LoadedInclude {
@@ -824,40 +781,6 @@ mod tests {
 
     fn stderr() -> SharedWriter {
         SharedWriter::new(Vec::<u8>::new())
-    }
-
-    #[test]
-    fn rebase_preserves_terminal_error_classification() {
-        let source = Path::new("docs.md");
-        let location = MarkdownFenceLocation { line: 5, column: 3 };
-        let cancelled_control = OperationControl::new();
-        cancelled_control.cancel();
-        let cancelled_session = merman_render::environment::RenderEnvironment::deterministic()
-            .begin_session_with_control(cancelled_control)
-            .unwrap();
-
-        let cancelled =
-            rebase_rustdoc_svg_ids("<svg/>", "cancelled", &cancelled_session, source, location)
-                .expect_err("pre-cancelled rebase");
-        assert!(matches!(
-            cancelled,
-            CliError::Render(merman::RenderError::Cancelled(_))
-        ));
-
-        let policy = merman_render::RenderResourcePolicy::trusted_native()
-            .with_limit(merman_render::ResourceLimitId::MaxSvgBytes, 1)
-            .unwrap();
-        let limited_session = merman_render::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(policy)
-            .begin_session_with_control(OperationControl::new())
-            .unwrap();
-        let limited =
-            rebase_rustdoc_svg_ids("<svg/>", "limited", &limited_session, source, location)
-                .expect_err("resource-limited rebase");
-        assert!(matches!(
-            limited,
-            CliError::Render(merman::RenderError::ResourceLimitExceeded(_))
-        ));
     }
 
     fn load_config(path: &Path, resources: &ResolvedResourcePolicy) -> Result<Config, CliError> {
@@ -1169,7 +1092,7 @@ mod tests {
     }
 
     #[test]
-    fn staged_output_budget_counts_each_reused_diagram_before_append() {
+    fn staged_output_budget_counts_each_repeated_diagram_before_append() {
         let diagram = "```mermaid\nflowchart LR\nA-->B\n```\n";
         let single_root = tempfile::tempdir().unwrap();
         let single_config = write_config(single_root.path(), diagram, "hide");

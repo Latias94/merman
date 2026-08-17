@@ -96,11 +96,12 @@ pub(crate) fn execute_graphical(
 #[cfg(feature = "rustdoc")]
 pub(crate) fn execute_rustdoc_svg_raw(
     prepared: &PreparedGraphicalRender,
+    pipeline: &merman::svg::SvgPipeline,
     source: &str,
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<Vec<u8>, CliError> {
-    execute_graphical_with_pipeline(prepared, &prepared.pipeline, source, control, stderr)
+    execute_graphical_with_pipeline(prepared, pipeline, source, control, stderr)
         .map(ExecutedArtifact::into_bytes)
 }
 

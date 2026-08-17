@@ -704,6 +704,7 @@ mod tests {
     fn render(renderer: &PreparedGraphicalRender, source: &str, stderr: &SharedWriter) -> Vec<u8> {
         crate::render::execute_rustdoc_svg_raw(
             renderer,
+            &renderer.pipeline,
             source,
             &merman::OperationControl::new(),
             stderr,
