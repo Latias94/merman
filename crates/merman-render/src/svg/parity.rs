@@ -1,7 +1,6 @@
 use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::FamilyExecutionView;
-#[cfg(feature = "layout-cytoscape")]
 use crate::model::{
     BlockDiagramLayout, Bounds, ClassDiagramLayout, CynefinDiagramLayout, ErDiagramLayout,
     ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartLayout, InfoDiagramLayout,
