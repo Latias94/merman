@@ -33,6 +33,7 @@ test("selects copied SVG and ASCII only from the named current publication", asy
   const calls: string[] = [];
   const owner = createArtifactActionOwner({
     getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
     io: recordingIo(calls),
   });
 
@@ -46,6 +47,45 @@ test("selects copied SVG and ASCII only from the named current publication", asy
     "copy-svg:mermaid",
     "copy-ascii:ascii-current",
     "download-ascii:ascii-current:merman-diagram",
+  ]);
+});
+
+test("renders and caches ASCII only after an explicit artifact action", async () => {
+  const completed = completedPublication("on-demand");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...completed,
+    ascii: null,
+  });
+  const renderInputs: ConfiguredMermanOperationInput[] = [];
+  const calls: string[] = [];
+  const owner = createArtifactActionOwner({
+    getRenderState: () => publication,
+    getRuntimeState: () =>
+      readyRuntime(undefined, (input) => {
+        renderInputs.push(input);
+        return {
+          ascii: "ascii-on-demand",
+          error: null,
+          status: "success",
+        };
+      }),
+    io: recordingIo(calls),
+  });
+
+  await owner({
+    action: "copy-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+  await owner({
+    action: "download-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+
+  assert.equal(renderInputs.length, 1);
+  assert.equal(renderInputs[0], publication.snapshot.operation);
+  assert.deepEqual(calls, [
+    "copy-ascii:ascii-on-demand",
+    "download-ascii:ascii-on-demand:merman-diagram",
   ]);
 });
 
@@ -66,6 +106,7 @@ test("publishes ASCII actions independently from a failed Merman SVG", async () 
   const calls: string[] = [];
   const owner = createArtifactActionOwner({
     getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
     io: recordingIo(calls),
   });
 
@@ -92,6 +133,7 @@ test("rejects stale, missing, and updating publications before I/O", async () =>
   let state: RenderCoordinatorState = publication;
   const owner = createArtifactActionOwner({
     getRenderState: () => state,
+    getRuntimeState: () => readyRuntime(),
     io: recordingIo(calls),
   });
 
@@ -206,6 +248,7 @@ function completedPublication(
   id: RenderPublicationId = publicationId(1)
 ): CompletedRenderBatch {
   const operation = freezeRenderOperation({
+    asciiEnabled: true,
     compareEnabled: true,
     diagnosticsEnabled: false,
     layoutEnvironment: { containerWidth: 800, containerHeight: 600 },
@@ -268,12 +311,21 @@ function readyRuntime(
     error: null,
     renderTime: 1,
     status: "success",
-  })
+  }),
+  renderAscii: MermanDomainFacade["renderAscii"] = () => ({
+    ascii: "ascii",
+    error: null,
+    status: "success",
+  }),
 ): MermanRuntimeState {
   return {
     status: "ready",
     suspended: false,
-    facade: { packageVersion: "test-merman", render } as MermanDomainFacade,
+    facade: {
+      packageVersion: "test-merman",
+      render,
+      renderAscii,
+    } as MermanDomainFacade,
   };
 }
 

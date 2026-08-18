@@ -321,6 +321,33 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   errors.assertNone();
 });
 
+test("toolbar ASCII export renders on explicit intent from SVG mode", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, "flowchart LR\n  Alpha --> Beta");
+  await waitForPreviewSvg(page);
+  await expect(
+    page.getByRole("tab", { name: "SVG", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const exportAscii = page.getByRole("menuitem", {
+    name: /^Export ASCII/u,
+  });
+  await expect(exportAscii).toBeEnabled();
+  const download = page.waitForEvent("download");
+  await exportAscii.click();
+  const artifact = await download;
+
+  expect(artifact.suggestedFilename()).toBe("merman-diagram.txt");
+  const ascii = (await downloadBytes(artifact)).toString("utf8");
+  expect(ascii).toContain("Alpha");
+  expect(ascii).toContain("Beta");
+  errors.assertNone();
+});
+
 test("preview tabs use manual keyboard activation", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);

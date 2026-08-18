@@ -56,6 +56,7 @@ export interface RenderOperationVersions {
 
 export interface FrozenRenderOperation
   extends ConfiguredMermanOperationInput {
+  readonly asciiEnabled: boolean;
   readonly compareEnabled: boolean;
   readonly configJson: string;
   readonly diagnosticsEnabled: boolean;
@@ -70,6 +71,7 @@ export interface FrozenRenderOperation
 }
 
 export interface FreezeRenderOperationInput {
+  readonly asciiEnabled: boolean;
   readonly compareEnabled: boolean;
   readonly diagnosticsEnabled: boolean;
   readonly layoutEnvironment: MermanLayoutEnvironment;
@@ -101,6 +103,7 @@ export function configuredMermanOperationInput(
 }
 
 export function freezeRenderOperation({
+  asciiEnabled,
   compareEnabled,
   diagnosticsEnabled,
   layoutEnvironment,
@@ -124,6 +127,7 @@ export function freezeRenderOperation({
   );
   return Object.freeze({
     ...configured,
+    asciiEnabled,
     compareEnabled,
     configJson: workspace.mermaidConfig,
     diagnosticsEnabled,
@@ -175,6 +179,7 @@ export function sameRenderOperation(
     (left.layoutEnvironment.screenAvailableWidth ?? null) ===
       (right.layoutEnvironment.screenAvailableWidth ?? null) &&
     left.svgPipeline === right.svgPipeline &&
+    left.asciiEnabled === right.asciiEnabled &&
     left.compareEnabled === right.compareEnabled &&
     left.diagnosticsEnabled === right.diagnosticsEnabled &&
     (left.viewport?.width ?? null) === (right.viewport?.width ?? null) &&

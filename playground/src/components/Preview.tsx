@@ -193,11 +193,13 @@ export function Preview({ className }: PreviewProps) {
 
   useEffect(() => {
     setRenderFeatures({
+      asciiEnabled: previewMode === "ascii",
       compareEnabled: previewMode === "compare",
       diagnosticsEnabled: previewMode === "diagnostics",
     });
     return () =>
       setRenderFeatures({
+        asciiEnabled: false,
         compareEnabled: false,
         diagnosticsEnabled: false,
       });

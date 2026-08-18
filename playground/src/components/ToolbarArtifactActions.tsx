@@ -78,7 +78,7 @@ export function useToolbarArtifactActions() {
   const currentMerman =
     currentBatch?.merman.status === "success" ? currentBatch.merman : null;
   const artifactActionsEnabled = currentMerman !== null;
-  const asciiAvailable = currentBatch?.ascii.status === "success";
+  const asciiAvailable = asciiSupported && currentBatch !== null;
 
   const handleOpenExport = useCallback((restoreFocus?: HTMLElement | null) => {
     if (!currentBatch) return;

@@ -113,7 +113,7 @@ export type MermanAsciiBatchResult =
     };
 
 interface CompletedBatchBase {
-  readonly ascii: MermanAsciiBatchResult;
+  readonly ascii: MermanAsciiBatchResult | null;
   readonly detection: DiagramDetectionFacts;
   readonly diagnostics: RenderDiagnostics | null;
   readonly publishedAt: number;
@@ -199,6 +199,7 @@ export interface RenderCoordinator {
 }
 
 export interface RenderFeatures {
+  readonly asciiEnabled: boolean;
   readonly compareEnabled: boolean;
   readonly diagnosticsEnabled: boolean;
 }
@@ -227,6 +228,7 @@ export function createRenderCoordinator({
   let disposed = false;
   let suspended = false;
   let pauseCount = 0;
+  let asciiEnabled = false;
   let compareEnabled = false;
   let diagnosticsEnabled = false;
   let requestSequence = 0;
@@ -271,6 +273,7 @@ export function createRenderCoordinator({
     }
 
     const operation = freezeRenderOperation({
+      asciiEnabled,
       compareEnabled,
       diagnosticsEnabled,
       layoutEnvironment: renderViewport.layoutEnvironment,
@@ -368,7 +371,9 @@ export function createRenderCoordinator({
       externalRequirements,
     );
     const merman = renderMerman(facade, operation);
-    const ascii = renderMermanAscii(facade, operation, detection);
+    const ascii = operation.asciiEnabled
+      ? renderMermanAscii(facade, operation, detection)
+      : null;
     const diagnostics = operation.diagnosticsEnabled
       ? collectDiagnostics(facade, operation, now)
       : null;
@@ -393,14 +398,21 @@ export function createRenderCoordinator({
     scheduleCurrent(false);
   };
   const setFeatures = (features: RenderFeatures) => {
+    const shouldSchedule =
+      compareEnabled !== features.compareEnabled ||
+      diagnosticsEnabled !== features.diagnosticsEnabled ||
+      (!asciiEnabled && features.asciiEnabled);
     if (
+      asciiEnabled === features.asciiEnabled &&
       compareEnabled === features.compareEnabled &&
       diagnosticsEnabled === features.diagnosticsEnabled
     ) {
       return;
     }
+    asciiEnabled = features.asciiEnabled;
     compareEnabled = features.compareEnabled;
     diagnosticsEnabled = features.diagnosticsEnabled;
+    if (!shouldSchedule) return;
     scheduleCurrent(true, true);
   };
   const refresh = () => {
@@ -732,7 +744,7 @@ function classifyBatch(
   diagnostics: RenderDiagnostics | null,
   svgPlan: SvgPlanResult | null,
   merman: MermanBatchResult,
-  ascii: MermanAsciiBatchResult,
+  ascii: MermanAsciiBatchResult | null,
   mermaid: MermaidBatchResult | null,
   publishedAt: number,
 ): CompletedRenderBatch {
