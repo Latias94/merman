@@ -1,6 +1,6 @@
 # Python UniFFI Package
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Why This Lane Exists
