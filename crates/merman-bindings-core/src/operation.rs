@@ -185,8 +185,9 @@ impl<'a> BindingOperationRequest<'a> {
         self
     }
 
-    /// Attaches a caller-owned operation control. The request clones the control's shared state;
-    /// cancellation and deadline changes made by the caller remain visible during execution.
+    /// Attaches a caller-owned operation control. Execution creates a request-local child so
+    /// cancellation and deadline changes remain visible without leaking one request's terminal
+    /// resource outcome into later requests that reuse the caller's control token.
     #[must_use]
     pub fn with_control(mut self, control: OperationControl) -> Self {
         self.operation_control = Some(control);
@@ -220,7 +221,9 @@ impl<'a> BindingOperationRequest<'a> {
 
     #[must_use]
     pub(crate) fn control_or_default(&self) -> OperationControl {
-        self.operation_control.clone().unwrap_or_default()
+        self.operation_control
+            .as_ref()
+            .map_or_else(OperationControl::new, OperationControl::child)
     }
 }
 
@@ -1758,17 +1761,18 @@ mod tests {
     }
 
     #[test]
-    fn request_resource_tightening_does_not_mutate_the_reusable_engine() {
+    fn request_resource_tightening_does_not_mutate_the_engine_or_caller_control() {
         let engine = BindingEngine::from_options(
             br#"{"resources":{"profile":"constrained","limits":{"max_source_bytes":64}}}"#,
         )
         .unwrap();
+        let control = OperationControl::new();
         let request = BindingOperationRequest {
             operation_id: "semantic-json",
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"resources":{"limits":{"max_source_bytes":4}}}"#,
-            operation_control: None,
+            operation_control: Some(control.clone()),
         };
         let error = engine.execute(request.clone()).unwrap_err();
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
@@ -1780,6 +1784,7 @@ mod tests {
             })
             .unwrap();
         assert!(!baseline.data.is_empty());
+        assert!(control.checkpoint().is_ok());
     }
 
     #[cfg(feature = "ascii")]
