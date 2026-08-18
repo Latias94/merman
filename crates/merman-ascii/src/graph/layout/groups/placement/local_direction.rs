@@ -125,17 +125,6 @@ fn build_group_override_graph(
     direction: GraphDirection,
     resources: &mut ResourceContext,
 ) -> Result<AsciiGraph> {
-    build_group_override_graph_impl(graph, topology, members, direction, resources, || {})
-}
-
-fn build_group_override_graph_impl(
-    graph: &AsciiGraph,
-    topology: &GraphGroupTopology<'_>,
-    members: &[GroupPlacementMember],
-    direction: GraphDirection,
-    resources: &mut ResourceContext,
-    before_edge_allocation: impl FnOnce(),
-) -> Result<AsciiGraph> {
     let mut override_graph = AsciiGraph::new_for_diagram(graph.diagram_type(), direction);
     override_graph.root_policy = graph.root_policy;
 
@@ -184,7 +173,6 @@ fn build_group_override_graph_impl(
     }
 
     resources.charge_layout_work(graph.edges.len())?;
-    before_edge_allocation();
     override_graph
         .edges
         .try_reserve(graph.edges.len())
@@ -412,8 +400,6 @@ mod tests {
     use crate::options::AsciiRenderOptions;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
-    use std::cell::Cell;
-
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,
@@ -563,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn override_edges_are_admitted_before_their_container_is_allocated() {
+    fn override_edges_obey_exact_layout_work_admission() {
         let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
         for id in ["a", "b", "c"] {
             graph.add_node(id, id.to_uppercase());
@@ -585,13 +571,12 @@ mod tests {
             .expect("group members should resolve");
 
         let mut measured_resources = unbounded_resources();
-        build_group_override_graph_impl(
+        build_group_override_graph(
             &graph,
             &topology,
             &members,
             graph.direction,
             &mut measured_resources,
-            || {},
         )
         .expect("unbounded resources should admit override edges");
         let exact_work = measured_resources.layout_work_used();
@@ -599,30 +584,24 @@ mod tests {
         assert_eq!(measured_resources.layout_work_used(), exact_work);
 
         let mut exact_resources = ResourceContext::new(policy_with_work_limit(exact_work));
-        let exact_allocated = Cell::new(false);
-        build_group_override_graph_impl(
+        build_group_override_graph(
             &graph,
             &topology,
             &members,
             graph.direction,
             &mut exact_resources,
-            || exact_allocated.set(true),
         )
         .expect("the exact override-edge work limit should pass");
-        assert!(exact_allocated.get());
 
         let mut below_resources = ResourceContext::new(policy_with_work_limit(exact_work - 1));
-        let below_allocated = Cell::new(false);
-        let error = build_group_override_graph_impl(
+        let error = build_group_override_graph(
             &graph,
             &topology,
             &members,
             graph.direction,
             &mut below_resources,
-            || below_allocated.set(true),
         )
-        .expect_err("max-minus-one override-edge work should fail before allocation");
-        assert!(!below_allocated.get());
+        .expect_err("max-minus-one override-edge work should fail");
         assert!(matches!(
             error,
             crate::AsciiError::ResourceLimitExceeded(details)
