@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import Editor from "@monaco-editor/react";
 import {
   AlertCircle,
   Check,
@@ -29,6 +28,7 @@ import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
 import type { WorkbenchEditorThemeName } from "@/src/editor/workbench-editor-theme";
+import { ReadOnlyEditor } from "@/src/components/ReadOnlyEditor";
 
 export type CompareEngineKey = "merman" | "mermaid";
 type SvgDisplayMode = "visual" | "source";
@@ -354,6 +354,7 @@ function ComparePaneBody({
       <CompareSvgSource
         svg={artifact.svgArtifact?.svg ?? null}
         editorTheme={editorTheme}
+        feature={t("preview.viewSvgSource")}
       />
     );
   }
@@ -444,20 +445,21 @@ function CompareFailure({
 function CompareSvgSource({
   svg,
   editorTheme,
+  feature,
 }: {
   svg: string | null;
   editorTheme: WorkbenchEditorThemeName;
+  feature: string;
 }) {
   if (!svg) return null;
   return (
-    <Editor
+    <ReadOnlyEditor
+      feature={feature}
       height="100%"
       language="xml"
       value={svg}
       theme={editorTheme}
       options={{
-        readOnly: true,
-        domReadOnly: true,
         minimap: { enabled: false },
         fontSize: 12,
         scrollBeyondLastLine: false,

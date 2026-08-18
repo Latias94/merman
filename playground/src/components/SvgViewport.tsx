@@ -15,6 +15,10 @@ import {
   prepareSvgForResponsivePreview,
   type SvgDimensions,
 } from "@/src/lib/svg-geometry";
+import {
+  resolveConnectedBounds,
+  type SvgBounds,
+} from "@/src/lib/svg-connected-bounds";
 import type { MermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
 import type { SvgPresentationMode } from "@/src/lib/svg-presentation";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
@@ -27,13 +31,6 @@ interface Point {
 interface FitGeometry {
   readonly centerOffset: Point;
   readonly dimensions: SvgDimensions;
-}
-
-interface SvgBounds {
-  readonly bottom: number;
-  readonly left: number;
-  readonly right: number;
-  readonly top: number;
 }
 
 interface RootOverflowSnapshot {
@@ -1121,30 +1118,13 @@ function measureConnectedVisualBounds(
     return null;
   }
 
-  let connectedBounds = rootBounds;
-  let pending = Array.from(svg.querySelectorAll<SVGGraphicsElement>("*"))
+  const candidates = Array.from(svg.querySelectorAll<SVGGraphicsElement>("*"))
     .filter(isMeasurableSvgGraphic)
     .flatMap((element) => {
       const bounds = measureSvgGraphicInRootSpace(element, toRoot);
       return bounds ? [bounds] : [];
     });
-
-  while (pending.length > 0) {
-    const disconnected: SvgBounds[] = [];
-    let foundConnection = false;
-    for (const candidate of pending) {
-      if (!boundsIntersect(connectedBounds, candidate)) {
-        disconnected.push(candidate);
-        continue;
-      }
-      connectedBounds = unionBounds(connectedBounds, candidate);
-      foundConnection = true;
-    }
-    if (!foundConnection) break;
-    pending = disconnected;
-  }
-
-  return connectedBounds;
+  return resolveConnectedBounds(rootBounds, candidates);
 }
 
 function isMeasurableSvgGraphic(element: SVGGraphicsElement): boolean {
@@ -1225,24 +1205,6 @@ function transformSvgPoint(matrix: DOMMatrix, x: number, y: number): Point {
   return {
     x: matrix.a * x + matrix.c * y + matrix.e,
     y: matrix.b * x + matrix.d * y + matrix.f,
-  };
-}
-
-function boundsIntersect(left: SvgBounds, right: SvgBounds): boolean {
-  return (
-    left.left <= right.right &&
-    left.right >= right.left &&
-    left.top <= right.bottom &&
-    left.bottom >= right.top
-  );
-}
-
-function unionBounds(left: SvgBounds, right: SvgBounds): SvgBounds {
-  return {
-    bottom: Math.max(left.bottom, right.bottom),
-    left: Math.min(left.left, right.left),
-    right: Math.max(left.right, right.right),
-    top: Math.min(left.top, right.top),
   };
 }
 

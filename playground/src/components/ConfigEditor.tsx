@@ -27,6 +27,8 @@ interface ConfigEditorProps {
   className?: string;
 }
 
+const MERMAID_CONFIG_DOCUMENT_URI = "file:///merman/playground-config.json";
+
 export function ConfigEditor({ className }: ConfigEditorProps) {
   const { t } = useTranslation();
   const { mermaidConfig, setMermaidConfig, resolvedTheme } = useAppStore(
@@ -96,7 +98,9 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
       <div className="min-h-0 flex-1">
         <Editor
           height="100%"
+          keepCurrentModel
           language="json"
+          path={MERMAID_CONFIG_DOCUMENT_URI}
           theme={editorTheme}
           value={mermaidConfig}
           onChange={(value) => setMermaidConfig(value || "")}
@@ -117,6 +121,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
             scrollBeyondLastLine: false,
             padding: { top: 16, bottom: 16 },
             renderLineHighlight: "line",
+            occurrencesHighlight: "off",
             cursorBlinking: "smooth",
             smoothScrolling: true,
             tabSize: 2,

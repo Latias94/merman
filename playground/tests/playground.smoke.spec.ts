@@ -134,6 +134,22 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     1,
   );
 
+  await page.getByRole("tab", { name: "SVG", exact: true }).click();
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
+    0,
+  );
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
+    1,
+  );
+  await expect
+    .poll(() => compareSvgTexts(page))
+    .toEqual([
+      expect.stringContaining("Latest batch"),
+      expect.stringContaining("Latest batch"),
+    ]);
+  expect(opaqueArtifactRequests).toHaveLength(1);
+
   await page.evaluate(() => {
     window.dispatchEvent(
       new PageTransitionEvent("pagehide", { persisted: true }),

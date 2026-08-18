@@ -1,4 +1,3 @@
-import Editor from "@monaco-editor/react";
 import { Maximize2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -13,6 +12,7 @@ import {
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
 import type { WorkbenchEditorThemeName } from "@/src/editor/workbench-editor-theme";
+import { ReadOnlyEditor } from "@/src/components/ReadOnlyEditor";
 
 export function ViewportControls({
   controller,
@@ -53,9 +53,11 @@ function formatZoomPercent(zoom: number): string {
 export function SvgSourceEditor({
   svg,
   editorTheme,
+  feature,
 }: {
   svg: string | null;
   editorTheme: WorkbenchEditorThemeName;
+  feature: string;
 }) {
   if (!svg) {
     return (
@@ -66,14 +68,13 @@ export function SvgSourceEditor({
   }
 
   return (
-    <Editor
+    <ReadOnlyEditor
+      feature={feature}
       height="100%"
       language="xml"
       value={svg}
       theme={editorTheme}
       options={{
-        readOnly: true,
-        domReadOnly: true,
         minimap: { enabled: false },
         fontSize: 12,
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
@@ -81,7 +82,6 @@ export function SvgSourceEditor({
         wordWrap: "on",
         renderLineHighlight: "none",
         selectionHighlight: false,
-        occurrencesHighlight: "off",
         folding: true,
         automaticLayout: true,
         padding: { top: 16, bottom: 16 },
