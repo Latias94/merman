@@ -1529,6 +1529,16 @@ mod tests {
         model
     }
 
+    fn render_er_identity_fixture(model: &ErDiagramRenderModel) -> String {
+        let policy = unbounded_policy();
+        render_er_diagram_with_execution(
+            model,
+            &AsciiRenderOptions::ascii(),
+            AsciiExecution::for_test(&policy),
+        )
+        .expect("ER identity fixture should render")
+    }
+
     fn render_er_section_fixture(
         entity: &ErEntityRenderModel,
         options: &AsciiRenderOptions,
@@ -1706,6 +1716,45 @@ mod tests {
             resources.document_cells_used(),
         );
         (result, before, after)
+    }
+
+    #[test]
+    fn er_role_discloses_lossy_authored_projection_in_routed_and_summary_output() {
+        const AUTHORED: &str = "\u{1b}";
+        const VISIBLE: &str = r"\u{1B}";
+        const DISCLOSURE: &str = r#"authored(bytes=1)="\u{1B}""#;
+
+        let routed = |value: &str| {
+            let mut model = horizontal_control_model();
+            model.relationships[0].role_a = value.to_string();
+            render_er_identity_fixture(&model)
+        };
+        let authored_routed = routed(AUTHORED);
+        let visible_routed = routed(VISIBLE);
+        assert_ne!(authored_routed, visible_routed);
+        assert!(authored_routed.contains(DISCLOSURE));
+        assert!(!visible_routed.contains("authored(bytes="));
+
+        let summary = |value: &str| {
+            let mut model = er_summary_model();
+            for relationship in &mut model.relationships {
+                relationship.role_a = value.to_string();
+            }
+            render_er_summary_fixture(
+                &model,
+                &AsciiRenderOptions::ascii(),
+                unbounded_policy(),
+                &Cell::new(false),
+            )
+            .0
+            .expect("ER summary identity fixture should render")
+        };
+        let authored_summary = summary(AUTHORED);
+        let visible_summary = summary(VISIBLE);
+        assert!(authored_summary.contains("relations:"));
+        assert_ne!(authored_summary, visible_summary);
+        assert!(authored_summary.contains(DISCLOSURE));
+        assert!(!visible_summary.contains("authored(bytes="));
     }
 
     #[test]
@@ -2093,7 +2142,7 @@ mod tests {
             attribute_text_with_probe(&attribute, &mut exact_resources, || exact_probe.set(true))
                 .expect("the exact raw grapheme limit should permit framed output");
         assert!(exact_probe.get());
-        assert!(rendered.contains(r#"name(bytes=2)="\\u{301}""#));
+        assert!(rendered.contains(r#"name(bytes=2)="\u{301}""#));
 
         let below_policy = unbounded_policy()
             .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)

@@ -1,6 +1,6 @@
 use super::composed::{ComposedTextPlan, DeferredTextPiece};
 use super::framing::{QuotedTerminalTextEvent, visit_quoted_terminal_text_with};
-use super::label::{DeferredLabelPiece, try_plan_normalized_label_lines};
+use super::label::{DeferredLabelPiece, NormalizedLabelPlan, try_plan_normalized_label_lines};
 use crate::Result;
 use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
@@ -88,10 +88,11 @@ impl DeferredTextLine {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum DeferredTextPart<'a> {
+pub(crate) enum DeferredTextPart<'line, 'text> {
     Static(&'static str),
     Decimal(usize),
-    QuotedLine(&'a DeferredTextLine),
+    QuotedLine(&'line DeferredTextLine),
+    QuotedText(&'text str),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -228,21 +229,39 @@ impl<'a> DeferredTextRegistry<'a> {
         })
     }
 
-    pub(crate) fn try_register_label_lines(
+    pub(crate) fn try_register_label_lines_with_authored_disclosure(
         &mut self,
         raw: &'a str,
+        disclosure_prefix: &'static str,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<Option<Vec<DeferredTextLine>>> {
-        resources.transaction(|resources| {
-            self.try_register_label_lines_transactional(raw, width_profile, resources)
-        })
+        let registry_checkpoint = (
+            self.entries.len(),
+            self.plans.len(),
+            self.quoted_lines.len(),
+        );
+        let result = resources.transaction(|resources| {
+            self.try_register_label_lines_transactional(
+                raw,
+                width_profile,
+                Some(disclosure_prefix),
+                resources,
+            )
+        });
+        if result.is_err() {
+            self.entries.truncate(registry_checkpoint.0);
+            self.plans.truncate(registry_checkpoint.1);
+            self.quoted_lines.truncate(registry_checkpoint.2);
+        }
+        result
     }
 
     fn try_register_label_lines_transactional(
         &mut self,
         raw: &'a str,
         width_profile: TerminalWidthProfile,
+        disclosure_prefix: Option<&'static str>,
         resources: &ResourceContext,
     ) -> Result<Option<Vec<DeferredTextLine>>> {
         let Some(plan) =
@@ -250,6 +269,30 @@ impl<'a> DeferredTextRegistry<'a> {
         else {
             return Ok(None);
         };
+        let disclose_authored = match disclosure_prefix {
+            Some(_) if plan.terminal_projection_is_lossy() => true,
+            Some(prefix) if plan.metrics().line_count > 1 => {
+                contains_with_resources(raw, prefix, resources)?
+            }
+            Some(_) | None => false,
+        };
+        let disclosure_prefix = if disclose_authored {
+            disclosure_prefix
+        } else {
+            None
+        };
+        self.try_register_label_plan(raw, plan, disclosure_prefix, width_profile, resources)
+            .map(Some)
+    }
+
+    fn try_register_label_plan(
+        &mut self,
+        raw: &'a str,
+        plan: NormalizedLabelPlan,
+        disclosure_prefix: Option<&'static str>,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Vec<DeferredTextLine>> {
         let rows = plan.try_deferred_rows(raw, resources)?;
         let entry_count = rows.iter().try_fold(0usize, |count, row| {
             count
@@ -311,7 +354,13 @@ impl<'a> DeferredTextRegistry<'a> {
             .try_reserve(entry_count)
             .map_err(|_| layout_allocation_failed())?;
         self.entries.extend(entries);
-        Ok(Some(lines))
+        if let Some(prefix) = disclosure_prefix {
+            lines
+                .try_reserve(1)
+                .map_err(|_| layout_allocation_failed())?;
+            lines.push(self.try_register_framed_value(prefix, raw, width_profile, resources)?);
+        }
+        Ok(lines)
     }
 
     pub(crate) fn try_register_quoted_text(
@@ -356,18 +405,11 @@ impl<'a> DeferredTextRegistry<'a> {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<DeferredTextLine> {
-        resources.transaction(|resources| {
-            let value_line = self.try_register(
-                ComposedTextPlan::try_new(resources, 1, |push| push(value))?,
-                width_profile,
-                resources,
-            )?;
-            self.try_register_parts(width_profile, resources, 4, |push| {
-                push(DeferredTextPart::Static(prefix))?;
-                push(DeferredTextPart::Decimal(value.len()))?;
-                push(DeferredTextPart::Static(")="))?;
-                push(DeferredTextPart::QuotedLine(&value_line))
-            })
+        self.try_register_parts(width_profile, resources, 4, |push| {
+            push(DeferredTextPart::Static(prefix))?;
+            push(DeferredTextPart::Decimal(value.len()))?;
+            push(DeferredTextPart::Static(")="))?;
+            push(DeferredTextPart::QuotedText(value))
         })
     }
 
@@ -376,7 +418,7 @@ impl<'a> DeferredTextRegistry<'a> {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
         producer_work_per_pass: usize,
-        produce: impl Fn(&mut dyn FnMut(DeferredTextPart<'part>) -> Result<()>) -> Result<()>,
+        produce: impl Fn(&mut dyn FnMut(DeferredTextPart<'part, 'a>) -> Result<()>) -> Result<()>,
     ) -> Result<DeferredTextLine> {
         resources.transaction(|resources| {
             let producer_work = producer_work_per_pass.max(1);
@@ -481,6 +523,12 @@ impl<'a> DeferredTextRegistry<'a> {
                             html_bytes: metrics.html_bytes,
                         }
                     }
+                    DeferredTextPart::QuotedText(text) => DeferredTextEntry::QuotedBorrowed {
+                        text,
+                        replay_work_units: metrics.replay_work_units,
+                        plain_bytes: metrics.plain_bytes,
+                        html_bytes: metrics.html_bytes,
+                    },
                 });
                 Ok(())
             })?;
@@ -706,7 +754,7 @@ impl<'a> DeferredTextRegistry<'a> {
 
     fn deferred_part_metrics_and_charge(
         &self,
-        part: DeferredTextPart<'_>,
+        part: DeferredTextPart<'_, '_>,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<DeferredPartMetrics> {
@@ -727,6 +775,9 @@ impl<'a> DeferredTextRegistry<'a> {
             }
             DeferredTextPart::QuotedLine(line) => {
                 self.quoted_line_metrics_and_charge(line, width_profile, resources)
+            }
+            DeferredTextPart::QuotedText(text) => {
+                quoted_text_metrics_and_charge(text, width_profile, resources)
             }
         }
     }
@@ -752,6 +803,33 @@ fn text_metrics(
         plain_bytes: bytes,
         html_bytes: encoded_html_bytes(resources, text)?,
     })
+}
+
+fn contains_with_resources(value: &str, needle: &str, resources: &ResourceContext) -> Result<bool> {
+    if needle.is_empty() {
+        return Ok(true);
+    }
+    let Some(last_start) = value.len().checked_sub(needle.len()) else {
+        return Ok(false);
+    };
+    let value = value.as_bytes();
+    let needle = needle.as_bytes();
+    let mut batch_start = 0usize;
+    while batch_start <= last_start {
+        resources.checkpoint()?;
+        let batch_end = batch_start
+            .saturating_add(DEFERRED_REPLAY_CHECKPOINT_INTERVAL)
+            .min(last_start + 1);
+        resources.charge_layout_work(batch_end - batch_start)?;
+        for start in batch_start..batch_end {
+            if &value[start..start + needle.len()] == needle {
+                return Ok(true);
+            }
+        }
+        batch_start = batch_end;
+    }
+    resources.checkpoint()?;
+    Ok(false)
 }
 
 fn quoted_text_metrics_and_charge(
@@ -787,8 +865,10 @@ fn quoted_text_metrics_and_charge(
             Ok(())
         }
     })?;
-    let replay_work_units =
-        resources.checked_work_add(plain_bytes.max(1), fragment_count.max(1))?;
+    let replay_work_units = resources.checked_work_add(
+        source_work,
+        resources.checked_work_add(plain_bytes.max(1), fragment_count.max(1))?,
+    )?;
     Ok(DeferredPartMetrics {
         width,
         replay_work_units,
@@ -1037,6 +1117,53 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 0);
         assert!(deferred.entries.is_empty());
+    }
+
+    #[test]
+    fn authored_disclosure_failure_rolls_back_the_registry_and_ledger() {
+        const RAW: &str = "\u{1b}";
+        let baseline_resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut baseline = DeferredTextRegistry::new();
+        baseline
+            .try_register_label_lines_transactional(
+                RAW,
+                TerminalWidthProfile::Unicode,
+                None,
+                &baseline_resources,
+            )
+            .expect("the base label should plan")
+            .expect("the base label should remain visible");
+        let base_work = baseline_resources.layout_work_used();
+
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, base_work)
+            .expect("the measured work limit should be valid");
+        let resources = ResourceContext::new(policy);
+        let mut deferred = DeferredTextRegistry::new();
+        let error = deferred
+            .try_register_label_lines_with_authored_disclosure(
+                RAW,
+                "authored(bytes=",
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )
+            .expect_err("the authored disclosure should exceed the base-only work limit");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert!(deferred.entries.is_empty());
+        assert!(deferred.plans.is_empty());
+        assert!(deferred.quoted_lines.is_empty());
+
+        let retry_resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let retry = deferred
+            .try_register_quoted_text("A", TerminalWidthProfile::Unicode, &retry_resources)
+            .expect("the rolled-back registry should remain reusable");
+        assert_eq!(retry.glyphs()[0].id().index(), 0);
     }
 
     #[test]

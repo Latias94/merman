@@ -1,10 +1,10 @@
 use super::{
     CLASS_LEVEL_HORIZONTAL_GAP, ClassDirection, ClassNoteIndex, ClassRenderSettings,
-    RenderedClassBox, RenderedClassBoxIndex, external_namespace_note_summary_rows, grid_overflow,
-    layout_allocation_failed, nesting_overflow, note_relation_layouts_for_notes,
-    relation_endpoint_id, relation_layout, render_class_box, render_class_component_lines,
-    render_class_document_lines_with_execution, render_horizontal_class_component_lines,
-    render_interface_box, render_note_box, work_overflow,
+    RenderedClassBox, RenderedClassBoxIndex, authored_display_projection_is_lossy,
+    external_namespace_note_summary_rows, grid_overflow, layout_allocation_failed,
+    nesting_overflow, note_relation_layouts_for_notes, relation_endpoint_id, relation_layout,
+    render_class_box, render_class_component_lines, render_class_document_lines_with_execution,
+    render_horizontal_class_component_lines, render_interface_box, render_note_box, work_overflow,
 };
 use crate::color::AsciiColorRole;
 use crate::operation::AsciiExecution;
@@ -1049,13 +1049,25 @@ pub(super) fn render_namespace_container_box<'a>(
         children.reverse();
     }
 
-    let raw_title = namespace_title(namespace, resources)?;
+    let (raw_title, has_authored_title) = namespace_title(namespace, resources)?;
     let title_plan = ComposedTextPlan::try_new_html_decoded(raw_title, resources)?;
+    let disclose_label = has_authored_title
+        && authored_display_projection_is_lossy(&title_plan, &namespace.label, resources)?;
     let title = deferred_text.try_register(
         title_plan,
         settings.options.terminal_width_profile,
         resources,
     )?;
+    let authored_label = disclose_label
+        .then(|| {
+            deferred_text.try_register_framed_value(
+                "namespaceLabel(bytes=",
+                &namespace.label,
+                settings.options.terminal_width_profile,
+                resources,
+            )
+        })
+        .transpose()?;
     let identity = namespace_authored_identity(namespace, raw_title)
         .map(|id| {
             deferred_text.try_register_framed_value(
@@ -1066,9 +1078,12 @@ pub(super) fn render_namespace_container_box<'a>(
             )
         })
         .transpose()?;
-    let header_width = identity.as_ref().map_or(title.width(), |identity| {
-        title.width().max(identity.width())
-    });
+    let header_width = authored_label
+        .as_ref()
+        .map_or(title.width(), |label| title.width().max(label.width()));
+    let header_width = identity
+        .as_ref()
+        .map_or(header_width, |identity| header_width.max(identity.width()));
     let inner_gap = settings.options.box_border_padding;
     let inner_width = children
         .iter()
@@ -1089,7 +1104,8 @@ pub(super) fn render_namespace_container_box<'a>(
     } else {
         resources.checked_grid_add(child_rows, child_gaps)?
     };
-    let frame_rows = resources.checked_grid_add(4, usize::from(identity.is_some()))?;
+    let frame_rows = resources.checked_grid_add(4, usize::from(authored_label.is_some()))?;
+    let frame_rows = resources.checked_grid_add(frame_rows, usize::from(identity.is_some()))?;
     let height = resources.checked_grid_add(body_rows, frame_rows)?;
     let width = resources.checked_grid_add(content_width, 2)?;
     let extent = resources.grid_extent(width, height)?;
@@ -1127,6 +1143,16 @@ pub(super) fn render_namespace_container_box<'a>(
         settings.options.terminal_width_profile,
         resources,
     )?);
+    if let Some(authored_label) = authored_label.as_ref() {
+        lines.push(RelationGraphLine::deferred_box_content(
+            authored_label,
+            content_width,
+            settings.options.box_border_padding,
+            style,
+            settings.options.terminal_width_profile,
+            resources,
+        )?);
+    }
     if let Some(identity) = identity.as_ref() {
         lines.push(RelationGraphLine::deferred_box_content(
             identity,
@@ -1268,11 +1294,14 @@ fn namespace_empty_content_line(
     )
 }
 
-fn namespace_title<'a>(namespace: &'a Namespace, resources: &ResourceContext) -> Result<&'a str> {
+fn namespace_title<'a>(
+    namespace: &'a Namespace,
+    resources: &ResourceContext,
+) -> Result<(&'a str, bool)> {
     if terminal_text_is_blank(&namespace.label, resources)? {
-        Ok(namespace.id.as_str())
+        Ok((namespace.id.as_str(), false))
     } else {
-        Ok(namespace.label.as_str())
+        Ok((namespace.label.as_str(), true))
     }
 }
 

@@ -840,9 +840,15 @@ fn render_interface_box<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
+    let display_plan = ComposedTextPlan::try_new_html_decoded(&interface.label, resources)?;
+    let disclose_label =
+        authored_display_projection_is_lossy(&display_plan, &interface.label, resources)?;
+    let header_capacity = 2usize
+        .checked_add(usize::from(disclose_label))
+        .ok_or_else(|| work_overflow(resources))?;
     let mut header = Vec::new();
     header
-        .try_reserve_exact(2)
+        .try_reserve_exact(header_capacity)
         .map_err(|_| layout_allocation_failed())?;
     header.push(deferred_text.try_register(
         ComposedTextPlan::try_new(resources, 1, |push| push("<<interface>>"))?,
@@ -850,10 +856,18 @@ fn render_interface_box<'a>(
         resources,
     )?);
     header.push(deferred_text.try_register(
-        ComposedTextPlan::try_new_html_decoded(&interface.label, resources)?,
+        display_plan,
         options.terminal_width_profile,
         resources,
     )?);
+    if disclose_label {
+        header.push(deferred_text.try_register_framed_value(
+            "interfaceLabel(bytes=",
+            &interface.label,
+            options.terminal_width_profile,
+            resources,
+        )?);
+    }
     let mut sections = Vec::new();
     sections
         .try_reserve_exact(1)
@@ -869,8 +883,9 @@ fn render_note_box<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
-    let label = deferred_text.try_register_label_lines(
+    let label = deferred_text.try_register_label_lines_with_authored_disclosure(
         &note.text,
+        "authored(bytes=",
         options.terminal_width_profile,
         resources,
     )?;
@@ -940,8 +955,8 @@ fn class_sections<'a>(
     resources: &ResourceContext,
 ) -> Result<Vec<Vec<DeferredTextLine>>> {
     let display_plan = ComposedTextPlan::try_new_html_decoded(&class.text, resources)?;
-    let disclose_display = display_plan.source_differs_from(&class.text, resources)?
-        || terminal_single_line_text_requires_normalization(&class.text, resources)?;
+    let disclose_display =
+        authored_display_projection_is_lossy(&display_plan, &class.text, resources)?;
     let disclose_identity =
         class.text != class.id || terminal_text_requires_normalization(&class.id, resources)?;
     let header_capacity = class
@@ -1024,6 +1039,15 @@ fn class_sections<'a>(
     }
 
     Ok(sections)
+}
+
+fn authored_display_projection_is_lossy(
+    display_plan: &ComposedTextPlan<'_>,
+    authored: &str,
+    resources: &ResourceContext,
+) -> Result<bool> {
+    Ok(display_plan.source_differs_from(authored, resources)?
+        || terminal_single_line_text_requires_normalization(authored, resources)?)
 }
 
 #[cfg(test)]
@@ -2003,9 +2027,9 @@ fn class_relation_summary_connector(
     })
 }
 
-fn visit_endpoint_label_summary_parts<'a>(
-    lines: &'a std::rc::Rc<Vec<DeferredTextLine>>,
-    push: &mut dyn FnMut(DeferredTextPart<'a>) -> Result<()>,
+fn visit_endpoint_label_summary_parts<'line, 'text>(
+    lines: &'line std::rc::Rc<Vec<DeferredTextLine>>,
+    push: &mut dyn FnMut(DeferredTextPart<'line, 'text>) -> Result<()>,
 ) -> Result<()> {
     for (line_index, line) in lines.iter().enumerate() {
         if line_index > 0 {
@@ -2728,6 +2752,120 @@ mod tests {
         (result, before, after)
     }
 
+    fn render_deferred_class_box(
+        relation_box: RenderedClassBox,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+        deferred: &DeferredTextRegistry<'_>,
+    ) -> String {
+        let lines = relation_graph::stacked_box_lines(
+            std::slice::from_ref(&relation_box),
+            options.terminal_width_profile,
+            resources,
+        )
+        .expect("class box rows should render");
+        relation_graph::render_lines_with_deferred_options(&lines, options, resources, deferred)
+            .expect("class box text should materialize")
+    }
+
+    fn render_interface_label(label: &str) -> String {
+        let interface = ClassInterface {
+            id: "interface0".to_string(),
+            label: label.to_string(),
+            class_id: "Target".to_string(),
+        };
+        let options = AsciiRenderOptions::unicode();
+        let policy = unbounded_policy();
+        let mut resources = ResourceContext::new(policy);
+        let mut deferred = DeferredTextRegistry::new();
+        let relation_box = render_interface_box(
+            &interface,
+            &options,
+            ClassCharset::for_options(&options),
+            &mut deferred,
+            &mut resources,
+        )
+        .expect("interface label should plan");
+        render_deferred_class_box(relation_box, &options, &mut resources, &deferred)
+    }
+
+    fn render_namespace_label(label: &str) -> String {
+        let namespace = merman_core::models::class_diagram::Namespace {
+            id: "Scope".to_string(),
+            label: label.to_string(),
+            dom_id: "Scope".to_string(),
+            class_ids: Vec::new(),
+            note_ids: Vec::new(),
+            parent: None,
+            explicit: true,
+        };
+        let options = AsciiRenderOptions::unicode();
+        let policy = unbounded_policy();
+        let execution = AsciiExecution::for_test(&policy);
+        let settings = ClassRenderSettings {
+            options: &options,
+            charset: ClassCharset::for_options(&options),
+            direction: ClassDirection::TopDown,
+        };
+        let mut resources = ResourceContext::new(policy);
+        let mut deferred = DeferredTextRegistry::new();
+        let relation_box = render_namespace_container_box(
+            &namespace,
+            Vec::new(),
+            settings,
+            &mut deferred,
+            &mut resources,
+            execution,
+        )
+        .expect("namespace label should plan");
+        render_deferred_class_box(relation_box, &options, &mut resources, &deferred)
+    }
+
+    fn render_class_identity_fixture(model: &ClassDiagram) -> String {
+        let policy = unbounded_policy();
+        render_class_diagram_with_execution(
+            model,
+            &AsciiRenderOptions::ascii(),
+            AsciiExecution::for_test(&policy),
+        )
+        .expect("class identity fixture should render")
+    }
+
+    #[test]
+    fn class_interface_and_namespace_labels_disclose_lossy_authored_projection() {
+        for (authored, visible, expected_interface, expected_namespace) in [
+            (
+                "\u{1b}",
+                r"\u{1B}",
+                r#"interfaceLabel(bytes=1)="\u{1B}""#,
+                r#"namespaceLabel(bytes=1)="\u{1B}""#,
+            ),
+            (
+                "&amp;",
+                "&",
+                r#"interfaceLabel(bytes=5)="&amp;""#,
+                r#"namespaceLabel(bytes=5)="&amp;""#,
+            ),
+        ] {
+            let authored_interface = render_interface_label(authored);
+            let visible_interface = render_interface_label(visible);
+            assert_ne!(authored_interface, visible_interface);
+            assert!(authored_interface.contains(expected_interface));
+            assert!(!visible_interface.contains("interfaceLabel(bytes="));
+
+            let authored_namespace = render_namespace_label(authored);
+            let visible_namespace = render_namespace_label(visible);
+            assert_ne!(authored_namespace, visible_namespace);
+            assert!(authored_namespace.contains(expected_namespace));
+            assert!(!visible_namespace.contains("namespaceLabel(bytes="));
+        }
+
+        for absent_label in ["", "   "] {
+            let namespace = render_namespace_label(absent_label);
+            assert!(!namespace.contains("namespaceLabel(bytes="), "{namespace}");
+        }
+    }
+
     fn class_summary_model() -> ClassDiagram {
         let mut model =
             parsed_class_model("classDiagram\nclass A\nclass B\nA --> A : self\nA --> B : linked");
@@ -2833,6 +2971,64 @@ mod tests {
             resources.document_cells_used(),
         );
         (result, before, after)
+    }
+
+    #[test]
+    fn class_relation_text_discloses_lossy_authored_projection_in_routed_and_summary_output() {
+        const AUTHORED: &str = "\u{1b}";
+        const VISIBLE: &str = r"\u{1B}";
+        const DISCLOSURE: &str = r#"authored(bytes=1)="\u{1B}""#;
+
+        let routed = |value: &str| {
+            let mut model = parsed_class_model("classDiagram\nclass A\nclass B\nA --> B");
+            model.notes.push(note("note0", value));
+            let relation = model
+                .relations
+                .first_mut()
+                .expect("routed fixture should contain a relation");
+            relation.title = value.to_string();
+            relation.relation_title_1 = Some(value.to_string());
+            render_class_identity_fixture(&model)
+        };
+        let authored_routed = routed(AUTHORED);
+        let visible_routed = routed(VISIBLE);
+        assert_ne!(authored_routed, visible_routed);
+        assert_eq!(authored_routed.matches(DISCLOSURE).count(), 3);
+        assert!(!visible_routed.contains("authored(bytes="));
+
+        let spoofed_routed = routed(r#"\u{1B}<br>authored(bytes=1)="\u{1B}""#);
+        assert_ne!(authored_routed, spoofed_routed);
+        assert!(
+            spoofed_routed.matches("authored(bytes=").count()
+                > authored_routed.matches("authored(bytes=").count()
+        );
+
+        let controls_first = routed("\u{1b}\\u{7F}");
+        let controls_last = routed("\\u{1B}\u{7f}");
+        assert_ne!(controls_first, controls_last);
+
+        let summary = |value: &str| {
+            let mut model = class_summary_model();
+            for relation in &mut model.relations {
+                relation.title = value.to_string();
+                relation.relation_title_1 = Some(value.to_string());
+                relation.relation_title_2 = Some(value.to_string());
+            }
+            render_class_summary_fixture(
+                &model,
+                &AsciiRenderOptions::ascii(),
+                unbounded_policy(),
+                &Cell::new(false),
+            )
+            .0
+            .expect("class summary identity fixture should render")
+        };
+        let authored_summary = summary(AUTHORED);
+        let visible_summary = summary(VISIBLE);
+        assert!(authored_summary.contains("relations:"));
+        assert_ne!(authored_summary, visible_summary);
+        assert!(authored_summary.contains(DISCLOSURE));
+        assert!(!visible_summary.contains("authored(bytes="));
     }
 
     #[test]

@@ -314,7 +314,7 @@ fn grapheme_needs_normalization(grapheme: &str) -> bool {
                 || UnicodeWidthStr::width(grapheme) == 0))
 }
 
-fn needs_control_escape(ch: char) -> bool {
+pub(super) fn needs_control_escape(ch: char) -> bool {
     ch == '\r'
         || (ch <= '\u{1f}' && ch != '\n')
         || ('\u{7f}'..='\u{9f}').contains(&ch)

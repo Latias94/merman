@@ -1533,7 +1533,7 @@ fn er_summary_frames_direct_authored_identities_that_share_one_display_label() {
         "{rendered}"
     );
     assert!(
-        rendered.contains(r#"id(bytes=1)="\\u{1B}""#),
+        rendered.contains(r#"id(bytes=1)="\u{1B}""#),
         "the normalized control id must retain its authored byte identity:\n{rendered}"
     );
     assert!(
@@ -1567,7 +1567,7 @@ fn er_terminal_normalization_discloses_the_authored_box_identity() {
     let control = render_identity("\u{1b}");
     let authored_escape = render_identity(r"\u{1B}");
 
-    assert!(control.contains(r#"id(bytes=1)="\\u{1B}""#), "{control}");
+    assert!(control.contains(r#"id(bytes=1)="\u{1B}""#), "{control}");
     assert_ne!(control, authored_escape);
 }
 
@@ -1597,8 +1597,8 @@ fn er_single_line_display_projection_discloses_the_authored_owner() {
     };
 
     for (authored, projected_literal, disclosure) in [
-        ("\u{1b}", r"\u{1B}", r#"label(bytes=1)="\\u{1B}""#),
-        ("\n", r"\u{A}", r#"label(bytes=1)="\\u{A}""#),
+        ("\u{1b}", r"\u{1B}", r#"label(bytes=1)="\u{1B}""#),
+        ("\n", r"\u{A}", r#"label(bytes=1)="\n""#),
     ] {
         let transformed = render_display(authored, false);
         let literal = render_display(projected_literal, false);
@@ -1616,7 +1616,7 @@ fn er_single_line_display_projection_discloses_the_authored_owner() {
 
     let alias = render_display("\u{1b}", true);
     assert!(
-        alias.contains(r#"alias(bytes=1)="\\u{1B}""#),
+        alias.contains(r#"alias(bytes=1)="\u{1B}""#),
         "the authored alias must own its disclosure row:\n{alias}"
     );
 }

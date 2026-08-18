@@ -56,7 +56,13 @@ impl RelationGraphLabel {
         deferred: &mut DeferredTextRegistry<'a>,
         resources: &ResourceContext,
     ) -> Result<Option<Self>> {
-        let Some(lines) = deferred.try_register_label_lines(raw, width_profile, resources)? else {
+        let Some(lines) = deferred.try_register_label_lines_with_authored_disclosure(
+            raw,
+            "authored(bytes=",
+            width_profile,
+            resources,
+        )?
+        else {
             return Ok(None);
         };
         Self::try_from_lines(lines, width_profile, resources).map(Some)

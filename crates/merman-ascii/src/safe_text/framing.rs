@@ -1,8 +1,9 @@
-use super::normalization::visible_escape;
+use super::normalization::{needs_control_escape, visible_escape};
 use super::{BudgetedTextDocument, BudgetedTextLine, BudgetedWrappedText};
 use crate::Result;
 use crate::resource::ResourceContext;
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// Visits one injective, terminal-safe quoted field value without allocating an escaped copy.
 pub(crate) fn visit_quoted_terminal_text(
@@ -36,9 +37,14 @@ pub(super) fn visit_quoted_terminal_text_with(
 
     visit(QuotedTerminalTextEvent::OutputFragment("\""))?;
     for grapheme in value.graphemes(true) {
-        if !grapheme
-            .chars()
-            .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
+        let escape_zero_width = UnicodeWidthStr::width(grapheme) == 0;
+        if !escape_zero_width
+            && !grapheme.chars().any(|ch| {
+                ch == '\\'
+                    || ch == '"'
+                    || (ch != ' ' && ch.is_whitespace())
+                    || needs_control_escape(ch)
+            })
         {
             visit(QuotedTerminalTextEvent::OutputFragment(grapheme))?;
             continue;
@@ -52,7 +58,7 @@ pub(super) fn visit_quoted_terminal_text_with(
                 '\t' => visit(QuotedTerminalTextEvent::OutputFragment("\\t"))?,
                 '\n' => visit(QuotedTerminalTextEvent::OutputFragment("\\n"))?,
                 '\r' => visit(QuotedTerminalTextEvent::OutputFragment("\\r"))?,
-                ch if ch.is_whitespace() => {
+                ch if ch.is_whitespace() || needs_control_escape(ch) || escape_zero_width => {
                     let mut buffer = [0u8; 10];
                     visit(QuotedTerminalTextEvent::OutputFragment(visible_escape(
                         ch,
@@ -194,5 +200,36 @@ mod tests {
         ));
         assert_eq!(source_graphemes, ["a", "👩‍💻"]);
         assert!(output.is_empty());
+    }
+
+    #[test]
+    fn quoted_visitor_distinguishes_equal_length_control_swaps() {
+        let render = |value: &str| {
+            let mut output = String::new();
+            visit_quoted_terminal_text_with(value, |event| {
+                if let QuotedTerminalTextEvent::OutputFragment(fragment) = event {
+                    output.push_str(fragment);
+                }
+                Ok(())
+            })
+            .expect("quoted text should render");
+            output
+        };
+
+        let controls_first = render("\u{1b}\\u{7F}");
+        let controls_last = render("\\u{1B}\u{7f}");
+        assert_eq!(controls_first, r#""\u{1B}\\u{7F}""#);
+        assert_eq!(controls_last, r#""\\u{1B}\u{7F}""#);
+        assert_ne!(controls_first, controls_last);
+        assert!(
+            !controls_first
+                .chars()
+                .any(|ch| matches!(ch, '\u{1b}' | '\u{7f}'))
+        );
+        assert!(
+            !controls_last
+                .chars()
+                .any(|ch| matches!(ch, '\u{1b}' | '\u{7f}'))
+        );
     }
 }

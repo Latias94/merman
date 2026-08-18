@@ -262,6 +262,7 @@ pub(crate) struct NormalizedLabelPlan {
     selection: LabelSelection,
     source_metrics: NormalizedLabelMetrics,
     output_metrics: NormalizedLabelMetrics,
+    terminal_projection_lossy: bool,
     width_profile: TerminalWidthProfile,
     wrap_width: Option<usize>,
     break_policy: LabelBreakPolicy,
@@ -276,6 +277,11 @@ impl NormalizedLabelPlan {
 
     pub(crate) const fn materialization_work_units(self) -> usize {
         self.replay_work_units
+    }
+
+    /// Returns true when terminal normalization replaced authored scalars with visible escapes.
+    pub(crate) const fn terminal_projection_is_lossy(self) -> bool {
+        self.terminal_projection_lossy
     }
 
     pub(crate) fn check_materialization_limits(self, resources: &ResourceContext) -> Result<()> {
@@ -610,7 +616,7 @@ fn try_plan_normalized_label_lines_with_policy_transactional(
             Some(selection) => selection,
             None => return Ok(None),
         };
-    let source_metrics = preflight_label(
+    let source_preflight = preflight_label(
         raw,
         selection,
         width_profile,
@@ -618,6 +624,7 @@ fn try_plan_normalized_label_lines_with_policy_transactional(
         resources,
         checkpoint,
     )?;
+    let source_metrics = source_preflight.metrics;
     checkpoint()?;
     let replay_work_units = resources.checked_work_add(
         raw.len().max(1),
@@ -645,6 +652,7 @@ fn try_plan_normalized_label_lines_with_policy_transactional(
         selection,
         source_metrics,
         output_metrics,
+        terminal_projection_lossy: source_preflight.terminal_projection_lossy,
         width_profile,
         wrap_width,
         break_policy,
@@ -685,14 +693,23 @@ fn try_measure_normalized_label_lines_transactional(
         Some(selection) => selection,
         None => return Ok(None),
     };
-    Ok(Some(preflight_label(
-        raw,
-        selection,
-        width_profile,
-        LabelBreakPolicy::MermaidLabelBreaks,
-        resources,
-        &mut checkpoint,
-    )?))
+    Ok(Some(
+        preflight_label(
+            raw,
+            selection,
+            width_profile,
+            LabelBreakPolicy::MermaidLabelBreaks,
+            resources,
+            &mut checkpoint,
+        )?
+        .metrics,
+    ))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NormalizedLabelPreflight {
+    metrics: NormalizedLabelMetrics,
+    terminal_projection_lossy: bool,
 }
 
 fn normalized_label_selection(
@@ -755,13 +772,14 @@ fn preflight_label(
     break_policy: LabelBreakPolicy,
     resources: &ResourceContext,
     checkpoint: &mut impl FnMut() -> Result<()>,
-) -> Result<NormalizedLabelMetrics> {
+) -> Result<NormalizedLabelPreflight> {
     resources.charge_layout_work(raw.len().max(1))?;
     let mut materialized_bytes = 0usize;
     let mut document_cells = 0usize;
     let mut line_count = 1usize;
     let mut line_width = 0usize;
     let mut max_width = 0usize;
+    let mut terminal_projection_lossy = false;
     let policy = resources.policy();
 
     visit_selected_label_output_with_checkpoint(
@@ -789,6 +807,8 @@ fn preflight_label(
                     line_width = 0;
                 }
                 LabelOutputSegment::Segment(segment) => {
+                    terminal_projection_lossy |=
+                        matches!(segment.kind, NormalizedSegmentKind::VisibleEscape(_));
                     segment.check_grapheme_budget(resources)?;
                     resources.charge_layout_work(segment.layout_work())?;
                     let mut buffer = [0u8; 10];
@@ -819,11 +839,14 @@ fn preflight_label(
     )?;
     max_width = max_width.max(line_width);
 
-    Ok(NormalizedLabelMetrics {
-        materialized_bytes,
-        document_cells,
-        line_count,
-        max_width,
+    Ok(NormalizedLabelPreflight {
+        metrics: NormalizedLabelMetrics {
+            materialized_bytes,
+            document_cells,
+            line_count,
+            max_width,
+        },
+        terminal_projection_lossy,
     })
 }
 

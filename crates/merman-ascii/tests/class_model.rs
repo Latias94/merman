@@ -473,7 +473,7 @@ fn class_terminal_normalization_discloses_the_authored_box_identity() {
     let control = render_identity("\u{1b}");
     let authored_escape = render_identity(r"\u{1B}");
 
-    assert!(control.contains(r#"id(bytes=1)="\\u{1B}""#), "{control}");
+    assert!(control.contains(r#"id(bytes=1)="\u{1B}""#), "{control}");
     assert_ne!(control, authored_escape);
 }
 
@@ -491,8 +491,8 @@ fn class_single_line_display_projection_discloses_authored_text() {
     };
 
     for (authored, projected_literal, disclosure) in [
-        ("\u{1b}", r"\u{1B}", r#"text(bytes=1)="\\u{1B}""#),
-        ("\n", r"\u{A}", r#"text(bytes=1)="\\u{A}""#),
+        ("\u{1b}", r"\u{1B}", r#"text(bytes=1)="\u{1B}""#),
+        ("\n", r"\u{A}", r#"text(bytes=1)="\n""#),
         ("&lt;", "<", r#"text(bytes=4)="&lt;""#),
     ] {
         let transformed = render_display(authored);
