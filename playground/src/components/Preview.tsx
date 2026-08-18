@@ -87,7 +87,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import Editor from "@monaco-editor/react";
+import { ReadOnlyEditor } from "@/src/components/ReadOnlyEditor";
 
 interface PreviewProps {
   active?: boolean;
@@ -536,7 +536,11 @@ export function Preview({ active = true, className }: PreviewProps) {
           <>
             {previewMode === "svg" &&
               (svgDisplayMode === "source" ? (
-                <SvgSourceEditor svg={svg} editorTheme={editorTheme} />
+                <SvgSourceEditor
+                  svg={svg}
+                  editorTheme={editorTheme}
+                  feature={t("preview.viewSvgSource")}
+                />
               ) : (
                 <SvgViewport
                   artifact={svgArtifact}
@@ -801,13 +805,13 @@ function AsciiArtifactView({
         data-testid="ascii-artifact-editor"
         className="min-h-0 flex-1"
       >
-        <Editor
+        <ReadOnlyEditor
+          feature={t("preview.asciiMode")}
           height="100%"
           language="plaintext"
           value={result.artifact}
           theme={editorTheme}
           options={{
-            readOnly: true,
             minimap: { enabled: false },
             fontSize: 13,
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
@@ -816,10 +820,8 @@ function AsciiArtifactView({
             wordWrap: "off",
             renderLineHighlight: "none",
             selectionHighlight: false,
-            occurrencesHighlight: "off",
             folding: false,
             padding: { top: 16, bottom: 16 },
-            domReadOnly: true,
           }}
         />
       </div>
@@ -989,7 +991,6 @@ function DiagnosticsView({
         <TabsContent
           key={tab}
           value={tab}
-          forceMount
           className="mt-0 min-h-0 data-[state=inactive]:hidden"
         >
           <DiagnosticArtifactView
@@ -1045,14 +1046,13 @@ function DiagnosticArtifactView({
     );
   }
   return (
-    <Editor
+    <ReadOnlyEditor
+      feature={t("preview.diagnosticsMode")}
       height="100%"
       language="json"
       value={artifact.json}
       theme={editorTheme}
       options={{
-        readOnly: true,
-        domReadOnly: true,
         minimap: { enabled: false },
         fontSize: 13,
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
@@ -1060,7 +1060,6 @@ function DiagnosticArtifactView({
         wordWrap: "on",
         renderLineHighlight: "none",
         selectionHighlight: false,
-        occurrencesHighlight: "off",
         folding: true,
         automaticLayout: true,
         padding: { top: 16, bottom: 16 },
