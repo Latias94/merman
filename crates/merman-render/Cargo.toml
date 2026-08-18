@@ -72,6 +72,7 @@ unicode-segmentation.workspace = true
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }
+merman-core = { workspace = true, features = ["test-support"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true
 sha2.workspace = true
