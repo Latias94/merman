@@ -25,7 +25,6 @@ import stat
 import statistics
 import subprocess
 import sys
-import tomllib
 import uuid
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -765,7 +764,7 @@ def _confirmation_harness_identity_errors(
     head: PreparedRunner,
 ) -> list[str]:
     fields = (
-        ("Cargo [[bench]] entry", "bench_target"),
+        ("Cargo bench target metadata", "bench_target"),
         ("benchmark source", "bench_source"),
         ("corpus manifest", "corpus"),
     )
@@ -876,49 +875,6 @@ def _describe_required_file(
         "bytes": path.stat().st_size,
         "sha256": sha256 if sha256 is not None else _path_sha256(path),
     }
-
-
-def _describe_bench_target(manifest: Path, bench: str) -> tuple[dict[str, Any], Path]:
-    try:
-        value = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        raise ContractViolation(f"invalid Cargo manifest for benchmark {bench!r}: {error}") from error
-    entries = value.get("bench", [])
-    if not isinstance(entries, list):
-        raise ContractViolation("Cargo manifest [[bench]] entries must be an array")
-    matches = [
-        entry
-        for entry in entries
-        if isinstance(entry, dict) and entry.get("name") == bench
-    ]
-    if len(matches) != 1:
-        raise ContractViolation(
-            f"Cargo manifest must contain exactly one [[bench]] entry named {bench!r}"
-        )
-    entry = matches[0]
-    encoded = json.dumps(
-        entry,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    source_value = entry.get("path")
-    if source_value is None:
-        source = manifest.parent / "benches" / f"{bench}.rs"
-    elif isinstance(source_value, str) and source_value:
-        source = manifest.parent / source_value
-    else:
-        raise ContractViolation(f"Cargo benchmark {bench!r} has an invalid path")
-    return (
-        {
-            "name": bench,
-            "entry": entry,
-            "bytes": len(encoded),
-            "sha256": hashlib.sha256(encoded).hexdigest(),
-        },
-        source,
-    )
 
 
 _FREEZE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -1078,13 +1034,14 @@ def _freeze_bench_executable(
     return destination, freeze
 
 
-def _find_package_manifest(
+def _describe_cargo_bench_target(
     checkout: Path,
     package: str,
+    bench: str,
     *,
     toolchain: str | None,
     timeout_seconds: int,
-) -> Path:
+) -> tuple[Path, dict[str, Any], Path]:
     command = ["cargo"]
     if toolchain:
         command.append(f"+{toolchain}")
@@ -1111,12 +1068,73 @@ def _find_package_manifest(
         raise ContractViolation(
             f"expected one workspace package named {package!r}, found {len(matches)}"
         )
-    manifest = Path(matches[0]["manifest_path"])
+    package_metadata = matches[0]
+    manifest = Path(package_metadata["manifest_path"])
     if not manifest.is_file():
         raise ContractViolation(
             f"Cargo metadata returned a missing manifest for {package!r}: {manifest}"
         )
-    return manifest
+
+    target_description, source = _describe_metadata_bench_target(
+        package_metadata,
+        manifest=manifest,
+        bench=bench,
+        package=package,
+    )
+    return manifest, target_description, source
+
+
+def _describe_metadata_bench_target(
+    package_metadata: dict[str, Any],
+    *,
+    manifest: Path,
+    bench: str,
+    package: str,
+) -> tuple[dict[str, Any], Path]:
+    targets = package_metadata.get("targets", [])
+    target_matches = [
+        target
+        for target in targets
+        if isinstance(target, dict)
+        and target.get("name") == bench
+        and isinstance(target.get("kind"), list)
+        and "bench" in target["kind"]
+    ]
+    if len(target_matches) != 1:
+        raise ContractViolation(
+            f"expected one Cargo metadata bench target named {bench!r} "
+            f"in package {package!r}, found {len(target_matches)}"
+        )
+    target = target_matches[0]
+    source_value = target.get("src_path")
+    if not isinstance(source_value, str) or not source_value:
+        raise ContractViolation(
+            f"Cargo metadata bench target {bench!r} has an invalid src_path"
+        )
+    source = Path(source_value)
+    if not source.is_absolute():
+        raise ContractViolation(
+            f"Cargo metadata bench target {bench!r} returned a relative src_path: {source}"
+        )
+
+    normalized_target = dict(target)
+    normalized_target["src_path"] = Path(
+        os.path.relpath(source, start=manifest.parent)
+    ).as_posix()
+    encoded = json.dumps(
+        normalized_target,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    target_description = {
+        "name": bench,
+        "metadata": normalized_target,
+        "bytes": len(encoded),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    return target_description, source
 
 
 def _git_provenance(
@@ -1214,16 +1232,16 @@ def _prepare_runner(
             timeout_seconds=timeout_seconds,
         )
         recipe.target_dir.mkdir(parents=True, exist_ok=True)
-        manifest = _find_package_manifest(
+        manifest, bench_target, bench_source = _describe_cargo_bench_target(
             recipe.checkout,
             recipe.package,
+            recipe.bench,
             toolchain=recipe.toolchain,
             timeout_seconds=timeout_seconds,
         )
         workspace_manifest = recipe.checkout / "Cargo.toml"
         lockfile = recipe.checkout / "Cargo.lock"
         corpus_path = recipe.corpus if recipe.corpus.is_absolute() else recipe.checkout / recipe.corpus
-        bench_target, bench_source = _describe_bench_target(manifest, recipe.bench)
         provenance["manifest"] = _describe_required_file(manifest)
         provenance["workspace_manifest"] = _describe_required_file(workspace_manifest)
         provenance["lockfile"] = _describe_required_file(lockfile)
@@ -1725,9 +1743,10 @@ def _prepare_reused_runner(
         )
         provenance["git"] = current_git
 
-        manifest = _find_package_manifest(
+        manifest, bench_target, bench_source = _describe_cargo_bench_target(
             recipe.checkout,
             recipe.package,
+            recipe.bench,
             toolchain=recipe.toolchain,
             timeout_seconds=timeout_seconds,
         )
@@ -1738,7 +1757,6 @@ def _prepare_reused_runner(
             if recipe.corpus.is_absolute()
             else recipe.checkout / recipe.corpus
         )
-        bench_target, bench_source = _describe_bench_target(manifest, recipe.bench)
         current_files = {
             "manifest": _describe_required_file(manifest),
             "workspace_manifest": _describe_required_file(workspace_manifest),
@@ -2828,12 +2846,17 @@ def _verification_errors(
         except Exception as error:
             errors.append(str(error))
     try:
-        manifest = Path(runner.provenance["manifest"]["path"])
-        current_target, _source = _describe_bench_target(manifest, runner.recipe.bench)
+        _manifest, current_target, _source = _describe_cargo_bench_target(
+            runner.recipe.checkout,
+            runner.recipe.package,
+            runner.recipe.bench,
+            toolchain=runner.recipe.toolchain,
+            timeout_seconds=timeout_seconds,
+        )
         verification["files"]["bench_target"] = current_target["sha256"]
         if current_target["sha256"] != runner.provenance["bench_target"]["sha256"]:
             errors.append(
-                f"{runner.recipe.label} Cargo [[bench]] entry changed during sampling"
+                f"{runner.recipe.label} Cargo bench target metadata changed during sampling"
             )
     except Exception as error:
         errors.append(str(error))

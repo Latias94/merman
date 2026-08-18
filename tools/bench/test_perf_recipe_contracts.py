@@ -25,6 +25,44 @@ PIPELINE_EXECUTABLE = (
 
 
 class CompareSelfRecipeContractsTest(unittest.TestCase):
+    @staticmethod
+    def _cargo_metadata_result(
+        *,
+        checkout: Path,
+        manifest: Path,
+        bench_source: Path,
+        bench: str = "pipeline",
+    ) -> tuple[mock.Mock, dict[str, object]]:
+        package_id = f"path+file://{checkout}#merman@0.0.0"
+        package_metadata: dict[str, object] = {
+            "id": package_id,
+            "name": "merman",
+            "manifest_path": str(manifest),
+            "targets": [
+                {
+                    "kind": ["bench"],
+                    "crate_types": ["bin"],
+                    "name": bench,
+                    "src_path": str(bench_source),
+                    "edition": "2024",
+                    "doc": False,
+                    "doctest": False,
+                    "test": False,
+                }
+            ],
+        }
+        result = mock.Mock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "workspace_members": [package_id],
+                    "packages": [package_metadata],
+                }
+            ),
+            stderr="",
+        )
+        return result, package_metadata
+
     def _recipe(
         self,
         *,
@@ -386,8 +424,18 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 "dirty_entries": [],
                 "dirty_entries_truncated": False,
             }
-            bench_target, described_bench_source = compare_self._describe_bench_target(
-                manifest, "pipeline"
+            metadata, package_metadata = self._cargo_metadata_result(
+                checkout=checkout,
+                manifest=manifest,
+                bench_source=bench_source,
+            )
+            bench_target, described_bench_source = (
+                compare_self._describe_metadata_bench_target(
+                    package_metadata,
+                    manifest=manifest,
+                    bench="pipeline",
+                    package="merman",
+                )
             )
             self.assertEqual(described_bench_source, bench_source)
             files = {
@@ -487,24 +535,6 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 stdout=discovery_stdout,
                 stderr=receipt_line,
             )
-            package_id = f"path+file://{checkout}#merman@0.0.0"
-            metadata = mock.Mock(
-                returncode=0,
-                stdout=json.dumps(
-                    {
-                        "workspace_members": [package_id],
-                        "packages": [
-                            {
-                                "id": package_id,
-                                "name": "merman",
-                                "manifest_path": str(manifest),
-                            }
-                        ],
-                    }
-                ),
-                stderr="",
-            )
-
             with (
                 mock.patch.object(compare_self, "_git_provenance", return_value=git),
                 mock.patch.object(
@@ -979,8 +1009,16 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 mock.patch.object(compare_self, "_git_provenance", return_value=git),
                 mock.patch.object(
                     compare_self,
-                    "_find_package_manifest",
-                    return_value=checkout / "Cargo.toml",
+                    "_describe_cargo_bench_target",
+                    return_value=(
+                        checkout / "Cargo.toml",
+                        {
+                            "name": "pipeline",
+                            "metadata": {},
+                            "sha256": "e" * 64,
+                        },
+                        checkout / "benches" / "pipeline.rs",
+                    ),
                 ),
                 mock.patch.object(
                     compare_self,
@@ -991,14 +1029,6 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     compare_self,
                     "_describe_corpus",
                     return_value={"path": "/tmp/corpus", "sha256": "d" * 64},
-                ),
-                mock.patch.object(
-                    compare_self,
-                    "_describe_bench_target",
-                    return_value=(
-                        {"name": "pipeline", "entry": {}, "sha256": "e" * 64},
-                        checkout / "benches" / "pipeline.rs",
-                    ),
                 ),
                 mock.patch.object(compare_self, "_toolchain_version", return_value="rustc"),
                 mock.patch.object(compare_self, "_cargo_version", return_value="cargo"),
@@ -1237,22 +1267,10 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 }
             )
             cargo_result = mock.Mock(returncode=0, stdout=cargo_stdout, stderr="")
-            package_id = f"path+file://{checkout}#merman@0.0.0"
-            metadata_result = mock.Mock(
-                returncode=0,
-                stdout=json.dumps(
-                    {
-                        "workspace_members": [package_id],
-                        "packages": [
-                            {
-                                "id": package_id,
-                                "name": "merman",
-                                "manifest_path": str(checkout / "Cargo.toml"),
-                            }
-                        ],
-                    }
-                ),
-                stderr="",
+            metadata_result, _package_metadata = self._cargo_metadata_result(
+                checkout=checkout,
+                manifest=checkout / "Cargo.toml",
+                bench_source=bench_source,
             )
             clean_result = mock.Mock(
                 returncode=0,
@@ -1659,7 +1677,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 compare_self._confirmation_harness_identity_errors(base, head), []
             )
             cases = (
-                ("bench_target", None, "Cargo [[bench]] entry"),
+                ("bench_target", None, "Cargo bench target metadata"),
                 ("bench_source", None, "benchmark source"),
                 ("corpus", None, "corpus manifest"),
                 ("corpus", "preflight_contract", "preflight contract"),
@@ -1682,32 +1700,42 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     )
                     head.provenance = copy.deepcopy(provenance)
 
-    def test_bench_target_identity_uses_only_the_selected_cargo_entry(self) -> None:
+    def test_cargo_metadata_accepts_an_auto_discovered_bench_target(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             manifest = root / "Cargo.toml"
             manifest.write_text(
-                '[package]\nname = "merman"\nversion = "0.0.0"\n'
-                '\n[[bench]]\nname = "pipeline"\nharness = false\n'
-                '\n[[bench]]\nname = "ascii_pipeline"\nharness = false\n'
-                'path = "benches/custom_ascii.rs"\n',
+                '[package]\nname = "merman"\nversion = "0.0.0"\n',
                 encoding="utf-8",
             )
-
-            target, source = compare_self._describe_bench_target(
-                manifest, "ascii_pipeline"
+            source = root / "benches" / "ascii_pipeline.rs"
+            metadata, _package_metadata = self._cargo_metadata_result(
+                checkout=root,
+                manifest=manifest,
+                bench_source=source,
+                bench="ascii_pipeline",
             )
 
+            with mock.patch.object(
+                compare_self,
+                "_run_process",
+                return_value=metadata,
+            ) as run_process:
+                described_manifest, target, described_source = (
+                    compare_self._describe_cargo_bench_target(
+                        root,
+                        "merman",
+                        "ascii_pipeline",
+                        toolchain=None,
+                        timeout_seconds=1,
+                    )
+                )
+
+        self.assertEqual(described_manifest, manifest)
         self.assertEqual(target["name"], "ascii_pipeline")
-        self.assertEqual(
-            target["entry"],
-            {
-                "name": "ascii_pipeline",
-                "harness": False,
-                "path": "benches/custom_ascii.rs",
-            },
-        )
-        self.assertEqual(source, root / "benches/custom_ascii.rs")
+        self.assertEqual(target["metadata"]["src_path"], "benches/ascii_pipeline.rs")
+        self.assertEqual(described_source, source)
+        self.assertEqual(run_process.call_args.args[0][0:2], ["cargo", "metadata"])
 
     def test_prepare_checks_git_before_creating_an_in_checkout_target_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
