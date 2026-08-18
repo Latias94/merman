@@ -3,8 +3,8 @@ use super::chars::SequenceChars;
 use super::layout::calculate_layout_with_resources;
 use super::model::AsciiSequenceDiagram;
 use super::notes::apply_note_gutters;
-use super::plan::build_sequence_row_document;
-use super::row_document::{PreparedSequenceDocument, prepare_sequence_title};
+use super::plan::prepare_sequence_row_document;
+use super::row_document::{prepare_sequence_document, prepare_sequence_title};
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
@@ -91,7 +91,7 @@ fn render_sequence_diagram_transactional(
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
-    let row_document = build_sequence_row_document(
+    let row_plan = prepare_sequence_row_document(
         diagram,
         &layout,
         &chars,
@@ -99,8 +99,23 @@ fn render_sequence_diagram_transactional(
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
+    let document = prepare_sequence_document(
+        diagram,
+        title,
+        row_plan.output_extent(),
+        &layout,
+        &mut layout_resources,
+        &mut layout_checkpoints,
+    )?;
+    let row_document = row_plan.materialize(
+        diagram,
+        &layout,
+        &chars,
+        &mut layout_resources,
+        &mut layout_checkpoints,
+    )?;
     row_document.render(
-        PreparedSequenceDocument::new(diagram, title),
+        document,
         &layout,
         &chars,
         options,
@@ -115,8 +130,9 @@ mod tests {
     use crate::options::TerminalWidthProfile;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::sequence::model::{
-        SequenceActorLifecycle, SequenceParticipant, SequenceParticipantLabel,
+        SequenceActorLifecycle, SequenceGroupBox, SequenceParticipant, SequenceParticipantLabel,
     };
+    use crate::sequence::text::SequenceDocumentExtent;
 
     #[test]
     fn sequence_grid_extent_accepts_exact_limit_and_rejects_limit_minus_one() {
@@ -212,6 +228,50 @@ mod tests {
     }
 
     #[test]
+    fn combined_title_and_box_grid_is_admitted_before_row_materialization() {
+        let mut diagram = single_participant_diagram();
+        diagram.boxes.push(SequenceGroupBox {
+            actor_indices: vec![0],
+            label: Some("group".to_string()),
+            background: None,
+            wrap: false,
+        });
+        let options = AsciiRenderOptions::ascii();
+        let title = "T".repeat(40);
+        let measured = prepare_document_without_materializing(
+            &diagram,
+            &title,
+            &options,
+            AsciiResourcePolicy::default(),
+        )
+        .expect("the default policy should admit the planned sequence document");
+        let exact_cells = measured
+            .width()
+            .checked_mul(measured.height())
+            .expect("the planned sequence grid should fit usize");
+
+        let exact = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells)
+            .expect("the exact sequence grid limit should be valid");
+        let admitted = prepare_document_without_materializing(&diagram, &title, &options, exact)
+            .expect("the exact title, box, and body extent should be admitted");
+        assert_eq!(admitted, measured);
+
+        let below = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells - 1)
+            .expect("the limit below the sequence grid should be valid");
+        let error = prepare_document_without_materializing(&diagram, &title, &options, below)
+            .expect_err("the combined grid must reject before row materialization is invoked");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == exact_cells
+                    && details.max == exact_cells - 1
+        ));
+    }
+
+    #[test]
     fn final_output_failure_restores_layout_and_document_ledgers() {
         let mut diagram = single_participant_diagram();
         diagram.participants[0].label =
@@ -262,5 +322,53 @@ mod tests {
             boxes: Vec::new(),
             body: crate::sequence::tree::SequenceBody::default(),
         }
+    }
+
+    fn prepare_document_without_materializing(
+        diagram: &AsciiSequenceDiagram,
+        title: &str,
+        options: &AsciiRenderOptions,
+        policy: AsciiResourcePolicy,
+    ) -> Result<SequenceDocumentExtent> {
+        let resources = ResourceContext::new(policy);
+        let execution = AsciiExecution::for_test(&policy);
+        let mut layout_resources = execution.resource_context(&resources, OperationPhase::Layout);
+        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+        let title = prepare_sequence_title(
+            Some(title),
+            options.terminal_width_profile,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        let mut layout = calculate_layout_with_resources(
+            diagram,
+            options,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        apply_note_gutters(
+            diagram,
+            &mut layout,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        let chars = SequenceChars::for_options(options);
+        let rows = prepare_sequence_row_document(
+            diagram,
+            &layout,
+            &chars,
+            options.sequence_mirror_actors,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        let document = prepare_sequence_document(
+            diagram,
+            title,
+            rows.output_extent(),
+            &layout,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        Ok(document.output_extent())
     }
 }

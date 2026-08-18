@@ -7,9 +7,8 @@ use super::control::{
 use super::layout::{LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at};
 use super::model::{AsciiSequenceDiagram, SequenceEvent};
 use super::prepared_body::{SequencePreparedBody, SequenceRowStep};
-#[cfg(test)]
-use super::row_document::PreparedSequenceDocument;
 use super::row_document::SequenceRowDocument;
+use super::text::SequenceDocumentExtent;
 #[cfg(test)]
 use super::text::blank_line;
 use super::tree::{SequenceControl, SequenceVisit};
@@ -335,28 +334,47 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
     }
 }
 
-struct PreparedSequenceRowPlan<'diagram> {
+pub(super) struct PreparedSequenceRowPlan<'diagram> {
     body: SequencePreparedBody<'diagram>,
     controls: Option<PreparedSequenceControlFrames<'diagram>>,
 }
 
-pub(super) fn build_sequence_row_document(
-    diagram: &AsciiSequenceDiagram,
+impl PreparedSequenceRowPlan<'_> {
+    pub(super) fn output_extent(&self) -> SequenceDocumentExtent {
+        self.controls.as_ref().map_or_else(
+            || self.body.output_extent(),
+            |controls| controls.output_extent(),
+        )
+    }
+
+    pub(super) fn materialize(
+        self,
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<SequenceRowDocument> {
+        materialize_sequence_row_plan(self, diagram, layout, chars, resources, checkpoints)
+    }
+}
+
+pub(super) fn prepare_sequence_row_document<'diagram>(
+    diagram: &'diagram AsciiSequenceDiagram,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     mirror_actors: bool,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<SequenceRowDocument> {
-    let prepared = prepare_sequence_row_plan(
+) -> Result<PreparedSequenceRowPlan<'diagram>> {
+    prepare_sequence_row_plan(
         diagram,
         layout,
         chars,
         mirror_actors,
         resources,
         checkpoints,
-    )?;
-    materialize_sequence_row_plan(prepared, diagram, layout, chars, resources, checkpoints)
+    )
 }
 
 #[cfg(test)]
@@ -569,8 +587,42 @@ mod tests {
         SequenceMessageDirection, SequenceParticipant, SequenceParticipantLabel,
     };
     use crate::sequence::prepared_body::{lifeline_batch_extent, participant_box_batch_extent};
-    use crate::sequence::text::{SequenceBatchExtent, SequenceExtentLedger};
+    use crate::sequence::row_document::{
+        PreparedSequenceDocument, PreparedSequenceTitle, prepare_sequence_document,
+    };
+    use crate::sequence::text::{
+        SequenceBatchExtent, SequenceDocumentExtent, SequenceExtentLedger,
+    };
     use merman_core::{OperationControl, OperationPhase};
+
+    fn build_prepared_row_document<'diagram>(
+        diagram: &'diagram AsciiSequenceDiagram,
+        title: Option<PreparedSequenceTitle<'diagram>>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<(SequenceRowDocument, PreparedSequenceDocument<'diagram>)> {
+        let prepared = prepare_sequence_row_document(
+            diagram,
+            layout,
+            chars,
+            mirror_actors,
+            resources,
+            checkpoints,
+        )?;
+        let document = prepare_sequence_document(
+            diagram,
+            title,
+            prepared.output_extent(),
+            layout,
+            resources,
+            checkpoints,
+        )?;
+        let rows = prepared.materialize(diagram, layout, chars, resources, checkpoints)?;
+        Ok((rows, document))
+    }
 
     #[test]
     fn event_plan_tracks_activation_counts() {
@@ -1007,10 +1059,12 @@ mod tests {
         let layout = calculate_layout(&diagram, &options, &policy).unwrap();
         let mut resources = ResourceContext::new(policy);
         let mut layout_cursor = layout_checkpoints(&policy);
-        let plan = build_sequence_row_document(
+        let chars = ascii_chars();
+        let (plan, document) = build_prepared_row_document(
             &diagram,
+            None,
             &layout,
-            &ascii_chars(),
+            &chars,
             options.sequence_mirror_actors,
             &mut resources,
             &mut layout_cursor,
@@ -1018,9 +1072,9 @@ mod tests {
         .unwrap();
         let rendered = plan
             .render(
-                PreparedSequenceDocument::new(&diagram, None),
+                document,
                 &layout,
-                &ascii_chars(),
+                &chars,
                 &options,
                 &mut resources,
                 &mut layout_cursor,
@@ -1045,15 +1099,6 @@ mod tests {
         let layout = calculate_layout(&diagram, &options, &policy).unwrap();
         let mut resources = ResourceContext::new(policy);
         let mut layout_cursor = layout_checkpoints(&policy);
-        let plan = build_sequence_row_document(
-            &diagram,
-            &layout,
-            &ascii_chars(),
-            false,
-            &mut resources,
-            &mut layout_cursor,
-        )
-        .unwrap();
         let title = crate::sequence::row_document::prepare_sequence_title(
             Some("Timeline"),
             options.terminal_width_profile,
@@ -1061,12 +1106,23 @@ mod tests {
             &mut layout_cursor,
         )
         .unwrap();
+        let chars = ascii_chars();
+        let (plan, document) = build_prepared_row_document(
+            &diagram,
+            title,
+            &layout,
+            &chars,
+            false,
+            &mut resources,
+            &mut layout_cursor,
+        )
+        .unwrap();
 
         let rendered = plan
             .render(
-                PreparedSequenceDocument::new(&diagram, title),
+                document,
                 &layout,
-                &ascii_chars(),
+                &chars,
                 &options,
                 &mut resources,
                 &mut layout_cursor,
@@ -1084,10 +1140,12 @@ mod tests {
         let layout = calculate_layout(&diagram, &options, &policy).unwrap();
         let mut resources = ResourceContext::new(policy);
         let mut layout_cursor = layout_checkpoints(&policy);
-        let plan = build_sequence_row_document(
+        let chars = ascii_chars();
+        let (plan, document) = build_prepared_row_document(
             &diagram,
+            None,
             &layout,
-            &ascii_chars(),
+            &chars,
             false,
             &mut resources,
             &mut layout_cursor,
@@ -1096,9 +1154,9 @@ mod tests {
         let before_finalization = resources.layout_work_used();
 
         plan.render(
-            PreparedSequenceDocument::new(&diagram, None),
+            document,
             &layout,
-            &ascii_chars(),
+            &chars,
             &options,
             &mut resources,
             &mut layout_cursor,
@@ -1114,10 +1172,12 @@ mod tests {
         let exact_layout = calculate_layout(&diagram, &options, &exact).unwrap();
         let mut exact_resources = ResourceContext::new(exact);
         let mut exact_layout_checkpoints = layout_checkpoints(&exact);
-        let exact_plan = build_sequence_row_document(
+        let exact_chars = ascii_chars();
+        let (exact_plan, exact_document) = build_prepared_row_document(
             &diagram,
+            None,
             &exact_layout,
-            &ascii_chars(),
+            &exact_chars,
             false,
             &mut exact_resources,
             &mut exact_layout_checkpoints,
@@ -1125,9 +1185,9 @@ mod tests {
         .unwrap();
         exact_plan
             .render(
-                PreparedSequenceDocument::new(&diagram, None),
+                exact_document,
                 &exact_layout,
-                &ascii_chars(),
+                &exact_chars,
                 &options,
                 &mut exact_resources,
                 &mut exact_layout_checkpoints,
@@ -1144,10 +1204,12 @@ mod tests {
         let below_layout = calculate_layout(&diagram, &options, &below).unwrap();
         let mut below_resources = ResourceContext::new(below);
         let mut below_layout_checkpoints = layout_checkpoints(&below);
-        let below_plan = build_sequence_row_document(
+        let below_chars = ascii_chars();
+        let (below_plan, below_document) = build_prepared_row_document(
             &diagram,
+            None,
             &below_layout,
-            &ascii_chars(),
+            &below_chars,
             false,
             &mut below_resources,
             &mut below_layout_checkpoints,
@@ -1155,9 +1217,9 @@ mod tests {
         .unwrap();
         let error = below_plan
             .render(
-                PreparedSequenceDocument::new(&diagram, None),
+                below_document,
                 &below_layout,
-                &ascii_chars(),
+                &below_chars,
                 &options,
                 &mut below_resources,
                 &mut below_layout_checkpoints,
@@ -1213,15 +1275,6 @@ mod tests {
         let layout = calculate_layout(&diagram, &options, &policy)
             .expect("the box fixture layout should fit");
         let base_resources = ResourceContext::new(policy);
-        let lines = vec![
-            blank_line(
-                layout.total_width + 1,
-                layout.width_profile,
-                &base_resources,
-            )
-            .expect("the planned body line should fit"),
-        ];
-        let plan = SequenceRowDocument::new(lines);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(0);
         let execution = AsciiExecution::new(&control, &policy);
@@ -1229,16 +1282,15 @@ mod tests {
             execution.resource_context(&base_resources, OperationPhase::Layout);
         let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
 
-        let error = plan
-            .render(
-                PreparedSequenceDocument::new(&diagram, None),
-                &layout,
-                &ascii_chars(),
-                &options,
-                &mut layout_resources,
-                &mut checkpoints,
-            )
-            .expect_err("box geometry should observe layout cancellation before emission starts");
+        let error = prepare_sequence_document(
+            &diagram,
+            None,
+            SequenceDocumentExtent::new(layout.total_width + 1, 1),
+            &layout,
+            &mut layout_resources,
+            &mut checkpoints,
+        )
+        .expect_err("box geometry should observe layout cancellation before emission starts");
 
         assert!(matches!(
             error,

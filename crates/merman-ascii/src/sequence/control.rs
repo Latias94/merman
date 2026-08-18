@@ -7,7 +7,7 @@ pub(super) use geometry::SequenceControlBoundaryState;
 use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::model::SequenceControlKind;
-use super::text::{SequenceLine, SequenceRowFootprint};
+use super::text::{SequenceDocumentExtent, SequenceLine, SequenceRowFootprint};
 use super::{SequenceCheckpointCursor, try_plan_sequence_label};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
@@ -281,6 +281,13 @@ fn prepare_sequence_control_frames_transactional<'diagram>(
 }
 
 impl PreparedSequenceControlFrames<'_> {
+    pub(super) const fn output_extent(&self) -> SequenceDocumentExtent {
+        SequenceDocumentExtent::new(
+            self.output_admission.max_width,
+            self.output_admission.height,
+        )
+    }
+
     pub(super) fn materialization_work_units(
         &self,
         resources: &ResourceContext,

@@ -155,6 +155,12 @@ impl GanttStructureAdmission {
                     feature: "empty task ids",
                 });
             }
+            if let Some(section_index) = task.section_index
+                && model.sections.get(section_index).map(String::as_str)
+                    != Some(task.section.as_str())
+            {
+                return Err(invalid_task_section_occurrence());
+            }
         }
 
         Ok(Self {
@@ -610,17 +616,22 @@ mod tests {
         let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,
         ));
+        let materialized = Cell::new(false);
 
         let error = match admit_then_materialize_gantt_structure(
             &model,
             &resources,
-            |admission, resources| GanttTaskIndex::materialize(&model, admission, resources),
+            |admission, resources| {
+                materialized.set(true);
+                GanttTaskIndex::materialize(&model, admission, resources)
+            },
         ) {
             Ok(_) => panic!("an explicit occurrence requires a declared section"),
             Err(error) => error,
         };
 
         assert_eq!(error, invalid_task_section_occurrence());
+        assert!(!materialized.get());
     }
 
     #[test]

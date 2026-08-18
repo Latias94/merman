@@ -14,8 +14,8 @@ use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
 #[cfg(test)]
 use super::text::blank_line;
 use super::text::{
-    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, blank_line_with_checkpoints,
-    trim_right,
+    SequenceBatchExtent, SequenceDocumentExtent, SequenceExtentLedger, SequenceLine,
+    blank_line_with_checkpoints, trim_right,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,40 +60,62 @@ impl PreparedSequenceGroupBox<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SequenceBoxCanvasPlan {
     label_extra_rows: usize,
+    box_width: usize,
     width: usize,
+    retained_width: usize,
     height: usize,
-    output_batch: SequenceBatchExtent,
 }
 
-pub(super) fn render_sequence_boxes(
-    lines: Vec<SequenceLine>,
-    diagram: &AsciiSequenceDiagram,
+#[derive(Debug)]
+pub(super) struct PreparedSequenceBoxes<'a> {
+    boxes: Vec<PreparedSequenceGroupBox<'a>>,
+    input_extent: SequenceDocumentExtent,
+    canvas_plan: SequenceBoxCanvasPlan,
+}
+
+impl PreparedSequenceBoxes<'_> {
+    pub(super) const fn output_extent(&self) -> SequenceDocumentExtent {
+        SequenceDocumentExtent::new(self.canvas_plan.retained_width, self.canvas_plan.height)
+    }
+
+    pub(super) fn materialize(
+        self,
+        lines: Vec<SequenceLine>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Vec<SequenceLine>> {
+        materialize_sequence_boxes(lines, self, layout, chars, resources, checkpoints)
+    }
+}
+
+pub(super) fn prepare_sequence_boxes<'a>(
+    diagram: &'a AsciiSequenceDiagram,
     layout: &SequenceLayout,
-    chars: &SequenceChars,
+    input_extent: SequenceDocumentExtent,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<Vec<SequenceLine>> {
+) -> Result<Option<PreparedSequenceBoxes<'a>>> {
+    if diagram.boxes.is_empty() {
+        return Ok(None);
+    }
     let transaction = resources.clone();
     transaction.transaction(|_| {
-        render_sequence_boxes_transactional(lines, diagram, layout, chars, resources, checkpoints)
+        prepare_sequence_boxes_transactional(diagram, layout, input_extent, resources, checkpoints)
+            .map(Some)
     })
 }
 
-fn render_sequence_boxes_transactional(
-    lines: Vec<SequenceLine>,
-    diagram: &AsciiSequenceDiagram,
+fn prepare_sequence_boxes_transactional<'a>(
+    diagram: &'a AsciiSequenceDiagram,
     layout: &SequenceLayout,
-    chars: &SequenceChars,
+    input_extent: SequenceDocumentExtent,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<Vec<SequenceLine>> {
+) -> Result<PreparedSequenceBoxes<'a>> {
     let horizontal_padding = resources.checked_grid_mul(2, SEQUENCE_BOX_CONTENT_OFFSET)?;
-    let mut content_width = 0;
-    for line in &lines {
-        checkpoints.tick()?;
-        content_width =
-            content_width.max(resources.checked_grid_add(line.len(), horizontal_padding)?);
-    }
+    let content_width = resources.checked_grid_add(input_extent.width(), horizontal_padding)?;
 
     checkpoints.before_charge()?;
     resources.charge_layout_work(diagram.boxes.len())?;
@@ -113,10 +135,74 @@ fn render_sequence_boxes_transactional(
         )?);
     }
     let canvas_plan =
-        plan_sequence_box_canvas(&lines, &boxes, content_width, resources, checkpoints)?;
+        plan_sequence_box_canvas(input_extent, &boxes, content_width, resources, checkpoints)?;
+    Ok(PreparedSequenceBoxes {
+        boxes,
+        input_extent,
+        canvas_plan,
+    })
+}
+
+#[cfg(test)]
+pub(super) fn render_sequence_boxes(
+    lines: Vec<SequenceLine>,
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<SequenceLine>> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        let mut input_width = 0usize;
+        for line in &lines {
+            checkpoints.tick()?;
+            input_width = input_width.max(line.len());
+        }
+        let input_extent = SequenceDocumentExtent::new(input_width, lines.len());
+        let Some(prepared) =
+            prepare_sequence_boxes(diagram, layout, input_extent, resources, checkpoints)?
+        else {
+            return Ok(lines);
+        };
+        prepared.materialize(lines, layout, chars, resources, checkpoints)
+    })
+}
+
+fn materialize_sequence_boxes(
+    lines: Vec<SequenceLine>,
+    prepared: PreparedSequenceBoxes<'_>,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<SequenceLine>> {
+    let mut actual_input_width = 0usize;
+    for line in &lines {
+        checkpoints.tick()?;
+        actual_input_width = actual_input_width.max(line.len());
+    }
+    if actual_input_width != prepared.input_extent.width()
+        || lines.len() != prepared.input_extent.height()
+    {
+        return Err(invalid_box_geometry());
+    }
+    let canvas_plan = prepared.canvas_plan;
+    let output_batch = planned_box_output_extent(
+        &lines,
+        canvas_plan.label_extra_rows,
+        canvas_plan.box_width,
+        canvas_plan.width,
+        resources,
+        checkpoints,
+    )?;
+    if output_batch.retained_width() != canvas_plan.retained_width
+        || output_batch.height() != canvas_plan.height
+    {
+        return Err(invalid_box_geometry());
+    }
     let mut output_extent = SequenceExtentLedger::default();
-    let output_reservation =
-        output_extent.reserve(canvas_plan.output_batch, resources, checkpoints)?;
+    let output_reservation = output_extent.reserve(output_batch, resources, checkpoints)?;
 
     let mut canvas = Vec::new();
     canvas
@@ -157,7 +243,7 @@ fn render_sequence_boxes_transactional(
         checkpoints,
     )?);
 
-    for sequence_box in boxes {
+    for sequence_box in prepared.boxes {
         checkpoints.tick()?;
         draw_sequence_box(&mut canvas, sequence_box, chars, resources, checkpoints)?;
     }
@@ -180,7 +266,7 @@ fn render_sequence_boxes_transactional(
 }
 
 fn plan_sequence_box_canvas(
-    lines: &[SequenceLine],
+    input_extent: SequenceDocumentExtent,
     boxes: &[PreparedSequenceGroupBox<'_>],
     content_width: usize,
     resources: &mut ResourceContext,
@@ -194,26 +280,22 @@ fn plan_sequence_box_canvas(
         box_width = box_width.max(resources.checked_grid_add(sequence_box.bounds.right, 1)?);
     }
     let width = content_width.max(box_width);
+    let retained_content_width =
+        resources.checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, input_extent.width())?;
+    let retained_width = box_width.max(retained_content_width);
     let height = resources.checked_grid_add(
-        resources.checked_grid_add(lines.len(), label_extra_rows)?,
+        resources.checked_grid_add(input_extent.height(), label_extra_rows)?,
         2,
     )?;
     resources.grid_extent(width, height)?;
     checkpoints.before_charge()?;
     charge_work_product(resources, width, height)?;
-    let output_batch = planned_box_output_extent(
-        lines,
+    Ok(SequenceBoxCanvasPlan {
         label_extra_rows,
         box_width,
         width,
-        resources,
-        checkpoints,
-    )?;
-    Ok(SequenceBoxCanvasPlan {
-        label_extra_rows,
-        width,
+        retained_width,
         height,
-        output_batch,
     })
 }
 
@@ -652,7 +734,6 @@ mod tests {
             background: None,
             wrap: false,
         };
-        let lines = vec![blank_line(4, layout.width_profile, &resources)?];
         let content_width = 8;
         let mut checkpoints = layout_checkpoints(&policy);
         let prepared = prepare_sequence_box(
@@ -664,7 +745,7 @@ mod tests {
         )?;
         let boxes = vec![prepared];
         let canvas_plan = plan_sequence_box_canvas(
-            &lines,
+            SequenceDocumentExtent::new(4, 1),
             &boxes,
             content_width,
             &mut resources,

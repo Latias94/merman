@@ -6,6 +6,26 @@ use crate::text::StyledLine;
 
 pub(super) type SequenceLine = StyledLine;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct SequenceDocumentExtent {
+    width: usize,
+    height: usize,
+}
+
+impl SequenceDocumentExtent {
+    pub(super) const fn new(width: usize, height: usize) -> Self {
+        Self { width, height }
+    }
+
+    pub(super) const fn width(self) -> usize {
+        self.width
+    }
+
+    pub(super) const fn height(self) -> usize {
+        self.height
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct SequenceContentSpan {
     left: usize,
@@ -206,6 +226,10 @@ impl SequenceExtentLedger {
     #[cfg(test)]
     pub(super) const fn height(self) -> usize {
         self.height
+    }
+
+    pub(super) const fn output_extent(self) -> SequenceDocumentExtent {
+        SequenceDocumentExtent::new(self.retained_width, self.height)
     }
 
     #[cfg(test)]

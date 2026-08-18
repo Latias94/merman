@@ -1,8 +1,9 @@
 use super::SequenceCheckpointCursor;
-use super::boxes::render_sequence_boxes;
+use super::boxes::{PreparedSequenceBoxes, prepare_sequence_boxes};
 use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::model::AsciiSequenceDiagram;
+use super::text::SequenceDocumentExtent;
 use super::text::{SequenceLine, blank_line_with_checkpoints, trim_right};
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::{AsciiError, Result};
@@ -24,18 +25,18 @@ pub(super) struct PreparedSequenceTitle<'a> {
     width_profile: TerminalWidthProfile,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(super) struct PreparedSequenceDocument<'a> {
-    diagram: &'a AsciiSequenceDiagram,
     title: Option<PreparedSequenceTitle<'a>>,
+    boxes: Option<PreparedSequenceBoxes<'a>>,
+    content_extent: SequenceDocumentExtent,
+    output_extent: SequenceDocumentExtent,
 }
 
-impl<'a> PreparedSequenceDocument<'a> {
-    pub(super) const fn new(
-        diagram: &'a AsciiSequenceDiagram,
-        title: Option<PreparedSequenceTitle<'a>>,
-    ) -> Self {
-        Self { diagram, title }
+impl PreparedSequenceDocument<'_> {
+    #[cfg(test)]
+    pub(super) const fn output_extent(&self) -> SequenceDocumentExtent {
+        self.output_extent
     }
 }
 
@@ -54,19 +55,30 @@ impl SequenceRowDocument {
         layout_checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<String> {
         let mut lines = self.lines;
-        if !document.diagram.boxes.is_empty() {
-            lines = render_sequence_boxes(
-                lines,
-                document.diagram,
-                layout,
-                chars,
+        if let Some(boxes) = document.boxes {
+            lines = boxes.materialize(lines, layout, chars, resources, layout_checkpoints)?;
+        }
+        validate_lines_extent(
+            &lines,
+            document.content_extent,
+            resources,
+            layout_checkpoints,
+        )?;
+        if let Some(title) = document.title {
+            prepend_title_line(
+                &mut lines,
+                title,
+                document.content_extent.width(),
                 resources,
                 layout_checkpoints,
             )?;
         }
-        if let Some(title) = document.title {
-            prepend_title_line(&mut lines, title, resources, layout_checkpoints)?;
-        }
+        validate_lines_extent(
+            &lines,
+            document.output_extent,
+            resources,
+            layout_checkpoints,
+        )?;
         // Box/title geometry, extent admission, and canvas construction are layout work. Only
         // after those complete do we bind the shared ledger to Emit for byte/document emission.
         let mut emit_resources = layout_checkpoints
@@ -75,6 +87,55 @@ impl SequenceRowDocument {
         let mut emit_checkpoints = layout_checkpoints.next_phase(OperationPhase::Emit);
         finish_sequence_lines(lines, options, &mut emit_resources, &mut emit_checkpoints)
     }
+}
+
+pub(super) fn prepare_sequence_document<'a>(
+    diagram: &'a AsciiSequenceDiagram,
+    title: Option<PreparedSequenceTitle<'a>>,
+    body_extent: SequenceDocumentExtent,
+    layout: &SequenceLayout,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<PreparedSequenceDocument<'a>> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        prepare_sequence_document_transactional(
+            diagram,
+            title,
+            body_extent,
+            layout,
+            resources,
+            checkpoints,
+        )
+    })
+}
+
+fn prepare_sequence_document_transactional<'a>(
+    diagram: &'a AsciiSequenceDiagram,
+    title: Option<PreparedSequenceTitle<'a>>,
+    body_extent: SequenceDocumentExtent,
+    layout: &SequenceLayout,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<PreparedSequenceDocument<'a>> {
+    let boxes = prepare_sequence_boxes(diagram, layout, body_extent, resources, checkpoints)?;
+    let content_extent = boxes
+        .as_ref()
+        .map_or(body_extent, PreparedSequenceBoxes::output_extent);
+    let output_extent = match title {
+        Some(title) => SequenceDocumentExtent::new(
+            content_extent.width().max(title.width),
+            resources.checked_grid_add(content_extent.height(), 1)?,
+        ),
+        None => content_extent,
+    };
+    resources.grid_extent(output_extent.width(), output_extent.height())?;
+    Ok(PreparedSequenceDocument {
+        title,
+        boxes,
+        content_extent,
+        output_extent,
+    })
 }
 
 pub(super) fn prepare_sequence_title<'a>(
@@ -164,16 +225,10 @@ fn write_plain_sequence_line(
 fn prepend_title_line(
     lines: &mut Vec<SequenceLine>,
     title: PreparedSequenceTitle<'_>,
+    content_width: usize,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
-    let mut width = 0usize;
-    for line in lines.iter() {
-        checkpoints.tick()?;
-        width = width.max(line.len());
-    }
-    let height = resources.checked_grid_add(lines.len(), 1)?;
-    resources.grid_extent(width.max(title.width), height)?;
     checkpoints.before_charge()?;
     resources.charge_layout_work(title.width.max(1))?;
     lines.try_reserve(1).map_err(|_| allocation_failed())?;
@@ -182,12 +237,33 @@ fn prepend_title_line(
         render_title_line(
             title.text,
             title.width,
-            width,
+            content_width,
             title.width_profile,
             resources,
             checkpoints,
         )?,
     );
+    Ok(())
+}
+
+fn validate_lines_extent(
+    lines: &[SequenceLine],
+    expected: SequenceDocumentExtent,
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<()> {
+    let mut width = 0usize;
+    for line in lines {
+        checkpoints.tick()?;
+        width = width.max(line.len());
+    }
+    if width != expected.width() || lines.len() != expected.height() {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "document extent planning",
+        });
+    }
+    resources.grid_extent(width, lines.len())?;
     Ok(())
 }
 
