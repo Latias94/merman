@@ -635,6 +635,18 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertNotIn("get_runtime_contract", exported)
         self.assertNotIn("get_runtime_capability_vocabulary", exported)
 
+    def test_public_diagnostic_dtos_are_generated_top_level_exports(self):
+        from merman import MermanDiagnosticErrorDetails, MermanDiagnosticSpan
+        from merman.merman_uniffi import (
+            MermanDiagnosticErrorDetails as GeneratedDiagnosticErrorDetails,
+            MermanDiagnosticSpan as GeneratedDiagnosticSpan,
+        )
+
+        self.assertIs(MermanDiagnosticErrorDetails, GeneratedDiagnosticErrorDetails)
+        self.assertIs(MermanDiagnosticSpan, GeneratedDiagnosticSpan)
+        self.assertIn("MermanDiagnosticErrorDetails", merman.__all__)
+        self.assertIn("MermanDiagnosticSpan", merman.__all__)
+
     def test_public_star_export_includes_resource_options_api(self):
         exported = {}
         exec("from merman import *", exported)
