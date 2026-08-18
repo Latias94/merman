@@ -13,6 +13,7 @@ installation command.
 | Complete Rust rendering facade | `merman` | crates.io |
 | A command-line renderer, linter, and exporter | `merman-cli` | GitHub Release archive or crates.io |
 | A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
+| Raw Mermaid CST, incremental parsing, and syntax queries | `tree-sitter-mermaid` on crates.io or `@mermanjs/tree-sitter-mermaid` on npm | Independent grammar release |
 | Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | GitHub Release archive or crates.io authoring tool |
 | One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
@@ -74,6 +75,8 @@ The repository-owned delivery routes are:
 9. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
+10. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
+    `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
 
 ## CI Gates
 

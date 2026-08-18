@@ -51,14 +51,16 @@ release-order database.
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
-`tree-sitter-mermaid` starts at `0.1.0` as a separately packaged Cargo/npm language distribution.
-Use `release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native
-Node prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a
+`tree-sitter-mermaid` starts at `0.1.0` as a separately packaged language distribution. Its Cargo
+package is `tree-sitter-mermaid`; its npm package is `@mermanjs/tree-sitter-mermaid`. Use
+`release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native Node
+prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a
 grammar-subdirectory source archive and checksums, and publishes only when the matching immutable
 `tree-sitter-mermaid-vX.Y.Z` tag passes the protected crates.io, npm, and GitHub environments.
 Because `merman-lsp` now consumes this crate for syntax highlighting, the exact Cargo version must
-exist on crates.io before publishing a dependent workspace release. The npm package is independent
-of the workspace crates and supplies browser consumers with the same grammar WASM and queries.
+exist on crates.io before publishing a dependent workspace release. The scoped npm package is
+independent of the workspace crates and supplies browser consumers with the same grammar WASM and
+queries.
 
 ## Binding Release Chain
 

@@ -1,87 +1,111 @@
 # tree-sitter-mermaid
 
-A tolerant, incremental Tree-sitter grammar for Mermaid source, with structured support for all 35
-public diagram families in Mermaid 11.16.1.
+A tolerant, incremental [Tree-sitter] grammar for Mermaid source. It provides structured concrete
+syntax trees and editor queries for all 35 public diagram families in Mermaid 11.16.1, including
+the ZenUML integration backed by ZenUML Core 3.50.1.
 
-This package is deliberately adjacent to Merman's semantic parser. Tree-sitter owns the concrete
-syntax tree, error recovery, incremental reparsing, and editor queries. `merman-core` remains the
-authority for strict validity, semantic models, diagnostics, IR, rendering, navigation identity,
-and refactoring safety.
+Use this package for syntax highlighting, syntax-aware selection, folding, and other editor features
+that must keep working while a document is incomplete. Use [`@mermanjs/web`] or the Merman Rust
+crates when you need strict validation, semantic models, diagnostics, rendering, navigation, or safe
+refactoring. A recovered Tree-sitter tree is useful editor state; it is not proof that Mermaid will
+accept or render the document.
 
-## Distribution
+## Packages
 
-The independently versioned `tree-sitter-mermaid` release provides:
+| Consumer | Package or artifact | Provides |
+| --- | --- | --- |
+| Node.js | [`@mermanjs/tree-sitter-mermaid`] | Native Node binding, TypeScript declarations, queries, and language WASM |
+| Browser or Worker | [`@mermanjs/tree-sitter-mermaid`] + [`web-tree-sitter`] | Language WASM and portable queries for the generic browser runtime |
+| Rust | [`tree-sitter-mermaid`] | `LANGUAGE`, `NODE_TYPES`, and the portable queries |
+| C/C++ and editors | [GitHub Release] or repository source | Generated C parser/scanner, public header, Make, CMake, and pkg-config metadata |
 
-- a Rust crate exposing `LANGUAGE`, `NODE_TYPES`, and the canonical portable queries;
-- an npm package with native Node bindings, TypeScript declarations, source-build fallback, and
-  release-built Node prebuilds;
-- `tree-sitter-mermaid.wasm` at the npm and GitHub release root for `web-tree-sitter` consumers;
-- generated C sources, a public header, Make and CMake install surfaces, and pkg-config metadata;
-- canonical portable queries plus pre-1.0 query assets for Neovim, Helix, and Zed.
-
-The language is generated explicitly for Tree-sitter ABI 15 with Tree-sitter CLI 0.26.12. The
-selected syntax baseline is Mermaid 11.16.1 with ZenUML Core 3.50.1.
+The grammar has its own version line, independent of Merman. Its npm and Cargo artifacts share that
+grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
+the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
 ## Node.js
 
 ```console
-npm install tree-sitter tree-sitter-mermaid
+npm install tree-sitter @mermanjs/tree-sitter-mermaid
 ```
 
 ```js
 const Parser = require('tree-sitter');
-const Mermaid = require('tree-sitter-mermaid');
+const Mermaid = require('@mermanjs/tree-sitter-mermaid');
 
 const parser = new Parser();
 parser.setLanguage(Mermaid);
+
 const tree = parser.parse('flowchart TD\nA --> B\n');
+console.log(tree.rootNode.toString());
 ```
 
-The `tree-sitter` peer dependency is optional so browser-only consumers can install the grammar
-asset without pulling in the native Node runtime.
+The `tree-sitter` peer dependency is optional so a browser-only install does not pull in the native
+Node runtime. Node applications should use the native binding rather than the browser WASM.
 
-## Browser and workers
+Node ESM consumers use default imports for the CommonJS native bindings:
 
-Use the external `web-tree-sitter` runtime and the exported language WASM. The grammar package does
-not wrap runtime initialization, worker policy, or bundler URL resolution in a second SDK. Copy the
-exported asset to a public URL, or let the application's bundler resolve the package export.
+```js
+import Parser from 'tree-sitter';
+import Mermaid from '@mermanjs/tree-sitter-mermaid';
+```
+
+## Browser and Workers
+
+```console
+npm install web-tree-sitter @mermanjs/tree-sitter-mermaid
+```
+
+The package exports `@mermanjs/tree-sitter-mermaid/tree-sitter-mermaid.wasm`. Copy that asset to a
+public URL with your bundler, then load it with the generic `web-tree-sitter` runtime:
 
 ```js
 import { Language, Parser } from 'web-tree-sitter';
 
 await Parser.init();
-const language = await Language.load(
-  '/assets/tree-sitter-mermaid.wasm',
-);
+const language = await Language.load('/assets/tree-sitter-mermaid.wasm');
+
 const parser = new Parser();
 parser.setLanguage(language);
+const tree = parser.parse('sequenceDiagram\nAlice->>Bob: Hello\n');
 ```
 
-Merman's Playground loads this WASM and the canonical portable highlight query in a dedicated
-syntax worker. Strict diagnostics, completion, navigation, and rename still come from Merman's
-separate semantic worker; browser consumers can adopt the same split without a grammar-specific
-JavaScript SDK.
+After the npm release is published, a no-build browser prototype can pin the exact grammar version
+on jsDelivr:
 
-The package's Node API uses the native binding shown above. The repository's Node-side WASM smoke
-runs with V8's `--liftoff-only` flag because Node 24 can exhaust its optimizing-compiler memory on
-this large generated lexer; the browser smoke runs the published WASM without that flag in
-Chromium. Node applications should use the native binding rather than treating the browser asset
-as a second server-side API.
+```js
+const language = await Language.load(
+  'https://cdn.jsdelivr.net/npm/@mermanjs/tree-sitter-mermaid@0.1.0/tree-sitter-mermaid.wasm',
+);
+```
+
+The grammar package deliberately does not wrap runtime initialization, Worker lifecycle, or bundler
+URL resolution in another JavaScript SDK. Merman's Playground follows the same boundary: a syntax
+Worker runs this WASM and the portable highlight query, while a separate semantic Worker owns
+diagnostics, completion, navigation, and rename.
 
 ## Rust
+
+```console
+cargo add tree-sitter tree-sitter-mermaid
+```
 
 ```rust
 let language: tree_sitter::Language = tree_sitter_mermaid::LANGUAGE.into();
 let mut parser = tree_sitter::Parser::new();
 parser.set_language(&language)?;
-let tree = parser.parse("flowchart TD\nA --> B\n", None).unwrap();
+
+let tree = parser
+    .parse("flowchart TD\nA --> B\n", None)
+    .expect("Tree-sitter returned no tree");
+assert!(!tree.root_node().has_error());
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The crate intentionally does not depend on the Tree-sitter runtime. Applications select a
-compatible `tree-sitter` runtime and use the exported `tree-sitter-language::LanguageFn`.
+The crate exports a `tree-sitter-language::LanguageFn` and does not force a Tree-sitter runtime
+version on applications.
 
-## C
+## C and C++
 
 The committed parser and scanner build without the grammar generator:
 
@@ -91,32 +115,58 @@ cmake --build build
 cmake --install build --prefix /usr/local
 ```
 
-Unix-like consumers may alternatively use `make` and `make install`. Regeneration goes through the
-pinned npm `generate` script and is never part of the default C source build.
+Unix-like consumers may alternatively use `make` and `make install`.
 
-## Queries and editors
+```c
+#include <tree_sitter/api.h>
+#include <tree_sitter/tree-sitter-mermaid.h>
 
-`tree-sitter.json` points to the stable portable query set under `queries/portable/`. The
-`queries/neovim`, `queries/helix`, and `queries/zed` directories are adoption assets rather than a
-promise that npm or crates.io publication automatically updates those editors. Editor integrations
-must pin a released repository revision and its `distribution/tree-sitter-mermaid` subdirectory.
+int main(void) {
+  TSParser *parser = ts_parser_new();
+  ts_parser_set_language(parser, tree_sitter_mermaid());
+  ts_parser_delete(parser);
+  return 0;
+}
+```
 
-The portable highlight query is the package's canonical base-highlighting contract. Its package
-tests keep a compact non-header capture-class expectation for all 35 public families, exact spans
-for boundary-sensitive syntax, bounded frontmatter and directives, recovery of later siblings, and
-incremental-query equivalence with a fresh parse. These checks intentionally stop short of an exact
-capture forest or a per-editor matrix.
+## Compatibility
+
+| Contract | Version |
+| --- | --- |
+| Mermaid syntax baseline | 11.16.1 |
+| ZenUML Core syntax baseline | 3.50.1 |
+| Tree-sitter language ABI | 15 |
+| Tested Rust and Web runtime | 0.26.12 |
+| Native Node runtime contract | 0.25.x |
+
+Before 1.0, a minor release may change named nodes, fields, canonical captures, the language ABI, or
+the selected Mermaid baseline. Pin a compatible minor version for application integrations and an
+immutable release commit for editor integrations.
+
+## Queries and Editors
+
+`tree-sitter.json` selects the canonical portable queries under `queries/portable/`:
+
+- `highlights.scm` for base syntax highlighting;
+- `injections.scm` for embedded languages;
+- `locals.scm` for syntax-local scopes; and
+- `tags.scm` for syntax-level symbols.
+
+The `queries/neovim`, `queries/helix`, and `queries/zed` directories are pre-1.0 adoption assets.
+Those editors own their final query copies and release cadence, so publishing this package does not
+update an editor automatically. Downstream integrations should pin a released Merman commit and use
+`distribution/tree-sitter-mermaid` as the grammar subdirectory.
 
 ## Development
 
-Install the pinned package-local toolchain first:
+From the Merman repository root, install the pinned package-local toolchain:
 
 ```console
 npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
 npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
 ```
 
-The normal checks are intentionally small:
+Run the ordinary grammar and binding checks:
 
 ```console
 npm run check:generated --prefix distribution/tree-sitter-mermaid
@@ -126,24 +176,27 @@ npm run test:node --prefix distribution/tree-sitter-mermaid
 npm run test:c --prefix distribution/tree-sitter-mermaid
 ```
 
-WASM freshness is a separate, slower lane:
+Language-WASM freshness and execution are separate, slower checks:
 
 ```console
 npm run check:wasm --prefix distribution/tree-sitter-mermaid
 npm run test:wasm --prefix distribution/tree-sitter-mermaid
 ```
 
-The standard Tree-sitter corpus owns CST and recovery expectations. One Rust integration test
-projects Merman's strict-valid fixture corpus into Tree-sitter and checks family root selection and
-error-free structure. Focused incremental/scanner tests cover the stateful mechanics. The package
-does not maintain a second semantic test engine, support-tier lattice, receipt graph, or duplicated
-capture forest.
+See the [development guide] and [release guide] for grammar ownership, generation, testing, and
+publication details.
 
-See `docs/development/TREE_SITTER_MERMAID.md` and `docs/release/TREE_SITTER_MERMAID.md` in the
-Merman repository for maintenance and release procedures.
-
-## License and provenance
+## License and Provenance
 
 The package is MIT licensed. Source-derived syntax and template attributions are recorded in
 `metadata/provenance.json`, `metadata/derivations.json`, `THIRD_PARTY_NOTICES.md`, and
 `THIRD_PARTY_LICENSES/`.
+
+[Tree-sitter]: https://tree-sitter.github.io/tree-sitter/
+[`@mermanjs/web`]: https://www.npmjs.com/package/@mermanjs/web
+[`@mermanjs/tree-sitter-mermaid`]: https://www.npmjs.com/package/@mermanjs/tree-sitter-mermaid
+[`web-tree-sitter`]: https://www.npmjs.com/package/web-tree-sitter
+[`tree-sitter-mermaid`]: https://crates.io/crates/tree-sitter-mermaid
+[GitHub Release]: https://github.com/Latias94/merman/releases
+[development guide]: https://github.com/Latias94/merman/blob/main/docs/development/TREE_SITTER_MERMAID.md
+[release guide]: https://github.com/Latias94/merman/blob/main/docs/release/TREE_SITTER_MERMAID.md
