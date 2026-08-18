@@ -853,6 +853,60 @@ fn er_parser_direction_controls_terminal_layout() {
     assert_ne!(tb, bt);
     assert_ne!(tb, lr);
     assert_ne!(lr, rl);
+
+    let mut lowercase_model = parse_er_model("erDiagram\ndirection LR\nA ||--o{ B : owns");
+    lowercase_model.direction = "lr".to_string();
+    assert_eq!(
+        render_er_model(&lowercase_model, &AsciiRenderOptions::ascii())
+            .expect("lowercase direct-model ER direction should render"),
+        lr
+    );
+}
+
+#[test]
+fn empty_er_model_validates_direction_before_returning_empty() {
+    let mut model = ErDiagramRenderModel {
+        direction: "lr".to_string(),
+        ..ErDiagramRenderModel::default()
+    };
+    assert_eq!(
+        render_er_model(&model, &AsciiRenderOptions::ascii())
+            .expect("a valid lowercase direction should permit an empty ER model"),
+        ""
+    );
+
+    model.direction = "sideways".to_string();
+    assert_eq!(
+        render_er_model(&model, &AsciiRenderOptions::ascii())
+            .expect_err("an empty ER model must not bypass direction validation"),
+        AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "unknown ER diagram directions",
+        }
+    );
+}
+
+#[test]
+fn empty_er_direction_bytes_are_admitted_before_parsing() {
+    let model = ErDiagramRenderModel {
+        direction: format!("{}sideways", " ".repeat(1_024)),
+        ..ErDiagramRenderModel::default()
+    };
+    let direction_bytes = model.direction.len();
+    let model = RenderSemanticModel::Er(model);
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+        .expect("ER direction work limit should be valid");
+
+    let error = render_model_with_resources(&model, &AsciiRenderOptions::ascii(), resources)
+        .expect_err("direction bytes must be admitted before empty-model validation");
+    assert!(matches!(
+        error,
+        AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                && details.actual == direction_bytes
+                && details.max == 1
+    ));
 }
 
 #[test]
@@ -1515,6 +1569,56 @@ fn er_terminal_normalization_discloses_the_authored_box_identity() {
 
     assert!(control.contains(r#"id(bytes=1)="\\u{1B}""#), "{control}");
     assert_ne!(control, authored_escape);
+}
+
+#[test]
+fn er_single_line_display_projection_discloses_the_authored_owner() {
+    let render_display = |display: &str, as_alias: bool| {
+        let mut model = ErDiagramRenderModel::default();
+        model.entities.insert(
+            "AUTHORED_ID".to_string(),
+            ErEntityRenderModel {
+                id: "entity-0".to_string(),
+                label: if as_alias {
+                    "fallback".to_string()
+                } else {
+                    display.to_string()
+                },
+                alias: if as_alias {
+                    display.to_string()
+                } else {
+                    String::new()
+                },
+                ..ErEntityRenderModel::default()
+            },
+        );
+        render_er_model(&model, &AsciiRenderOptions::ascii())
+            .expect("direct ER display text should render")
+    };
+
+    for (authored, projected_literal, disclosure) in [
+        ("\u{1b}", r"\u{1B}", r#"label(bytes=1)="\\u{1B}""#),
+        ("\n", r"\u{A}", r#"label(bytes=1)="\\u{A}""#),
+    ] {
+        let transformed = render_display(authored, false);
+        let literal = render_display(projected_literal, false);
+
+        assert!(
+            transformed.contains(disclosure),
+            "missing authored display disclosure {disclosure:?}:\n{transformed}"
+        );
+        assert!(
+            transformed.contains(r#"id(bytes=11)="AUTHORED_ID""#),
+            "the fixed ER identity should remain disclosed:\n{transformed}"
+        );
+        assert_ne!(transformed, literal);
+    }
+
+    let alias = render_display("\u{1b}", true);
+    assert!(
+        alias.contains(r#"alias(bytes=1)="\\u{1B}""#),
+        "the authored alias must own its disclosure row:\n{alias}"
+    );
 }
 
 #[test]

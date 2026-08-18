@@ -478,6 +478,39 @@ fn class_terminal_normalization_discloses_the_authored_box_identity() {
 }
 
 #[test]
+fn class_single_line_display_projection_discloses_authored_text() {
+    let render_display = |display: &str| {
+        let mut model = parse_class_model("classDiagram\nclass A");
+        model
+            .classes
+            .get_mut("A")
+            .expect("class A should exist")
+            .text = display.to_string();
+        render_class_model(&model, &AsciiRenderOptions::ascii())
+            .expect("direct class display text should render")
+    };
+
+    for (authored, projected_literal, disclosure) in [
+        ("\u{1b}", r"\u{1B}", r#"text(bytes=1)="\\u{1B}""#),
+        ("\n", r"\u{A}", r#"text(bytes=1)="\\u{A}""#),
+        ("&lt;", "<", r#"text(bytes=4)="&lt;""#),
+    ] {
+        let transformed = render_display(authored);
+        let literal = render_display(projected_literal);
+
+        assert!(
+            transformed.contains(disclosure),
+            "missing authored display disclosure {disclosure:?}:\n{transformed}"
+        );
+        assert!(
+            transformed.contains(r#"id(bytes=1)="A""#),
+            "the fixed class identity should remain disclosed:\n{transformed}"
+        );
+        assert_ne!(transformed, literal);
+    }
+}
+
+#[test]
 fn class_relationship_labels_preserve_complex_graphemes() {
     let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B : owns");
     model
@@ -644,6 +677,36 @@ fn class_parser_direction_controls_terminal_layout() {
     assert_ne!(tb, bt);
     assert_ne!(tb, lr);
     assert_ne!(lr, rl);
+
+    let mut lowercase_model =
+        parse_class_model("classDiagram\ndirection LR\nclass A\nclass B\nA --> B");
+    lowercase_model.direction = "lr".to_string();
+    assert_eq!(
+        render_class_model(&lowercase_model, &AsciiRenderOptions::ascii())
+            .expect("lowercase direct-model class direction should render"),
+        lr
+    );
+}
+
+#[test]
+fn class_direction_bytes_are_admitted_before_parsing() {
+    let mut model = parse_class_model("classDiagram\nclass A");
+    model.direction = format!("{}sideways", " ".repeat(1_024));
+    let direction_bytes = model.direction.len();
+    let model = RenderSemanticModel::Class(model);
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+        .expect("class direction work limit should be valid");
+
+    let error = render_model_with_resources(&model, &AsciiRenderOptions::ascii(), resources)
+        .expect_err("direction bytes must be admitted before direction validation");
+    assert!(matches!(
+        error,
+        AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                && details.actual == direction_bytes
+                && details.max == 1
+    ));
 }
 
 #[test]

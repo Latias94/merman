@@ -405,6 +405,56 @@ impl<'a> ComposedTextPlan<'a> {
             .transaction(|resources| self.try_deferred_pieces_transactional(profile, resources))
     }
 
+    /// Reports whether the logical source retained by this plan differs from one authored field.
+    ///
+    /// HTML-decoded plans use borrowed and scalar fragments rather than retaining a second owned
+    /// string. Comparing that stream here lets a caller disclose the authored UTF-8 bytes without
+    /// materializing the decoded value first.
+    pub(crate) fn source_differs_from(
+        &self,
+        authored: &str,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        resources.transaction(|resources| {
+            let scan_work = resources.checked_work_add(
+                resources.checked_work_add(
+                    self.fragments.len().max(1),
+                    self.metrics.materialized_bytes.max(1),
+                )?,
+                authored.len().max(1),
+            )?;
+            resources.check_usage(scan_work, 0)?;
+
+            let mut logical_offset = 0usize;
+            let mut differs = self.metrics.materialized_bytes != authored.len();
+            for (iteration, fragment) in self.fragments.iter().copied().enumerate() {
+                if iteration.is_multiple_of(64) {
+                    resources.checkpoint()?;
+                }
+                if fragment.start() != logical_offset {
+                    return Err(invalid_composed_text_plan());
+                }
+                let fragment_end = fragment
+                    .start()
+                    .checked_add(fragment.len())
+                    .ok_or_else(invalid_composed_text_plan)?;
+                fragment.try_visit_range(fragment.start(), fragment_end, |value| {
+                    if !differs && authored.get(logical_offset..fragment_end) != Some(value) {
+                        differs = true;
+                    }
+                    Ok(())
+                })?;
+                logical_offset = fragment_end;
+            }
+            if logical_offset != self.metrics.materialized_bytes {
+                return Err(invalid_composed_text_plan());
+            }
+
+            resources.charge_usage(scan_work, 0)?;
+            Ok(differs)
+        })
+    }
+
     fn try_deferred_pieces_transactional(
         &self,
         profile: TerminalWidthProfile,

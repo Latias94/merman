@@ -45,10 +45,29 @@ pub(crate) fn terminal_text_requires_normalization(
     value: &str,
     resources: &ResourceContext,
 ) -> Result<bool> {
+    terminal_text_requires_normalization_with_line_feed(value, false, resources)
+}
+
+/// Reports whether normalization for a single terminal line changes the authored text.
+///
+/// Unlike general terminal text, a line feed cannot remain structural inside a single rendered
+/// row, so the composed-text path exposes it as a visible `\u{A}` escape.
+pub(crate) fn terminal_single_line_text_requires_normalization(
+    value: &str,
+    resources: &ResourceContext,
+) -> Result<bool> {
+    terminal_text_requires_normalization_with_line_feed(value, true, resources)
+}
+
+fn terminal_text_requires_normalization_with_line_feed(
+    value: &str,
+    escape_line_feed: bool,
+    resources: &ResourceContext,
+) -> Result<bool> {
     for grapheme in value.graphemes(true) {
         resources.check_grapheme_bytes(grapheme.len())?;
         resources.charge_layout_work(grapheme.len().max(1))?;
-        if grapheme_needs_normalization(grapheme) {
+        if (escape_line_feed && grapheme == "\n") || grapheme_needs_normalization(grapheme) {
             return Ok(true);
         }
     }

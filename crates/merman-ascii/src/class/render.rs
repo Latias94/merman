@@ -18,7 +18,7 @@ use crate::resource::AsciiResourceLimitId;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
     ComposedTextPlan, DeferredTextLine, DeferredTextPart, DeferredTextRegistry, charge_text_layout,
-    terminal_text_requires_normalization,
+    terminal_single_line_text_requires_normalization, terminal_text_requires_normalization,
 };
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
@@ -238,15 +238,20 @@ enum ClassDirection {
 
 impl ClassDirection {
     fn try_from_model(raw: &str) -> Result<Self> {
-        match raw.trim().to_ascii_uppercase().as_str() {
-            "" | "TB" | "TD" => Ok(Self::TopDown),
-            "BT" => Ok(Self::BottomUp),
-            "LR" => Ok(Self::LeftRight),
-            "RL" => Ok(Self::RightLeft),
-            _ => Err(AsciiError::UnsupportedFeature {
+        let raw = raw.trim();
+        if raw.is_empty() || raw.eq_ignore_ascii_case("TB") || raw.eq_ignore_ascii_case("TD") {
+            Ok(Self::TopDown)
+        } else if raw.eq_ignore_ascii_case("BT") {
+            Ok(Self::BottomUp)
+        } else if raw.eq_ignore_ascii_case("LR") {
+            Ok(Self::LeftRight)
+        } else if raw.eq_ignore_ascii_case("RL") {
+            Ok(Self::RightLeft)
+        } else {
+            Err(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "unknown class diagram directions",
-            }),
+            })
         }
     }
 
@@ -389,7 +394,7 @@ pub(crate) fn render_class_diagram_with_execution(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     render_class_diagram_impl(model, options, execution)
 }
 
@@ -401,12 +406,14 @@ fn render_class_diagram_impl(
     let base_resources = ResourceContext::new(*execution.resources());
     let mut resources =
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
-    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    resources.charge_layout_work(model.direction.len().max(1))?;
+    let direction = ClassDirection::try_from_model(&model.direction);
+    resources.checkpoint()?;
+    let direction = direction?;
     preflight_class_text(model, &mut resources)?;
     charge_class_model_work(model, &mut resources)?;
     validate_unique_class_render_ids(model, &mut resources)?;
     let charset = ClassCharset::for_options(options);
-    let direction = ClassDirection::try_from_model(&model.direction)?;
     let settings = ClassRenderSettings {
         options,
         charset,
@@ -932,12 +939,16 @@ fn class_sections<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<Vec<Vec<DeferredTextLine>>> {
+    let display_plan = ComposedTextPlan::try_new_html_decoded(&class.text, resources)?;
+    let disclose_display = display_plan.source_differs_from(&class.text, resources)?
+        || terminal_single_line_text_requires_normalization(&class.text, resources)?;
     let disclose_identity =
         class.text != class.id || terminal_text_requires_normalization(&class.id, resources)?;
     let header_capacity = class
         .annotations
         .len()
         .checked_add(1)
+        .and_then(|capacity| capacity.checked_add(usize::from(disclose_display)))
         .and_then(|capacity| capacity.checked_add(usize::from(disclose_identity)))
         .ok_or_else(|| work_overflow(resources))?;
     let mut header = Vec::new();
@@ -952,11 +963,15 @@ fn class_sections<'a>(
         })?;
         header.push(deferred_text.try_register(plan, width_profile, resources)?);
     }
-    header.push(deferred_text.try_register(
-        ComposedTextPlan::try_new_html_decoded(&class.text, resources)?,
-        width_profile,
-        resources,
-    )?);
+    header.push(deferred_text.try_register(display_plan, width_profile, resources)?);
+    if disclose_display {
+        header.push(deferred_text.try_register_framed_value(
+            "text(bytes=",
+            &class.text,
+            width_profile,
+            resources,
+        )?);
+    }
     if disclose_identity {
         header.push(deferred_text.try_register_framed_value(
             "id(bytes=",

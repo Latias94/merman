@@ -14,7 +14,8 @@ use crate::relation_graph::{
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
     ComposedTextPlan, DeferredTextLine, DeferredTextPart, DeferredTextRegistry, charge_text_layout,
-    terminal_char_display_width, terminal_text_requires_normalization,
+    terminal_char_display_width, terminal_single_line_text_requires_normalization,
+    terminal_text_requires_normalization,
 };
 #[cfg(test)]
 use crate::text::StyledLine;
@@ -96,15 +97,20 @@ enum ErDirection {
 
 impl ErDirection {
     fn try_from_model(raw: &str) -> Result<Self> {
-        match raw.trim().to_ascii_uppercase().as_str() {
-            "" | "TB" | "TD" => Ok(Self::TopDown),
-            "BT" => Ok(Self::BottomUp),
-            "LR" => Ok(Self::LeftRight),
-            "RL" => Ok(Self::RightLeft),
-            _ => Err(AsciiError::UnsupportedFeature {
+        let raw = raw.trim();
+        if raw.is_empty() || raw.eq_ignore_ascii_case("TB") || raw.eq_ignore_ascii_case("TD") {
+            Ok(Self::TopDown)
+        } else if raw.eq_ignore_ascii_case("BT") {
+            Ok(Self::BottomUp)
+        } else if raw.eq_ignore_ascii_case("LR") {
+            Ok(Self::LeftRight)
+        } else if raw.eq_ignore_ascii_case("RL") {
+            Ok(Self::RightLeft)
+        } else {
+            Err(AsciiError::UnsupportedFeature {
                 diagram_type: "er",
                 feature: "unknown ER diagram directions",
-            }),
+            })
         }
     }
 
@@ -177,6 +183,10 @@ fn render_er_diagram_impl(
     let base_resources = ResourceContext::new(*execution.resources());
     let mut resources =
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+    resources.charge_layout_work(model.direction.len().max(1))?;
+    let direction = ErDirection::try_from_model(&model.direction);
+    resources.checkpoint()?;
+    let direction = direction?;
     if model.entities.is_empty() {
         if !model.relationships.is_empty() {
             return Err(AsciiError::UnsupportedFeature {
@@ -192,7 +202,6 @@ fn render_er_diagram_impl(
     charge_er_model_work(model, &mut resources)?;
     let authored_entity_identities = index_unique_er_entity_identities(model, &resources)?;
     let charset = ErCharset::for_options(options);
-    let direction = ErDirection::try_from_model(&model.direction)?;
     resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
     let mut deferred_text = DeferredTextRegistry::new();
     let mut boxes = Vec::new();
@@ -438,14 +447,24 @@ fn entity_sections<'a>(
     resources: &ResourceContext,
 ) -> Result<Vec<Vec<DeferredTextLine>>> {
     let mut header = Vec::new();
-    let display_label = entity_display_label(entity);
+    let (display_owner, display_label) = entity_display(entity);
+    let disclose_display =
+        terminal_single_line_text_requires_normalization(display_label, resources)?;
     let disclose_identity = display_label != authored_identity
         || terminal_text_requires_normalization(authored_identity, resources)?;
     header
-        .try_reserve_exact(1 + usize::from(disclose_identity))
+        .try_reserve_exact(1 + usize::from(disclose_display) + usize::from(disclose_identity))
         .map_err(|_| layout_allocation_failed())?;
     let header_plan = ComposedTextPlan::try_new(resources, 1, |push| push(display_label))?;
     header.push(deferred_text.try_register(header_plan, width_profile, resources)?);
+    if disclose_display {
+        header.push(deferred_text.try_register_framed_value(
+            display_owner,
+            display_label,
+            width_profile,
+            resources,
+        )?);
+    }
     if disclose_identity {
         header.push(deferred_text.try_register_framed_value(
             "id(bytes=",
@@ -477,12 +496,16 @@ fn entity_sections<'a>(
     Ok(sections)
 }
 
-fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
+fn entity_display(entity: &ErEntityRenderModel) -> (&'static str, &str) {
     if entity.alias.is_empty() {
-        &entity.label
+        ("label(bytes=", &entity.label)
     } else {
-        &entity.alias
+        ("alias(bytes=", &entity.alias)
     }
+}
+
+fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
+    entity_display(entity).1
 }
 
 #[cfg(test)]
