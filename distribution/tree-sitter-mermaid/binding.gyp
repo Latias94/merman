@@ -31,9 +31,10 @@
         }, { # OS == "win"
           "msvs_settings": {
             "VCCLCompilerTool": {
-              # Node's common.gypi adds C++20 to every MSVC target. Remove it
-              # from this C-only library before selecting the C11 standard.
+              # Node's common.gypi adds a C++ standard to every MSVC target.
+              # Remove it here before selecting C11 for this C-only library.
               "AdditionalOptions!": [
+                "-std:c++17",
                 "-std:c++20"
               ],
               "LanguageStandard_C": "stdc11",
