@@ -60,8 +60,8 @@ subgraph Group
 end
 "#,
             expected_fragments: &[
-                r#"<g class="cluster" id="look-flowchart-Group" data-look="neo""#,
-                r#"id="look-flowchart-flowchart-A-0" transform="translate"#,
+                r#"data-id="Group" data-et="cluster" data-look="neo""#,
+                r#"data-look="neo" data-id="A" data-et="node""#,
             ],
         },
         LookDomCase {

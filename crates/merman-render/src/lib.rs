@@ -1381,16 +1381,19 @@ Animal <|-- Duck
             },
         );
 
+        let document_scope = "elk-smoke-merman-flowchart-document";
+        let marker_id = format!("{document_scope}_flowchart-elk-pointEnd");
+        let filter_id = format!("{document_scope}-filter-drop-shadow");
         assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
-        assert!(svg.contains("elk-smoke_flowchart-elk-pointEnd"));
+        assert!(svg.contains(&marker_id));
         assert!(!svg.contains(r#"aria-roledescription="flowchart-v2""#));
         assert!(!svg.contains(r#"<g class="root""#));
 
         let marker_pos = svg
-            .find(r#"<g><marker id="elk-smoke_flowchart-elk-pointEnd""#)
+            .find(&format!(r#"<g><marker id="{marker_id}""#))
             .expect("ELK marker group");
         let defs_pos = svg
-            .find(r#"<defs><filter id="elk-smoke-drop-shadow""#)
+            .find(&format!(r#"<defs><filter id="{filter_id}""#))
             .expect("ELK shadow defs");
         let subgraphs_pos = svg
             .find(r#"<g class="subgraphs"/>"#)
@@ -1428,15 +1431,18 @@ A{A} --> B & C
             },
         );
 
+        let document_scope = "layout-elk-smoke-merman-flowchart-document";
+        let marker_id = format!("{document_scope}_flowchart-v2-pointEnd");
+        let filter_id = format!("{document_scope}-filter-drop-shadow");
         assert!(svg.contains(r#"aria-roledescription="flowchart-v2""#));
-        assert!(svg.contains("layout-elk-smoke_flowchart-v2-pointEnd"));
+        assert!(svg.contains(&marker_id));
         assert!(!svg.contains(r#"<g class="root""#));
 
         let marker_pos = svg
-            .find(r#"<g><marker id="layout-elk-smoke_flowchart-v2-pointEnd""#)
+            .find(&format!(r#"<g><marker id="{marker_id}""#))
             .expect("ELK marker group");
         let defs_pos = svg
-            .find(r#"<defs><filter id="layout-elk-smoke-drop-shadow""#)
+            .find(&format!(r#"<defs><filter id="{filter_id}""#))
             .expect("ELK shadow defs");
         let subgraphs_pos = svg
             .find(r#"<g class="subgraphs"/>"#)
@@ -1721,10 +1727,12 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
 
     #[cfg(feature = "layout-elk")]
     fn edge_path_chunk<'a>(svg: &'a str, edge_id: &str) -> &'a str {
-        let id_attr = format!(r#"id="merman-{edge_id}""#);
-        let id_start = svg.find(&id_attr).expect("edge id");
-        let path_start = svg[..id_start].rfind("<path ").expect("edge path start");
-        let path_end = svg[id_start..].find("/>").expect("edge path end") + id_start;
+        let semantic_attrs = format!(r#"data-et="edge" data-id="{edge_id}""#);
+        let semantic_start = svg.find(&semantic_attrs).expect("semantic edge id");
+        let path_start = svg[..semantic_start]
+            .rfind("<path ")
+            .expect("edge path start");
+        let path_end = svg[semantic_start..].find("/>").expect("edge path end") + semantic_start;
         &svg[path_start..path_end]
     }
 
