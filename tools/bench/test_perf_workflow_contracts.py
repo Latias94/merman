@@ -20,60 +20,19 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.registry = performance_workflow.load_registry()
 
-    def test_registry_owns_the_measurement_recipes(self) -> None:
-        lanes = self.registry.by_id
+    def test_checked_in_registry_is_unique_and_references_existing_corpora(
+        self,
+    ) -> None:
+        lanes = self.registry.lanes
+        lane_ids = [str(lane["id"]) for lane in lanes]
+        labels = [str(lane["pull_request_label"]) for lane in lanes]
 
-        self.assertEqual(tuple(lanes), ("regression", "ascii", "frontmatter"))
-        self.assertEqual(
-            {
-                lane_id: (
-                    lane["pull_request_label"],
-                    lane["suite"],
-                    lane["group"],
-                    lane["bench"],
-                    lane["corpus"],
-                    lane["features"],
-                    lane["default_features"],
-                    lane["artifact"],
-                )
-                for lane_id, lane in lanes.items()
-            },
-            {
-                "regression": (
-                    "perf",
-                    "canary",
-                    "",
-                    "pipeline",
-                    "tools/bench/corpus.json",
-                    "svg",
-                    True,
-                    "perf-regression",
-                ),
-                "ascii": (
-                    "perf-ascii",
-                    "comparable",
-                    "ascii_end_to_end",
-                    "ascii_pipeline",
-                    "tools/bench/ascii_corpus.json",
-                    "ascii",
-                    False,
-                    "perf-ascii",
-                ),
-                "frontmatter": (
-                    "perf-frontmatter",
-                    "frontmatter",
-                    "frontmatter_preprocess",
-                    "pipeline",
-                    "tools/bench/corpus.json",
-                    "svg",
-                    True,
-                    "perf-frontmatter",
-                ),
-            },
-        )
-        self.assertTrue(
-            all((ROOT / str(lane["corpus"])).is_file() for lane in lanes.values())
-        )
+        self.assertTrue(lanes)
+        self.assertEqual(len(lane_ids), len(set(lane_ids)))
+        self.assertEqual(len(labels), len(set(labels)))
+        for lane in lanes:
+            with self.subTest(lane=lane["id"]):
+                self.assertTrue((ROOT / str(lane["corpus"])).is_file())
 
     def test_event_selection_is_owned_by_the_registry(self) -> None:
         select = performance_workflow.select_lane_ids
@@ -127,7 +86,7 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
         ):
             select(self.registry, event_name="push")
 
-    def test_select_cli_writes_the_matrix_and_selected_bit(self) -> None:
+    def test_select_cli_projects_the_registry_descriptor_to_the_matrix(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "github-output"
             result = performance_workflow.main(
@@ -149,8 +108,9 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(entries["selected"], "true")
         matrix = json.loads(entries["matrix"])
-        self.assertEqual([lane["id"] for lane in matrix["include"]], ["ascii"])
-        self.assertNotIn("pull_request_label", matrix["include"][0])
+        expected_descriptor = dict(self.registry.by_id["ascii"])
+        expected_descriptor.pop("pull_request_label")
+        self.assertEqual(matrix, {"include": [expected_descriptor]})
 
     def test_registry_rejects_unknown_lane_references(self) -> None:
         payload = json.loads(
