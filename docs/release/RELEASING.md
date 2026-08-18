@@ -105,10 +105,17 @@ maintainer's 2FA-protected credential, configure its trusted publisher, and reru
 publication enabled. Do not add the bootstrap credential to GitHub Actions.
 
 The independent syntax package is `@mermanjs/tree-sitter-mermaid`, owned by
-`release-tree-sitter-mermaid.yml`. Its first `0.1.0` publication uses the same verified-artifact,
-2FA-protected bootstrap boundary before Trusted Publishing is configured for that exact scoped
-name. The Rust crate remains `tree-sitter-mermaid`; the two registry packages share a version but
-not a registry name.
+`release-tree-sitter-mermaid.yml`. Its first `0.1.0` npm publication used a verified workflow
+artifact and a maintainer's 2FA-protected bootstrap credential before Trusted Publishing could be
+configured for that exact scoped name. That manual bootstrap does not carry npm provenance; keep
+that boundary explicit. Trusted Publishing is now configured for later versions through
+`release-tree-sitter-mermaid.yml` and the `npm` environment. The Rust crate remains
+`tree-sitter-mermaid`; the two registry packages share a version but not a registry name.
+
+Native prebuild bytes are not assumed to reproduce across independent workflow runs. A first-publish
+or recovery operator must publish and reconcile the exact candidate from one workflow run, then
+rerun only that run's failed jobs. Do not manually publish a candidate from one run and ask a later
+run to accept a separately rebuilt npm tarball as byte-identical.
 
 The experimental native Node group is `@mermanjs/node`, `@mermanjs/node-darwin-arm64`,
 `@mermanjs/node-darwin-x64`, `@mermanjs/node-linux-x64-gnu`,

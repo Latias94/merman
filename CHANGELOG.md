@@ -34,8 +34,8 @@ The next workspace release remains in development. This section records only com
 - Added production Tree-sitter syntax highlighting to the native LSP and Playground. Both adapters
   consume the canonical `tree-sitter-mermaid` grammar and portable highlight query; the Playground
   loads the distribution WASM and runs incremental syntax parsing in a dedicated browser worker.
-  The independently versioned grammar release is prepared as the `tree-sitter-mermaid` crate and
-  the `@mermanjs/tree-sitter-mermaid` npm package.
+  The independently versioned grammar is published as the `tree-sitter-mermaid` crate and the
+  `@mermanjs/tree-sitter-mermaid` npm package; its standalone GitHub Release remains deferred.
 - Added the experimental public `@mermanjs/node` alpha package group for Node.js 22 and newer on macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The root loader selects one exact-version native package and exposes deterministic static SVG plus metadata/layout operations without a postinstall downloader or browser-WASM fallback.
 - Added grapheme-aware terminal plans, checked six-phase ASCII resource descriptors, parser-backed semantic evidence for the diagrammatic families, and explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, and TreeView.
 - Added configurable terminal-cell wrapping for ordinary Flowchart node labels, including the Issue #53 regression fixture and binding JSON snake/camel aliases.
