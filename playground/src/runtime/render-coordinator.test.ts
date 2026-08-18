@@ -276,9 +276,41 @@ test("retains only the latest input while rendering is disabled", async () => {
   assert.equal(completed.snapshot.operation.source, "hidden-latest");
 
   coordinator.setEnabled(false);
+  coordinator.setEnabled(true);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(renderedSources, ["hidden-latest"]);
+
+  coordinator.setEnabled(false);
   coordinator.setInput(input("hidden-again", domainFacade));
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.deepEqual(renderedSources, ["hidden-latest"]);
+});
+
+test("does not inspect hidden workspace source until rendering resumes", async () => {
+  let sourceReads = 0;
+  const workspace = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    get code() {
+      sourceReads += 1;
+      return "hidden-source";
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 0,
+  });
+
+  coordinator.setEnabled(false);
+  coordinator.setInput({
+    facade: facade(),
+    renderViewport: captureRenderViewport(),
+    workspace,
+  });
+  assert.equal(sourceReads, 0);
+
+  coordinator.setEnabled(true);
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.ok(sourceReads > 0);
 });
 
 test("passes one frozen operation to every Merman projection", async () => {

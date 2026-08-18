@@ -57,6 +57,17 @@ test("emitted policy rejects initial optional code and cross-realm artifact edge
   );
 });
 
+test("plain read-only viewer cannot own JSON activation", () => {
+  const crossed = validManifest();
+  crossed[OPTIONAL_FEATURE_SOURCES.viewer].imports.push(
+    OPTIONAL_FEATURE_SOURCES.viewerJson,
+  );
+  assert.match(
+    inspectPlaygroundEmittedGraph(crossed).violations.join("\n"),
+    /Plain read-only viewer closure reaches forbidden node/u,
+  );
+});
+
 test("emitted policy rejects Benchmark closures that reach the Compare artifact", () => {
   const featureCrossed = validManifest();
   featureCrossed[OPTIONAL_FEATURE_SOURCES.benchmark].dynamicImports.push(
@@ -157,6 +168,12 @@ function validManifest() {
       src: OPTIONAL_FEATURE_SOURCES.viewer,
       isDynamicEntry: true,
       imports: ["shared"],
+    },
+    [OPTIONAL_FEATURE_SOURCES.viewerJson]: {
+      file: "assets/viewer-json.js",
+      src: OPTIONAL_FEATURE_SOURCES.viewerJson,
+      isDynamicEntry: true,
+      imports: ["shared", OPTIONAL_FEATURE_SOURCES.viewer],
     },
     compare: {
       file: "assets/compare.js",

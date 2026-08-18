@@ -8,6 +8,11 @@ const LocalReadOnlyEditor = lazy(() =>
     default: module.LocalReadOnlyEditor,
   })),
 );
+const LocalReadOnlyJsonEditor = lazy(() =>
+  import("./ReadOnlyJsonEditorFeature").then((module) => ({
+    default: module.LocalReadOnlyJsonEditor,
+  })),
+);
 
 interface ReadOnlyEditorProps
   extends Omit<
@@ -20,16 +25,20 @@ interface ReadOnlyEditorProps
 
 export function ReadOnlyEditor({
   feature,
+  language,
   options,
   ...props
 }: ReadOnlyEditorProps) {
+  const Editor =
+    language === "json" ? LocalReadOnlyJsonEditor : LocalReadOnlyEditor;
   return (
     <LazyFeatureBoundary
       feature={feature}
       presentation={{ kind: "panel" }}
     >
-      <LocalReadOnlyEditor
+      <Editor
         {...props}
+        language={language}
         options={{
           ...options,
           domReadOnly: true,

@@ -20,6 +20,7 @@ export const OPTIONAL_FEATURE_SOURCES = Object.freeze({
   editor: "src/components/EditorFeature.tsx",
   examples: "src/components/ExampleGallery.tsx",
   viewer: "src/components/ReadOnlyEditorFeature.tsx",
+  viewerJson: "src/components/ReadOnlyJsonEditorFeature.tsx",
 });
 
 export const PLAYGROUND_BUILD_SOURCES = Object.freeze({
@@ -139,6 +140,16 @@ export function inspectOptionalFeatureManifest(
     if (!initialReachableKeys.has(root)) {
       violations.push(`${feature} is not dynamically reachable from ${entrySource}.`);
     }
+  }
+  const viewer = featureRoots.viewer;
+  const viewerJson = featureRoots.viewerJson;
+  if (viewer && viewerJson) {
+    forbid(
+      collectManifestClosure(graph, [viewer], "static"),
+      viewerJson,
+      "Plain read-only viewer closure",
+      violations,
+    );
   }
   return {
     graph,

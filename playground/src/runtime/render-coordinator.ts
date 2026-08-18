@@ -249,6 +249,7 @@ export function createRenderCoordinator({
   let diagnosticsEnabled = false;
   let requestSequence = 0;
   let currentInput: RenderCoordinatorInput | null = null;
+  let renderRequiredWhenEnabled = false;
   let latest: ScheduledRequest | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
@@ -277,7 +278,7 @@ export function createRenderCoordinator({
   };
 
   const scheduleCurrent = (force: boolean, immediate = false) => {
-    if (disposed || !currentInput) return;
+    if (disposed || !enabled || !currentInput) return;
     const { facade, renderViewport, workspace } = currentInput;
     if (!facade || !workspace.code.trim()) {
       cancelActiveCompare();
@@ -287,8 +288,6 @@ export function createRenderCoordinator({
       replaceState(EMPTY_STATE);
       return;
     }
-    if (!enabled) return;
-
     const operationInput = freezeScheduledOperationInput({
       asciiEnabled,
       compareEnabled,
@@ -430,13 +429,18 @@ export function createRenderCoordinator({
 
   const setInput = (input: RenderCoordinatorInput) => {
     currentInput = input;
+    if (!enabled) {
+      renderRequiredWhenEnabled = true;
+      return;
+    }
     scheduleCurrent(false);
   };
   const setEnabled = (nextEnabled: boolean) => {
     if (disposed || enabled === nextEnabled) return;
     enabled = nextEnabled;
     if (enabled) {
-      scheduleCurrent(true, true);
+      if (renderRequiredWhenEnabled) scheduleCurrent(true, true);
+      renderRequiredWhenEnabled = false;
       return;
     }
 
@@ -444,6 +448,8 @@ export function createRenderCoordinator({
     latest = null;
     if (!cancelActiveCompare()) compare.reset();
     const state = store.getState();
+    renderRequiredWhenEnabled =
+      state.status === "pending" || state.status === "updating";
     if (state.status === "pending") replaceState(EMPTY_STATE);
     if (state.status === "updating") replaceState(state.previous);
   };
@@ -465,9 +471,17 @@ export function createRenderCoordinator({
     compareEnabled = features.compareEnabled;
     diagnosticsEnabled = features.diagnosticsEnabled;
     if (!shouldSchedule) return;
+    if (!enabled) {
+      renderRequiredWhenEnabled = true;
+      return;
+    }
     scheduleCurrent(true, true);
   };
   const refresh = () => {
+    if (!enabled) {
+      renderRequiredWhenEnabled = true;
+      return;
+    }
     scheduleCurrent(true, true);
   };
   const pause = async (): Promise<() => void> => {
@@ -506,6 +520,7 @@ export function createRenderCoordinator({
     clearTimer();
     latest = null;
     currentInput = null;
+    renderRequiredWhenEnabled = false;
     compare.dispose();
     replaceState(EMPTY_STATE);
   };
