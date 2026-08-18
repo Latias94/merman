@@ -140,6 +140,11 @@ jobs:
 
           version = sys.argv[1]
           root = Path("distribution/tree-sitter-mermaid")
+          npm_manifest = json.loads((root / "package.json").read_text())
+          if npm_manifest["name"] != "@mermanjs/tree-sitter-mermaid":
+              raise SystemExit(
+                  f"unexpected npm package name: {npm_manifest['name']}"
+              )
           cmake = re.search(
               r'project\(tree-sitter-mermaid\s+VERSION\s+"([^"]+)"',
               (root / "CMakeLists.txt").read_text(),
@@ -153,7 +158,7 @@ jobs:
               "Cargo.toml": tomllib.loads((root / "Cargo.toml").read_text())["package"][
                   "version"
               ],
-              "package.json": json.loads((root / "package.json").read_text())["version"],
+              "package.json": npm_manifest["version"],
               "tree-sitter.json": json.loads(
                   (root / "tree-sitter.json").read_text()
               )["metadata"]["version"],
@@ -421,12 +426,12 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="$RUNNER_TEMP/tree-sitter-mermaid-release"
-          candidates=("$release_dir"/tree-sitter-mermaid-*.tgz)
+          candidates=("$release_dir"/mermanjs-tree-sitter-mermaid-*.tgz)
           test "${#candidates[@]}" -eq 1
           candidate="${candidates[0]}"
-          registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.tgz"
+          registry_copy="$RUNNER_TEMP/mermanjs-tree-sitter-mermaid-$VERSION-registry.tgz"
 
-          registry_url="$(npm view "tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
+          registry_url="$(npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
           if [[ -n "$registry_url" ]]; then
             curl --fail --silent --show-error --location \
               --output "$registry_copy" "$registry_url"
@@ -439,7 +444,7 @@ jobs:
           npm publish "$candidate" --access public --provenance --tag "$NPM_DIST_TAG" || \
             publish_status=$?
           for _ in {1..6}; do
-            registry_url="$(npm view "tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
+            registry_url="$(npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball 2>/dev/null || true)"
             if [[ -n "$registry_url" ]]; then
               curl --fail --silent --show-error --location \
                 --output "$registry_copy" "$registry_url"
