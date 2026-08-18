@@ -1,9 +1,11 @@
 use merman::diagram_theme::{
-    DiagramFamilyId, DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionBuilderV1,
+    DiagramFamilyId, DiagramThemeCompiler, DiagramThemeSpecWireV1, SpecifiedWireV1,
+    ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionBuilderV1,
     ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeRuleBuilderV1, ThemeRuleFacetV1,
-    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
-    ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant, compile_theme_definition,
-    compile_theme_definition_json, describe_theme_support, materialize_theme,
+    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1,
+    ThemeSupportQueryV1, ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant,
+    compile_theme_definition, compile_theme_definition_json, describe_theme_support,
+    materialize_theme,
 };
 use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
@@ -29,6 +31,245 @@ const AUTHORING_RENDER_WITNESSES: [AuthoringRenderWitness; 3] = [
         name: "Sequence",
         diagram_id: "authoring-sequence",
         source: "sequenceDiagram\nAlice->>Bob: Hello\nBob-->>Alice: World\n",
+    },
+];
+
+const TERMINAL_FLOWCHART_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "Flowchart expansion rows",
+    diagram_id: "authoring-expansion-flowchart",
+    source: "flowchart LR\nsubgraph Group\nA[Alpha]\nend\nA --> B[Beta]\n",
+};
+
+const TERMINAL_SEQUENCE_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "Sequence expansion rows",
+    diagram_id: "authoring-expansion-sequence",
+    source: "sequenceDiagram\nparticipant Alice\nparticipant Bob\nactivate Bob\nAlice->>Bob: Hello\nNote right of Bob: Sequence note\ndeactivate Bob\n",
+};
+
+const TERMINAL_STATE_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "State expansion rows",
+    diagram_id: "authoring-expansion-state",
+    source: "---\ntitle: State theme witness\n---\nstateDiagram-v2\n[*] --> Idle: start\nstate Parent {\n  Idle\n}\nstate Decide <<choice>>\nIdle --> Decide: choose\nDecide --> [*]: finish\nnote right of Idle\n  State note\nend note\n",
+};
+
+const TERMINAL_ER_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "ER expansion rows",
+    diagram_id: "authoring-expansion-er",
+    source: "erDiagram\nCUSTOMER {\n  int id\n}\nCUSTOMER ||--o{ ORDER : places\n",
+};
+
+const TERMINAL_PIE_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "Pie expansion palette",
+    diagram_id: "authoring-expansion-pie",
+    source: "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n",
+};
+
+const TERMINAL_SERIES: [&str; 2] = ["#12ab34", "#3456de"];
+const TERMINAL_FIRST_SERIES_RGB: &str = "rgb(18, 171, 52)";
+
+#[derive(Clone, Copy)]
+struct GeneratedRuleTerminalWitness {
+    target: ThemeTarget,
+    variant: Option<ThemeVariant>,
+    fill: Option<ThemeColorTokenV1>,
+    stroke: Option<ThemeColorTokenV1>,
+    diagram: &'static AuthoringRenderWitness,
+}
+
+const fn generated_rule_terminal_witness(
+    target: ThemeTarget,
+    variant: Option<ThemeVariant>,
+    fill: Option<ThemeColorTokenV1>,
+    stroke: Option<ThemeColorTokenV1>,
+    diagram: &'static AuthoringRenderWitness,
+) -> GeneratedRuleTerminalWitness {
+    GeneratedRuleTerminalWitness {
+        target,
+        variant,
+        fill,
+        stroke,
+        diagram,
+    }
+}
+
+const GENERATED_RULE_TERMINAL_WITNESSES: [GeneratedRuleTerminalWitness; 23] = [
+    generated_rule_terminal_witness(
+        ThemeTarget::Text,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Title,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Node,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_FLOWCHART_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Edge,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Line),
+        &TERMINAL_FLOWCHART_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Cluster,
+        None,
+        Some(ThemeColorTokenV1::SurfaceMuted),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_FLOWCHART_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Actor,
+        None,
+        Some(ThemeColorTokenV1::Surface),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_SEQUENCE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Lifeline,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Line),
+        &TERMINAL_SEQUENCE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Message,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Line),
+        &TERMINAL_SEQUENCE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::State,
+        None,
+        Some(ThemeColorTokenV1::Surface),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::StateLabel,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Transition,
+        None,
+        None,
+        Some(ThemeColorTokenV1::Line),
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::TransitionMarker,
+        None,
+        Some(ThemeColorTokenV1::Line),
+        Some(ThemeColorTokenV1::Line),
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::TransitionLabel,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::TransitionLabelBackground,
+        None,
+        Some(ThemeColorTokenV1::Canvas),
+        None,
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Composite,
+        None,
+        Some(ThemeColorTokenV1::Canvas),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::CompositeHeader,
+        None,
+        Some(ThemeColorTokenV1::SurfaceAlt),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::CompositeLabel,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::SpecialState,
+        Some(ThemeVariant::Special),
+        Some(ThemeColorTokenV1::Accent),
+        Some(ThemeColorTokenV1::Accent),
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::SpecialStateInner,
+        Some(ThemeVariant::End),
+        Some(ThemeColorTokenV1::Canvas),
+        Some(ThemeColorTokenV1::Canvas),
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Note,
+        None,
+        Some(ThemeColorTokenV1::SurfaceAlt),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_SEQUENCE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::NoteLabel,
+        None,
+        Some(ThemeColorTokenV1::Text),
+        None,
+        &TERMINAL_STATE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Activation,
+        None,
+        Some(ThemeColorTokenV1::SurfaceAlt),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_SEQUENCE_WITNESS,
+    ),
+    generated_rule_terminal_witness(
+        ThemeTarget::Entity,
+        None,
+        Some(ThemeColorTokenV1::Surface),
+        Some(ThemeColorTokenV1::Border),
+        &TERMINAL_ER_WITNESS,
+    ),
+];
+
+#[derive(Clone, Copy)]
+struct GeneratedPaletteTerminalWitness {
+    target: ThemeTarget,
+    diagram: &'static AuthoringRenderWitness,
+}
+
+const GENERATED_PALETTE_TERMINAL_WITNESSES: [GeneratedPaletteTerminalWitness; 2] = [
+    GeneratedPaletteTerminalWitness {
+        target: ThemeTarget::Node,
+        diagram: &TERMINAL_FLOWCHART_WITNESS,
+    },
+    GeneratedPaletteTerminalWitness {
+        target: ThemeTarget::PieSlice,
+        diagram: &TERMINAL_PIE_WITNESS,
     },
 ];
 
@@ -68,6 +309,52 @@ fn dark_authoring_witness() -> ThemeDefinitionV1 {
                 "#fb7185".to_owned(),
             ]),
     )
+}
+
+fn terminal_color(token: ThemeColorTokenV1) -> &'static str {
+    match token {
+        ThemeColorTokenV1::Canvas => "#110011",
+        ThemeColorTokenV1::Surface => "#220022",
+        ThemeColorTokenV1::SurfaceAlt => "#330033",
+        ThemeColorTokenV1::SurfaceMuted => "#440044",
+        ThemeColorTokenV1::Text => "#550055",
+        ThemeColorTokenV1::Border => "#660066",
+        ThemeColorTokenV1::Line => "#770077",
+        ThemeColorTokenV1::Accent => "#880088",
+    }
+}
+
+fn terminal_witness_definition() -> ThemeDefinitionV1 {
+    ThemeDefinitionV1::new(
+        ThemeTokensV1::default()
+            .with_canvas(terminal_color(ThemeColorTokenV1::Canvas))
+            .with_surface(terminal_color(ThemeColorTokenV1::Surface))
+            .with_surface_alt(terminal_color(ThemeColorTokenV1::SurfaceAlt))
+            .with_surface_muted(terminal_color(ThemeColorTokenV1::SurfaceMuted))
+            .with_text(terminal_color(ThemeColorTokenV1::Text))
+            .with_border(terminal_color(ThemeColorTokenV1::Border))
+            .with_line(terminal_color(ThemeColorTokenV1::Line))
+            .with_accent(terminal_color(ThemeColorTokenV1::Accent))
+            .with_series(TERMINAL_SERIES.map(str::to_owned).to_vec()),
+    )
+}
+
+fn expected_generated_style(witness: GeneratedRuleTerminalWitness) -> ThemeStylePatchWireV1 {
+    let mut style = ThemeStylePatchWireV1::default();
+    if let Some(token) = witness.fill {
+        style.fill = SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(
+            terminal_color(token).to_owned(),
+        ));
+    }
+    if let Some(token) = witness.stroke {
+        style.stroke = Some(ThemeStrokePatchWireV1 {
+            paint: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(
+                terminal_color(token).to_owned(),
+            )),
+            ..ThemeStrokePatchWireV1::default()
+        });
+    }
+    style
 }
 
 fn materialize_pretty_json_round_trip(
@@ -117,6 +404,16 @@ fn render_authoring_svg(
     witness: &AuthoringRenderWitness,
     theme: &merman::diagram_theme::DiagramTheme,
 ) -> String {
+    render_authoring_svg_output(renderer, witness, theme)
+        .svg()
+        .to_owned()
+}
+
+fn render_authoring_svg_output(
+    renderer: &Renderer,
+    witness: &AuthoringRenderWitness,
+    theme: &merman::diagram_theme::DiagramTheme,
+) -> merman::SvgOutput {
     let output = renderer
         .render(
             RenderRequest::svg(
@@ -130,7 +427,112 @@ fn render_authoring_svg(
     let RenderOutput::Svg(Some(output)) = output else {
         panic!("{} should produce an SVG", witness.name);
     };
-    output.svg().to_owned()
+    output
+}
+
+fn assert_generated_rule_terminal(
+    renderer: &Renderer,
+    witness: GeneratedRuleTerminalWitness,
+    theme: &merman::diagram_theme::DiagramTheme,
+) {
+    let output = render_authoring_svg_output(renderer, witness.diagram, theme);
+    assert!(
+        output.evidence().theme_evidence().is_verified(),
+        "{} must verify the isolated {} expansion row",
+        witness.diagram.name,
+        witness.target.id(),
+    );
+    roxmltree::Document::parse(output.svg()).unwrap_or_else(|error| {
+        panic!(
+            "{} must emit valid terminal SVG: {error}",
+            witness.diagram.name
+        )
+    });
+
+    for token in [witness.fill, witness.stroke].into_iter().flatten() {
+        let expected = terminal_color(token);
+        assert!(
+            output.svg().contains(expected),
+            "{} must emit {expected} for the isolated {} expansion row",
+            witness.diagram.name,
+            witness.target.id(),
+        );
+    }
+}
+
+fn element_has_class(node: roxmltree::Node<'_, '_>, expected: &str) -> bool {
+    node.attribute("class").is_some_and(|classes| {
+        classes
+            .split_ascii_whitespace()
+            .any(|class| class == expected)
+    })
+}
+
+fn assert_generated_palette_terminal(
+    renderer: &Renderer,
+    witness: GeneratedPaletteTerminalWitness,
+    theme: &merman::diagram_theme::DiagramTheme,
+) {
+    let output = render_authoring_svg_output(renderer, witness.diagram, theme);
+    assert!(
+        output.evidence().theme_evidence().is_verified(),
+        "{} must verify the isolated {} palette",
+        witness.diagram.name,
+        witness.target.id(),
+    );
+    let document = roxmltree::Document::parse(output.svg()).unwrap_or_else(|error| {
+        panic!(
+            "{} must emit valid terminal SVG: {error}",
+            witness.diagram.name
+        )
+    });
+
+    match witness.target {
+        ThemeTarget::Node => {
+            let style = document
+                .descendants()
+                .find(|node| {
+                    node.is_element()
+                        && element_has_class(*node, "label-container")
+                        && node
+                            .ancestors()
+                            .any(|ancestor| ancestor.attribute("data-id") == Some("A"))
+                })
+                .and_then(|node| node.attribute("style"))
+                .expect("the first Flowchart node shape style");
+            assert!(
+                style.contains(&format!("fill:{} !important", TERMINAL_SERIES[0])),
+                "the generated Node palette must own the first Flowchart node fill: {style}",
+            );
+        }
+        ThemeTarget::PieSlice => {
+            let first_slice_fill = document
+                .descendants()
+                .find(|node| node.has_tag_name("path") && element_has_class(*node, "pieCircle"))
+                .and_then(|node| node.attribute("fill"))
+                .expect("the first Pie slice fill");
+            assert_eq!(first_slice_fill, TERMINAL_SERIES[0]);
+
+            let first_legend_style = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.parent().is_some_and(|parent| {
+                            parent.has_tag_name("g") && element_has_class(parent, "legend")
+                        })
+                })
+                .and_then(|node| node.attribute("style"))
+                .expect("the first Pie legend swatch style");
+            assert!(
+                first_legend_style.contains(&format!("fill: {TERMINAL_FIRST_SERIES_RGB}")),
+                "the generated PieSlice palette must own the first legend swatch: {first_legend_style}",
+            );
+        }
+        _ => panic!(
+            "unexpected generated palette target {}",
+            witness.target.id()
+        ),
+    }
 }
 
 #[cfg(feature = "png")]
@@ -349,97 +751,107 @@ fn versioned_authoring_materializes_and_compiles_through_the_rust_facade() {
 }
 
 #[test]
-fn series_token_reaches_flowchart_node_and_pie_slice_terminal_fills() {
-    const FIRST_SERIES_COLOR: &str = "#12ab34";
-    let definition = ThemeDefinitionV1::new(
-        ThemeTokensV1::default()
-            .with_series(vec![FIRST_SERIES_COLOR.to_owned(), "#3456de".to_owned()]),
-    );
-    let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)
-        .expect("the shared authoring definition should compile");
-
-    let flowchart = Renderer::new()
-        .render(
-            RenderRequest::svg(
-                "flowchart LR\nA[Alpha] --> B[Beta]\n",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(theme.clone()),
-        )
-        .expect("the authored Flowchart should render");
-    let RenderOutput::Svg(Some(flowchart)) = flowchart else {
-        panic!("expected an authored Flowchart SVG");
-    };
-    let flowchart_document =
-        roxmltree::Document::parse(flowchart.svg()).expect("valid authored Flowchart SVG");
-    let first_node = flowchart_document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node.attribute("data-id") == Some("A")
-                && node.attribute("data-et") == Some("node")
-        })
-        .expect("the first Flowchart node wrapper");
-    let first_node_style = first_node
-        .descendants()
-        .find(|node| {
-            node.is_element()
-                && node.attribute("class").is_some_and(|class| {
-                    class
-                        .split_ascii_whitespace()
-                        .any(|part| part == "label-container")
-                })
-        })
-        .and_then(|node| node.attribute("style"))
-        .expect("the first Flowchart node shape style");
-    assert!(
-        first_node_style.contains(&format!("fill:{FIRST_SERIES_COLOR} !important")),
-        "tokens.series[0] must own the first Flowchart node fill: {first_node_style}"
+fn generated_authoring_rows_and_palettes_reach_typed_terminal_witnesses() {
+    let definition = terminal_witness_definition();
+    let materialized = materialize_theme(&definition)
+        .expect("the terminal-witness definition should pass admission and materialize");
+    let materialized_spec = materialized.spec().clone();
+    let styles = materialized_spec
+        .styles
+        .as_ref()
+        .expect("the version one expansion must emit styles");
+    assert_eq!(
+        styles.len(),
+        GENERATED_RULE_TERMINAL_WITNESSES.len() + GENERATED_PALETTE_TERMINAL_WITNESSES.len(),
+        "adding or removing a generated row requires a terminal witness"
     );
 
-    let pie = Renderer::new()
-        .render(
-            RenderRequest::svg(
-                "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(theme),
-        )
-        .expect("the authored Pie should render");
-    let RenderOutput::Svg(Some(pie)) = pie else {
-        panic!("expected an authored Pie SVG");
-    };
-    let pie_document = roxmltree::Document::parse(pie.svg()).expect("valid authored Pie SVG");
-    let first_slice_fill = pie_document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("path")
-                && node.attribute("class").is_some_and(|class| {
-                    class
-                        .split_ascii_whitespace()
-                        .any(|part| part == "pieCircle")
-                })
-        })
-        .and_then(|node| node.attribute("fill"))
-        .expect("the first Pie slice fill");
-    assert_eq!(first_slice_fill, FIRST_SERIES_COLOR);
+    let compiler = DiagramThemeCompiler::new();
+    let renderer = Renderer::new();
+    for (index, witness) in GENERATED_RULE_TERMINAL_WITNESSES
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        let entry = &styles[index];
+        let ThemeRuleSetWireV1::Rule {
+            target,
+            family,
+            variant,
+            ordinal,
+            style,
+        } = entry
+        else {
+            panic!("materialized row {index} must remain a generated rule")
+        };
+        assert_eq!(
+            target,
+            witness.target.id(),
+            "materialized generated rule {index} changed target or order"
+        );
+        assert!(
+            family.is_none(),
+            "materialized generated rule {index} must remain cross-family"
+        );
+        assert_eq!(
+            variant.as_deref(),
+            witness.variant.map(ThemeVariant::id),
+            "materialized generated rule {index} changed variant"
+        );
+        assert!(
+            ordinal.is_none(),
+            "materialized generated rule {index} must remain non-ordinal"
+        );
+        assert_eq!(
+            style,
+            &expected_generated_style(witness),
+            "materialized generated rule {index} changed emitted facets"
+        );
 
-    let first_legend_style = pie_document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("rect")
-                && node.parent().is_some_and(|parent| {
-                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
-                })
-        })
-        .and_then(|node| node.attribute("style"))
-        .expect("the first Pie legend swatch style");
-    assert!(
-        first_legend_style.contains("fill: rgb(18, 171, 52)"),
-        "tokens.series[0] must own the first Pie legend swatch: {first_legend_style}"
-    );
+        // Isolate the indexed materialized entry so another generated row using the same token
+        // cannot satisfy this row's terminal witness.
+        let isolated_spec = DiagramThemeSpecWireV1 {
+            styles: Some(vec![entry.clone()]),
+            ..DiagramThemeSpecWireV1::default()
+        };
+        let theme = compiler
+            .compile_spec_wire(isolated_spec)
+            .unwrap_or_else(|error| panic!("generated rule {index} should compile: {error}"));
+        assert_generated_rule_terminal(&renderer, witness, &theme);
+    }
+
+    let expected_series = TERMINAL_SERIES.map(str::to_owned).to_vec();
+    for (palette_index, witness) in GENERATED_PALETTE_TERMINAL_WITNESSES
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        let materialized_index = GENERATED_RULE_TERMINAL_WITNESSES.len() + palette_index;
+        let entry = &styles[materialized_index];
+        let ThemeRuleSetWireV1::OrdinalPalette { target, colors } = entry else {
+            panic!("materialized row {materialized_index} must remain a generated palette")
+        };
+        assert_eq!(
+            target,
+            witness.target.id(),
+            "generated palette {palette_index} changed target or order"
+        );
+        assert_eq!(
+            colors, &expected_series,
+            "generated palette {palette_index} must retain the authored series"
+        );
+
+        let isolated_spec = DiagramThemeSpecWireV1 {
+            styles: Some(vec![entry.clone()]),
+            ..DiagramThemeSpecWireV1::default()
+        };
+        let theme = compiler
+            .compile_spec_wire(isolated_spec)
+            .unwrap_or_else(|error| {
+                panic!("generated palette {palette_index} should compile: {error}")
+            });
+        assert_generated_palette_terminal(&renderer, witness, &theme);
+    }
 }
 
 #[test]
