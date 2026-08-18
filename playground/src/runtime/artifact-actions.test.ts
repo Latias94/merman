@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { isAsciiExportAvailable } from "../components/toolbar-artifact-availability.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -21,11 +22,41 @@ import {
 } from "./merman-operation-input.ts";
 import type {
   CompletedRenderBatch,
+  MermanAsciiBatchResult,
   RenderCoordinatorState,
   RenderPublicationId,
 } from "./render-coordinator.ts";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
+
+test("enables ASCII export only for lazy or successful artifacts", () => {
+  const cases: ReadonlyArray<
+    readonly [string, MermanAsciiBatchResult | null, boolean]
+  > = [
+    ["lazy", null, true],
+    ["success", { artifact: "ascii", status: "success" }, true],
+    [
+      "failure",
+      {
+        error: { summary: "render failed", detail: null },
+        status: "failure",
+      },
+      false,
+    ],
+    ["unsupported", { diagramType: "flowchart", status: "unsupported" }, false],
+    [
+      "unavailable",
+      { reason: "diagram-detection-unavailable", status: "unavailable" },
+      false,
+    ],
+  ];
+
+  assert.equal(isAsciiExportAvailable(true, null), false);
+  for (const [label, ascii, expected] of cases) {
+    assert.equal(isAsciiExportAvailable(true, { ascii }), expected, label);
+  }
+  assert.equal(isAsciiExportAvailable(false, { ascii: cases[1][1] }), false);
+});
 
 test("selects copied SVG and ASCII only from the named current publication", async () => {
   const publication = completedPublication("current");
@@ -33,6 +64,7 @@ test("selects copied SVG and ASCII only from the named current publication", asy
   const calls: string[] = [];
   const owner = createArtifactActionOwner({
     getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
     io: recordingIo(calls),
   });
 
@@ -47,6 +79,110 @@ test("selects copied SVG and ASCII only from the named current publication", asy
     "copy-ascii:ascii-current",
     "download-ascii:ascii-current:merman-diagram",
   ]);
+});
+
+test("renders and caches ASCII only after an explicit artifact action", async () => {
+  const completed = completedPublication("on-demand");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...completed,
+    ascii: null,
+  });
+  const renderInputs: ConfiguredMermanOperationInput[] = [];
+  const calls: string[] = [];
+  const owner = createArtifactActionOwner({
+    getRenderState: () => publication,
+    getRuntimeState: () =>
+      readyRuntime(undefined, (input) => {
+        renderInputs.push(input);
+        return {
+          ascii: "ascii-on-demand",
+          error: null,
+          status: "success",
+        };
+      }),
+    io: recordingIo(calls),
+  });
+
+  await owner({
+    action: "copy-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+  await owner({
+    action: "download-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+
+  assert.equal(renderInputs.length, 1);
+  assert.equal(renderInputs[0], publication.snapshot.operation);
+  assert.deepEqual(calls, [
+    "copy-ascii:ascii-on-demand",
+    "download-ascii:ascii-on-demand:merman-diagram",
+  ]);
+});
+
+test("on-demand ASCII failures reject before artifact I/O", async () => {
+  const completed = completedPublication("on-demand-failure");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...completed,
+    ascii: null,
+  });
+  const cases: ReadonlyArray<{
+    readonly code: ArtifactActionError["code"];
+    readonly runtime: () => MermanRuntimeState;
+    readonly stage: string | null;
+  }> = [
+    {
+      code: "runtime-unavailable",
+      runtime: () => ({ status: "idle", suspended: false }),
+      stage: null,
+    },
+    {
+      code: "runtime-version-mismatch",
+      runtime: () => readyRuntime(undefined, undefined, "different-version"),
+      stage: null,
+    },
+    {
+      code: "ascii-render-failed",
+      runtime: () =>
+        readyRuntime(undefined, () => {
+          throw new Error("ASCII render threw.");
+        }),
+      stage: "render",
+    },
+    {
+      code: "ascii-render-failed",
+      runtime: () =>
+        readyRuntime(undefined, () => ({
+          ascii: null,
+          error: { detail: null, summary: "ASCII render failed." },
+          status: "failure",
+        })),
+      stage: "render",
+    },
+  ];
+
+  for (const { code, runtime, stage } of cases) {
+    const calls: string[] = [];
+    const owner = createArtifactActionOwner({
+      getRenderState: () => publication,
+      getRuntimeState: runtime,
+      io: recordingIo(calls),
+    });
+
+    await assert.rejects(
+      owner({
+        action: "copy-ascii",
+        publicationId: publication.snapshot.publicationId,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ArtifactActionError);
+        assert.equal(error.code, code);
+        assert.equal(error.stage, stage);
+        return true;
+      },
+    );
+    assert.deepEqual(calls, []);
+  }
 });
 
 test("publishes ASCII actions independently from a failed Merman SVG", async () => {
@@ -66,6 +202,7 @@ test("publishes ASCII actions independently from a failed Merman SVG", async () 
   const calls: string[] = [];
   const owner = createArtifactActionOwner({
     getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
     io: recordingIo(calls),
   });
 
@@ -92,6 +229,7 @@ test("rejects stale, missing, and updating publications before I/O", async () =>
   let state: RenderCoordinatorState = publication;
   const owner = createArtifactActionOwner({
     getRenderState: () => state,
+    getRuntimeState: () => readyRuntime(),
     io: recordingIo(calls),
   });
 
@@ -206,6 +344,7 @@ function completedPublication(
   id: RenderPublicationId = publicationId(1)
 ): CompletedRenderBatch {
   const operation = freezeRenderOperation({
+    asciiEnabled: true,
     compareEnabled: true,
     diagnosticsEnabled: false,
     layoutEnvironment: { containerWidth: 800, containerHeight: 600 },
@@ -268,12 +407,22 @@ function readyRuntime(
     error: null,
     renderTime: 1,
     status: "success",
-  })
+  }),
+  renderAscii: MermanDomainFacade["renderAscii"] = () => ({
+    ascii: "ascii",
+    error: null,
+    status: "success",
+  }),
+  packageVersion = "test-merman",
 ): MermanRuntimeState {
   return {
     status: "ready",
     suspended: false,
-    facade: { packageVersion: "test-merman", render } as MermanDomainFacade,
+    facade: {
+      packageVersion,
+      render,
+      renderAscii,
+    } as MermanDomainFacade,
   };
 }
 

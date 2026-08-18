@@ -117,8 +117,10 @@ export function CodeEditor({ className }: CodeEditorProps) {
         if (languageGenerationRef.current !== generation) return;
         setRequestRejection(rejection);
       },
-      onSemanticUnavailable: (error) => markLanguageDegraded(error, generation),
-      onSyntaxUnavailable: (error) => markLanguageDegraded(error, generation),
+      onSemanticUnavailable: (error) =>
+        markLanguageDegraded(error, generation),
+      onSyntaxUnavailable: (error) =>
+        markLanguageDegraded(error, generation),
     })
       .then((nextRegistration) => {
         if (!active || languageGenerationRef.current !== generation) {

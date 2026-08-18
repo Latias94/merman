@@ -39,12 +39,14 @@ test("manual tabs preserve the editor model, selection, and undo history", async
     .poll(() => page.locator(".monaco-editor:visible .squiggly-error").count())
     .toBeGreaterThan(0);
   await codeTab.click();
+  await expect(page.locator(".monaco-editor")).toHaveCount(1);
   await configTab.click();
   await expect(page.getByText(/Invalid JSON/)).toBeVisible();
   await configEditor.focus();
   await page.keyboard.press("Control+Z");
   await expect(page.getByText("Config OK", { exact: true })).toBeVisible();
   await codeTab.click();
+  await expect(page.locator(".monaco-editor")).toHaveCount(1);
 
   await editor.focus();
   await page.keyboard.insertText("C");
@@ -321,9 +323,47 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   errors.assertNone();
 });
 
-test("preview tabs use manual keyboard activation", async ({ page }) => {
+test("toolbar ASCII export renders on explicit intent from SVG mode", async ({
+  page,
+}) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
+  await replaceEditorSource(page, "flowchart LR\n  Alpha --> Beta");
+  await waitForPreviewSvg(page);
+  await expect(
+    page.getByRole("tab", { name: "SVG", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const exportAscii = page.getByRole("menuitem", {
+    name: /^Export ASCII/u,
+  });
+  await expect(exportAscii).toBeEnabled();
+  const download = page.waitForEvent("download");
+  await exportAscii.click();
+  const artifact = await download;
+
+  expect(artifact.suggestedFilename()).toBe("merman-diagram.txt");
+  const ascii = (await downloadBytes(artifact)).toString("utf8");
+  expect(ascii).toContain("Alpha");
+  expect(ascii).toContain("Beta");
+  errors.assertNone();
+});
+
+test("preview tabs use manual keyboard activation", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const viewerOutput = optionalFeatureOutput("viewer");
+  const viewerJsonOutput = optionalFeatureOutput("viewerJson");
+  const requests: string[] = [];
+  const workers: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  page.on("worker", (worker) => workers.push(worker.url()));
+  await openPlayground(page);
+  expect(wasRequested(requests, viewerOutput)).toBe(false);
+  await page.getByRole("button", { name: "View SVG source", exact: true }).click();
+  await expect.poll(() => requestCount(requests, viewerOutput)).toBe(1);
+  expect(wasRequested(requests, viewerJsonOutput)).toBe(false);
+  expect(workers.some((url) => /json\.worker/i.test(url))).toBe(false);
   const diagnosticsTab = page.getByRole("tab", {
     name: "Diagnostics",
     exact: true,
@@ -337,6 +377,12 @@ test("preview tabs use manual keyboard activation", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(diagnosticsTab).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab", { name: "Parse JSON" })).toBeVisible();
+  await expect.poll(() => requestCount(requests, viewerJsonOutput)).toBe(1);
+  await expect.poll(() => workers.some((url) => /json\.worker/i.test(url))).toBe(true);
+  await expect.poll(() => requestCount(requests, viewerOutput)).toBe(1);
+  expect(
+    requests.some((url) => url.startsWith("https://cdn.jsdelivr.net/")),
+  ).toBe(false);
   errors.assertNone();
 });
 

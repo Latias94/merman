@@ -10,6 +10,7 @@ import {
   assertRealmInitBudget,
   createOneTimeRealmInitGate,
   createRealmToken,
+  realmEngineArtifactSourceBytes,
   utf8ByteLength,
   validateCompareRenderRequest,
   validateCompareRenderResponse,
@@ -166,6 +167,19 @@ test("engine artifact validation binds identity, bytes, and resource authority",
     }).resourceUrl,
     merman.resourceUrl
   );
+});
+
+test("validated engine artifacts own one reusable UTF-8 byte buffer", () => {
+  const artifact = validateRealmEngineArtifact(
+    ENGINE_ARTIFACT,
+    ENGINE_IDENTITY,
+  );
+  const first = realmEngineArtifactSourceBytes(artifact);
+  const second = realmEngineArtifactSourceBytes(artifact);
+
+  assert.equal(first, second);
+  assert.equal(first.byteLength, ENGINE_ARTIFACT.bytes);
+  assert.equal(new TextDecoder().decode(first), ENGINE_ARTIFACT.source);
 });
 
 test("one-time realm init gate rejects missing ports and replay", () => {

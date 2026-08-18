@@ -12,7 +12,7 @@ import type {
 } from "./merman-core.ts";
 import {
   freezeRenderOperation,
-  sameRenderOperation,
+  type FreezeRenderOperationInput,
   type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "../lib/workspace-snapshot.ts";
@@ -40,6 +40,10 @@ export interface RenderCoordinatorInput {
 
 export interface FrozenRenderSnapshot {
   readonly operation: FrozenRenderOperation;
+  readonly publicationId: RenderPublicationId;
+}
+
+export interface ScheduledRenderSnapshot {
   readonly publicationId: RenderPublicationId;
 }
 
@@ -113,7 +117,7 @@ export type MermanAsciiBatchResult =
     };
 
 interface CompletedBatchBase {
-  readonly ascii: MermanAsciiBatchResult;
+  readonly ascii: MermanAsciiBatchResult | null;
   readonly detection: DiagramDetectionFacts;
   readonly diagnostics: RenderDiagnostics | null;
   readonly publishedAt: number;
@@ -170,12 +174,12 @@ export type RenderCoordinatorState =
   | { readonly status: "empty" }
   | {
       readonly status: "pending";
-      readonly snapshot: FrozenRenderSnapshot;
+      readonly snapshot: ScheduledRenderSnapshot;
     }
   | {
       readonly status: "updating";
       readonly previous: CompletedRenderBatch;
-      readonly snapshot: FrozenRenderSnapshot;
+      readonly snapshot: ScheduledRenderSnapshot;
     }
   | CompletedRenderBatch;
 
@@ -193,12 +197,14 @@ export interface RenderCoordinator {
   pause(): Promise<() => void>;
   refresh(): void;
   resume(): void;
+  setEnabled(enabled: boolean): void;
   setFeatures(features: RenderFeatures): void;
   setInput(input: RenderCoordinatorInput): void;
   suspend(): void;
 }
 
 export interface RenderFeatures {
+  readonly asciiEnabled: boolean;
   readonly compareEnabled: boolean;
   readonly diagnosticsEnabled: boolean;
 }
@@ -206,12 +212,21 @@ export interface RenderFeatures {
 export interface RenderCoordinatorOptions {
   readonly compare: MermaidRealmController;
   readonly debounceMs?: number;
+  readonly freezeOperation?: (
+    input: FreezeRenderOperationInput,
+  ) => FrozenRenderOperation;
   readonly now?: () => number;
 }
 
 interface ScheduledRequest {
   readonly facade: MermanDomainFacade;
+  readonly operationInput: FreezeRenderOperationInput;
+  readonly publicationId: RenderPublicationId;
   readonly scheduledAt: number;
+}
+
+interface ActiveRequest {
+  readonly facade: MermanDomainFacade;
   readonly snapshot: FrozenRenderSnapshot;
 }
 
@@ -221,20 +236,24 @@ const EMPTY_STATE: RenderCoordinatorState = Object.freeze({
 export function createRenderCoordinator({
   compare,
   debounceMs = 300,
+  freezeOperation = freezeRenderOperation,
   now = () => performance.now(),
 }: RenderCoordinatorOptions): RenderCoordinator {
   const store = createStore<RenderCoordinatorState>(() => EMPTY_STATE);
   let disposed = false;
+  let enabled = true;
   let suspended = false;
   let pauseCount = 0;
+  let asciiEnabled = false;
   let compareEnabled = false;
   let diagnosticsEnabled = false;
   let requestSequence = 0;
   let currentInput: RenderCoordinatorInput | null = null;
+  let renderRequiredWhenEnabled = false;
   let latest: ScheduledRequest | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
-  let activeRequest: ScheduledRequest | null = null;
+  let activeRequest: ActiveRequest | null = null;
 
   const replaceState = (state: RenderCoordinatorState) => {
     store.setState(state, true);
@@ -259,7 +278,7 @@ export function createRenderCoordinator({
   };
 
   const scheduleCurrent = (force: boolean, immediate = false) => {
-    if (disposed || !currentInput) return;
+    if (disposed || !enabled || !currentInput) return;
     const { facade, renderViewport, workspace } = currentInput;
     if (!facade || !workspace.code.trim()) {
       cancelActiveCompare();
@@ -269,8 +288,8 @@ export function createRenderCoordinator({
       replaceState(EMPTY_STATE);
       return;
     }
-
-    const operation = freezeRenderOperation({
+    const operationInput = freezeScheduledOperationInput({
+      asciiEnabled,
       compareEnabled,
       diagnosticsEnabled,
       layoutEnvironment: renderViewport.layoutEnvironment,
@@ -284,7 +303,7 @@ export function createRenderCoordinator({
     if (
       !force &&
       latest !== null &&
-      sameRenderOperation(latest.snapshot.operation, operation) &&
+      sameScheduledOperationInput(latest.operationInput, operationInput) &&
       latest.facade === facade
     ) {
       return;
@@ -292,14 +311,15 @@ export function createRenderCoordinator({
 
     cancelActiveCompare();
     requestSequence += 1;
-    const snapshot: FrozenRenderSnapshot = Object.freeze({
-      operation,
-      publicationId: requestSequence as RenderPublicationId,
+    const publicationId = requestSequence as RenderPublicationId;
+    const snapshot: ScheduledRenderSnapshot = Object.freeze({
+      publicationId,
     });
     latest = {
       facade,
+      operationInput,
+      publicationId,
       scheduledAt: now(),
-      snapshot,
     };
     const previous = previousCompleted();
     replaceState(
@@ -316,7 +336,14 @@ export function createRenderCoordinator({
 
   const scheduleLatest = (immediate: boolean) => {
     clearTimer();
-    if (disposed || suspended || pauseCount > 0 || active || !latest) {
+    if (
+      disposed ||
+      !enabled ||
+      suspended ||
+      pauseCount > 0 ||
+      active ||
+      !latest
+    ) {
       return;
     }
     const remaining = immediate
@@ -325,15 +352,25 @@ export function createRenderCoordinator({
     timer = setTimeout(() => {
       timer = null;
       const request = latest;
-      if (!request || disposed || suspended || pauseCount > 0) return;
-      activeRequest = request;
-      const execution = execute(request)
+      if (!request || disposed || !enabled || suspended || pauseCount > 0) {
+        return;
+      }
+      const activeRequestForExecution: ActiveRequest = Object.freeze({
+        facade: request.facade,
+        snapshot: Object.freeze({
+          operation: freezeOperation(request.operationInput),
+          publicationId: request.publicationId,
+        }),
+      });
+      activeRequest = activeRequestForExecution;
+      const execution = execute(activeRequestForExecution)
         .then((completed) => {
           if (
             !disposed &&
+            enabled &&
             !suspended &&
             pauseCount === 0 &&
-            latest?.snapshot.publicationId === request.snapshot.publicationId
+            latest?.publicationId === request.publicationId
           ) {
             replaceState(completed);
           }
@@ -345,7 +382,7 @@ export function createRenderCoordinator({
           }
           if (
             latest &&
-            latest.snapshot.publicationId !== request.snapshot.publicationId
+            latest.publicationId !== request.publicationId
           ) {
             scheduleLatest(false);
           }
@@ -355,7 +392,7 @@ export function createRenderCoordinator({
   };
 
   const execute = async (
-    request: ScheduledRequest,
+    request: ActiveRequest,
   ): Promise<CompletedRenderBatch> => {
     const { facade, snapshot } = request;
     const operation = snapshot.operation;
@@ -368,7 +405,9 @@ export function createRenderCoordinator({
       externalRequirements,
     );
     const merman = renderMerman(facade, operation);
-    const ascii = renderMermanAscii(facade, operation, detection);
+    const ascii = operation.asciiEnabled
+      ? renderMermanAscii(facade, operation, detection)
+      : null;
     const diagnostics = operation.diagnosticsEnabled
       ? collectDiagnostics(facade, operation, now)
       : null;
@@ -390,20 +429,133 @@ export function createRenderCoordinator({
 
   const setInput = (input: RenderCoordinatorInput) => {
     currentInput = input;
+    if (!enabled) {
+      markCompletedInputStale();
+      renderRequiredWhenEnabled = true;
+      return;
+    }
     scheduleCurrent(false);
   };
-  const setFeatures = (features: RenderFeatures) => {
+
+  const markCompletedInputStale = () => {
+    const state = store.getState();
+    if (!isCompletedRenderState(state)) return;
+
+    requestSequence += 1;
+    const snapshot: ScheduledRenderSnapshot = Object.freeze({
+      publicationId: requestSequence as RenderPublicationId,
+    });
+    replaceState({ status: "updating", previous: state, snapshot });
+  };
+
+  const setEnabled = (nextEnabled: boolean) => {
+    if (disposed || enabled === nextEnabled) return;
+    enabled = nextEnabled;
+    if (enabled) {
+      if (renderRequiredWhenEnabled) scheduleCurrent(true, true);
+      renderRequiredWhenEnabled = false;
+      return;
+    }
+
+    clearTimer();
+    latest = null;
+    if (!cancelActiveCompare()) compare.reset();
+    const state = store.getState();
+    renderRequiredWhenEnabled =
+      state.status === "pending" || state.status === "updating";
+    if (state.status === "pending") replaceState(EMPTY_STATE);
+  };
+
+  const activateAsciiFromCompleted = (): boolean => {
+    const state = store.getState();
     if (
+      !enabled ||
+      !isCompletedRenderState(state) ||
+      !latest ||
+      latest.publicationId !== state.snapshot.publicationId ||
+      active ||
+      suspended ||
+      pauseCount > 0 ||
+      state.snapshot.operation.asciiEnabled
+    ) {
+      return false;
+    }
+
+    const publicationId = ++requestSequence as RenderPublicationId;
+    const operation: FrozenRenderOperation = Object.freeze({
+      ...state.snapshot.operation,
+      asciiEnabled: true,
+    });
+    const snapshot: FrozenRenderSnapshot = Object.freeze({
+      operation,
+      publicationId,
+    });
+    latest = {
+      ...latest,
+      operationInput: Object.freeze({
+        ...latest.operationInput,
+        asciiEnabled: true,
+      }),
+      publicationId,
+    };
+    replaceState({
+      status: "updating",
+      previous: state,
+      snapshot: Object.freeze({ publicationId }),
+    });
+    const ascii = renderMermanAscii(latest.facade, operation, state.detection);
+    replaceState(
+      classifyBatch(
+        snapshot,
+        state.detection,
+        state.diagnostics,
+        state.svgPlan,
+        state.merman,
+        ascii,
+        state.mermaid,
+        now(),
+      ),
+    );
+    return true;
+  };
+
+  const setFeatures = (features: RenderFeatures) => {
+    const leavingCompare = compareEnabled && !features.compareEnabled;
+    const activatingAsciiOnly =
+      !asciiEnabled &&
+      features.asciiEnabled &&
+      compareEnabled === features.compareEnabled &&
+      diagnosticsEnabled === features.diagnosticsEnabled;
+    const shouldSchedule =
+      compareEnabled !== features.compareEnabled ||
+      diagnosticsEnabled !== features.diagnosticsEnabled ||
+      (!asciiEnabled && features.asciiEnabled);
+    if (
+      asciiEnabled === features.asciiEnabled &&
       compareEnabled === features.compareEnabled &&
       diagnosticsEnabled === features.diagnosticsEnabled
     ) {
       return;
     }
+    if (leavingCompare && !cancelActiveCompare()) compare.reset();
+    asciiEnabled = features.asciiEnabled;
     compareEnabled = features.compareEnabled;
     diagnosticsEnabled = features.diagnosticsEnabled;
+    if (!shouldSchedule) return;
+    if (activatingAsciiOnly && activateAsciiFromCompleted()) {
+      return;
+    }
+    if (!enabled) {
+      renderRequiredWhenEnabled = true;
+      return;
+    }
     scheduleCurrent(true, true);
   };
   const refresh = () => {
+    if (!enabled) {
+      renderRequiredWhenEnabled = true;
+      return;
+    }
     scheduleCurrent(true, true);
   };
   const pause = async (): Promise<() => void> => {
@@ -442,6 +594,7 @@ export function createRenderCoordinator({
     clearTimer();
     latest = null;
     currentInput = null;
+    renderRequiredWhenEnabled = false;
     compare.dispose();
     replaceState(EMPTY_STATE);
   };
@@ -507,10 +660,63 @@ export function createRenderCoordinator({
     pause,
     refresh,
     resume,
+    setEnabled,
     setFeatures,
     setInput,
     suspend,
   };
+}
+
+function freezeScheduledOperationInput({
+  asciiEnabled,
+  compareEnabled,
+  diagnosticsEnabled,
+  layoutEnvironment,
+  versions,
+  viewport,
+  workspace,
+}: FreezeRenderOperationInput): FreezeRenderOperationInput {
+  return Object.freeze({
+    asciiEnabled,
+    compareEnabled,
+    diagnosticsEnabled,
+    layoutEnvironment: Object.freeze({ ...layoutEnvironment }),
+    versions: Object.freeze({ ...versions }),
+    viewport: viewport ? Object.freeze({ ...viewport }) : null,
+    workspace: Object.freeze({ ...workspace }),
+  });
+}
+
+function sameScheduledOperationInput(
+  left: FreezeRenderOperationInput,
+  right: FreezeRenderOperationInput,
+): boolean {
+  return (
+    left.asciiEnabled === right.asciiEnabled &&
+    left.compareEnabled === right.compareEnabled &&
+    left.diagnosticsEnabled === right.diagnosticsEnabled &&
+    left.layoutEnvironment.containerWidth ===
+      right.layoutEnvironment.containerWidth &&
+    left.layoutEnvironment.containerHeight ===
+      right.layoutEnvironment.containerHeight &&
+    (left.layoutEnvironment.screenAvailableWidth ?? null) ===
+      (right.layoutEnvironment.screenAvailableWidth ?? null) &&
+    left.versions.merman === right.versions.merman &&
+    left.versions.mermaid === right.versions.mermaid &&
+    (left.viewport?.width ?? null) === (right.viewport?.width ?? null) &&
+    (left.viewport?.height ?? null) === (right.viewport?.height ?? null) &&
+    left.workspace.code === right.workspace.code &&
+    left.workspace.mermaidConfig === right.workspace.mermaidConfig &&
+    left.workspace.diagramTheme === right.workspace.diagramTheme &&
+    left.workspace.presentationThemePresetId ===
+      right.workspace.presentationThemePresetId &&
+    left.workspace.presentationProfileId ===
+      right.workspace.presentationProfileId &&
+    left.workspace.svgPipeline === right.workspace.svgPipeline &&
+    left.workspace.textMeasurementMode ===
+      right.workspace.textMeasurementMode &&
+    left.workspace.diagramFont === right.workspace.diagramFont
+  );
 }
 
 function collectSvgPlan(
@@ -732,7 +938,7 @@ function classifyBatch(
   diagnostics: RenderDiagnostics | null,
   svgPlan: SvgPlanResult | null,
   merman: MermanBatchResult,
-  ascii: MermanAsciiBatchResult,
+  ascii: MermanAsciiBatchResult | null,
   mermaid: MermaidBatchResult | null,
   publishedAt: number,
 ): CompletedRenderBatch {

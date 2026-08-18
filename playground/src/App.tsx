@@ -18,12 +18,18 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import { CodeEditor } from "./components/Editor";
 import { Preview } from "./components/Preview";
 import { ExportWorkbench } from "./components/ExportDialog";
 import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
+import { playgroundStartupBoundary } from "@/src/runtime/startup-boundary";
+
+const CodeEditor = lazy(() =>
+  import("./components/EditorFeature").then((module) => ({
+    default: module.CodeEditor,
+  })),
+);
 
 const ConfigEditor = lazy(() =>
   import("./components/ConfigEditorFeature").then((module) => ({
@@ -100,6 +106,9 @@ export default function App() {
                   onPointerDownCapture={() => setWorkspacePane("editor")}
                 >
                   <EditorPanel
+                    activateCodeEditorImmediately={
+                      isNarrowLayout && workspacePane === "editor"
+                    }
                     editorMode={editorMode}
                     setEditorMode={setEditorMode}
                     t={t}
@@ -121,7 +130,10 @@ export default function App() {
                   onFocusCapture={() => setWorkspacePane("preview")}
                   onPointerDownCapture={() => setWorkspacePane("preview")}
                 >
-                  <PreviewPanel />
+                  <Preview
+                    active={!isNarrowLayout || workspacePane === "preview"}
+                    className="h-full min-h-0"
+                  />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
@@ -135,25 +147,21 @@ export default function App() {
 }
 
 function EditorPanel({
+  activateCodeEditorImmediately,
   editorMode,
   setEditorMode,
   t,
 }: {
+  activateCodeEditorImmediately: boolean;
   editorMode: "code" | "config";
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
 }) {
-  const [hasActivatedConfig, setHasActivatedConfig] = useState(
-    editorMode === "config",
-  );
-  const configActivated = hasActivatedConfig || editorMode === "config";
-
   return (
     <Tabs
       value={editorMode}
       onValueChange={(value) => {
         const mode = value as "code" | "config";
-        if (mode === "config") setHasActivatedConfig(true);
         setEditorMode(mode);
       }}
       activationMode="manual"
@@ -180,29 +188,82 @@ function EditorPanel({
         forceMount
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <CodeEditor className="h-full min-h-0" />
+        <DeferredCodeEditor
+          activateImmediately={activateCodeEditorImmediately}
+          className="h-full min-h-0"
+        />
       </TabsContent>
       <TabsContent
         value="config"
-        forceMount={configActivated ? true : undefined}
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        {configActivated && (
-          <LazyFeatureBoundary
-            feature={t("editor.configMode")}
-            presentation={{ kind: "panel" }}
-          >
-            <ConfigEditor className="h-full min-h-0" />
-          </LazyFeatureBoundary>
-        )}
+        <LazyFeatureBoundary
+          feature={t("editor.configMode")}
+          presentation={{ kind: "panel" }}
+        >
+          <ConfigEditor className="h-full min-h-0" />
+        </LazyFeatureBoundary>
       </TabsContent>
     </Tabs>
   );
 }
 
-function PreviewPanel() {
+function DeferredCodeEditor({
+  activateImmediately,
+  className,
+}: {
+  readonly activateImmediately: boolean;
+  readonly className?: string;
+}) {
+  const { t } = useTranslation();
+  const [activated, setActivated] = useState(
+    () => playgroundStartupBoundary.reason() !== null,
+  );
+
+  useEffect(() => {
+    let active = true;
+    void playgroundStartupBoundary.wait().then(() => {
+      if (active) setActivated(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activateImmediately) return;
+    playgroundStartupBoundary.activate("editor-visible");
+    setActivated(true);
+  }, [activateImmediately]);
+
+  const activateFromEditorIntent = () => {
+    playgroundStartupBoundary.activate("editor-intent");
+    setActivated(true);
+  };
+
+  if (!activated) {
+    return (
+      <button
+        type="button"
+        data-testid="editor-activation"
+        aria-label={t("editor.loading")}
+        className={`${className ?? ""} flex w-full items-center justify-center bg-card text-sm text-muted-foreground`}
+        onClick={activateFromEditorIntent}
+        onFocus={activateFromEditorIntent}
+        onPointerDown={activateFromEditorIntent}
+      >
+        {t("editor.loading")}
+      </button>
+    );
+  }
+
   return (
-    <Preview className="h-full min-h-0" />
+    <LazyFeatureBoundary
+      feature={t("layout.editor")}
+      presentation={{ kind: "panel" }}
+    >
+      <CodeEditor className={className} />
+    </LazyFeatureBoundary>
   );
 }
 

@@ -77,6 +77,7 @@ export interface ArtifactActionIo {
 
 export interface ArtifactActionDependencies {
   readonly getRenderState: () => RenderCoordinatorState;
+  readonly getRuntimeState: () => MermanRuntimeState;
   readonly io: ArtifactActionIo;
 }
 
@@ -155,6 +156,7 @@ export function createExportTargetOwner({
 }
 
 export type ArtifactActionErrorCode =
+  | "ascii-render-failed"
   | "artifact-unavailable"
   | "invalid-command"
   | "publication-not-current"
@@ -193,10 +195,14 @@ type FrozenActionPlan =
 
 export function createArtifactActionOwner({
   getRenderState,
+  getRuntimeState,
   io,
 }: ArtifactActionDependencies): ArtifactActionOwner {
+  const renderedAscii = new WeakMap<CompletedRenderBatch, string>();
   return async (command: ArtifactActionCommand): Promise<void> => {
-    const plan = freezeActionPlan(command, getRenderState());
+    const plan = freezeActionPlan(command, getRenderState(), (publication) =>
+      currentAscii(publication, getRuntimeState, renderedAscii),
+    );
     switch (plan.action) {
       case "copy-ascii":
         await io.copyAscii(plan.ascii);
@@ -213,19 +219,20 @@ export function createArtifactActionOwner({
 
 function freezeActionPlan(
   command: ArtifactActionCommand,
-  renderState: RenderCoordinatorState
+  renderState: RenderCoordinatorState,
+  resolveAscii: (publication: CompletedRenderBatch) => string,
 ): FrozenActionPlan {
   const publication = currentPublication(renderState, command.publicationId);
   if (command.action === "copy-ascii") {
     return Object.freeze({
       action: command.action,
-      ascii: currentAscii(publication),
+      ascii: resolveAscii(publication),
     });
   }
   if (command.action === "download-ascii") {
     return Object.freeze({
       action: command.action,
-      ascii: currentAscii(publication),
+      ascii: resolveAscii(publication),
       filename: "merman-diagram",
     });
   }
@@ -254,11 +261,56 @@ function currentPublication(
   return state;
 }
 
-function currentAscii(publication: CompletedRenderBatch): string {
-  if (publication.ascii.status !== "success") {
+function currentAscii(
+  publication: CompletedRenderBatch,
+  getRuntimeState: () => MermanRuntimeState,
+  renderedAscii: WeakMap<CompletedRenderBatch, string>,
+): string {
+  if (publication.ascii?.status === "success") {
+    return publication.ascii.artifact;
+  }
+  if (publication.ascii !== null) {
     throw actionError("artifact-unavailable", "ASCII artifact is unavailable.");
   }
-  return publication.ascii.artifact;
+  const cached = renderedAscii.get(publication);
+  if (cached !== undefined) return cached;
+
+  const runtimeState = getRuntimeState();
+  if (runtimeState.status !== "ready") {
+    throw actionError(
+      "runtime-unavailable",
+      "Merman runtime is unavailable for ASCII rendering.",
+    );
+  }
+  if (
+    runtimeState.facade.packageVersion !==
+    publication.snapshot.operation.versions.merman
+  ) {
+    throw actionError(
+      "runtime-version-mismatch",
+      "The Merman runtime does not match this publication.",
+    );
+  }
+
+  let result;
+  try {
+    result = runtimeState.facade.renderAscii(publication.snapshot.operation);
+  } catch (error) {
+    throw new ArtifactActionError(
+      "ascii-render-failed",
+      projectError(error),
+      "render",
+    );
+  }
+  if (result.status === "failure") {
+    throw new ArtifactActionError(
+      "ascii-render-failed",
+      projectError(result.error),
+      "render",
+    );
+  }
+  renderedAscii.set(publication, result.ascii);
+  return result.ascii;
 }
 
 function currentSvg(

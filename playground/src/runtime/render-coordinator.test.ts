@@ -3,9 +3,11 @@ import test from "node:test";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
-import type {
-  ConfiguredMermanOperationInput,
-  FrozenRenderOperation,
+import {
+  freezeRenderOperation,
+  type FreezeRenderOperationInput,
+  type ConfiguredMermanOperationInput,
+  type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
@@ -37,7 +39,11 @@ test("freezes one canonical environment into Merman and Mermaid inputs", async (
     },
   };
   const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(
     input(
       "canonical",
@@ -71,7 +77,11 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
 
   coordinator.setInput(input("first"));
   await waitFor(() => compare.calls.length === 1);
@@ -210,6 +220,155 @@ test("deduplicates only when both the operation and facade authority are unchang
   assert.equal(firstRenderCalls, 1);
 });
 
+test("freezes only the latest input after the debounce window", async () => {
+  const frozenSources: string[] = [];
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 10,
+    freezeOperation(input: FreezeRenderOperationInput) {
+      frozenSources.push(input.workspace.code);
+      return freezeRenderOperation(input);
+    },
+  });
+
+  coordinator.setInput(input("first"));
+  coordinator.setInput(input("second"));
+  coordinator.setInput(input("third"));
+
+  assert.deepEqual(frozenSources, []);
+  const pending = coordinator.store.getState();
+  assert.equal(pending.status, "pending");
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.deepEqual(frozenSources, ["third"]);
+  const completed = coordinator.store.getState();
+  assert.equal(completed.status, "success");
+  if (completed.status !== "success") return;
+  assert.equal(completed.snapshot.operation.source, "third");
+});
+
+test("retains only the latest input while rendering is disabled", async () => {
+  const renderedSources: string[] = [];
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    render(operation) {
+      renderedSources.push(operation.source);
+      return facade().render(operation);
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 0,
+  });
+
+  coordinator.setEnabled(false);
+  coordinator.setInput(input("hidden-first", domainFacade));
+  coordinator.setInput(input("hidden-latest", domainFacade));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(renderedSources, []);
+  assert.equal(coordinator.store.getState().status, "empty");
+
+  coordinator.setEnabled(true);
+  await waitFor(() => renderedSources.length === 1);
+  assert.deepEqual(renderedSources, ["hidden-latest"]);
+  const completed = coordinator.store.getState();
+  assert.equal(completed.status, "success");
+  if (completed.status !== "success") return;
+  assert.equal(completed.snapshot.operation.source, "hidden-latest");
+
+  coordinator.setEnabled(false);
+  coordinator.setEnabled(true);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(renderedSources, ["hidden-latest"]);
+
+  coordinator.setEnabled(false);
+  coordinator.setInput(input("hidden-again", domainFacade));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(renderedSources, ["hidden-latest"]);
+});
+
+test("hidden input changes stale the visible publication without reading it", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 0,
+  });
+  coordinator.setInput(input("visible"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  const visible = coordinator.store.getState();
+  assert.equal(visible.status, "success");
+  if (visible.status !== "success") return;
+
+  coordinator.setEnabled(false);
+  let sourceReads = 0;
+  const hiddenWorkspace = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    get code() {
+      sourceReads += 1;
+      return "hidden-latest";
+    },
+  };
+  coordinator.setInput({
+    facade: facade(),
+    renderViewport: captureRenderViewport(),
+    workspace: hiddenWorkspace,
+  });
+
+  const stale = coordinator.store.getState();
+  assert.equal(stale.status, "updating");
+  if (stale.status !== "updating") return;
+  assert.equal(stale.previous, visible);
+  assert.notEqual(stale.snapshot.publicationId, visible.snapshot.publicationId);
+  assert.equal(sourceReads, 0);
+
+  const newestWorkspace = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    get code() {
+      sourceReads += 1;
+      return "hidden-newest";
+    },
+  };
+  coordinator.setInput({
+    facade: facade(),
+    renderViewport: captureRenderViewport(),
+    workspace: newestWorkspace,
+  });
+  assert.equal(coordinator.store.getState(), stale);
+  assert.equal(sourceReads, 0);
+
+  coordinator.setEnabled(true);
+  await waitFor(() => coordinator.store.getState().status === "success");
+  const latest = coordinator.store.getState();
+  assert.equal(latest.status, "success");
+  if (latest.status !== "success") return;
+  assert.equal(latest.snapshot.operation.source, "hidden-newest");
+});
+
+test("does not inspect hidden workspace source until rendering resumes", async () => {
+  let sourceReads = 0;
+  const workspace = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    get code() {
+      sourceReads += 1;
+      return "hidden-source";
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 0,
+  });
+
+  coordinator.setEnabled(false);
+  coordinator.setInput({
+    facade: facade(),
+    renderViewport: captureRenderViewport(),
+    workspace,
+  });
+  assert.equal(sourceReads, 0);
+
+  coordinator.setEnabled(true);
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.ok(sourceReads > 0);
+});
+
 test("passes one frozen operation to every Merman projection", async () => {
   const operations: FrozenRenderOperation[] = [];
   const capture = (input: ConfiguredMermanOperationInput) => {
@@ -254,7 +413,11 @@ test("passes one frozen operation to every Merman projection", async () => {
     compare: fakeCompare([]),
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: false, diagnosticsEnabled: true });
+  coordinator.setFeatures({
+    asciiEnabled: true,
+    compareEnabled: false,
+    diagnosticsEnabled: true,
+  });
   coordinator.setInput(
     input("one-operation", domainFacade, {
       presentationProfileId: "future-profile",
@@ -402,10 +565,82 @@ test("preserves producer SVG validation failures", async () => {
   assert.equal(state.merman.message, "Unsafe SVG.");
 });
 
+test("renders ASCII only after the feature is activated", async () => {
+  let asciiRenderCalls = 0;
+  let svgRenderCalls = 0;
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("svg-only"))]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    debounceMs: 0,
+  });
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    render(operation) {
+      svgRenderCalls += 1;
+      return facade().render(operation);
+    },
+    renderAscii(operation) {
+      asciiRenderCalls += 1;
+      return facade().renderAscii(operation);
+    },
+  };
+
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: true,
+  });
+  coordinator.setInput(
+    input("svg-only", domainFacade, {
+      presentationProfileId: "future-profile",
+    }),
+  );
+  await waitFor(() => coordinator.store.getState().status === "success");
+  const initial = coordinator.store.getState();
+  assert.equal(initial.status, "success");
+  if (initial.status !== "success") return;
+  assert.equal(asciiRenderCalls, 0);
+  assert.equal(svgRenderCalls, 1);
+
+  coordinator.setFeatures({
+    asciiEnabled: true,
+    compareEnabled: true,
+    diagnosticsEnabled: true,
+  });
+  await waitFor(() => asciiRenderCalls === 1);
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.deepEqual(state.ascii, {
+    artifact: "svg-only",
+    status: "success",
+  });
+  assert.equal(svgRenderCalls, 1);
+  assert.notEqual(state.snapshot.publicationId, initial.snapshot.publicationId);
+  assert.equal(state.merman, initial.merman);
+  assert.equal(state.mermaid, initial.mermaid);
+  assert.equal(state.diagnostics, initial.diagnostics);
+  assert.equal(state.svgPlan, initial.svgPlan);
+  assert.equal(compare.calls.length, 1);
+
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: true,
+  });
+  assert.equal(coordinator.store.getState(), state);
+  assert.equal(svgRenderCalls, 1);
+});
+
 test("publishes ASCII independently when SVG validation fails", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
     debounceMs: 0,
+  });
+  coordinator.setFeatures({
+    asciiEnabled: true,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
   });
   coordinator.setInput(
     input("unsafe", {
@@ -441,6 +676,11 @@ test("publishes an explicit unsupported ASCII result without invoking the render
     compare: fakeCompare([]),
     debounceMs: 0,
   });
+  coordinator.setFeatures({
+    asciiEnabled: true,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(
     input("pie", {
       ...facade(),
@@ -474,6 +714,11 @@ test("contains ASCII capability failures without failing the SVG publication", a
     compare: fakeCompare([]),
     debounceMs: 0,
   });
+  coordinator.setFeatures({
+    asciiEnabled: true,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(
     input("flowchart", {
       ...facade(),
@@ -488,6 +733,7 @@ test("contains ASCII capability failures without failing the SVG publication", a
   assert.equal(state.status, "success");
   if (state.status !== "success") return;
   assert.equal(state.merman.status, "success");
+  assert.ok(state.ascii);
   assert.equal(state.ascii.status, "failure");
   if (state.ascii.status !== "failure") return;
   assert.equal(state.ascii.error.summary, "ASCII capability lookup failed.");
@@ -556,7 +802,11 @@ test("updating disables old pair and partial replaces the failed pane", async ()
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
 
   coordinator.setInput(input("stable"));
   await waitFor(() => compare.calls.length === 1);
@@ -608,7 +858,11 @@ test("treats a Mermaid realm version mismatch as a protocol failure", async () =
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(input("version-mismatch"));
   await waitFor(() => compare.calls.length === 1);
   realmResult.resolve({
@@ -632,7 +886,11 @@ test("marks each presented engine by rebuilding an immutable completed publicati
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(input("presentation"));
   await waitFor(() => compare.calls.length === 1);
   realmResult.resolve(mermaidSuccess("presentation"));
@@ -673,7 +931,11 @@ test("a completed Mermaid failure replaces stale success without borrowing Merma
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
 
   coordinator.setInput(input("stable"));
   await waitFor(() => compare.calls.length === 1);
@@ -710,7 +972,11 @@ test("pause waits for active work and resumes only the latest snapshot", async (
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(input("active"));
   await waitFor(() => compare.calls.length === 1);
 
@@ -736,7 +1002,11 @@ test("blank source and suspend reject every late completion", async () => {
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(input("active"));
   await waitFor(() => compare.calls.length === 1);
 
@@ -757,7 +1027,11 @@ test("request exceptions become typed failures and later work still runs", async
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(input("throws", throwingFacade()));
   await waitFor(() => compare.calls.length === 1);
   rejected.reject(new Error("channel failed"));
@@ -794,7 +1068,11 @@ test("synchronous compare exceptions become protocol failures and later work sti
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
 
   coordinator.setInput(input("throws"));
   await waitFor(() => coordinator.store.getState().status === "partial");
@@ -811,6 +1089,30 @@ test("synchronous compare exceptions become protocol failures and later work sti
   assert.equal(renderCalls, 2);
 });
 
+test("leaving a completed Compare publication resets its retained realm", async () => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("complete"))]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    debounceMs: 0,
+  });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
+  coordinator.setInput(input("complete"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.equal(compare.resetCalls, 0);
+
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
+  });
+  assert.equal(compare.resetCalls, 1);
+  await waitFor(() => coordinator.store.getState().status === "success");
+});
+
 test("superseding Compare work is cancelled before publishing the latest SVG batch", async () => {
   const pending = deferred<MermaidRealmRenderResult>();
   const compare = fakeCompare([pending.promise]);
@@ -818,11 +1120,19 @@ test("superseding Compare work is cancelled before publishing the latest SVG bat
     compare,
     debounceMs: 0,
   });
-  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(input("compare"));
   await waitFor(() => compare.calls.length === 1);
 
-  coordinator.setFeatures({ compareEnabled: false, diagnosticsEnabled: false });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
+  });
   await waitFor(() => coordinator.store.getState().status === "success");
 
   const state = coordinator.store.getState();
@@ -888,6 +1198,11 @@ test("normalizes an unprojected ASCII failure without failing the SVG result", a
     compare: fakeCompare([]),
     debounceMs: 0,
   });
+  coordinator.setFeatures({
+    asciiEnabled: true,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
+  });
   coordinator.setInput(
     input("ascii", {
       ...facade(),
@@ -908,6 +1223,7 @@ test("normalizes an unprojected ASCII failure without failing the SVG result", a
   const state = coordinator.store.getState();
   assert.equal(state.status, "success");
   if (state.status !== "success") return;
+  assert.ok(state.ascii);
   assert.equal(state.ascii.status, "failure");
   if (state.ascii.status !== "failure") return;
   assert.equal(
@@ -923,6 +1239,11 @@ test("publishes invalid configuration as an ASCII failure before detection", asy
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
     debounceMs: 0,
+  });
+  coordinator.setFeatures({
+    asciiEnabled: true,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
   });
   coordinator.setInput(
     input(
@@ -950,6 +1271,7 @@ test("publishes invalid configuration as an ASCII failure before detection", asy
   if (state.status === "empty" || state.status === "pending" || state.status === "updating") {
     assert.fail(`Expected a completed render, received ${state.status}.`);
   }
+  assert.ok(state.ascii);
   assert.equal(state.ascii.status, "failure");
   if (state.ascii.status !== "failure") return;
   assert.match(state.ascii.error.summary, /JSON|configuration/i);
