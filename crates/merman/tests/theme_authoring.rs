@@ -436,27 +436,537 @@ fn assert_generated_rule_terminal(
     theme: &merman::diagram_theme::DiagramTheme,
 ) {
     let output = render_authoring_svg_output(renderer, witness.diagram, theme);
+    let render_evidence = output.evidence();
+    let evidence = render_evidence.theme_evidence();
     assert!(
-        output.evidence().theme_evidence().is_verified(),
+        evidence.is_verified(),
         "{} must verify the isolated {} expansion row",
         witness.diagram.name,
         witness.target.id(),
     );
-    roxmltree::Document::parse(output.svg()).unwrap_or_else(|error| {
+    #[cfg(feature = "internal-theme-acceptance")]
+    {
+        let family =
+            merman::__theme_acceptance::theme_acceptance_evidence(render_evidence).family();
+        assert_eq!(
+            family.applied_count(),
+            1,
+            "{} must apply exactly one isolated {} expansion row",
+            witness.diagram.name,
+            witness.target.id(),
+        );
+        assert_eq!(
+            family.not_applicable_count(),
+            0,
+            "{} must not classify the isolated {} expansion row as not applicable",
+            witness.diagram.name,
+            witness.target.id(),
+        );
+        assert!(
+            family.is_verified(),
+            "{} family evidence must verify the isolated {} expansion row",
+            witness.diagram.name,
+            witness.target.id(),
+        );
+    }
+
+    let document = roxmltree::Document::parse(output.svg()).unwrap_or_else(|error| {
         panic!(
             "{} must emit valid terminal SVG: {error}",
             witness.diagram.name
         )
     });
+    assert_generated_rule_terminal_surface(&document, witness);
+}
 
-    for token in [witness.fill, witness.stroke].into_iter().flatten() {
-        let expected = terminal_color(token);
-        assert!(
-            output.svg().contains(expected),
-            "{} must emit {expected} for the isolated {} expansion row",
-            witness.diagram.name,
-            witness.target.id(),
+fn inline_style_property<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
+    last_css_property(node.attribute("style")?, property)
+}
+
+fn last_css_property<'a>(declarations: &'a str, property: &str) -> Option<&'a str> {
+    declarations.split(';').fold(None, |winner, declaration| {
+        let Some((name, value)) = declaration.split_once(':') else {
+            return winner;
+        };
+        (name.trim() == property).then(|| value.trim()).or(winner)
+    })
+}
+
+fn normalized_css_value(value: &str) -> &str {
+    value
+        .trim()
+        .strip_suffix("!important")
+        .unwrap_or(value.trim())
+        .trim()
+}
+
+fn element_property<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
+    inline_style_property(node, property)
+        .or_else(|| node.attribute(property))
+        .map(normalized_css_value)
+}
+
+fn assert_element_property(
+    node: roxmltree::Node<'_, '_>,
+    property: &str,
+    expected: &str,
+    context: &str,
+) {
+    assert_eq!(
+        element_property(node, property),
+        Some(expected),
+        "{context} must own terminal {property}: {:?}",
+        node.attribute("style"),
+    );
+}
+
+fn assert_witness_fill_property(
+    node: roxmltree::Node<'_, '_>,
+    witness: GeneratedRuleTerminalWitness,
+    property: &str,
+    context: &str,
+) {
+    if let Some(token) = witness.fill {
+        assert_element_property(node, property, terminal_color(token), context);
+    }
+}
+
+fn assert_witness_stroke_property(
+    node: roxmltree::Node<'_, '_>,
+    witness: GeneratedRuleTerminalWitness,
+    property: &str,
+    context: &str,
+) {
+    if let Some(token) = witness.stroke {
+        assert_element_property(node, property, terminal_color(token), context);
+    }
+}
+
+fn assert_witness_fill_and_stroke(
+    node: roxmltree::Node<'_, '_>,
+    witness: GeneratedRuleTerminalWitness,
+    fill_property: &str,
+    stroke_property: &str,
+    context: &str,
+) {
+    assert_witness_fill_property(node, witness, fill_property, context);
+    assert_witness_stroke_property(node, witness, stroke_property, context);
+}
+
+fn element_has_text(node: roxmltree::Node<'_, '_>, expected: &str) -> bool {
+    node.descendants()
+        .filter(|descendant| descendant.is_text())
+        .filter_map(|descendant| descendant.text())
+        .any(|text| text.trim() == expected)
+}
+
+fn find_element_with_class_and_text<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    tag: &str,
+    class: &str,
+    text: &str,
+    context: &str,
+) -> roxmltree::Node<'a, 'input> {
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name(tag)
+                && element_has_class(*node, class)
+                && element_has_text(*node, text)
+        })
+        .unwrap_or_else(|| panic!("missing {context}"))
+}
+
+fn assert_path_property(
+    scope: roxmltree::Node<'_, '_>,
+    property: &str,
+    expected: &str,
+    context: &str,
+) {
+    assert!(
+        scope.descendants().any(|node| {
+            node.has_tag_name("path") && element_property(node, property) == Some(expected)
+        }),
+        "{context} must contain a terminal path with {property}:{expected}",
+    );
+}
+
+fn assert_witness_path_properties(
+    scope: roxmltree::Node<'_, '_>,
+    witness: GeneratedRuleTerminalWitness,
+    context: &str,
+) {
+    if let Some(token) = witness.fill {
+        assert_path_property(scope, "fill", terminal_color(token), context);
+    }
+    if let Some(token) = witness.stroke {
+        assert_path_property(scope, "stroke", terminal_color(token), context);
+    }
+}
+
+fn stylesheet_property<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    selector: &str,
+    property: &str,
+) -> Option<&'a str> {
+    let prefix = format!("{selector}{{");
+    let mut terminal_value = None;
+    for css in document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+    {
+        let mut remaining = css;
+        while let Some(rule_start) = remaining.find(&prefix) {
+            let declarations_start = rule_start + prefix.len();
+            let Some(declarations_end) = remaining[declarations_start..].find('}') else {
+                break;
+            };
+            let declarations =
+                &remaining[declarations_start..declarations_start + declarations_end];
+            if let Some(value) = last_css_property(declarations, property) {
+                terminal_value = Some(normalized_css_value(value));
+            }
+            remaining = &remaining[declarations_start + declarations_end + 1..];
+        }
+    }
+    terminal_value
+}
+
+fn assert_sequence_css_rule_for_live_surface(
+    document: &roxmltree::Document<'_>,
+    tag: &str,
+    live_class: &str,
+    selector_classes: &[&str],
+    witness: GeneratedRuleTerminalWitness,
+    context: &str,
+) {
+    let root_id = document
+        .root_element()
+        .attribute("id")
+        .expect("terminal Sequence SVG root id");
+    let selector = selector_classes
+        .iter()
+        .map(|class| format!("#{root_id} .{class}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name(tag) && element_has_class(node, live_class)),
+        "missing live {context} surface matched by {selector}",
+    );
+    for (property, token) in [("fill", witness.fill), ("stroke", witness.stroke)] {
+        let Some(token) = token else {
+            continue;
+        };
+        assert_eq!(
+            stylesheet_property(document, &selector, property),
+            Some(terminal_color(token)),
+            "{context} CSS rule {selector} must own terminal {property}",
         );
+    }
+}
+
+fn find_idle_to_decide_transition<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+) -> roxmltree::Node<'a, 'input> {
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("edge1")
+        })
+        .expect("Idle-to-Decide transition path")
+}
+
+fn find_idle_to_decide_label<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+) -> roxmltree::Node<'a, 'input> {
+    find_element_with_class_and_text(
+        document,
+        "div",
+        "labelBkg",
+        "choose",
+        "Idle-to-Decide transition label",
+    )
+}
+
+fn assert_generated_rule_terminal_surface(
+    document: &roxmltree::Document<'_>,
+    witness: GeneratedRuleTerminalWitness,
+) {
+    match witness.target {
+        ThemeTarget::Text | ThemeTarget::StateLabel => {
+            let label = find_element_with_class_and_text(
+                document,
+                "g",
+                "label",
+                "Idle",
+                "ordinary State label",
+            );
+            assert_witness_fill_property(label, witness, "color", witness.target.id());
+        }
+        ThemeTarget::Title => {
+            let title = find_element_with_class_and_text(
+                document,
+                "text",
+                "statediagramTitleText",
+                "State theme witness",
+                "terminal State title",
+            );
+            assert_witness_fill_property(title, witness, "fill", "State title");
+        }
+        ThemeTarget::Node => {
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-id") == Some("A")
+                        && element_has_class(*node, "node")
+                })
+                .expect("Flowchart node A");
+            let shape = node
+                .descendants()
+                .find(|node| element_has_class(*node, "label-container"))
+                .expect("Flowchart node A shape");
+            assert_witness_stroke_property(shape, witness, "stroke", "Flowchart node A shape");
+        }
+        ThemeTarget::Edge => {
+            let edge = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path")
+                        && node.attribute("data-edge") == Some("true")
+                        && node.attribute("data-id") == Some("L_A_B_0")
+                })
+                .expect("Flowchart A-to-B edge path");
+            assert_witness_stroke_property(edge, witness, "stroke", "Flowchart A-to-B edge path");
+        }
+        ThemeTarget::Cluster => {
+            let cluster = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-id") == Some("Group")
+                        && element_has_class(*node, "cluster")
+                })
+                .expect("Flowchart Group cluster");
+            let shape = cluster
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .expect("Flowchart Group cluster shape");
+            assert_witness_fill_and_stroke(
+                shape,
+                witness,
+                "fill",
+                "stroke",
+                "Flowchart Group cluster shape",
+            );
+        }
+        ThemeTarget::Actor => {
+            assert_sequence_css_rule_for_live_surface(
+                document,
+                "rect",
+                "actor",
+                &["actor"],
+                witness,
+                "Sequence actor rectangle",
+            );
+        }
+        ThemeTarget::Lifeline => {
+            assert_sequence_css_rule_for_live_surface(
+                document,
+                "line",
+                "actor-line",
+                &["actor-line"],
+                witness,
+                "Sequence actor lifeline",
+            );
+        }
+        ThemeTarget::Message => {
+            assert_sequence_css_rule_for_live_surface(
+                document,
+                "line",
+                "messageLine0",
+                &["messageLine0", "messageLine1"],
+                witness,
+                "Sequence message line",
+            );
+        }
+        ThemeTarget::State => {
+            let state = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && element_has_class(*node, "statediagram-state")
+                        && element_has_text(*node, "Idle")
+                })
+                .expect("ordinary Idle state");
+            let shape = state
+                .descendants()
+                .find(|node| element_has_class(*node, "label-container"))
+                .expect("ordinary Idle state shape");
+            assert_witness_fill_and_stroke(
+                shape,
+                witness,
+                "fill",
+                "stroke",
+                "ordinary Idle state shape",
+            );
+        }
+        ThemeTarget::Transition => {
+            let transition = find_idle_to_decide_transition(document);
+            assert_witness_stroke_property(
+                transition,
+                witness,
+                "stroke",
+                "Idle-to-Decide transition path",
+            );
+        }
+        ThemeTarget::TransitionMarker => {
+            let transition = find_idle_to_decide_transition(document);
+            let marker_id = transition
+                .attribute("marker-end")
+                .and_then(|value| value.strip_prefix("url(#"))
+                .and_then(|value| value.strip_suffix(')'))
+                .expect("Idle-to-Decide transition marker reference");
+            let marker_path = document
+                .descendants()
+                .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+                .and_then(|marker| marker.descendants().find(|node| node.has_tag_name("path")))
+                .expect("referenced Idle-to-Decide marker path");
+            assert_witness_fill_and_stroke(
+                marker_path,
+                witness,
+                "fill",
+                "stroke",
+                "Idle-to-Decide marker path",
+            );
+        }
+        ThemeTarget::TransitionLabel => {
+            let label = find_idle_to_decide_label(document);
+            assert_witness_fill_property(
+                label,
+                witness,
+                "color",
+                "Idle-to-Decide transition label",
+            );
+        }
+        ThemeTarget::TransitionLabelBackground => {
+            let label = find_idle_to_decide_label(document);
+            assert_witness_fill_property(
+                label,
+                witness,
+                "background-color",
+                "Idle-to-Decide transition label background",
+            );
+        }
+        ThemeTarget::Composite | ThemeTarget::CompositeHeader => {
+            let cluster = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-id") == Some("Parent")
+                        && element_has_class(*node, "statediagram-cluster")
+                })
+                .expect("Parent composite state");
+            let class = if witness.target == ThemeTarget::Composite {
+                "inner"
+            } else {
+                "outer"
+            };
+            let shape = cluster
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && element_has_class(*node, class))
+                .unwrap_or_else(|| panic!("Parent composite {class} shape"));
+            assert_witness_fill_and_stroke(shape, witness, "fill", "stroke", witness.target.id());
+        }
+        ThemeTarget::CompositeLabel => {
+            let label = find_element_with_class_and_text(
+                document,
+                "g",
+                "cluster-label",
+                "Parent",
+                "Parent composite label",
+            );
+            assert_witness_fill_property(label, witness, "color", "Parent composite label");
+        }
+        ThemeTarget::SpecialState => {
+            let special = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.contains("-state-Decide-"))
+                })
+                .expect("Decide special state");
+            assert_witness_path_properties(special, witness, "Decide special state");
+        }
+        ThemeTarget::SpecialStateInner => {
+            let end = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.contains("-state-root_end-"))
+                })
+                .expect("terminal end state");
+            assert_witness_path_properties(end, witness, "terminal end-state inner surface");
+        }
+        ThemeTarget::Note => {
+            assert_sequence_css_rule_for_live_surface(
+                document,
+                "rect",
+                "note",
+                &["note"],
+                witness,
+                "Sequence note rectangle",
+            );
+        }
+        ThemeTarget::NoteLabel => {
+            let label = find_element_with_class_and_text(
+                document,
+                "g",
+                "noteLabel",
+                "State note",
+                "State note label",
+            );
+            assert_witness_fill_property(label, witness, "color", "State note label");
+        }
+        ThemeTarget::Activation => {
+            assert_sequence_css_rule_for_live_surface(
+                document,
+                "rect",
+                "activation0",
+                &["activation0", "activation1", "activation2"],
+                witness,
+                "Sequence activation rectangle",
+            );
+        }
+        ThemeTarget::Entity => {
+            let entity = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.ends_with("-entity-CUSTOMER-0"))
+                })
+                .expect("CUSTOMER entity group");
+            let shell = entity
+                .children()
+                .find(|node| node.has_tag_name("g") && element_has_class(*node, "outer-path"))
+                .expect("CUSTOMER entity outer shell");
+            assert_witness_path_properties(shell, witness, "CUSTOMER entity outer shell");
+        }
+        _ => panic!(
+            "missing terminal surface assertion for generated target {}",
+            witness.target.id()
+        ),
     }
 }
 
