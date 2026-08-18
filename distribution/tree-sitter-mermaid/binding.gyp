@@ -3,18 +3,53 @@
     {
       "target_name": "tree_sitter_mermaid_binding",
       "dependencies": [
-        "<!(node -p \"require('node-addon-api').targets\"):node_addon_api_except"
+        "<!(node -p \"require('node-addon-api').targets\"):node_addon_api_except",
+        "tree_sitter_mermaid_parser"
       ],
       "include_dirs": [
         "src"
       ],
       "sources": [
-        "bindings/node/binding.cc",
+        "bindings/node/binding.cc"
+      ]
+    },
+    {
+      "target_name": "tree_sitter_mermaid_parser",
+      "type": "static_library",
+      "include_dirs": [
+        "src"
+      ],
+      "sources": [
         "src/parser.c",
         "src/scanner.c"
       ],
-      "cflags_c": [
-        "-std=c11"
+      "conditions": [
+        ["OS!='win'", {
+          "cflags_c": [
+            "-std=c11"
+          ]
+        }, { # OS == "win"
+          "msvs_settings": {
+            "VCCLCompilerTool": {
+              # Node's common.gypi adds a C++ standard to every MSVC target.
+              # Remove it here before selecting C11 for this C-only library.
+              "AdditionalOptions!": [
+                "-std:c++17",
+                "-std:c++20"
+              ],
+              "LanguageStandard_C": "stdc11",
+              "AdditionalOptions": [
+                "/utf-8"
+              ]
+            }
+          }
+        }],
+        ["OS=='mac'", {
+          "xcode_settings": {
+            "GCC_C_LANGUAGE_STANDARD": "c11",
+            "MACOSX_DEPLOYMENT_TARGET": "10.7"
+          }
+        }]
       ]
     }
   ]
