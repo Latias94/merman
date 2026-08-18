@@ -249,8 +249,8 @@ jobs:
           npm run prebuild --prefix distribution/tree-sitter-mermaid
           test "$(find distribution/tree-sitter-mermaid/prebuilds -name '*.node' -type f | wc -l | tr -d ' ')" -ge 1
           PREBUILDS_ONLY=1 npm run test:node --prefix distribution/tree-sitter-mermaid
-          tar -czf "$RUNNER_TEMP/tree-sitter-mermaid-prebuild-$TARGET.tar.gz" \
-            -C distribution/tree-sitter-mermaid prebuilds
+          tar -czf - -C distribution/tree-sitter-mermaid prebuilds \
+            > "$RUNNER_TEMP/tree-sitter-mermaid-prebuild-$TARGET.tar.gz"
 
       - name: Upload prebuild
         uses: actions/upload-artifact@v7.0.1

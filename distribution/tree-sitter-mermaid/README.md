@@ -70,8 +70,7 @@ parser.setLanguage(language);
 const tree = parser.parse('sequenceDiagram\nAlice->>Bob: Hello\n');
 ```
 
-After the npm release is published, a no-build browser prototype can pin the exact grammar version
-on jsDelivr:
+A no-build browser prototype can pin the exact grammar version on jsDelivr:
 
 ```js
 const language = await Language.load(
