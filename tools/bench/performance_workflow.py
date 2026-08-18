@@ -92,6 +92,11 @@ def load_registry(path: Path = DEFAULT_REGISTRY) -> LaneRegistry:
                     raise WorkflowContractError(
                         f"lanes[{index}].default_features must be a boolean"
                     )
+            elif field == "pull_request_label":
+                if lane[field] is not None:
+                    lane[field] = _string(
+                        lane[field], field=f"lanes[{index}].{field}"
+                    )
             else:
                 lane[field] = _string(
                     lane[field],
@@ -99,13 +104,14 @@ def load_registry(path: Path = DEFAULT_REGISTRY) -> LaneRegistry:
                     allow_empty=field == "group",
                 )
         lane_id = str(lane["id"])
-        label = str(lane["pull_request_label"])
+        label = lane["pull_request_label"]
         if lane_id in seen_ids:
             raise WorkflowContractError(f"duplicate lane id: {lane_id}")
-        if label in seen_labels:
+        if label is not None and label in seen_labels:
             raise WorkflowContractError(f"duplicate pull-request label: {label}")
         seen_ids.add(lane_id)
-        seen_labels.add(label)
+        if label is not None:
+            seen_labels.add(label)
         lanes.append(lane)
 
     scheduled_lanes = _lane_ids(
@@ -150,7 +156,8 @@ def select_lane_ids(
         return tuple(
             str(lane["id"])
             for lane in registry.lanes
-            if str(lane["pull_request_label"]) in labels
+            if lane["pull_request_label"] is not None
+            and str(lane["pull_request_label"]) in labels
         )
     if event_name == "schedule":
         return registry.scheduled_lanes

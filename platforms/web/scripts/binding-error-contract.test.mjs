@@ -39,4 +39,45 @@ test("binding error contract accepts operation statuses and cancellation-only de
     }),
     false,
   );
+
+  assert.equal(
+    isBindingErrorPayload({
+      ...cancellationError,
+      details: {
+        diagnostic: {
+          code: "parse",
+          span: { start: -1, end: 0, kind: "exact" },
+          field: null,
+          diagram_type: null,
+        },
+      },
+      code_name: "MERMAN_PARSE_ERROR",
+    }),
+    false,
+  );
+  assert.equal(
+    isBindingErrorPayload({
+      ...cancellationError,
+      details: {
+        cancellation: {
+          reason: "requested",
+          phase: "admission",
+        },
+      },
+      code_name: "MERMAN_PARSE_ERROR",
+    }),
+    false,
+  );
+  assert.equal(
+    isBindingErrorPayload({
+      ...cancellationError,
+      details: {
+        cancellation: {
+          reason: "not-a-reason",
+          phase: "admission",
+        },
+      },
+    }),
+    false,
+  );
 });

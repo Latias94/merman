@@ -25,7 +25,11 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
     ) -> None:
         lanes = self.registry.lanes
         lane_ids = [str(lane["id"]) for lane in lanes]
-        labels = [str(lane["pull_request_label"]) for lane in lanes]
+        labels = [
+            str(lane["pull_request_label"])
+            for lane in lanes
+            if lane["pull_request_label"] is not None
+        ]
 
         self.assertTrue(lanes)
         self.assertEqual(len(lane_ids), len(set(lane_ids)))
@@ -106,11 +110,9 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
             )
 
         self.assertEqual(result, 0)
-        self.assertEqual(entries["selected"], "true")
+        self.assertEqual(entries["selected"], "false")
         matrix = json.loads(entries["matrix"])
-        expected_descriptor = dict(self.registry.by_id["ascii"])
-        expected_descriptor.pop("pull_request_label")
-        self.assertEqual(matrix, {"include": [expected_descriptor]})
+        self.assertEqual(matrix, {"include": []})
 
     def test_registry_rejects_unknown_lane_references(self) -> None:
         payload = json.loads(

@@ -320,6 +320,11 @@ export function isBindingStatusCodeName(
 const MAX_SAFE_RESOURCE_COUNT_DECIMAL = String(RUNTIME_CATALOG_MAX_SAFE_INTEGER);
 const U64_MAX_DECIMAL = "18446744073709551615";
 const CANONICAL_WIDE_UNSIGNED_DECIMAL = /^[1-9]\d*$/;
+const BINDING_CANCELLATION_REASONS = new Set([
+  "requested",
+  "deadline_exceeded",
+]);
+const OPERATION_PHASE_IDENTIFIER = /^[a-z][a-z0-9_]*$/;
 
 function isBindingResourceCount(value: unknown): value is BindingResourceCount {
   if (typeof value === "number") {
@@ -351,36 +356,49 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
   const diagnostic = details?.diagnostic;
   const iconRegistry = details?.icon_registry;
   const cancellation = details?.cancellation;
+  const resourceRecord =
+    resource && typeof resource === "object"
+      ? (resource as Record<string, unknown>)
+      : undefined;
   const validResource =
     resource === undefined ||
-    (!!resource &&
-      typeof resource === "object" &&
-      typeof (resource as Record<string, unknown>).cause === "string" &&
-      typeof (resource as Record<string, unknown>).limit_id === "string" &&
-      typeof (resource as Record<string, unknown>).phase === "string" &&
-      isBindingResourceCount((resource as Record<string, unknown>).actual) &&
-      isBindingResourceCount((resource as Record<string, unknown>).max) &&
-      typeof (resource as Record<string, unknown>).profile === "string");
+    (!!resourceRecord &&
+      typeof resourceRecord.cause === "string" &&
+      resourceRecord.cause.length > 0 &&
+      typeof resourceRecord.limit_id === "string" &&
+      resourceRecord.limit_id.length > 0 &&
+      typeof resourceRecord.phase === "string" &&
+      resourceRecord.phase.length > 0 &&
+      isBindingResourceCount(resourceRecord.actual) &&
+      isBindingResourceCount(resourceRecord.max) &&
+      typeof resourceRecord.profile === "string" &&
+      resourceRecord.profile.length > 0);
   const diagnosticRecord =
     diagnostic && typeof diagnostic === "object"
       ? (diagnostic as Record<string, unknown>)
       : undefined;
   const diagnosticSpan = diagnosticRecord?.span;
+  const diagnosticSpanRecord =
+    diagnosticSpan && typeof diagnosticSpan === "object"
+      ? (diagnosticSpan as Record<string, unknown>)
+      : undefined;
   const validDiagnosticSpan =
     diagnosticSpan === null ||
-    (!!diagnosticSpan &&
-      typeof diagnosticSpan === "object" &&
-      typeof (diagnosticSpan as Record<string, unknown>).start === "number" &&
-      typeof (diagnosticSpan as Record<string, unknown>).end === "number" &&
-      Number((diagnosticSpan as Record<string, unknown>).end) >=
-        Number((diagnosticSpan as Record<string, unknown>).start) &&
+    (!!diagnosticSpanRecord &&
+      Number.isSafeInteger(diagnosticSpanRecord.start) &&
+      Number.isSafeInteger(diagnosticSpanRecord.end) &&
+      Number(diagnosticSpanRecord.start) >= 0 &&
+      Number(diagnosticSpanRecord.end) >= Number(diagnosticSpanRecord.start) &&
       ["exact", "insertion-point", "fallback"].includes(
-        (diagnosticSpan as Record<string, unknown>).kind as string
-      ));
+        diagnosticSpanRecord.kind as string
+      ) &&
+      (diagnosticSpanRecord.kind !== "insertion-point" ||
+        Number(diagnosticSpanRecord.start) === Number(diagnosticSpanRecord.end)));
   const validDiagnostic =
     diagnostic === undefined ||
     (!!diagnosticRecord &&
       typeof diagnosticRecord.code === "string" &&
+      diagnosticRecord.code.length > 0 &&
       validDiagnosticSpan &&
       (diagnosticRecord.field === null ||
         typeof diagnosticRecord.field === "string") &&
@@ -388,10 +406,16 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
         typeof diagnosticRecord.diagram_type === "string"));
   const validCancellation =
     cancellation === undefined ||
-    (!!cancellation &&
-      typeof cancellation === "object" &&
-      typeof (cancellation as Record<string, unknown>).reason === "string" &&
-      typeof (cancellation as Record<string, unknown>).phase === "string");
+    (() => {
+      if (!cancellation || typeof cancellation !== "object") return false;
+      const cancellationRecord = cancellation as Record<string, unknown>;
+      return (
+        typeof cancellationRecord.reason === "string" &&
+        BINDING_CANCELLATION_REASONS.has(cancellationRecord.reason) &&
+        typeof cancellationRecord.phase === "string" &&
+        OPERATION_PHASE_IDENTIFIER.test(cancellationRecord.phase)
+      );
+    })();
   const hasValidDetails =
     payload.details === undefined ||
     (!!details &&
@@ -399,7 +423,7 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
         diagnostic !== undefined ||
         iconRegistry !== undefined ||
         cancellation !== undefined) &&
-      validResource &&
+    validResource &&
       validDiagnostic &&
       validCancellation &&
       (iconRegistry === undefined ||
@@ -407,11 +431,17 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
   return (
     payload.ok === false &&
     typeof payload.version === "number" &&
+    Number.isSafeInteger(payload.version) &&
+    payload.version >= 1 &&
     typeof payload.code === "number" &&
+    Number.isSafeInteger(payload.code) &&
+    payload.code >= 0 &&
     typeof payload.code_name === "string" &&
     typeof payload.kind === "string" &&
     (payload.capability_id === null ||
       typeof payload.capability_id === "string") &&
+    (payload.code_name !== "MERMAN_CANCELLED" || cancellation !== undefined) &&
+    (cancellation === undefined || payload.code_name === "MERMAN_CANCELLED") &&
     hasValidDetails &&
     typeof payload.message === "string"
   );

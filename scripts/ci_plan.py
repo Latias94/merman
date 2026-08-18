@@ -168,6 +168,51 @@ _SCRIPT_PREFIX_OWNER_RULES = (
     ("scripts/verify_rustsec_", {"hygiene", "security"}),
     ("scripts/test_verify_rustsec_", {"hygiene", "security"}),
 )
+_GENERATED_CONTRACT_PREFIX_RULES = (
+    (
+        "platforms/web/src/generated/",
+        {"core", "hygiene", "npm", "web"},
+    ),
+    (
+        "platforms/node/src/generated/",
+        {"core", "hygiene", "node", "npm", "security"},
+    ),
+    (
+        "platforms/flutter/lib/src/generated/",
+        {"core", "hygiene", "platform"},
+    ),
+    (
+        "platforms/apple/Sources/Merman/Generated/",
+        {"core", "hygiene", "platform"},
+    ),
+)
+_GENERATED_CONTRACT_EXACT_RULES = {
+    "platforms/android/src/main/kotlin/io/merman/MermanBindingContract.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanResourceOptions.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementOperation.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementResultKind.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+    "platforms/android/src/main/kotlin/io/merman/MermanTextMeasurementVocabulary.kt": {
+        "core",
+        "hygiene",
+        "platform",
+    },
+}
 _HYGIENE_SCRIPT_PREFIXES = (
     "scripts/adr_",
     "scripts/artifact_",
@@ -517,6 +562,12 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path.startswith("capabilities/"):
         return _ALL_OWNERS, f"shared capability schema changed: {path}", True
+    if path == "crates/merman/Cargo.toml":
+        return (
+            frozenset({"core", "hygiene", "performance"}),
+            f"benchmark manifest changed: {path}",
+            False,
+        )
     if path.startswith("crates/"):
         for prefix, selected in _CRATE_OWNER_RULES:
             if path.startswith(prefix):
@@ -591,6 +642,19 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"generated Playground ASCII capability authority changed: {path}",
             False,
         )
+    if path in _GENERATED_CONTRACT_EXACT_RULES:
+        return (
+            frozenset(_GENERATED_CONTRACT_EXACT_RULES[path]),
+            f"generated binding contract changed: {path}",
+            False,
+        )
+    for prefix, configured_owners in _GENERATED_CONTRACT_PREFIX_RULES:
+        if path.startswith(prefix):
+            return (
+                frozenset(configured_owners),
+                f"generated binding contract changed: {path}",
+                False,
+            )
     if path == "playground/examples/manifest.json":
         return (
             frozenset({"hygiene", "npm", "vscode", "web"}),

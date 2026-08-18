@@ -593,6 +593,30 @@ jobs:
       - name: Verify Node candidate contracts and nested lock freshness
         run: npm test --prefix platforms/node
 
+      - name: Install Rust toolchain for real Node candidates
+        if: github.event_name != 'push'
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache for real Node candidates
+        if: github.event_name != 'push'
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          cache-targets: false
+
+      - name: Install pinned wasm-pack for real Node candidates
+        if: github.event_name != 'push'
+        run: cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Build and probe the real Node-WASM candidate on PRs
+        if: github.event_name != 'push'
+        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+
+      - name: Build and probe the real Node N-API candidate on PRs
+        if: github.event_name != 'push'
+        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+
   typst-package:
     name: typst-package
     needs: ci-plan

@@ -73,15 +73,15 @@ CARGO_BUILD_JOBS=1 python3 tools/bench/verify_pipeline_bench_list.py \
   --features ascii
 ```
 
-The dedicated Performance workflow exposes the same bounded recipe without adding timing to
-ordinary unlabeled pull requests. Add the `perf-ascii` label for a quick diagnostic PR run, or
-dispatch a decision-grade comparison explicitly:
+The dedicated Performance workflow exposes the same bounded recipe without adding timing to pull
+requests. Dispatch a decision-grade comparison explicitly, using a benchmark-only backport ref
+whose harness and corpus are byte-identical to the head checkout:
 
 ```bash
 gh workflow run performance.yml \
   --ref main \
   -f run=ascii \
-  -f base_ref=main \
+  -f base_ref=<benchmark-backport-ref> \
   -f head_ref=my-ascii-branch \
   -f preset=long \
   -f ascii_suite=comparable \
@@ -94,7 +94,7 @@ The workflow accepts `comparable` and `closeout`; use `closeout` for the five me
 The larger `large-closeout` suite is intentionally excluded from unattended timing and must be run
 locally for the tracked closeout scorecard. Pull requests whose changed paths select the performance
 owner still compile and verify the complete ASCII benchmark list without a timing label. Ordinary
-renderer changes do not run the standalone performance contracts unless `perf`, `perf-ascii`, or
+renderer changes do not run the standalone performance contracts unless `perf` or
 `perf-frontmatter` is applied.
 
 For a decision-grade adjacent-revision comparison, first ensure both checkouts contain the same

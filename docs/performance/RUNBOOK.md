@@ -29,11 +29,11 @@ Performance automation is isolated in the `Performance` workflow:
   A PR with the `perf` label receives a short diagnostic AB/BA schedule. Timing movement is advisory,
   but any recipe, fixture, executable, runner, or report-contract failure still fails the lane.
   Artifacts and the sticky PR comment are written before the comparison exit code is enforced.
-- `perf-ascii` uses `ascii_pipeline`, `tools/bench/ascii_corpus.json`, the `ascii` feature with
-  default features disabled, and the `ascii_end_to_end` public-operation lane. A PR runs it only
-  when explicitly labeled `perf-ascii`; manual dispatch selects either the `comparable` or
-  `closeout` suite. Unlabeled PRs never run ASCII timing. The larger `large-closeout` suite remains
-  an explicit local closeout observation rather than an unattended CI timing lane.
+- The manual `ascii` lane uses `ascii_pipeline`, `tools/bench/ascii_corpus.json`, the `ascii`
+  feature with default features disabled, and the `ascii_end_to_end` public-operation lane.
+  Dispatch it only with a benchmark-only base backport that carries the byte-identical harness;
+  ordinary PR labels do not run ASCII timing. The larger `large-closeout` suite remains an
+  explicit local closeout observation rather than an unattended CI timing lane.
 - A manual `perf-regression` dispatch defaults to confirmation mode and can set the corpus suite,
   both thresholds, and explicit revisions. Exit `1`, `2`, and `3` remain distinct in the job result
   and report.

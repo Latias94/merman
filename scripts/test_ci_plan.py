@@ -157,6 +157,7 @@ class PlannerTests(unittest.TestCase):
                 "hygiene",
                 "performance",
             },
+            "crates/merman/Cargo.toml": {"core", "hygiene", "performance"},
         }
 
         for path, expected in fixtures.items():
@@ -396,6 +397,34 @@ class PlannerTests(unittest.TestCase):
             "playground/editor-artifact-receipt-v2.json": {
                 "hygiene",
                 "web",
+            },
+            "platforms/web/src/generated/resource-contract.ts": {
+                "core",
+                "hygiene",
+                "npm",
+                "web",
+            },
+            "platforms/node/src/generated/binding-contract.mjs": {
+                "core",
+                "hygiene",
+                "node",
+                "npm",
+                "security",
+            },
+            "platforms/flutter/lib/src/generated/resource_options.dart": {
+                "core",
+                "hygiene",
+                "platform",
+            },
+            "platforms/apple/Sources/Merman/Generated/MermanResourceContract.swift": {
+                "core",
+                "hygiene",
+                "platform",
+            },
+            "platforms/android/src/main/kotlin/io/merman/MermanResourceOptions.kt": {
+                "core",
+                "hygiene",
+                "platform",
             },
         }
         for path, expected in fixtures.items():
