@@ -1,17 +1,58 @@
 use merman::diagram_theme::{
-    ThemeDefinitionCompileError, ThemeMaterializationErrorV1,
+    ThemeDefinitionCompileError, ThemeMaterializationErrorV1, ThemeSupportQueryV1,
     compile_theme_definition_json as compile_theme_definition_json_with_renderer,
+    describe_theme_support as describe_theme_support_with_renderer,
+    materialize_theme_json_with_resource_policy as materialize_theme_json_with_renderer_policy,
 };
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourceLimitId, ThemeResourcePolicy};
 
 use crate::common::BindingError;
 
+fn general_binding_theme_resource_policy() -> ThemeResourcePolicy {
+    ThemeResourcePolicy::for_profile(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE)
+}
+
+/// Materializes one versioned authoring definition as the contract-owned JSON wire.
+pub fn materialize_theme_definition_json(bytes: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let policy = general_binding_theme_resource_policy();
+    materialize_theme_definition_json_with_resource_policy(bytes, &policy)
+}
+
+/// Materializes one versioned authoring definition under a caller-owned resource policy.
+pub fn materialize_theme_definition_json_with_resource_policy(
+    bytes: &[u8],
+    policy: &ThemeResourcePolicy,
+) -> Result<Vec<u8>, BindingError> {
+    let materialized = materialize_theme_json_with_renderer_policy(bytes, policy)
+        .map_err(|error| materialization_error(policy, error))?;
+    serde_json::to_vec(&materialized).map_err(crate::common::internal_json_error)
+}
+
+/// Describes one coarse theme-support query using the general binding resource profile.
+pub fn describe_theme_support_json(bytes: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let policy = general_binding_theme_resource_policy();
+    describe_theme_support_json_with_resource_policy(bytes, &policy)
+}
+
+/// Describes one coarse theme-support query under a caller-owned encoded-byte ceiling.
+pub fn describe_theme_support_json_with_resource_policy(
+    bytes: &[u8],
+    policy: &ThemeResourcePolicy,
+) -> Result<Vec<u8>, BindingError> {
+    policy
+        .check_theme_encoded_bytes(bytes.len())
+        .map_err(crate::theme::theme_resource_error)?;
+    let query = serde_json::from_slice::<ThemeSupportQueryV1>(bytes).map_err(|error| {
+        BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
+    })?;
+    let descriptor = describe_theme_support_with_renderer(&query);
+    serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
+}
+
 /// Compiles one versioned authoring definition with the general binding resource profile.
 pub fn compile_theme_definition_json(bytes: &[u8]) -> Result<DiagramTheme, BindingError> {
     let compiler =
-        DiagramThemeCompiler::new().with_resource_policy(ThemeResourcePolicy::for_profile(
-            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
-        ));
+        DiagramThemeCompiler::new().with_resource_policy(general_binding_theme_resource_policy());
     compile_theme_definition_json_with(&compiler, bytes)
 }
 
@@ -42,10 +83,9 @@ fn materialization_error(
     error: ThemeMaterializationErrorV1,
 ) -> BindingError {
     let diagnostic = error.diagnostic();
-    if diagnostic.code() == "theme-authoring.invalid-definition-json" {
-        return BindingError::invalid_options_json(error.to_string());
-    }
-    if diagnostic.code() == "theme-authoring.resource-limit-exceeded"
+    let projected = if diagnostic.code() == "theme-authoring.invalid-definition-json" {
+        BindingError::invalid_options_json(error.to_string())
+    } else if diagnostic.code() == "theme-authoring.resource-limit-exceeded"
         && let (Some(limit), Some(actual), Some(max)) = (
             diagnostic
                 .limit_id()
@@ -59,14 +99,275 @@ fn materialization_error(
             .profile()
             .map(merman::resources::ResourceProfile::id)
             .unwrap_or("custom-theme-policy");
-        return BindingError::resource_limit(
+        BindingError::resource_limit(
             descriptor.phase.as_str(),
             descriptor.stable_id,
             actual,
             max,
             profile,
             error.to_string(),
+        )
+    } else {
+        BindingError::invalid_argument(format!("invalid theme definition: {error}"))
+    };
+    projected.with_theme_authoring_details(error)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::BindingError;
+    use merman::diagram_theme::{
+        MaterializedThemeWireV1, ThemeDefinitionV1, ThemeRuleFacetV1, ThemeSupportOutputV1,
+        ThemeSupportQueryV1, ThemeTokensV1, describe_theme_support,
+        materialize_theme_with_resource_policy,
+    };
+    use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
+    use serde_json::{Value, json};
+
+    fn assert_theme_authoring_error(
+        input: &[u8],
+        policy: &ThemeResourcePolicy,
+        expected_status: crate::BindingStatus,
+        expected_code: &str,
+        expected_path: &str,
+        expected_details: Value,
+    ) -> BindingError {
+        let contract_error =
+            merman::diagram_theme::materialize_theme_json_with_resource_policy(input, policy)
+                .expect_err("the renderer contract should reject the test input");
+        let binding_error =
+            crate::materialize_theme_definition_json_with_resource_policy(input, policy)
+                .expect_err("the binding operation should preserve the renderer failure");
+
+        assert_eq!(binding_error.status(), expected_status);
+        assert_eq!(
+            binding_error.theme_authoring_details(),
+            Some(&contract_error)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&crate::binding_error_payload_json_bytes(&binding_error))
+                .expect("binding error payload should be valid JSON");
+        let expected_envelope =
+            serde_json::to_value(&contract_error).expect("contract error should serialize");
+        assert_eq!(payload["details"]["theme_authoring"], expected_envelope);
+        assert_eq!(payload["details"]["theme_authoring"]["schema_version"], 1);
+        assert_eq!(
+            payload["details"]["theme_authoring"]["diagnostics"][0]["code"],
+            expected_code
+        );
+        assert_eq!(
+            payload["details"]["theme_authoring"]["diagnostics"][0]["severity"],
+            "error"
+        );
+        assert_eq!(
+            payload["details"]["theme_authoring"]["diagnostics"][0]["path"],
+            expected_path
+        );
+        assert_eq!(
+            payload["details"]["theme_authoring"]["diagnostics"][0]["details"],
+            expected_details
+        );
+        assert_eq!(
+            payload["details"]["theme_authoring"]["diagnostics"][0]["message"],
+            contract_error.diagnostic().message()
+        );
+        binding_error
+    }
+
+    #[test]
+    fn binding_materialization_matches_the_typed_contract_wire() {
+        let definition = ThemeDefinitionV1::new(
+            ThemeTokensV1::default().with_series(vec!["#123456".to_owned()]),
+        );
+        let policy = ThemeResourcePolicy::for_profile(
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        );
+        let expected = materialize_theme_with_resource_policy(&definition, &policy)
+            .expect("the typed definition should materialize");
+        let input = definition
+            .canonical_json_bytes()
+            .expect("the typed definition should have canonical JSON");
+
+        let actual = crate::materialize_theme_definition_json_with_resource_policy(&input, &policy)
+            .expect("the binding JSON operation should materialize the same definition");
+
+        assert_eq!(
+            crate::materialize_theme_definition_json(&input)
+                .expect("the default binding policy should admit the same definition"),
+            actual
+        );
+        assert_eq!(
+            actual,
+            serde_json::to_vec(&expected).expect("materialized contract should serialize")
+        );
+        assert_eq!(
+            serde_json::from_slice::<MaterializedThemeWireV1>(&actual)
+                .expect("binding output should retain the complete contract wire"),
+            expected
         );
     }
-    BindingError::invalid_argument(format!("invalid theme definition: {error}"))
+
+    #[test]
+    fn binding_materialization_preserves_closed_error_envelopes() {
+        let policy = ThemeResourcePolicy::for_profile(
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        );
+
+        assert_theme_authoring_error(
+            br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"series":[]}}"#,
+            &policy,
+            crate::BindingStatus::InvalidArgument,
+            "theme-authoring.empty-series",
+            "/tokens/series",
+            json!({}),
+        );
+
+        assert_theme_authoring_error(
+            br##"{
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": {},
+                "styles": [
+                    {"kind":"ordinal-palette","target":"node","colors":["#111111"]},
+                    {"kind":"ordinal-palette","target":"node","colors":["#222222"]}
+                ]
+            }"##,
+            &policy,
+            crate::BindingStatus::InvalidArgument,
+            "theme-authoring.duplicate-palette-target",
+            "/styles/1/target",
+            json!({
+                "target_id": "node",
+                "first_authored_index": 0,
+                "duplicate_authored_index": 1
+            }),
+        );
+
+        assert_theme_authoring_error(
+            br#"{"authoring_schema_version":1,"#,
+            &policy,
+            crate::BindingStatus::OptionsJsonError,
+            "theme-authoring.invalid-definition-json",
+            "",
+            json!({"reason_id": "malformed-json"}),
+        );
+    }
+
+    #[test]
+    fn binding_materialization_resource_error_keeps_both_detail_envelopes() {
+        let policy = ThemeResourcePolicy::default()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+            .expect("one byte is a valid caller-owned ceiling");
+        let error = assert_theme_authoring_error(
+            br#"{}"#,
+            &policy,
+            crate::BindingStatus::ResourceLimitExceeded,
+            "theme-authoring.resource-limit-exceeded",
+            "",
+            json!({
+                "limit_id": "max_theme_encoded_bytes",
+                "actual": 2,
+                "max": 1
+            }),
+        );
+
+        let resource = error
+            .resource_details()
+            .expect("resource failures should retain the binding resource projection");
+        assert_eq!(resource.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(resource.phase, "theme_input");
+        assert_eq!(resource.actual, 2);
+        assert_eq!(resource.max, 1);
+        assert_eq!(resource.profile, "interactive");
+        assert_eq!(resource.cause, crate::BindingResourceLimitCause::Ceiling);
+        let payload: Value =
+            serde_json::from_slice(&crate::binding_error_payload_json_bytes(&error)).unwrap();
+        assert_eq!(
+            payload["details"]["resource"],
+            json!({
+                "cause": "ceiling",
+                "limit_id": "max_theme_encoded_bytes",
+                "phase": "theme_input",
+                "actual": 2,
+                "max": 1,
+                "profile": "interactive"
+            })
+        );
+        assert!(payload["details"].get("theme_authoring").is_some());
+    }
+
+    #[test]
+    fn support_query_round_trips_known_and_unknown_identifiers() {
+        let known = ThemeSupportQueryV1::known(
+            "flowchart",
+            ThemeSupportOutputV1::StandaloneSvg,
+            "node",
+            ThemeRuleFacetV1::Radius,
+        );
+        let known_input = serde_json::to_vec(&known).expect("known query should serialize");
+        let known_output =
+            crate::describe_theme_support_json(&known_input).expect("known query should succeed");
+        assert_eq!(
+            known_output,
+            serde_json::to_vec(&describe_theme_support(&known))
+                .expect("known descriptor should serialize")
+        );
+
+        for (field, value, reason_id) in [
+            ("family", "future-family", "theme-support.unknown-family"),
+            ("target", "future-target", "theme-support.unknown-target"),
+            ("facet", "future-facet", "theme-support.unknown-facet"),
+        ] {
+            let mut query = json!({
+                "schema_version": 1,
+                "family": "flowchart",
+                "output": "standalone-svg",
+                "target": "node",
+                "facet": "radius"
+            });
+            query[field] = Value::String(value.to_owned());
+            let input = serde_json::to_vec(&query).unwrap();
+            let output = crate::describe_theme_support_json(&input)
+                .expect("unknown catalog identifiers remain valid discovery input");
+            let descriptor: Value = serde_json::from_slice(&output).unwrap();
+
+            assert_eq!(descriptor["query"], query);
+            assert_eq!(descriptor["state"], "unverified");
+            assert_eq!(descriptor["reason_ids"], json!([reason_id]));
+        }
+    }
+
+    #[test]
+    fn support_query_checks_encoded_bytes_before_serde() {
+        let policy = ThemeResourcePolicy::default()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+            .expect("one byte is a valid caller-owned ceiling");
+        let error = crate::describe_theme_support_json_with_resource_policy(b"not-json", &policy)
+            .expect_err("the encoded-byte ceiling should fail before JSON decoding");
+
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        let resource = error
+            .resource_details()
+            .expect("predecode failure should expose structured resource details");
+        assert_eq!(resource.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(resource.phase, "theme_input");
+        assert_eq!(resource.actual, 8);
+        assert_eq!(resource.max, 1);
+        assert!(error.theme_authoring_details().is_none());
+    }
+
+    #[test]
+    fn support_query_rejects_invalid_json_and_shape_as_options_json() {
+        for input in [
+            br#"{"schema_version":1,"family":"flowchart""#.as_slice(),
+            br#"{"schema_version":1,"family":"flowchart","output":"standalone-svg","target":"node"}"#
+                .as_slice(),
+        ] {
+            let error = crate::describe_theme_support_json(input)
+                .expect_err("invalid support query JSON should be a transport options error");
+            assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
+            assert!(error.theme_authoring_details().is_none());
+        }
+    }
 }

@@ -182,6 +182,8 @@ struct BindingErrorDetails {
     resource: Option<BindingResourceErrorDetails>,
     cancellation: Option<BindingCancellationErrorDetails>,
     icon_registry: Option<BindingIconRegistryErrorDetails>,
+    #[cfg(feature = "svg")]
+    theme_authoring: Option<merman::diagram_theme::ThemeMaterializationErrorV1>,
 }
 
 /// Structured resource failure details carried by the additive error JSON payload.
@@ -377,6 +379,8 @@ impl BindingError {
                 }),
                 cancellation: None,
                 icon_registry: None,
+                #[cfg(feature = "svg")]
+                theme_authoring: None,
             }),
             message,
         )
@@ -436,6 +440,7 @@ impl BindingError {
                     pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
                     registration_name: None,
                 }),
+                theme_authoring: None,
             }),
             message,
         )
@@ -460,6 +465,30 @@ impl BindingError {
         }
     }
 
+    /// Returns the exact contract-owned theme-authoring failure when one was projected by a
+    /// materialization operation.
+    #[cfg(feature = "svg")]
+    #[must_use]
+    pub fn theme_authoring_details(
+        &self,
+    ) -> Option<&merman::diagram_theme::ThemeMaterializationErrorV1> {
+        self.details
+            .as_deref()
+            .and_then(|details| details.theme_authoring.as_ref())
+    }
+
+    #[cfg(feature = "svg")]
+    #[must_use]
+    pub(crate) fn with_theme_authoring_details(
+        mut self,
+        error: merman::diagram_theme::ThemeMaterializationErrorV1,
+    ) -> Self {
+        self.details
+            .get_or_insert_with(|| Box::new(BindingErrorDetails::default()))
+            .theme_authoring = Some(error);
+        self
+    }
+
     #[must_use]
     pub fn cancellation_details(&self) -> Option<BindingCancellationErrorDetails> {
         match self.details.as_deref() {
@@ -478,6 +507,8 @@ impl BindingError {
                 resource: None,
                 cancellation: Some(BindingCancellationErrorDetails::from_operation(error)),
                 icon_registry: None,
+                #[cfg(feature = "svg")]
+                theme_authoring: None,
             }),
             error.to_string(),
         )
@@ -548,6 +579,7 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
                 resource,
                 cancellation: None,
                 icon_registry: Some(details),
+                theme_authoring: None,
             }),
             message,
         )
@@ -592,6 +624,9 @@ struct ErrorDetails<'a, R> {
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cancellation: Option<&'a BindingCancellationErrorDetails>,
+    #[cfg(feature = "svg")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    theme_authoring: Option<&'a merman::diagram_theme::ThemeMaterializationErrorV1>,
 }
 
 #[derive(Debug, Serialize)]
@@ -818,6 +853,8 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
         None,
         None,
         None,
+        #[cfg(feature = "svg")]
+        None,
         message,
     )
 }
@@ -831,6 +868,8 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         details.and_then(|details| details.resource.as_ref()),
         details.and_then(|details| details.icon_registry.as_ref()),
         details.and_then(|details| details.cancellation.as_ref()),
+        #[cfg(feature = "svg")]
+        details.and_then(|details| details.theme_authoring.as_ref()),
         error.message(),
     )
 }
@@ -848,6 +887,8 @@ pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
             .map(BindingResourceErrorDetails::js_safe_json),
         details.and_then(|details| details.icon_registry.as_ref()),
         details.and_then(|details| details.cancellation.as_ref()),
+        #[cfg(feature = "svg")]
+        details.and_then(|details| details.theme_authoring.as_ref()),
         error.message(),
     )
 }
@@ -859,11 +900,17 @@ fn error_payload_json_bytes_with_details<R>(
     resource: Option<R>,
     icon_registry: Option<&BindingIconRegistryErrorDetails>,
     cancellation: Option<&BindingCancellationErrorDetails>,
+    #[cfg(feature = "svg")] theme_authoring: Option<
+        &merman::diagram_theme::ThemeMaterializationErrorV1,
+    >,
     message: &str,
 ) -> Vec<u8>
 where
     R: Serialize,
 {
+    let has_details = resource.is_some() || icon_registry.is_some() || cancellation.is_some();
+    #[cfg(feature = "svg")]
+    let has_details = has_details || theme_authoring.is_some();
     let payload = ErrorPayload {
         version: BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,
@@ -871,12 +918,13 @@ where
         code_name: status.code_name(),
         kind: kind.id(),
         capability_id,
-        details: (resource.is_some() || icon_registry.is_some() || cancellation.is_some())
-            .then_some(ErrorDetails {
-                resource,
-                icon_registry,
-                cancellation,
-            }),
+        details: has_details.then_some(ErrorDetails {
+            resource,
+            icon_registry,
+            cancellation,
+            #[cfg(feature = "svg")]
+            theme_authoring,
+        }),
         message,
     };
     serde_json::to_vec(&payload).unwrap_or_else(|_| {
