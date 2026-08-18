@@ -33,6 +33,7 @@ import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
 import {
   markRenderCoordinatorPresented,
   refreshRenderCoordinator,
+  setRenderCoordinatorEnabled,
   setRenderFeatures,
 } from "@/src/runtime/render-coordinator-browser";
 import {
@@ -89,6 +90,7 @@ import {
 import Editor from "@monaco-editor/react";
 
 interface PreviewProps {
+  active?: boolean;
   className?: string;
 }
 
@@ -106,7 +108,7 @@ const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
   layout: { json: null, error: null, errorDetail: null, elapsedMs: null },
 };
 
-export function Preview({ className }: PreviewProps) {
+export function Preview({ active = true, className }: PreviewProps) {
   const { t } = useTranslation();
   const code = useAppStore((state) => state.code);
   const diagramTheme = useAppStore((state) => state.diagramTheme);
@@ -190,6 +192,10 @@ export function Preview({ className }: PreviewProps) {
     [canvasOperation, code, diagramTheme, mermaidConfig],
   );
   const canvasMode = previewMode === "svg" || previewMode === "compare";
+
+  useEffect(() => {
+    setRenderCoordinatorEnabled(active);
+  }, [active]);
 
   useEffect(() => {
     setRenderFeatures({

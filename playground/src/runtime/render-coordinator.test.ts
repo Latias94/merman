@@ -246,6 +246,41 @@ test("freezes only the latest input after the debounce window", async () => {
   assert.equal(completed.snapshot.operation.source, "third");
 });
 
+test("retains only the latest input while rendering is disabled", async () => {
+  const renderedSources: string[] = [];
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    render(operation) {
+      renderedSources.push(operation.source);
+      return facade().render(operation);
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 0,
+  });
+
+  coordinator.setEnabled(false);
+  coordinator.setInput(input("hidden-first", domainFacade));
+  coordinator.setInput(input("hidden-latest", domainFacade));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(renderedSources, []);
+  assert.equal(coordinator.store.getState().status, "empty");
+
+  coordinator.setEnabled(true);
+  await waitFor(() => renderedSources.length === 1);
+  assert.deepEqual(renderedSources, ["hidden-latest"]);
+  const completed = coordinator.store.getState();
+  assert.equal(completed.status, "success");
+  if (completed.status !== "success") return;
+  assert.equal(completed.snapshot.operation.source, "hidden-latest");
+
+  coordinator.setEnabled(false);
+  coordinator.setInput(input("hidden-again", domainFacade));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(renderedSources, ["hidden-latest"]);
+});
+
 test("passes one frozen operation to every Merman projection", async () => {
   const operations: FrozenRenderOperation[] = [];
   const capture = (input: ConfiguredMermanOperationInput) => {

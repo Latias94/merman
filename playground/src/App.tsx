@@ -130,7 +130,9 @@ export default function App() {
                   onFocusCapture={() => setWorkspacePane("preview")}
                   onPointerDownCapture={() => setWorkspacePane("preview")}
                 >
-                  <PreviewPanel />
+                  <PreviewPanel
+                    active={!isNarrowLayout || workspacePane === "preview"}
+                  />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
@@ -273,9 +275,9 @@ function DeferredCodeEditor({
   );
 }
 
-function PreviewPanel() {
+function PreviewPanel({ active }: { active: boolean }) {
   return (
-    <Preview className="h-full min-h-0" />
+    <Preview active={active} className="h-full min-h-0" />
   );
 }
 

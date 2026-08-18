@@ -197,6 +197,7 @@ export interface RenderCoordinator {
   pause(): Promise<() => void>;
   refresh(): void;
   resume(): void;
+  setEnabled(enabled: boolean): void;
   setFeatures(features: RenderFeatures): void;
   setInput(input: RenderCoordinatorInput): void;
   suspend(): void;
@@ -240,6 +241,7 @@ export function createRenderCoordinator({
 }: RenderCoordinatorOptions): RenderCoordinator {
   const store = createStore<RenderCoordinatorState>(() => EMPTY_STATE);
   let disposed = false;
+  let enabled = true;
   let suspended = false;
   let pauseCount = 0;
   let asciiEnabled = false;
@@ -285,6 +287,7 @@ export function createRenderCoordinator({
       replaceState(EMPTY_STATE);
       return;
     }
+    if (!enabled) return;
 
     const operationInput = freezeScheduledOperationInput({
       asciiEnabled,
@@ -334,7 +337,14 @@ export function createRenderCoordinator({
 
   const scheduleLatest = (immediate: boolean) => {
     clearTimer();
-    if (disposed || suspended || pauseCount > 0 || active || !latest) {
+    if (
+      disposed ||
+      !enabled ||
+      suspended ||
+      pauseCount > 0 ||
+      active ||
+      !latest
+    ) {
       return;
     }
     const remaining = immediate
@@ -343,7 +353,9 @@ export function createRenderCoordinator({
     timer = setTimeout(() => {
       timer = null;
       const request = latest;
-      if (!request || disposed || suspended || pauseCount > 0) return;
+      if (!request || disposed || !enabled || suspended || pauseCount > 0) {
+        return;
+      }
       const activeRequestForExecution: ActiveRequest = Object.freeze({
         facade: request.facade,
         snapshot: Object.freeze({
@@ -356,6 +368,7 @@ export function createRenderCoordinator({
         .then((completed) => {
           if (
             !disposed &&
+            enabled &&
             !suspended &&
             pauseCount === 0 &&
             latest?.publicationId === request.publicationId
@@ -418,6 +431,21 @@ export function createRenderCoordinator({
   const setInput = (input: RenderCoordinatorInput) => {
     currentInput = input;
     scheduleCurrent(false);
+  };
+  const setEnabled = (nextEnabled: boolean) => {
+    if (disposed || enabled === nextEnabled) return;
+    enabled = nextEnabled;
+    if (enabled) {
+      scheduleCurrent(true, true);
+      return;
+    }
+
+    clearTimer();
+    latest = null;
+    if (!cancelActiveCompare()) compare.reset();
+    const state = store.getState();
+    if (state.status === "pending") replaceState(EMPTY_STATE);
+    if (state.status === "updating") replaceState(state.previous);
   };
   const setFeatures = (features: RenderFeatures) => {
     const leavingCompare = compareEnabled && !features.compareEnabled;
@@ -543,6 +571,7 @@ export function createRenderCoordinator({
     pause,
     refresh,
     resume,
+    setEnabled,
     setFeatures,
     setInput,
     suspend,

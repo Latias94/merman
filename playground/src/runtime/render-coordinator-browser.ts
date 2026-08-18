@@ -27,6 +27,7 @@ export const markRenderCoordinatorPresented = (
 export const pauseRenderCoordinator = () => renderCoordinator.pause();
 export const refreshRenderCoordinator = () => renderCoordinator.refresh();
 export const resumeRenderCoordinator = () => renderCoordinator.resume();
+export const setRenderCoordinatorEnabled = renderCoordinator.setEnabled;
 export const setRenderFeatures = renderCoordinator.setFeatures;
 export const setRenderCoordinatorInput = renderCoordinator.setInput;
 export const suspendRenderCoordinator = () => renderCoordinator.suspend();

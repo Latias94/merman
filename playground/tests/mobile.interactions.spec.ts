@@ -7,6 +7,7 @@ import {
   expectNoDocumentOverflow,
   monitorBrowserErrors,
   openPlayground,
+  previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
@@ -23,13 +24,6 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
   await exerciseCompactToolbarMenus(page);
 
   const host = page.locator(".preview-container > div").first();
-  await expect
-    .poll(() =>
-      host.evaluate((element) =>
-        Boolean(element.shadowRoot?.querySelector("svg")),
-      ),
-    )
-    .toBe(true);
   const editorTab = page.getByRole("tab", { name: "Editor", exact: true });
   const previewTab = page.getByRole("tab", { name: "Preview", exact: true });
   await editorTab.focus();
@@ -97,6 +91,58 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
     page.getByRole("textbox", { name: "Mermaid source" }),
   ).toBeVisible();
   await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
+test("hidden editor workspace defers Preview rendering and resumes the latest source", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+
+  const host = page.locator(".preview-container > div").first();
+  const editorTab = page.getByRole("tab", { name: "Editor", exact: true });
+  const previewTab = page.getByRole("tab", { name: "Preview", exact: true });
+  await expect(page.getByRole("textbox", { name: "Mermaid source" })).toBeVisible();
+  await expect(page.locator("footer")).toContainText("WASM: Ready");
+  await page.waitForTimeout(450);
+  await expect(host).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        performance.getEntriesByName("merman:initial-preview-presented").length,
+    ),
+  ).toBe(0);
+
+  await replaceEditorSource(
+    page,
+    "flowchart LR\n  hidden[Hidden] --> latest[Latest source]",
+  );
+  await page.waitForTimeout(450);
+  await expect(host).toHaveCount(0);
+
+  await previewTab.tap();
+  await waitForPreviewSvg(page);
+  await expect.poll(() => previewSvgText(page)).toContain("Latest source");
+  expect(
+    await page.evaluate(
+      () =>
+        performance.getEntriesByName("merman:initial-preview-presented").length,
+    ),
+  ).toBe(1);
+
+  await editorTab.tap();
+  await replaceEditorSource(
+    page,
+    "flowchart LR\n  hidden[Hidden] --> newest[Newest source]",
+  );
+  await page.waitForTimeout(450);
+  expect(await previewSvgText(page)).toContain("Latest source");
+  expect(await previewSvgText(page)).not.toContain("Newest source");
+
+  await previewTab.tap();
+  await expect.poll(() => previewSvgText(page)).toContain("Newest source");
   errors.assertNone();
 });
 
