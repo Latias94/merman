@@ -1,5 +1,6 @@
 export type StartupActivationReason =
   | "preview-presented"
+  | "editor-visible"
   | "editor-intent";
 
 export interface StartupBoundary {

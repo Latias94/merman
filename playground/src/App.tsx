@@ -106,6 +106,9 @@ export default function App() {
                   onPointerDownCapture={() => setWorkspacePane("editor")}
                 >
                   <EditorPanel
+                    activateCodeEditorImmediately={
+                      isNarrowLayout && workspacePane === "editor"
+                    }
                     editorMode={editorMode}
                     setEditorMode={setEditorMode}
                     t={t}
@@ -141,10 +144,12 @@ export default function App() {
 }
 
 function EditorPanel({
+  activateCodeEditorImmediately,
   editorMode,
   setEditorMode,
   t,
 }: {
+  activateCodeEditorImmediately: boolean;
   editorMode: "code" | "config";
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
@@ -186,7 +191,10 @@ function EditorPanel({
         forceMount
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <DeferredCodeEditor className="h-full min-h-0" />
+        <DeferredCodeEditor
+          activateImmediately={activateCodeEditorImmediately}
+          className="h-full min-h-0"
+        />
       </TabsContent>
       <TabsContent
         value="config"
@@ -206,7 +214,13 @@ function EditorPanel({
   );
 }
 
-function DeferredCodeEditor({ className }: { readonly className?: string }) {
+function DeferredCodeEditor({
+  activateImmediately,
+  className,
+}: {
+  readonly activateImmediately: boolean;
+  readonly className?: string;
+}) {
   const { t } = useTranslation();
   const [activated, setActivated] = useState(
     () => playgroundStartupBoundary.reason() !== null,
@@ -221,6 +235,12 @@ function DeferredCodeEditor({ className }: { readonly className?: string }) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!activateImmediately) return;
+    playgroundStartupBoundary.activate("editor-visible");
+    setActivated(true);
+  }, [activateImmediately]);
 
   const activateFromEditorIntent = () => {
     playgroundStartupBoundary.activate("editor-intent");
