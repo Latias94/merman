@@ -10,6 +10,9 @@
 - Added `MermanExactResourceErrorDetails` so unsigned 64-bit resource counts remain available as
   canonical decimal strings. The existing signed-`int` projection remains available when both
   counts fit its compatibility range.
+- Added `MermanDiagnosticErrorDetails` and `MermanDiagnosticSpan` so parser and ASCII renderer
+  failures preserve native diagnostic codes, byte spans, fields, and diagram types without
+  parsing human-facing messages.
 
 ### Breaking changes
 

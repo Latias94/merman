@@ -36,6 +36,8 @@ export 'src/merman_ffi.dart'
         MermanBusyException,
         MermanCancellationErrorDetails,
         MermanCancelledException,
+        MermanDiagnosticErrorDetails,
+        MermanDiagnosticSpan,
         MermanDiagramFamilyCapability,
         MermanEngine,
         MermanEngineServices,

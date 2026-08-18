@@ -94,6 +94,18 @@ from a synchronous host callback. Message-driven mid-render cancellation needs a
 or worker bridge that can call the native control concurrently; use a process boundary when
 forceful termination is also required.
 
+Parser and ASCII renderer failures may also expose `MermanException.diagnosticDetails`. Prefer its
+stable code, optional byte span, field, and diagram type over parsing the human-facing message:
+
+```dart
+try {
+  merman.renderAscii(source);
+} on MermanException catch (error) {
+  print(error.diagnosticDetails?.code);
+  print(error.diagnosticDetails?.span?.start);
+}
+```
+
 ## Inspect Native Metadata
 
 The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and presentation catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Presentation IDs remain open strings so compatible producers can add presets, profiles, and aspects without requiring a Dart enum update.

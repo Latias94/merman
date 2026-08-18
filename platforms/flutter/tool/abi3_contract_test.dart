@@ -46,6 +46,7 @@ void main() {
   rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
+  rejectsMalformedNativeDiagnosticDetails();
   rejectsMismatchedNativeErrorSchema();
   preservesAllocationTokenExhaustionStatus();
   preservesUnpublishedEngineProducerProvenance();
@@ -1491,71 +1492,163 @@ void textMeasurementFactoriesRejectMalformedValues() {
 }
 
 void decodesMachineReadableNativeErrors() {
-  final unknown = MermanException.fromNative(
-    7,
+  const expectedDiagnostic = MermanDiagnosticErrorDetails(
+    code: 'merman.flowchart.edge.invalid',
+    span: MermanDiagnosticSpan(start: 3, end: 8, kind: 'exact'),
+    field: 'edge',
+    diagramType: 'flowchart-v2',
+  );
+  Map<String, Object?> diagnosticJson() => {
+    'code': expectedDiagnostic.code,
+    'span': {
+      'start': expectedDiagnostic.span!.start,
+      'end': expectedDiagnostic.span!.end,
+      'kind': expectedDiagnostic.span!.kind,
+      'future_span_field': true,
+    },
+    'field': expectedDiagnostic.field,
+    'diagram_type': expectedDiagnostic.diagramType,
+    'future_diagnostic_field': true,
+  };
+  bool preservesExpectedDiagnostic(MermanException error) =>
+      error.diagnosticDetails?.code == expectedDiagnostic.code &&
+      error.diagnosticDetails?.span?.start == expectedDiagnostic.span?.start &&
+      error.diagnosticDetails?.span?.end == expectedDiagnostic.span?.end &&
+      error.diagnosticDetails?.span?.kind == expectedDiagnostic.span?.kind &&
+      error.diagnosticDetails?.field == expectedDiagnostic.field &&
+      error.diagnosticDetails?.diagramType == expectedDiagnostic.diagramType;
+
+  final diagnostic = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_PARSE_ERROR,
     Uint8List.fromList(
       utf8.encode(
         jsonEncode({
           'version': 1,
           'ok': false,
-          'status': 7,
-          'status_name': 'unsupported-operation',
-          'kind': 'unknown-operation',
+          'status': native.MERMAN_NATIVE_STATUS_PARSE_ERROR,
+          'status_name': 'parse-error',
+          'kind': 'generic',
           'capability_id': null,
-          'message': 'unknown operation',
+          'details': {'diagnostic': diagnosticJson()},
+          'message': 'invalid flowchart edge',
         }),
       ),
     ),
   );
   _expect(
-    unknown is MermanUnknownOperationException &&
-        unknown.kind == MermanErrorKind.unknownOperation &&
-        unknown.capabilityId == null,
-    'unknown operation classification should survive the Dart boundary',
+    diagnostic.runtimeType == MermanException &&
+        preservesExpectedDiagnostic(diagnostic),
+    'structured diagnostic metadata should survive the Dart boundary',
   );
 
-  final reentrant = MermanException.fromNative(
-    14,
-    Uint8List.fromList(
-      utf8.encode(
-        jsonEncode({
-          'version': 1,
-          'ok': false,
-          'status': 14,
-          'status_name': 'reentrant-call',
-          'kind': 'reentrant-call',
-          'capability_id': null,
-          'message': 'same engine was re-entered',
-        }),
+  final specializedCases =
+      <
+        ({
+          String label,
+          int status,
+          String statusName,
+          String kind,
+          String? capabilityId,
+          Map<String, Object?> additionalDetails,
+          bool Function(MermanException) matches,
+        })
+      >[
+        (
+          label: 'unknown operation',
+          status: native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+          statusName: 'unsupported-operation',
+          kind: 'unknown-operation',
+          capabilityId: null,
+          additionalDetails: const {},
+          matches: (error) =>
+              error is MermanUnknownOperationException &&
+              error.kind == MermanErrorKind.unknownOperation,
+        ),
+        (
+          label: 'missing capability',
+          status: native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+          statusName: 'unsupported-operation',
+          kind: 'missing-capability',
+          capabilityId: 'svg',
+          additionalDetails: const {},
+          matches: (error) =>
+              error is MermanMissingCapabilityException &&
+              error.capabilityId == 'svg',
+        ),
+        (
+          label: 'generic unsupported operation',
+          status: native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+          statusName: 'unsupported-operation',
+          kind: 'future-kind',
+          capabilityId: null,
+          additionalDetails: const {},
+          matches: (error) =>
+              error.runtimeType == MermanUnsupportedOperationException &&
+              error.kind == MermanErrorKind.generic,
+        ),
+        (
+          label: 'reentrant call',
+          status: native.MERMAN_NATIVE_STATUS_REENTRANT_CALL,
+          statusName: 'reentrant-call',
+          kind: 'reentrant-call',
+          capabilityId: null,
+          additionalDetails: const {},
+          matches: (error) =>
+              error is MermanReentrantCallException &&
+              error.kind == MermanErrorKind.reentrantCall,
+        ),
+        (
+          label: 'busy engine',
+          status: native.MERMAN_NATIVE_STATUS_BUSY,
+          statusName: 'busy',
+          kind: 'busy',
+          capabilityId: null,
+          additionalDetails: const {},
+          matches: (error) =>
+              error is MermanBusyException &&
+              error.kind == MermanErrorKind.busy,
+        ),
+        (
+          label: 'cancelled operation',
+          status: native.MERMAN_NATIVE_STATUS_CANCELLED,
+          statusName: 'cancelled',
+          kind: 'generic',
+          capabilityId: null,
+          additionalDetails: const {
+            'cancellation': {'reason': 'deadline_exceeded', 'phase': 'layout'},
+          },
+          matches: (error) =>
+              error is MermanCancelledException &&
+              error.cancellationDetails?.reason == 'deadline_exceeded' &&
+              error.cancellationDetails?.phase == 'layout',
+        ),
+      ];
+  for (final testCase in specializedCases) {
+    final error = MermanException.fromNative(
+      testCase.status,
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'version': 1,
+            'ok': false,
+            'status': testCase.status,
+            'status_name': testCase.statusName,
+            'kind': testCase.kind,
+            'capability_id': testCase.capabilityId,
+            'details': {
+              'diagnostic': diagnosticJson(),
+              ...testCase.additionalDetails,
+            },
+            'message': '${testCase.label} failed',
+          }),
+        ),
       ),
-    ),
-  );
-  _expect(
-    reentrant is MermanReentrantCallException &&
-        reentrant.kind == MermanErrorKind.reentrantCall,
-    'reentrant classification should survive the Dart boundary',
-  );
-
-  final busy = MermanException.fromNative(
-    native.MERMAN_NATIVE_STATUS_BUSY,
-    Uint8List.fromList(
-      utf8.encode(
-        jsonEncode({
-          'version': 1,
-          'ok': false,
-          'status': native.MERMAN_NATIVE_STATUS_BUSY,
-          'status_name': 'busy',
-          'kind': 'busy',
-          'capability_id': null,
-          'message': 'engine has an active operation',
-        }),
-      ),
-    ),
-  );
-  _expect(
-    busy is MermanBusyException && busy.kind == MermanErrorKind.busy,
-    'busy classification should survive the Dart boundary',
-  );
+    );
+    _expect(
+      testCase.matches(error) && preservesExpectedDiagnostic(error),
+      '${testCase.label} should preserve its classification and diagnostic',
+    );
+  }
 
   final busyWithoutResult = MermanException.fromNative(
     native.MERMAN_NATIVE_STATUS_BUSY,
@@ -1564,32 +1657,6 @@ void decodesMachineReadableNativeErrors() {
   _expect(
     busyWithoutResult is MermanBusyException,
     'result-free engine close status must preserve busy classification',
-  );
-
-  final cancelled = MermanException.fromNative(
-    native.MERMAN_NATIVE_STATUS_CANCELLED,
-    Uint8List.fromList(
-      utf8.encode(
-        jsonEncode({
-          'version': 1,
-          'ok': false,
-          'status': native.MERMAN_NATIVE_STATUS_CANCELLED,
-          'status_name': 'cancelled',
-          'kind': 'generic',
-          'capability_id': null,
-          'details': {
-            'cancellation': {'reason': 'deadline_exceeded', 'phase': 'layout'},
-          },
-          'message': 'operation cancelled during layout',
-        }),
-      ),
-    ),
-  );
-  _expect(
-    cancelled is MermanCancelledException &&
-        cancelled.cancellationDetails?.reason == 'deadline_exceeded' &&
-        cancelled.cancellationDetails?.phase == 'layout',
-    'structured cancellation metadata should survive the Dart boundary',
   );
 
   final resource = MermanException.fromNative(
@@ -1695,6 +1762,66 @@ void decodesMachineReadableNativeErrors() {
         iconRegistry.iconRegistryDetails?.registrationName == 'smoke',
     'icon-registry metadata should survive the Dart boundary',
   );
+}
+
+void rejectsMalformedNativeDiagnosticDetails() {
+  for (final diagnostic in <Map<String, Object?>>[
+    {'code': '', 'span': null, 'field': null, 'diagram_type': null},
+    {
+      'code': 'merman.test',
+      'span': 'not-an-object',
+      'field': null,
+      'diagram_type': null,
+    },
+    {
+      'code': 'merman.test',
+      'span': {'start': -1, 'end': 3, 'kind': 'exact'},
+      'field': null,
+      'diagram_type': null,
+    },
+    {
+      'code': 'merman.test',
+      'span': {'start': 4, 'end': 3, 'kind': 'exact'},
+      'field': null,
+      'diagram_type': null,
+    },
+    {
+      'code': 'merman.test',
+      'span': {'start': 3, 'end': 4, 'kind': 'future-kind'},
+      'field': null,
+      'diagram_type': null,
+    },
+    {
+      'code': 'merman.test',
+      'span': {'start': 3, 'end': 4, 'kind': 'insertion-point'},
+      'field': null,
+      'diagram_type': null,
+    },
+    {'code': 'merman.test', 'span': null, 'field': 7, 'diagram_type': null},
+    {'code': 'merman.test', 'span': null, 'field': null, 'diagram_type': false},
+  ]) {
+    final error = MermanException.fromNative(
+      native.MERMAN_NATIVE_STATUS_PARSE_ERROR,
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'version': 1,
+            'ok': false,
+            'status': native.MERMAN_NATIVE_STATUS_PARSE_ERROR,
+            'status_name': 'parse-error',
+            'kind': 'generic',
+            'capability_id': null,
+            'details': {'diagnostic': diagnostic},
+            'message': 'invalid diagram',
+          }),
+        ),
+      ),
+    );
+    _expect(
+      error.diagnosticDetails == null,
+      'malformed diagnostic metadata must not enter the public exception',
+    );
+  }
 }
 
 void rejectsMismatchedNativeErrorSchema() {

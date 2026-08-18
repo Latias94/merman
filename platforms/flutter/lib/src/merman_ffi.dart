@@ -181,6 +181,34 @@ class MermanCancellationErrorDetails {
   final String phase;
 }
 
+/// Byte span attached to a structured parser or renderer diagnostic.
+class MermanDiagnosticSpan {
+  const MermanDiagnosticSpan({
+    required this.start,
+    required this.end,
+    required this.kind,
+  });
+
+  final int start;
+  final int end;
+  final String kind;
+}
+
+/// Stable machine-readable context for a parser or renderer failure.
+class MermanDiagnosticErrorDetails {
+  const MermanDiagnosticErrorDetails({
+    required this.code,
+    required this.span,
+    required this.field,
+    required this.diagramType,
+  });
+
+  final String code;
+  final MermanDiagnosticSpan? span;
+  final String? field;
+  final String? diagramType;
+}
+
 /// Error returned by the native ABI or by a local contract validation failure.
 class MermanException implements Exception {
   const MermanException({
@@ -191,6 +219,7 @@ class MermanException implements Exception {
     this.capabilityId,
     this.exactResourceDetails,
     this.resourceDetails,
+    this.diagnosticDetails,
     this.iconRegistryDetails,
     this.cancellationDetails,
   });
@@ -202,6 +231,7 @@ class MermanException implements Exception {
   final String? capabilityId;
   final MermanExactResourceErrorDetails? exactResourceDetails;
   final MermanResourceErrorDetails? resourceDetails;
+  final MermanDiagnosticErrorDetails? diagnosticDetails;
   final MermanIconRegistryErrorDetails? iconRegistryDetails;
   final MermanCancellationErrorDetails? cancellationDetails;
 
@@ -227,6 +257,7 @@ class MermanException implements Exception {
     String? capabilityId;
     MermanExactResourceErrorDetails? exactResourceDetails;
     MermanResourceErrorDetails? resourceDetails;
+    MermanDiagnosticErrorDetails? diagnosticDetails;
     MermanIconRegistryErrorDetails? iconRegistryDetails;
     MermanCancellationErrorDetails? cancellationDetails;
     if (metadata.isNotEmpty) {
@@ -255,6 +286,10 @@ class MermanException implements Exception {
               exactResourceDetails = parsed.exact;
               resourceDetails = parsed.compatible;
             }
+          }
+          final diagnostic = details['diagnostic'];
+          if (diagnostic is Map) {
+            diagnosticDetails = _parseDiagnosticErrorDetails(diagnostic);
           }
           final iconRegistry = details['icon_registry'];
           if (iconRegistry is Map) {
@@ -307,6 +342,7 @@ class MermanException implements Exception {
           code: status,
           codeName: codeName,
           message: message,
+          diagnosticDetails: diagnosticDetails,
         );
       }
       if (kind == MermanErrorKind.missingCapability && capabilityId != null) {
@@ -315,6 +351,7 @@ class MermanException implements Exception {
           codeName: codeName,
           message: message,
           capabilityId: capabilityId,
+          diagnosticDetails: diagnosticDetails,
         );
       }
       return MermanUnsupportedOperationException(
@@ -323,6 +360,7 @@ class MermanException implements Exception {
         message: message,
         kind: kind,
         capabilityId: capabilityId,
+        diagnosticDetails: diagnosticDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_REENTRANT_CALL) {
@@ -330,6 +368,7 @@ class MermanException implements Exception {
         code: status,
         codeName: codeName,
         message: message,
+        diagnosticDetails: diagnosticDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_BUSY) {
@@ -337,6 +376,7 @@ class MermanException implements Exception {
         code: status,
         codeName: codeName,
         message: message,
+        diagnosticDetails: diagnosticDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_CANCELLED &&
@@ -346,6 +386,7 @@ class MermanException implements Exception {
         codeName: codeName,
         message: message,
         cancellationDetails: cancellationDetails,
+        diagnosticDetails: diagnosticDetails,
       );
     }
     return MermanException(
@@ -356,6 +397,7 @@ class MermanException implements Exception {
       capabilityId: capabilityId,
       exactResourceDetails: exactResourceDetails,
       resourceDetails: resourceDetails,
+      diagnosticDetails: diagnosticDetails,
       iconRegistryDetails: iconRegistryDetails,
       cancellationDetails: cancellationDetails,
     );
@@ -412,6 +454,49 @@ _ParsedResourceErrorDetails? _parseResourceErrorDetails(
   );
 }
 
+MermanDiagnosticErrorDetails? _parseDiagnosticErrorDetails(
+  Map<Object?, Object?> diagnostic,
+) {
+  final code = diagnostic['code'];
+  if (code is! String || code.isEmpty) {
+    return null;
+  }
+
+  final rawSpan = diagnostic['span'];
+  MermanDiagnosticSpan? span;
+  if (rawSpan != null) {
+    if (rawSpan is! Map) {
+      return null;
+    }
+    final start = rawSpan['start'];
+    final end = rawSpan['end'];
+    final kind = rawSpan['kind'];
+    if (start is! int ||
+        start < 0 ||
+        end is! int ||
+        end < start ||
+        kind is! String ||
+        (kind != 'exact' && kind != 'insertion-point' && kind != 'fallback') ||
+        (kind == 'insertion-point' && start != end)) {
+      return null;
+    }
+    span = MermanDiagnosticSpan(start: start, end: end, kind: kind);
+  }
+
+  final field = diagnostic['field'];
+  final diagramType = diagnostic['diagram_type'];
+  if ((field != null && field is! String) ||
+      (diagramType != null && diagramType is! String)) {
+    return null;
+  }
+  return MermanDiagnosticErrorDetails(
+    code: code,
+    span: span,
+    field: field as String?,
+    diagramType: diagramType as String?,
+  );
+}
+
 String? _canonicalUnsigned64(Object? value) {
   final decimal = switch (value) {
     int value when value >= 0 => value.toString(),
@@ -448,6 +533,7 @@ class MermanReentrantCallException extends MermanException {
     required super.code,
     required super.codeName,
     required super.message,
+    super.diagnosticDetails,
   }) : super(kind: MermanErrorKind.reentrantCall);
 }
 
@@ -457,6 +543,7 @@ class MermanBusyException extends MermanException {
     required super.code,
     required super.codeName,
     required super.message,
+    super.diagnosticDetails,
   }) : super(kind: MermanErrorKind.busy);
 }
 
@@ -467,6 +554,7 @@ class MermanCancelledException extends MermanException {
     required super.codeName,
     required super.message,
     required MermanCancellationErrorDetails cancellationDetails,
+    super.diagnosticDetails,
   }) : super(cancellationDetails: cancellationDetails);
 }
 
@@ -478,6 +566,7 @@ class MermanUnsupportedOperationException extends MermanException {
     required super.message,
     super.kind,
     super.capabilityId,
+    super.diagnosticDetails,
   });
 }
 
@@ -488,6 +577,7 @@ class MermanUnknownOperationException
     required int code,
     required String codeName,
     required String message,
+    super.diagnosticDetails,
   }) : super(
          code: code,
          codeName: codeName,
@@ -504,6 +594,7 @@ class MermanMissingCapabilityException
     required String codeName,
     required String message,
     required String capabilityId,
+    super.diagnosticDetails,
   }) : super(
          code: code,
          codeName: codeName,
