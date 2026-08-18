@@ -2444,11 +2444,11 @@ impl RenderedFamilySvg {
     ) -> Result<RenderedStandaloneSvg> {
         match pipeline {
             Some(pipeline) if pipeline.preset() == SvgPipelinePreset::ResvgSafe => {
-                let finalized = self.finalize_resvg_with_portability(pipeline, false)?;
+                let finalized = self.finalize_resvg(pipeline)?;
                 Ok(finalized.into_standalone())
             }
             Some(pipeline) => self
-                .apply_pipeline_with_portability(pipeline, false)?
+                .apply_pipeline(pipeline)?
                 .finalize_observed_standalone(pipeline),
             None => {
                 let pipeline = SvgPipeline::parity();

@@ -1112,6 +1112,19 @@ fn family_theme_evidence_is_invalidated_by_untrusted_svg_postprocessing() {
             family_id: DiagramFamilyId::FLOWCHART
         }
     ));
+
+    let standalone_error = match render(ThemePortabilityRequirement::RequirePortable)
+        .finalize_standalone(Some(&pipeline()))
+    {
+        Ok(_) => panic!("strict standalone output must reject invalidated family evidence"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        standalone_error,
+        Error::UnverifiedFamilyOutputMutation {
+            family_id: DiagramFamilyId::FLOWCHART
+        }
+    ));
 }
 
 #[test]
