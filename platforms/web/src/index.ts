@@ -47,19 +47,6 @@ export type {
   ResourceProfile,
 } from "./generated/resource-contract.js";
 export {
-  SEMANTIC_TOKEN_DESCRIPTOR,
-  SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
-  SEMANTIC_TOKEN_MODIFIER_LSP_NAMES,
-  SEMANTIC_TOKEN_RECORD_WIDTH,
-  SEMANTIC_TOKEN_TYPE_LSP_NAMES,
-  SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
-  SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX,
-} from "./generated/token-descriptor.js";
-export type {
-  SemanticTokenModifierIndex,
-  SemanticTokenTypeCode,
-} from "./generated/token-descriptor.js";
-export {
   assertNavigableSvgForDom,
   assertSelfContainedSvgForDom,
   prepareNavigableSvgForDomMount,
@@ -127,6 +114,4 @@ export {
   editorReferences,
   editorRename,
   editorSearchDocumentSymbols,
-  editorSemanticTokenDescriptor,
-  editorSemanticTokens,
 } from "./runtime-editor.js";

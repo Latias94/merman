@@ -27,7 +27,7 @@ test("SVG plan facade preserves the generated object payload and encodes options
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
-      transportApiVersion: () => 4,
+      transportApiVersion: () => 5,
       svgPlanJson(source, optionsJson) {
         calls.push({ source, optionsJson });
         return expected;

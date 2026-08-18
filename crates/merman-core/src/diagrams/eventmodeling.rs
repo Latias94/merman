@@ -1,14 +1,12 @@
 use crate::common_db::{LangiumCommonDbFields, sanitize_acc_descr, sanitize_acc_title};
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, LangiumLexemeTrace, parse_langium_common, push_langium_common_editor_fact,
+    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
 };
 use crate::diagrams::scan::physical_line_at;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeFailure, EditorLexemeKind,
-    EditorLexemeModifier, EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{EditorLexemeBatchResult, EditorLexemeJournal},
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -128,78 +126,6 @@ struct EventModelingFieldSpan {
     span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct EventModelingLexeme {
-    kind: EditorLexemeKind,
-    modifiers: EditorLexemeModifiers,
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct EventModelingLexemeTrace {
-    lexemes: Vec<EventModelingLexeme>,
-    failure: Option<EditorLexemeFailure>,
-}
-
-impl EventModelingLexemeTrace {
-    fn push(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
-        self.push_with_modifiers(kind, EditorLexemeModifiers::NONE, span);
-    }
-
-    fn push_with_modifier(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifier: EditorLexemeModifier,
-        span: SourceSpan,
-    ) {
-        self.push_with_modifiers(kind, EditorLexemeModifiers::from_modifier(modifier), span);
-    }
-
-    fn push_with_modifiers(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifiers: EditorLexemeModifiers,
-        span: SourceSpan,
-    ) {
-        if span.start < span.end {
-            self.lexemes.push(EventModelingLexeme {
-                kind,
-                modifiers,
-                span,
-            });
-        }
-    }
-
-    fn extend_langium(&mut self, source: &str, trace: LangiumLexemeTrace) {
-        let mut common_facts = EditorSemanticFacts::new();
-        trace.attach(source, &mut common_facts);
-        if let Some(failure) = common_facts.lexeme_failure() {
-            self.failure = Some(failure);
-            return;
-        }
-        for lexeme in common_facts.lexemes() {
-            self.push_with_modifiers(lexeme.kind(), lexeme.modifiers(), lexeme.span());
-        }
-    }
-
-    fn discard_from(&mut self, offset: usize) {
-        self.lexemes.retain(|lexeme| lexeme.span.end <= offset);
-    }
-
-    fn attach(&self, source: &str, facts: &mut EditorSemanticFacts) {
-        if let Some(failure) = self.failure {
-            let batch: EditorLexemeBatchResult = Err(failure);
-            facts.replace_family_lexemes(batch);
-            return;
-        }
-        let mut journal = EditorLexemeJournal::family_parser(source);
-        for lexeme in &self.lexemes {
-            journal.push(lexeme.kind, lexeme.modifiers, lexeme.span);
-        }
-        facts.replace_family_lexemes(journal.finish());
-    }
-}
-
 #[derive(Debug, Clone)]
 struct EventModelingFrameFacts {
     frame_kind: String,
@@ -261,7 +187,6 @@ struct EventModelingSyntaxFacts {
     note_entities: Vec<EventModelingNoteFacts>,
     gwt_entities: Vec<EventModelingGwtFacts>,
     validation_diagnostics: Vec<EventModelingValidationDiagnostic>,
-    lexemes: EventModelingLexemeTrace,
 }
 
 struct EventModelingSemanticSource {
@@ -278,7 +203,6 @@ struct EventModelingParseFailure {
 impl EventModelingSyntaxFacts {
     fn editor_facts_controlled(
         &self,
-        source: &str,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<EditorSemanticFacts> {
         control.checkpoint()?;
@@ -335,8 +259,6 @@ impl EventModelingSyntaxFacts {
             control.checkpoint()?;
             facts.push_diagnostic(&diagnostic.message, Some(diagnostic.span));
         }
-        control.checkpoint()?;
-        self.lexemes.attach(source, &mut facts);
         control.checkpoint()?;
         Ok(facts)
     }
@@ -466,9 +388,8 @@ fn construct_eventmodeling_semantic_source_controlled(
     if let Err(error) = cursor.skip_hidden(meta) {
         control.checkpoint()?;
         let fallback = cursor.insertion_span();
-        syntax.lexemes = cursor.into_lexemes();
         return Ok(Err(eventmodeling_failure_controlled(
-            error, syntax, fallback, code, control,
+            error, syntax, fallback, control,
         )?));
     }
     control.checkpoint()?;
@@ -478,9 +399,8 @@ fn construct_eventmodeling_semantic_source_controlled(
         Ok(header) => syntax.header = Some(header),
         Err(error) => {
             let fallback = cursor.insertion_span();
-            syntax.lexemes = cursor.into_lexemes();
             return Ok(Err(eventmodeling_failure_controlled(
-                error, syntax, fallback, code, control,
+                error, syntax, fallback, control,
             )?));
         }
     }
@@ -500,7 +420,6 @@ fn construct_eventmodeling_semantic_source_controlled(
 
         if let Some(parsed) = parse_langium_common(code, cursor.offset()) {
             cursor.set_offset(cursor.offset() + parsed.consumed);
-            cursor.lexemes.extend_langium(code, parsed.lexemes);
             syntax.common.push(parsed.fact);
             if let Some(diagnostic) = parsed.diagnostic {
                 let error = Error::diagram_parse_insertion_point(
@@ -550,7 +469,6 @@ fn construct_eventmodeling_semantic_source_controlled(
                 .map(|gwt| syntax.gwt_entities.push(gwt))
         } else {
             let span = cursor.unknown_statement_span();
-            cursor.lexemes.push(EditorLexemeKind::Literal, span);
             Err(Error::diagram_parse_exact(
                 meta.diagram_type.clone(),
                 format!(
@@ -574,13 +492,12 @@ fn construct_eventmodeling_semantic_source_controlled(
     }
 
     validate_eventmodeling_semantics(&mut syntax, control)?;
-    syntax.lexemes = cursor.into_lexemes();
     if let Some((error, span)) = first_failure {
         return Ok(Err(eventmodeling_failure_controlled(
-            error, syntax, span, code, control,
+            error, syntax, span, control,
         )?));
     }
-    let editor_facts = syntax.editor_facts_controlled(code, control)?;
+    let editor_facts = syntax.editor_facts_controlled(control)?;
     Ok(Ok(EventModelingSemanticSource {
         syntax,
         editor_facts,
@@ -606,7 +523,6 @@ struct EventModelingCursor<'a> {
     source: &'a str,
     control: &'a crate::OperationControl,
     offset: usize,
-    lexemes: EventModelingLexemeTrace,
 }
 
 impl<'a> EventModelingCursor<'a> {
@@ -615,12 +531,7 @@ impl<'a> EventModelingCursor<'a> {
             source,
             control,
             offset: 0,
-            lexemes: EventModelingLexemeTrace::default(),
         }
-    }
-
-    fn into_lexemes(self) -> EventModelingLexemeTrace {
-        self.lexemes
     }
 
     fn offset(&self) -> usize {
@@ -652,22 +563,15 @@ impl<'a> EventModelingCursor<'a> {
         if !self.starts_keyword(keyword) {
             return false;
         }
-        let start = self.offset;
         self.offset += keyword.len();
-        self.lexemes.push(
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(start, self.offset),
-        );
         true
     }
 
-    fn consume_literal(&mut self, literal: &str, kind: EditorLexemeKind) -> bool {
+    fn consume_literal(&mut self, literal: &str) -> bool {
         if !self.starts_literal(literal) {
             return false;
         }
-        let start = self.offset;
         self.offset += literal.len();
-        self.lexemes.push(kind, SourceSpan::new(start, self.offset));
         true
     }
 
@@ -705,41 +609,6 @@ impl<'a> EventModelingCursor<'a> {
             if ch == '\n' || ch == '\r' {
                 break;
             }
-        }
-        self.lexemes.discard_from(self.offset);
-    }
-
-    fn record_identifier(&mut self, span: SourceSpan, modifier: Option<EditorLexemeModifier>) {
-        if let Some(modifier) = modifier {
-            self.lexemes
-                .push_with_modifier(EditorLexemeKind::Identifier, modifier, span);
-        } else {
-            self.lexemes.push(EditorLexemeKind::Identifier, span);
-        }
-    }
-
-    fn record_number(&mut self, span: SourceSpan, modifier: EditorLexemeModifier) {
-        self.lexemes
-            .push_with_modifier(EditorLexemeKind::Number, modifier, span);
-    }
-
-    fn record_qualified_identifier(
-        &mut self,
-        segments: &[SourceSpan],
-        delimiters: &[SourceSpan],
-        modifier: Option<EditorLexemeModifier>,
-    ) {
-        for span in segments {
-            if self.control.checkpoint().is_err() {
-                return;
-            }
-            self.record_identifier(*span, modifier);
-        }
-        for span in delimiters {
-            if self.control.checkpoint().is_err() {
-                return;
-            }
-            self.lexemes.push(EditorLexemeKind::Delimiter, *span);
         }
     }
 
@@ -783,32 +652,18 @@ impl<'a> EventModelingCursor<'a> {
                 continue;
             }
             if rest.starts_with("//") {
-                let start = self.offset;
                 self.offset += rest.find(['\r', '\n']).unwrap_or(rest.len());
-                self.lexemes.push(
-                    EditorLexemeKind::Comment,
-                    SourceSpan::new(start, self.offset),
-                );
                 continue;
             }
             if rest.starts_with("/*") {
                 let Some(end) = rest.find("*/") else {
-                    self.lexemes.push(
-                        EditorLexemeKind::Comment,
-                        SourceSpan::new(self.offset, self.source.len()),
-                    );
                     return Err(Error::diagram_parse_insertion_point(
                         meta.diagram_type.clone(),
                         "expected closing eventmodeling block comment",
                         self.source.len(),
                     ));
                 };
-                let start = self.offset;
                 self.offset += end + 2;
-                self.lexemes.push(
-                    EditorLexemeKind::Comment,
-                    SourceSpan::new(start, self.offset),
-                );
                 continue;
             }
             if rest.starts_with("---")
@@ -901,11 +756,10 @@ fn eventmodeling_failure_controlled(
     error: Error,
     syntax: EventModelingSyntaxFacts,
     fallback: SourceSpan,
-    source: &str,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<EventModelingParseFailure> {
     let span = eventmodeling_error_span(&error, fallback);
-    let editor_facts = syntax.editor_facts_controlled(source, control)?;
+    let editor_facts = syntax.editor_facts_controlled(control)?;
     Ok(EventModelingParseFailure {
         error: Box::new(error),
         editor_facts: Box::new(editor_facts),
@@ -940,14 +794,11 @@ fn take_eventmodeling_id_cursor(
     cursor: &mut EventModelingCursor<'_>,
     meta: &ParseMetadata,
     expected: &str,
-    modifier: EditorLexemeModifier,
 ) -> Result<EventModelingFieldSpan> {
     let field = cursor.take_token(meta, expected)?;
     if !is_eventmodeling_id(&field.text) {
-        cursor.lexemes.push(EditorLexemeKind::Literal, field.span);
         return Err(eventmodeling_exact_error(meta, expected, field.span));
     }
-    cursor.record_identifier(field.span, Some(modifier));
     Ok(field)
 }
 
@@ -955,13 +806,11 @@ fn take_eventmodeling_qualified_name_cursor(
     cursor: &mut EventModelingCursor<'_>,
     meta: &ParseMetadata,
     expected: &str,
-    modifier: Option<EditorLexemeModifier>,
 ) -> Result<EventModelingFieldSpan> {
     cursor.skip_hidden(meta)?;
     let start = cursor.offset;
     let mut text = String::new();
-    let mut segments = Vec::new();
-    let mut delimiters = Vec::new();
+    let mut end = start;
 
     loop {
         if cursor.control.checkpoint().is_err() {
@@ -978,7 +827,6 @@ fn take_eventmodeling_qualified_name_cursor(
         if first != '_' && !first.is_ascii_alphabetic() {
             let invalid = cursor.take_token(meta, expected)?;
             let span = SourceSpan::new(start, invalid.span.end);
-            cursor.lexemes.push(EditorLexemeKind::Literal, span);
             return Err(eventmodeling_exact_error(meta, expected, span));
         }
         cursor.offset += first.len_utf8();
@@ -1000,20 +848,16 @@ fn take_eventmodeling_qualified_name_cursor(
             text.push('.');
         }
         text.push_str(&cursor.source[segment_span.start..segment_span.end]);
-        segments.push(segment_span);
+        end = segment_span.end;
 
         cursor.skip_hidden(meta)?;
         if !cursor.source[cursor.offset..].starts_with('.') {
             break;
         }
-        let delimiter_start = cursor.offset;
         cursor.offset += 1;
-        delimiters.push(SourceSpan::new(delimiter_start, cursor.offset));
         cursor.skip_hidden(meta)?;
     }
 
-    let end = segments.last().map_or(start, |span| span.end);
-    cursor.record_qualified_identifier(&segments, &delimiters, modifier);
     Ok(EventModelingFieldSpan {
         text,
         span: SourceSpan::new(start, end),
@@ -1024,17 +868,14 @@ fn take_eventmodeling_frame_id_cursor(
     cursor: &mut EventModelingCursor<'_>,
     meta: &ParseMetadata,
     expected: &str,
-    modifier: EditorLexemeModifier,
 ) -> Result<EventModelingFieldSpan> {
     let field = cursor.take_token(meta, expected)?;
     if field.text.is_empty()
         || field.text.len() > 3
         || !field.text.bytes().all(|byte| byte.is_ascii_digit())
     {
-        cursor.lexemes.push(EditorLexemeKind::Literal, field.span);
         return Err(eventmodeling_exact_error(meta, expected, field.span));
     }
-    cursor.record_number(field.span, modifier);
     Ok(field)
 }
 
@@ -1044,14 +885,12 @@ fn take_eventmodeling_entity_type_cursor(
 ) -> Result<EventModelingFieldSpan> {
     let field = cursor.take_token(meta, "expected eventmodeling entity type")?;
     if !EVENTMODELING_ENTITY_TYPES.contains(&field.text.as_str()) {
-        cursor.lexemes.push(EditorLexemeKind::Literal, field.span);
         return Err(eventmodeling_exact_error(
             meta,
             "expected eventmodeling entity type",
             field.span,
         ));
     }
-    cursor.lexemes.push(EditorLexemeKind::Keyword, field.span);
     Ok(field)
 }
 
@@ -1068,7 +907,6 @@ fn parse_eventmodeling_header_cursor(
                     text: String::new(),
                     span: SourceSpan::new(start, start),
                 });
-        cursor.lexemes.push(EditorLexemeKind::Literal, token.span);
         return Err(if token.span.start == token.span.end {
             Error::diagram_parse_insertion_point(
                 meta.diagram_type.clone(),
@@ -1094,7 +932,6 @@ fn parse_eventmodeling_entity_cursor(
         cursor,
         meta,
         "expected eventmodeling model entity name",
-        Some(EditorLexemeModifier::Definition),
     )
 }
 
@@ -1115,14 +952,12 @@ fn parse_eventmodeling_frame_cursor(
         cursor,
         meta,
         "expected eventmodeling frame id with one to three digits",
-        EditorLexemeModifier::Definition,
     )?;
     let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, meta)?;
     let entity_identifier = take_eventmodeling_qualified_name_cursor(
         cursor,
         meta,
         "expected eventmodeling qualified entity identifier",
-        None,
     )?;
 
     let mut source_frames = Vec::new();
@@ -1134,24 +969,19 @@ fn parse_eventmodeling_frame_cursor(
         if !cursor.starts_literal("->>") {
             break;
         }
-        cursor.consume_literal("->>", EditorLexemeKind::Operator);
+        cursor.consume_literal("->>");
         source_frames.push(take_eventmodeling_frame_id_cursor(
             cursor,
             meta,
             "expected eventmodeling source frame id",
-            EditorLexemeModifier::Reference,
         )?);
     }
 
     cursor.skip_hidden(meta)?;
     let data_reference = if cursor.starts_literal("[[") {
-        cursor.consume_literal("[[", EditorLexemeKind::Delimiter);
-        let reference = take_eventmodeling_id_cursor(
-            cursor,
-            meta,
-            "expected eventmodeling data reference",
-            EditorLexemeModifier::Reference,
-        )?;
+        cursor.consume_literal("[[");
+        let reference =
+            take_eventmodeling_id_cursor(cursor, meta, "expected eventmodeling data reference")?;
         cursor.skip_hidden(meta)?;
         if !cursor.starts_literal("]]") {
             return Err(Error::diagram_parse_insertion_point(
@@ -1160,7 +990,7 @@ fn parse_eventmodeling_frame_cursor(
                 cursor.offset(),
             ));
         }
-        cursor.consume_literal("]]", EditorLexemeKind::Delimiter);
+        cursor.consume_literal("]]");
         Some(reference)
     } else {
         None
@@ -1190,17 +1020,15 @@ fn parse_eventmodeling_optional_data_type(
     if !cursor.starts_literal("`") {
         return Ok(None);
     }
-    cursor.consume_literal("`", EditorLexemeKind::Delimiter);
+    cursor.consume_literal("`");
     let field = cursor.take_token(meta, "expected eventmodeling data type")?;
     if !EVENTMODELING_DATA_TYPES.contains(&field.text.as_str()) {
-        cursor.lexemes.push(EditorLexemeKind::Literal, field.span);
         return Err(eventmodeling_exact_error(
             meta,
             format!("unsupported eventmodeling data type '{}'", field.text),
             field.span,
         ));
     }
-    cursor.lexemes.push(EditorLexemeKind::Keyword, field.span);
     cursor.skip_hidden(meta)?;
     if !cursor.starts_literal("`") {
         return Err(Error::diagram_parse_insertion_point(
@@ -1209,7 +1037,7 @@ fn parse_eventmodeling_optional_data_type(
             cursor.offset(),
         ));
     }
-    cursor.consume_literal("`", EditorLexemeKind::Delimiter);
+    cursor.consume_literal("`");
     Ok(Some(field))
 }
 
@@ -1244,11 +1072,6 @@ fn parse_eventmodeling_optional_inline(
     }
 
     let start = cursor.offset;
-    let delimiter_len = delimiter.len_utf8();
-    cursor.lexemes.push(
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(start, start + delimiter_len),
-    );
     let rest = &cursor.source[start..];
     let line_end = rest.find(['\r', '\n']).unwrap_or(rest.len());
     let line = &rest[..line_end];
@@ -1260,10 +1083,6 @@ fn parse_eventmodeling_optional_inline(
             .map(|index| start + delimiter.len_utf8() + index + delimiter.len_utf8())
     }
     .ok_or_else(|| {
-        cursor.lexemes.push(
-            EditorLexemeKind::String,
-            SourceSpan::new(start + delimiter_len, start + line_end),
-        );
         Error::diagram_parse_insertion_point(
             meta.diagram_type.clone(),
             "expected closing delimiter for eventmodeling inline data",
@@ -1271,14 +1090,6 @@ fn parse_eventmodeling_optional_inline(
         )
     })?;
     cursor.offset = end;
-    cursor.lexemes.push(
-        EditorLexemeKind::String,
-        SourceSpan::new(start + delimiter_len, end - delimiter_len),
-    );
-    cursor.lexemes.push(
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(end - delimiter_len, end),
-    );
     Ok((
         data_type,
         Some(EventModelingFieldSpan {
@@ -1339,14 +1150,10 @@ fn parse_eventmodeling_block_cursor(
     }
 
     let block_start = cursor.offset;
-    cursor.consume_literal("{", EditorLexemeKind::Delimiter);
+    cursor.consume_literal("{");
     let after_open = &cursor.source[cursor.offset..];
     let Some(newline_rel) = after_open.find('\n') else {
         let span = SourceSpan::new(block_start, cursor.source.len());
-        cursor.lexemes.push(
-            EditorLexemeKind::String,
-            SourceSpan::new(block_start + 1, cursor.source.len()),
-        );
         return Err(FailedEventModelingBlock {
             error: Box::new(eventmodeling_exact_error(
                 meta,
@@ -1373,7 +1180,6 @@ fn parse_eventmodeling_block_cursor(
             cursor.offset + leading,
             cursor.offset + before_newline.len(),
         );
-        cursor.lexemes.push(EditorLexemeKind::Literal, span);
         return Err(FailedEventModelingBlock {
             error: Box::new(eventmodeling_exact_error(
                 meta,
@@ -1397,14 +1203,6 @@ fn parse_eventmodeling_block_cursor(
             let after = &cursor.source[block_end..];
             if after.is_empty() || after.chars().next().is_some_and(char::is_whitespace) {
                 cursor.offset = block_end;
-                cursor.lexemes.push(
-                    EditorLexemeKind::String,
-                    SourceSpan::new(block_start + 1, line_start),
-                );
-                cursor.lexemes.push(
-                    EditorLexemeKind::Delimiter,
-                    SourceSpan::new(line_start, block_end),
-                );
                 return Ok(ParsedEventModelingBlock {
                     data_type,
                     text: cursor.source[block_start..block_end].to_string(),
@@ -1420,10 +1218,6 @@ fn parse_eventmodeling_block_cursor(
     }
 
     let span = SourceSpan::new(block_start, cursor.source.len());
-    cursor.lexemes.push(
-        EditorLexemeKind::String,
-        SourceSpan::new(block_start + 1, cursor.source.len()),
-    );
     cursor.offset = cursor.source.len();
     Err(FailedEventModelingBlock {
         error: Box::new(Error::diagram_parse_insertion_point(
@@ -1447,28 +1241,25 @@ fn parse_eventmodeling_data_cursor(
     meta: &ParseMetadata,
 ) -> std::result::Result<EventModelingDataEntityFacts, FailedEventModelingDataCursor> {
     cursor.consume_keyword("data");
-    let name = match take_eventmodeling_id_cursor(
-        cursor,
-        meta,
-        "expected eventmodeling data entity name",
-        EditorLexemeModifier::Definition,
-    ) {
-        Ok(name) => name,
-        Err(error) => {
-            return Err(FailedEventModelingDataCursor {
-                error: Box::new(error),
-                partial: Box::new(EventModelingDataEntityFacts {
-                    name: EventModelingFieldSpan {
-                        text: String::new(),
-                        span: cursor.insertion_span(),
-                    },
-                    data_type: None,
-                    block_text: String::new(),
-                    block_span: cursor.insertion_span(),
-                }),
-            });
-        }
-    };
+    let name =
+        match take_eventmodeling_id_cursor(cursor, meta, "expected eventmodeling data entity name")
+        {
+            Ok(name) => name,
+            Err(error) => {
+                return Err(FailedEventModelingDataCursor {
+                    error: Box::new(error),
+                    partial: Box::new(EventModelingDataEntityFacts {
+                        name: EventModelingFieldSpan {
+                            text: String::new(),
+                            span: cursor.insertion_span(),
+                        },
+                        data_type: None,
+                        block_text: String::new(),
+                        block_span: cursor.insertion_span(),
+                    }),
+                });
+            }
+        };
     match parse_eventmodeling_block_cursor(cursor, meta) {
         Ok(block) => Ok(EventModelingDataEntityFacts {
             name,
@@ -1502,7 +1293,6 @@ fn parse_eventmodeling_note_cursor(
         cursor,
         meta,
         "expected eventmodeling note source frame",
-        EditorLexemeModifier::Reference,
     ) {
         Ok(source) => source,
         Err(error) => {
@@ -1581,7 +1371,6 @@ fn parse_eventmodeling_gwt_group(
             cursor,
             meta,
             "expected eventmodeling gwt model entity reference",
-            EditorLexemeModifier::Reference,
         )?;
         statements.push(EventModelingGwtStatementFacts {
             model_entity_type,
@@ -1607,7 +1396,6 @@ fn parse_eventmodeling_gwt_cursor(
         cursor,
         meta,
         "expected eventmodeling gwt source frame",
-        EditorLexemeModifier::Reference,
     )?;
     cursor.skip_hidden(meta)?;
     if !cursor.consume_keyword("given") {
@@ -1940,8 +1728,8 @@ fn push_eventmodeling_gwt_facts(
 mod tests {
     use super::*;
     use crate::{
-        EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticRole, Engine,
-        MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
+        EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig,
+        ParseDiagnosticSpanKind, ParseMetadata,
     };
 
     fn meta() -> ParseMetadata {
@@ -2020,7 +1808,7 @@ mod tests {
         control.cancel_after_checkpoints(20);
 
         assert!(matches!(
-            eventmodeling_failure_controlled(error, syntax, invalid_span, &source, &control),
+            eventmodeling_failure_controlled(error, syntax, invalid_span, &control),
             Err(crate::OperationCancelled { .. })
         ));
     }
@@ -2074,23 +1862,6 @@ tf 03 evt Cart.ItemAdded ->> 01 ->> 02
             text,
             &meta(),
         );
-        let identifier_texts: Vec<_> = facts
-            .lexemes()
-            .iter()
-            .filter(|lexeme| lexeme.kind() == EditorLexemeKind::Identifier)
-            .map(|lexeme| &text[lexeme.span().start..lexeme.span().end])
-            .collect();
-        assert!(
-            identifier_texts
-                .windows(2)
-                .any(|pair| pair == ["Sales", "Order"])
-        );
-        for (dot, _) in text.match_indices('.') {
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::Delimiter
-                    && lexeme.span() == SourceSpan::new(dot, dot + 1)
-            }));
-        }
         assert!(
             facts
                 .symbols
@@ -2424,7 +2195,6 @@ gwt 002
             &meta(),
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.diagnostics.is_empty());
         for (name, detail) in [
             ("CartUpdated", "eventmodeling model entity"),
@@ -2449,124 +2219,7 @@ gwt 002
     }
 
     #[test]
-    fn parser_emits_exact_lexemes_for_the_pinned_eventmodeling_grammar() {
-        let text = concat!(
-            "eventmodeling\r\n",
-            "title 订单流程\r\n",
-            "entity CartUpdated\r\n",
-            "tf 001 cmd Cart.Update\r\n",
-            "rf 002 evt Cart.Updated ->> 001 [[Payload]] `json`{\"数量\": 7}\r\n",
-            "data Payload `json` {\r\n",
-            "  \"数量\": 7\r\n",
-            "}\r\n",
-            "note 002 `md` {\r\n",
-            "  已完成\r\n",
-            "}\r\n",
-            "gwt 002\r\n",
-            "  given\r\n",
-            "    evt CartUpdated\r\n",
-            "  then\r\n",
-            "    evt CartUpdated\r\n",
-        );
-        parse_eventmodeling(text, &meta()).expect("complete grammar fixture must render");
-        let facts = crate::family::test_support::editor_facts(
-            parse_eventmodeling_json_and_editor_facts,
-            text,
-            &meta(),
-        );
-
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(facts.lexeme_failure(), None);
-        assert!(!facts.lexemes().is_empty());
-        assert!(
-            facts.lexemes().iter().all(|lexeme| {
-                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
-            })
-        );
-        assert!(
-            facts
-                .lexemes()
-                .windows(2)
-                .all(|pair| pair[0].span().end <= pair[1].span().start)
-        );
-
-        let assert_first = |needle: &str, kind: EditorLexemeKind| {
-            let start = text.find(needle).unwrap();
-            let span = SourceSpan::new(start, start + needle.len());
-            assert!(
-                facts
-                    .lexemes()
-                    .iter()
-                    .any(|lexeme| { lexeme.kind() == kind && lexeme.span() == span }),
-                "missing {kind:?} for {needle:?} at {span:?}"
-            );
-        };
-        assert_first("eventmodeling", EditorLexemeKind::Keyword);
-        assert_first("title", EditorLexemeKind::Keyword);
-        assert_first("订单流程", EditorLexemeKind::String);
-        assert_first("entity", EditorLexemeKind::Keyword);
-        assert_first("tf", EditorLexemeKind::Keyword);
-        assert_first("001", EditorLexemeKind::Number);
-        assert_first("cmd", EditorLexemeKind::Keyword);
-        let qualified_start = text.find("Cart.Update").unwrap();
-        assert!(facts.lexemes().iter().any(|lexeme| {
-            lexeme.kind() == EditorLexemeKind::Identifier
-                && lexeme.span() == SourceSpan::new(qualified_start, qualified_start + "Cart".len())
-        }));
-        assert_first(".", EditorLexemeKind::Delimiter);
-        assert_first("->>", EditorLexemeKind::Operator);
-        assert_first("[[", EditorLexemeKind::Delimiter);
-        assert_first("]]", EditorLexemeKind::Delimiter);
-        assert_first("`", EditorLexemeKind::Delimiter);
-        assert_first("json", EditorLexemeKind::Keyword);
-        assert_first("{", EditorLexemeKind::Delimiter);
-
-        let first_frame = text.find("001").unwrap();
-        let definition = facts
-            .lexemes()
-            .iter()
-            .find(|lexeme| lexeme.span() == SourceSpan::new(first_frame, first_frame + 3))
-            .expect("frame definition lexeme");
-        assert!(
-            definition
-                .modifiers()
-                .contains(EditorLexemeModifier::Definition)
-        );
-
-        let source_frame = text.find("->> 001").unwrap() + "->> ".len();
-        let reference = facts
-            .lexemes()
-            .iter()
-            .find(|lexeme| lexeme.span() == SourceSpan::new(source_frame, source_frame + 3))
-            .expect("source frame reference lexeme");
-        assert!(
-            reference
-                .modifiers()
-                .contains(EditorLexemeModifier::Reference)
-        );
-
-        let payload_definition = text.find("data Payload").unwrap() + "data ".len();
-        assert!(facts.lexemes().iter().any(|lexeme| {
-            lexeme.span()
-                == SourceSpan::new(payload_definition, payload_definition + "Payload".len())
-                && lexeme
-                    .modifiers()
-                    .contains(EditorLexemeModifier::Definition)
-        }));
-
-        let unicode = facts
-            .lexemes()
-            .iter()
-            .find(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::String
-                    && text[lexeme.span().start..lexeme.span().end].contains("已完成")
-            })
-            .expect("Unicode block content must retain caller-source bytes");
-        assert!(unicode.span().end - unicode.span().start >= "已完成".len());
-    }
-
-    #[test]
-    fn malformed_middle_statement_keeps_prefix_and_later_lexemes() {
+    fn malformed_middle_statement_keeps_later_semantic_facts() {
         let text = concat!(
             "eventmodeling\r\n",
             "entity Before\r\n",
@@ -2590,30 +2243,12 @@ gwt 002
             &meta(),
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
-        assert!(facts.lexemes().iter().all(|lexeme| {
-            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-        }));
-
-        for (needle, kind) in [
-            ("tf", EditorLexemeKind::Keyword),
-            ("01", EditorLexemeKind::Number),
-            ("invalid", EditorLexemeKind::Literal),
-            ("After", EditorLexemeKind::Identifier),
-            ("02", EditorLexemeKind::Number),
-            ("evt", EditorLexemeKind::Keyword),
-            ("Done", EditorLexemeKind::Identifier),
-        ] {
-            let start = text.find(needle).unwrap();
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == SourceSpan::new(start, start + needle.len())
-            }));
-        }
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Done"));
     }
 
     #[test]
-    fn cursor_owns_c_style_comments_with_exact_crlf_unicode_spans() {
+    fn cursor_skips_c_style_comments_with_crlf_unicode_content() {
         let text = concat!(
             "eventmodeling // 行内 🤓\r\n",
             "%% global preprocess comment\r\n",
@@ -2629,33 +2264,7 @@ gwt 002
         );
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(facts.lexeme_failure(), None);
-        let comments = facts
-            .lexemes()
-            .iter()
-            .filter(|lexeme| lexeme.kind() == EditorLexemeKind::Comment)
-            .collect::<Vec<_>>();
-        assert_eq!(comments.len(), 2);
-        for expected in ["// 行内 🤓", "/* 块注释\r\n   第二行 🤓 */"] {
-            let start = text.find(expected).unwrap();
-            let span = SourceSpan::new(start, start + expected.len());
-            let comment = comments
-                .iter()
-                .find(|lexeme| lexeme.span() == span)
-                .unwrap_or_else(|| panic!("missing family comment span {span:?}"));
-            assert_eq!(&text[comment.span().start..comment.span().end], expected);
-            assert_eq!(
-                comment.producer().kind(),
-                EditorLexemeProducerKind::FamilyParser
-            );
-        }
-        let global_start = text.find("%% global").unwrap();
-        assert!(
-            comments
-                .iter()
-                .all(|lexeme| lexeme.span().start != global_start),
-            "%% comments remain owned by global preprocessing"
-        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
     }
 
     #[test]
@@ -2666,8 +2275,6 @@ gwt 002
             "/* 未闭合 🤓\r\n",
             "仍是注释",
         );
-        let comment_start = text.find("/*").unwrap();
-
         let Error::DiagramParse { diagnostic, .. } = parse_eventmodeling(text, &meta())
             .expect_err("unterminated block comment must remain a strict parse error")
         else {
@@ -2688,17 +2295,6 @@ gwt 002
             &meta(),
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
-        let comment = facts
-            .lexemes()
-            .iter()
-            .find(|lexeme| lexeme.kind() == EditorLexemeKind::Comment)
-            .expect("unterminated comment prefix lexeme");
-        assert_eq!(comment.span(), SourceSpan::new(comment_start, text.len()));
-        assert_eq!(
-            comment.producer().kind(),
-            EditorLexemeProducerKind::FamilyRecovery
-        );
     }
 
     #[test]

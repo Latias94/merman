@@ -1,8 +1,8 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl,
-    OperationControlResult, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
+    SourceSpan,
 };
 use serde_json::{Value, json};
 #[cfg(test)]
@@ -227,61 +227,41 @@ impl<'source> TimelineSource<'source> {
 
 #[derive(Debug, Clone, Copy)]
 struct ParsedSpaceDirective<'source> {
-    keyword: TimelineSource<'source>,
     value: TimelineSource<'source>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum TimelineSuffix<'source> {
-    HashComment(TimelineSource<'source>),
-    Semicolon {
-        delimiter: SourceSpan,
-        trailing: TimelineSource<'source>,
-    },
 }
 
 #[derive(Debug, Clone, Copy)]
 struct ParsedColonDirective<'source> {
-    keyword: TimelineSource<'source>,
-    colon: SourceSpan,
     value: TimelineSource<'source>,
-    suffix: Option<TimelineSuffix<'source>>,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct ParsedSection<'source> {
-    keyword: TimelineSource<'source>,
     db_value: TimelineSource<'source>,
     value: TimelineSource<'source>,
-    colon: Option<SourceSpan>,
 }
 
 struct ParsedAccDescrBlock {
     keyword: SourceSpan,
-    opening: SourceSpan,
     closing: Option<SourceSpan>,
-    content_spans: Vec<SourceSpan>,
     text: String,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct ParsedTimelineEvent<'source> {
-    delimiter: SourceSpan,
     value: TimelineSource<'source>,
 }
 
 struct ParsedTimelineEvents<'source> {
     events: Vec<ParsedTimelineEvent<'source>>,
-    pending_delimiter: Option<SourceSpan>,
     issue: Option<TimelineParseIssue>,
-    invalid: Option<TimelineSource<'source>>,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum TimelinePeriodSuffix<'source> {
     None,
-    HashComment(TimelineSource<'source>),
+    HashComment,
     Events(TimelineSource<'source>),
 }
 
@@ -290,16 +270,6 @@ struct ParsedTimelinePeriod<'source> {
     period: TimelineSource<'source>,
     task: TimelineSource<'source>,
     suffix: TimelinePeriodSuffix<'source>,
-}
-
-fn push_timeline_lexeme(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    kind: EditorLexemeKind,
-    span: SourceSpan,
-) {
-    if span.start < span.end {
-        lexemes.push(kind, EditorLexemeModifiers::NONE, span);
-    }
 }
 
 fn parse_keyword_prefix<'source>(
@@ -320,13 +290,12 @@ fn parse_space_directive<'source>(
     keyword: &str,
 ) -> Option<ParsedSpaceDirective<'source>> {
     let line = line.trim_start();
-    let (keyword, after_keyword) = parse_keyword_prefix(line, keyword)?;
+    let (_, after_keyword) = parse_keyword_prefix(line, keyword)?;
     let whitespace = after_keyword.text.chars().next()?;
     if !whitespace.is_whitespace() {
         return None;
     }
     Some(ParsedSpaceDirective {
-        keyword,
         value: after_keyword.subslice(whitespace.len_utf8(), after_keyword.text.len()),
     })
 }
@@ -336,44 +305,23 @@ fn parse_colon_directive<'source>(
     keyword: &str,
 ) -> Option<ParsedColonDirective<'source>> {
     let line = line.trim_start();
-    let (keyword, after_keyword) = parse_keyword_prefix(line, keyword)?;
+    let (_, after_keyword) = parse_keyword_prefix(line, keyword)?;
     let after_keyword = after_keyword.trim_start();
     let after_colon = after_keyword.text.strip_prefix(':')?;
-    let colon = SourceSpan::new(after_keyword.start, after_keyword.start + 1);
     let after_colon = TimelineSource::new(after_colon, after_keyword.start + 1).trim_start();
 
     let terminator = after_colon
         .text
         .char_indices()
         .find(|(_, ch)| matches!(ch, '#' | ';'));
-    let (value_source, suffix) = match terminator {
-        Some((offset, '#')) => (
-            after_colon.subslice(0, offset).trim(),
-            Some(TimelineSuffix::HashComment(
-                after_colon.subslice(offset, after_colon.text.len()),
-            )),
-        ),
-        Some((offset, ';')) => (
-            after_colon.subslice(0, offset).trim(),
-            Some(TimelineSuffix::Semicolon {
-                delimiter: SourceSpan::new(
-                    after_colon.start + offset,
-                    after_colon.start + offset + 1,
-                ),
-                trailing: after_colon
-                    .subslice(offset + 1, after_colon.text.len())
-                    .trim(),
-            }),
-        ),
+    let value_source = match terminator {
+        Some((offset, '#')) | Some((offset, ';')) => after_colon.subslice(0, offset).trim(),
         Some(_) => unreachable!("Timeline terminator is closed"),
-        None => (after_colon.trim(), None),
+        None => after_colon.trim(),
     };
 
     Some(ParsedColonDirective {
-        keyword,
-        colon,
         value: value_source,
-        suffix,
     })
 }
 
@@ -385,12 +333,8 @@ fn parse_section<'source>(line: TimelineSource<'source>) -> Option<ParsedSection
         None => parsed.value,
     };
     Some(ParsedSection {
-        keyword: parsed.keyword,
         db_value,
         value: db_value.trim(),
-        colon: colon.map(|offset| {
-            SourceSpan::new(parsed.value.start + offset, parsed.value.start + offset + 1)
-        }),
     })
 }
 
@@ -408,7 +352,6 @@ fn parse_acc_descr_block(
     let Some(rest) = after_keyword.text.strip_prefix('{') else {
         return Ok(None);
     };
-    let opening = SourceSpan::new(after_keyword.start, after_keyword.start + 1);
     let mut rest = TimelineSource::new(rest, after_keyword.start + 1);
     let mut content_spans = Vec::new();
     let mut text = String::new();
@@ -430,9 +373,7 @@ fn parse_acc_descr_block(
             });
         return Ok(Some(ParsedAccDescrBlock {
             keyword: keyword.span(),
-            opening,
             closing: Some(closing),
-            content_spans,
             text: text.trim().to_string(),
             span,
         }));
@@ -477,9 +418,7 @@ fn parse_acc_descr_block(
         });
     Ok(Some(ParsedAccDescrBlock {
         keyword: keyword.span(),
-        opening,
         closing,
-        content_spans,
         text: text.trim().to_string(),
         span,
     }))
@@ -497,7 +436,6 @@ fn parse_timeline_events<'source>(
         if !source.text.starts_with(':') {
             return ParsedTimelineEvents {
                 events,
-                pending_delimiter: None,
                 issue: Some(timeline_parse_issue(
                     Error::diagram_parse_exact(
                         diagram_type.to_string(),
@@ -506,16 +444,13 @@ fn parse_timeline_events<'source>(
                     ),
                     source.span(),
                 )),
-                invalid: Some(source),
             };
         }
-        let delimiter = SourceSpan::new(source.start, source.start + 1);
         let after_colon = source.subslice(1, source.text.len());
         let Some(whitespace) = after_colon.text.chars().next() else {
             let insertion = SourceSpan::new(after_colon.start, after_colon.start);
             return ParsedTimelineEvents {
                 events,
-                pending_delimiter: Some(delimiter),
                 issue: Some(timeline_parse_issue(
                     Error::diagram_parse_insertion_point(
                         diagram_type.to_string(),
@@ -524,14 +459,12 @@ fn parse_timeline_events<'source>(
                     ),
                     insertion,
                 )),
-                invalid: None,
             };
         };
         if !whitespace.is_whitespace() {
             let insertion = SourceSpan::new(after_colon.start, after_colon.start);
             return ParsedTimelineEvents {
                 events,
-                pending_delimiter: Some(delimiter),
                 issue: Some(timeline_parse_issue(
                     Error::diagram_parse_insertion_point(
                         diagram_type.to_string(),
@@ -540,7 +473,6 @@ fn parse_timeline_events<'source>(
                     ),
                     insertion,
                 )),
-                invalid: Some(after_colon),
             };
         }
 
@@ -549,7 +481,6 @@ fn parse_timeline_events<'source>(
             let insertion = SourceSpan::new(source.start, source.start);
             return ParsedTimelineEvents {
                 events,
-                pending_delimiter: Some(delimiter),
                 issue: Some(timeline_parse_issue(
                     Error::diagram_parse_insertion_point(
                         diagram_type.to_string(),
@@ -558,7 +489,6 @@ fn parse_timeline_events<'source>(
                     ),
                     insertion,
                 )),
-                invalid: None,
             };
         }
 
@@ -579,15 +509,13 @@ fn parse_timeline_events<'source>(
             ),
             None => (source, TimelineSource::new("", source.end())),
         };
-        events.push(ParsedTimelineEvent { delimiter, value });
+        events.push(ParsedTimelineEvent { value });
         source = rest;
     }
 
     ParsedTimelineEvents {
         events,
-        pending_delimiter: None,
         issue: None,
-        invalid: None,
     }
 }
 
@@ -601,10 +529,7 @@ fn parse_timeline_period(line: TimelineSource<'_>) -> ParsedTimelinePeriod<'_> {
             line.subslice(0, offset),
             TimelinePeriodSuffix::Events(line.subslice(offset, line.text.len())),
         ),
-        Some((offset, '#')) => (
-            line.subslice(0, offset),
-            TimelinePeriodSuffix::HashComment(line.subslice(offset, line.text.len())),
-        ),
+        Some((offset, '#')) => (line.subslice(0, offset), TimelinePeriodSuffix::HashComment),
         Some(_) => unreachable!("Timeline period boundary is closed"),
         None => (line, TimelinePeriodSuffix::None),
     };
@@ -612,44 +537,6 @@ fn parse_timeline_period(line: TimelineSource<'_>) -> ParsedTimelinePeriod<'_> {
         period,
         task: period.trim(),
         suffix,
-    }
-}
-
-fn record_colon_directive_lexemes(
-    parsed: ParsedColonDirective<'_>,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) {
-    push_timeline_lexeme(lexemes, EditorLexemeKind::Keyword, parsed.keyword.span());
-    push_timeline_lexeme(lexemes, EditorLexemeKind::Delimiter, parsed.colon);
-    push_timeline_lexeme(lexemes, EditorLexemeKind::String, parsed.value.span());
-    match parsed.suffix {
-        Some(TimelineSuffix::HashComment(comment)) => {
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, comment.span());
-        }
-        Some(TimelineSuffix::Semicolon {
-            delimiter,
-            trailing,
-        }) => {
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Delimiter, delimiter);
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Literal, trailing.span());
-        }
-        None => {}
-    }
-}
-
-fn record_timeline_events_lexemes(
-    parsed: &ParsedTimelineEvents<'_>,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) {
-    for event in &parsed.events {
-        push_timeline_lexeme(lexemes, EditorLexemeKind::Delimiter, event.delimiter);
-        push_timeline_lexeme(lexemes, EditorLexemeKind::String, event.value.span());
-    }
-    if let Some(delimiter) = parsed.pending_delimiter {
-        push_timeline_lexeme(lexemes, EditorLexemeKind::Delimiter, delimiter);
-    }
-    if let Some(invalid) = parsed.invalid {
-        push_timeline_lexeme(lexemes, EditorLexemeKind::Literal, invalid.span());
     }
 }
 
@@ -769,19 +656,12 @@ fn construct_timeline_semantic_source_controlled(
     #[cfg(test)]
     TIMELINE_SYNTAX_CONSTRUCTION_COUNT.set(TIMELINE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let mut lexemes = EditorLexemeJournal::family_parser(code);
-    let mut outcome = parse_timeline_semantic_source(code, meta, &mut lexemes, control)?;
-    outcome
-        .source
-        .editor_facts
-        .replace_family_lexemes(lexemes.finish());
-    Ok(outcome)
+    parse_timeline_semantic_source(code, meta, control)
 }
 
 fn parse_timeline_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-    lexemes: &mut EditorLexemeJournal<'_>,
     control: &OperationControl,
 ) -> OperationControlResult<TimelineParseOutcome> {
     control.checkpoint()?;
@@ -803,14 +683,11 @@ fn parse_timeline_semantic_source(
             continue;
         }
         if significant.text.starts_with('#') {
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, significant.span());
             continue;
         }
 
         if !header_seen {
-            let Some((keyword, after_keyword)) = parse_keyword_prefix(significant, "timeline")
-            else {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Literal, significant.span());
+            let Some((_, after_keyword)) = parse_keyword_prefix(significant, "timeline") else {
                 issues.push(timeline_parse_issue(
                     Error::diagram_parse_exact(
                         meta.diagram_type.clone(),
@@ -823,12 +700,10 @@ fn parse_timeline_semantic_source(
             };
 
             header_seen = true;
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Keyword, keyword.span());
             if after_keyword.text.is_empty() {
                 continue;
             }
             if after_keyword.text.starts_with('#') {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, after_keyword.span());
                 continue;
             }
             if after_keyword.text.starts_with("%%") {
@@ -842,7 +717,6 @@ fn parse_timeline_semantic_source(
                 .is_some_and(char::is_whitespace);
             let rest = after_keyword.trim_start();
             if had_whitespace && rest.text.starts_with('#') {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, rest.span());
                 continue;
             }
             if had_whitespace && rest.text.starts_with("%%") {
@@ -859,14 +733,12 @@ fn parse_timeline_semantic_source(
                 && (direction.text.eq_ignore_ascii_case("LR")
                     || direction.text.eq_ignore_ascii_case("TD"));
             if valid_direction {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Literal, direction.span());
                 db.direction = if direction.text.eq_ignore_ascii_case("TD") {
                     TimelineDirection::TopDown
                 } else {
                     TimelineDirection::LeftToRight
                 };
                 if trailing.text.starts_with('#') {
-                    push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, trailing.span());
                     continue;
                 }
                 if trailing.text.is_empty() || trailing.text.starts_with("%%") {
@@ -875,7 +747,6 @@ fn parse_timeline_semantic_source(
             }
 
             let invalid = if valid_direction { trailing } else { rest };
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Literal, invalid.span());
             issues.push(timeline_parse_issue(
                 Error::diagram_parse_exact(
                     meta.diagram_type.clone(),
@@ -889,8 +760,6 @@ fn parse_timeline_semantic_source(
 
         let statement = line.trim_start();
         if let Some(parsed) = parse_space_directive(statement, "title") {
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Keyword, parsed.keyword.span());
-            push_timeline_lexeme(lexemes, EditorLexemeKind::String, parsed.value.span());
             editor_facts.push_directive_prefix("title");
             push_timeline_payload_fact(
                 &mut editor_facts,
@@ -904,7 +773,6 @@ fn parse_timeline_semantic_source(
         }
 
         if let Some(parsed) = parse_colon_directive(statement, "accTitle") {
-            record_colon_directive_lexemes(parsed, lexemes);
             editor_facts.push_directive_prefix("accTitle");
             push_timeline_payload_fact(
                 &mut editor_facts,
@@ -918,7 +786,6 @@ fn parse_timeline_semantic_source(
         }
 
         if let Some(parsed) = parse_colon_directive(statement, "accDescr") {
-            record_colon_directive_lexemes(parsed, lexemes);
             editor_facts.push_directive_prefix("accDescr");
             push_timeline_payload_fact(
                 &mut editor_facts,
@@ -932,14 +799,6 @@ fn parse_timeline_semantic_source(
         }
 
         if let Some(parsed) = parse_acc_descr_block(&mut lines, line, control)? {
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Keyword, parsed.keyword);
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Delimiter, parsed.opening);
-            for span in &parsed.content_spans {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::String, *span);
-            }
-            if let Some(closing) = parsed.closing {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Delimiter, closing);
-            }
             editor_facts.push_directive_prefix("accDescr");
             push_timeline_payload_fact(
                 &mut editor_facts,
@@ -964,11 +823,6 @@ fn parse_timeline_semantic_source(
         }
 
         if let Some(parsed) = parse_section(statement) {
-            push_timeline_lexeme(lexemes, EditorLexemeKind::Keyword, parsed.keyword.span());
-            push_timeline_lexeme(lexemes, EditorLexemeKind::String, parsed.value.span());
-            if let Some(colon) = parsed.colon {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Delimiter, colon);
-            }
             push_timeline_outline_fact(
                 &mut editor_facts,
                 parsed.value.text,
@@ -983,7 +837,6 @@ fn parse_timeline_semantic_source(
 
         if statement.text.starts_with(':') {
             let parsed = parse_timeline_events(statement, &meta.diagram_type);
-            record_timeline_events_lexemes(&parsed, lexemes);
             for event in parsed.events {
                 match db.add_event(event.value.text) {
                     Ok(()) => push_timeline_payload_fact(
@@ -1004,13 +857,9 @@ fn parse_timeline_semantic_source(
 
         let parsed = parse_timeline_period(statement);
         if parsed.task.text.is_empty() {
-            if let TimelinePeriodSuffix::HashComment(comment) = parsed.suffix {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, comment.span());
-            }
             continue;
         }
 
-        push_timeline_lexeme(lexemes, EditorLexemeKind::String, parsed.task.span());
         push_timeline_outline_fact(
             &mut editor_facts,
             parsed.task.text,
@@ -1023,12 +872,9 @@ fn parse_timeline_semantic_source(
 
         match parsed.suffix {
             TimelinePeriodSuffix::None => {}
-            TimelinePeriodSuffix::HashComment(comment) => {
-                push_timeline_lexeme(lexemes, EditorLexemeKind::Comment, comment.span());
-            }
+            TimelinePeriodSuffix::HashComment => {}
             TimelinePeriodSuffix::Events(events_source) => {
                 let events = parse_timeline_events(events_source, &meta.diagram_type);
-                record_timeline_events_lexemes(&events, lexemes);
                 for event in events.events {
                     match db.add_event(event.value.text) {
                         Ok(()) => push_timeline_payload_fact(
@@ -1071,9 +917,9 @@ fn parse_timeline_semantic_source(
 mod tests {
     use super::*;
     use crate::{
-        EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeProducerKind,
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticKind,
-        EditorSemanticRole, Engine, ParseDiagnosticSpanKind, ParseOptions, SourceSpan,
+        EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticDiagnosticKind,
+        EditorSemanticKind, EditorSemanticRole, Engine, ParseDiagnosticSpanKind, ParseOptions,
+        SourceSpan,
     };
     use futures::executor::block_on;
 
@@ -1486,39 +1332,6 @@ task2: event2: event3\n";
     }
 
     #[test]
-    fn timeline_parser_lexemes_cover_every_header_variant() {
-        for (source, direction) in [
-            ("timeline\r\n", None),
-            ("timeline # comment\r\n", None),
-            ("timeline LR\r\n", Some("LR")),
-            ("timeline TD\r\n", Some("TD")),
-        ] {
-            let facts = Engine::new()
-                .parse_editor_semantic_facts_with_type_sync("timeline", source)
-                .expect("Timeline editor parse")
-                .expect("Timeline editor facts");
-
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-            assert_eq!(facts.lexeme_failure(), None);
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::Keyword
-                    && lexeme.span() == SourceSpan::new(0, "timeline".len())
-            }));
-            if let Some(direction) = direction {
-                let start = source.find(direction).expect("header direction");
-                assert!(facts.lexemes().iter().any(|lexeme| {
-                    lexeme.kind() == EditorLexemeKind::Literal
-                        && lexeme.span() == SourceSpan::new(start, start + direction.len())
-                }));
-            }
-            assert!(facts.lexemes().iter().all(|lexeme| {
-                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
-                    && lexeme.producer().family().map(|family| family.as_str()) == Some("timeline")
-            }));
-        }
-    }
-
-    #[test]
     fn timeline_direction_is_preserved_in_semantic_and_compatibility_models() {
         let engine = Engine::new();
         for (source, expected) in [
@@ -1544,7 +1357,7 @@ task2: event2: event3\n";
     }
 
     #[test]
-    fn timeline_parser_lexemes_are_exact_for_global_syntax_crlf_unicode_and_repeated_text() {
+    fn timeline_semantic_facts_are_exact_for_crlf_unicode_and_repeated_text() {
         let source = concat!(
             "---\r\n",
             "config:\r\n",
@@ -1572,50 +1385,11 @@ task2: event2: event3\n";
             .expect("Timeline editor facts");
 
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(facts.lexeme_failure(), None);
-        for kind in [
-            EditorLexemeKind::Keyword,
-            EditorLexemeKind::Literal,
-            EditorLexemeKind::Delimiter,
-            EditorLexemeKind::String,
-            EditorLexemeKind::Comment,
-            EditorLexemeKind::Frontmatter,
-            EditorLexemeKind::Directive,
-        ] {
-            assert!(
-                facts.lexemes().iter().any(|lexeme| lexeme.kind() == kind),
-                "missing {kind:?}: {:?}",
-                facts.lexemes()
-            );
-        }
-
-        for (text, occurrence) in [
-            ("title", 1),
-            ("accTitle", 1),
-            ("accDescr", 1),
-            ("section", 1),
-        ] {
-            let start = source
-                .match_indices(text)
-                .nth(occurrence)
-                .map(|(start, _)| start)
-                .expect("repeated directive value");
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::String
-                    && lexeme.span() == SourceSpan::new(start, start + text.len())
-            }));
-        }
-
         let repeated = source
             .match_indices("重复")
             .map(|(start, text)| SourceSpan::new(start, start + text.len()))
             .collect::<Vec<_>>();
         assert_eq!(repeated.len(), 4);
-        for span in &repeated {
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::String && lexeme.span() == *span
-            }));
-        }
         for (span, kind, role) in [
             (
                 repeated[0],
@@ -1645,57 +1419,6 @@ task2: event2: event3\n";
                     && symbol.selection == span
             }));
         }
-
-        for comment in [
-            "# header comment",
-            "# family comment 🤓",
-            "# accessibility comment",
-        ] {
-            let start = source.find(comment).expect("family comment");
-            let span = SourceSpan::new(start, start + comment.len());
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == EditorLexemeKind::Comment
-                    && lexeme.span() == span
-                    && lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
-            }));
-        }
-        assert!(facts.lexemes().iter().any(|lexeme| {
-            lexeme.kind() == EditorLexemeKind::Comment
-                && lexeme.producer().kind() == EditorLexemeProducerKind::GlobalPreprocess
-                && source[lexeme.span().start..lexeme.span().end].starts_with("%% global comment")
-        }));
-        let semicolon = source.find("; trailing").expect("accessibility terminator");
-        assert!(facts.lexemes().iter().any(|lexeme| {
-            lexeme.kind() == EditorLexemeKind::Delimiter
-                && lexeme.span() == SourceSpan::new(semicolon, semicolon + 1)
-        }));
-        let trailing = semicolon + 2;
-        assert!(facts.lexemes().iter().any(|lexeme| {
-            lexeme.kind() == EditorLexemeKind::Literal
-                && lexeme.span() == SourceSpan::new(trailing, trailing + "trailing".len())
-        }));
-        assert!(facts.lexemes().iter().all(|lexeme| {
-            let span = lexeme.span();
-            source.is_char_boundary(span.start)
-                && source.is_char_boundary(span.end)
-                && match lexeme.producer().kind() {
-                    EditorLexemeProducerKind::GlobalPreprocess => {
-                        lexeme.producer().family().is_none()
-                    }
-                    EditorLexemeProducerKind::FamilyParser => {
-                        lexeme.producer().family().map(|family| family.as_str()) == Some("timeline")
-                            && !source[span.start..span.end].contains('\r')
-                    }
-                    EditorLexemeProducerKind::FamilyLexer
-                    | EditorLexemeProducerKind::FamilyRecovery => false,
-                }
-        }));
-        assert!(
-            facts
-                .lexemes()
-                .windows(2)
-                .all(|pair| pair[0].span().end <= pair[1].span().start)
-        );
     }
 
     #[test]
@@ -1733,7 +1456,6 @@ task2: event2: event3\n";
             .expect("Timeline editor recovery")
             .expect("Timeline recovery facts");
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.name == "Before task"
                 && symbol.kind == EditorSemanticKind::Event
@@ -1749,33 +1471,11 @@ task2: event2: event3\n";
                 && symbol.kind == EditorSemanticKind::String
                 && symbol.role == EditorSemanticRole::Payload
         }));
-        for (kind, text) in [
-            (EditorLexemeKind::String, "Before task"),
-            (EditorLexemeKind::Delimiter, ":"),
-            (EditorLexemeKind::Literal, "event"),
-            (EditorLexemeKind::String, "After task"),
-            (EditorLexemeKind::String, "🤓 后续"),
-            (EditorLexemeKind::String, "Later task"),
-            (EditorLexemeKind::Literal, "broken"),
-        ] {
-            let start = source.find(text).expect("recovery lexeme");
-            let span = SourceSpan::new(start, start + text.len());
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == span
-                    && lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-            }));
-        }
-        assert!(facts.lexemes().iter().all(|lexeme| {
-            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-                && lexeme.producer().family().map(|family| family.as_str()) == Some("timeline")
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Later task"
+                && symbol.kind == EditorSemanticKind::Event
+                && symbol.role == EditorSemanticRole::Outline
         }));
-        assert!(
-            facts
-                .lexemes()
-                .windows(2)
-                .all(|pair| pair[0].span().end <= pair[1].span().start)
-        );
     }
 
     #[test]
@@ -1796,21 +1496,9 @@ task2: event2: event3\n";
             panic!("Timeline recovery facts");
         };
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
         assert!(!facts.diagnostics.is_empty());
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.name == "partial description" && symbol.role == EditorSemanticRole::Payload
         }));
-        for (kind, needle) in [
-            (EditorLexemeKind::Keyword, "accDescr"),
-            (EditorLexemeKind::Delimiter, "{"),
-            (EditorLexemeKind::String, "partial description"),
-        ] {
-            let start = text.find(needle).expect("EOF accDescr lexeme");
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == SourceSpan::new(start, start + needle.len())
-            }));
-        }
     }
 }

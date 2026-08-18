@@ -3,9 +3,9 @@ use crate::{
     EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseDiagnostic,
     ParseDiagnosticSpanKind, ParseMetadata, Result, SourceSpan,
     editor::{
-        EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
-        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
-        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
+        editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
+        lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
+        trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::Value;
@@ -36,7 +36,6 @@ type StateGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
 struct StateSyntax {
     events: Vec<StateLexicalEvent>,
-    lexemes: EditorLexemeBatchResult,
 }
 
 impl StateSyntax {
@@ -45,29 +44,23 @@ impl StateSyntax {
         STATE_SYNTAX_CONSTRUCTION_COUNT.set(STATE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
         let mut events = Vec::new();
-        let mut lexeme_journal = EditorLexemeJournal::family_lexer(code);
-        {
-            let mut lexer = Lexer::new(code, &mut lexeme_journal);
-            let mut last_position = lexer.position();
-            while let Some(event) = lexer.next() {
-                if events.len() % 128 == 0 {
-                    control.checkpoint()?;
-                }
-                let current_position = lexer.position();
-                let must_stop = event.is_err() && current_position == last_position;
-                events.push(event);
-                if must_stop {
-                    break;
-                }
-                last_position = current_position;
+        let mut lexer = Lexer::new(code);
+        let mut last_position = lexer.position();
+        while let Some(event) = lexer.next() {
+            if events.len() % 128 == 0 {
+                control.checkpoint()?;
             }
+            let current_position = lexer.position();
+            let must_stop = event.is_err() && current_position == last_position;
+            events.push(event);
+            if must_stop {
+                break;
+            }
+            last_position = current_position;
         }
 
         control.checkpoint()?;
-        Ok(Self {
-            events,
-            lexemes: lexeme_journal.finish(),
-        })
+        Ok(Self { events })
     }
 
     fn into_editor_facts_and_document(
@@ -78,8 +71,7 @@ impl StateSyntax {
         EditorSemanticFacts,
         std::result::Result<Vec<Stmt>, StateGrammarError>,
     )> {
-        let mut editor_facts = collect_state_editor_facts_from_events(&self.events, code, control)?;
-        editor_facts.replace_family_lexemes(self.lexemes);
+        let editor_facts = collect_state_editor_facts_from_events(&self.events, code, control)?;
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {

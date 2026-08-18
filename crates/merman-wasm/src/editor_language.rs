@@ -8,12 +8,11 @@ use merman_bindings_core::{BindingError, BindingStatus};
 use merman_core::EditorSemanticKind;
 use merman_editor_core::{
     COMPLETION_TRIGGER_CHARACTERS, DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind,
-    DocumentSnapshot, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
-    EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
-    RenameError, SemanticTokenDescriptor, analysis_payload_to_diagnostics,
-    analyze_document_context_with_shared_text, code_actions_from_fixes, completion_for_snapshot,
-    document_symbols, goto_definition, hover, plan_semantic_tokens_for_snapshot, prepare_rename,
-    references, rename, search_document_symbols, semantic_token_descriptor,
+    EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover, EditorLocation,
+    EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range, RenameError,
+    analysis_payload_to_diagnostics, analyze_document_context_with_shared_text,
+    code_actions_from_fixes, completion_for_snapshot, document_symbols, goto_definition, hover,
+    prepare_rename, references, rename, search_document_symbols,
 };
 use serde::Serialize;
 use std::{
@@ -184,11 +183,6 @@ impl WasmEditorSession {
         new_name: &str,
     ) -> Result<JsValue, JsValue> {
         rename_for_context(&self.context, line, character, new_name)
-    }
-
-    #[wasm_bindgen(js_name = semanticTokens)]
-    pub fn semantic_tokens(&self) -> Result<Vec<u32>, JsValue> {
-        semantic_tokens_for_context(&self.context)
     }
 }
 
@@ -366,84 +360,6 @@ struct WasmCodeAction {
     diagnostics: Vec<EditorDiagnostic>,
     edit: WasmWorkspaceEdit,
     is_preferred: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WasmSemanticTokenKindDescriptor {
-    id: &'static str,
-    code: u32,
-    lsp_name: &'static str,
-    lsp_index: u32,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WasmSemanticTokenModifierDescriptor {
-    id: &'static str,
-    index: u32,
-    bit: u32,
-    lsp_name: &'static str,
-    lsp_index: u32,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WasmSemanticTokenPackedDescriptor {
-    encoding: &'static str,
-    word_width_bits: u32,
-    record_width: usize,
-    field_order: &'static [&'static str],
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WasmSemanticTokenDescriptor {
-    schema_version: u32,
-    digest: &'static str,
-    token_types: Vec<WasmSemanticTokenKindDescriptor>,
-    modifiers: Vec<WasmSemanticTokenModifierDescriptor>,
-    packed: WasmSemanticTokenPackedDescriptor,
-    valid_type_code_max: u32,
-    valid_modifier_mask: u32,
-}
-
-impl From<&'static SemanticTokenDescriptor> for WasmSemanticTokenDescriptor {
-    fn from(value: &'static SemanticTokenDescriptor) -> Self {
-        Self {
-            schema_version: value.schema_version,
-            digest: value.digest,
-            token_types: value
-                .token_kinds
-                .iter()
-                .map(|token| WasmSemanticTokenKindDescriptor {
-                    id: token.id,
-                    code: token.kind.code(),
-                    lsp_name: token.lsp_name,
-                    lsp_index: token.lsp_index,
-                })
-                .collect(),
-            modifiers: value
-                .modifiers
-                .iter()
-                .map(|modifier| WasmSemanticTokenModifierDescriptor {
-                    id: modifier.id,
-                    index: modifier.modifier.index(),
-                    bit: modifier.bit,
-                    lsp_name: modifier.lsp_name,
-                    lsp_index: modifier.lsp_index,
-                })
-                .collect(),
-            packed: WasmSemanticTokenPackedDescriptor {
-                encoding: value.packed.encoding,
-                word_width_bits: value.packed.word_width_bits,
-                record_width: value.packed.words_per_token,
-                field_order: value.packed.field_order,
-            },
-            valid_type_code_max: value.valid_type_code_max,
-            valid_modifier_mask: value.valid_modifier_mask,
-        }
-    }
 }
 
 #[wasm_bindgen(js_name = editorDiagnostics)]
@@ -693,41 +609,9 @@ fn rename_for_context(
     }
 }
 
-#[wasm_bindgen(js_name = editorSemanticTokenDescriptor)]
-pub fn editor_semantic_token_descriptor() -> Result<JsValue, JsValue> {
-    js_value(&WasmSemanticTokenDescriptor::from(
-        semantic_token_descriptor(),
-    ))
-}
-
 #[wasm_bindgen(js_name = editorCompletionTriggerCharacters)]
 pub fn editor_completion_trigger_characters() -> Result<JsValue, JsValue> {
     js_value(&COMPLETION_TRIGGER_CHARACTERS)
-}
-
-#[wasm_bindgen(js_name = editorSemanticTokens)]
-pub fn editor_semantic_tokens(
-    source: &str,
-    uri: Option<String>,
-    options_json: Option<String>,
-) -> Result<Vec<u32>, JsValue> {
-    let context = editor_document_context(source, uri, options_json.as_deref())?;
-    semantic_tokens_for_context(&context)
-}
-
-fn semantic_tokens_for_context(context: &EditorDocumentContext) -> Result<Vec<u32>, JsValue> {
-    packed_semantic_tokens_for_snapshot(context.analyzed.snapshot())
-}
-
-fn packed_semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Result<Vec<u32>, JsValue> {
-    plan_semantic_tokens_for_snapshot(snapshot)
-        .map(|plan| plan.packed().to_vec())
-        .map_err(|error| {
-            binding_error_to_js(BindingError::new(
-                BindingStatus::InternalError,
-                error.to_string(),
-            ))
-        })
 }
 
 fn js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
@@ -1218,12 +1102,7 @@ mod tests {
             .len(),
             2
         );
-        assert!(
-            !plan_semantic_tokens_for_snapshot(reference_context.analyzed.snapshot())
-                .unwrap()
-                .packed()
-                .is_empty()
-        );
+        assert!(!document_symbols(reference_context.analyzed.snapshot()).is_empty());
 
         let payload =
             editor_analysis_payload("flowchart TD\nA-->\n", None, "file:///tmp/example.mmd")
@@ -1247,12 +1126,7 @@ mod tests {
 
         let context = editor_document_context(source, Some(uri.to_string()), None).unwrap();
         assert_eq!(editor_document_context_builds_for_tests(), 1);
-        assert!(
-            !plan_semantic_tokens_for_snapshot(context.analyzed.snapshot())
-                .unwrap()
-                .packed()
-                .is_empty()
-        );
+        assert!(context.analyzed.detection().is_some());
 
         let repeated_payload = editor_analysis_payload(source, Some(" \n "), uri).unwrap();
         assert_eq!(repeated_payload, payload);
@@ -1327,12 +1201,7 @@ mod tests {
         assert_eq!(session.version(), 1);
         assert_eq!(session.uri(), uri);
         assert_eq!(editor_document_context_builds_for_tests(), 1);
-        assert!(
-            !plan_semantic_tokens_for_snapshot(session.context.analyzed.snapshot())
-                .expect("session semantic tokens")
-                .packed()
-                .is_empty()
-        );
+        assert!(!document_symbols(session.context.analyzed.snapshot()).is_empty());
         assert_eq!(editor_document_context_builds_for_tests(), 1);
 
         session
@@ -1344,28 +1213,6 @@ mod tests {
             "flowchart TD\nA-->C\n"
         );
         assert_eq!(editor_document_context_builds_for_tests(), 2);
-    }
-
-    #[test]
-    fn wasm_semantic_tokens_are_the_exact_planner_packed_sequence() {
-        let context = editor_document_context(
-            "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
-            Some("file:///tmp/example.mmd".to_string()),
-            None,
-        )
-        .expect("editor snapshot");
-        let snapshot = context.analyzed.snapshot();
-        let expected = merman_editor_core::plan_semantic_tokens_for_snapshot(snapshot)
-            .expect("validated token plan");
-
-        let actual =
-            packed_semantic_tokens_for_snapshot(snapshot).expect("WASM semantic token transport");
-
-        assert_eq!(actual, expected.packed());
-        assert_eq!(
-            actual.len() % merman_editor_core::SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
-            0
-        );
     }
 
     #[test]
@@ -1481,9 +1328,6 @@ mod tests {
             let _ = document_symbols(snapshot);
             let _ = prepare_rename(snapshot, Position::new(0, 0));
             let _ = rename(snapshot, Position::new(0, 0), "RenamedNode");
-            let plan = plan_semantic_tokens_for_snapshot(snapshot)
-                .unwrap_or_else(|error| panic!("plan {family} tokens: {error}"));
-            assert!(!plan.packed().is_empty(), "{family} packed tokens");
             assert_eq!(
                 editor_document_context_builds_for_tests(),
                 1,

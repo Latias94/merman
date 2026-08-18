@@ -87,10 +87,6 @@ impl CombinedSemanticFailure {
         }
     }
 
-    pub(crate) fn replace_family_lexemes(&mut self, batch: crate::editor::EditorLexemeBatchResult) {
-        self.editor_facts.replace_family_lexemes(batch);
-    }
-
     pub(crate) fn into_parts(mut self) -> (Error, EditorSemanticFacts) {
         if let Some(parser) = self.recovery_parser.take() {
             let (message, span) = match self.error.as_ref() {

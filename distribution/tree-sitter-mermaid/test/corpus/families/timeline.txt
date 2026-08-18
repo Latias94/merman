@@ -1,0 +1,246 @@
+==================
+direction sections periods events and accessibility stay structural
+==================
+
+timeline TD
+title Product history
+accTitle: Accessible timeline
+accDescr {
+  Product milestones across eras.
+}
+section Early web
+2002 : LinkedIn : [Launch](http://example.com)
+2004 : Facebook : Google
+     : Mobile launch : Global rollout
+section Modern era
+2026 : Mermaid 世界
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword)
+      (timeline_direction))
+    (timeline_body
+      (timeline_title_statement
+        (timeline_statement_keyword)
+        (timeline_line_text))
+      (timeline_accessibility_title_statement
+        (timeline_statement_keyword)
+        (timeline_line_text))
+      (timeline_period_statement
+        (timeline_period))
+      (timeline_period_statement
+        (timeline_period))
+      (timeline_period_statement
+        (timeline_period))
+      (timeline_section_statement
+        (timeline_statement_keyword)
+        (timeline_section_name))
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text)))
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text)))
+      (timeline_event_statement
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text)))
+      (timeline_section_statement
+        (timeline_statement_keyword)
+        (timeline_section_name))
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))))))
+
+==================
+minimal period and lowercase direction
+==================
+
+timeline lr
+First period
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword)
+      (timeline_direction))
+    (timeline_body
+      (timeline_period_statement
+        (timeline_period)))))
+
+==================
+uppercase direction and no body
+==================
+
+timeline TD
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword)
+      (timeline_direction))))
+
+==================
+unicode crlf section and events
+==================
+
+timeline tD
+section 产品阶段
+二〇二六 : 发布 : 全球上线
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword)
+      (timeline_direction))
+    (timeline_body
+      (timeline_section_statement
+        (timeline_statement_keyword)
+        (timeline_section_name))
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))))))
+
+==================
+incomplete and malformed events preserve siblings
+==================
+
+timeline
+section Before
+2025 :
+:broken event
+section After
+2026 : Healthy event
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword))
+    (timeline_body
+      (timeline_section_statement
+        (timeline_statement_keyword)
+        (timeline_section_name))
+      (timeline_incomplete_event_statement
+        (timeline_period)
+        (timeline_incomplete_event
+          (timeline_event_delimiter)))
+      (timeline_malformed_event_statement
+        (timeline_malformed_event_text))
+      (timeline_section_statement
+        (timeline_statement_keyword)
+        (timeline_section_name))
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))))))
+
+==================
+keyword prefixes and same line periods do not split statements
+==================
+
+timeline
+sectionAlpha
+titleCase
+section One section only
+2020 : First 2021 : Second
+section
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword))
+    (timeline_body
+      (timeline_period_statement
+        (timeline_period))
+      (timeline_period_statement
+        (timeline_period))
+      (timeline_section_statement
+        (timeline_statement_keyword)
+        (timeline_section_name))
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text)))
+      (timeline_incomplete_section_statement
+        (timeline_statement_keyword)))))
+
+==================
+hashes stay inside events and accessibility prefixes remain ordinary periods without delimiters
+==================
+
+timeline
+task1: #ev#ent1# : event 2
+accTitle Accessibility title: Timeline
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword))
+    (timeline_body
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text)))
+      (timeline_period_statement
+        (timeline_period)
+        (timeline_event
+          (timeline_event_delimiter)
+          (timeline_event_text))))))
+
+==================
+header only at eof
+==================
+
+timeline LR
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword)
+      (timeline_direction))))

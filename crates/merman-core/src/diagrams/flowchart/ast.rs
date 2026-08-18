@@ -1,4 +1,4 @@
-use super::{Edge, FlowchartLexemeComponent, LexError, Node, SubgraphHeader};
+use super::{Edge, LexError, Node, SubgraphHeader};
 use crate::{EditorExpectedSyntax, SourceSpan};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -53,7 +53,6 @@ pub(crate) struct StyleStmt {
     pub styles_text: Option<String>,
     pub styles_span: Option<SourceSpan>,
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,7 +63,6 @@ pub(crate) struct ClassDefStmt {
     pub styles_text: Option<String>,
     pub styles_span: Option<SourceSpan>,
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +72,6 @@ pub(crate) struct ClassAssignStmt {
     pub class_name: String,
     pub class_name_span: Option<SourceSpan>,
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +91,6 @@ pub(crate) struct ClickStmt {
     pub action: ClickAction,
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
     pub interaction_evidence: FlowchartClickEditorEvidence,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
     pub recovery_error: Option<LexError>,
 }
 
@@ -109,7 +105,6 @@ pub(crate) struct LinkStyleStmt {
     pub positions: Vec<LinkStylePos>,
     pub interpolate: Option<String>,
     pub styles: Vec<String>,
-    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,0 +1,418 @@
+==================
+chained edges groups and label modes
+==================
+
+flowchart-elk LR
+  start["HTML <b>start</b>"] & audit["`Markdown **audit**`"] --> gate{Choose} -->|yes| done((Done))
+  gate -. retry .-> audit ==>|thick| done
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_square_label
+                    (flow_shape_delimiter)
+                    (flow_quoted_label)
+                    (flow_shape_delimiter))))
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_square_label
+                    (flow_shape_delimiter)
+                    (flow_markdown_label)
+                    (flow_shape_delimiter)))))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_diamond_label
+                    (flow_shape_delimiter)
+                    (flow_curly_label_text)
+                    (flow_shape_delimiter)))))
+            (flow_edge
+              (flow_arrow)
+              (flow_edge_label
+                (flow_edge_label_text)))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_circle_label
+                    (flow_shape_delimiter)
+                    (flow_round_label_text)
+                    (flow_shape_delimiter))))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow_start)
+              (flow_middle_edge_label
+                (flow_middle_edge_label_text
+                  (flow_middle_edge_label_fragment)))
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow)
+              (flow_edge_label
+                (flow_edge_label_text)))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))))))))
+
+==================
+nested subgraphs direction classes styles and clicks
+==================
+
+graph TD
+subgraph outer["Outer lane"]
+  direction LR
+  subgraph inner["Inner lane"]
+    A[Alpha] --> B[Beta]
+  end
+end
+classDef active fill:#f96,stroke:#333,font-size:50%
+class A,B active
+style B fill:#fff,stroke-width:2px
+linkStyle 0 stroke:#0a0,stroke-width:2px
+click A href "https://example.com" "Open" _blank
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_subgraph
+            (flow_statement_keyword)
+            (flow_node_id)
+            (flow_square_label
+              (flow_shape_delimiter)
+              (flow_quoted_label)
+              (flow_shape_delimiter))
+            (flow_line_item
+              (flow_statement
+                (flow_direction_statement
+                  (flow_statement_keyword)
+                  (flow_direction))))
+            (flow_line_item
+              (flow_statement
+                (flow_subgraph
+                  (flow_statement_keyword)
+                  (flow_node_id)
+                  (flow_square_label
+                    (flow_shape_delimiter)
+                    (flow_quoted_label)
+                    (flow_shape_delimiter))
+                  (flow_line_item
+                    (flow_statement
+                      (flow_edge_statement
+                        (flow_node
+                          (flow_vertex
+                            (flow_node_id)
+                            (flow_shape
+                              (flow_square_label
+                                (flow_shape_delimiter)
+                                (flow_square_label_text)
+                                (flow_shape_delimiter)))))
+                        (flow_edge
+                          (flow_arrow))
+                        (flow_node
+                          (flow_vertex
+                            (flow_node_id)
+                            (flow_shape
+                              (flow_square_label
+                                (flow_shape_delimiter)
+                                (flow_square_label_text)
+                                (flow_shape_delimiter))))))))
+                  (flow_subgraph_end))))
+            (flow_subgraph_end))))
+      (flow_line_item
+        (flow_statement
+          (flow_class_definition_statement
+            (flow_statement_keyword)
+            (flow_identifier_list
+              (flow_reference))
+            (flow_style_list
+              (flow_style_item
+                (flow_style_declaration
+                  (flow_style_property)
+                  (flow_style_value)))
+              (flow_style_item
+                (flow_style_declaration
+                  (flow_style_property)
+                  (flow_style_value)))
+              (flow_style_item
+                (flow_style_declaration
+                  (flow_style_property)
+                  (flow_style_value)))))))
+      (flow_line_item
+        (flow_statement
+          (flow_class_assignment_statement
+            (flow_statement_keyword)
+            (flow_identifier_list
+              (flow_reference)
+              (flow_reference))
+            (flow_class_name))))
+      (flow_line_item
+        (flow_statement
+          (flow_style_statement
+            (flow_statement_keyword)
+            (flow_node_id)
+            (flow_style_list
+              (flow_style_item
+                (flow_style_declaration
+                  (flow_style_property)
+                  (flow_style_value)))
+              (flow_style_item
+                (flow_style_declaration
+                  (flow_style_property)
+                  (flow_style_value)))))))
+      (flow_line_item
+        (flow_statement
+          (flow_link_style_statement
+            (flow_statement_keyword)
+            (flow_number_list
+              (flow_edge_index))
+            (flow_style_list
+              (flow_style_item
+                (flow_style_declaration
+                  (flow_style_property)
+                  (flow_style_value)))
+              (flow_style_item
+                (flow_style_declaration
+                  (flow_style_property)
+                  (flow_style_value)))))))
+      (flow_line_item
+        (flow_statement
+          (flow_click_statement
+            (flow_statement_keyword)
+            (flow_node_id)
+            (flow_href_action
+              (flow_statement_keyword)
+              (flow_quoted_label))
+            (flow_quoted_label)
+            (flow_link_target)))))))
+
+==================
+shape data edge ids and multiline continuation
+==================
+
+flowchart TB
+  icon@{ icon: "fa:car", label: "A } car" }
+  icon e1@-->|drives == safely| road(-ellipse-)
+  road
+    --> garage[Garage]
+  road o--o depot[/Depot\]
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_node_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape_data
+                  (flow_shape_data_content)
+                  (flow_shape_data_string)
+                  (flow_shape_data_content)
+                  (flow_shape_data_string)))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_edge_id
+                (flow_edge_name))
+              (flow_arrow)
+              (flow_edge_label
+                (flow_edge_label_text)))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_ellipse_label
+                    (flow_shape_delimiter)
+                    (flow_ellipse_label_text
+                      (flow_ellipse_label_fragment))
+                    (flow_shape_delimiter))))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_continued_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_square_label
+                    (flow_shape_delimiter)
+                    (flow_square_label_text)
+                    (flow_shape_delimiter))))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_slash_label
+                    (flow_shape_delimiter)
+                    (flow_trap_label_text
+                      (flow_trap_label_fragment))
+                    (flow_shape_delimiter)))))))))))
+
+==================
+malformed edge stays local
+==================
+
+flowchart TD
+  before --> after
+  broken -->
+  left ==> right
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_incomplete_edge_statement
+          (flow_node
+            (flow_vertex
+              (flow_node_id)))
+          (flow_edge
+            (flow_arrow))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))))))))
+
+==================
+graph header at eof
+==================
+
+graph LR
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))))
+
+==================
+keyword-prefixed node identifiers stay ordinary nodes
+==================
+
+flowchart TD
+  stylesTS --> StyleOptions[Options]
+  classA --> B
+  classDefX --> C
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)
+                (flow_shape
+                  (flow_square_label
+                    (flow_shape_delimiter)
+                    (flow_square_label_text)
+                    (flow_shape_delimiter))))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))))))))

@@ -1,12 +1,12 @@
 use crate::diagrams::scan::consume_line_ending;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
+    SourceSpan,
     editor::{
-        EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
-        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
-        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
+        editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
+        lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
+        trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::{Value, json};
@@ -390,28 +390,20 @@ type ErGrammarError = lalrpop_util::ParseError<usize, Tok, LexError>;
 
 struct ErSyntax {
     events: Vec<ErLexicalEvent>,
-    lexemes: EditorLexemeBatchResult,
 }
 
 impl ErSyntax {
     fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
-        let mut journal = EditorLexemeJournal::family_lexer(code);
-        let events = {
-            let lexer = Lexer::new(code, &mut journal);
-            let mut events = Vec::new();
-            for event in lexer {
-                if events.len() % 128 == 0 {
-                    control.checkpoint()?;
-                }
-                events.push(event);
+        let lexer = Lexer::new(code);
+        let mut events = Vec::new();
+        for event in lexer {
+            if events.len() % 128 == 0 {
+                control.checkpoint()?;
             }
-            events
-        };
+            events.push(event);
+        }
         control.checkpoint()?;
-        Ok(Self {
-            events,
-            lexemes: journal.finish(),
-        })
+        Ok(Self { events })
     }
 
     fn into_editor_facts_and_actions(
@@ -439,7 +431,6 @@ impl ErSyntax {
             }
         }
         collector.finish(code, &mut facts);
-        facts.replace_family_lexemes(self.lexemes);
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = self.events.into_iter().take_while(|_| {
@@ -1248,55 +1239,30 @@ enum Mode {
     LineRest,
 }
 
-struct Lexer<'input, 'journal> {
+struct Lexer<'input> {
     input: &'input str,
-    lexemes: &'journal mut EditorLexemeJournal<'input>,
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
 }
 
-impl<'input, 'journal> Lexer<'input, 'journal> {
-    fn new(input: &'input str, lexemes: &'journal mut EditorLexemeJournal<'input>) -> Self {
+impl<'input> Lexer<'input> {
+    fn new(input: &'input str) -> Self {
         #[cfg(test)]
         ER_SYNTAX_CONSTRUCTION_COUNT.set(ER_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
         Self {
             input,
-            lexemes,
             pos: 0,
             pending: VecDeque::new(),
             mode: Mode::Default,
         }
     }
 
-    fn push_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
-        self.lexemes.push(
-            kind,
-            EditorLexemeModifiers::NONE,
-            SourceSpan::new(start, end),
-        );
-    }
-
-    fn push_modified_lexeme(
-        &mut self,
-        kind: EditorLexemeKind,
-        modifier: EditorLexemeModifier,
-        start: usize,
-        end: usize,
-    ) {
-        self.lexemes.push(
-            kind,
-            EditorLexemeModifiers::from_modifier(modifier),
-            SourceSpan::new(start, end),
-        );
-    }
-
     fn emit_token(
         &mut self,
         token: (usize, Tok, usize),
     ) -> std::result::Result<(usize, Tok, usize), LexError> {
-        self.record_token_lexemes(&token.1, token.0, token.2);
         Ok(token)
     }
 
@@ -1304,216 +1270,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         &mut self,
         result: std::result::Result<(usize, Tok, usize), LexError>,
     ) -> std::result::Result<(usize, Tok, usize), LexError> {
-        match result {
-            Ok(token) => self.emit_token(token),
-            Err(error) => Err(error),
-        }
-    }
-
-    fn record_token_lexemes(&mut self, token: &Tok, start: usize, end: usize) {
-        match token {
-            Tok::Newline => {}
-            Tok::ErDiagram | Tok::StyleKw | Tok::ClassDefKw | Tok::ClassKw => {
-                self.push_lexeme(EditorLexemeKind::Keyword, start, end)
-            }
-            Tok::Name(_) | Tok::AttrWord(_) => self.record_string_or_identifier(start, end),
-            Tok::Str(_) | Tok::Comment(_) => self.record_quoted_string(start, end),
-            Tok::IdList(ids) => self.record_id_list(ids, start, end),
-            Tok::RestOfLine(_) => self.record_trimmed(EditorLexemeKind::Style, start, end),
-            Tok::AccTitle(_) => self.record_keyword_value(start, end, "accTitle"),
-            Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => {
-                self.record_keyword_value(start, end, "accDescr")
-            }
-            Tok::Direction(direction) => self.record_direction(start, end, direction),
-            Tok::BlockStart
-            | Tok::BlockStop
-            | Tok::SquareStart
-            | Tok::SquareStop
-            | Tok::StyleSeparator
-            | Tok::Colon
-            | Tok::Comma => self.push_lexeme(EditorLexemeKind::Delimiter, start, end),
-            Tok::Question => self.push_lexeme(EditorLexemeKind::Operator, start, end),
-            Tok::ZeroOrOne
-            | Tok::ZeroOrMore
-            | Tok::OneOrMore
-            | Tok::OnlyOne
-            | Tok::MdParent
-            | Tok::Identifying
-            | Tok::NonIdentifying => self.push_lexeme(EditorLexemeKind::Operator, start, end),
-            Tok::AttrKey(_) => self.push_modified_lexeme(
-                EditorLexemeKind::Keyword,
-                EditorLexemeModifier::Readonly,
-                start,
-                end,
-            ),
-        }
-    }
-
-    fn trimmed_bounds(&self, start: usize, end: usize) -> Option<(usize, usize)> {
-        let raw = self.input.get(start..end)?;
-        let leading = raw.len().saturating_sub(raw.trim_start().len());
-        let trailing = raw.trim_end().len();
-        (leading < trailing).then_some((start + leading, start + trailing))
-    }
-
-    fn record_trimmed(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
-        if let Some((start, end)) = self.trimmed_bounds(start, end) {
-            self.push_lexeme(kind, start, end);
-        }
-    }
-
-    fn record_string_or_identifier(&mut self, start: usize, end: usize) {
-        let Some((start, end)) = self.trimmed_bounds(start, end) else {
-            return;
-        };
-        let raw = &self.input[start..end];
-        if (raw.starts_with('"') && raw.ends_with('"'))
-            || (raw.starts_with('`') && raw.ends_with('`'))
-        {
-            self.record_quoted_string(start, end);
-        } else {
-            self.push_lexeme(EditorLexemeKind::Identifier, start, end);
-        }
-    }
-
-    fn record_quoted_string(&mut self, start: usize, end: usize) {
-        let Some((start, end)) = self.trimmed_bounds(start, end) else {
-            return;
-        };
-        let raw = &self.input[start..end];
-        let delimiter = raw.as_bytes().first().copied();
-        if raw.len() >= 2
-            && delimiter.is_some_and(|byte| matches!(byte, b'"' | b'`'))
-            && raw.as_bytes().last().copied() == delimiter
-        {
-            self.push_lexeme(EditorLexemeKind::Delimiter, start, start + 1);
-            if end > start + 2 {
-                self.push_lexeme(EditorLexemeKind::String, start + 1, end - 1);
-            }
-            self.push_lexeme(EditorLexemeKind::Delimiter, end - 1, end);
-        } else {
-            self.push_lexeme(EditorLexemeKind::String, start, end);
-        }
-    }
-
-    fn record_id_list(&mut self, ids: &SpannedIdList, start: usize, end: usize) {
-        let mut cursor = start;
-        for id in &ids.ids {
-            if cursor < id.span.start
-                && let Some(gap) = self.input.get(cursor..id.span.start)
-            {
-                for (offset, byte) in gap.bytes().enumerate() {
-                    if byte == b',' {
-                        self.push_lexeme(
-                            EditorLexemeKind::Delimiter,
-                            cursor + offset,
-                            cursor + offset + 1,
-                        );
-                    }
-                }
-            }
-            self.push_lexeme(EditorLexemeKind::Identifier, id.span.start, id.span.end);
-            cursor = id.span.end;
-        }
-        if cursor < end
-            && let Some(gap) = self.input.get(cursor..end)
-        {
-            for (offset, byte) in gap.bytes().enumerate() {
-                if byte == b',' {
-                    self.push_lexeme(
-                        EditorLexemeKind::Delimiter,
-                        cursor + offset,
-                        cursor + offset + 1,
-                    );
-                }
-            }
-        }
-    }
-
-    fn record_keyword_value(&mut self, start: usize, end: usize, keyword: &str) {
-        let Some(raw) = self.input.get(start..end) else {
-            return;
-        };
-        if !raw
-            .get(..keyword.len())
-            .is_some_and(|value| value.eq_ignore_ascii_case(keyword))
-        {
-            return;
-        }
-        self.push_lexeme(EditorLexemeKind::Keyword, start, start + keyword.len());
-        let mut cursor = keyword.len();
-        while raw
-            .as_bytes()
-            .get(cursor)
-            .is_some_and(u8::is_ascii_whitespace)
-        {
-            cursor += 1;
-        }
-        if raw
-            .as_bytes()
-            .get(cursor)
-            .is_some_and(|byte| matches!(byte, b':' | b'{'))
-        {
-            self.push_lexeme(
-                EditorLexemeKind::Delimiter,
-                start + cursor,
-                start + cursor + 1,
-            );
-            cursor += 1;
-        }
-        while raw
-            .as_bytes()
-            .get(cursor)
-            .is_some_and(u8::is_ascii_whitespace)
-        {
-            cursor += 1;
-        }
-        let mut value_end = raw.trim_end().len();
-        if raw.as_bytes().get(value_end.wrapping_sub(1)) == Some(&b'}') {
-            self.push_lexeme(
-                EditorLexemeKind::Delimiter,
-                start + value_end - 1,
-                start + value_end,
-            );
-            value_end -= 1;
-        }
-        if cursor < value_end {
-            let kind = if keyword.eq_ignore_ascii_case("direction") {
-                EditorLexemeKind::Literal
-            } else {
-                EditorLexemeKind::String
-            };
-            self.push_lexeme(kind, start + cursor, start + value_end);
-        }
-    }
-
-    fn record_direction(&mut self, start: usize, end: usize, direction: &str) {
-        let Some(raw) = self.input.get(start..end) else {
-            return;
-        };
-        let keyword = "direction";
-        if !raw
-            .get(..keyword.len())
-            .is_some_and(|value| value.eq_ignore_ascii_case(keyword))
-        {
-            return;
-        }
-        self.push_lexeme(EditorLexemeKind::Keyword, start, start + keyword.len());
-        let mut cursor = keyword.len();
-        while raw
-            .as_bytes()
-            .get(cursor)
-            .is_some_and(u8::is_ascii_whitespace)
-        {
-            cursor += 1;
-        }
-        let value_end = cursor.saturating_add(direction.len());
-        if raw
-            .get(cursor..value_end)
-            .is_some_and(|value| value.eq_ignore_ascii_case(direction))
-        {
-            self.push_lexeme(EditorLexemeKind::Literal, start + cursor, start + value_end);
-        }
+        result
     }
 
     fn peek(&self) -> Option<u8> {
@@ -1621,7 +1378,6 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             let consumed_ws = rest.len() - rest_trim.len();
             self.pos = after + consumed_ws + 1;
             let Some(end_rel) = self.input[self.pos..].find('}') else {
-                self.record_keyword_value(start, self.input.len(), "accDescr");
                 self.pos = self.input.len();
                 return Some(Err(LexError::new(
                     "Unterminated accDescr block; missing '}'",
@@ -1648,7 +1404,6 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             return None;
         }
         self.pos += "direction".len();
-        let keyword_end = self.pos;
         self.skip_ws_default();
         let value_start = self.pos;
         while self
@@ -1670,10 +1425,6 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         } else if value.eq_ignore_ascii_case("RL") {
             "RL"
         } else {
-            self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
-            if selection.start < selection.end {
-                self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
-            }
             return Some(Err(LexError::new("invalid ER direction", selection)
                 .expecting(
                     EditorExpectedSyntaxKind::CardinalDirectionValue,
@@ -2002,12 +1753,6 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             }
             let s = self.input[body_start..body_end].to_string();
             self.pos = body_end + 1;
-            self.push_lexeme(
-                EditorLexemeKind::Delimiter,
-                delimiter_start,
-                delimiter_start + 1,
-            );
-            self.push_lexeme(EditorLexemeKind::Delimiter, body_end, body_end + 1);
             return Some(Ok((body_start, Tok::AttrWord(s), body_end)));
         }
         if let Some(two) = self.input[self.pos..].get(..2) {
@@ -2123,7 +1868,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
     }
 }
 
-impl Iterator for Lexer<'_, '_> {
+impl Iterator for Lexer<'_> {
     type Item = std::result::Result<(usize, Tok, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {

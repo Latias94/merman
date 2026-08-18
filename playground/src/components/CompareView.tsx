@@ -28,6 +28,7 @@ import type { SvgPresentationMode } from "@/src/lib/svg-presentation";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
+import type { WorkbenchEditorThemeName } from "@/src/editor/workbench-editor-theme";
 
 export type CompareEngineKey = "merman" | "mermaid";
 type SvgDisplayMode = "visual" | "source";
@@ -68,7 +69,7 @@ export function CompareView({
   mermaid,
   actions,
   canvasTone,
-  isDarkMode,
+  editorTheme,
   showSvgBounds,
   presentationMode,
   t,
@@ -77,7 +78,7 @@ export function CompareView({
   mermaid: ComparePaneModel;
   actions: ComparePaneActions;
   canvasTone: MermaidCanvasTone;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
   showSvgBounds: boolean;
   presentationMode: SvgPresentationMode;
   t: (key: string) => string;
@@ -96,7 +97,7 @@ export function CompareView({
             model={pane}
             actions={actions}
             canvasTone={canvasTone}
-            isDarkMode={isDarkMode}
+            editorTheme={editorTheme}
             showSvgBounds={showSvgBounds}
             presentationMode={presentationMode}
             t={t}
@@ -111,7 +112,7 @@ function ComparePane({
   model,
   actions,
   canvasTone,
-  isDarkMode,
+  editorTheme,
   showSvgBounds,
   presentationMode,
   t,
@@ -119,7 +120,7 @@ function ComparePane({
   model: ComparePaneModel;
   actions: ComparePaneActions;
   canvasTone: MermaidCanvasTone;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
   showSvgBounds: boolean;
   presentationMode: SvgPresentationMode;
   t: (key: string) => string;
@@ -268,7 +269,7 @@ function ComparePane({
           canvasTone={canvasTone}
           controller={controller}
           displayMode={svgDisplayMode}
-          isDarkMode={isDarkMode}
+          editorTheme={editorTheme}
           onPresentationReady={(at) =>
             actions.onPresentationReady(artifact.key, at)
           }
@@ -311,7 +312,7 @@ function ComparePaneBody({
   canvasTone,
   controller,
   displayMode,
-  isDarkMode,
+  editorTheme,
   onPresentationReady,
   onRetry,
   showSvgBounds,
@@ -322,7 +323,7 @@ function ComparePaneBody({
   canvasTone: MermaidCanvasTone;
   controller: SvgViewportController;
   displayMode: SvgDisplayMode;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
   onPresentationReady(at: number): void;
   onRetry(): void;
   showSvgBounds: boolean;
@@ -352,7 +353,7 @@ function ComparePaneBody({
     return (
       <CompareSvgSource
         svg={artifact.svgArtifact?.svg ?? null}
-        isDarkMode={isDarkMode}
+        editorTheme={editorTheme}
       />
     );
   }
@@ -442,10 +443,10 @@ function CompareFailure({
 
 function CompareSvgSource({
   svg,
-  isDarkMode,
+  editorTheme,
 }: {
   svg: string | null;
-  isDarkMode: boolean;
+  editorTheme: WorkbenchEditorThemeName;
 }) {
   if (!svg) return null;
   return (
@@ -453,7 +454,7 @@ function CompareSvgSource({
       height="100%"
       language="xml"
       value={svg}
-      theme={isDarkMode ? "vs-dark" : "light"}
+      theme={editorTheme}
       options={{
         readOnly: true,
         domReadOnly: true,

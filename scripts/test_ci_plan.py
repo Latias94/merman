@@ -94,10 +94,15 @@ class PlannerTests(unittest.TestCase):
 
     def test_owner_local_changes_select_their_narrow_jobs(self) -> None:
         fixtures = {
+            "distribution/tree-sitter-mermaid/queries/portable/highlights.scm": {
+                "grammar",
+                "hygiene",
+                "web",
+            },
             "platforms/web/src/index.ts": {"hygiene", "npm", "web"},
             "platforms/node/package-lock.json": {"core", "hygiene", "node", "npm", "security"},
             "tools/vscode-extension/src/extension.ts": {"hygiene", "npm", "vscode"},
-            "contracts/editor-language/token-descriptor-v1.json": {
+            "contracts/editor-language/rename-policy-v1.json": {
                 "hygiene",
                 "npm",
                 "vscode",
@@ -120,6 +125,93 @@ class PlannerTests(unittest.TestCase):
                 )
                 actual = {name for name, enabled in plan["owners"].items() if enabled}
                 self.assertEqual(actual, selected)
+
+    def test_tree_sitter_grammar_mechanics_use_the_focused_owner(self) -> None:
+        for path in (
+            "distribution/tree-sitter-mermaid/grammar.js",
+            "distribution/tree-sitter-mermaid/grammar/families/flowchart.js",
+            "distribution/tree-sitter-mermaid/src/parser.c",
+            "distribution/tree-sitter-mermaid/src/scanner.c",
+        ):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {
+                    name for name, enabled in plan["owners"].items() if enabled
+                }
+                self.assertEqual(selected, {"grammar", "hygiene"})
+
+    def test_browser_tree_sitter_assets_select_the_web_owner(self) -> None:
+        for path in (
+            "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm",
+            "distribution/tree-sitter-mermaid/queries/portable/highlights.scm",
+        ):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {
+                    name for name, enabled in plan["owners"].items() if enabled
+                }
+                self.assertEqual(selected, {"grammar", "hygiene", "web"})
+
+    def test_tree_sitter_manifests_select_dependency_owners(self) -> None:
+        fixtures = {
+            "distribution/tree-sitter-mermaid/Cargo.toml": {
+                "grammar",
+                "hygiene",
+                "security",
+            },
+            "distribution/tree-sitter-mermaid/package-lock.json": {
+                "grammar",
+                "hygiene",
+                "npm",
+                "security",
+            },
+            "distribution/tree-sitter-mermaid/THIRD_PARTY_LICENSES/mermaid/LICENSE": {
+                "grammar",
+                "hygiene",
+                "security",
+            },
+        }
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {
+                    name for name, enabled in plan["owners"].items() if enabled
+                }
+                self.assertEqual(selected, expected)
+
+    def test_tree_sitter_legal_authority_selects_its_consumers(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(
+                b"M\0docs/release/THIRD_PARTY_COMPONENTS.json\0"
+            ),
+            base="a" * 40,
+            head="b" * 40,
+        )
+
+        selected = {name for name, enabled in plan["owners"].items() if enabled}
+        self.assertEqual(selected, {"grammar", "hygiene", "security"})
+
+    def test_unknown_grammar_path_fails_broad(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(b"M\0distribution/unowned-language/grammar.js\0"),
+            base="a" * 40,
+            head="b" * 40,
+        )
+
+        self.assertTrue(plan["fallback"])
+        self.assertEqual(plan["owners"], {name: True for name in OWNER_NAMES})
 
     def test_cross_owner_inputs_select_every_consumer(self) -> None:
         fixtures = {

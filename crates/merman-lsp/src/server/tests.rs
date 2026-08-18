@@ -16,7 +16,7 @@ use crate::structure::{
 use futures::StreamExt;
 use merman_analysis::AnalysisRuleConfig;
 use merman_core::EditorRenamePolicy;
-use merman_editor_core::{DocumentKind, semantic_token_descriptor};
+use merman_editor_core::DocumentKind;
 use tower::{Service, ServiceExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::jsonrpc::Request;
@@ -197,15 +197,12 @@ fn diagnostic_only_configuration() -> DidChangeConfigurationParams {
 }
 
 #[test]
-fn semantic_token_planner_failures_are_typed_internal_errors() {
-    let snapshot = snapshot_for_test(
-        Uri::from_str("file:///tmp/token-plan-error.mmd").unwrap(),
-        7,
-        "flowchart TD\nA --> B\n",
-    );
+fn semantic_token_projection_failures_are_typed_internal_errors() {
+    let uri = Uri::from_str("file:///tmp/token-plan-error.mmd").unwrap();
     let error = semantic_token_planning_error(
-        &snapshot,
-        merman_editor_core::TokenPlanError::PositionOverflow { value: usize::MAX },
+        &uri,
+        7,
+        crate::semantic_tokens::SemanticTokenError::PositionOverflow { value: usize::MAX },
     );
 
     assert_eq!(
@@ -217,25 +214,20 @@ fn semantic_token_planner_failures_are_typed_internal_errors() {
         error.data,
         Some(serde_json::json!({
             "code": "merman.lsp.semantic_token_planning_failed",
-            "detail": format!("token position {} exceeds the packed u32 contract", usize::MAX),
+            "detail": format!("token position {} exceeds the LSP u32 contract", usize::MAX),
         }))
     );
 }
 
 #[test]
 fn invalid_semantic_token_ranges_are_invalid_params() {
-    let snapshot = snapshot_for_test(
-        Uri::from_str("file:///tmp/token-range-error.mmd").unwrap(),
-        7,
-        "flowchart TD\nA --> B\n",
-    );
-    let range = merman_editor_core::Range::new(
-        merman_editor_core::Position::new(1, 4),
-        merman_editor_core::Position::new(1, 2),
-    );
+    let uri = Uri::from_str("file:///tmp/token-range-error.mmd").unwrap();
     let error = semantic_token_planning_error(
-        &snapshot,
-        merman_editor_core::TokenPlanError::ReversedRange { range },
+        &uri,
+        7,
+        crate::semantic_tokens::SemanticTokenError::InvalidRange(
+            "semantic token range start 1:4 is after end 1:2".to_owned(),
+        ),
     );
 
     assert_eq!(
@@ -586,14 +578,9 @@ fn capabilities_report_the_full_server_envelope() {
         capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
         CONFIG_SCHEMA_METHOD
     );
-    let descriptor = semantic_token_descriptor();
     assert_eq!(
         capabilities.experimental.as_ref().unwrap()["merman"]["editorLanguage"],
         serde_json::json!({
-            "schemaVersion": descriptor.schema_version,
-            "descriptorDigest": descriptor.digest,
-            "packedEncoding": descriptor.packed.encoding,
-            "wordsPerToken": descriptor.packed.words_per_token,
             "renamePolicies": EditorRenamePolicy::IDS,
         })
     );

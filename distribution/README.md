@@ -3,6 +3,8 @@
 This directory owns source inputs that are assembled into published packages or registry entries.
 
 - `typst/merman/` is the source package submitted to the Typst registry.
+- `tree-sitter-mermaid/` is the independently versioned source package for the Mermaid language
+  grammar, generated parsers, bindings, queries, and WASM language artifact.
 - `cli/registry-templates/` contains the Scoop and WinGet templates used by CLI release tooling.
 - `crates-io/receipt-schema-v1.json` defines the channel-local topological batch receipt emitted by
   the crates.io publisher.

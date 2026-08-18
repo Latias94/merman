@@ -1,6 +1,6 @@
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, LangiumLexemeTrace, parse_langium_common, parse_langium_string,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string,
     push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
 use crate::{
@@ -200,8 +200,6 @@ fn construct_packet_semantic_source_controlled(
     let mut common = LangiumCommonFacts::default();
     let mut blocks: Vec<PacketBlock> = Vec::new();
     let mut editor_facts = EditorSemanticFacts::new();
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
     let mut first_error = None;
 
     while offset < code.len() {
@@ -217,7 +215,6 @@ fn construct_packet_semantic_source_controlled(
                     )
                 });
             }
-            lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "packet");
             common.push(parsed.fact);
             offset += parsed.consumed;
@@ -234,7 +231,6 @@ fn construct_packet_semantic_source_controlled(
         }
 
         if let Some(block) = parse_packet_block_spanned(line, line_start) {
-            lexemes.extend(block.lexemes.clone());
             push_packet_block_editor_fact(&mut editor_facts, &block);
             blocks.push(block.semantic);
             continue;
@@ -279,7 +275,6 @@ fn construct_packet_semantic_source_controlled(
         }
     };
     let common = LangiumCommonDbFields::from_facts(&common);
-    lexemes.attach(code, &mut editor_facts);
 
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
@@ -563,10 +558,8 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
     let base = line_start + leading;
     let bytes = trimmed.as_bytes();
     let mut idx = 0usize;
-    let mut lexemes = LangiumLexemeTrace::default();
 
     let (start, end, bits, numeric_span) = if bytes.first() == Some(&b'+') {
-        lexemes.operator(SourceSpan::new(base, base + 1));
         idx = 1;
         while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
             idx += 1;
@@ -580,7 +573,6 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
         }
         let bits = parse_packet_integer(&trimmed[digits_start..idx])?;
         let bits_span = SourceSpan::new(base + digits_start, base + idx);
-        lexemes.number(bits_span);
         (None, None, Some(bits), bits_span)
     } else {
         let digits_start = idx;
@@ -592,17 +584,11 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
         }
         let start = parse_packet_integer(&trimmed[digits_start..idx])?;
         let start_span = SourceSpan::new(base + digits_start, base + idx);
-        lexemes.number(start_span);
         while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
             idx += 1;
         }
         if idx < bytes.len() && bytes[idx] == b'-' {
-            let operator_start = idx;
             idx += 1;
-            lexemes.operator(SourceSpan::new(
-                base + operator_start,
-                base + operator_start + 1,
-            ));
             while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
                 idx += 1;
             }
@@ -614,7 +600,6 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
                 return None;
             }
             let end = parse_packet_integer(&trimmed[end_digits_start..idx])?;
-            lexemes.number(SourceSpan::new(base + end_digits_start, base + idx));
             (
                 Some(start),
                 Some(end),
@@ -633,8 +618,6 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
     if !rest.starts_with(':') {
         return None;
     }
-    let colon_start = base + idx + ws1;
-    lexemes.delimiter(SourceSpan::new(colon_start, colon_start + 1));
     let after_colon_base = base + idx + ws1 + 1;
     rest = &rest[1..];
     let rest_trimmed = rest.trim_start();
@@ -645,7 +628,6 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
     if !tail.trim().is_empty() {
         return None;
     }
-    lexemes.string(label.raw_span);
 
     Some(PacketBlockSpanned {
         semantic: PacketBlock {
@@ -656,7 +638,6 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
             numeric_span,
         },
         label,
-        lexemes,
     })
 }
 
@@ -677,7 +658,6 @@ fn parse_quoted_string_spanned(
         SpannedText {
             text: parsed.value.clone(),
             span: parsed.value_span,
-            raw_span: parsed.raw_span,
         },
         parsed.value,
         tail,
@@ -708,7 +688,6 @@ fn keyword_boundary(rest: &str) -> bool {
 struct PacketBodyStart {
     offset: usize,
     header_line_end: usize,
-    header_span: SourceSpan,
 }
 
 fn packet_body_start_controlled(
@@ -737,7 +716,6 @@ fn packet_body_start_controlled(
         return Ok(Ok(Some(PacketBodyStart {
             offset: body_start,
             header_line_end: next_offset,
-            header_span: SourceSpan::new(offset + leading, body_start),
         })));
     }
     Ok(Ok(None))
@@ -772,14 +750,12 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
 struct SpannedText {
     text: String,
     span: SourceSpan,
-    raw_span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct PacketBlockSpanned {
     semantic: PacketBlock,
     label: SpannedText,
-    lexemes: LangiumLexemeTrace,
 }
 
 #[cfg(test)]

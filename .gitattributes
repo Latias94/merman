@@ -31,6 +31,16 @@ LICENSE-*      text eol=lf
 *.mjs     text eol=lf
 *.lock    text eol=lf
 
+# Tree-sitter generated language artifacts are reviewed through deterministic regeneration.
+distribution/tree-sitter-mermaid/**/*.scm text eol=lf
+distribution/tree-sitter-mermaid/**/*.c text eol=lf
+distribution/tree-sitter-mermaid/**/*.h text eol=lf
+distribution/tree-sitter-mermaid/src/grammar.json linguist-generated=true
+distribution/tree-sitter-mermaid/src/node-types.json linguist-generated=true
+distribution/tree-sitter-mermaid/src/parser.c linguist-generated=true
+distribution/tree-sitter-mermaid/src/tree_sitter/** linguist-generated=true
+distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm binary linguist-generated=true
+
 # Legal mirrors preserve upstream license bytes; do not flag their verbatim whitespace.
 THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 **/THIRD_PARTY_LICENSES/** text eol=lf -whitespace
@@ -39,6 +49,9 @@ THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 
 # ASCII/Unicode golden fixtures intentionally preserve trailing character cells.
 crates/merman-ascii/tests/testdata/mermaid-ascii/**/*.txt text eol=lf whitespace=-blank-at-eol
+
+# This corpus case exercises an indentation-only Mermaid source line.
+distribution/tree-sitter-mermaid/test/corpus/families/ishikawa.txt text eol=lf whitespace=-blank-at-eol
 
 # Pinned upstream source snapshots preserve Mermaid's original whitespace byte-for-byte.
 fixtures/_upstream/mermaid-11.16.0/sources/**/*.mmd text eol=lf -whitespace
@@ -52,6 +65,11 @@ fixtures/swimlane/_upstream_ddlt/**/*.mmd text eol=lf -whitespace
 # Generated CLI assets include extensionless and Elvish files.
 crates/merman-cli/assets/completions/** text eol=lf
 crates/merman-cli/assets/man/** text eol=lf
+
+# Hash-named fuzz seeds preserve arbitrary bytes, including invalid UTF-8 and trailing spaces.
+fuzz/seeds/mermaid/???????????????????????????????????????? binary
+fuzz/seeds/tree-sitter-edits/???????????????????????????????????????? binary
+fuzz/seeds/tree-sitter-scanner/???????????????????????????????????????? binary
 
 # Binary assets
 *.png binary

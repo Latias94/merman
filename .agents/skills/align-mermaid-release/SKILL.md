@@ -183,6 +183,15 @@ Implement each admitted delta through the family-owned path appropriate to its k
   resource enforcement, reference CLI and Playground integration, and source-backed layout parity.
 - **Removed or changed syntax**: parser recovery, diagnostics, editor lexemes, semantic tokens,
   completions, hover, symbols, rename/reference behavior, fixtures, and migration documentation.
+- **Independent Tree-sitter package**: keep `distribution/tree-sitter-mermaid` outside Merman's
+  semantic parser and production dependency closure. A repository Mermaid/ZenUML move records
+  intentional drift without rewriting the package's selected baseline. A deliberate package-
+  baseline move updates `metadata/provenance.json`, ports the affected family-local grammar from
+  the pinned sources, refreshes the standard Tree-sitter corpus, and runs Merman's strict-valid
+  fixture corpus as a one-way oracle. Tree-sitter results never become semantic input to Merman.
+  Review named-node, field, and canonical query changes as pre-1.0 API decisions, then regenerate
+  the ABI-15 native and language-WASM artifacts and exercise the published Rust, npm, C, and WASM
+  surfaces.
 
 When a changed syntax path uses a checked-in LALRPOP grammar, treat the `.lalrpop` source and its
 generated Rust parser as one atomic projection. Run `cargo run -p xtask -- gen-lalrpop-parsers`;
@@ -237,12 +246,25 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
+When the independent Tree-sitter baseline or package surface changes, also run its maintained
+package-owned gates:
+
+```bash
+npm run check:generated --prefix distribution/tree-sitter-mermaid
+npm run test:corpus --prefix distribution/tree-sitter-mermaid
+cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
+npm run check:wasm --prefix distribution/tree-sitter-mermaid
+npm run test:package-smoke --prefix distribution/tree-sitter-mermaid
+```
+
 The strict command owns release DOM comparisons in `structure`, `parity`, and `parity-root`, Web
 contract/build/smoke/prepack, Playground unit/lint/build/browser, and VS Code package gates. Run
 reference CLI, LSP, platform, and extension-host matrices whenever those surfaces changed. Run the
 WASM size matrix and target build matrix whenever dependency or feature ownership changed. Use
 `npm ls --all` in the Playground and reference CLI to prove that materialized companion graphs match
-the descriptor. Use `cargo nextest` for Rust tests.
+the descriptor. The Tree-sitter Rust suite owns its one-way fixture conformance, incremental,
+scanner, query, and adversarial checks; do not recreate those guarantees in an `xtask` verifier or
+a second package-local evidence engine. Use `cargo nextest` for Rust tests.
 
 Update the upgrade playbook, relevant ADRs and family/editor records, package surfaces, Playground
 design, generated status, and provenance. Report selected versus rejected companions, workflow

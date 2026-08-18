@@ -148,6 +148,24 @@ class ThirdPartyContractTests(unittest.TestCase):
         with self.assertRaisesRegex(verify.ContractError, "does not match repository lock"):
             verify.verify_repository(self.root)
 
+    def test_pinned_file_digest_drift_fails_closed(self) -> None:
+        component = self.fixture.contract["components"][0]
+        component["locks"] = [
+            {
+                "type": "pinned-file",
+                "path": "source.txt",
+                "sha256": hashlib.sha256(
+                    self.fixture.source_path.read_bytes()
+                ).hexdigest(),
+            }
+        ]
+        self.fixture.write_contract()
+        verify.verify_repository(self.root, write=True)
+
+        self.fixture.source_path.write_text("drifted\n", encoding="utf-8")
+        with self.assertRaisesRegex(verify.ContractError, "digest drifted"):
+            verify.verify_repository(self.root)
+
     def test_unregistered_license_file_fails_closed(self) -> None:
         extra = self.root / "THIRD_PARTY_LICENSES/extra.txt"
         extra.write_text("extra\n", encoding="utf-8")

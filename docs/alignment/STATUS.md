@@ -12,12 +12,12 @@ prose ownership boundary.
 | Dashboard | Active |
 | Upstream baseline | Mermaid `@11.16.1` |
 | Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
-| Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-11; exact gate state belongs to the revision that ran it |
+| Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-17; exact gate state belongs to the revision that ran it |
 | Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
 | Language catalog | All 35 built-in families are available independently of optional render backends |
-| Editor facts | All 35 built-in families emit parser-owned lexemes through one token planner; facts use schema `2` and diagnostics use schema `1` |
+| Editor facts | Strict facts use schema `2`, diagnostics use schema `1`, and all 35 families share one Tree-sitter grammar/query for tolerant syntax highlighting |
 | Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
 
 Admission describes available capability and required evidence. It does not certify that every

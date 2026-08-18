@@ -1,0 +1,164 @@
+==================
+constructors metadata comments and Unicode strings
+==================
+
+railroad-beta
+title Railroad grammar
+accTitle: Accessible railroad
+%% top-level comment
+root = sequence(
+  terminal("开始"),
+  optional(nonterminal('item')),
+  choice(terminal("a"), terminal("b")),
+  zeroOrMore(special("anything")),
+  oneOrMore(nonterminal("tail"))
+) ;
+/* between rules */
+tail = terminal("end") ;
+
+---
+
+(source_file
+  (railroad_diagram
+    (railroad_header
+      (diagram_keyword))
+    (railroad_body
+      (railroad_title_statement
+        (railroad_statement_keyword)
+        (railroad_line_text))
+      (railroad_acc_title_statement
+        (railroad_statement_keyword)
+        (railroad_line_text))
+      (comment)
+      (railroad_rule
+        (railroad_identifier)
+        (railroad_assignment_operator)
+        (railroad_expression
+          (railroad_sequence
+            (railroad_constructor_keyword)
+            (railroad_expression
+              (railroad_terminal
+                (railroad_constructor_keyword)
+                (railroad_string)))
+            (railroad_expression
+              (railroad_optional
+                (railroad_constructor_keyword)
+                (railroad_expression
+                  (railroad_reference
+                    (railroad_constructor_keyword)
+                    (railroad_string)))))
+            (railroad_expression
+              (railroad_choice
+                (railroad_constructor_keyword)
+                (railroad_expression
+                  (railroad_terminal
+                    (railroad_constructor_keyword)
+                    (railroad_string)))
+                (railroad_expression
+                  (railroad_terminal
+                    (railroad_constructor_keyword)
+                    (railroad_string)))))
+            (railroad_expression
+              (railroad_repetition
+                (railroad_constructor_keyword)
+                (railroad_expression
+                  (railroad_special
+                    (railroad_constructor_keyword)
+                    (railroad_string)))))
+            (railroad_expression
+              (railroad_repetition
+                (railroad_constructor_keyword)
+                (railroad_expression
+                  (railroad_reference
+                    (railroad_constructor_keyword)
+                    (railroad_string))))))))
+      (railroad_block_comment)
+      (railroad_rule
+        (railroad_identifier)
+        (railroad_assignment_operator)
+        (railroad_expression
+          (railroad_terminal
+            (railroad_constructor_keyword)
+            (railroad_string)))))))
+
+==================
+header only remains structured
+==================
+
+railroad-beta
+
+---
+
+(source_file
+  (railroad_diagram
+    (railroad_header
+      (diagram_keyword))
+    (railroad_body)))
+
+==================
+comments may separate nested arguments
+==================
+
+railroad-beta
+rule = sequence(terminal("a"),
+  /* nested */
+  nonterminal("b") %% another comment
+) ;
+
+---
+
+(source_file
+  (railroad_diagram
+    (railroad_header
+      (diagram_keyword))
+    (railroad_body
+      (railroad_rule
+        (railroad_identifier)
+        (railroad_assignment_operator)
+        (railroad_expression
+          (railroad_sequence
+            (railroad_constructor_keyword)
+            (railroad_expression
+              (railroad_terminal
+                (railroad_constructor_keyword)
+                (railroad_string)))
+            (railroad_block_comment)
+            (railroad_expression
+              (railroad_reference
+                (railroad_constructor_keyword)
+                (railroad_string)))
+            (comment)))))))
+
+==================
+missing definition is a local recovered rule
+==================
+
+railroad-beta
+before = terminal("a") ;
+broken = ;
+after = terminal("b") ;
+
+---
+
+(source_file
+  (railroad_diagram
+    (railroad_header
+      (diagram_keyword))
+    (railroad_body
+      (railroad_rule
+        (railroad_identifier)
+        (railroad_assignment_operator)
+        (railroad_expression
+          (railroad_terminal
+            (railroad_constructor_keyword)
+            (railroad_string))))
+      (railroad_incomplete_rule
+        (railroad_identifier)
+        (railroad_assignment_operator))
+      (railroad_rule
+        (railroad_identifier)
+        (railroad_assignment_operator)
+        (railroad_expression
+          (railroad_terminal
+            (railroad_constructor_keyword)
+            (railroad_string)))))))

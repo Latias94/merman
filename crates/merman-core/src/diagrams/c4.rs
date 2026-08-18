@@ -1,10 +1,9 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
-    editor::EditorLexemeJournal,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, MermaidConfig, OperationControl, OperationControlResult,
+    ParseMetadata, Result, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -525,108 +524,6 @@ fn is_c4_header(line: &str) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum C4MacroKind {
-    PersonOrSystem,
-    ContainerOrComponent,
-    Boundary,
-    DeploymentNode,
-    Relation,
-    IndexedRelation,
-    ElementStyle,
-    RelationStyle,
-    LayoutConfig,
-}
-
-fn c4_macro_kind(name: &str) -> Option<C4MacroKind> {
-    match name {
-        "Person" | "Person_Ext" | "System" | "SystemDb" | "SystemQueue" | "System_Ext"
-        | "SystemDb_Ext" | "SystemQueue_Ext" => Some(C4MacroKind::PersonOrSystem),
-        "Container" | "ContainerDb" | "ContainerQueue" | "Container_Ext" | "ContainerDb_Ext"
-        | "ContainerQueue_Ext" | "Component" | "ComponentDb" | "ComponentQueue"
-        | "Component_Ext" | "ComponentDb_Ext" | "ComponentQueue_Ext" => {
-            Some(C4MacroKind::ContainerOrComponent)
-        }
-        "Boundary" | "Enterprise_Boundary" | "System_Boundary" | "Container_Boundary" => {
-            Some(C4MacroKind::Boundary)
-        }
-        "Node" | "Deployment_Node" | "Node_L" | "Node_R" => Some(C4MacroKind::DeploymentNode),
-        "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
-        | "Rel_R" | "Rel_Right" | "Rel_Back" => Some(C4MacroKind::Relation),
-        "RelIndex" => Some(C4MacroKind::IndexedRelation),
-        "UpdateElementStyle" => Some(C4MacroKind::ElementStyle),
-        "UpdateRelStyle" => Some(C4MacroKind::RelationStyle),
-        "UpdateLayoutConfig" => Some(C4MacroKind::LayoutConfig),
-        _ => None,
-    }
-}
-
-fn push_c4_lexeme(lexemes: &mut EditorLexemeJournal<'_>, kind: EditorLexemeKind, span: SourceSpan) {
-    push_c4_lexeme_with_modifiers(lexemes, kind, EditorLexemeModifiers::NONE, span);
-}
-
-fn push_c4_lexeme_with_modifiers(
-    lexemes: &mut EditorLexemeJournal<'_>,
-    kind: EditorLexemeKind,
-    modifiers: EditorLexemeModifiers,
-    span: SourceSpan,
-) {
-    if span.start < span.end {
-        lexemes.push(kind, modifiers, span);
-    }
-}
-
-fn c4_argument_lexeme(
-    macro_kind: Option<C4MacroKind>,
-    index: usize,
-    key: Option<&str>,
-) -> (EditorLexemeKind, EditorLexemeModifiers) {
-    let definition = EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Definition);
-    let reference = EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Reference);
-    match (macro_kind, index) {
-        (
-            Some(
-                C4MacroKind::PersonOrSystem
-                | C4MacroKind::ContainerOrComponent
-                | C4MacroKind::Boundary
-                | C4MacroKind::DeploymentNode,
-            ),
-            0,
-        ) => return (EditorLexemeKind::Identifier, definition),
-        (Some(C4MacroKind::Relation), 0 | 1)
-        | (Some(C4MacroKind::IndexedRelation), 1 | 2)
-        | (Some(C4MacroKind::ElementStyle), 0)
-        | (Some(C4MacroKind::RelationStyle), 0 | 1) => {
-            return (EditorLexemeKind::Identifier, reference);
-        }
-        _ => {}
-    }
-
-    let kind = match key {
-        Some("bgColor" | "borderColor" | "fontColor" | "lineColor" | "textColor") => {
-            EditorLexemeKind::Color
-        }
-        Some("offsetX" | "offsetY" | "c4ShapeInRow" | "c4BoundaryInRow") => {
-            EditorLexemeKind::Number
-        }
-        Some("shadowing") => EditorLexemeKind::Boolean,
-        Some("shape" | "sprite" | "legendSprite") => EditorLexemeKind::Style,
-        Some(_) => EditorLexemeKind::String,
-        None => match (macro_kind, index) {
-            (Some(C4MacroKind::IndexedRelation), 0)
-            | (Some(C4MacroKind::RelationStyle), 4 | 5)
-            | (Some(C4MacroKind::LayoutConfig), _) => EditorLexemeKind::Number,
-            (Some(C4MacroKind::ElementStyle), 1..=3)
-            | (Some(C4MacroKind::RelationStyle), 2 | 3) => EditorLexemeKind::Color,
-            (Some(C4MacroKind::ElementStyle), 4) => EditorLexemeKind::Boolean,
-            (Some(C4MacroKind::ElementStyle), 5 | 6 | 9) => EditorLexemeKind::Style,
-            (Some(_), _) => EditorLexemeKind::String,
-            (None, _) => EditorLexemeKind::Literal,
-        },
-    };
-    (kind, EditorLexemeModifiers::NONE)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum C4EntityOccurrence {
     Definition,
     Reference,
@@ -712,11 +609,7 @@ fn push_c4_entity_arg(
     push_c4_entity_fact(facts, &value, detail.to_string(), occurrence);
 }
 
-fn parse_title_spanned_c4(
-    line: &str,
-    line_start: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Option<SpannedText> {
+fn parse_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
     let trimmed = line.trim_start();
     let rest = trimmed.strip_prefix("title")?;
     let ws = rest.chars().next()?;
@@ -726,20 +619,10 @@ fn parse_title_spanned_c4(
     let keyword_start = line_start + line.len() - trimmed.len();
     let rest_start = keyword_start + "title".len();
     let value = spanned_trimmed_c4(rest, rest_start);
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Keyword,
-        SourceSpan::new(keyword_start, rest_start),
-    );
-    push_c4_lexeme(lexemes, EditorLexemeKind::String, value.span);
     Some(value)
 }
 
-fn parse_acc_title_spanned_c4(
-    line: &str,
-    line_start: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Option<SpannedText> {
+fn parse_acc_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
     let trimmed = line.trim_start();
     let after_keyword = trimmed.strip_prefix("accTitle")?;
     let whitespace = leading_whitespace_len(after_keyword);
@@ -748,25 +631,10 @@ fn parse_acc_title_spanned_c4(
     let keyword_end = keyword_start + "accTitle".len();
     let colon = keyword_end + whitespace;
     let value = spanned_trimmed_c4(rest, colon + 1);
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Keyword,
-        SourceSpan::new(keyword_start, keyword_end),
-    );
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(colon, colon + 1),
-    );
-    push_c4_lexeme(lexemes, EditorLexemeKind::String, value.span);
     Some(value)
 }
 
-fn parse_acc_description_stmt_spanned_c4(
-    line: &str,
-    line_start: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Option<SpannedText> {
+fn parse_acc_description_stmt_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
     let trimmed = line.trim_start();
     let rest = trimmed.strip_prefix("accDescription")?;
     let ws = rest.chars().next()?;
@@ -776,12 +644,6 @@ fn parse_acc_description_stmt_spanned_c4(
     let keyword_start = line_start + line.len() - trimmed.len();
     let rest_start = keyword_start + "accDescription".len();
     let value = spanned_trimmed_c4(rest, rest_start);
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Keyword,
-        SourceSpan::new(keyword_start, rest_start),
-    );
-    push_c4_lexeme(lexemes, EditorLexemeKind::String, value.span);
     Some(value)
 }
 
@@ -803,7 +665,6 @@ fn parse_acc_descr_spanned_c4(
     lines: &mut LineCursor<'_>,
     line: &str,
     line_start: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
     control: &OperationControl,
 ) -> OperationControlResult<Option<SpannedAccDescr>> {
     control.checkpoint()?;
@@ -818,17 +679,6 @@ fn parse_acc_descr_spanned_c4(
     let rest_start = keyword_end + whitespace;
     if let Some(after) = rest.strip_prefix(':') {
         let value = spanned_trimmed_c4(after, rest_start + 1);
-        push_c4_lexeme(
-            lexemes,
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(keyword_start, keyword_end),
-        );
-        push_c4_lexeme(
-            lexemes,
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(rest_start, rest_start + 1),
-        );
-        push_c4_lexeme(lexemes, EditorLexemeKind::String, value.span);
         return Ok(Some(SpannedAccDescr {
             value,
             closed: true,
@@ -839,24 +689,8 @@ fn parse_acc_descr_spanned_c4(
         return Ok(None);
     };
     let content_start = rest_start + 1;
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Keyword,
-        SourceSpan::new(keyword_start, keyword_end),
-    );
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(rest_start, rest_start + 1),
-    );
     if let Some(end) = rest.find('}') {
         let value = spanned_trimmed_c4(&rest[..end], content_start);
-        push_c4_lexeme(lexemes, EditorLexemeKind::String, value.span);
-        push_c4_lexeme(
-            lexemes,
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(content_start + end, content_start + end + 1),
-        );
         lines.resume_same_line_at(content_start + end + 1);
         return Ok(Some(SpannedAccDescr {
             value,
@@ -870,7 +704,6 @@ fn parse_acc_descr_spanned_c4(
 
     let first = spanned_trimmed_c4(rest, content_start);
     if !first.text.is_empty() {
-        push_c4_lexeme(lexemes, EditorLexemeKind::String, first.span);
         parts.push(first.text);
         span_start = Some(first.span.start);
         span_end = Some(first.span.end);
@@ -882,16 +715,10 @@ fn parse_acc_descr_spanned_c4(
         if let Some(close_pos) = next_line.find('}') {
             let before = spanned_trimmed_c4(&next_line[..close_pos], segment_start);
             if !before.text.is_empty() {
-                push_c4_lexeme(lexemes, EditorLexemeKind::String, before.span);
                 parts.push(before.text);
                 span_start.get_or_insert(before.span.start);
                 span_end = Some(before.span.end);
             }
-            push_c4_lexeme(
-                lexemes,
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(segment_start + close_pos, segment_start + close_pos + 1),
-            );
             lines.resume_same_line_at(segment_start + close_pos + 1);
             closed = true;
             break;
@@ -901,7 +728,6 @@ fn parse_acc_descr_spanned_c4(
         if text.text.is_empty() {
             continue;
         }
-        push_c4_lexeme(lexemes, EditorLexemeKind::String, text.span);
         parts.push(text.text);
         span_start.get_or_insert(text.span.start);
         span_end = Some(text.span.end);
@@ -922,7 +748,6 @@ fn parse_direction_stmt_facts_c4(
     line: &str,
     line_start: usize,
     facts: &mut EditorSemanticFacts,
-    lexemes: &mut EditorLexemeJournal<'_>,
 ) -> Option<bool> {
     let trimmed = line.trim_start();
     let rest = trimmed.strip_prefix("direction")?;
@@ -932,11 +757,6 @@ fn parse_direction_stmt_facts_c4(
 
     let keyword_start = line_start + line.len() - trimmed.len();
     let keyword_end = keyword_start + "direction".len();
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Keyword,
-        SourceSpan::new(keyword_start, keyword_end),
-    );
     let whitespace = leading_whitespace_len(rest);
     let value = &rest[whitespace..];
     if value.is_empty() {
@@ -954,7 +774,6 @@ fn parse_direction_stmt_facts_c4(
         EditorExpectedSyntaxKind::CardinalDirectionValue,
         value_span,
     ));
-    push_c4_lexeme(lexemes, EditorLexemeKind::Literal, value_span);
     Some(matches!(token, "TB" | "BT" | "LR" | "RL"))
 }
 
@@ -1265,11 +1084,7 @@ fn c4_shape_detail(name: &str) -> &'static str {
     }
 }
 
-fn parse_macro_stmt_spanned(
-    t: &str,
-    stmt_start: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Result<Option<SpannedMacroStmt>> {
+fn parse_macro_stmt_spanned(t: &str, stmt_start: usize) -> Result<Option<SpannedMacroStmt>> {
     let t = t.trim_end();
     let Some(paren) = t.find('(') else {
         return Ok(None);
@@ -1279,26 +1094,9 @@ fn parse_macro_stmt_spanned(
         return Ok(None);
     }
 
-    let macro_kind = c4_macro_kind(&name);
-    push_c4_lexeme(
-        lexemes,
-        if macro_kind.is_some() {
-            EditorLexemeKind::Keyword
-        } else {
-            EditorLexemeKind::Literal
-        },
-        SourceSpan::new(stmt_start, stmt_start + name.len()),
-    );
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(stmt_start + paren, stmt_start + paren + 1),
-    );
-
     let after = &t[paren + 1..];
     let args_start = stmt_start + paren + 1;
     let Some(end_paren) = find_c4_closing_paren(after) else {
-        let _ = parse_args_csv_spanned(after, args_start, macro_kind, lexemes);
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
             format!("unterminated macro call: {t}"),
@@ -1306,38 +1104,22 @@ fn parse_macro_stmt_spanned(
     };
 
     let args_raw = &after[..end_paren];
-    let closing_paren = args_start + end_paren;
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(closing_paren, closing_paren + 1),
-    );
-    let parsed_args = parse_args_csv_spanned(args_raw, args_start, macro_kind, lexemes);
+    let parsed_args = parse_args_csv_spanned(args_raw, args_start);
 
     let trailing_raw = &after[end_paren + 1..];
     let trailing_whitespace = leading_whitespace_len(trailing_raw);
     let rest = &trailing_raw[trailing_whitespace..];
-    let rest_start = closing_paren + 1 + trailing_whitespace;
     let mut has_lbrace = false;
     if let Some(after) = rest.strip_prefix('{') {
-        push_c4_lexeme(
-            lexemes,
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(rest_start, rest_start + 1),
-        );
         if after.trim().is_empty() {
             has_lbrace = true;
         } else {
-            let trailing = spanned_trimmed_c4(after, rest_start + 1);
-            push_c4_lexeme(lexemes, EditorLexemeKind::Literal, trailing.span);
             return Err(Error::diagram_parse_fallback(
                 "c4".to_string(),
                 format!("unexpected tokens after '{{' in macro: {t}"),
             ));
         }
     } else if !rest.is_empty() {
-        let trailing = spanned_trimmed_c4(rest, rest_start);
-        push_c4_lexeme(lexemes, EditorLexemeKind::Literal, trailing.span);
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
             format!("unexpected trailing tokens in macro: {t}"),
@@ -1369,12 +1151,7 @@ fn find_c4_closing_paren(input: &str) -> Option<usize> {
     None
 }
 
-fn parse_args_csv_spanned(
-    input: &str,
-    base_offset: usize,
-    macro_kind: Option<C4MacroKind>,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Result<Vec<SpannedArg>> {
+fn parse_args_csv_spanned(input: &str, base_offset: usize) -> Result<Vec<SpannedArg>> {
     let mut out = Vec::new();
     let mut cur = input;
     let mut cursor = base_offset;
@@ -1383,34 +1160,17 @@ fn parse_args_csv_spanned(
             break;
         }
         let (seg, comma) = split_next_arg(cur);
-        out.push(parse_arg_spanned(
-            seg,
-            cursor,
-            macro_kind,
-            out.len(),
-            lexemes,
-        )?);
+        out.push(parse_arg_spanned(seg, cursor)?);
         let Some((comma_offset, rest)) = comma else {
             break;
         };
-        push_c4_lexeme(
-            lexemes,
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(cursor + comma_offset, cursor + comma_offset + 1),
-        );
         cursor += comma_offset + 1;
         cur = rest;
     }
     Ok(out)
 }
 
-fn parse_arg_spanned(
-    seg: &str,
-    seg_base: usize,
-    macro_kind: Option<C4MacroKind>,
-    index: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Result<SpannedArg> {
+fn parse_arg_spanned(seg: &str, seg_base: usize) -> Result<SpannedArg> {
     let trimmed_start = seg
         .char_indices()
         .find(|(_, ch)| !ch.is_whitespace())
@@ -1434,25 +1194,15 @@ fn parse_arg_spanned(
         });
     }
 
-    if let Some(value) = try_parse_kv_spanned(trimmed, value_base, macro_kind, index, lexemes)? {
+    if let Some(value) = try_parse_kv_spanned(trimmed, value_base)? {
         return Ok(value);
     }
 
-    let (kind, modifiers) = c4_argument_lexeme(macro_kind, index, None);
     if trimmed.starts_with('"') {
         return Ok(SpannedArg {
-            value: SpannedArgValue::Text(parse_quoted_spanned(
-                trimmed, value_base, kind, modifiers, lexemes,
-            )?),
+            value: SpannedArgValue::Text(parse_quoted_spanned(trimmed, value_base)?),
         });
     }
-
-    push_c4_lexeme_with_modifiers(
-        lexemes,
-        kind,
-        modifiers,
-        SourceSpan::new(value_base, value_base + trimmed.len()),
-    );
 
     Ok(SpannedArg {
         value: SpannedArgValue::Text(SpannedText {
@@ -1462,25 +1212,12 @@ fn parse_arg_spanned(
     })
 }
 
-fn try_parse_kv_spanned(
-    seg: &str,
-    seg_base: usize,
-    macro_kind: Option<C4MacroKind>,
-    index: usize,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Result<Option<SpannedArg>> {
+fn try_parse_kv_spanned(seg: &str, seg_base: usize) -> Result<Option<SpannedArg>> {
     if !seg.starts_with('$') {
         return Ok(None);
     }
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Operator,
-        SourceSpan::new(seg_base, seg_base + 1),
-    );
     let rest = &seg[1..];
     let Some(eq) = rest.find('=') else {
-        let key = spanned_trimmed_c4(rest, seg_base + 1);
-        push_c4_lexeme(lexemes, EditorLexemeKind::Style, key.span);
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
             format!("invalid attribute kv: {seg}"),
@@ -1488,7 +1225,6 @@ fn try_parse_kv_spanned(
     };
     let key_source = spanned_trimmed_c4(&rest[..eq], seg_base + 1);
     let key = key_source.text.as_str();
-    push_c4_lexeme(lexemes, EditorLexemeKind::Style, key_source.span);
     if key.is_empty() {
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
@@ -1496,11 +1232,6 @@ fn try_parse_kv_spanned(
         ));
     }
     let equals = seg_base + 1 + eq;
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Operator,
-        SourceSpan::new(equals, equals + 1),
-    );
 
     let val_raw = rest[eq + 1..].trim_start();
     let leading_ws = rest[eq + 1..]
@@ -1508,8 +1239,7 @@ fn try_parse_kv_spanned(
         .find(|(_, ch)| !ch.is_whitespace())
         .map(|(idx, _)| idx)
         .unwrap_or(rest[eq + 1..].len());
-    let (kind, modifiers) = c4_argument_lexeme(macro_kind, index, Some(key));
-    let value = parse_quoted_spanned(val_raw, equals + 1 + leading_ws, kind, modifiers, lexemes)?;
+    let value = parse_quoted_spanned(val_raw, equals + 1 + leading_ws)?;
     Ok(Some(SpannedArg {
         value: SpannedArgValue::Named(SpannedNamedArg {
             key: key.to_string(),
@@ -1518,37 +1248,15 @@ fn try_parse_kv_spanned(
     }))
 }
 
-fn parse_quoted_spanned(
-    input: &str,
-    input_base: usize,
-    kind: EditorLexemeKind,
-    modifiers: EditorLexemeModifiers,
-    lexemes: &mut EditorLexemeJournal<'_>,
-) -> Result<SpannedText> {
+fn parse_quoted_spanned(input: &str, input_base: usize) -> Result<SpannedText> {
     let input = input.trim();
     let Some(rest) = input.strip_prefix('"') else {
-        push_c4_lexeme(
-            lexemes,
-            EditorLexemeKind::Literal,
-            SourceSpan::new(input_base, input_base + input.len()),
-        );
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
             format!("expected quoted string, got: {input}"),
         ));
     };
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(input_base, input_base + 1),
-    );
     let Some(end) = rest.find('"') else {
-        push_c4_lexeme_with_modifiers(
-            lexemes,
-            kind,
-            modifiers,
-            SourceSpan::new(input_base + 1, input_base + 1 + rest.len()),
-        );
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
             "unterminated string".to_string(),
@@ -1556,17 +1264,10 @@ fn parse_quoted_spanned(
     };
     let value = &rest[..end];
     let value_span = SourceSpan::new(input_base + 1, input_base + 1 + value.len());
-    push_c4_lexeme_with_modifiers(lexemes, kind, modifiers, value_span);
     let closing_quote = value_span.end;
-    push_c4_lexeme(
-        lexemes,
-        EditorLexemeKind::Delimiter,
-        SourceSpan::new(closing_quote, closing_quote + 1),
-    );
     let trailing_raw = &rest[end + 1..];
     let trailing = spanned_trimmed_c4(trailing_raw, closing_quote + 1);
     if !trailing.text.is_empty() {
-        push_c4_lexeme(lexemes, EditorLexemeKind::Literal, trailing.span);
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
             format!("unexpected trailing tokens after string: {}", trailing.text),
@@ -2172,19 +1873,12 @@ fn construct_c4_semantic_source_controlled(
     #[cfg(test)]
     C4_SYNTAX_CONSTRUCTION_COUNT.set(C4_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let mut lexemes = EditorLexemeJournal::family_parser(code);
-    let mut outcome = parse_c4_semantic_source(code, meta, &mut lexemes, control)?;
-    outcome
-        .source
-        .editor_facts
-        .replace_family_lexemes(lexemes.finish());
-    Ok(outcome)
+    parse_c4_semantic_source(code, meta, control)
 }
 
 fn parse_c4_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-    lexemes: &mut EditorLexemeJournal<'_>,
     control: &OperationControl,
 ) -> OperationControlResult<C4ParseOutcome> {
     control.checkpoint()?;
@@ -2209,10 +1903,8 @@ fn parse_c4_semantic_source(
         let start = line_start + line.len() - line.trim_start().len();
         let span = SourceSpan::new(start, start + header.len());
         if is_c4_header(header) {
-            push_c4_lexeme(lexemes, EditorLexemeKind::Keyword, span);
             db.set_c4_type(header, &meta.effective_config);
         } else {
-            push_c4_lexeme(lexemes, EditorLexemeKind::Literal, span);
             issues.push(c4_parse_issue(
                 Error::diagram_parse_exact(
                     meta.diagram_type.clone(),
@@ -2248,11 +1940,6 @@ fn parse_c4_semantic_source(
         let statement_start = line_start + raw.len() - raw.trim_start().len();
         if let Some(declaration) = pending_boundary.take() {
             if t == "{" {
-                push_c4_lexeme(
-                    lexemes,
-                    EditorLexemeKind::Delimiter,
-                    SourceSpan::new(statement_start, statement_start + 1),
-                );
                 boundary_frames.push(C4BoundaryFrame::new(declaration));
                 continue;
             }
@@ -2268,7 +1955,6 @@ fn parse_c4_semantic_source(
 
         if t == "}" {
             let closing_span = SourceSpan::new(statement_start, statement_start + 1);
-            push_c4_lexeme(lexemes, EditorLexemeKind::Delimiter, closing_span);
             let Some(frame) = boundary_frames.pop() else {
                 issues.push(c4_parse_issue(
                     Error::diagram_parse_exact(
@@ -2306,7 +1992,7 @@ fn parse_c4_semantic_source(
             continue;
         }
 
-        if let Some(title) = parse_title_spanned_c4(raw, line_start, lexemes) {
+        if let Some(title) = parse_title_spanned_c4(raw, line_start) {
             if c4_other_statement_is_allowed(&mut boundary_frames, &mut issues, meta, title.span) {
                 push_c4_semantic_statement(
                     &mut semantic_statements,
@@ -2320,7 +2006,7 @@ fn parse_c4_semantic_source(
             continue;
         }
 
-        if let Some(acc_title) = parse_acc_title_spanned_c4(raw, line_start, lexemes) {
+        if let Some(acc_title) = parse_acc_title_spanned_c4(raw, line_start) {
             // Mermaid's C4 grammar maps accTitle to the diagram title.
             if c4_other_statement_is_allowed(
                 &mut boundary_frames,
@@ -2340,9 +2026,7 @@ fn parse_c4_semantic_source(
             continue;
         }
 
-        if let Some(acc_description) =
-            parse_acc_description_stmt_spanned_c4(raw, line_start, lexemes)
-        {
+        if let Some(acc_description) = parse_acc_description_stmt_spanned_c4(raw, line_start) {
             if c4_other_statement_is_allowed(
                 &mut boundary_frames,
                 &mut issues,
@@ -2365,9 +2049,7 @@ fn parse_c4_semantic_source(
             continue;
         }
 
-        if let Some(acc_descr) =
-            parse_acc_descr_spanned_c4(&mut lines, raw, line_start, lexemes, control)?
-        {
+        if let Some(acc_descr) = parse_acc_descr_spanned_c4(&mut lines, raw, line_start, control)? {
             if c4_other_statement_is_allowed(
                 &mut boundary_frames,
                 &mut issues,
@@ -2400,9 +2082,7 @@ fn parse_c4_semantic_source(
 
         let stmt_start = statement_start;
         let statement_span = SourceSpan::new(stmt_start, stmt_start + t.len());
-        if let Some(_valid) =
-            parse_direction_stmt_facts_c4(raw, line_start, &mut editor_facts, lexemes)
-        {
+        if let Some(_valid) = parse_direction_stmt_facts_c4(raw, line_start, &mut editor_facts) {
             issues.push(c4_parse_issue(
                 Error::diagram_parse_exact(
                     meta.diagram_type.clone(),
@@ -2413,10 +2093,9 @@ fn parse_c4_semantic_source(
             ));
             continue;
         }
-        let stmt = match parse_macro_stmt_spanned(t, stmt_start, lexemes) {
+        let stmt = match parse_macro_stmt_spanned(t, stmt_start) {
             Ok(Some(stmt)) => stmt,
             Ok(None) => {
-                push_c4_lexeme(lexemes, EditorLexemeKind::Literal, statement_span);
                 issues.push(c4_parse_issue(
                     Error::diagram_parse_exact(
                         meta.diagram_type.clone(),
@@ -2734,7 +2413,6 @@ fn split_next_arg(input: &str) -> (&str, Option<(usize, &str)>) {
 mod tests {
     use super::*;
     use crate::{
-        EditorLexemeKind, EditorLexemeModifier, EditorLexemeProducerKind,
         EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig,
         ParseDiagnosticSpanKind, ParseMetadata, ParseOptions, RenderSemanticModel,
     };
@@ -2775,25 +2453,6 @@ mod tests {
             effective_config: MermaidConfig::empty_object(),
             title: None,
         }
-    }
-
-    fn assert_c4_lexeme(
-        facts: &EditorSemanticFacts,
-        source: &str,
-        kind: EditorLexemeKind,
-        span: SourceSpan,
-        modifier: Option<EditorLexemeModifier>,
-    ) {
-        assert!(
-            facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == span
-                    && modifier.is_none_or(|modifier| lexeme.modifiers().contains(modifier))
-            }),
-            "missing {kind:?} lexeme for {:?} at {span:?}: {:?}",
-            source.get(span.start..span.end),
-            facts.lexemes()
-        );
     }
 
     #[test]
@@ -3536,22 +3195,11 @@ Person(after, "After")
             &meta(),
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        let direction = source.find("direction").unwrap();
-        assert_c4_lexeme(
-            &facts,
-            source,
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(direction, direction + "direction".len()),
-            None,
-        );
         let lr = source.find("LR").unwrap();
-        assert_c4_lexeme(
-            &facts,
-            source,
-            EditorLexemeKind::Literal,
-            SourceSpan::new(lr, lr + "LR".len()),
-            None,
-        );
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::CardinalDirectionValue
+                && expected.span == SourceSpan::new(lr, lr + "LR".len())
+        }));
     }
 
     #[test]
@@ -4135,167 +3783,7 @@ UpdateRelStyle(customer, system, $lineColor="blue")
     }
 
     #[test]
-    fn c4_parser_lexemes_cover_every_header_variant() {
-        for header in [
-            "C4Context",
-            "C4Container",
-            "C4Component",
-            "C4Dynamic",
-            "C4Deployment",
-        ] {
-            let source = format!("{header}\r\nPerson(p, \"P\")\r\n");
-            let facts = crate::family::test_support::editor_facts(
-                parse_c4_json_and_editor_facts,
-                &source,
-                &meta(),
-            );
-            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-            assert_eq!(facts.lexeme_failure(), None);
-            assert_c4_lexeme(
-                &facts,
-                &source,
-                EditorLexemeKind::Keyword,
-                SourceSpan::new(0, header.len()),
-                None,
-            );
-            assert!(facts.lexemes().iter().all(|lexeme| {
-                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
-            }));
-        }
-    }
-
-    #[test]
-    fn c4_parser_lexemes_are_source_exact_for_crlf_unicode_and_real_macros() {
-        let source = concat!(
-            "C4Deployment\r\n",
-            "title 系统部署\r\n",
-            "accTitle: 可访问标题\r\n",
-            "accDescription 简短说明\r\n",
-            "accDescr {\r\n",
-            "  多行说明\r\n",
-            "}\r\n",
-            "Node(root, \"根节点\", \"EC2\", \"描述\") {\r\n",
-            "  Person(用户, \"客户\", \"使用系统\")\r\n",
-            "}\r\n",
-            "RelIndex(12, 用户, root, \"调用\", \"HTTPS\")\r\n",
-            "UpdateElementStyle(root, $bgColor=\"#ffaa00\", $shadowing=\"true\", $shape=\"rounded\")\r\n",
-            "UpdateRelStyle(用户, root, $lineColor=\"blue\", $offsetX=\"12\")\r\n",
-            "UpdateLayoutConfig($c4ShapeInRow=\"3\", 2)\r\n",
-        );
-        parse_c4(source, &meta()).expect("rich C4 syntax must remain renderable");
-        let facts = crate::family::test_support::editor_facts(
-            parse_c4_json_and_editor_facts,
-            source,
-            &meta(),
-        );
-
-        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-        assert_eq!(facts.lexeme_failure(), None);
-        for (kind, token) in [
-            (EditorLexemeKind::Keyword, "C4Deployment"),
-            (EditorLexemeKind::Keyword, "title"),
-            (EditorLexemeKind::String, "系统部署"),
-            (EditorLexemeKind::Keyword, "accTitle"),
-            (EditorLexemeKind::String, "可访问标题"),
-            (EditorLexemeKind::Keyword, "accDescription"),
-            (EditorLexemeKind::String, "简短说明"),
-            (EditorLexemeKind::String, "多行说明"),
-            (EditorLexemeKind::Keyword, "Node"),
-            (EditorLexemeKind::String, "根节点"),
-            (EditorLexemeKind::Keyword, "Person"),
-            (EditorLexemeKind::Keyword, "RelIndex"),
-            (EditorLexemeKind::Number, "12"),
-            (EditorLexemeKind::Keyword, "UpdateElementStyle"),
-            (EditorLexemeKind::Style, "bgColor"),
-            (EditorLexemeKind::Color, "#ffaa00"),
-            (EditorLexemeKind::Boolean, "true"),
-            (EditorLexemeKind::Style, "rounded"),
-            (EditorLexemeKind::Keyword, "UpdateRelStyle"),
-            (EditorLexemeKind::Color, "blue"),
-            (EditorLexemeKind::Keyword, "UpdateLayoutConfig"),
-            (EditorLexemeKind::Number, "3"),
-        ] {
-            let start = source.find(token).expect("fixture token");
-            assert_c4_lexeme(
-                &facts,
-                source,
-                kind,
-                SourceSpan::new(start, start + token.len()),
-                None,
-            );
-        }
-
-        let acc_descr = source.find("accDescr {").expect("accDescr block");
-        assert_c4_lexeme(
-            &facts,
-            source,
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(acc_descr, acc_descr + "accDescr".len()),
-            None,
-        );
-
-        let root = source.find("root").unwrap();
-        assert_c4_lexeme(
-            &facts,
-            source,
-            EditorLexemeKind::Identifier,
-            SourceSpan::new(root, root + "root".len()),
-            Some(EditorLexemeModifier::Definition),
-        );
-        let user = source.find("用户").unwrap();
-        assert_c4_lexeme(
-            &facts,
-            source,
-            EditorLexemeKind::Identifier,
-            SourceSpan::new(user, user + "用户".len()),
-            Some(EditorLexemeModifier::Definition),
-        );
-        let relation_user = source.find("RelIndex(12, 用户").unwrap() + "RelIndex(12, ".len();
-        assert_c4_lexeme(
-            &facts,
-            source,
-            EditorLexemeKind::Identifier,
-            SourceSpan::new(relation_user, relation_user + "用户".len()),
-            Some(EditorLexemeModifier::Reference),
-        );
-
-        for token in ["(", ",", "\"", "{", "}", ":"] {
-            let start = source.find(token).expect("delimiter token");
-            assert_c4_lexeme(
-                &facts,
-                source,
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(start, start + token.len()),
-                None,
-            );
-        }
-        for token in ["$", "="] {
-            let start = source.find(token).expect("operator token");
-            assert_c4_lexeme(
-                &facts,
-                source,
-                EditorLexemeKind::Operator,
-                SourceSpan::new(start, start + token.len()),
-                None,
-            );
-        }
-
-        assert!(facts.lexemes().iter().all(|lexeme| {
-            source.is_char_boundary(lexeme.span().start)
-                && source.is_char_boundary(lexeme.span().end)
-                && !source[lexeme.span().start..lexeme.span().end].contains('\r')
-                && lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
-        }));
-        assert!(
-            facts
-                .lexemes()
-                .windows(2)
-                .all(|pair| pair[0].span().end <= pair[1].span().start)
-        );
-    }
-
-    #[test]
-    fn c4_recovery_keeps_error_line_tokens_and_later_safe_lines() {
+    fn c4_recovery_keeps_later_safe_lines() {
         let source = concat!(
             "C4Context\r\n",
             "Rel(known, )\r\n",
@@ -4311,26 +3799,8 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             &meta(),
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
-        assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "后续"));
-        for (kind, token) in [
-            (EditorLexemeKind::Keyword, "Rel"),
-            (EditorLexemeKind::Identifier, "known"),
-            (EditorLexemeKind::Delimiter, ","),
-            (EditorLexemeKind::Keyword, "Person"),
-            (EditorLexemeKind::Identifier, "后续"),
-            (EditorLexemeKind::String, "Later"),
-            (EditorLexemeKind::Keyword, "UpdateLayoutConfig"),
-            (EditorLexemeKind::Number, "3"),
-        ] {
-            let start = source.find(token).expect("recovery token");
-            let span = SourceSpan::new(start, start + token.len());
-            assert_c4_lexeme(&facts, source, kind, span, None);
-            assert!(facts.lexemes().iter().any(|lexeme| {
-                lexeme.span() == span
-                    && lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-            }));
-        }
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Later"));
     }
 
     #[test]
@@ -4351,13 +3821,5 @@ UpdateRelStyle(customer, system, $lineColor="blue")
         );
         assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
-        let person = source.find("Person").unwrap();
-        assert_c4_lexeme(
-            &facts,
-            source,
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(person, person + "Person".len()),
-            None,
-        );
     }
 }

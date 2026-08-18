@@ -10,7 +10,7 @@ pub(crate) mod debug;
 pub(crate) mod default_config;
 pub(crate) mod editor_analysis_config;
 pub(crate) mod editor_language_contract;
-pub(crate) mod editor_token_descriptor;
+pub(crate) mod editor_rename_policy;
 pub(crate) mod feature_matrix;
 pub(crate) mod fixtures;
 pub(crate) mod flowchart_elk_corpus;

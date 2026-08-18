@@ -26,6 +26,9 @@ The repository root stays on stable Rust. Invoke `cargo-fuzz` with the nightly t
 | `render_mermaid` | Strict parse, layout, SVG render, and `resvg-safe` output | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
 | `svg_pipeline` | Raw XML SVG through `SvgPipeline::resvg_safe()` | `fuzz/seeds/svg` | `fuzz/dictionaries/svg.dict` |
 | `ffi_api` | ABI 3 discovery, generic collect operations, result ownership, engine/request option paths, reusable engine calls, and host text-measure callbacks | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
+| `tree_sitter_mermaid_parse` | Arbitrary-byte Tree-sitter fresh parsing, repeat determinism, and bounded CST spans | `distribution/tree-sitter-mermaid/fuzz/corpus/all-families` | `fuzz/dictionaries/mermaid.dict` |
+| `tree_sitter_mermaid_edits` | Bounded byte edits with incremental/fresh named-tree equivalence | `fuzz/seeds/tree-sitter-edits` | `fuzz/dictionaries/mermaid.dict` |
+| `tree_sitter_mermaid_scanner` | External scanner state canonicalization plus arbitrary valid-symbol masks and row scans | `fuzz/seeds/tree-sitter-scanner` | `fuzz/dictionaries/mermaid.dict` |
 
 `ffi_api` keeps the text seeds above readable, but random inputs use a small binary frame so
 options, document URI, and source bytes can evolve independently:
@@ -43,11 +46,14 @@ Run a fast smoke before changing fuzz harnesses:
 
 ```sh
 cargo +nightly-2026-07-01 check --manifest-path fuzz/Cargo.toml --locked
-mkdir -p fuzz/corpus/parse_mermaid fuzz/corpus/render_mermaid fuzz/corpus/svg_pipeline fuzz/corpus/ffi_api
+mkdir -p fuzz/corpus/parse_mermaid fuzz/corpus/render_mermaid fuzz/corpus/svg_pipeline fuzz/corpus/ffi_api fuzz/corpus/tree_sitter_mermaid_parse fuzz/corpus/tree_sitter_mermaid_edits fuzz/corpus/tree_sitter_mermaid_scanner
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address parse_mermaid fuzz/corpus/parse_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address render_mermaid fuzz/corpus/render_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=32768 -dict=fuzz/dictionaries/mermaid.dict
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address svg_pipeline fuzz/corpus/svg_pipeline fuzz/seeds/svg -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/svg.dict
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address ffi_api fuzz/corpus/ffi_api fuzz/seeds/ffi -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address tree_sitter_mermaid_parse fuzz/corpus/tree_sitter_mermaid_parse distribution/tree-sitter-mermaid/fuzz/corpus/all-families -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address tree_sitter_mermaid_edits fuzz/corpus/tree_sitter_mermaid_edits fuzz/seeds/tree-sitter-edits -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address tree_sitter_mermaid_scanner fuzz/corpus/tree_sitter_mermaid_scanner fuzz/seeds/tree-sitter-scanner -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/mermaid.dict
 ```
 
 On macOS, local `cargo-fuzz` installations may default to the wrong host target if the binary was

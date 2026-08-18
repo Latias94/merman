@@ -1,0 +1,330 @@
+==================
+declarations alignments ports arrows and titles stay structural
+==================
+
+architecture-beta
+title Cloud Architecture
+accTitle: Deployment overview
+accDescr
+{
+  Services and junctions grouped by environment.
+}
+group platform(cloud)[Platform]
+group data(logos:aws-s3)["Data tier"] in platform
+service api(server)[API] in platform
+service notes "N"['Notes'] in data
+junction split in platform
+api{group}:R <-[sync]-> L:notes{group}
+notes:B -- T:split
+api:R --> L:split
+split:L <-- R:notes
+api:T <--> B:notes
+align row api notes split
+align column notes split
+
+---
+
+(source_file
+  (architecture_diagram
+    (architecture_header
+      (diagram_keyword))
+    (architecture_body
+      (architecture_title_statement
+        (statement_keyword)
+        (architecture_line_text))
+      (architecture_accessibility_title_statement
+        (statement_keyword)
+        (architecture_line_text))
+      (architecture_accessibility_description_statement
+        (statement_keyword)
+        (architecture_accessibility_description_block
+          (architecture_accessibility_text)))
+      (architecture_group_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_bare_title)))
+      (architecture_group_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_quoted_string))
+        (architecture_parent_clause
+          (statement_keyword)
+          (architecture_identifier)))
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_bare_title))
+        (architecture_parent_clause
+          (statement_keyword)
+          (architecture_identifier)))
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_quoted_string)
+        (architecture_title
+          (architecture_quoted_string))
+        (architecture_parent_clause
+          (statement_keyword)
+          (architecture_identifier)))
+      (architecture_junction_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_parent_clause
+          (statement_keyword)
+          (architecture_identifier)))
+      (architecture_edge_statement
+        (architecture_edge_endpoint
+          (architecture_identifier)
+          (architecture_group_modifier))
+        (architecture_left_port
+          (architecture_port_direction))
+        (architecture_arrow
+          (architecture_arrowhead)
+          (architecture_titled_connector
+            (architecture_title
+              (architecture_bare_title)))
+          (architecture_arrowhead))
+        (architecture_right_port
+          (architecture_port_direction))
+        (architecture_edge_endpoint
+          (architecture_identifier)
+          (architecture_group_modifier)))
+      (architecture_edge_statement
+        (architecture_edge_endpoint
+          (architecture_identifier))
+        (architecture_left_port
+          (architecture_port_direction))
+        (architecture_arrow
+          (architecture_plain_connector))
+        (architecture_right_port
+          (architecture_port_direction))
+        (architecture_edge_endpoint
+          (architecture_identifier)))
+      (architecture_edge_statement
+        (architecture_edge_endpoint
+          (architecture_identifier))
+        (architecture_left_port
+          (architecture_port_direction))
+        (architecture_arrow
+          (architecture_plain_connector)
+          (architecture_arrowhead))
+        (architecture_right_port
+          (architecture_port_direction))
+        (architecture_edge_endpoint
+          (architecture_identifier)))
+      (architecture_edge_statement
+        (architecture_edge_endpoint
+          (architecture_identifier))
+        (architecture_left_port
+          (architecture_port_direction))
+        (architecture_arrow
+          (architecture_arrowhead)
+          (architecture_plain_connector))
+        (architecture_right_port
+          (architecture_port_direction))
+        (architecture_edge_endpoint
+          (architecture_identifier)))
+      (architecture_edge_statement
+        (architecture_edge_endpoint
+          (architecture_identifier))
+        (architecture_left_port
+          (architecture_port_direction))
+        (architecture_arrow
+          (architecture_arrowhead)
+          (architecture_plain_connector)
+          (architecture_arrowhead))
+        (architecture_right_port
+          (architecture_port_direction))
+        (architecture_edge_endpoint
+          (architecture_identifier)))
+      (architecture_alignment_statement
+        (statement_keyword)
+        (architecture_alignment_direction)
+        (architecture_identifier)
+        (architecture_identifier)
+        (architecture_identifier))
+      (architecture_alignment_statement
+        (statement_keyword)
+        (architecture_alignment_direction)
+        (architecture_identifier)
+        (architecture_identifier)))))
+
+==================
+keyword prefixes remain identifiers
+==================
+
+architecture-beta
+service serviceApi(server)[API]
+junction junctionRight
+junctionRight:R -- L:serviceApi
+
+---
+
+(source_file
+  (architecture_diagram
+    (architecture_header
+      (diagram_keyword))
+    (architecture_body
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_bare_title)))
+      (architecture_junction_statement
+        (statement_keyword)
+        (architecture_identifier))
+      (architecture_edge_statement
+        (architecture_edge_endpoint
+          (architecture_identifier))
+        (architecture_left_port
+          (architecture_port_direction))
+        (architecture_arrow
+          (architecture_plain_connector))
+        (architecture_right_port
+          (architecture_port_direction))
+        (architecture_edge_endpoint
+          (architecture_identifier))))))
+
+==================
+same line body and eof statement
+==================
+
+architecture-beta service api(server)[API]
+
+---
+
+(source_file
+  (architecture_diagram
+    (architecture_header
+      (diagram_keyword))
+    (architecture_body
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_bare_title))))))
+
+==================
+quoted service text and title may span physical lines
+==================
+
+architecture-beta
+service icon "first
+second"
+service captioned(server)["third
+fourth"]
+junction after
+
+---
+
+(source_file
+  (architecture_diagram
+    (architecture_header
+      (diagram_keyword))
+    (architecture_body
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_quoted_string))
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_quoted_string)))
+      (architecture_junction_statement
+        (statement_keyword)
+        (architecture_identifier)))))
+
+==================
+malformed edge preserves following siblings
+==================
+
+architecture-beta
+service api(server)[API]
+api:R -[missing right port]-
+service db(database)[Database]
+junction after
+
+---
+
+(source_file
+  (architecture_diagram
+    (architecture_header
+      (diagram_keyword))
+    (architecture_body
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_bare_title)))
+      (architecture_malformed_edge_statement
+        (architecture_edge_endpoint
+          (architecture_identifier))
+        (architecture_left_port
+          (architecture_port_direction))
+        (architecture_edge_recovery
+          (architecture_arrow
+            (architecture_titled_connector
+              (architecture_title
+                (architecture_bare_title))))))
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_bare_title)))
+      (architecture_junction_statement
+        (statement_keyword)
+        (architecture_identifier)))))
+
+==================
+unterminated quote preserves following siblings
+==================
+
+architecture-beta
+service broken(server)["unterminated
+service healthy(server)["Healthy"]
+junction after
+
+---
+
+(source_file
+  (architecture_diagram
+    (architecture_header
+      (diagram_keyword))
+    (architecture_body
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_unclosed_title
+          (architecture_unclosed_quoted_string)))
+      (architecture_service_statement
+        (statement_keyword)
+        (architecture_identifier)
+        (architecture_icon
+          (architecture_icon_name))
+        (architecture_title
+          (architecture_quoted_string)))
+      (architecture_junction_statement
+        (statement_keyword)
+        (architecture_identifier)))))

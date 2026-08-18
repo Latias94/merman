@@ -52,6 +52,30 @@ class PackageLegalMaterialTests(unittest.TestCase):
         with self.assertRaisesRegex(verify.PackageLegalMaterialError, "EPL-2.0"):
             verify.verify_package_listing(self.package("EPL-2.0"), {"src/lib.rs"})
 
+    def test_dry_run_independent_package_is_legally_governed(self) -> None:
+        private_package = self.package("MIT")
+        private_package["publish"] = []
+        metadata = {
+            "metadata": {
+                "merman-release": {"independent-packages": ["demo"]},
+            },
+            "packages": [private_package],
+        }
+
+        self.assertEqual(verify.governed_packages(metadata), [private_package])
+
+    def test_declared_third_party_bundle_cannot_be_omitted(self) -> None:
+        private_package = self.package("MIT")
+        private_package["metadata"] = {
+            "merman-legal": {"third-party-bundle": True}
+        }
+
+        with self.assertRaisesRegex(
+            verify.PackageLegalMaterialError,
+            "incomplete third-party legal bundle",
+        ):
+            verify.required_legal_paths(private_package)
+
 
 if __name__ == "__main__":
     unittest.main()

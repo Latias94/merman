@@ -1,5 +1,9 @@
 # Final headless-performance attribution — 2026-08-08
 
+> The semantic-token entries in this revision-bound report were superseded on 2026-08-17 when the
+> parser-backed token planner was removed in favor of Tree-sitter syntax highlighting. Other lanes
+> in this historical attribution remain unchanged.
+
 ## Decision
 
 U13 is complete with one new production candidate. The fixed-budget four-lane scan admitted the

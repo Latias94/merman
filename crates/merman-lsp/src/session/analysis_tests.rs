@@ -13,8 +13,8 @@ use std::task::Poll;
 use std::time::Duration;
 use tower_lsp_server::jsonrpc::ErrorCode;
 use tower_lsp_server::ls_types::{
-    DiagnosticSeverity as LspDiagnosticSeverity, NumberOrString, TextDocumentContentChangeEvent,
-    Uri,
+    DiagnosticSeverity as LspDiagnosticSeverity, NumberOrString, Position, Range,
+    TextDocumentContentChangeEvent, Uri,
 };
 
 fn session() -> LanguageSession {
@@ -119,7 +119,7 @@ async fn semantic_token_error_from_stale_snapshot_becomes_content_modified() {
         let release = Arc::clone(&release);
         async move {
             session
-                .query_semantic_tokens::<()>(&uri, None, move |_, _| {
+                .query_semantic_tokens::<()>(&uri, None, move |_, _, _| {
                     entered.wait();
                     release.wait();
                     Err(tower_lsp_server::jsonrpc::Error::invalid_params(
@@ -163,7 +163,7 @@ async fn empty_semantic_tokens_from_stale_snapshot_become_content_modified() {
         let release = Arc::clone(&release);
         async move {
             session
-                .query_semantic_tokens::<()>(&uri, None, move |_, _| {
+                .query_semantic_tokens::<()>(&uri, None, move |_, _, _| {
                     entered.wait();
                     release.wait();
                     Ok(None)
@@ -205,7 +205,7 @@ async fn termination_fences_a_ready_semantic_token_state_before_final_commit() {
         let release = Arc::clone(&release);
         async move {
             session
-                .query_semantic_tokens(&uri, None, move |_, _| {
+                .query_semantic_tokens(&uri, None, move |_, _, _| {
                     entered.wait();
                     release.wait();
                     Ok(Some((
@@ -501,25 +501,128 @@ async fn diagnostic_policy_reprojects_without_rebuilding_the_snapshot() {
 }
 
 #[tokio::test]
-async fn sequential_snapshot_queries_reuse_parse_evidence_without_diagnostics() {
+async fn semantic_token_queries_do_not_build_strict_analysis_snapshots() {
     let session = session();
     let uri = uri("sequential-snapshot-reuse");
     open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
 
-    let first = structure_identity(&session, &uri).await.unwrap();
     session
-        .query_semantic_tokens(&uri, None, |snapshot, _| {
-            assert_eq!(snapshot.analysis_result_identity(), first);
+        .query_semantic_tokens(&uri, None, |document, _, _| {
+            assert_eq!(document.version(), 1);
             Ok(Some(((), None)))
         })
         .await
         .unwrap()
         .unwrap();
-    let second = structure_identity(&session, &uri).await.unwrap();
+    assert_eq!(session.analysis_execution_count(), 0);
+    assert_eq!(session.diagnostic_reprojection_count(), 0);
 
-    assert_eq!(first, second);
+    assert!(structure_identity(&session, &uri).await.is_some());
     assert_eq!(session.analysis_execution_count(), 1);
     assert_eq!(session.diagnostic_reprojection_count(), 0);
+}
+
+#[tokio::test]
+async fn retained_analysis_rejections_do_not_remove_syntax_state() {
+    let session = session();
+    let options = default_lsp_analysis_options().with_max_document_diagrams(Some(1));
+    assert!(session.update_configuration(options).await.accepted());
+    let uri = Uri::from_str("file:///tmp/rejected.md").unwrap();
+    assert!(
+        session
+            .open_document(
+                uri.clone(),
+                1,
+                "```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: hello\n```\n"
+                    .to_owned(),
+                DocumentKind::Markdown,
+            )
+            .await
+    );
+    assert!(
+        session
+            .query_semantic_tokens(&uri, None, |_, _, _| Ok(Some(((), None))))
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(session.analysis_execution_count(), 0);
+}
+
+#[tokio::test]
+async fn invalid_incremental_sync_invalidates_syntax_until_a_full_replacement() {
+    let session = session();
+    let uri = uri("syntax-sync-loss");
+    open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
+
+    assert_eq!(
+        session
+            .change_document(
+                uri.clone(),
+                2,
+                vec![TextDocumentContentChangeEvent {
+                    range: Some(Range::new(Position::new(99, 0), Position::new(99, 0))),
+                    range_length: None,
+                    text: "C".to_owned(),
+                }],
+            )
+            .await,
+        Some(true)
+    );
+    assert!(
+        session
+            .query_semantic_tokens(&uri, None, |_, _, _| Ok(Some(((), None))))
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    assert_eq!(
+        session
+            .change_document(
+                uri.clone(),
+                3,
+                vec![TextDocumentContentChangeEvent {
+                    range: Some(Range::new(Position::new(0, 0), Position::new(0, 0))),
+                    range_length: None,
+                    text: "ignored".to_owned(),
+                }],
+            )
+            .await,
+        Some(true)
+    );
+    assert!(
+        session
+            .query_semantic_tokens(&uri, None, |_, _, _| Ok(Some(((), None))))
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    assert_eq!(
+        session
+            .change_document(
+                uri.clone(),
+                4,
+                vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "flowchart TD\nA-->C\n".to_owned(),
+                }],
+            )
+            .await,
+        Some(true)
+    );
+    assert!(
+        session
+            .query_semantic_tokens(&uri, None, |document, _, _| {
+                assert_eq!(document.version(), 4);
+                Ok(Some(((), None)))
+            })
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -16,7 +16,6 @@ import {
   type EditorWorkerResponse,
 } from "./protocol.ts";
 
-const LEGEND_DIGEST = "legend-digest";
 const COMPLETION_TRIGGER_CHARACTERS = [" ", "\n", "-", ":"];
 
 class PendingWorkerPort implements EditorWorkerPort {
@@ -102,7 +101,6 @@ class PendingWorkerPort implements EditorWorkerPort {
         ? {
             uri: request.uri,
             version: request.version,
-            legendDigest: request.legendDigest,
           }
         : {};
     this.emitMessage({
@@ -135,7 +133,7 @@ class PendingWorkerPort implements EditorWorkerPort {
 
 test("startup exposes ownership while initialization is still pending", async () => {
   const worker = new PendingWorkerPort();
-  const startup = startMermanLanguageWorkerClient(worker, LEGEND_DIGEST);
+  const startup = startMermanLanguageWorkerClient(worker);
   let settled = false;
   void startup.ready.then(
     () => {
@@ -162,20 +160,9 @@ test("startup exposes ownership while initialization is still pending", async ()
   assert.equal(worker.listenerCount(), 0);
 });
 
-test("startup terminates an owned worker when construction fails", () => {
-  const worker = new PendingWorkerPort();
-
-  assert.throws(
-    () => startMermanLanguageWorkerClient(worker, ""),
-    /generated editor legend digest is required/,
-  );
-  assert.equal(worker.terminateCalls, 1);
-  assert.deepEqual(worker.messages, []);
-});
-
 test("startup times out and releases transport resources once", async () => {
   const worker = new PendingWorkerPort();
-  const startup = startMermanLanguageWorkerClient(worker, LEGEND_DIGEST, 10);
+  const startup = startMermanLanguageWorkerClient(worker, 10);
 
   await assert.rejects(startup.ready, /initialization timed out after 10 ms/);
   assert.equal(worker.terminateCalls, 1);
@@ -191,7 +178,7 @@ test("startup times out and releases transport resources once", async () => {
 
 test("successful startup clears its initialization deadline", async () => {
   const worker = new PendingWorkerPort();
-  const startup = startMermanLanguageWorkerClient(worker, LEGEND_DIGEST, 10);
+  const startup = startMermanLanguageWorkerClient(worker, 10);
   ready(worker);
 
   await startup.ready;
@@ -237,22 +224,6 @@ test("query-specific malformed results poison before reaching Monaco", async () 
     client.query(identity(1), { kind: "diagnostics" }),
     /completion/,
   );
-});
-
-test("semantic token typed arrays survive the client boundary as an owned clone", async () => {
-  const worker = new PendingWorkerPort();
-  const client = await openedClient(worker);
-  const result = client.query(identity(1), { kind: "semanticTokens" });
-  const request = await worker.takeEventually("query");
-  const words = new Uint32Array([0, 0, 4, 1, 2]);
-
-  worker.respond(request, words);
-  const projected = await result;
-
-  assert(projected instanceof Uint32Array);
-  assert.deepEqual([...projected], [...words]);
-  assert.notEqual(projected, words);
-  client.dispose();
 });
 
 test("an acknowledged document does not resubscribe while entering a query", async () => {
@@ -391,27 +362,20 @@ test("message decode failure and unknown IDs poison the transport", async (t) =>
   });
 });
 
-test("stale query identities reject locally without poisoning the transport", async (t) => {
-  for (const field of ["version", "legendDigest"] as const) {
-    await t.test(field, async () => {
-      const worker = new PendingWorkerPort();
-      const client = await openedClient(worker);
-      const query = client.query(identity(1), { kind: "diagnostics" });
-      const request = await worker.takeEventually("query");
-      const response = queryResponse(request, diagnosticsResult());
-      worker.emitMessage({
-        ...response,
-        [field]: field === "version" ? response.version + 1 : "stale-legend",
-      });
+test("stale query identities reject locally without poisoning the transport", async () => {
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker);
+  const query = client.query(identity(1), { kind: "diagnostics" });
+  const request = await worker.takeEventually("query");
+  const response = queryResponse(request, diagnosticsResult());
+  worker.emitMessage({ ...response, version: response.version + 1 });
 
-      await assert.rejects(query, StaleLanguageSnapshotError);
-      const retry = client.query(identity(1), { kind: "diagnostics" });
-      worker.respond(await worker.takeEventually("query"), diagnosticsResult());
-      await retry;
-      assert.equal(worker.terminateCalls, 0);
-      client.dispose();
-    });
-  }
+  await assert.rejects(query, StaleLanguageSnapshotError);
+  const retry = client.query(identity(1), { kind: "diagnostics" });
+  worker.respond(await worker.takeEventually("query"), diagnosticsResult());
+  await retry;
+  assert.equal(worker.terminateCalls, 0);
+  client.dispose();
 });
 
 test("a duplicate response is a protocol failure", async () => {
@@ -777,7 +741,7 @@ async function initializedClient(
 ) {
   const normalizedOptions =
     typeof options === "number" ? { requestTimeoutMs: options } : options;
-  const client = createMermanLanguageWorkerClient(worker, LEGEND_DIGEST, {
+  const client = createMermanLanguageWorkerClient(worker, {
     requestTimeoutMs: normalizedOptions.requestTimeoutMs ?? 30_000,
     tombstoneLimit: normalizedOptions.tombstoneLimit ?? 8,
   });
@@ -805,10 +769,8 @@ function ready(worker: PendingWorkerPort): void {
     requestId: initialize.requestId,
     type: "ready",
     completionTriggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
-    transportApiVersion: 4,
+    transportApiVersion: 5,
     editorSchema: EDITOR_SCHEMA_VERSION,
-    legendDigest: LEGEND_DIGEST,
-    legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
   });
 }
 
@@ -848,7 +810,6 @@ function queryResponse(
     requestId: request.requestId,
     uri: request.uri,
     version: request.version,
-    legendDigest: request.legendDigest,
     result,
   };
 }

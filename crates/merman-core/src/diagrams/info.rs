@@ -1,5 +1,5 @@
 use crate::diagrams::langium_common::{
-    LangiumCommonParse, LangiumLexemeTrace, parse_langium_common, push_langium_common_editor_fact,
+    LangiumCommonParse, parse_langium_common, push_langium_common_editor_fact,
     push_langium_common_recovery,
 };
 use crate::{
@@ -137,8 +137,6 @@ fn construct_info_semantic_source_controlled(
         InfoHeader::Body(body) => body,
     };
     let mut offset = body.offset;
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
     let mut editor_facts = EditorSemanticFacts::new();
     let mut show_info = false;
     let mut common_seen = false;
@@ -158,14 +156,12 @@ fn construct_info_semantic_source_controlled(
                         )
                     });
                 }
-                lexemes.extend(parsed.lexemes.clone());
                 push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "info");
                 common_seen = true;
                 offset += parsed.consumed;
             }
             InfoStatement::ShowInfo { span, consumed } => {
                 show_info = true;
-                lexemes.keyword(span);
                 push_show_info_editor_fact(&mut editor_facts, span);
                 offset += consumed;
             }
@@ -191,8 +187,6 @@ fn construct_info_semantic_source_controlled(
             }
         }
     }
-
-    lexemes.attach(code, &mut editor_facts);
 
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
@@ -286,7 +280,6 @@ enum InfoHeader {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct InfoBodyStart {
     offset: usize,
-    header_span: SourceSpan,
 }
 
 fn info_body_start_controlled(
@@ -310,7 +303,6 @@ fn info_body_start_controlled(
         let header_start = offset + leading;
         return Ok(InfoHeader::Body(InfoBodyStart {
             offset: header_start + header_len,
-            header_span: SourceSpan::new(header_start, header_start + header_len),
         }));
     }
     Ok(InfoHeader::Empty)

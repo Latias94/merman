@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "tree-sitter-mermaid",
+    "version": "0.1.0",
+    "releaseState": "candidate"
+  },
+  "language": {
+    "symbol": "mermaid",
+    "abi": 15,
+    "cstSchemaVersion": 1,
+    "querySchemaVersion": 1
+  },
+  "toolchain": {
+    "treeSitterCli": "0.26.12",
+    "rustRuntime": "0.26.12",
+    "nodeRuntime": "0.25.1",
+    "webRuntime": "0.26.12",
+    "wasiSdk": "29.0",
+    "wasiClang": "21.1.4-wasi-sdk"
+  },
+  "sources": [
+    {
+      "id": "merman-oracle",
+      "kind": "one-way-conformance-oracle",
+      "version": "0.8.0-alpha.5",
+      "repository": "https://github.com/Latias94/merman.git",
+      "usage": "Public family catalog and strict-valid fixture corpus used by the one-way conformance test",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "id": "tree-sitter",
+      "kind": "generator-and-template-source",
+      "version": "0.26.12",
+      "repository": "https://github.com/tree-sitter/tree-sitter.git",
+      "ref": "v0.26.12",
+      "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00",
+      "usage": "Pinned generator, generated support headers, and modified C, Rust, and Node binding templates",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-generator"
+    },
+    {
+      "id": "mermaid",
+      "kind": "syntax-authority",
+      "version": "11.16.1",
+      "repository": "https://github.com/mermaid-js/mermaid.git",
+      "ref": "mermaid@11.16.1",
+      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+      "usage": "Accepted source syntax and source-backed grammar translation",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-mermaid-mermaid-baseline"
+    },
+    {
+      "id": "zenuml-core",
+      "kind": "companion-syntax-authority",
+      "version": "3.50.1",
+      "repository": "https://github.com/mermaid-js/zenuml-core.git",
+      "ref": "v3.50.1",
+      "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+      "usage": "ZenUML source syntax and companion behavior",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-mermaid-zenuml-baseline"
+    },
+    {
+      "id": "pappasam-tree-sitter-mermaid",
+      "kind": "implementation-seed",
+      "version": "0.1.0",
+      "repository": "https://github.com/pappasam/tree-sitter-mermaid.git",
+      "ref": "main",
+      "commit": "1a11e2d8cf11afcfdb768f537c1a9bde294c24f9",
+      "usage": "MIT-licensed grammar seed; copied rules must retain path-level attribution",
+      "license": "MIT",
+      "legalComponentId": "pappasam-tree-sitter-mermaid"
+    },
+    {
+      "id": "monaqa-tree-sitter-mermaid",
+      "kind": "downstream-compatibility-reference",
+      "version": "0.0.2",
+      "repository": "https://github.com/monaqa/tree-sitter-mermaid.git",
+      "ref": "master",
+      "commit": "90ae195b31933ceb9d079abfa8a3ad0a36fee4cc",
+      "usage": "Existing editor ecosystem compatibility baseline, not CST schema authority",
+      "license": "MIT",
+      "legalComponentId": "monaqa-tree-sitter-mermaid"
+    },
+    {
+      "id": "singularity-tree-sitter-mermaid",
+      "kind": "behavior-reference",
+      "version": "0.9.1",
+      "repository": "https://github.com/singularity-ng/singularity-parser-mermaid.git",
+      "ref": "main",
+      "commit": "f5ac2752fbf0f74f9c836014b87e511303d2abae",
+      "usage": "Additional grammar and query behavior reference",
+      "license": "MIT",
+      "legalComponentId": "singularity-tree-sitter-mermaid"
+    }
+  ]
+}

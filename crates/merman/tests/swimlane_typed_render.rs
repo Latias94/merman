@@ -108,7 +108,7 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
     // The fixture's stable preflight estimate is 90 units. Probe the precise layout boundary so
     // this contract remains about operation-wide accounting rather than internal routing passes.
     let layout_boundary = (90..=256)
-        .find_map(|max_layout_work_units| {
+        .find(|&max_layout_work_units| {
             let resources = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
@@ -125,10 +125,10 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
                 OperationControl::new(),
                 request,
             )) {
-                Ok(RenderOutput::LayoutJson(Some(_))) => Some(max_layout_work_units),
+                Ok(RenderOutput::LayoutJson(Some(_))) => true,
                 Ok(RenderOutput::LayoutJson(None)) => panic!("expected swimlane diagram"),
                 Ok(_) => panic!("unexpected target output"),
-                Err(error) if error.to_string().contains("max_layout_work_units") => None,
+                Err(error) if error.to_string().contains("max_layout_work_units") => false,
                 Err(error) => panic!("unexpected layout error: {error}"),
             }
         })

@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   EPHEMERAL_STORAGE_BUDGETS,
   createEphemeralStorageFacade,
+  sha256Hex,
   verifyAndCreateRealmEngineModuleLoader,
 } from "./engine-artifact-loader.ts";
 
@@ -17,6 +18,13 @@ const artifact = {
   sha256: createHash("sha256").update(source).digest("hex"),
   source,
 };
+
+test("sha256Hex supports insecure-context fallback hashing", async () => {
+  assert.equal(
+    await sha256Hex(new TextEncoder().encode("abc"), null),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  );
+});
 
 test("only a verified engine artifact can construct a module loader", async () => {
   const loader = await verifyAndCreateRealmEngineModuleLoader(

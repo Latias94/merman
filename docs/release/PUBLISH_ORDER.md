@@ -28,7 +28,9 @@ Workspace-coupled manifests remain aligned to `0.8.0-alpha.5`. Python package me
 PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a surface reached its
 registry or that separately published alpha.5 channels share one source snapshot. The
 independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
-release axes.
+release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis,
+and is prepared for protected crates.io, npm, and GitHub publication through its dedicated release
+workflow. Its initial `0.1.0` publication has not yet been executed.
 
 ## Publish Order
 
@@ -48,6 +50,15 @@ release-order database.
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
+`tree-sitter-mermaid` starts at `0.1.0` as a separately packaged Cargo/npm language distribution.
+Use `release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native
+Node prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a
+grammar-subdirectory source archive and checksums, and publishes only when the matching immutable
+`tree-sitter-mermaid-vX.Y.Z` tag passes the protected crates.io, npm, and GitHub environments.
+Because `merman-lsp` now consumes this crate for syntax highlighting, the exact Cargo version must
+exist on crates.io before publishing a dependent workspace release. The npm package is independent
+of the workspace crates and supplies browser consumers with the same grammar WASM and queries.
+
 ## Binding Release Chain
 
 The binding-specific chain is:
@@ -55,6 +66,8 @@ The binding-specific chain is:
 ```text
 merman-analysis
   -> merman-editor-core
+  -> merman-lsp
+tree-sitter-mermaid
   -> merman-lsp
 
 merman-render

@@ -21,14 +21,6 @@ pub(super) fn from_core_facts_cancellable(
         source,
         ..FenceTextIndexData::default()
     };
-    index.lexeme_failure = facts.lexeme_failure();
-    index.lexemes.reserve(facts.lexemes().len());
-    for (lexeme_index, lexeme) in facts.lexemes().iter().enumerate() {
-        if lexeme_index.is_multiple_of(128) {
-            cancellation.checkpoint()?;
-        }
-        index.lexemes.push(*lexeme);
-    }
     index
         .directive_prefixes
         .extend(facts.directive_prefixes.iter().cloned());

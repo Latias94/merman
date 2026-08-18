@@ -13,6 +13,8 @@ merman = { path = "../crates/merman", default-features = false, features = ["svg
 merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["analysis", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime"] }
 merman-render = { path = "../crates/merman-render", default-features = false }
 roxmltree = "0.21.1"
+tree-sitter = "=0.26.12"
+tree-sitter-mermaid = { path = "../distribution/tree-sitter-mermaid" }
 
 # Use independent workspace for fuzzers.
 [workspace]
@@ -42,6 +44,27 @@ bench = false
 [[bin]]
 name = "ffi_api"
 path = "fuzz_targets/ffi_api.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tree_sitter_mermaid_parse"
+path = "fuzz_targets/tree_sitter_mermaid_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tree_sitter_mermaid_edits"
+path = "fuzz_targets/tree_sitter_mermaid_edits.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tree_sitter_mermaid_scanner"
+path = "fuzz_targets/tree_sitter_mermaid_scanner.rs"
 test = false
 doc = false
 bench = false

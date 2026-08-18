@@ -25,6 +25,7 @@ members = [
     "crates/manatee",
     "crates/roughr",
     "crates/xtask",
+    "distribution/tree-sitter-mermaid",
 ]
 exclude = [
     "repo-ref/dear-imgui-rs",
@@ -41,7 +42,7 @@ homepage = "https://github.com/Latias94/merman"
 rust-version = "1.95"
 
 [workspace.metadata.merman-release]
-independent-packages = ["roughr-merman"]
+independent-packages = ["roughr-merman", "tree-sitter-mermaid"]
 
 [workspace.dependencies]
 atomic-write-file = { version = "0.3.0", default-features = false }

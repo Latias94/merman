@@ -53,7 +53,7 @@ import type {
 } from "./public-types.js";
 
 const defaultRuntimeState = createMermanRuntimeState(defaultLoader);
-const WEB_TRANSPORT_API_VERSION = 4;
+const WEB_TRANSPORT_API_VERSION = 5;
 const METADATA_SPEC_BY_ID: ReadonlyMap<string, (typeof METADATA_SPECS)[number]> = new Map(
   METADATA_SPECS.map((spec) => [spec.id, spec])
 );
