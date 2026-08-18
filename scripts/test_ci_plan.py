@@ -381,6 +381,12 @@ class PlannerTests(unittest.TestCase):
                 "vscode",
                 "web",
             },
+            "playground/src/generated/ascii-capabilities.ts": {
+                "core",
+                "hygiene",
+                "npm",
+                "web",
+            },
             "playground/examples/manifest.json": {
                 "hygiene",
                 "npm",

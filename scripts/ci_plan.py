@@ -585,6 +585,12 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"shared SVG safety policy changed: {path}",
             False,
         )
+    if path == "playground/src/generated/ascii-capabilities.ts":
+        return (
+            frozenset({"core", "hygiene", "npm", "web"}),
+            f"generated Playground ASCII capability authority changed: {path}",
+            False,
+        )
     if path == "playground/examples/manifest.json":
         return (
             frozenset({"hygiene", "npm", "vscode", "web"}),
