@@ -6,12 +6,16 @@ fn write_packet_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
     typography_theme: &crate::packet::PacketTypographyThemePlan,
+    typography_receipt: &mut crate::packet::PacketSurfaceReceipt,
 ) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
     let id = crate::svg::escape_css_identifier(diagram_id);
     let font = typography_theme.font_family_css();
     let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
+    let base_css_start = out.len();
     write_mermaid_default_base_css_prefix(out, &id, font)?;
+    let base_css_end = out.len();
+    let role_css_start = base_css_end;
     let _ = write!(
         out,
         r#"#{} .packetByte{{font-size:{};}}#{} .packetByte.start{{fill:{};}}#{} .packetByte.end{{fill:{};}}#{} .packetLabel{{fill:{};font-size:{};}}#{} .packetTitle{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
@@ -33,8 +37,36 @@ fn write_packet_css(
         style.block_fill_color
     );
     out.checkpoint()?;
+    let role_css_end = out.len();
+    let root_variable_css_start = role_css_end;
     let _ = write!(out, r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
     out.checkpoint()?;
+    let root_variable_css_end = out.len();
+
+    let stylesheet = out.as_str();
+    let Some(base_css) = stylesheet.get(base_css_start..base_css_end) else {
+        return Err(crate::Error::InvalidModel {
+            message: "Packet base typography CSS boundaries were invalid".to_string(),
+        });
+    };
+    let Some(role_css) = stylesheet.get(role_css_start..role_css_end) else {
+        return Err(crate::Error::InvalidModel {
+            message: "Packet role CSS boundaries were invalid".to_string(),
+        });
+    };
+    let Some(root_variable_css) = stylesheet.get(root_variable_css_start..root_variable_css_end)
+    else {
+        return Err(crate::Error::InvalidModel {
+            message: "Packet root font variable CSS boundaries were invalid".to_string(),
+        });
+    };
+    typography_receipt.record_typography_stylesheet(
+        base_css,
+        role_css,
+        root_variable_css,
+        &id,
+        font,
+    );
     Ok(())
 }
 
@@ -104,7 +136,13 @@ pub(crate) fn render_packet_diagram_svg_model(
     }
 
     out.push_str("<style>");
-    write_packet_css(&mut out, diagram_id, effective_config, typography_theme)?;
+    write_packet_css(
+        &mut out,
+        diagram_id,
+        effective_config,
+        typography_theme,
+        &mut surface_receipt,
+    )?;
     out.push_str("</style>");
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
@@ -235,9 +273,16 @@ mod tests {
             }
         }));
         let typography_theme = crate::packet::PacketTypographyThemePlan::resolve(None, &config);
+        let mut typography_receipt = typography_theme.begin_terminal_receipt();
         let mut css = String::new();
-        write_packet_css(&mut css, "pkt", config.as_value(), &typography_theme)
-            .expect("write Packet CSS");
+        write_packet_css(
+            &mut css,
+            "pkt",
+            config.as_value(),
+            &typography_theme,
+            &mut typography_receipt,
+        )
+        .expect("write Packet CSS");
 
         assert!(css.contains("#pkt .packetByte{font-size:11px;}"));
         assert!(css.contains("#pkt .packetByte.start{fill:#111111;}"));
@@ -245,5 +290,6 @@ mod tests {
         assert!(css.contains("#pkt .packetLabel{fill:#333333;font-size:13px;}"));
         assert!(css.contains("#pkt .packetTitle{fill:#444444;font-size:15px;}"));
         assert!(css.contains("#pkt .packetBlock{stroke:#555555;stroke-width:2;fill:#666666;}"));
+        assert!(typography_receipt.typography_stylesheet_verified());
     }
 }

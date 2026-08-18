@@ -382,4 +382,6 @@ fn packet_direct_font_stack_is_not_limited_by_the_legacy_bridge_budget() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
