@@ -9037,7 +9037,7 @@ fn planned_family_drives_flowchart_router_before_layout() {
         .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
         .unwrap()
         .expect("flowchart source should produce a render model");
-    let swimlane = prepare_non_class_render(
+    let swimlane = super::preparation::prepare_non_class_render(
         flowchart,
         &options,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::SWIMLANE),
@@ -9052,7 +9052,7 @@ fn planned_family_drives_flowchart_router_before_layout() {
         )
         .unwrap()
         .expect("configured Swimlane source should produce a render model");
-    let flowchart = prepare_non_class_render(
+    let flowchart = super::preparation::prepare_non_class_render(
         configured_swimlane,
         &options,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART),
@@ -9068,7 +9068,7 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
         .unwrap()
         .expect("flowchart source should produce a render model");
 
-    let error = match prepare_non_class_render(
+    let error = match super::preparation::prepare_non_class_render(
         parsed,
         &LayoutOptions::default(),
         FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),

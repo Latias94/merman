@@ -70,7 +70,7 @@ release when a statement below differs.
 | Built-in presets | A preset is a convenient, versioned materialization of the same typed recipe accepted from Rust, JSON, and bindings. The catalog is open to additional generally useful themes; Brutalist, Spotless, Cyberpunk, Modern Slate, or any later theme name is illustrative rather than a fixed roadmap or product-brand hierarchy. A preset must not select layout, Mermaid look, output pipeline, trusted postprocessors, or family-private behavior implicitly. | Alpha candidates may remain discovery-only while coverage is incomplete. Stable status is decided per preset from C6-backed family/target cells, allowed residuals, resource burden, and licensing rather than from theme name or catalog size. |
 | Preset cost boundary | Built-in presets should normally compile from static Merman-owned recipe data and reuse existing code and resources. They must not require a CSS/JavaScript interpreter, network access, brand crawler, application runtime, or substantial preset-only dependency/asset closure. Bundled fonts or other material assets require an explicit redistribution, size, resource-policy, and portability decision. | A heavier theme pack can live in an optional downstream package or host application instead of enlarging the core artifact. |
 | Published binding epochs | `0.8.0-alpha.5` published the leaked family and renderer taxonomy under UniFFI API 3 and Web/WASM transport API 3. The subtractive family-catalog correction therefore supersedes the August 2 FFI-plan KTD9 only for those two epochs: UniFFI advances to API 4 and Web/WASM advances to transport API 4. Native C ABI 3, runtime-catalog schema 1, Android transport API 1, Typst plugin ABI 2, and the Node transport remain unchanged. The incompatible post-alpha.5 Options grammar advances independently to schema 3 under KTD16. The next prerelease must carry the corrected projections; an already published alpha.5 artifact is never republished in place. | A later epoch requires another demonstrably incompatible transport change; additive catalog rows and fields continue to evolve inside the current schema rules. |
-| C5 versus C6 | C5 owns compilation, value-domain declarations, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns temporary route-cutover authorization and the representative C6a integration ledger. JPEG, PDF, and a future Browser SVG adapter use scoped smoke or release-qualification checks rather than an always-active equal-depth matrix. | The versioned route-cutover manifest governs only its declared scalar domain: static-unqualified atomic fill/stroke routes with solid/transparent values. Removing one of those bridge routes requires an exact receipt binding its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. Ordinal-palette breadth migrations follow the narrower C7b ledger in KTD18 rather than being misrepresented as scalar route pairs. Neither authorization is a C6 cell or can emit `C6aEligibilityReceipt`. |
+| C5 versus C6 | C5 owns compilation, value-domain declarations, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns temporary route-cutover authorization and the representative C6a integration ledger. JPEG, PDF, and a future Browser SVG adapter use scoped smoke or release-qualification checks rather than an always-active equal-depth matrix. | The versioned route-cutover manifest governs only its declared scalar domain: static-unqualified atomic fill/stroke routes with solid/transparent values. Removing one of those bridge routes requires an exact receipt binding its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. Ordinal-palette breadth migrations follow the narrower C7b ledger in KTD18, and individual base-typography property migrations follow the equally narrow C7b ledger in KTD19, rather than either mechanism being misrepresented as scalar route pairs. None of these authorizations is a C6 cell or can emit `C6aEligibilityReceipt`. |
 | Public surface timing | C7a-candidate may be declared only after C6a plus real pre-freeze family-writer/compiler round trips. C7a-rollout migrates bindings, Typst, examples, and native Merman CLI against that alpha candidate. C7a-contract freezes only after rollout verification. Fine-grained mechanism/evidence types and alpha preset IDs remain private or explicitly unstable. | A preset may gain only scoped claims for declared, proven family/target cells. Unqualified all-family or all-target claims require a later release-qualification plan. |
 | Official CLI | New theme selection belongs only to the Merman native render/batch surface. The official `mmdc` compatibility surface remains unchanged except for removal of provisional alpha fields. A document, Options JSON, or project config cannot self-authorize a trusted lane. | Any mmdc expansion requires a separate compatibility decision. |
 
@@ -404,6 +404,20 @@ Public presets declare per-target admission expectations and allowed residual ID
   and ledger row for every migration introduced after KTD18. The initial ledger explicitly ratifies
   the existing Pie migration and lands the current Mindmap migration. It does not enter the scalar
   route manifest, require a PNG pair, create a C6 cell, or broaden a cross-target claim.
+- KTD19. **Retire the temporary base-typography bridge only through property-level family
+  migrations.** (implementation-evidence-settled - chosen over either keeping a duplicate global
+  typography projection after a terminal family writer owns the same property or expanding the
+  scalar route-cutover harness to model inheritance and text surfaces.) A
+  `FamilyThemeMechanism::BaseTypography` migration may suppress or delete a legacy typography
+  projection only through the explicit C7b ledger below. Each row binds one family and one
+  typography property to the former contribution ID, its complete root and `themeVariables`
+  projection, the terminal family owner, explicit source/site precedence, visible-text evidence,
+  and the unsupported sibling properties that remain fail-closed. The matrix disposition, bridge
+  suppression, terminal evidence, and ledger row must land atomically for migrations introduced
+  after KTD19. The initial ledger explicitly ratifies the pre-KTD19 Packet migration. This is not a
+  wildcard for family typography, rule typography, paint, effects, or arbitrary inherited CSS; it
+  does not enter the scalar route manifest, require a PNG pair, create a C6 cell, or broaden a
+  cross-target claim.
 
 ### Product Milestones
 
@@ -540,9 +554,11 @@ without penalizing the unchanged default path.
   source config in precedence, and records `LegacyCompatibility` evidence whenever it contributes.
   A bridge result is never typed `Applied` evidence and cannot satisfy `RequirePortable`.
 - Migrate the bridge in dependency order: disable it for State first, then Flowchart, then Sequence.
-  Remove the temporary default-typography bridge only after Flowchart and Sequence both consume
-  resolved typography directly in layout and emission. Do not replace the bridge with per-theme
-  adapters.
+  Remove the shared default-typography bridge for those primary families only after Flowchart and
+  Sequence both consume resolved typography directly in layout and emission. A later family may
+  retire one independently owned base-typography property only through the property-level KTD19
+  ledger; do not replace the bridge with per-theme adapters or treat that narrow exception as
+  authorization for the remaining typography surface.
 - Maintain an internal support matrix with exactly three states per family mechanism:
   `TypedAdapter`, `LegacyCompatibility`, or `Unsupported`. Existing broad projection tests prove
   compatibility behavior only; they are not positive typed-adapter or portability evidence.
@@ -624,7 +640,7 @@ own those product decisions.
 | C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; Flowchart and Swimlane consume narrow typed Node/NodeLabel/Edge tranches while retaining bridge routes for uncovered mechanisms; Sequence directly consumes selected Actor, Lifeline, Note, and Activation paint routes plus Message stroke with post-emission evidence, while signal, loop, message fill, family typography, and other label routes remain on the bridge. Later family-local slices now include Treemap `Title.fill`, whose two scalar bridge replacements are bound to exact Standalone SVG plus PNG receipts. The core family catalog is now the sole family-ID/alias/detection authority. Every current typed route that replaces a manifest-declared legacy projection set is covered by a private exact-route cutover receipt; those receipts authorize ownership only and do not close C6a. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
 | C6a | Complete; `18/18` representative native cells execute and the eligibility receipt is issued | Schema v4 is the current 18-cell authority and binds the immutable schema-v3 predecessor, which remains fixed at its historical 12 enforced and 6 deferred cells. The loader rejects lineage shrinkage, and the private unique issuer emits `C6aEligibilityReceipt` only after all nine Brutalist/Spotless/Cyberpunk by Flowchart/State/Sequence render groups pass on Standalone SVG and PNG with target-owned receipts. Each render group projects both targets from one `RenderedDocument`; Flowchart and Sequence also retain prepared terminal text through their production font seals. The separate route-cutover manifest remains a non-cell ownership proof and does not increase C6a progress. |
 | C6b | Paused; no active denominator | Four historical Brutalist/State cross-target observations exist, but the 45-cell equal-depth certification program is not active. JPEG/PDF retain representative smoke coverage; Browser SVG starts only after a real adapter and release requirement exist. |
-| C7a | Not eligible; intentionally blocked | Coarse Rust support discovery, the contract-owned `MaterializedThemeWireV1`, the bounded typed/JSON `ThemeMaterializer` operations, the versioned authoring diagnostic envelope, independent tokens-only light/dark definitions, readable/canonical/materialized equivalence, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, complete-spec cold start, the shared `series[0]` Flowchart/Pie terminal witness, and Rust/binding JSON equivalence have landed. Required first-party transport rollout, continued C5 family migration, and the mandatory author-task verification remain open. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
+| C7a | Not eligible; intentionally blocked | Coarse Rust support discovery, the contract-owned `MaterializedThemeWireV1`, the bounded typed/JSON materialization operations, the versioned authoring diagnostic envelope, independent tokens-only light/dark definitions, readable/canonical/materialized equivalence, Flowchart/State/Sequence SVG+PNG light-dark-light isolation and cross-renderer reuse, complete-spec cold start, the shared `series[0]` Flowchart/Pie terminal witness, and Rust/binding JSON equivalence have landed. Required first-party transport rollout, continued C5 family migration, and the mandatory author-task verification remain open. Browser SVG and native export discovery qualification also remain separate release work. Do not declare the alpha contract candidate or freeze the contract before those gates close. |
 | C7b/C7c | Deferred independently | Remaining family/preset/showcase breadth proceeds under C7b without waiting for external assurance. External-host assurance fields remain a separately triggered C7c plan. |
 
 The public alpha migration scaffold already spans Rust, Options JSON, Web/UniFFI, Typst, Playground,
@@ -826,14 +842,15 @@ and public theme scope from the independent renderer taxonomy before adding face
      by the independent versioned manifest and backed by finalized Standalone SVG plus PNG evidence.
      The runtime matrix must reconcile exactly with that manifest; it is not the source of its own
      expected authorization set. A direct-only route with no legacy projection does not enter that
-     inventory, and ordinal palettes use only the explicit KTD18 C7b ledger.
-  4. Remove the default-typography path from the bridge only after direct Flowchart/Swimlane and
-     Sequence layout/emission consumption is proven and its exact legacy-replacing routes receive
-     cutover receipts. Keep the bridge for every remaining `LegacyCompatibility` mechanism until an
-     exact scalar route receipt authorizes ownership deletion or the KTD18 C7b ordinal-palette
-     ledger explicitly records that migration. This route-level authorization is C6 infrastructure,
-     while the ordinal ledger is C7b family-breadth governance; neither is the global 18-cell C6a
-     eligibility gate.
+     inventory, ordinal palettes use only the explicit KTD18 C7b ledger, and independently owned
+     base-typography properties use only the explicit KTD19 C7b ledger.
+  4. Remove the shared default-typography path for Flowchart/Swimlane and Sequence only after their
+     direct layout/emission consumption is proven and the relevant migration boundary is recorded.
+     Keep the bridge for every remaining `LegacyCompatibility` mechanism until an exact scalar
+     route receipt authorizes ownership deletion, the KTD18 C7b ordinal-palette ledger records that
+     migration, or the KTD19 C7b base-typography ledger records one exact family/property migration.
+     These route- and property-level authorizations govern ownership only; none is the global
+     18-cell C6a eligibility gate.
 - **Files:** `crates/merman-render/src/diagram_theme/mermaid_compatibility.rs`,
   `crates/merman-render/src/diagram_theme/semantic.rs`,
   `crates/merman-render/src/diagram_theme/resolved.rs`, compiled-theme/session internals,
@@ -958,8 +975,8 @@ and public theme scope from the independent renderer taxonomy before adding face
 - **Pre-freeze authoring witnesses:** After C6a closes, build two independently authored light and
   dark `ThemeDefinitionV1` records. Export each as readable JSON, import it through another
   first-party surface, and require identical canonical definition bytes and materialized specs.
-  Materialize them through the Rust-owned `ThemeMaterializer`, reuse each compiled theme across
-  independent renderers, and prove Flowchart, State, and Sequence Standalone SVG plus PNG without
+  Materialize them through the Rust-owned materialization operation, reuse each compiled theme
+  across independent renderers, and prove Flowchart, State, and Sequence Standalone SVG plus PNG without
   state leakage. Use only `ThemeTokensV1` for this witness; do not inject family-specific rules to
   hide a missing token expansion. Separately build one cold-start complete spec with the existing
   `ThemeRuleSet` so the full recipe language remains independently proven rather than becoming an
@@ -1103,8 +1120,9 @@ their selector and value domains:
 
 | Family / target | Former legacy contribution and complete projection | Direct terminal owner and required evidence | Status |
 | --- | --- | --- | --- |
-| Pie / `PieSlice` | `merman.legacy-family-theme.v1.pie.slice.palette`; `pie1..pie12`, limit 12 | `PieSlicePaintPlan` shared by terminal slice paths and legend swatches; exact `pieN` source precedence; final-SVG family evidence for solid palette values | Migrated (pre-KTD18, ratified) |
-| Mindmap / `Node` | `merman.legacy-family-theme.v1.mindmap.node.palette`; `cScale0..cScale63`, limit 64 | `MindmapNodePalettePlan` bound to non-root branch-node shape CSS; exact `cScaleN` / `mainBkg` source precedence; gradient and raw-theme-CSS residuals; strict final-SVG evidence for solid/transparent palette values | Migrated |
+| Pie / `PieSlice` | `merman.legacy-family-theme.v1.pie.slice.palette`; `pie1..pie12`, limit 12 | `PieSlicePaintPlan` shared by terminal slice paths and legend swatches; exact `pieN` source precedence; static/ordinal fill winners block palette fallback; final-SVG family evidence reports the solid and transparent capabilities actually emitted | Migrated (pre-KTD18, ratified) |
+| Mindmap / `Node` | `merman.legacy-family-theme.v1.mindmap.node.palette`; `cScale0..cScale63`, limit 64 | `MindmapNodePalettePlan` bound to non-root branch-node shape CSS; exact `cScaleN` / `mainBkg` source precedence; Mermaid-owned Neo gradient stroke may coexist with typed node fill, while raw theme CSS remains an output-mutation residual; strict final-SVG evidence for solid/transparent palette values | Migrated |
+| GitGraph / `Node` | `merman.legacy-family-theme.v1.gitGraph.node.palette`; `git0..git63`, limit 64 | `GitGraphNodePalettePlan` owns the eight visible `gitN` slots through terminal `commitN`, `arrowN`, and `labelN` CSS plus actual commit, arrow, and branch-label-background occurrence receipts; exact source/site `gitN` ownership and higher-priority Node paint winners retain precedence. The adapter intentionally does not derive or claim `gitInvN` or `gitBranchLabelN`. | Migrated |
 | Kanban / `Task` | `merman.legacy-family-theme.v1.kanban.task.palette.color-scale` and `merman.legacy-family-theme.v1.kanban.task.palette.git`; `cScale0..cScale11` plus `git0..git11`, limit 12 | `KanbanTaskTheme` bound to terminal task rectangles; exact `background` source precedence; Mermaid light/dark adjustment preserved; strict final-SVG evidence for solid/transparent palette values. The retired `cScaleN` / `gitN` section and root side effects are intentionally not reproduced by the direct `Task` adapter. | Migrated |
 | XY Chart / `ChartSeries` | `merman.legacy-family-theme.v1.xychart.series.palette`; complete `themeVariables.xyChart.plotColorPalette` CSV bounded to 4 KiB plus the first-color `accentColor` side effect | `XyChartSeriesPaintPlan` shared by bar fill/stroke, line stroke, line point-label fill, layout data, and terminal SVG attributes; whole-token `plotColorPalette` source/site precedence; strict final-SVG evidence for solid/transparent values and palette cycling. The unrelated `accentColor` side effect is intentionally retired. | Migrated |
 | Radar / `ChartSeries` | `merman.legacy-family-theme.v1.radar.series.palette`; `cScale0..cScale11`, fixed limit 12 | `RadarSeriesPaintPlan` shared by curve and legend CSS plus terminal element checkpoints; exact per-slot `cScaleN` source/site precedence; strict final-SVG evidence for solid/transparent values and palette cycling. More than 12 curves or a non-12 `THEME_COLOR_LIMIT` remains an explicit residual. | Migrated |
@@ -1112,6 +1130,18 @@ their selector and value domains:
 Adding another row requires a deliberate plan edit and the same atomic implementation boundary; the
 ledger is not a wildcard exemption for effects, typography, arbitrary selectors, or future
 non-scalar mechanisms.
+
+The following compact ledger is the complete KTD19 authority for base-typography bridge migrations.
+It records only properties whose actual family writer owns the terminal inheritance surface:
+
+| Family / property | Former legacy contribution and complete projection | Direct terminal owner and required evidence | Status |
+| --- | --- | --- | --- |
+| Packet / `FontStack` | `merman.legacy-family-theme.v1.packet.typography`; root `fontFamily` plus `themeVariables.fontFamily`, formerly bounded by the 4 KiB legacy assignment limit | `PacketTypographyThemePlan` bound to root and nested-SVG `font-family`, `--mermaid-font-family`, and emitted non-empty text inheritance; exact root / `themeVariables.fontFamily` source precedence; declaration-safe Packet role CSS; valid direct stacks above the retired bridge limit; unsupported sibling typography and paint remain explicit residuals | Migrated (pre-KTD19, ratified) |
+
+Adding another row requires a deliberate plan edit and the same atomic implementation boundary.
+The initial Packet row ratifies the already-landed migration; future rows must land atomically with
+their matrix, bridge, writer evidence, and ledger changes. The ledger is not authorization for
+family typography as a whole, rule-level typography, paint, effects, or arbitrary CSS inheritance.
 - **Verification:** Run the original U8-U11 matrices, platform feature checks, generated legal
   material checks, the complete mechanism-classification ledger, selected Modern/PR #28 visual
   reference comparisons, source/contributor attribution checks, simplification, and independent
@@ -1182,5 +1212,7 @@ C ABI, runtime-catalog schema, Android, Typst, Node, or the already-selected Uni
 epochs. KTD17 records the exact-route native cutover authorization boundary without converting
 those receipts into C6 cells or eligibility progress. KTD18 records the separate C7b
 ordinal-palette migration ledger without forcing those mechanisms into the scalar cutover harness.
+KTD19 records the property-level C7b base-typography migration ledger without generalizing it to
+other inherited or non-scalar mechanisms.
 Other Product Contract requirements remain in force or are explicitly deferred to C7b/C7c rather
 than silently discarded.

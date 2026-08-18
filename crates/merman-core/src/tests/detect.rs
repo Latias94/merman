@@ -421,6 +421,53 @@ fn theme_variable_derived_ownership_reaches_base_main_background_from_explicit_i
 }
 
 #[test]
+fn extended_dark_primary_color_owns_derived_requirement_background_for_site_and_source() {
+    for theme in ["neo-dark", "redux-dark"] {
+        let site = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": { "primaryColor": "#123456" }
+            })))
+            .parse_metadata_sync("flowchart TD\nA-->B")
+            .expect("parse site-owned extended dark primary color");
+        assert_eq!(
+            site.effective_config.as_value()["themeVariables"]["requirementBackground"],
+            json!("#123456"),
+            "{theme} must derive Requirement background from the site primary color"
+        );
+        assert!(
+            crate::__private::config_path_overrides_typed_default(
+                &site.effective_config,
+                "themeVariables.requirementBackground"
+            ),
+            "{theme} must preserve site ownership through the derived Requirement background"
+        );
+
+        let source = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "theme": theme,
+                "secure": []
+            })))
+            .parse_metadata_sync(
+                "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+            )
+            .expect("parse source-owned extended dark primary color");
+        assert_eq!(
+            source.effective_config.as_value()["themeVariables"]["requirementBackground"],
+            json!("#123456"),
+            "{theme} must derive Requirement background from the source primary color"
+        );
+        assert!(
+            crate::__private::config_path_overrides_typed_default(
+                &source.effective_config,
+                "themeVariables.requirementBackground"
+            ),
+            "{theme} must preserve source ownership through the derived Requirement background"
+        );
+    }
+}
+
+#[test]
 fn theme_variable_derived_ownership_ignores_fallback_primary_color() {
     let parsed = Engine::new()
         .with_site_config(MermaidConfig::from_value(json!({ "theme": "base" })))

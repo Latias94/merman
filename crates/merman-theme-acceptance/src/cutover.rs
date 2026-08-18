@@ -179,6 +179,14 @@ title Cutover treemap title
 "Section"
   "Leaf": 1
 "#;
+const REQUIREMENT_FILL_SOURCE: &str = r#"requirementDiagram
+requirement req1 {
+  id: 1
+  text: Cutover requirement
+  risk: high
+  verifymethod: analysis
+}
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -299,6 +307,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(TREEMAP_TITLE_SOURCE)
+        }
+        (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
+            Ok(REQUIREMENT_FILL_SOURCE)
         }
         _ => Err(C6ProofError::new(
             "route-source",
@@ -1078,7 +1089,8 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Actor
             | ThemeTarget::Lifeline
             | ThemeTarget::Note
-            | ThemeTarget::Activation,
+            | ThemeTarget::Activation
+            | ThemeTarget::Requirement,
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(SOLID_FILL),
         (
@@ -1109,7 +1121,9 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
     match route.value() {
         ThemeRouteCutoverValue::Transparent => match route.family_id() {
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE => Ok("none"),
-            DiagramFamilyId::SEQUENCE | DiagramFamilyId::TREEMAP => Ok("transparent"),
+            DiagramFamilyId::SEQUENCE | DiagramFamilyId::TREEMAP | DiagramFamilyId::REQUIREMENT => {
+                Ok("transparent")
+            }
             family => Err(C6ProofError::new(
                 "route-svg-proof",
                 format!("unsupported transparent cutover family {family}"),
@@ -1123,7 +1137,8 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Actor
                 | ThemeTarget::Lifeline
                 | ThemeTarget::Note
-                | ThemeTarget::Activation,
+                | ThemeTarget::Activation
+                | ThemeTarget::Requirement,
                 ThemeRouteCutoverFacet::Fill,
             ) => Ok(SOLID_FILL.css),
             (
@@ -1299,11 +1314,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_thirty_six_routes_and_forty_eight_artifact_witnesses() {
+    fn route_inventory_retains_thirty_eight_routes_and_fifty_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 36);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 48);
+        assert_eq!(inventory.len(), 38);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 50);
     }
 
     #[test]

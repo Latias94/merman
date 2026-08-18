@@ -191,6 +191,7 @@ fn state_support_discovery_uses_the_family_consumer_instead_of_route_ownership()
 fn family_owned_ordinal_palettes_are_reported_without_exposing_private_routes() {
     for (family, target) in [
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Node),
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node),
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice),
         (DiagramFamilyId::XY_CHART, ThemeTarget::ChartSeries),
         (DiagramFamilyId::RADAR, ThemeTarget::ChartSeries),
@@ -234,6 +235,30 @@ fn compatibility_only_route_is_conditional_without_claiming_direct_support() {
             "theme-support.public-value-domain-partial",
         ]
     );
+}
+
+#[test]
+fn mindmap_and_gitgraph_text_fill_remain_explicit_legacy_compatibility_routes() {
+    for family in [DiagramFamilyId::MINDMAP, DiagramFamilyId::GIT_GRAPH] {
+        let query = ThemeSupportQueryV1::known(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::Text.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.legacy-compatibility-only",
+                "theme-support.public-value-domain-partial",
+            ],
+            "family={family}"
+        );
+    }
 }
 
 #[test]

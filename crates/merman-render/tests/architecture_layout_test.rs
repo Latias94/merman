@@ -262,15 +262,25 @@ fn architecture_parse_for_render_model_handles_deep_group_chain() {
 fn architecture_layout_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
-    let engine = Engine::new();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    // Keep the constrained thread's caller shallow so this guards the family preparation frame.
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let options = LayoutOptions::default();
     let handle = std::thread::Builder::new()
-        .name("architecture-deep-group-layout".to_string())
+        .name("architecture-deep-group-family-prepare".to_string())
         .stack_size(128 * 1024)
-        .spawn(move || layout_architecture_with_engine(&engine, &source))
-        .expect("spawn architecture deep group layout test");
-    let layout = handle
+        .spawn(move || family::prepare(parsed, &options, session).expect("layout ok"))
+        .expect("spawn architecture deep group family preparation test");
+    let artifact = handle
         .join()
-        .expect("architecture deep group layout should finish without stack overflow");
+        .expect("architecture family preparation should fit a 128 KiB stack");
+    let projection = artifact.layout_json().expect("serialize layout");
+    let layout: ArchitectureDiagramLayout =
+        serde_json::from_value(projection["layout"]["ArchitectureDiagram"].clone())
+            .expect("architecture layout projection");
 
     assert!(
         layout.nodes.iter().any(|node| node.id == "leaf"),

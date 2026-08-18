@@ -17,8 +17,10 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 mod config;
+mod theme;
 
 pub(crate) use config::RequirementConfigView;
+pub(crate) use theme::RequirementFillThemePlan;
 
 fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
     let source_node_count = model

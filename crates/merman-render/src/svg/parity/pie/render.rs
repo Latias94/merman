@@ -29,6 +29,19 @@ fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String 
     class_name
 }
 
+fn emitted_attribute_matches(
+    output: &str,
+    element_start: usize,
+    attribute_prefix: &str,
+    expected_value: &str,
+) -> bool {
+    output
+        .get(element_start..)
+        .and_then(|element| element.split_once(attribute_prefix))
+        .and_then(|(_, value)| value.split_once('"'))
+        .is_some_and(|(value, _)| value == expected_value)
+}
+
 fn empty_pie_root_viewport_fallback(
     model: &PieDiagramRenderModel,
     min_x: f64,
@@ -60,9 +73,14 @@ fn render_pie_slices(
     radius: f64,
     inner_radius: f64,
     effective_config: &serde_json::Value,
+    paint_plan: &crate::pie::PieSlicePaintPlan,
+    mut paint_receipt: Option<&mut crate::pie::PieSlicePaintReceipt>,
 ) -> Result<()> {
-    for slice in slices {
+    for (slice_index, slice) in slices.iter().enumerate() {
         let slice_class = pie_slice_class(effective_config, &slice.label);
+        let emitted_fill = slice.fill.as_str();
+        let escaped_fill = escape_xml(emitted_fill);
+        let element_start = out.len();
         if slice.is_full_circle {
             let d = if inner_radius > 0.0 {
                 format!(
@@ -80,7 +98,7 @@ fn render_pie_slices(
                 out,
                 r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = escape_xml(&slice.fill),
+                fill = &escaped_fill,
                 class = escape_xml(&slice_class)
             );
         } else {
@@ -123,11 +141,17 @@ fn render_pie_slices(
                 out,
                 r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = escape_xml(&slice.fill),
+                fill = &escaped_fill,
                 class = escape_xml(&slice_class)
             );
         }
         out.checkpoint()?;
+        if let Some(receipt) = paint_receipt.as_deref_mut() {
+            let terminal_fill =
+                emitted_attribute_matches(out.as_str(), element_start, r#" fill=""#, &escaped_fill)
+                    .then_some(emitted_fill);
+            receipt.record_slice(paint_plan, slice_index, slice.label.as_str(), terminal_fill);
+        }
     }
 
     Ok(())
@@ -276,12 +300,16 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     out.checkpoint()?;
 
     let inner_radius = render_settings.donut_hole * layout.radius;
+    let mut paint_receipt =
+        paint_plan.begin_terminal_receipt(layout.slices.iter().map(|slice| slice.label.as_str()));
     render_pie_slices(
         &mut out,
         &layout.slices,
         layout.radius,
         inner_radius,
         effective_config,
+        paint_plan,
+        paint_receipt.as_mut(),
     )?;
 
     for slice in &layout.slices {
@@ -319,7 +347,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
     let legend_text_x = legend_rect_size + PIE_LEGEND_SPACING_PX;
 
-    for item in &layout.legend_items {
+    for (legend_index, item) in layout.legend_items.iter().enumerate() {
         let _ = write!(
             &mut out,
             r#"<g class="legend" transform="translate({x},{y})">"#,
@@ -327,14 +355,20 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
             y = fmt(item.y)
         );
         out.checkpoint()?;
-        let style = pie_legend_rect_style(&item.fill);
+        let emitted_fill = item.fill.as_str();
+        let style = pie_legend_rect_style(emitted_fill);
+        let escaped_style = escape_xml(&style);
+        let element_start = out.len();
         let _ = write!(
             &mut out,
             r#"<rect width="{size}" height="{size}" style="{style}"/>"#,
             size = fmt(legend_rect_size),
-            style = escape_xml(&style)
+            style = &escaped_style
         );
         out.checkpoint()?;
+        let terminal_fill =
+            emitted_attribute_matches(out.as_str(), element_start, r#" style=""#, &escaped_style)
+                .then_some(emitted_fill);
         let text = if model.show_data {
             format!("{} [{}]", item.label, fmt(item.value))
         } else {
@@ -349,13 +383,16 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         );
         out.push_str("</g>");
         out.checkpoint()?;
+        if let Some(receipt) = paint_receipt.as_mut() {
+            receipt.record_legend(paint_plan, legend_index, item.label.as_str(), terminal_fill);
+        }
     }
 
     out.push_str("</g></svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if !paint_plan.record_terminal_complete() {
+    if paint_receipt.is_some_and(|receipt| !paint_plan.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
-            message: "Pie slice paint terminal completion could not be sealed".to_string(),
+            message: "Pie slice paint receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)
@@ -443,10 +480,28 @@ mod tests {
                 fill: "#ECECFF".to_string(),
             })
             .collect::<Vec<_>>();
+        let mut model = PieDiagramRenderModel::default();
+        model.sections = slices
+            .iter()
+            .map(|slice| merman_core::diagrams::pie::PieRenderSection {
+                label: slice.label.clone(),
+                value: slice.value,
+            })
+            .collect();
+        let effective_config = serde_json::json!({});
+        let paint_plan = crate::pie::PieSlicePaintPlan::baseline(&model, &effective_config);
         let mut out = RejectAfterFirstWrite::default();
 
-        let error = render_pie_slices(&mut out, &slices, 185.0, 0.0, &serde_json::json!({}))
-            .expect_err("the rejecting sink must stop Pie slice rendering");
+        let error = render_pie_slices(
+            &mut out,
+            &slices,
+            185.0,
+            0.0,
+            &effective_config,
+            &paint_plan,
+            None,
+        )
+        .expect_err("the rejecting sink must stop Pie slice rendering");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
         assert_eq!(

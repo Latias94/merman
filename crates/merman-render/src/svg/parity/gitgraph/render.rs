@@ -479,6 +479,29 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
     }
 }
 
+fn gitgraph_node_palette_css(
+    diagram_id: &str,
+    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
+    receipt: &mut Option<crate::gitgraph::GitGraphNodePaletteReceipt>,
+) -> String {
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let mut css = String::new();
+    for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
+        let Some(fill) = node_palette.fill_css(slot) else {
+            continue;
+        };
+        let _ = write!(
+            &mut css,
+            r#"#{} .commit{}{{stroke:{};fill:{};}}#{} .arrow{}{{stroke:{};}}#{} .label{}{{fill:{};}}"#,
+            id, slot, fill, fill, id, slot, fill, id, slot, fill
+        );
+        if let Some(receipt) = receipt.as_mut() {
+            receipt.record_stylesheet_rule(node_palette, slot, fill);
+        }
+    }
+    css
+}
+
 fn parse_gitgraph_label_font_size_px(raw: &str) -> f64 {
     let raw = raw.trim().trim_end_matches(';').trim();
     let raw = raw.trim_end_matches("!important").trim();
@@ -521,6 +544,7 @@ fn gitgraph_commit_tag_label_height_px(
 pub(crate) fn render_gitgraph_diagram_svg_model(
     layout: &crate::model::GitGraphDiagramLayout,
     model: &merman_core::diagrams::git_graph::GitGraphRenderModel,
+    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -547,6 +571,7 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
         layout,
         acc_title,
         acc_descr,
+        node_palette,
         effective_config,
         diagram_title,
         measurer,
@@ -558,12 +583,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     layout: &crate::model::GitGraphDiagramLayout,
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
+    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    const THEME_COLOR_LIMIT: i64 = 8;
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
     const VIEWBOX_PADDING_PX: f64 = 8.0;
@@ -663,13 +688,20 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
     let look = config_diagram_look(effective_config);
     let css = gitgraph_css(diagram_id, effective_config);
+    let mut node_palette_receipt = node_palette.begin_terminal_receipt();
+    let node_palette_css =
+        gitgraph_node_palette_css(diagram_id, node_palette, &mut node_palette_receipt);
     let title_style = crate::text::TextStyle {
         font_family: Some(css.font_family.clone()),
         font_size: TITLE_FONT_SIZE_PX,
         font_weight: None,
         font_style: None,
     };
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
+    let _ = write!(
+        &mut out,
+        r#"<style>{}{}</style>"#,
+        css.css, node_palette_css
+    );
 
     out.push_str(r#"<g/>"#);
     out.push_str(&css.defs);
@@ -713,7 +745,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     if layout.show_branches {
         out.push_str("<g>");
         for b in &layout.branches {
-            let idx = b.index % THEME_COLOR_LIMIT;
+            let idx = crate::gitgraph::palette_slot(b.index);
             let pos = b.pos;
 
             if direction == "TB" {
@@ -861,6 +893,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 );
             }
             out.checkpoint()?;
+            if let Some(receipt) = node_palette_receipt.as_mut() {
+                receipt.record_branch_label(node_palette, idx);
+            }
         }
         out.push_str("</g>");
         out.checkpoint()?;
@@ -868,13 +903,17 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 
     out.push_str(r#"<g class="commit-arrows">"#);
     for a in &layout.arrows {
+        let idx = crate::gitgraph::palette_slot(a.class_index);
         let _ = write!(
             &mut out,
             r#"<path d="{d}" class="arrow arrow{idx}"/>"#,
             d = escape_attr(&a.d),
-            idx = a.class_index % THEME_COLOR_LIMIT
+            idx = idx
         );
         out.checkpoint()?;
+        if let Some(receipt) = node_palette_receipt.as_mut() {
+            receipt.record_arrow(node_palette, idx);
+        }
     }
     out.push_str("</g>");
 
@@ -894,11 +933,11 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
 
     out.push_str(r#"<g class="commit-bullets">"#);
-    for c in &layout.commits {
+    for (commit_index, c) in layout.commits.iter().enumerate() {
         let branch_i = branch_idx.get(c.branch.as_str()).copied().unwrap_or(0);
         let symbol_type = commit_symbol_type(c);
         let type_class = commit_class_type(symbol_type);
-        let idx = branch_i % THEME_COLOR_LIMIT;
+        let idx = crate::gitgraph::palette_slot(branch_i);
         let id = escape_attr(&c.id);
 
         if symbol_type == 2 {
@@ -924,6 +963,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 idx = idx,
                 type_class = type_class
             );
+            if let Some(receipt) = node_palette_receipt.as_mut() {
+                receipt.record_commit_element(node_palette, commit_index, 0, idx);
+            }
         } else if symbol_type == 4 {
             let outer_radius = if use_redux_geometry { 7.0 } else { 10.0 };
             let inner_radius = if use_redux_geometry { 2.5 } else { 2.75 };
@@ -990,6 +1032,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 id = id,
                 idx = idx
             );
+            if let Some(receipt) = node_palette_receipt.as_mut() {
+                receipt.record_commit_element(node_palette, commit_index, 0, idx);
+            }
             if symbol_type == 3 {
                 let inner_radius = if use_redux_geometry { 5.0 } else { 6.0 };
                 let _ = write!(
@@ -1002,6 +1047,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
+                if let Some(receipt) = node_palette_receipt.as_mut() {
+                    receipt.record_commit_element(node_palette, commit_index, 1, idx);
+                }
             }
             if symbol_type == 1 {
                 let cross_offset = if use_redux_geometry { 4.0 } else { 5.0 };
@@ -1024,6 +1072,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
+                if let Some(receipt) = node_palette_receipt.as_mut() {
+                    receipt.record_commit_element(node_palette, commit_index, 1, idx);
+                }
             }
         }
         out.checkpoint()?;
@@ -1302,7 +1353,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 })?;
         out.replace_range(close_start..close_start, &title_element)?;
     }
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if node_palette_receipt.is_some_and(|receipt| !node_palette.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "GitGraph Node palette receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
@@ -1383,10 +1440,12 @@ mod tests {
         let execution =
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::GIT_GRAPH)
                 .expect("SVG execution");
+        let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(layout);
         render_gitgraph_diagram_svg_with_accessibility(
             layout,
             None,
             None,
+            &node_palette,
             config,
             None,
             &crate::text::DeterministicTextMeasurer::default(),
@@ -1527,10 +1586,13 @@ mod tests {
         };
 
         let request = SvgRenderOptions::default();
+        let layout = lr_merge_layout(-2.0);
+        let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(&layout);
         let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_model(
-                &lr_merge_layout(-2.0),
+                &layout,
                 &model,
+                &node_palette,
                 &json!({}),
                 Some("Metadata Title"),
                 &crate::text::DeterministicTextMeasurer::default(),
@@ -1761,12 +1823,14 @@ mod tests {
             commits: Vec::new(),
             arrows: Vec::new(),
         };
+        let node_palette = crate::gitgraph::GitGraphNodePalettePlan::baseline(&layout);
         let request = SvgRenderOptions::default();
         let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_with_accessibility(
                 &layout,
                 None,
                 None,
+                &node_palette,
                 &json!({
                     "theme": "base",
                     "themeVariables": {

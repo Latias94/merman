@@ -336,11 +336,6 @@ fn compile_node_family(
                     ("tagLabelBorder", reader.stroke(ThemeTarget::Node)),
                 ],
             );
-            contributions.add_palette(
-                "node.palette",
-                reader.palette(ThemeTarget::Node),
-                PaletteProjection::Git { limit: 64 },
-            );
         }
         _ => {}
     }
@@ -529,12 +524,15 @@ fn compile_requirement_family(
 
     contributions.add_typography(&reader);
     contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::RequirementFill.contribution_id(),
+        [(
+            "requirementBackground",
+            reader.fill(ThemeTarget::Requirement),
+        )],
+    );
+    contributions.add_theme_variables(
         "requirement.paint",
         [
-            (
-                "requirementBackground",
-                reader.fill(ThemeTarget::Requirement),
-            ),
             (
                 "requirementBorderColor",
                 reader.stroke(ThemeTarget::Requirement),
@@ -632,20 +630,20 @@ fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThem
             ("pieOuterStrokeColor", reader.stroke(ThemeTarget::PieSlice)),
         ],
     );
-    let palette = if reader.has_typed_ordinal_palette(ThemeTarget::PieSlice) {
-        None
-    } else {
-        reader.palette(ThemeTarget::PieSlice).or_else(|| {
-            reader
-                .fill(ThemeTarget::PieSlice)
-                .map(|color| vec![color; 12])
-        })
-    };
     contributions.add_palette(
-        "slice.palette",
-        palette,
+        "slice.fill",
+        reader
+            .fill(ThemeTarget::PieSlice)
+            .map(|color| vec![color; 12]),
         PaletteProjection::Pie { limit: 12 },
     );
+    if !reader.has_typed_ordinal_palette(ThemeTarget::PieSlice) {
+        contributions.add_palette(
+            "slice.palette",
+            reader.palette(ThemeTarget::PieSlice),
+            PaletteProjection::Pie { limit: 12 },
+        );
+    }
     contributions.finish_into(builder);
 }
 
@@ -942,7 +940,6 @@ struct MarkerPaintContribution {
 #[derive(Debug, Clone, Copy)]
 enum PaletteProjection {
     ColorScale { limit: usize },
-    Git { limit: usize },
     Pie { limit: usize },
     Journey { task_limit: usize },
 }
@@ -1084,11 +1081,6 @@ impl FamilyContributions {
             PaletteProjection::ColorScale { limit } => {
                 for (index, color) in palette.iter().take(limit).enumerate() {
                     variables.insert(format!("cScale{index}"), Value::String(color.clone()));
-                }
-            }
-            PaletteProjection::Git { limit } => {
-                for (index, color) in palette.iter().take(limit).enumerate() {
-                    variables.insert(format!("git{index}"), Value::String(color.clone()));
                 }
             }
             PaletteProjection::Pie { limit } => {
@@ -1335,6 +1327,46 @@ mod tests {
     }
 
     #[test]
+    fn generic_text_fill_reaches_mindmap_and_gitgraph_legacy_text_variables() {
+        let color = "#123456";
+        for (family, source, expected_paths) in [
+            (
+                DiagramFamilyId::MINDMAP,
+                "mindmap\nroot(Root)\n Child(Child)\n",
+                &["themeVariables.textColor"][..],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+                &[
+                    "themeVariables.textColor",
+                    "themeVariables.commitLabelColor",
+                    "themeVariables.tagLabelColor",
+                ][..],
+            ),
+        ] {
+            let spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid(color)),
+                    )
+                    .for_family(family),
+                ),
+            );
+
+            let parsed = parse(&spec, source);
+            for path in expected_paths {
+                assert_eq!(
+                    parsed.effective_config.get_str(path),
+                    Some(color),
+                    "family={family} path={path}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn direct_er_entity_paint_has_no_legacy_projection() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
@@ -1354,42 +1386,6 @@ mod tests {
             !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.er.entity.paint")
-        );
-    }
-
-    #[test]
-    fn git_palette_delegates_inverse_and_label_values_to_pinned_mermaid_theme() {
-        let palette =
-            super::super::OrdinalPalette::new([
-                super::super::ThemeColorValue::parse("#000000").expect("valid palette color")
-            ])
-            .expect("non-empty palette");
-        let spec = DiagramThemeSpec::new()
-            .with_mermaid_compatibility(
-                MermaidThemeCompatibility::default()
-                    .with_theme("redux")
-                    .expect("valid Mermaid theme"),
-            )
-            .with_styles(ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette));
-        let parsed = parse_with_compatibility(
-            &spec,
-            "gitGraph\n  commit id: \"first\"\n",
-            spec.mermaid().to_mermaid_config(),
-        );
-
-        assert_eq!(
-            parsed.effective_config.get_str("themeVariables.git0"),
-            Some("#000000")
-        );
-        assert_eq!(
-            parsed.effective_config.get_str("themeVariables.gitInv0"),
-            Some("#ffffff")
-        );
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.gitBranchLabel0"),
-            Some("#28253D")
         );
     }
 
@@ -1453,7 +1449,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_family_palettes_keep_git_graph_and_retire_kanban_contributions() {
+    fn direct_family_palettes_retire_git_graph_and_kanban_contributions() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#ef4444").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#22c55e").expect("valid palette color"),
@@ -1467,7 +1463,7 @@ mod tests {
 
         let git_graph = bridge.compile_for_family(DiagramFamilyId::GIT_GRAPH);
         assert!(
-            git_graph
+            !git_graph
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.gitGraph.node.palette")
         );
@@ -1511,6 +1507,38 @@ mod tests {
         let bridge = bridge(&spec);
         let artifact = bridge.compile_for_family(DiagramFamilyId::PIE);
 
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.pie.slice.palette")
+        );
+    }
+
+    #[test]
+    fn explicit_pie_slice_fill_survives_typed_palette_bridge_suppression() {
+        let palette = super::super::OrdinalPalette::new([
+            super::super::ThemeColorValue::parse("#ef4444").expect("valid palette color"),
+            super::super::ThemeColorValue::parse("#22c55e").expect("valid palette color"),
+        ])
+        .expect("non-empty palette");
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::PieSlice,
+                        ThemeStylePatch::default().with_fill(solid("#111827")),
+                    )
+                    .for_family(DiagramFamilyId::PIE),
+                )
+                .with_ordinal_palette(ThemeTarget::PieSlice, palette),
+        );
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::PIE);
+
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.pie.slice.fill")
+        );
         assert!(
             !artifact
                 .contribution_ids
@@ -1644,6 +1672,22 @@ mod tests {
             Some("18px")
         );
         assert_eq!(fallback_contribution_count(&flowchart), 0);
+    }
+
+    #[test]
+    fn packet_font_stack_retires_the_legacy_typography_projection() {
+        let typography = TextStyle::default().with_font_stack(
+            super::super::FontStack::new(["Inter", "sans-serif"]).expect("valid Packet font stack"),
+        );
+        let spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::PACKET, typography),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::PACKET);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.packet.typography"));
     }
 
     #[test]
@@ -2089,7 +2133,9 @@ mod tests {
                 .with_rule(
                     ThemeRule::new(
                         ThemeTarget::Requirement,
-                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#f8fafc"))
+                            .with_stroke(solid("#94a3b8")),
                     )
                     .for_family(DiagramFamilyId::REQUIREMENT),
                 )
@@ -2128,12 +2174,21 @@ mod tests {
         );
         assert!(fallback_contribution_count(&gantt) > 0);
 
+        let requirement_baseline = parse(&DiagramThemeSpec::new(), REQUIREMENT_FIXTURE);
         let requirement = parse(&spec, REQUIREMENT_FIXTURE);
         assert_eq!(
             requirement
                 .effective_config
                 .get_str("themeVariables.requirementBackground"),
-            Some("#f8fafc")
+            requirement_baseline
+                .effective_config
+                .get_str("themeVariables.requirementBackground")
+        );
+        assert_eq!(
+            requirement
+                .effective_config
+                .get_str("themeVariables.requirementBorderColor"),
+            Some("#94a3b8")
         );
         assert_eq!(
             requirement
@@ -2142,6 +2197,22 @@ mod tests {
             Some("#64748b")
         );
         assert!(fallback_contribution_count(&requirement) > 0);
+        let requirement_bridge = bridge(&spec).compile_for_family(DiagramFamilyId::REQUIREMENT);
+        assert!(
+            !requirement_bridge
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.requirement.requirement.fill")
+        );
+        assert!(
+            requirement_bridge
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.requirement.requirement.paint")
+        );
+        assert!(
+            requirement_bridge
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.requirement.relation.paint")
+        );
     }
 
     #[test]

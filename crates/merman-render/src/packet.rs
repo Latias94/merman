@@ -4,8 +4,10 @@ use crate::text::TextMeasurer;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
 mod config;
+mod theme;
 
 pub(crate) use config::PacketConfigView;
+pub(crate) use theme::{PacketSurfaceReceipt, PacketTypographyThemePlan};
 
 pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramRenderModel,

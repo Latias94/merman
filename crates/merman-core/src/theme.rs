@@ -239,6 +239,7 @@ const REDUX_COLOR_INPUTS: &[&str] = &[
     "git1",
     "quadrant1Fill",
 ];
+const EXTENDED_DARK_PRIMARY_DERIVATIONS: &[&str] = &["requirementBackground", "pie1"];
 
 const THEME_PROGRAMS: &[ThemeProgram] = &[
     ThemeProgram::new(
@@ -331,6 +332,22 @@ impl ThemeProgram {
             .expect("every MermaidThemeId must have a theme program")
     }
 
+    fn primary_color_visible_derivations(self) -> &'static [&'static str] {
+        match self.id {
+            MermaidThemeId::NeoDark
+            | MermaidThemeId::ReduxDark
+            | MermaidThemeId::ReduxDarkColor => EXTENDED_DARK_PRIMARY_DERIVATIONS,
+            MermaidThemeId::Default
+            | MermaidThemeId::Base
+            | MermaidThemeId::Dark
+            | MermaidThemeId::Forest
+            | MermaidThemeId::Neutral
+            | MermaidThemeId::Neo
+            | MermaidThemeId::Redux
+            | MermaidThemeId::ReduxColor => &[],
+        }
+    }
+
     fn default_snapshot(self) -> &'static Map<String, Value> {
         generated_theme_artifact()
             .themes
@@ -411,6 +428,7 @@ impl ThemeProgram {
         self,
         secondary_color_missing: bool,
         tertiary_color_missing: bool,
+        primary_color_visible_derivations: &[&str],
         config: &mut MermaidConfig,
     ) {
         match self.dependencies {
@@ -439,6 +457,9 @@ impl ThemeProgram {
             | ThemeDependencyGraph::Default
             | ThemeDependencyGraph::Neutral
             | ThemeDependencyGraph::DynamicGit => {}
+        }
+        for target in primary_color_visible_derivations {
+            config.propagate_theme_variable_ownership("primaryColor", target);
         }
     }
 
@@ -1431,10 +1452,26 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), Col
     let explicit = program.normalize_overrides(raw);
     let secondary_color_missing = value_is_missing(&explicit, "secondaryColor");
     let tertiary_color_missing = value_is_missing(&explicit, "tertiaryColor");
+    let primary_color_visible_derivations = explicit
+        .contains_key("primaryColor")
+        .then(|| {
+            program
+                .primary_color_visible_derivations()
+                .iter()
+                .copied()
+                .filter(|target| !explicit.contains_key(*target))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     config.retain_normalized_theme_compatibility_variables(&explicit);
     config.set_value_preserving_theme_compatibility("themeVariables", Value::Object(explicit));
     program.execute(config)?;
-    program.propagate_derived_ownership(secondary_color_missing, tertiary_color_missing, config);
+    program.propagate_derived_ownership(
+        secondary_color_missing,
+        tertiary_color_missing,
+        &primary_color_visible_derivations,
+        config,
+    );
     Ok(())
 }
 
@@ -1451,15 +1488,16 @@ fn apply_snapshot_theme_defaults(
     let mut resolved = tv;
     let program = ThemeProgram::resolve(theme);
     merge_theme_variable_defaults(&mut resolved, program.calculation_snapshot(&explicit));
-    apply_extended_theme_visible_derivations(theme, &explicit, &mut resolved)?;
+    apply_extended_theme_visible_derivations(*program, &explicit, &mut resolved)?;
     finish_theme_defaults(config, theme, resolved)
 }
 
 fn apply_extended_theme_visible_derivations(
-    theme: MermaidThemeId,
+    program: ThemeProgram,
     explicit: &Map<String, Value>,
     tv: &mut Map<String, Value>,
 ) -> Result<(), ColorError> {
+    let theme = program.id;
     if !matches!(
         theme,
         MermaidThemeId::Neo
@@ -1549,14 +1587,10 @@ fn apply_extended_theme_visible_derivations(
         }
     }
 
-    if explicit.contains_key("primaryColor")
-        && matches!(
-            theme,
-            MermaidThemeId::NeoDark | MermaidThemeId::ReduxDark | MermaidThemeId::ReduxDarkColor
-        )
-    {
+    let primary_color_visible_derivations = program.primary_color_visible_derivations();
+    if explicit.contains_key("primaryColor") && !primary_color_visible_derivations.is_empty() {
         let primary = required_color(tv, "primaryColor")?;
-        for key in ["requirementBackground", "pie1"] {
+        for key in primary_color_visible_derivations {
             set_derived_string_unless_explicit(tv, explicit, key, primary.clone());
         }
     }

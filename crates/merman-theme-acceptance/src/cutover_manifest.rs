@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 7;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 8;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 15] = [
+); 16] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -74,6 +74,10 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::TitleFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::RequirementFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -135,6 +139,8 @@ const CLUSTER_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ClusterStroke];
 const TITLE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TitleFill];
+const REQUIREMENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::RequirementFill];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -149,7 +155,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 36] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 38] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -401,6 +407,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 36] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        REQUIREMENT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Requirement,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        REQUIREMENT_FILL_PROJECTIONS,
     ),
 ];
 

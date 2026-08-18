@@ -5,10 +5,11 @@ fn write_packet_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
+    typography_theme: &crate::packet::PacketTypographyThemePlan,
 ) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let font = crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS;
+    let font = typography_theme.font_family_css();
     let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
     write_mermaid_default_base_css_prefix(out, &id, font)?;
     let _ = write!(
@@ -33,12 +34,14 @@ fn write_packet_css(
     );
     out.checkpoint()?;
     let _ = write!(out, r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
-    out.checkpoint()
+    out.checkpoint()?;
+    Ok(())
 }
 
 pub(crate) fn render_packet_diagram_svg_model(
     layout: &PacketDiagramLayout,
     model: &PacketDiagramRenderModel,
+    typography_theme: &crate::packet::PacketTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
@@ -78,6 +81,8 @@ pub(crate) fn render_packet_diagram_svg_model(
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
+    let mut surface_receipt: crate::packet::PacketSurfaceReceipt =
+        typography_theme.begin_terminal_receipt();
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -99,7 +104,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     }
 
     out.push_str("<style>");
-    write_packet_css(&mut out, diagram_id, effective_config)?;
+    write_packet_css(&mut out, diagram_id, effective_config, typography_theme)?;
     out.push_str("</style>");
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
@@ -126,6 +131,7 @@ pub(crate) fn render_packet_diagram_svg_model(
 
             if !layout.show_bits {
                 out.checkpoint()?;
+                surface_receipt.record_non_empty_text(&b.label);
                 continue;
             }
             let is_single_block = b.start == b.end;
@@ -154,6 +160,11 @@ pub(crate) fn render_packet_diagram_svg_model(
                 );
             }
             out.checkpoint()?;
+            surface_receipt.record_non_empty_text(&b.label);
+            surface_receipt.record_text_occurrence();
+            if !is_single_block {
+                surface_receipt.record_text_occurrence();
+            }
         }
         out.push_str("</g>");
         out.checkpoint()?;
@@ -167,7 +178,8 @@ pub(crate) fn render_packet_diagram_svg_model(
         .map(str::trim)
         .filter(|t| !t.is_empty());
     let title_from_meta = diagram_title.map(str::trim).filter(|t| !t.is_empty());
-    match title_from_semantic.or(title_from_meta) {
+    let terminal_title = title_from_semantic.or(title_from_meta);
+    match terminal_title {
         Some(title) => {
             let _ = write!(
                 &mut out,
@@ -187,9 +199,18 @@ pub(crate) fn render_packet_diagram_svg_model(
         }
     }
     out.checkpoint()?;
+    if terminal_title.is_some() {
+        surface_receipt.record_title_occurrence();
+    }
 
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !typography_theme.record_terminal(surface_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Packet typography receipt was recorded more than once".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
@@ -199,26 +220,24 @@ mod tests {
 
     #[test]
     fn packet_css_honors_mermaid_11_15_packet_style_options() {
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "packet": {
+                "byteFontSize": "11px",
+                "startByteColor": "#111111",
+                "endByteColor": "#222222",
+                "labelColor": "#333333",
+                "labelFontSize": "13px",
+                "titleColor": "#444444",
+                "titleFontSize": "15px",
+                "blockStrokeColor": "#555555",
+                "blockStrokeWidth": 2,
+                "blockFillColor": "#666666"
+            }
+        }));
+        let typography_theme = crate::packet::PacketTypographyThemePlan::resolve(None, &config);
         let mut css = String::new();
-        write_packet_css(
-            &mut css,
-            "pkt",
-            &json!({
-                "packet": {
-                    "byteFontSize": "11px",
-                    "startByteColor": "#111111",
-                    "endByteColor": "#222222",
-                    "labelColor": "#333333",
-                    "labelFontSize": "13px",
-                    "titleColor": "#444444",
-                    "titleFontSize": "15px",
-                    "blockStrokeColor": "#555555",
-                    "blockStrokeWidth": 2,
-                    "blockFillColor": "#666666"
-                }
-            }),
-        )
-        .expect("write Packet CSS");
+        write_packet_css(&mut css, "pkt", config.as_value(), &typography_theme)
+            .expect("write Packet CSS");
 
         assert!(css.contains("#pkt .packetByte{font-size:11px;}"));
         assert!(css.contains("#pkt .packetByte.start{fill:#111111;}"));

@@ -11,10 +11,16 @@ use merman_core::diagrams::git_graph::{
 };
 use std::collections::HashMap;
 
+mod theme;
+
+pub(crate) use theme::{
+    GITGRAPH_PALETTE_SLOT_COUNT, GitGraphNodePalettePlan, GitGraphNodePaletteReceipt, palette_slot,
+};
+
 const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;
-const THEME_COLOR_LIMIT: usize = 8;
+const THEME_COLOR_LIMIT: usize = GITGRAPH_PALETTE_SLOT_COUNT;
 pub(crate) const REDUX_BRANCH_LABEL_PADDING_Y: f64 = 12.0;
 
 const COMMIT_TYPE_MERGE: i64 = 3;

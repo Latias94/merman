@@ -84,6 +84,7 @@ fn insert_requirement_color_css(css: &mut String, diagram_id: &str, color_css: &
 pub(crate) fn render_requirement_diagram_svg_model(
     prepared: &crate::requirement::RequirementPreparedArtifact,
     model: &RequirementDiagramRenderModel,
+    fill_theme: &crate::requirement::RequirementFillThemePlan,
     sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -685,6 +686,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     }
     out.push_str("</g>");
 
+    let mut fill_theme_receipt = fill_theme.begin_terminal_receipt();
     out.push_str(r#"<g class="nodes">"#);
     for n in &layout.nodes {
         if n.id == "__proto__" {
@@ -743,6 +745,14 @@ pub(crate) fn render_requirement_diagram_svg_model(
             node_classes = el.classes.iter().map(String::as_str).collect();
             css_styles = &el.css_styles;
         }
+        let Some(fill_theme_index) = fill_theme.index_for_node_id(&n.id) else {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "Requirement fill theme plan is missing semantic node {}",
+                    n.id
+                ),
+            });
+        };
 
         if !node_classes.contains(&"default") {
             node_classes.insert(0, "default");
@@ -786,7 +796,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
             stroke_override,
             stroke_width_override,
         ) = parse_node_style_overrides(css_styles);
-        let fill_color = fill_override.as_deref().unwrap_or(&default_fill_color);
+        let typed_fill = fill_theme.typed_fill(fill_theme_index, fill_override.is_some());
+        let fill_color = fill_override
+            .as_deref()
+            .or_else(|| typed_fill.map(|(_, fill)| fill))
+            .unwrap_or(&default_fill_color);
         let stroke_color = stroke_override.as_deref().unwrap_or(&default_stroke_color);
         let stroke_width = stroke_width_override.unwrap_or(1.3);
 
@@ -826,6 +840,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
             r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"/>"##,
             d = escape_xml(&fill_path),
             fill = escape_xml(fill_color),
+        );
+        fill_theme_receipt.record_checkpointed_node(
+            fill_theme_index,
+            fill_override.is_some(),
+            typed_fill,
         );
         let _ = write!(
             &mut out,
@@ -950,7 +969,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
     push_requirement_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !fill_theme.record_terminal(fill_theme_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Requirement fill theme terminal evidence could not be sealed".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 fn push_requirement_shadow_defs(
@@ -1254,9 +1279,16 @@ mod tests {
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
         with_test_svg_execution(DiagramFamilyId::REQUIREMENT, request, |options| {
+            let fill_theme = crate::requirement::RequirementFillThemePlan::resolve(
+                None,
+                effective_config,
+                model,
+                options.work_meter(),
+            )?;
             render_requirement_diagram_svg_model(
                 prepared,
                 model,
+                &fill_theme,
                 effective_config,
                 diagram_title,
                 measurer,
@@ -1292,10 +1324,17 @@ mod tests {
             DiagramFamilyId::REQUIREMENT,
         )
         .expect("SVG execution");
+        let fill_theme = crate::requirement::RequirementFillThemePlan::resolve(
+            None,
+            &effective_config,
+            &model,
+            execution.work_meter(),
+        )?;
 
         render_requirement_diagram_svg_model(
             &prepared,
             &model,
+            &fill_theme,
             &effective_config,
             None,
             &measurer,

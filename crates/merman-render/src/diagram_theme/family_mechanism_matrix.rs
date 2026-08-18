@@ -334,6 +334,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL)
         }
+        (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_FILL)
+        }
         _ => None,
     }
 }
@@ -345,12 +348,13 @@ pub(super) fn compile_base_typography_routes(
     let baseline = TextStyle::default();
     let mut routes = Vec::new();
     if style.font_stack() != baseline.font_stack() {
-        let disposition = if family != DiagramFamilyId::STATE
+        let disposition = classify_base_typography(family, ThemeTypographyProperty::FontStack);
+        let disposition = if disposition == FamilyThemeDisposition::LegacyCompatibility
             && style.font_stack().as_css().len() > MAX_LEGACY_ASSIGNMENT_STRING_BYTES
         {
             FamilyThemeDisposition::Unsupported
         } else {
-            classify_base_typography(family, ThemeTypographyProperty::FontStack)
+            disposition
         };
         routes.push(FamilyThemeRoute::new(
             FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack),
@@ -603,7 +607,10 @@ fn classify_ordinal_palette(
     if family == DiagramFamilyId::STATE
         || (matches!(
             family,
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::MINDMAP
+            DiagramFamilyId::FLOWCHART
+                | DiagramFamilyId::SWIMLANE
+                | DiagramFamilyId::MINDMAP
+                | DiagramFamilyId::GIT_GRAPH
         ) && target == ThemeTarget::Node)
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
@@ -777,6 +784,22 @@ fn classify_base_typography(
 ) -> FamilyThemeDisposition {
     if family == DiagramFamilyId::STATE {
         return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::PACKET {
+        return match property {
+            ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::FontSize
+            | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
     }
     match property {
         ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
@@ -990,6 +1013,18 @@ pub(super) fn classify_rule_facet(
         } else {
             FamilyThemeDisposition::Unsupported
         };
+    }
+    if family == DiagramFamilyId::REQUIREMENT
+        && target == ThemeTarget::Requirement
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::ER
         && target == ThemeTarget::Entity
@@ -1299,7 +1334,6 @@ fn legacy_paint_variants(
 
 fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> bool {
     match family {
-        DiagramFamilyId::GIT_GRAPH => target == ThemeTarget::Node,
         DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
         DiagramFamilyId::JOURNEY => target == ThemeTarget::JourneyTask,
         DiagramFamilyId::ERROR
@@ -1322,6 +1356,7 @@ fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> boo
         | DiagramFamilyId::INFO
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::BLOCK
+        | DiagramFamilyId::GIT_GRAPH
         | DiagramFamilyId::ER
         | DiagramFamilyId::QUADRANT_CHART
         | DiagramFamilyId::TREE_VIEW
@@ -1377,6 +1412,19 @@ mod tests {
         );
         assert!(!legacy_palette_supported(
             DiagramFamilyId::MINDMAP,
+            ThemeTarget::Node
+        ));
+    }
+
+    #[test]
+    fn gitgraph_node_palette_uses_the_direct_adapter() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node)
+                .disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert!(!legacy_palette_supported(
+            DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::Node
         ));
     }
@@ -2502,6 +2550,20 @@ mod tests {
                 vec!["cluster.stroke"],
             ),
             (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Requirement,
+                Fill,
+                Transparent,
+                vec!["requirement.fill"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Requirement,
+                Fill,
+                Solid,
+                vec!["requirement.fill"],
+            ),
+            (
                 DiagramFamilyId::SEQUENCE,
                 ThemeTarget::Actor,
                 Fill,
@@ -2829,6 +2891,33 @@ mod tests {
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
                 && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
+    }
+
+    #[test]
+    fn packet_directly_owns_only_the_base_font_stack() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace").expect("valid Packet font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Packet font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::PACKET, &typography);
+
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
     }
 
     #[test]

@@ -1,8 +1,12 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
+use merman_core::{DiagramFamilyId, ParseOptions};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+};
 use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
 use merman_render::model::PieDiagramLayout;
@@ -44,6 +48,119 @@ fn render_pie_from_text(text: &str) -> String {
         .expect("svg render ok")
         .svg()
         .to_owned()
+}
+
+fn render_pie_with_theme(text: &str, theme: &DiagramTheme) -> family::RenderedFamilySvg {
+    let parsed = merman_render::__private::install_parse_compatibility(
+        theme,
+        legacy_init_theme_compat_engine(),
+    )
+    .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+    .expect("parse themed Pie")
+    .expect("detect themed Pie");
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session_with_theme(theme)
+        .expect("begin themed Pie session");
+
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Pie")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed Pie")
+}
+
+fn pie_slice_palette(colors: &[&str]) -> OrdinalPalette {
+    OrdinalPalette::new(
+        colors
+            .iter()
+            .map(|color| ThemeColorValue::parse(color).expect("valid Pie palette color")),
+    )
+    .expect("non-empty Pie palette")
+}
+
+fn pie_slice_palette_theme(colors: &[&str]) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_ordinal_palette(ThemeTarget::PieSlice, pie_slice_palette(colors)),
+            ),
+        )
+        .expect("compile Pie palette theme")
+}
+
+fn pie_slice_fill_and_palette_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::PieSlice,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#111827").expect("valid static Pie fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::PIE),
+                    )
+                    .with_ordinal_palette(
+                        ThemeTarget::PieSlice,
+                        pie_slice_palette(&["#ef4444", "#22c55e"]),
+                    ),
+            ),
+        )
+        .expect("compile Pie fill and palette theme")
+}
+
+#[test]
+fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
+    let theme = pie_slice_palette_theme(&["transparent", "#22c55e"]);
+    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
+    let slice_fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "pieCircle")
+                })
+        })
+        .map(|node| node.attribute("fill").expect("Pie slice fill"))
+        .collect::<Vec<_>>();
+    assert_eq!(slice_fills, ["#00000000", "#22c55e"]);
+
+    let legend_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.parent().is_some_and(|parent| {
+                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
+                })
+        })
+        .map(|node| node.attribute("style").expect("Pie legend style"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        legend_styles,
+        [
+            "fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0);",
+            "fill: rgb(34, 197, 94); stroke: rgb(34, 197, 94);",
+        ]
+    );
+
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(
+        evidence.status(),
+        merman_render::__private::FamilyEvidenceStatus::Verified
+    );
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 fn try_render_pie_svg_with_resource_policy(
@@ -481,4 +598,55 @@ pie
             >= 2,
         "Mermaid 11.16 should mark every slice as hover-highlightable: {svg}"
     );
+}
+
+#[test]
+fn pie_static_fill_rule_outranks_the_typed_palette_for_slices_and_legend() {
+    let theme = pie_slice_fill_and_palette_theme();
+    let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
+    let slice_fills = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "pieCircle")
+                })
+        })
+        .map(|node| node.attribute("fill").expect("Pie slice fill"))
+        .collect::<Vec<_>>();
+    assert_eq!(slice_fills, ["#111827", "#111827"]);
+
+    let legend_styles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.parent().is_some_and(|parent| {
+                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
+                })
+        })
+        .map(|node| node.attribute("style").expect("Pie legend style"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        legend_styles,
+        [
+            "fill: rgb(17, 24, 39); stroke: rgb(17, 24, 39);",
+            "fill: rgb(17, 24, 39); stroke: rgb(17, 24, 39);",
+        ]
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(
+        evidence.status(),
+        merman_render::__private::FamilyEvidenceStatus::Unverified
+    );
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
 }

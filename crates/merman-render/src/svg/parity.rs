@@ -673,9 +673,10 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
-        BuiltinFamilyArtifact::Packet(pair) => packet::render_packet_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.typography_theme(),
             effective_config_value,
             title,
             options,
@@ -698,10 +699,11 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        BuiltinFamilyArtifact::Requirement(pair) => {
+        BuiltinFamilyArtifact::Requirement(artifact) => {
             requirement::render_requirement_diagram_svg_model(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.fill_theme(),
                 effective_config,
                 title,
                 measurer,
@@ -768,9 +770,10 @@ fn render_builtin_family_artifact_raw(
             effective_config_value,
             options,
         ),
-        BuiltinFamilyArtifact::GitGraph(pair) => gitgraph::render_gitgraph_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.node_palette(),
             effective_config_value,
             title,
             measurer,

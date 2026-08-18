@@ -1,0 +1,840 @@
+use super::*;
+
+#[inline(never)]
+fn prepare_pair<S, L>(
+    semantic: S,
+    layout: impl FnOnce(&S) -> Result<L>,
+) -> Result<Box<FamilyPair<S, L>>> {
+    let layout = layout(&semantic)?;
+    Ok(Box::new(FamilyPair::new(semantic, layout)))
+}
+
+fn prepare_flowchart_artifact<L>(
+    semantic: diagrams::flowchart::FlowchartModel,
+    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
+    resolved_theme: Option<&ResolvedDiagramTheme>,
+    typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
+    work_meter: Arc<crate::resources::OperationWorkMeter>,
+    edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
+    layout: impl FnOnce(
+        &diagrams::flowchart::FlowchartModel,
+        &diagrams::flowchart::FlowchartRenderLabelSources,
+        &crate::flowchart::FlowchartSvgLabelSidecarBuilder,
+        &crate::svg::FlowchartEdgeStylePlan,
+    ) -> Result<L>,
+) -> Result<Box<FlowchartFamilyArtifact<L>>> {
+    let edge_theme =
+        crate::flowchart::FlowchartEdgeThemeStyle::resolve(resolved_theme, work_meter.as_ref())?;
+    let svg_label_sidecar = crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
+        prepared_text_layout,
+        resolved_theme,
+        work_meter,
+    )
+    .with_typography_config_ownership(typography_config_ownership)
+    .with_edge_label_padding(edge_theme.edge_label_padding());
+    let layout = layout(
+        &semantic,
+        &label_sources,
+        &svg_label_sidecar,
+        &edge_style_plan,
+    )?;
+    let svg_label_sidecar = svg_label_sidecar.finish();
+    if let Some(error) = svg_label_sidecar.prepared_resource_error().cloned() {
+        return Err(error.into());
+    }
+    if let Some(error) = svg_label_sidecar.prepared_error().cloned() {
+        return Err(error.into());
+    }
+    Ok(Box::new(FlowchartFamilyArtifact {
+        pair: FamilyPair::new(semantic, layout),
+        label_sources,
+        edge_style_plan,
+        edge_theme,
+        svg_label_sidecar,
+        theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
+    }))
+}
+
+#[inline(never)]
+fn prepare_mindmap_family(
+    model: diagrams::mindmap::MindmapDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(
+        execution.resolved_theme(),
+        model.nodes.iter().map(|node| node.section),
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
+        &model,
+        &meta.effective_config,
+        execution.text_measurer(),
+        execution.math_renderer(),
+        execution.work_meter(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Mindmap(Box::new(
+        MindmapFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            node_palette,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_state_family(
+    model: diagrams::state::StateDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let label_sidecar = crate::state::StateLabelSidecarBuilder::new_with_work_meter(
+        execution.prepared_text_layout(),
+        execution.work_meter(),
+    );
+    if meta
+        .title
+        .as_deref()
+        .is_some_and(|title| !title.trim().is_empty())
+    {
+        label_sidecar.reject_unsupported("state_diagram_title_bbox_y");
+    }
+    let layout = crate::state::layout_state_diagram_typed_with_work_meter(
+        &model,
+        meta.effective_config.as_value(),
+        execution
+            .state_style_plan()
+            .expect("State family layout requires an adapted style plan"),
+        execution.text_measurer(),
+        Some(&label_sidecar),
+        execution.work_meter(),
+    )?;
+    let label_sidecar = label_sidecar.finish();
+    if let Some(error) = label_sidecar.prepared_resource_error().cloned() {
+        return Err(error.into());
+    }
+    if let Some(error) = label_sidecar.prepared_error().cloned() {
+        return Err(error.into());
+    }
+    Ok(BuiltinFamilyArtifact::State(Box::new(
+        StateFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            label_sidecar,
+            effect_evidence: crate::state::StateSvgEffectEvidenceRecorder::default(),
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_flowchart_family(
+    model: diagrams::flowchart::FlowchartModel,
+    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    match execution.family_id() {
+        DiagramFamilyId::SWIMLANE => {
+            let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+                &model,
+                &meta.effective_config,
+                true,
+                execution.work_meter_ref(),
+            )?;
+            Ok(BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
+                model,
+                label_sources,
+                execution.prepared_text_layout(),
+                execution.resolved_theme(),
+                crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
+                execution.work_meter(),
+                edge_style_plan,
+                |model, label_sources, svg_label_sidecar, edge_style_plan| {
+                    crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
+                        model,
+                        label_sources,
+                        &meta.effective_config,
+                        execution.text_measurer(),
+                        execution.math_renderer(),
+                        Some(svg_label_sidecar),
+                        edge_style_plan,
+                        execution.work_meter(),
+                    )
+                },
+            )?))
+        }
+        DiagramFamilyId::FLOWCHART => {
+            let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+                &model,
+                &meta.effective_config,
+                false,
+                execution.work_meter_ref(),
+            )?;
+            Ok(BuiltinFamilyArtifact::Flowchart(
+                prepare_flowchart_artifact(
+                    model,
+                    label_sources,
+                    execution.prepared_text_layout(),
+                    execution.resolved_theme(),
+                    crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
+                    execution.work_meter(),
+                    edge_style_plan,
+                    |model, label_sources, svg_label_sidecar, edge_style_plan| {
+                        crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
+                            meta.diagram_type.as_str(),
+                            model,
+                            label_sources,
+                            &meta.effective_config,
+                            execution,
+                            Some(svg_label_sidecar),
+                            edge_style_plan,
+                        )
+                    },
+                )?,
+            ))
+        }
+        planned_family => Err(Error::InvalidModel {
+            message: format!(
+                "planned render family {planned_family} cannot consume a Flowchart model"
+            ),
+        }),
+    }
+}
+
+#[cfg(feature = "layout-cytoscape")]
+#[inline(never)]
+fn prepare_architecture_family(
+    model: diagrams::architecture::ArchitectureDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let group_theme = crate::architecture::ArchitectureGroupThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        model.groups.len(),
+        execution.work_meter().as_ref(),
+    )?;
+    let layout = crate::architecture::layout_architecture_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+        execution.operation_seed(),
+        execution.work_meter().as_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Architecture(Box::new(
+        ArchitectureFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            group_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_c4_family(
+    model: diagrams::c4::C4DiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let explicit_boundary_count = model
+        .boundaries
+        .iter()
+        .filter(|boundary| boundary.alias != "global")
+        .count();
+    let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
+        execution.resolved_theme(),
+        explicit_boundary_count,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::c4::layout_c4_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+        execution.container_width,
+        execution.container_height,
+        execution.screen_available_width,
+    )?;
+    Ok(BuiltinFamilyArtifact::C4(Box::new(C4FamilyArtifact {
+        pair: FamilyPair::new(model, layout),
+        cluster_theme,
+    })))
+}
+
+#[inline(never)]
+fn prepare_gantt_family(
+    model: diagrams::gantt::GanttDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let task_theme = crate::gantt::GanttTaskTheme::resolve(
+        execution.resolved_theme(),
+        &model.tasks,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::gantt::layout_gantt_diagram_typed(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        &task_theme,
+        execution.text_measurer(),
+        execution.container_width,
+        execution.local_time_zone(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Gantt(Box::new(
+        GanttFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            task_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_pie_family(
+    model: diagrams::pie::PieDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let slice_paint = crate::pie::PieSlicePaintPlan::resolve(
+        &model,
+        &meta.effective_config,
+        execution.resolved_theme(),
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::pie::layout_pie_diagram_typed_with_paint_plan(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        &slice_paint,
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
+        pair: FamilyPair::new(model, layout),
+        slice_paint,
+    })))
+}
+
+#[inline(never)]
+fn prepare_timeline_family(
+    model: diagrams::timeline::TimelineDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::timeline::layout_timeline_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    let event_theme = crate::timeline::TimelineEventTheme::resolve(
+        execution.resolved_theme(),
+        &layout,
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Timeline(Box::new(
+        TimelineFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            event_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_journey_family(
+    model: diagrams::journey::JourneyDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::journey::layout_journey_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    let task_theme = crate::journey::JourneyTaskTheme::resolve(
+        execution.resolved_theme(),
+        layout.tasks.len(),
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Journey(Box::new(
+        JourneyFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            task_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_radar_family(
+    model: diagrams::radar::RadarDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let series_paint = crate::radar::RadarSeriesPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::radar::layout_radar_diagram_typed_with_work_meter(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Radar(Box::new(
+        RadarFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            series_paint,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_treemap_family(
+    model: diagrams::treemap::TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::treemap::layout_treemap_diagram_typed(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        layout.title.as_deref(),
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Treemap(Box::new(
+        TreemapFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            title_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_er_family(
+    model: diagrams::er::ErDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let entity_theme = crate::er::ErEntityThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model.entities,
+        execution.work_meter_ref(),
+    )?;
+    #[cfg(feature = "layout-elk")]
+    let layout = crate::er::layout_er_diagram_typed_with_elk_operation_seed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+        execution.elk_operation_seed(),
+        execution.work_meter(),
+    )?;
+    #[cfg(not(feature = "layout-elk"))]
+    let layout = crate::er::layout_er_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+        execution.work_meter(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
+        pair: FamilyPair::new(model, layout),
+        entity_theme,
+    })))
+}
+
+#[inline(never)]
+fn prepare_quadrant_chart_family(
+    model: diagrams::quadrant_chart::QuadrantChartRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let point_theme = crate::quadrantchart::QuadrantChartPointThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::quadrantchart::layout_quadrantchart_diagram_typed(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        &point_theme,
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::QuadrantChart(Box::new(
+        QuadrantChartFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            point_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_xy_chart_family(
+    model: diagrams::xychart::XyChartDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let series_paint = crate::xychart::XyChartSeriesPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::xychart::layout_xychart_diagram_typed(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        &series_paint,
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::XyChart(Box::new(
+        XyChartFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            series_paint,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_gitgraph_family(
+    model: diagrams::git_graph::GitGraphRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::gitgraph::layout_gitgraph_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    let node_palette = crate::gitgraph::GitGraphNodePalettePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::GitGraph(Box::new(
+        GitGraphFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            node_palette,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_tree_view_family(
+    model: diagrams::tree_view::TreeViewDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let edge_theme = crate::tree_view::TreeViewEdgeThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::tree_view::layout_tree_view_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        &edge_theme,
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::TreeView(Box::new(
+        TreeViewFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            edge_theme,
+        },
+    )))
+}
+
+// Keep these families' large theme/layout temporaries out of the heterogeneous router frame.
+// Constrained-stack Architecture preparation otherwise inherits the largest unused match arm.
+#[inline(never)]
+fn prepare_packet_family(
+    model: diagrams::packet::PacketDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let typography_theme = crate::packet::PacketTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::packet::layout_packet_diagram_typed(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Packet(Box::new(
+        PacketFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            typography_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_requirement_family(
+    model: diagrams::requirement::RequirementDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let fill_theme = crate::requirement::RequirementFillThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::requirement::layout_requirement_diagram_typed_with_work_meter(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Requirement(Box::new(
+        RequirementFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            fill_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_class_family(
+    model: ClassDiagram,
+    meta: &ParseMetadata,
+    diagram_type: &str,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let relation_count = model.relations.len();
+    let node_count = model.classes.len();
+    let relation_theme = crate::class::ClassRelationThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        relation_count,
+        node_count,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::layout_class_typed_by_engine(
+        diagram_type,
+        &model,
+        &meta.effective_config,
+        execution,
+    )?;
+    Ok(BuiltinFamilyArtifact::Class(Box::new(
+        ClassFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            relation_theme,
+            theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
+                relation_count,
+                node_count,
+            ),
+        },
+    )))
+}
+
+#[inline(never)]
+pub(super) fn prepare_class_render(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    mut context: FamilyRenderContext,
+) -> Result<FamilyRenderArtifact> {
+    let (meta, model) = parsed.into_parts();
+    let RenderSemanticModel::Class(model) = model else {
+        unreachable!("Class render dispatch requires a Class semantic model")
+    };
+    context.observe_compatibility(&meta);
+    context.ensure_portable_before_svg()?;
+    let diagram_type = meta.diagram_type.as_str();
+    let execution = LayoutExecution::new(options, context.execution());
+    let family = prepare_class_family(model, &meta, diagram_type, &execution)?;
+    FamilyRenderArtifact::new(meta, family, context)
+}
+
+#[inline(never)]
+pub(super) fn prepare_non_class_render(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    mut context: FamilyRenderContext,
+) -> Result<FamilyRenderArtifact> {
+    let (meta, model, render_context) = parsed.into_render_parts();
+    let flowchart_label_sources = render_context.into_flowchart_label_sources();
+    let diagram_type = meta.diagram_type.as_str();
+    let effective_config = meta.effective_config.as_value();
+    let title = meta.title.as_deref();
+    context.observe_compatibility(&meta);
+    if let RenderSemanticModel::State(model) = &model {
+        context.adapt_state(model, effective_config, title)?;
+    }
+    context.ensure_portable_before_svg()?;
+    let execution = LayoutExecution::new(options, context.execution());
+    let family = match model {
+        RenderSemanticModel::Error(model) => {
+            BuiltinFamilyArtifact::Error(prepare_pair(model, |model| {
+                crate::error::layout_error_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Mindmap(model) => prepare_mindmap_family(model, &meta, &execution)?,
+        RenderSemanticModel::State(model) => prepare_state_family(model, &meta, &execution)?,
+        RenderSemanticModel::Sequence(model) => {
+            BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
+                crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
+                    model,
+                    title,
+                    &meta.effective_config,
+                    execution.resolved_theme(),
+                    execution.prepared_text_layout(),
+                    execution.text_measurer(),
+                    execution.math_renderer(),
+                    execution.work_meter(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Zenuml(model) => {
+            BuiltinFamilyArtifact::Zenuml(prepare_pair(model, |model| {
+                crate::zenuml::layout_zenuml_diagram_typed(model, execution.text_measurer())
+            })?)
+        }
+        RenderSemanticModel::Flowchart(model) => {
+            prepare_flowchart_family(model, flowchart_label_sources, &meta, &execution)?
+        }
+        #[cfg(feature = "layout-cytoscape")]
+        RenderSemanticModel::Architecture(model) => {
+            prepare_architecture_family(model, &meta, &execution)?
+        }
+        #[cfg(not(feature = "layout-cytoscape"))]
+        RenderSemanticModel::Architecture(_) => {
+            return Err(Error::MissingCapability {
+                capability: crate::RenderCapability::LayoutCytoscape,
+                diagram_type: diagram_type.to_string(),
+            });
+        }
+        RenderSemanticModel::Class(_) => {
+            unreachable!("Class models use the stack-bounded family dispatch path")
+        }
+        RenderSemanticModel::C4(model) => prepare_c4_family(model, &meta, &execution)?,
+        RenderSemanticModel::Cynefin(model) => {
+            BuiltinFamilyArtifact::Cynefin(prepare_pair(model, |model| {
+                crate::cynefin::layout_cynefin_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Wardley(model) => {
+            BuiltinFamilyArtifact::Wardley(prepare_pair(model, |model| {
+                crate::wardley::layout_wardley_diagram_typed(
+                    model,
+                    title,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Railroad(model) => {
+            BuiltinFamilyArtifact::Railroad(prepare_pair(model, |model| {
+                crate::railroad::layout_railroad_diagram_typed_for_type(
+                    model,
+                    diagram_type,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Kanban(model) => {
+            BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
+                crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
+                    model,
+                    &meta.effective_config,
+                    execution.resolved_theme(),
+                    execution.text_measurer(),
+                    execution.work_meter_ref(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Gantt(model) => prepare_gantt_family(model, &meta, &execution)?,
+        RenderSemanticModel::Pie(model) => prepare_pie_family(model, &meta, &execution)?,
+        RenderSemanticModel::Packet(model) => prepare_packet_family(model, &meta, &execution)?,
+        RenderSemanticModel::Timeline(model) => prepare_timeline_family(model, &meta, &execution)?,
+        RenderSemanticModel::Journey(model) => prepare_journey_family(model, &meta, &execution)?,
+        RenderSemanticModel::Requirement(model) => {
+            prepare_requirement_family(model, &meta, &execution)?
+        }
+        RenderSemanticModel::Sankey(model) => {
+            BuiltinFamilyArtifact::Sankey(prepare_pair(model, |model| {
+                crate::sankey::layout_sankey_diagram_typed_with_work_meter(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                    execution.work_meter_ref(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Radar(model) => prepare_radar_family(model, &meta, &execution)?,
+        RenderSemanticModel::Info(model) => {
+            BuiltinFamilyArtifact::Info(prepare_pair(model, |model| {
+                crate::info::layout_info_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Treemap(model) => prepare_treemap_family(model, &meta, &execution)?,
+        RenderSemanticModel::Block(model) => {
+            BuiltinFamilyArtifact::Block(prepare_pair(model, |model| {
+                crate::block::layout_block_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Er(model) => prepare_er_family(model, &meta, &execution)?,
+        RenderSemanticModel::QuadrantChart(model) => {
+            prepare_quadrant_chart_family(model, &meta, &execution)?
+        }
+        RenderSemanticModel::XyChart(model) => prepare_xy_chart_family(model, &meta, &execution)?,
+        RenderSemanticModel::GitGraph(model) => prepare_gitgraph_family(model, &meta, &execution)?,
+        RenderSemanticModel::TreeView(model) => prepare_tree_view_family(model, &meta, &execution)?,
+        RenderSemanticModel::Ishikawa(model) => {
+            BuiltinFamilyArtifact::Ishikawa(prepare_pair(model, |model| {
+                crate::ishikawa::layout_ishikawa_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::EventModeling(model) => {
+            BuiltinFamilyArtifact::EventModeling(prepare_pair(model, |model| {
+                crate::eventmodeling::layout_eventmodeling_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Venn(model) => {
+            BuiltinFamilyArtifact::Venn(prepare_pair(model, |model| {
+                crate::venn::layout_venn_diagram_typed_with_work_meter(
+                    model,
+                    title,
+                    effective_config,
+                    execution.work_meter_ref(),
+                )
+            })?)
+        }
+        RenderSemanticModel::CustomJson(_) => {
+            unreachable!("custom JSON models return before built-in family dispatch")
+        }
+    };
+    FamilyRenderArtifact::new(meta, family, context)
+}

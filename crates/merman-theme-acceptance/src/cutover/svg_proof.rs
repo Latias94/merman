@@ -42,6 +42,14 @@ pub(super) fn prove_svg_routes(
                     observation.target_regions,
                 )
             }
+            DiagramFamilyId::REQUIREMENT => {
+                let observation = requirement_route_observation(&document, route)?;
+                (
+                    observation.value,
+                    observation.terminal_digest,
+                    observation.target_regions,
+                )
+            }
             _ => {
                 return Err(C6ProofError::new(
                     "route-svg-proof",
@@ -981,6 +989,12 @@ struct TreemapRouteObservation {
     target_regions: Vec<[f64; 4]>,
 }
 
+struct RequirementRouteObservation {
+    value: String,
+    terminal_digest: [u8; 32],
+    target_regions: Vec<[f64; 4]>,
+}
+
 fn flowchart_route_observation(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
@@ -1111,6 +1125,101 @@ fn treemap_route_observation(
     append_len_prefixed(&mut terminal, title.text().unwrap_or_default().as_bytes());
     append_rect(&mut terminal, region);
     Ok(TreemapRouteObservation {
+        value: value.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions: vec![region],
+    })
+}
+
+fn requirement_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<RequirementRouteObservation> {
+    c6_ensure!(
+        "route-svg-proof",
+        route.target() == ThemeTarget::Requirement && route.facet() == ThemeRouteCutoverFacet::Fill,
+        "unsupported Requirement cutover route {}",
+        route_label(route)
+    );
+    requirement_fill_observation(document)
+}
+
+fn requirement_fill_observation(
+    document: &roxmltree::Document<'_>,
+) -> C6ProofResult<RequirementRouteObservation> {
+    let nodes = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && class_contains(*node, "node")
+                && node.attribute("id").is_some_and(|id| id.ends_with("-req1"))
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        nodes.len() == 1,
+        "Requirement witness expected one canonical req1 node, found {}",
+        nodes.len()
+    );
+    let node = nodes[0];
+    let terminal_groups = node
+        .children()
+        .filter(|child| {
+            child.has_tag_name("g")
+                && class_contains(*child, "basic")
+                && class_contains(*child, "label-container")
+                && class_contains(*child, "outer-path")
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        terminal_groups.len() == 1,
+        "Requirement witness expected one canonical terminal surface group, found {}",
+        terminal_groups.len()
+    );
+    let fill_paths = terminal_groups[0]
+        .children()
+        .filter(|child| {
+            child.has_tag_name("path")
+                && child.attribute("stroke") == Some("none")
+                && child.attribute("stroke-width") == Some("0")
+                && child.attribute("fill").is_some()
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        fill_paths.len() == 1,
+        "Requirement witness expected one canonical fill path, found {}",
+        fill_paths.len()
+    );
+    let fill_path = fill_paths[0];
+    let value = fill_path.attribute("fill").ok_or_else(|| {
+        C6ProofError::new(
+            "route-svg-proof",
+            "Requirement fill path lacks its fill attribute",
+        )
+    })?;
+    let path = fill_path.attribute("d").ok_or_else(|| {
+        C6ProofError::new("route-svg-proof", "Requirement fill path lacks geometry")
+    })?;
+    let region = element_bounds(fill_path, ThemeRouteCutoverFacet::Fill)?;
+
+    let mut terminal = b"merman.c6-route-requirement-fill-path.v1\0".to_vec();
+    append_len_prefixed(
+        &mut terminal,
+        node.attribute("id").unwrap_or_default().as_bytes(),
+    );
+    append_len_prefixed(
+        &mut terminal,
+        terminal_groups[0]
+            .attribute("class")
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    append_len_prefixed(&mut terminal, path.as_bytes());
+    append_len_prefixed(&mut terminal, value.as_bytes());
+    append_rect(&mut terminal, region);
+    Ok(RequirementRouteObservation {
         value: value.to_owned(),
         terminal_digest: sha256(terminal),
         target_regions: vec![region],
@@ -1525,6 +1634,19 @@ fn sequence_stylesheet_property<'a>(
 mod tests {
     use super::*;
 
+    const REQUIREMENT_FILL_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 100">
+<style>#fixture .node path{fill:#000000;}</style>
+<g class="nodes">
+  <g class="node default" id="fixture-req1" transform="translate(25,30)">
+    <g class="basic label-container outer-path" style="">
+      <path d="M-10 -5 L10 -5 L10 5 L-10 5" stroke="none" stroke-width="0" fill="#dc2626"/>
+      <path d="M-10 -5 L10 -5 L10 5 L-10 5" stroke="#9370DB" stroke-width="1.3" fill="none"/>
+    </g>
+    <text>Cutover requirement</text>
+  </g>
+</g>
+</svg>"##;
+
     const NESTED_ACTIVATION_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 120">
 <style>#fixture .activation0,#fixture .activation1,#fixture .activation2{fill:#dc2626;}</style>
 <rect x="10" y="10" width="10" height="100" fill="#edf2ae" class="activation0"/>
@@ -1568,6 +1690,18 @@ mod tests {
 
         assert_eq!(observation.value, SOLID_FILL.css);
         assert_eq!(observation.target_regions, vec![[10.0, 10.0, 10.0, 10.0]]);
+    }
+
+    #[test]
+    fn requirement_fill_observer_reads_the_final_path_attribute_and_transformed_region() {
+        let document =
+            roxmltree::Document::parse(REQUIREMENT_FILL_SVG).expect("parse Requirement SVG");
+        let observation =
+            requirement_fill_observation(&document).expect("observe Requirement fill path");
+
+        assert_eq!(observation.value, SOLID_FILL.css);
+        assert_eq!(observation.target_regions, vec![[14.5, 24.5, 21.0, 11.0]]);
+        assert_ne!(observation.terminal_digest, [0; 32]);
     }
 
     #[test]
