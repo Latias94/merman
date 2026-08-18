@@ -3,13 +3,13 @@ use super::boxes::render_sequence_boxes;
 use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::model::AsciiSequenceDiagram;
-use super::text::{SequenceLine, blank_line_with_checkpoints, charge_text_work, trim_right};
+use super::text::{SequenceLine, blank_line_with_checkpoints, trim_right};
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, ResourceContext};
+use crate::safe_text::visit_safe_line_graphemes;
 use crate::terminal::{SurfaceCellCheckpoints, TerminalCellText, primary_width_with_checkpoints};
-use crate::text::display_width_with_profile;
 use merman_core::OperationPhase;
 
 #[derive(Debug)]
@@ -136,8 +136,7 @@ fn prepend_title_line(
         .first()
         .map(SequenceLine::width_profile)
         .unwrap_or(TerminalWidthProfile::Unicode);
-    charge_text_work(title, width_profile, resources, checkpoints)?;
-    let title_width = display_width_with_profile(title, width_profile);
+    let title_width = measure_title_width(title, width_profile, resources, checkpoints)?;
     let height = resources.checked_grid_add(lines.len(), 1)?;
     resources.grid_extent(width.max(title_width), height)?;
     checkpoints.before_charge()?;
@@ -145,19 +144,49 @@ fn prepend_title_line(
     lines.try_reserve(1).map_err(|_| allocation_failed())?;
     lines.insert(
         0,
-        render_title_line(title, width, width_profile, resources, checkpoints)?,
+        render_title_line(
+            title,
+            title_width,
+            width,
+            width_profile,
+            resources,
+            checkpoints,
+        )?,
     );
     Ok(())
 }
 
+fn measure_title_width(
+    title: &str,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<usize> {
+    let mut width = 0usize;
+    let mut overflowed = false;
+    visit_safe_line_graphemes(resources, title, width_profile, |_, grapheme_width| {
+        checkpoints.tick()?;
+        let Some(next_width) = width.checked_add(grapheme_width) else {
+            overflowed = true;
+            return Ok(false);
+        };
+        width = next_width;
+        Ok(true)
+    })?;
+    if overflowed {
+        return resources.checked_grid_add(usize::MAX, 1);
+    }
+    Ok(width)
+}
+
 fn render_title_line(
     title: &str,
+    title_width: usize,
     width: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
-    let title_width = display_width_with_profile(title, width_profile);
     let left = width.saturating_sub(title_width) / 2;
     let mut line = blank_line_with_checkpoints(left, width_profile, resources, checkpoints)?;
     line.try_push_role_text_with_checkpoint(title, AsciiColorRole::Text, resources, || {

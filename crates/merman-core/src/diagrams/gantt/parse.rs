@@ -1134,6 +1134,7 @@ fn serialize_gantt_tasks_controlled(
         }
         let mut value = json!(task);
         if let Some(object) = value.as_object_mut() {
+            object.remove("sectionIndex");
             object.remove("startConstraint");
             object.remove("endConstraint");
         }
@@ -1252,6 +1253,7 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
         id: t.id,
         task: t.task,
         section: t.section,
+        section_index: t.section_index,
         task_type: t.type_,
         classes: t.classes,
         active: t.active,

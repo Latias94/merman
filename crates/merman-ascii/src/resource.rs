@@ -176,6 +176,11 @@ impl Default for AsciiResourcePolicy {
 }
 
 impl AsciiResourcePolicy {
+    /// Creates the trusted-input profile used by compatibility benchmarks and offline tooling.
+    pub const fn unbounded() -> Self {
+        Self::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    }
+
     pub const fn for_profile(profile: ResourceProfile) -> Self {
         let mut values = [None; ASCII_RESOURCE_LIMIT_COUNT];
         let mut index = 0;

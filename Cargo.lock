@@ -2400,7 +2400,6 @@ dependencies = [
 name = "merman-ascii"
 version = "0.8.0-alpha.6"
 dependencies = [
- "criterion",
  "dugong",
  "merman-core",
  "sha2 0.10.9",

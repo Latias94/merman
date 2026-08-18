@@ -2,7 +2,6 @@ use super::SequenceCheckpointCursor;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use crate::safe_text::{SafeLine, SafeText};
 use crate::text::StyledLine;
 
 pub(super) type SequenceLine = StyledLine;
@@ -339,26 +338,6 @@ pub(super) fn blank_line_with_checkpoints(
         &line_resources,
         || checkpoints.checkpoint(),
     )
-}
-
-pub(super) fn charge_text_work(
-    value: &str,
-    width_profile: crate::options::TerminalWidthProfile,
-    resources: &mut ResourceContext,
-    checkpoints: &SequenceCheckpointCursor<'_>,
-) -> Result<()> {
-    checkpoints.before_charge()?;
-    resources.charge_layout_work(1)?;
-    let text = SafeText::new(value);
-    for logical_line in text.lines() {
-        let line = SafeLine::new(logical_line);
-        for grapheme in line.graphemes(width_profile) {
-            checkpoints.before_charge()?;
-            resources.check_grapheme_bytes(grapheme.text().len())?;
-            resources.charge_layout_work(1)?;
-        }
-    }
-    Ok(())
 }
 
 pub(super) fn padded_line_with_checkpoints(

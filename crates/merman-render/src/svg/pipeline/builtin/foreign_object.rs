@@ -12,6 +12,7 @@ use super::util::{
     checkpoint_loop, extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
     rfind_with_checkpoints,
 };
+use crate::svg::pipeline::final_validation::SvgStructureMetrics;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -28,20 +29,26 @@ impl SvgPostprocessor for ForeignObjectFallbackPostprocessor {
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
         let measurer = ctx.controlled_text_measurer(TextMeasurementPhase::Wrap);
-        apply_foreign_object_fallback(svg, &measurer, || ctx.checkpoint())
+        let structure =
+            crate::svg::pipeline::final_validation::validate_well_formed_svg_with_execution(
+                &svg,
+                ctx.execution(),
+            )?;
+        apply_foreign_object_fallback(svg, &measurer, ctx.execution(), structure)
     }
 }
 
 pub(crate) fn apply_foreign_object_fallback<'a>(
     svg: Cow<'a, str>,
     text_measurer: &dyn TextMeasurer,
-    mut checkpoint: impl FnMut() -> Result<()>,
+    execution: crate::svg::pipeline::SvgPostprocessExecution<'_>,
+    structure: SvgStructureMetrics,
 ) -> Result<Cow<'a, str>> {
-    checkpoint()?;
-    if find_with_checkpoints(&svg, "<foreignObject", &mut checkpoint)?.is_none() {
+    execution.checkpoint()?;
+    if find_with_checkpoints(&svg, "<foreignObject", &mut || execution.checkpoint())?.is_none() {
         return Ok(svg);
     }
-    foreign_object_label_fallback_svg_text_controlled(&svg, text_measurer, checkpoint)
+    foreign_object_label_fallback_svg_text_controlled(&svg, text_measurer, execution, structure)
         .map(Cow::Owned)
 }
 

@@ -314,6 +314,8 @@ fn gantt_typed_constraints_round_trip_without_changing_compatibility_json() {
     let model = parse_gantt_model_for_render(text, &meta()).unwrap();
     let typed_json = serde_json::to_value(&model).unwrap();
 
+    assert_eq!(typed_json["tasks"][0]["sectionIndex"], 0);
+    assert_eq!(typed_json["tasks"][1]["sectionIndex"], 0);
     assert_eq!(typed_json["tasks"][1]["startConstraint"]["kind"], "after");
     assert_eq!(
         typed_json["tasks"][1]["startConstraint"]["dependencyIds"],
@@ -333,6 +335,7 @@ fn gantt_typed_constraints_round_trip_without_changing_compatibility_json() {
 
     let compat = render_model_to_compat_json(&model, &meta()).unwrap();
     for task in compat["tasks"].as_array().unwrap() {
+        assert!(task.get("sectionIndex").is_none());
         assert!(task.get("startConstraint").is_none());
         assert!(task.get("endConstraint").is_none());
     }

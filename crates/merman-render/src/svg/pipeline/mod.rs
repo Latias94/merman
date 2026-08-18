@@ -19,7 +19,7 @@ pub use builtin::{
 pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
 pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
-pub(crate) use final_validation::validate_well_formed_svg_with_controls;
+pub(crate) use final_validation::{SvgStructureMetrics, validate_well_formed_svg_with_controls};
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;
 
@@ -327,8 +327,13 @@ impl SvgPipeline {
     ) -> Result<(Cow<'a, str>, Option<SvgReferencePlan>)> {
         let execution = SvgPostprocessExecution::new(session);
         execution.checkpoint()?;
-        let mut current = svg;
+        let mut current =
+            crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(svg, || {
+                execution.checkpoint()
+            })?;
         execution.preflight_svg_byte_count(current.len())?;
+        let mut structure =
+            final_validation::validate_well_formed_svg_with_execution(current.as_ref(), execution)?;
         if self.static_inline_admission {
             static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
         }
@@ -358,6 +363,10 @@ impl SvgPipeline {
                 }
             };
             execution.preflight_svg_byte_count(current.len())?;
+            structure = final_validation::validate_well_formed_svg_with_execution(
+                current.as_ref(),
+                execution,
+            )?;
         }
 
         execution.checkpoint()?;
@@ -366,6 +375,7 @@ impl SvgPipeline {
             current,
             metadata,
             execution,
+            structure,
             self.drop_native_duplicate_fallbacks,
         )?;
         let finalized =
@@ -849,6 +859,63 @@ mod tests {
             .unwrap_err();
 
         assert!(error.to_string().contains("max_svg_bytes"), "{error}");
+    }
+
+    #[test]
+    fn structure_limit_rejects_before_custom_postprocessors_run() {
+        struct MustNotRun;
+
+        impl SvgPostprocessor for MustNotRun {
+            fn name(&self) -> &'static str {
+                "must-not-run"
+            }
+
+            fn process<'a>(
+                &self,
+                _svg: Cow<'a, str>,
+                _ctx: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                panic!("structure admission must precede custom postprocessing")
+            }
+        }
+
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgElements, 1)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+        let error = SvgPipeline::parity()
+            .with_postprocessor(MustNotRun)
+            .process_to_string("<svg><g/></svg>", &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
+    }
+
+    #[test]
+    fn fallback_generated_elements_are_rejected_before_the_overlay_is_completed() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgElements, 4)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+            r#"<foreignObject width="10" height="10">"#,
+            r#"<div xmlns="http://www.w3.org/1999/xhtml">Hello</div>"#,
+            "</foreignObject></svg>",
+        );
+        let error = SvgPipeline::readable()
+            .process_to_string(svg, &session)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("max_svg_elements"), "{error}");
     }
 
     #[test]

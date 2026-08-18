@@ -10,12 +10,14 @@ mod css;
 mod html;
 
 use crate::svg::pipeline::{
-    checkpoint_loop, escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
+    SvgPostprocessExecution, SvgStructureMetrics, checkpoint_loop,
+    escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
     extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
     find_with_checkpoints, rfind_with_checkpoints,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use std::convert::Infallible;
+use std::fmt::{self, Write};
 
 use attr::is_self_closing;
 use context::{
@@ -47,6 +49,7 @@ pub fn foreign_object_label_fallback_svg_text(
         svg,
         text_measurer,
         &mut checkpoint,
+        &mut |_, _| Ok::<(), Infallible>(()),
     ) {
         Ok(output) => output,
         Err(error) => match error {},
@@ -61,9 +64,21 @@ pub fn foreign_object_label_fallback_svg_text(
 pub(crate) fn foreign_object_label_fallback_svg_text_controlled(
     svg: &str,
     text_measurer: &dyn TextMeasurer,
-    mut checkpoint: impl FnMut() -> crate::Result<()>,
+    execution: SvgPostprocessExecution<'_>,
+    structure: SvgStructureMetrics,
 ) -> crate::Result<String> {
-    foreign_object_label_fallback_svg_text_with_checkpoints(svg, text_measurer, &mut checkpoint)
+    foreign_object_label_fallback_svg_text_with_checkpoints(
+        svg,
+        text_measurer,
+        &mut || execution.checkpoint(),
+        &mut |projected_bytes, generated_elements| {
+            execution.preflight_svg_byte_count(projected_bytes)?;
+            execution.preflight_svg_structure(
+                structure.elements.saturating_add(generated_elements),
+                structure.max_tree_depth.max(2),
+            )
+        },
+    )
 }
 
 fn parse_attr_f64<E>(
@@ -85,6 +100,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     svg: &str,
     text_measurer: &dyn TextMeasurer,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
+    preflight_generated: &mut impl FnMut(usize, usize) -> Result<(), E>,
 ) -> Result<String, E> {
     checkpoint()?;
     if find_with_checkpoints(svg, "<foreignObject", checkpoint)?.is_none() {
@@ -92,8 +108,10 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     }
 
     let close_tag = "</foreignObject>";
-    let mut out = String::with_capacity(svg.len() + 2048);
+    preflight_generated(svg.len(), 0)?;
+    let mut out = String::with_capacity(svg.len());
     let mut overlays = String::new();
+    let mut generated_elements = 0usize;
     let mut g_stack: Vec<GFrame> = Vec::new();
     let style_index = FallbackStyleIndex::new(svg, checkpoint)?;
     let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
@@ -186,28 +204,41 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     } else {
                         ""
                     };
-                    overlays.push_str(&format!(
-                        r#"<g data-merman-foreignobject="fallback"{source} class="{cls}">"#,
-                        source = source_attr,
-                        cls = class_attr_tokens(
-                            &g_stack,
-                            inner,
-                            "merman-foreignobject-fallback",
-                            checkpoint,
-                        )?
-                    ));
+                    let fallback_class = class_attr_tokens(
+                        &g_stack,
+                        inner,
+                        "merman-foreignobject-fallback",
+                        checkpoint,
+                    )?;
+                    push_generated_fmt(
+                        &mut overlays,
+                        format_args!(
+                            r#"<g data-merman-foreignobject="fallback"{source} class="{cls}">"#,
+                            source = source_attr,
+                            cls = fallback_class,
+                        ),
+                        1,
+                        svg.len(),
+                        &mut generated_elements,
+                        preflight_generated,
+                    )?;
 
                     let wants_label_bkg =
                         find_with_checkpoints(inner, "labelBkg", checkpoint)?.is_some();
                     if wants_label_bkg {
-                        overlays.push_str(&format!(
-                            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
-                            abs_x,
-                            abs_y,
-                            width,
-                            height,
-                            escape_xml_attr_with_checkpoints(&label_bkg, checkpoint)?
-                        ));
+                        let escaped_label_bkg =
+                            escape_xml_attr_with_checkpoints(&label_bkg, checkpoint)?;
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!(
+                                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+                                abs_x, abs_y, width, height, escaped_label_bkg,
+                            ),
+                            1,
+                            svg.len(),
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
                     }
 
                     let font_size_value =
@@ -303,18 +334,30 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         checkpoint_loop(idx, checkpoint)?;
                         let y_line = y0 + (idx as f64) * line_height;
                         let text = escape_xml_text_with_checkpoints(line, checkpoint)?;
-                        overlays.push_str(&format!(
-                            r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="{}" style="{}">{}</text>"##,
-                            text_x,
-                            y_line,
-                            escape_xml_attr_with_checkpoints(&fill, checkpoint)?,
-                            text_class,
-                            escape_xml_attr_with_checkpoints(&text_style, checkpoint)?,
-                            text
-                        ));
+                        let escaped_fill = escape_xml_attr_with_checkpoints(&fill, checkpoint)?;
+                        let escaped_style =
+                            escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!(
+                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="{}" style="{}">{}</text>"##,
+                                text_x, y_line, escaped_fill, text_class, escaped_style, text
+                            ),
+                            1,
+                            svg.len(),
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
                     }
 
-                    overlays.push_str("</g>");
+                    push_generated_fmt(
+                        &mut overlays,
+                        format_args!("</g>"),
+                        0,
+                        svg.len(),
+                        &mut generated_elements,
+                        preflight_generated,
+                    )?;
                 }
             }
 
@@ -336,7 +379,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     }
 
     let result = if let Some(idx) = rfind_with_checkpoints(&out, "</svg>", checkpoint)? {
-        let mut with_overlays = String::with_capacity(out.len() + overlays.len() + 64);
+        let mut with_overlays = String::with_capacity(out.len() + overlays.len());
         with_overlays.push_str(&out[..idx]);
         with_overlays.push_str(&overlays);
         with_overlays.push_str(&out[idx..]);
@@ -346,6 +389,43 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     };
     checkpoint()?;
     Ok(result)
+}
+
+#[derive(Default)]
+struct FmtByteCounter {
+    bytes: usize,
+}
+
+impl Write for FmtByteCounter {
+    fn write_str(&mut self, value: &str) -> fmt::Result {
+        self.bytes = self.bytes.saturating_add(value.len());
+        Ok(())
+    }
+}
+
+fn push_generated_fmt<E>(
+    output: &mut String,
+    arguments: fmt::Arguments<'_>,
+    added_elements: usize,
+    source_bytes: usize,
+    generated_elements: &mut usize,
+    preflight_generated: &mut impl FnMut(usize, usize) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut counter = FmtByteCounter::default();
+    counter
+        .write_fmt(arguments)
+        .expect("counting formatted SVG bytes cannot fail");
+    let projected_bytes = source_bytes
+        .saturating_add(output.len())
+        .saturating_add(counter.bytes);
+    let projected_elements = generated_elements.saturating_add(added_elements);
+    preflight_generated(projected_bytes, projected_elements)?;
+    output.reserve(counter.bytes);
+    output
+        .write_fmt(arguments)
+        .expect("writing formatted SVG into a String cannot fail");
+    *generated_elements = projected_elements;
+    Ok(())
 }
 
 fn is_foreign_object_switch_native_fallback<E>(

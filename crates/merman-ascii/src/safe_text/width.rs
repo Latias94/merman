@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+#[cfg(test)]
 pub(crate) struct SafeText<'a> {
     value: Cow<'a, str>,
 }
@@ -26,12 +27,13 @@ impl<'a> MeasuredGrapheme<'a> {
 
 /// A normalized single terminal line.
 ///
-/// Unlike [`SafeText`], line feeds are rendered visibly so a caller cannot accidentally smuggle a
-/// second terminal row through a one-row cell surface.
+/// Line feeds are rendered visibly so a caller cannot accidentally smuggle a second terminal row
+/// through a one-row cell surface.
 pub(crate) struct SafeLine<'a> {
     value: Cow<'a, str>,
 }
 
+#[cfg(test)]
 impl<'a> SafeText<'a> {
     pub(crate) fn new(value: &'a str) -> Self {
         Self {

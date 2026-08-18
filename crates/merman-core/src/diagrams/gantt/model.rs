@@ -70,6 +70,8 @@ pub struct GanttRenderTask {
     pub id: String,
     pub task: String,
     pub section: String,
+    #[serde(default, rename = "sectionIndex")]
+    pub section_index: Option<usize>,
     #[serde(rename = "type")]
     pub task_type: String,
     #[serde(default)]
@@ -211,6 +213,7 @@ pub(super) struct RawTaskRaw {
 #[derive(Debug, Clone)]
 pub(super) struct RawTask {
     pub(super) section: String,
+    pub(super) section_index: Option<usize>,
     pub(super) type_: String,
     pub(super) processed: bool,
     pub(super) manual_end_time: bool,
@@ -247,6 +250,7 @@ pub(super) struct GanttDb {
 
     pub(super) sections: Vec<String>,
     pub(super) current_section: String,
+    pub(super) current_section_index: Option<usize>,
     pub(super) display_mode: String,
 
     pub(super) inclusive_end_dates: bool,
@@ -332,6 +336,7 @@ impl GanttDb {
 
     pub(super) fn add_section(&mut self, txt: &str) {
         self.current_section = txt.to_string();
+        self.current_section_index = Some(self.sections.len());
         self.sections.push(txt.to_string());
     }
 
@@ -424,6 +429,7 @@ impl GanttDb {
 
         let raw_task = RawTask {
             section: self.current_section.clone(),
+            section_index: self.current_section_index,
             type_: self.current_section.clone(),
             processed: false,
             manual_end_time: false,

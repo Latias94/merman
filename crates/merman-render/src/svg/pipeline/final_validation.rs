@@ -25,6 +25,12 @@ const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
 const VALIDATION_PASS: &str = "validate-resvg-compatible-svg";
 const XML_VALIDATION_PASS: &str = "validate-well-formed-svg";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SvgStructureMetrics {
+    pub(crate) elements: usize,
+    pub(crate) max_tree_depth: usize,
+}
+
 /// Proves the terminal contract shared by every public SVG output profile.
 #[cfg(test)]
 fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
@@ -35,7 +41,7 @@ fn validate_well_formed_svg(svg: &str, limits: RenderResourcePolicy) -> Result<(
 pub(crate) fn validate_well_formed_svg_with_execution(
     svg: &str,
     execution: SvgPostprocessExecution<'_>,
-) -> Result<()> {
+) -> Result<SvgStructureMetrics> {
     validate_well_formed_svg_with_controls(
         svg,
         &mut || execution.checkpoint(),
@@ -54,13 +60,14 @@ pub(crate) fn validate_well_formed_svg_with_checkpoint(
             .check_svg_structure(elements, tree_depth)
             .map_err(Into::into)
     })
+    .map(|_| ())
 }
 
 pub(crate) fn validate_well_formed_svg_with_controls(
     svg: &str,
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
-) -> Result<()> {
+) -> Result<SvgStructureMetrics> {
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
     let mut depth = 0usize;
@@ -220,7 +227,10 @@ pub(crate) fn validate_well_formed_svg_with_controls(
     }
 
     checkpoint()?;
-    Ok(())
+    Ok(SvgStructureMetrics {
+        elements,
+        max_tree_depth,
+    })
 }
 
 fn validate_well_formed_element(

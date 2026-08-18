@@ -28,10 +28,5 @@ unicode-segmentation.workspace = true
 unicode-width = { workspace = true, features = ["cjk"] }
 
 [dev-dependencies]
-criterion = "0.8.2"
 merman-core = { workspace = true, features = ["test-support"] }
 sha2.workspace = true
-
-[[bench]]
-name = "terminal_cell_representation"
-harness = false

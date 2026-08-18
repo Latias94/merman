@@ -77,24 +77,13 @@ pub(super) fn render_gantt_diagram(
 
     if let Some(task_index) = task_index {
         let GanttTaskIndex {
-            task_section_order,
+            orphan_section_order,
             tasks_by_section,
-            emitted_section_capacity,
         } = task_index;
-        let mut emitted_sections = HashSet::new();
-        document.resources_mut().checkpoint()?;
-        emitted_sections
-            .try_reserve(emitted_section_capacity)
-            .map_err(|_| layout_allocation_error())?;
-
-        for section in &model.sections {
+        for (section_index, section) in model.sections.iter().enumerate() {
             document.resources_mut().checkpoint()?;
-            let first_occurrence = emitted_sections.insert(section.as_str());
             push_section(&mut document, section)?;
-            if !first_occurrence {
-                continue;
-            }
-            if let Some(tasks) = tasks_by_section.get(section.as_str()) {
+            if let Some(tasks) = tasks_by_section.get(&GanttSectionKey::Declared(section_index)) {
                 for task in tasks {
                     push_task(&mut document, task, local_time_zone, execution)?;
                 }
@@ -103,14 +92,12 @@ pub(super) fn render_gantt_diagram(
 
         // Direct typed models may contain a task whose section is absent from the declaration
         // list. Preserve it under its authored section instead of dropping the task.
-        for section in task_section_order {
+        for section in orphan_section_order {
             document.resources_mut().checkpoint()?;
-            if emitted_sections.insert(section) {
-                push_section(&mut document, section)?;
-                if let Some(tasks) = tasks_by_section.get(section) {
-                    for task in tasks {
-                        push_task(&mut document, task, local_time_zone, execution)?;
-                    }
+            push_section(&mut document, section)?;
+            if let Some(tasks) = tasks_by_section.get(&GanttSectionKey::Orphan(section)) {
+                for task in tasks {
+                    push_task(&mut document, task, local_time_zone, execution)?;
                 }
             }
         }
@@ -131,7 +118,7 @@ pub(super) fn render_gantt_diagram(
 #[derive(Debug, Clone, Copy)]
 struct GanttStructureAdmission {
     task_capacity: usize,
-    emitted_section_capacity: usize,
+    section_lookup_capacity: usize,
     grouped: bool,
 }
 
@@ -143,7 +130,7 @@ impl GanttStructureAdmission {
         // The grouped path retains one slot per task in the id set, section-order vector,
         // section map, and section task vectors. Its emitted-section set additionally admits the
         // authored sections plus the worst case where every task names a distinct orphan section.
-        let emitted_section_capacity = if grouped {
+        let section_lookup_capacity = if grouped {
             resources.checked_work_add(model.sections.len(), task_capacity)?
         } else {
             0
@@ -152,7 +139,7 @@ impl GanttStructureAdmission {
             let grouped_task_slots = resources.checked_work_mul(task_capacity, 3)?;
             let indexed_task_slots =
                 resources.checked_work_add(task_capacity, grouped_task_slots)?;
-            resources.checked_work_add(indexed_task_slots, emitted_section_capacity)?
+            resources.checked_work_add(indexed_task_slots, section_lookup_capacity)?
         } else {
             task_capacity
         };
@@ -177,16 +164,27 @@ impl GanttStructureAdmission {
 
         Ok(Self {
             task_capacity,
-            emitted_section_capacity,
+            section_lookup_capacity,
             grouped,
         })
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum GanttSectionKey<'model> {
+    Declared(usize),
+    Orphan(&'model str),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DeclaredSectionMatch {
+    Unique(usize),
+    Ambiguous,
+}
+
 struct GanttTaskIndex<'model> {
-    task_section_order: Vec<&'model str>,
-    tasks_by_section: HashMap<&'model str, Vec<&'model GanttRenderTask>>,
-    emitted_section_capacity: usize,
+    orphan_section_order: Vec<&'model str>,
+    tasks_by_section: HashMap<GanttSectionKey<'model>, Vec<&'model GanttRenderTask>>,
 }
 
 impl<'model> GanttTaskIndex<'model> {
@@ -203,22 +201,40 @@ impl<'model> GanttTaskIndex<'model> {
 
         let mut grouped_index = if admission.grouped {
             resources.checkpoint()?;
-            let mut task_section_order = Vec::new();
+            let mut orphan_section_order = Vec::new();
             let mut tasks_by_section = HashMap::new();
-            task_section_order
+            orphan_section_order
                 .try_reserve(admission.task_capacity)
                 .map_err(|_| layout_allocation_error())?;
             tasks_by_section
                 .try_reserve(admission.task_capacity)
                 .map_err(|_| layout_allocation_error())?;
             Some(Self {
-                task_section_order,
+                orphan_section_order,
                 tasks_by_section,
-                emitted_section_capacity: admission.emitted_section_capacity,
             })
         } else {
             None
         };
+
+        let mut declared_sections = HashMap::new();
+        if admission.grouped {
+            resources.checkpoint()?;
+            declared_sections
+                .try_reserve(admission.section_lookup_capacity)
+                .map_err(|_| layout_allocation_error())?;
+            for (section_index, section) in model.sections.iter().enumerate() {
+                resources.checkpoint()?;
+                match declared_sections.entry(section.as_str()) {
+                    Entry::Occupied(mut entry) => {
+                        *entry.get_mut() = DeclaredSectionMatch::Ambiguous;
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(DeclaredSectionMatch::Unique(section_index));
+                    }
+                }
+            }
+        }
 
         for task in &model.tasks {
             resources.checkpoint()?;
@@ -231,10 +247,30 @@ impl<'model> GanttTaskIndex<'model> {
             let Some(index) = grouped_index.as_mut() else {
                 continue;
             };
-            let tasks = match index.tasks_by_section.entry(task.section.as_str()) {
+            let section_key = match task.section_index {
+                Some(section_index)
+                    if model.sections.get(section_index).map(String::as_str)
+                        == Some(task.section.as_str()) =>
+                {
+                    GanttSectionKey::Declared(section_index)
+                }
+                Some(_) => return Err(invalid_task_section_occurrence()),
+                None => match declared_sections.get(task.section.as_str()) {
+                    Some(DeclaredSectionMatch::Unique(section_index)) => {
+                        GanttSectionKey::Declared(*section_index)
+                    }
+                    Some(DeclaredSectionMatch::Ambiguous) => {
+                        return Err(ambiguous_task_section_occurrence());
+                    }
+                    None => GanttSectionKey::Orphan(task.section.as_str()),
+                },
+            };
+            let tasks = match index.tasks_by_section.entry(section_key) {
                 Entry::Occupied(entry) => entry.into_mut(),
                 Entry::Vacant(entry) => {
-                    index.task_section_order.push(task.section.as_str());
+                    if let GanttSectionKey::Orphan(section) = section_key {
+                        index.orphan_section_order.push(section);
+                    }
                     entry.insert(Vec::new())
                 }
             };
@@ -247,6 +283,20 @@ impl<'model> GanttTaskIndex<'model> {
 
         resources.checkpoint()?;
         Ok(grouped_index)
+    }
+}
+
+fn invalid_task_section_occurrence() -> crate::error::AsciiError {
+    crate::error::AsciiError::UnsupportedFeature {
+        diagram_type: "gantt",
+        feature: "invalid task section occurrence",
+    }
+}
+
+fn ambiguous_task_section_occurrence() -> crate::error::AsciiError {
+    crate::error::AsciiError::UnsupportedFeature {
+        diagram_type: "gantt",
+        feature: "ambiguous task section occurrence",
     }
 }
 

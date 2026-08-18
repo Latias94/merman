@@ -141,7 +141,7 @@ fn bench_ascii_end_to_end(c: &mut Criterion) {
             .with_resource_policy(InputResourcePolicy::for_profile(profile)),
         request: AsciiRequest {
             options: AsciiRenderOptions::ascii(),
-            resources: AsciiResourcePolicy::for_profile(profile),
+            resources: AsciiResourcePolicy::unbounded(),
         },
     };
     let mut group = c.benchmark_group(GROUP);
