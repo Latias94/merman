@@ -886,7 +886,9 @@ impl<'input> Lexer<'input> {
     }
 
     fn peek_signal_type_at(&self, pos: usize) -> bool {
-        let rest = &self.input[pos..];
+        let Some(rest) = self.input.get(pos..) else {
+            return false;
+        };
         half_arrow_type(rest).is_some()
             || rest.starts_with("<<-->>")
             || rest.starts_with("<<->>")
