@@ -9,7 +9,7 @@ unless that job produces an independently releasable artifact.
 Pull requests answer whether a change is safe to review and merge:
 
 - formatting, repository hygiene, and generated-source freshness;
-- full workspace tests and blocking parity on Linux;
+- full workspace tests on Linux, plus blocking SVG parity when its explicit inputs change;
 - workspace compilation plus an explicit host-sensitive macOS/Windows inventory, including the
   Windows ELK small-stack regression;
 - representative Cargo feature leaves, default surfaces, owner APIs, and feature-unification
@@ -46,7 +46,15 @@ ELK stack-safety contracts. Only pull-request and merge-queue runs emit the requ
 status name; push, schedule, and manual lifecycles use event-specific gate names so their results
 cannot satisfy the pull-request check by identity collision.
 
-The Linux parity lane performs one Mermaid source parse and one local SVG render per fixture. Within
+The planner records SVG parity as a selector inside the same owner plan rather than as a second
+owner. Pull requests select it for the SVG renderer and its shared parser/layout crates, the SVG
+comparator and root-viewport oracle, active renderer fixtures, and pinned upstream authorities.
+ASCII-only implementation changes still run the `core` workspace gate but do not run the full SVG
+corpus or install Chromium. Main pushes, scheduled runs, manual runs, and fail-broad planner results
+always select SVG parity as a safety net.
+
+When selected, the Linux parity lane performs one Mermaid source parse and one local SVG render per
+fixture. Within
 the multi-policy DOM comparator, each upstream/local SVG is normalized and XML-parsed once,
 descendant signatures are cached by the normalization profile that actually affects them, and the
 blocking `structure`, `parity`, and `parity-root` policies are evaluated. `parity` and `parity-root`

@@ -13,21 +13,25 @@ try:
     from scripts.ci_plan import (
         OWNER_NAMES,
         GateError,
+        _write_github_outputs,
         evaluate_gate,
         parse_name_status_z,
+        plan_all,
         plan_changes,
-        plan_selected,
         plan_repository_diff,
+        plan_selected,
     )
 except ModuleNotFoundError:
     from ci_plan import (
         OWNER_NAMES,
         GateError,
+        _write_github_outputs,
         evaluate_gate,
         parse_name_status_z,
+        plan_all,
         plan_changes,
-        plan_selected,
         plan_repository_diff,
+        plan_selected,
     )
 
 
@@ -68,6 +72,7 @@ class PlannerTests(unittest.TestCase):
         self.assertTrue(plan["empty"])
         self.assertFalse(plan["fallback"])
         self.assertEqual(plan["owners"], {name: False for name in OWNER_NAMES})
+        self.assertFalse(plan["svg_parity"])
 
     def test_docs_only_change_selects_hygiene_without_expensive_owners(self) -> None:
         plan = plan_changes(
@@ -80,6 +85,7 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["owners"]["core"])
         self.assertFalse(plan["owners"]["platform"])
         self.assertFalse(plan["owners"]["web"])
+        self.assertFalse(plan["svg_parity"])
 
     def test_renderer_change_selects_core_without_unrelated_lifecycle_owners(self) -> None:
         plan = plan_changes(
@@ -93,6 +99,43 @@ class PlannerTests(unittest.TestCase):
             {name for name, enabled in plan["owners"].items() if enabled},
             {"core", "hygiene"},
         )
+        self.assertTrue(plan["svg_parity"])
+
+    def test_svg_parity_selector_uses_explicit_input_boundaries(self) -> None:
+        fixtures = {
+            "crates/dugong/src/lib.rs": True,
+            "crates/merman/src/render.rs": True,
+            "crates/merman-core/src/diagram/mod.rs": True,
+            "crates/merman-render/src/lib.rs": True,
+            "crates/xtask/src/cmd/compare/xml.rs": True,
+            "crates/xtask/src/cmd/flowchart_elk_corpus.rs": True,
+            "crates/xtask/src/svgdom.rs": True,
+            "fixtures/_config/default.json": True,
+            "fixtures/_verification/deterministic-root-contracts.json": True,
+            "fixtures/flowchart/basic.mmd": True,
+            "fixtures/_upstream/flowchart-elk-11.16.1/_manifest.json": True,
+            "fixtures/upstream-svgs/flowchart/basic.svg": True,
+            "playground/tests/root-viewport-oracle.ts": True,
+            "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": True,
+            "crates/merman-ascii/src/safe_text/wrapped.rs": False,
+            "crates/merman-cli/src/main.rs": False,
+            "crates/xtask/src/cmd/native_abi.rs": False,
+            "docs/development/CI.md": False,
+            "fixtures/_deferred/flowchart/candidate.mmd": False,
+            "fixtures/_upstream/mermaid-11.16.0/source.mmd": False,
+            "fixtures/bindings/errors.json": False,
+        }
+
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                self.assertEqual(plan["svg_parity"], expected)
+                if expected:
+                    self.assertTrue(plan["owners"]["core"])
 
     def test_crate_changes_use_explicit_owner_boundaries(self) -> None:
         fixtures = {
@@ -319,6 +362,7 @@ class PlannerTests(unittest.TestCase):
 
         self.assertTrue(plan["fallback"])
         self.assertEqual(plan["owners"], {name: True for name in OWNER_NAMES})
+        self.assertTrue(plan["svg_parity"])
 
     def test_cross_owner_inputs_select_every_consumer(self) -> None:
         fixtures = {
@@ -379,6 +423,7 @@ class PlannerTests(unittest.TestCase):
                 )
                 self.assertTrue(plan["fallback"])
                 self.assertEqual(plan["owners"], {name: True for name in OWNER_NAMES})
+                self.assertTrue(plan["svg_parity"])
 
     def test_rename_classifies_both_old_and_new_paths(self) -> None:
         plan = plan_changes(
@@ -417,6 +462,7 @@ class PlannerTests(unittest.TestCase):
         self.assertTrue(plan["fallback"])
         self.assertEqual(plan["owners"], {name: True for name in OWNER_NAMES})
         self.assertIn("git diff failed", plan["fallback_reason"])
+        self.assertTrue(plan["svg_parity"])
 
     def test_repository_diff_reads_real_nul_delimited_rename_records(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -477,23 +523,98 @@ class PlannerTests(unittest.TestCase):
         encoded = json.dumps(plan, separators=(",", ":"), sort_keys=True)
         self.assertNotIn("\n", encoded)
 
+    def test_main_push_plan_selects_svg_parity(self) -> None:
+        plan = plan_all(
+            base="a" * 40,
+            head="b" * 40,
+            reason="main push full lifecycle",
+        )
+
+        self.assertTrue(plan["svg_parity"])
+
+    def test_github_outputs_include_svg_parity_selector(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(b"M\0crates/merman-render/src/lib.rs\0"),
+            base="a" * 40,
+            head="b" * 40,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "github-output"
+            _write_github_outputs(output_path, plan)
+            output = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("\nsvg_parity=true\n", output)
+
     def test_non_pr_host_safety_net_can_select_only_core(self) -> None:
         plan = plan_selected(
             base="a" * 40,
             head="b" * 40,
             selected=["core"],
             reason="scheduled full host safety net",
+            svg_parity=True,
         )
 
         self.assertEqual(
             {name for name, selected in plan["owners"].items() if selected},
             {"core"},
         )
+        self.assertTrue(plan["svg_parity"])
         summary = evaluate_gate(
             plan,
             {"build-test": {"owner": "core", "required": True, "result": "success"}},
         )
         self.assertEqual(summary["selected"], ["build-test"])
+
+    def test_explicit_svg_parity_requires_core_owner(self) -> None:
+        with self.assertRaises(ValueError):
+            plan_selected(
+                base="a" * 40,
+                head="b" * 40,
+                selected=["hygiene"],
+                reason="invalid isolated selector",
+                svg_parity=True,
+            )
+
+
+class WorkflowSelectorTests(unittest.TestCase):
+    def test_svg_parity_output_controls_only_the_full_dom_and_browser_steps(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+        ).read_text(encoding="utf-8")
+        selector_condition = (
+            "if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'"
+        )
+
+        self.assertIn(
+            "svg_parity: ${{ steps.plan.outputs.svg_parity }}",
+            workflow,
+        )
+        self.assertIn(
+            "--select-owner core --select-svg-parity "
+            '--reason "scheduled or manual full host safety net"',
+            workflow,
+        )
+        for step_name in (
+            "SVG DOM comparison suite",
+            "Install root viewport oracle dependencies",
+            "Install Chromium for root viewport oracle",
+            "Audit rendered SVG root viewports in Chromium",
+        ):
+            with self.subTest(step=step_name):
+                self.assertIn(
+                    f"      - name: {step_name}\n        {selector_condition}\n",
+                    workflow,
+                )
+        self.assertIn(
+            "      - name: Upload root viewport oracle report\n"
+            "        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' "
+            "&& always()\n",
+            workflow,
+        )
+        self.assertIn(
+            "if: ${{ needs.ci-plan.outputs.core == 'true' }}",
+            workflow,
+        )
 
 
 class GateTests(unittest.TestCase):
@@ -538,12 +659,15 @@ class GateTests(unittest.TestCase):
             {**self.plan, "owners": {"hygiene": True}},
             {**self.plan, "base": "not-a-sha"},
             {**self.plan, "schema_version": True},
+            {**self.plan, "schema_version": 1},
             {**self.plan, "changes": {}},
             {**self.plan, "changes": [{"status": "Z", "paths": ["docs/README.md"]}]},
             {**self.plan, "changes": [{"status": "R100", "paths": ["docs/README.md"]}]},
             {**self.plan, "changes": [{"status": "R101", "paths": ["a", "b"]}]},
             {**self.plan, "fallback": True, "fallback_reason": None},
             {**self.plan, "fallback_reason": "unexpected"},
+            {**self.plan, "svg_parity": "false"},
+            {**self.plan, "svg_parity": True},
             {**self.plan, "empty": True},
             {
                 **self.plan,

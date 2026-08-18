@@ -35,6 +35,50 @@ OWNER_NAMES = (
 
 _ALL_OWNERS = frozenset(OWNER_NAMES)
 _CORE_OWNERS = frozenset({"core", "hygiene"})
+_SVG_PARITY_CRATE_PREFIXES = (
+    "crates/dugong/",
+    "crates/dugong-graphlib/",
+    "crates/manatee/",
+    "crates/merman/",
+    "crates/merman-core/",
+    "crates/merman-elk-layered/",
+    "crates/merman-fixture-render-context/",
+    "crates/merman-layout-elk/",
+    "crates/merman-render/",
+    "crates/roughr/",
+)
+_SVG_PARITY_PREFIXES = (
+    "crates/xtask/src/cmd/compare/",
+    "crates/xtask/src/cmd/upstream_svg_provenance/",
+    "tools/upstreams/",
+)
+_SVG_PARITY_EXACT_PATHS = frozenset(
+    {
+        "crates/xtask/src/cmd/admission.rs",
+        "crates/xtask/src/cmd/fixtures.rs",
+        "crates/xtask/src/cmd/flowchart_elk_corpus.rs",
+        "crates/xtask/src/cmd/import/mod.rs",
+        "crates/xtask/src/cmd/mermaid_reference.rs",
+        "crates/xtask/src/cmd/mod.rs",
+        "crates/xtask/src/cmd/paths.rs",
+        "crates/xtask/src/cmd/snapshots.rs",
+        "crates/xtask/src/cmd/upstream_svg_policy.rs",
+        "crates/xtask/src/cmd/upstream_svg_provenance.rs",
+        "crates/xtask/src/cmd/upstream_svg_support.rs",
+        "crates/xtask/src/generated/mermaid_reference.rs",
+        "crates/xtask/src/main.rs",
+        "crates/xtask/src/svgdom.rs",
+        "fixtures/_upstream/flowchart-elk-11.16.1/_manifest.json",
+        "playground/tests/root-viewport-oracle.spec.ts",
+        "playground/tests/root-viewport-oracle.ts",
+        "playground/tests/run-root-viewport-oracle.mjs",
+    }
+)
+_SVG_PARITY_EXCLUDED_FIXTURE_PREFIXES = (
+    "fixtures/_deferred/",
+    "fixtures/_upstream/",
+    "fixtures/bindings/",
+)
 _CRATE_OWNER_RULES = (
     ("crates/merman-android-jni/", {"core", "hygiene", "platform"}),
     (
@@ -212,6 +256,7 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
 
     owners = {name: False for name in OWNER_NAMES}
     reasons: dict[str, list[str]] = {name: [] for name in OWNER_NAMES}
+    svg_parity = False
     if not changes:
         return _plan_document(
             base=base,
@@ -219,6 +264,7 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
             changes=[],
             owners=owners,
             reasons=reasons,
+            svg_parity=False,
             fallback=False,
             fallback_reason=None,
             empty=True,
@@ -234,12 +280,18 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
             for owner in selected:
                 owners[owner] = True
                 reasons[owner].append(reason)
+            if _requires_svg_parity(path):
+                selector_reason = f"SVG parity input changed: {path}"
+                svg_parity = True
+                owners["core"] = True
+                reasons["core"].append(selector_reason)
         if fallback_reason is not None:
             break
 
     if fallback_reason is not None:
         owners = {name: True for name in OWNER_NAMES}
         reasons = {name: [fallback_reason] for name in OWNER_NAMES}
+        svg_parity = True
 
     return _plan_document(
         base=base,
@@ -247,6 +299,7 @@ def plan_changes(changes: Sequence[Change], *, base: str, head: str) -> dict[str
         changes=[{"status": change.status, "paths": list(change.paths)} for change in changes],
         owners=owners,
         reasons=reasons,
+        svg_parity=svg_parity,
         fallback=fallback_reason is not None,
         fallback_reason=fallback_reason,
         empty=False,
@@ -295,6 +348,7 @@ def plan_all(*, base: str, head: str, reason: str) -> dict[str, Any]:
         changes=[],
         owners={name: True for name in OWNER_NAMES},
         reasons={name: [reason] for name in OWNER_NAMES},
+        svg_parity=True,
         fallback=False,
         fallback_reason=None,
         empty=False,
@@ -302,7 +356,12 @@ def plan_all(*, base: str, head: str, reason: str) -> dict[str, Any]:
 
 
 def plan_selected(
-    *, base: str, head: str, selected: Iterable[str], reason: str
+    *,
+    base: str,
+    head: str,
+    selected: Iterable[str],
+    reason: str,
+    svg_parity: bool = False,
 ) -> dict[str, Any]:
     """Select explicit owners for a non-PR lifecycle such as a host safety-net run."""
 
@@ -314,12 +373,15 @@ def plan_selected(
         raise ValueError("explicit CI owner selection must not be empty")
     if not reason.strip():
         raise ValueError("explicit CI owner reason must not be empty")
+    if svg_parity and "core" not in selected_owners:
+        raise ValueError("SVG parity selection requires the core owner")
     return _plan_document(
         base=base,
         head=head,
         changes=[],
         owners={name: name in selected_owners for name in OWNER_NAMES},
         reasons={name: [reason] if name in selected_owners else [] for name in OWNER_NAMES},
+        svg_parity=svg_parity,
         fallback=False,
         fallback_reason=None,
         empty=False,
@@ -398,6 +460,16 @@ def _decode_and_validate_path(raw: bytes) -> str:
     if posixpath.normpath(path) != path:
         raise ValueError(f"non-canonical repository path: {path!r}")
     return path
+
+
+def _requires_svg_parity(path: str) -> bool:
+    if path in _SVG_PARITY_EXACT_PATHS:
+        return True
+    if path.startswith(_SVG_PARITY_CRATE_PREFIXES + _SVG_PARITY_PREFIXES):
+        return True
+    return path.startswith("fixtures/") and not path.startswith(
+        _SVG_PARITY_EXCLUDED_FIXTURE_PREFIXES
+    )
 
 
 def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
@@ -587,6 +659,7 @@ def _fallback_plan(base: str, head: str, reason: str) -> dict[str, Any]:
         changes=[],
         owners={name: True for name in OWNER_NAMES},
         reasons={name: [reason] for name in OWNER_NAMES},
+        svg_parity=True,
         fallback=True,
         fallback_reason=reason,
         empty=False,
@@ -600,12 +673,13 @@ def _plan_document(
     changes: list[dict[str, Any]],
     owners: dict[str, bool],
     reasons: dict[str, list[str]],
+    svg_parity: bool,
     fallback: bool,
     fallback_reason: str | None,
     empty: bool,
 ) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "base": base,
         "head": head,
         "empty": empty,
@@ -614,6 +688,7 @@ def _plan_document(
         "changes": changes,
         "owners": owners,
         "reasons": {name: sorted(set(reasons[name])) for name in OWNER_NAMES},
+        "svg_parity": svg_parity,
     }
 
 
@@ -630,11 +705,12 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         "owners",
         "reasons",
         "schema_version",
+        "svg_parity",
     }
     if (
         set(plan) != required_keys
         or type(plan.get("schema_version")) is not int
-        or plan["schema_version"] != 1
+        or plan["schema_version"] != 2
     ):
         raise GateError("planner output has an invalid schema")
     for field in ("base", "head"):
@@ -692,6 +768,11 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
             raise GateError(f"planner owner {owner} has invalid reasons")
         if owners[owner] and not reasons[owner]:
             raise GateError(f"selected planner owner {owner} has no reason")
+    svg_parity = plan["svg_parity"]
+    if not isinstance(svg_parity, bool):
+        raise GateError("planner SVG parity selector must be boolean")
+    if svg_parity and not owners["core"]:
+        raise GateError("selected SVG parity requires the core owner")
     if not isinstance(plan["empty"], bool) or not isinstance(plan["fallback"], bool):
         raise GateError("planner flags must be boolean")
     fallback_reason = plan["fallback_reason"]
@@ -706,6 +787,8 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         raise GateError("non-fallback planner output cannot include a fallback reason")
     if plan["empty"] and any(owners.values()):
         raise GateError("an empty plan cannot select owner jobs")
+    if plan["empty"] and svg_parity:
+        raise GateError("an empty plan cannot select SVG parity")
     if plan["empty"] and changes:
         raise GateError("an empty plan cannot include changes")
     if plan["empty"] and plan["fallback"]:
@@ -728,6 +811,7 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
             "fallback_reason",
             "owners",
             "reasons",
+            "svg_parity",
         ):
             if plan[field] != expected[field]:
                 raise GateError(f"planner {field} does not match classified changes")
@@ -741,6 +825,7 @@ def _compact_json(document: Any) -> str:
 def _write_github_outputs(path: Path, plan: Mapping[str, Any]) -> None:
     lines = [f"plan={_compact_json(plan)}"]
     lines.extend(f"{owner}={str(plan['owners'][owner]).lower()}" for owner in OWNER_NAMES)
+    lines.append(f"svg_parity={str(plan['svg_parity']).lower()}")
     with path.open("a", encoding="utf-8", newline="\n") as output:
         output.write("\n".join(lines) + "\n")
 
@@ -762,6 +847,11 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--repository", type=Path, default=Path.cwd())
     plan_parser.add_argument("--select-all", action="store_true")
     plan_parser.add_argument(
+        "--select-svg-parity",
+        action="store_true",
+        help="select the full SVG DOM and browser parity lane for an explicit lifecycle",
+    )
+    plan_parser.add_argument(
         "--select-owner",
         action="append",
         choices=OWNER_NAMES,
@@ -782,6 +872,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.command == "plan":
         if args.select_all and args.select_owner:
             raise SystemExit("--select-all and --select-owner are mutually exclusive")
+        if args.select_svg_parity and not (args.select_all or args.select_owner):
+            raise SystemExit("--select-svg-parity requires an explicit owner lifecycle")
         if args.select_all:
             plan = plan_all(base=args.base, head=args.head, reason=args.reason)
         elif args.select_owner:
@@ -790,6 +882,7 @@ def main(argv: Iterable[str] | None = None) -> int:
                 head=args.head,
                 selected=args.select_owner,
                 reason=args.reason,
+                svg_parity=args.select_svg_parity,
             )
         else:
             plan = plan_repository_diff(args.repository, args.base, args.head)

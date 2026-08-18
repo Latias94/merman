@@ -37,6 +37,7 @@ jobs:
       platform: ${{ steps.plan.outputs.platform }}
       python: ${{ steps.plan.outputs.python }}
       security: ${{ steps.plan.outputs.security }}
+      svg_parity: ${{ steps.plan.outputs.svg_parity }}
       typst: ${{ steps.plan.outputs.typst }}
       vscode: ${{ steps.plan.outputs.vscode }}
       web: ${{ steps.plan.outputs.web }}
@@ -79,7 +80,7 @@ jobs:
             schedule|workflow_dispatch)
               base="$PUSH_HEAD_SHA"
               head="$PUSH_HEAD_SHA"
-              extra=(--select-owner core --reason "scheduled or manual full host safety net")
+              extra=(--select-owner core --select-svg-parity --reason "scheduled or manual full host safety net")
               ;;
             *)
               echo "unsupported CI event: $EVENT_NAME" >&2
@@ -538,19 +539,19 @@ jobs:
           cargo check -p merman-uniffi --no-default-features --features ascii
 
       - name: SVG DOM comparison suite
-        if: matrix.parity
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
 
       - name: Install root viewport oracle dependencies
-        if: matrix.parity
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: npm ci --prefix playground/tests
 
       - name: Install Chromium for root viewport oracle
-        if: matrix.parity
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: npm run install:browser:chromium --prefix playground/tests
 
       - name: Audit rendered SVG root viewports in Chromium
-        if: matrix.parity
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: |
           npm run oracle:root-viewport --prefix playground/tests -- \
             --local ../../target/compare \
@@ -558,7 +559,7 @@ jobs:
             --output ../../target/root-viewport-diagnostic.json
 
       - name: Upload root viewport oracle report
-        if: matrix.parity && always()
+        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' && always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: root-viewport-oracle-${{ github.run_attempt }}
