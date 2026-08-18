@@ -43,7 +43,7 @@
     "test:browser:smoke:non-chromium:built": "npm --prefix tests run test:smoke:non-chromium",
     "test:browser:typecheck": "npm --prefix tests run typecheck",
     "test:mermaid-config": "node --test --experimental-strip-types src/lib/mermaid-config.test.ts",
-    "test:runtime": "node --test --experimental-strip-types src/runtime/merman.test.ts src/runtime/render-viewport.test.ts src/runtime/render-coordinator.test.ts src/runtime/render-artifact.test.ts src/runtime/error-projection.test.ts src/runtime/artifact-actions.test.ts src/runtime/presentation-status.test.ts src/runtime/startup-boundary.test.ts src/store/index.test.ts src/lib/share.test.ts src/lib/share-view.test.ts",
+    "test:runtime": "node --test --experimental-strip-types src/runtime/merman.test.ts src/runtime/render-viewport.test.ts src/runtime/render-coordinator.test.ts src/runtime/render-artifact.test.ts src/runtime/error-projection.test.ts src/runtime/artifact-actions.test.ts src/runtime/presentation-status.test.ts src/runtime/startup-boundary.test.ts src/store/index.test.ts src/lib/share.test.ts src/lib/share-view.test.ts src/lib/svg-connected-bounds.test.ts",
     "test:mermaid-requirements": "node --test --experimental-strip-types src/runtime/mermaid-requirements.test.ts src/runtime/external-module-registrar.test.ts",
     "test:realm": "node --test --experimental-strip-types src/runtime/realm/*.test.ts src/runtime/mermaid-realm-controller.test.ts",
     "lint": "eslint .",
