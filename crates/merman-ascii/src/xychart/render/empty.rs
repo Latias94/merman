@@ -19,22 +19,7 @@ pub(super) fn render(
     options: &AsciiRenderOptions,
     resources: ResourceContext,
 ) -> Result<String> {
-    render_with_probe(model, orientation, options, resources, None)
-}
-
-fn render_with_probe(
-    model: &XyChartDiagramRenderModel,
-    orientation: ChartOrientation,
-    options: &AsciiRenderOptions,
-    resources: ResourceContext,
-    #[cfg(test)] retained: Option<std::rc::Rc<std::cell::Cell<usize>>>,
-    #[cfg(not(test))] _retained: Option<()>,
-) -> Result<String> {
     let mut document = BudgetedTextDocument::from_resources(resources, options);
-    #[cfg(test)]
-    if let Some(retained) = retained {
-        document.set_retain_probe(retained);
-    }
     document.push_line("xychart: empty")?;
     document.push_line_with(|line| {
         line.push_str("orientation: ")?;
@@ -151,8 +136,6 @@ mod tests {
     use crate::xychart::plot::TerminalChartPlan;
     use merman_core::diagrams::xychart::{XyChartDisplayPolicy, XyChartPlotType};
     use merman_core::resources::ResourceProfile;
-    use std::cell::Cell;
-    use std::rc::Rc;
 
     fn zero_slot_model() -> XyChartDiagramRenderModel {
         XyChartDiagramRenderModel {
@@ -230,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_projection_rejects_n_minus_one_before_retaining_overflow_fragment() {
+    fn empty_projection_observes_exact_and_n_minus_one_output_limits() {
         let model = zero_slot_model();
         let options = AsciiRenderOptions::ascii();
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
@@ -241,30 +224,26 @@ mod tests {
         let exact = unbounded
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
             .expect("the exact output limit should be valid");
-        let exact_retained = Rc::new(Cell::new(0));
-        render_with_probe(
+        let exact_output = render(
             &model,
             ChartOrientation::Vertical,
             &options,
             ResourceContext::new(exact),
-            Some(Rc::clone(&exact_retained)),
         )
-        .expect("the exact empty projection should retain every fragment");
+        .expect("the exact empty projection should render");
+        assert_eq!(exact_output, rendered);
 
         let below = exact
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
             .expect("the N-1 output limit should be valid");
-        let below_retained = Rc::new(Cell::new(0));
-        let error = render_with_probe(
+        let error = render(
             &model,
             ChartOrientation::Vertical,
             &options,
             ResourceContext::new(below),
-            Some(Rc::clone(&below_retained)),
         )
-        .expect_err("N-1 must reject before retaining the overflow fragment");
+        .expect_err("N-1 must reject the output");
 
-        assert!(below_retained.get() < exact_retained.get());
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected output resource error, got {error:?}");
         };

@@ -47,7 +47,8 @@ impl PreparedSequenceGroupBox<'_> {
     ) -> Result<()> {
         match (self.label, self.label_plan) {
             (Some(label), Some(plan)) => {
-                plan.materialize_with_probe(label, resources, materialized)?;
+                plan.materialize(label, resources)?;
+                materialized.set(true);
                 Ok(())
             }
             (None, None) => Ok(()),

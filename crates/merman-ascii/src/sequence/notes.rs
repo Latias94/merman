@@ -50,8 +50,8 @@ impl PreparedNoteRows {
         resources: &ResourceContext,
         materialized: &std::cell::Cell<bool>,
     ) -> Result<()> {
-        self.label_plan
-            .materialize_with_probe(raw, resources, materialized)?;
+        self.label_plan.materialize(raw, resources)?;
+        materialized.set(true);
         Ok(())
     }
 }

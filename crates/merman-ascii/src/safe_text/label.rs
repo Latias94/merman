@@ -33,54 +33,22 @@ pub(crate) fn try_build_normalized_label_lines(
     wrap_width: Option<usize>,
     resources: &ResourceContext,
 ) -> Result<Option<NormalizedLabelLines>> {
-    try_build_normalized_label_lines_impl(raw, width_profile, trim, wrap_width, resources, || {})
-}
-
-#[cfg(test)]
-fn try_build_normalized_label_lines_impl(
-    raw: &str,
-    width_profile: TerminalWidthProfile,
-    trim: bool,
-    wrap_width: Option<usize>,
-    resources: &ResourceContext,
-    before_materialize: impl FnOnce(),
-) -> Result<Option<NormalizedLabelLines>> {
     resources.transaction(|resources| {
-        try_build_normalized_label_lines_transactional(
-            raw,
-            width_profile,
-            trim,
-            wrap_width,
-            resources,
-            before_materialize,
-        )
+        let Some(plan) =
+            try_plan_normalized_label_lines(raw, width_profile, trim, wrap_width, resources)?
+        else {
+            return Ok(None);
+        };
+        let metrics = plan.metrics();
+        resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
+        resources.check_usage(0, metrics.document_cells)?;
+        resources.check(
+            AsciiResourceLimitId::MaxOutputBytes,
+            metrics.materialized_bytes,
+        )?;
+        resources.charge_usage(0, metrics.document_cells)?;
+        plan.materialize(raw, resources).map(Some)
     })
-}
-
-#[cfg(test)]
-fn try_build_normalized_label_lines_transactional(
-    raw: &str,
-    width_profile: TerminalWidthProfile,
-    trim: bool,
-    wrap_width: Option<usize>,
-    resources: &ResourceContext,
-    before_materialize: impl FnOnce(),
-) -> Result<Option<NormalizedLabelLines>> {
-    let Some(plan) =
-        try_plan_normalized_label_lines(raw, width_profile, trim, wrap_width, resources)?
-    else {
-        return Ok(None);
-    };
-    let metrics = plan.metrics();
-    resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
-    resources.check_usage(0, metrics.document_cells)?;
-    resources.check(
-        AsciiResourceLimitId::MaxOutputBytes,
-        metrics.materialized_bytes,
-    )?;
-    resources.charge_usage(0, metrics.document_cells)?;
-    plan.materialize_with(raw, resources, before_materialize, || Ok(()))
-        .map(Some)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -381,7 +349,7 @@ impl NormalizedLabelPlan {
         raw: &str,
         resources: &ResourceContext,
     ) -> Result<NormalizedLabelLines> {
-        self.materialize_with(raw, resources, || {}, || checkpoint_resources(resources))
+        self.materialize_with_checkpoint(raw, resources, || checkpoint_resources(resources))
     }
 
     pub(crate) fn materialize_with_checkpoint(
@@ -390,11 +358,14 @@ impl NormalizedLabelPlan {
         resources: &ResourceContext,
         checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<NormalizedLabelLines> {
-        self.materialize_with(raw, resources, || {}, checkpoint)
+        resources.transaction(|resources| {
+            resources.charge_layout_work(self.replay_work_units)?;
+            self.materialize_impl(raw, checkpoint)
+        })
     }
 
     pub(crate) fn materialize_after_admission(self, raw: &str) -> Result<NormalizedLabelLines> {
-        self.materialize_impl(raw, || {}, || Ok(()))
+        self.materialize_impl(raw, || Ok(()))
     }
 
     pub(crate) fn materialize_after_admission_with_checkpoint(
@@ -402,7 +373,7 @@ impl NormalizedLabelPlan {
         raw: &str,
         checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<NormalizedLabelLines> {
-        self.materialize_impl(raw, || {}, checkpoint)
+        self.materialize_impl(raw, checkpoint)
     }
 
     pub(super) fn try_deferred_rows<'a>(
@@ -486,36 +457,11 @@ impl NormalizedLabelPlan {
         })
     }
 
-    fn materialize_with(
-        self,
-        raw: &str,
-        resources: &ResourceContext,
-        before_materialize: impl FnOnce(),
-        mut checkpoint: impl FnMut() -> Result<()>,
-    ) -> Result<NormalizedLabelLines> {
-        resources.transaction(|resources| {
-            self.materialize_with_transactional(raw, resources, before_materialize, &mut checkpoint)
-        })
-    }
-
-    fn materialize_with_transactional(
-        self,
-        raw: &str,
-        resources: &ResourceContext,
-        before_materialize: impl FnOnce(),
-        checkpoint: &mut impl FnMut() -> Result<()>,
-    ) -> Result<NormalizedLabelLines> {
-        resources.charge_layout_work(self.replay_work_units)?;
-        self.materialize_impl(raw, before_materialize, checkpoint)
-    }
-
     fn materialize_impl(
         self,
         raw: &str,
-        before_materialize: impl FnOnce(),
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<NormalizedLabelLines> {
-        before_materialize();
         let mut materialized = match self.wrap_width {
             Some(max_width) => materialize_wrapped_label(
                 LabelReplay {
@@ -552,16 +498,6 @@ impl NormalizedLabelPlan {
             lines: materialized.lines,
             width: self.output_metrics.max_width,
         })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn materialize_with_probe(
-        self,
-        raw: &str,
-        resources: &ResourceContext,
-        materialized: &std::cell::Cell<bool>,
-    ) -> Result<NormalizedLabelLines> {
-        self.materialize_with(raw, resources, || materialized.set(true), || Ok(()))
     }
 }
 
@@ -1583,20 +1519,6 @@ fn invalid_label_extent_plan() -> AsciiError {
         diagram_type: "terminal_text",
         feature: "label extent planning",
     }
-}
-
-#[cfg(test)]
-pub(crate) fn try_build_normalized_label_lines_with_probe(
-    raw: &str,
-    width_profile: TerminalWidthProfile,
-    trim: bool,
-    wrap_width: Option<usize>,
-    resources: &mut ResourceContext,
-    materialized: &std::cell::Cell<bool>,
-) -> Result<Option<NormalizedLabelLines>> {
-    try_build_normalized_label_lines_impl(raw, width_profile, trim, wrap_width, resources, || {
-        materialized.set(true)
-    })
 }
 
 #[cfg(test)]

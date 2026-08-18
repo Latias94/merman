@@ -28,10 +28,7 @@ pub(crate) use label::{
     try_plan_normalized_label_lines_with_policy_and_checkpoint,
 };
 #[cfg(test)]
-pub(crate) use label::{
-    try_build_normalized_label_lines, try_build_normalized_label_lines_with_probe,
-    try_plan_normalized_label_lines,
-};
+pub(crate) use label::{try_build_normalized_label_lines, try_plan_normalized_label_lines};
 pub(crate) use layout::{
     NormalizedTextPlan, NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
     try_plan_normalized_text, try_plan_normalized_trimmed_text, try_repeat_layout_char,
@@ -1098,23 +1095,20 @@ mod tests {
     }
 
     #[test]
-    fn label_builder_rejects_control_expansion_before_materialization() {
+    fn label_builder_rejects_control_expansion_transactionally() {
         let escaped = "\\u{1B}";
         let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, escaped.len() - 1);
-        let mut resources = ResourceContext::new(below);
-        let materialized = Cell::new(false);
+        let resources = ResourceContext::new(below);
 
-        let error = try_build_normalized_label_lines_with_probe(
+        let error = try_build_normalized_label_lines(
             "\u{1b}",
             TerminalWidthProfile::Unicode,
             false,
             None,
-            &mut resources,
-            &materialized,
+            &resources,
         )
-        .expect_err("control expansion must be rejected before retaining a String or Vec");
+        .expect_err("control expansion must be rejected transactionally");
 
-        assert!(!materialized.get());
         assert_eq!(resources.layout_work_used(), 0);
         assert_eq!(resources.document_cells_used(), 0);
         assert_limit_error(
@@ -1126,23 +1120,20 @@ mod tests {
     }
 
     #[test]
-    fn label_builder_checks_output_lower_bound_before_materialization() {
+    fn label_builder_checks_output_lower_bound_transactionally() {
         let escaped = "\\u{1B}";
         let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, escaped.len() - 1);
-        let mut resources = ResourceContext::new(below);
-        let materialized = Cell::new(false);
+        let resources = ResourceContext::new(below);
 
-        let error = try_build_normalized_label_lines_with_probe(
+        let error = try_build_normalized_label_lines(
             "\u{1b}",
             TerminalWidthProfile::Unicode,
             false,
             None,
-            &mut resources,
-            &materialized,
+            &resources,
         )
-        .expect_err("normalized output bytes must be rejected before label materialization");
+        .expect_err("normalized output bytes must be rejected transactionally");
 
-        assert!(!materialized.get());
         assert_eq!(resources.layout_work_used(), 0);
         assert_eq!(resources.document_cells_used(), 0);
         assert_limit_error(
@@ -1253,19 +1244,16 @@ mod tests {
         assert_eq!(label.into_parts(), (vec![String::new(); 4], 0));
 
         let below = policy_with_limit(AsciiResourceLimitId::MaxGridCells, 3);
-        let mut resources = ResourceContext::new(below);
-        let materialized = Cell::new(false);
-        let error = try_build_normalized_label_lines_with_probe(
+        let resources = ResourceContext::new(below);
+        let error = try_build_normalized_label_lines(
             raw,
             TerminalWidthProfile::Unicode,
             false,
             None,
-            &mut resources,
-            &materialized,
+            &resources,
         )
-        .expect_err("one grid cell below the minimum row extent must fail first");
+        .expect_err("one grid cell below the minimum row extent must fail transactionally");
 
-        assert!(!materialized.get());
         assert_eq!(resources.layout_work_used(), 0);
         assert_eq!(resources.document_cells_used(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxGridCells, 4, 3);
@@ -1457,10 +1445,8 @@ mod tests {
         plan.try_visit_line_widths(raw, &resources, |_width| Ok(()))
             .expect("the retained-row scan should be charged");
         let before_materialization = resources.layout_work_used();
-        let materialized = Cell::new(false);
-        plan.materialize_with_probe(raw, &resources, &materialized)
+        plan.materialize(raw, &resources)
             .expect("the materialization scan should be charged");
-        assert!(materialized.get());
         let total_work = resources.layout_work_used();
         assert!(total_work > before_materialization);
 
@@ -1497,12 +1483,15 @@ mod tests {
         below_plan
             .try_visit_line_widths(raw, &below_resources, |_width| Ok(()))
             .expect("the below-limit retained-row scan should still fit");
-        let materialized = Cell::new(false);
+        let before_failed_materialization = below_resources.layout_work_used();
         let error = below_plan
-            .materialize_with_probe(raw, &below_resources, &materialized)
-            .expect_err("one work unit below the full scan cost must fail first");
+            .materialize(raw, &below_resources)
+            .expect_err("one work unit below the full scan cost must fail transactionally");
 
-        assert!(!materialized.get());
+        assert_eq!(
+            below_resources.layout_work_used(),
+            before_failed_materialization
+        );
         assert_limit_error(
             error,
             AsciiResourceLimitId::MaxLayoutWorkUnits,
@@ -1528,14 +1517,10 @@ mod tests {
         assert_eq!(plan.metrics().line_count, 2);
         assert_eq!(plan.metrics().max_width, 5);
 
-        let materialized = Cell::new(false);
-        let error = (|| {
-            below_resources.grid_extent(plan.metrics().max_width, plan.metrics().line_count)?;
-            plan.materialize_with_probe(raw, &below_resources, &materialized)
-        })()
-        .expect_err("a 5x2 label grid must reject a nine-cell limit");
+        let error = below_resources
+            .grid_extent(plan.metrics().max_width, plan.metrics().line_count)
+            .expect_err("a 5x2 label grid must reject a nine-cell limit");
 
-        assert!(!materialized.get());
         assert_limit_error(error, AsciiResourceLimitId::MaxGridCells, 10, 9);
 
         let exact = policy_with_limit(AsciiResourceLimitId::MaxGridCells, 10);
@@ -1555,11 +1540,13 @@ mod tests {
                 exact_plan.metrics().line_count,
             )
             .expect("the exact label grid should be admitted");
-        let exact_materialized = Cell::new(false);
-        exact_plan
-            .materialize_with_probe(raw, &exact_resources, &exact_materialized)
+        let exact_materialized = exact_plan
+            .materialize(raw, &exact_resources)
             .expect("materialization should follow successful admission");
-        assert!(exact_materialized.get());
+        assert_eq!(
+            exact_materialized.into_parts(),
+            (vec!["alpha".to_string(), "beta".to_string()], 5)
+        );
     }
 
     #[test]

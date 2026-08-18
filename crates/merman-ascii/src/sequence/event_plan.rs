@@ -65,7 +65,8 @@ impl PreparedMessageRows {
         materialized: &std::cell::Cell<bool>,
     ) -> Result<()> {
         if let Some(plan) = self.label_plan {
-            plan.materialize_with_probe(raw, resources, materialized)?;
+            plan.materialize(raw, resources)?;
+            materialized.set(true);
         }
         Ok(())
     }

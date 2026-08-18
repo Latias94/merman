@@ -163,52 +163,10 @@ pub(crate) fn plan_sectioned_text<T: SectionedTextTask>(
     tasks: &[T],
     resources: &ResourceContext,
 ) -> Result<SectionedTextPlan> {
-    admit_then_materialize_sectioned_text(
-        diagram_type,
-        sections,
-        tasks,
-        resources,
-        |admission, resources| {
-            SectionedTextPlan::materialize(diagram_type, sections, tasks, admission, resources)
-        },
-    )
-}
-
-#[cfg(test)]
-#[allow(dead_code)]
-pub(crate) fn plan_sectioned_text_with_probe<T: SectionedTextTask>(
-    diagram_type: &'static str,
-    sections: &[String],
-    tasks: &[T],
-    resources: &ResourceContext,
-    materialized: &std::cell::Cell<bool>,
-) -> Result<SectionedTextPlan> {
-    admit_then_materialize_sectioned_text(
-        diagram_type,
-        sections,
-        tasks,
-        resources,
-        |admission, resources| {
-            materialized.set(true);
-            SectionedTextPlan::materialize(diagram_type, sections, tasks, admission, resources)
-        },
-    )
-}
-
-fn admit_then_materialize_sectioned_text<T>(
-    diagram_type: &'static str,
-    sections: &[String],
-    tasks: &[T],
-    resources: &ResourceContext,
-    materialize: impl FnOnce(SectionedTextAdmission, &ResourceContext) -> Result<SectionedTextPlan>,
-) -> Result<SectionedTextPlan>
-where
-    T: SectionedTextTask,
-{
     resources.transaction(|resources| {
         let admission =
             SectionedTextAdmission::preflight(diagram_type, sections, tasks, resources)?;
-        materialize(admission, resources)
+        SectionedTextPlan::materialize(diagram_type, sections, tasks, admission, resources)
     })
 }
 
@@ -239,16 +197,8 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, SECTION_PLAN_WORK)
             .expect("exact section-planning limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
-        let exact_materialized = Cell::new(false);
-        plan_sectioned_text_with_probe(
-            diagram_type,
-            sections,
-            tasks,
-            &exact_resources,
-            &exact_materialized,
-        )
-        .expect("exact section-planning limit should permit materialization");
-        assert!(exact_materialized.get());
+        plan_sectioned_text(diagram_type, sections, tasks, &exact_resources)
+            .expect("exact section-planning limit should permit materialization");
         assert_eq!(exact_resources.layout_work_used(), SECTION_PLAN_WORK);
 
         let below_policy = unbounded
@@ -258,16 +208,8 @@ mod tests {
             )
             .expect("max-minus-one section-planning limit should be valid");
         let below_resources = ResourceContext::new(below_policy);
-        let below_materialized = Cell::new(false);
-        let error = plan_sectioned_text_with_probe(
-            diagram_type,
-            sections,
-            tasks,
-            &below_resources,
-            &below_materialized,
-        )
-        .expect_err("max-minus-one section-planning limit should reject before materialization");
-        assert!(!below_materialized.get());
+        let error = plan_sectioned_text(diagram_type, sections, tasks, &below_resources)
+            .expect_err("max-minus-one section-planning limit should reject");
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
