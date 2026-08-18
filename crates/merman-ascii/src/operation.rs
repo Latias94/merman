@@ -5,7 +5,7 @@
 //! ASCII layout and output resource policy.
 
 use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
+use crate::resource::{AsciiResourcePolicy, ResourceContext};
 use merman_core::{OperationControl, OperationPhase};
 
 const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
@@ -76,12 +76,5 @@ impl<'a> AsciiExecution<'a> {
             self.checkpoint(phase)?;
         }
         Ok(())
-    }
-
-    /// Checks and admits a target-local canvas allocation before it is materialized.
-    pub fn admit_grid(self, actual: usize) -> Result<()> {
-        self.checkpoint(OperationPhase::Layout)?;
-        self.resources
-            .check(AsciiResourceLimitId::MaxGridCells, actual)
     }
 }

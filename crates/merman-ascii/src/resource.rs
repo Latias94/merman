@@ -1,6 +1,8 @@
 use crate::error::{AsciiError, Result};
 use merman_core::resources::{GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, ResourceProfile};
-use merman_core::{OperationControl, OperationPhase};
+use merman_core::{
+    OperationControl, OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
+};
 use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
@@ -350,6 +352,7 @@ pub(crate) struct LogicalExtent {
 }
 
 impl LogicalExtent {
+    #[cfg(test)]
     pub(crate) fn checked(
         width: usize,
         height: usize,
@@ -477,14 +480,16 @@ impl ResourceContext {
     }
 
     pub(crate) fn check(&self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
-        self.checkpoint()?;
-        self.policy.check(id, actual)
+        self.resource_checkpoint()?;
+        self.policy
+            .check(id, actual)
+            .map_err(|error| self.terminate_resource_error(error))
     }
 
     pub(crate) fn overflow(&self, id: AsciiResourceLimitId) -> AsciiError {
-        self.checkpoint()
+        self.resource_checkpoint()
             .err()
-            .unwrap_or_else(|| self.policy.overflow(id))
+            .unwrap_or_else(|| self.terminate_resource_error(self.policy.overflow(id)))
     }
 
     pub(crate) fn layout_work_used(&self) -> usize {
@@ -496,30 +501,42 @@ impl ResourceContext {
     }
 
     pub(crate) fn grid_extent(&self, width: usize, height: usize) -> Result<LogicalExtent> {
-        self.checkpoint()?;
-        LogicalExtent::checked(width, height, self.policy)
+        self.resource_checkpoint()?;
+        let cells = width
+            .checked_mul(height)
+            .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))?;
+        self.check(AsciiResourceLimitId::MaxGridCells, cells)?;
+        Ok(LogicalExtent {
+            width,
+            height,
+            cells,
+        })
     }
 
     pub(crate) fn checked_grid_add(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
         left.checked_add(right)
             .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))
     }
 
     pub(crate) fn checked_grid_mul(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
         left.checked_mul(right)
             .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))
     }
 
     pub(crate) fn checked_work_add(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
         left.checked_add(right).ok_or_else(|| self.work_overflow())
     }
 
     pub(crate) fn checked_work_mul(&self, left: usize, right: usize) -> Result<usize> {
+        self.resource_checkpoint()?;
         left.checked_mul(right).ok_or_else(|| self.work_overflow())
     }
 
     pub(crate) fn charge_layout_work(&self, delta: usize) -> Result<()> {
-        self.checkpoint()?;
+        self.resource_checkpoint()?;
         let actual = self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -530,11 +547,10 @@ impl ResourceContext {
     }
 
     pub(crate) fn charge_layout_work_product(&self, left: usize, right: usize) -> Result<()> {
-        self.checkpoint()?;
-        let work = left.checked_mul(right).ok_or_else(|| {
-            self.policy
-                .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-        })?;
+        self.resource_checkpoint()?;
+        let work = left
+            .checked_mul(right)
+            .ok_or_else(|| self.work_overflow())?;
         let actual = self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -545,7 +561,7 @@ impl ResourceContext {
     }
 
     pub(crate) fn charge_document_cells(&self, delta: usize) -> Result<()> {
-        self.checkpoint()?;
+        self.resource_checkpoint()?;
         let actual = self.checked_total(
             AsciiResourceLimitId::MaxDocumentCells,
             self.document_cells_used.get(),
@@ -561,7 +577,7 @@ impl ResourceContext {
         layout_work_delta: usize,
         document_cells_delta: usize,
     ) -> Result<()> {
-        self.checkpoint()?;
+        self.resource_checkpoint()?;
         self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -584,7 +600,7 @@ impl ResourceContext {
         layout_work_delta: usize,
         document_cells_delta: usize,
     ) -> Result<()> {
-        self.checkpoint()?;
+        self.resource_checkpoint()?;
         let layout_work_used = self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -644,15 +660,11 @@ impl ResourceContext {
     }
 
     pub(crate) fn check_grapheme_bytes(&self, bytes: usize) -> Result<()> {
-        self.checkpoint()?;
-        self.policy
-            .check(AsciiResourceLimitId::MaxGraphemeBytes, bytes)
+        self.check(AsciiResourceLimitId::MaxGraphemeBytes, bytes)
     }
 
     pub(crate) fn check_nesting_depth(&self, depth: usize) -> Result<()> {
-        self.checkpoint()?;
-        self.policy
-            .check(AsciiResourceLimitId::MaxNestingDepth, depth)
+        self.check(AsciiResourceLimitId::MaxNestingDepth, depth)
     }
 
     pub(crate) fn grid_overflow(&self) -> AsciiError {
@@ -676,6 +688,73 @@ impl ResourceContext {
         })
     }
 
+    fn resource_checkpoint(&self) -> Result<()> {
+        self.operation.as_ref().map_or(Ok(()), |operation| {
+            operation
+                .control
+                .resource_checkpoint_at(operation.phase)
+                .map_err(|error| self.operation_error(error))
+        })
+    }
+
+    fn terminate_resource_error(&self, error: AsciiError) -> AsciiError {
+        let Some(operation) = self.operation.as_ref() else {
+            return error;
+        };
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            return error;
+        };
+        let terminal = match details.cause {
+            AsciiResourceLimitCause::Ceiling => {
+                operation
+                    .control
+                    .terminate_resource_limit(OperationResourceLimitExceeded {
+                        id: details.limit.as_str(),
+                        phase: operation.phase,
+                        limit: details.max as u64,
+                        consumed: 0,
+                        requested: details.actual as u64,
+                    })
+            }
+            AsciiResourceLimitCause::ArithmeticOverflow => operation
+                .control
+                .terminate_resource_overflow(details.limit.as_str(), operation.phase),
+        };
+        self.operation_error(terminal)
+    }
+
+    fn operation_error(&self, error: OperationLedgerError) -> AsciiError {
+        match error {
+            OperationLedgerError::Cancelled(error) => AsciiError::Cancelled(error),
+            OperationLedgerError::ResourceLimitExceeded(error) => {
+                let Some(limit) = AsciiResourceLimitId::from_stable_id(error.id) else {
+                    return AsciiError::InvalidOption {
+                        field: "operation_control",
+                        message: "resource terminal does not belong to the ASCII renderer",
+                    };
+                };
+                AsciiResourceLimitExceeded {
+                    cause: AsciiResourceLimitCause::Ceiling,
+                    limit,
+                    actual: usize::try_from(error.consumed.saturating_add(error.requested))
+                        .unwrap_or(usize::MAX),
+                    max: usize::try_from(error.limit).unwrap_or(usize::MAX),
+                    profile: self.policy.profile(),
+                }
+                .into()
+            }
+            OperationLedgerError::ArithmeticOverflow { id, .. } => {
+                let Some(limit) = AsciiResourceLimitId::from_stable_id(id) else {
+                    return AsciiError::InvalidOption {
+                        field: "operation_control",
+                        message: "resource terminal does not belong to the ASCII renderer",
+                    };
+                };
+                self.policy.overflow(limit)
+            }
+        }
+    }
+
     fn checked_total(
         &self,
         id: AsciiResourceLimitId,
@@ -684,8 +763,8 @@ impl ResourceContext {
     ) -> Result<usize> {
         let actual = current
             .checked_add(delta)
-            .ok_or_else(|| self.policy.overflow(id))?;
-        self.policy.check(id, actual)?;
+            .ok_or_else(|| self.overflow(id))?;
+        self.check(id, actual)?;
         Ok(actual)
     }
 }
@@ -959,6 +1038,31 @@ mod tests {
                 if cancelled.phase == OperationPhase::Emit
                     && cancelled.reason == CancelReason::Requested
         ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn controlled_resource_terminal_replays_before_later_cancellation() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("valid work limit");
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+
+        let first = controlled
+            .charge_layout_work(2)
+            .expect_err("the first formal charge must reject");
+        assert_eq!(resources.layout_work_used(), 0);
+
+        control.cancel();
+        let emit = controlled.with_operation_phase(OperationPhase::Emit);
+        let replayed = emit
+            .charge_document_cells(usize::MAX)
+            .expect_err("the first resource terminal must remain sticky");
+
+        assert_eq!(replayed, first);
         assert_eq!(resources.layout_work_used(), 0);
         assert_eq!(resources.document_cells_used(), 0);
     }

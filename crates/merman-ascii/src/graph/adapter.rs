@@ -699,7 +699,7 @@ fn checked_projection_metric_add(
     right: usize,
 ) -> Result<usize> {
     left.checked_add(right)
-        .ok_or_else(|| resources.policy().overflow(limit))
+        .ok_or_else(|| resources.overflow(limit))
 }
 
 fn try_clone_projection_string(value: &str, resources: &ResourceContext) -> Result<String> {

@@ -15,7 +15,9 @@ use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
-use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::resource::{
+    AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
+};
 use crate::safe_text::{
     LabelBreakPolicy, charge_text_layout, try_plan_normalized_label_lines_with_policy,
 };
@@ -245,7 +247,7 @@ fn render_xychart_diagram_controlled(
         plot_area.vertical_plot_extent(plan.slot_count, &resources)?
     };
     let plot_cells = plot_extent.width().saturating_mul(plot_extent.height());
-    execution.admit_grid(plot_cells)?;
+    resources.check(AsciiResourceLimitId::MaxGridCells, plot_cells)?;
     let context = ChartRenderContext {
         y_range: plan.y_range,
         chars,

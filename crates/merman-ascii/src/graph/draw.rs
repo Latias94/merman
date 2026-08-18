@@ -205,7 +205,10 @@ fn prepare_graph_render_controlled(
     )?;
     let width = extent.width();
     let height = extent.height();
-    execution.admit_grid(extent.cells())?;
+    resources.check(
+        crate::resource::AsciiResourceLimitId::MaxGridCells,
+        extent.cells(),
+    )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let output_transform = OutputTransform::for_direction(graph.direction);
     if !output_transform.is_identity() {
