@@ -2,8 +2,8 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
-    ThemeMaterializer, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    materialize_theme,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -415,9 +415,7 @@ fn er_tokens_only_definition_reaches_the_model_owned_entity_surface() {
             .with_color(ThemeColorTokenV1::Surface, "#123456")
             .with_color(ThemeColorTokenV1::Border, "#654321"),
     );
-    let materialized = ThemeMaterializer::new()
-        .materialize_theme(&definition)
-        .expect("materialize tokens-only ER theme");
+    let materialized = materialize_theme(&definition).expect("materialize tokens-only ER theme");
     let theme = DiagramThemeCompiler::new()
         .compile_spec_wire(materialized.into_spec())
         .expect("compile tokens-only ER theme");

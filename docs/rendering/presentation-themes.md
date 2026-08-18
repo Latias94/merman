@@ -13,7 +13,7 @@ Merman keeps independent concerns in separate owners:
 
 | Owner | Public input | Use it for |
 | --- | --- | --- |
-| Versioned authoring | `ThemeDefinitionV1` -> `ThemeMaterializer` -> `DiagramThemeSpecWireV1` | Compact cross-family tokens plus ordered authored rules and deterministic materialization identity |
+| Versioned authoring | `ThemeDefinitionV1` -> `materialize_theme*` -> `MaterializedThemeWireV1` | Compact cross-family tokens plus ordered authored rules and deterministic materialization identity |
 | Compiled diagram theme | `DiagramThemeSpecWireV1` / `DiagramThemeSpec` -> `DiagramThemeCompiler` -> `DiagramTheme`; `RenderRequest::with_theme(...)` | Typed semantic styles, typography, canvas, effects, font assets, and the explicit Mermaid compatibility lane |
 | Mermaid configuration | `Engine::with_site_config(...)` / top-level `site_config` | Mermaid `theme`, `look`, layout, `themeVariables`, and family configuration |
 | Layout and runtime | `Renderer`, `RenderRequest`, `SvgRequest`, and explicit operation control | Container dimensions, text measurement, math, resource policy, renderer selection, cancellation, and deadlines |
@@ -88,14 +88,16 @@ let theme = compile_theme_definition(&DiagramThemeCompiler::new(), &definition)?
 
 `merman::diagram_theme` selectively re-exports the dependency-neutral authoring wire used by the
 renderer. The name is intentionally visual: terminal/ASCII styling is not part of this contract.
-`ThemeMaterializer` remains available when callers need to inspect or edit the complete materialized
-spec. It owns defaults, expansion order, palette replacement, and the closed
-`MaterializedThemeWireV1` success value; the facade above delegates to that same implementation
-before compilation. Version 1 intentionally publishes no materialization digest. The materializer
-does not inspect family capabilities or render output. Raw untrusted JSON still requires the bounded
-`compile_theme_definition_json` entry point rather than ordinary Serde decoding. Render-time
-bindings remain limited to either a preset reference or a complete `theme.spec` until their
-authoring operations adopt the same contract.
+Callers that need to inspect or edit the complete materialized spec use the public
+`materialize_theme*` operations and receive the closed `MaterializedThemeWireV1` success value.
+Those operations perform host admission before delegating to the renderer's private, pure
+`ThemeMaterializer`, which owns defaults, expansion order, and palette replacement. The compile
+facade above reuses the same admitted lowering path before semantic compilation. Version 1
+intentionally publishes no materialization digest. Materialization does not inspect family
+capabilities or render output. Raw untrusted JSON must use the bounded JSON materialization or
+compile operation rather than ordinary Serde decoding. Render-time bindings remain limited to
+either a preset reference or a complete `theme.spec` until their authoring operations adopt the
+same contract.
 Built-in preset recipes remain alpha inventory: this migration preserves their resolved visual
 winners but intentionally does not freeze prior recipe fingerprints or rule indices.
 
@@ -167,7 +169,7 @@ value:
 
 | Recipe component | Merman owner | Status |
 | --- | --- | --- |
-| Cross-family tokens and ordered authored rules | `ThemeDefinitionV1` / `ThemeMaterializer` | Experimental versioned authoring |
+| Cross-family tokens and ordered authored rules | `ThemeDefinitionV1` / `materialize_theme*` | Experimental versioned authoring |
 | Semantic palette, typography, geometry, and ordinal series | `DiagramThemeSpecWireV1` / `DiagramThemeSpec` | Experimental typed support |
 | Layered canvas and bounded effects | `DiagramThemeSpec` | Experimental typed model; target evidence is still required |
 | Exact Mermaid variables and per-family settings | `MermaidConfig` / `site_config` or `DiagramThemeSpec::mermaid` | Supported compatibility lanes, with Mermaid precedence |

@@ -1,9 +1,9 @@
 use merman::diagram_theme::{
     DiagramFamilyId, DiagramThemeCompiler, ThemeColorTokenV1, ThemeDefinitionBuilderV1,
-    ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeMaterializer, ThemeRuleBuilderV1,
-    ThemeRuleFacetV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1,
-    ThemeSupportQueryV1, ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant,
-    compile_theme_definition, compile_theme_definition_json, describe_theme_support,
+    ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeRuleBuilderV1, ThemeRuleFacetV1,
+    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
+    ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant, compile_theme_definition,
+    compile_theme_definition_json, describe_theme_support, materialize_theme,
 };
 use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
@@ -88,17 +88,12 @@ fn materialize_pretty_json_round_trip(
         "{witness_name} canonical definition bytes must survive pretty JSON",
     );
 
-    let materializer = ThemeMaterializer::new();
-    let typed = materializer
-        .materialize_theme(definition)
-        .unwrap_or_else(|error| {
-            panic!("{witness_name} typed definition should materialize: {error}")
-        });
-    let imported = materializer
-        .materialize_theme(&decoded)
-        .unwrap_or_else(|error| {
-            panic!("{witness_name} JSON definition should materialize: {error}")
-        });
+    let typed = materialize_theme(definition).unwrap_or_else(|error| {
+        panic!("{witness_name} typed definition should materialize: {error}")
+    });
+    let imported = materialize_theme(&decoded).unwrap_or_else(|error| {
+        panic!("{witness_name} JSON definition should materialize: {error}")
+    });
     assert_eq!(
         typed.spec(),
         imported.spec(),
@@ -342,9 +337,8 @@ fn versioned_authoring_materializes_and_compiles_through_the_rust_facade() {
             .with_color(ThemeColorTokenV1::Text, "#e5e7eb"),
     );
     let compiler = DiagramThemeCompiler::new();
-    let materialized = ThemeMaterializer::new()
-        .materialize_theme(&definition)
-        .expect("the explicit materialization step should succeed");
+    let materialized =
+        materialize_theme(&definition).expect("the explicit materialization step should succeed");
     let expected = compiler
         .compile_spec_wire(materialized.into_spec())
         .expect("the explicit compilation step should succeed");

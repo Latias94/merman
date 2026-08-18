@@ -4,8 +4,8 @@ use std::fmt;
 use std::io;
 
 use merman_theme_contract::{
-    SpecifiedWireV1, ThemeCanvasPaintObjectWireV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1,
-    ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeMaterializationDiagnosticV1,
+    MaterializedThemeWireV1, SpecifiedWireV1, ThemeCanvasPaintObjectWireV1, ThemeCanvasPaintWireV1,
+    ThemeColorTokenV1, ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeMaterializationDiagnosticV1,
     ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1,
     ThemeTextStylePatchWireV1, resolve_authoring_version,
 };
@@ -27,7 +27,7 @@ const MAX_TOTAL_COLLECTION_ITEMS: usize = 65_536;
 const MAX_JSON_STRING_BYTES: usize = 64 * 1_024;
 const PREFLIGHT_SENTINEL: &str = "theme definition JSON preflight failed";
 
-pub(super) fn decode_bounded_theme_definition_json(
+fn decode_bounded_theme_definition_json(
     resources: &ThemeResourcePolicy,
     bytes: &[u8],
 ) -> Result<ThemeDefinitionV1, ThemeMaterializationErrorV1> {
@@ -43,14 +43,67 @@ pub(super) fn decode_bounded_theme_definition_json(
     })
 }
 
+/// Admitted, borrowed authoring input proof consumed by the pure materializer.
+///
+/// The proof is private to the renderer. Public callers must enter through one of the
+/// `materialize_theme*` functions below so typed and JSON inputs receive the same host-owned
+/// admission policy before deterministic lowering starts.
+#[derive(Debug)]
+pub(super) struct AdmittedThemeDefinition<'a> {
+    definition: &'a ThemeDefinitionV1,
+}
+
+impl<'a> AdmittedThemeDefinition<'a> {
+    fn new(definition: &'a ThemeDefinitionV1) -> Self {
+        Self { definition }
+    }
+
+    pub(super) fn definition(self) -> &'a ThemeDefinitionV1 {
+        self.definition
+    }
+}
+
+/// Materializes one typed definition using the interactive host resource policy.
+pub fn materialize_theme(
+    definition: &ThemeDefinitionV1,
+) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
+    materialize_theme_with_resource_policy(definition, &ThemeResourcePolicy::interactive())
+}
+
+/// Materializes one typed definition after applying the caller-owned resource policy.
+pub fn materialize_theme_with_resource_policy(
+    definition: &ThemeDefinitionV1,
+    resources: &ThemeResourcePolicy,
+) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
+    let admitted =
+        admit_typed_definition(resources, definition).map_err(admission_contract_error)?;
+    ThemeMaterializer::materialize(admitted).map_err(ThemeMaterializationError::into_contract_error)
+}
+
+/// Decodes and materializes one JSON definition using the interactive host resource policy.
+pub fn materialize_theme_json(
+    bytes: &[u8],
+) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
+    materialize_theme_json_with_resource_policy(bytes, &ThemeResourcePolicy::interactive())
+}
+
+/// Decodes and materializes one JSON definition after applying the caller-owned resource policy.
+pub fn materialize_theme_json_with_resource_policy(
+    bytes: &[u8],
+    resources: &ThemeResourcePolicy,
+) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
+    let definition = decode_bounded_theme_definition_json(resources, bytes)?;
+    let admitted = AdmittedThemeDefinition::new(&definition);
+    ThemeMaterializer::materialize(admitted).map_err(ThemeMaterializationError::into_contract_error)
+}
+
 /// Admits, materializes, and compiles one typed versioned theme definition.
 pub fn compile_theme_definition(
     compiler: &DiagramThemeCompiler,
     definition: &ThemeDefinitionV1,
 ) -> Result<DiagramTheme, ThemeDefinitionCompileError> {
-    let materialized = ThemeMaterializer::new()
-        .with_resource_policy(compiler.resource_policy().clone())
-        .materialize_theme(definition)?;
+    let materialized =
+        materialize_theme_with_resource_policy(definition, compiler.resource_policy())?;
     Ok(compiler.compile_spec_wire(materialized.into_spec())?)
 }
 
@@ -59,9 +112,8 @@ pub fn compile_theme_definition_json(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<DiagramTheme, ThemeDefinitionCompileError> {
-    let materialized = ThemeMaterializer::new()
-        .with_resource_policy(compiler.resource_policy().clone())
-        .materialize_theme_json(bytes)?;
+    let materialized =
+        materialize_theme_json_with_resource_policy(bytes, compiler.resource_policy())?;
     Ok(compiler.compile_spec_wire(materialized.into_spec())?)
 }
 
@@ -101,9 +153,7 @@ pub(super) enum ThemeDefinitionAdmissionError {
     ResourceLimit(#[from] ThemeResourceLimitExceeded),
 }
 
-pub(super) fn admission_contract_error(
-    error: ThemeDefinitionAdmissionError,
-) -> ThemeMaterializationErrorV1 {
+fn admission_contract_error(error: ThemeDefinitionAdmissionError) -> ThemeMaterializationErrorV1 {
     match error {
         ThemeDefinitionAdmissionError::TypedEncoding { .. } => {
             contract_error(ThemeMaterializationDiagnosticV1::invalid_token_value(
@@ -175,10 +225,10 @@ fn admission_limit_id(path: &str, max: usize) -> &'static str {
     }
 }
 
-pub(super) fn admit_typed_definition(
+fn admit_typed_definition<'a>(
     resources: &ThemeResourcePolicy,
-    definition: &ThemeDefinitionV1,
-) -> Result<(), ThemeDefinitionAdmissionError> {
+    definition: &'a ThemeDefinitionV1,
+) -> Result<AdmittedThemeDefinition<'a>, ThemeDefinitionAdmissionError> {
     let mut usage = TypedUsage::default();
 
     usage.charge_collection_items(definition.styles().len())?;
@@ -256,7 +306,7 @@ pub(super) fn admit_typed_definition(
     encoded.map_err(|_| ThemeDefinitionAdmissionError::TypedEncoding {
         message: "typed theme definition cannot be encoded for bounded admission".to_owned(),
     })?;
-    Ok(())
+    Ok(AdmittedThemeDefinition::new(definition))
 }
 
 #[derive(Default)]

@@ -6,6 +6,13 @@
 //! ```compile_fail
 //! use merman_render::diagram_theme::RootThemeReport;
 //! ```
+//!
+//! The lowering implementation is renderer-internal. Callers enter through the bounded
+//! `materialize_theme` operations instead of constructing a materializer or bypassing admission:
+//!
+//! ```compile_fail
+//! use merman_render::diagram_theme::ThemeMaterializer;
+//! ```
 
 mod admission;
 mod application;
@@ -69,6 +76,8 @@ pub use canvas::{
 pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
 pub use definition_admission::{
     ThemeDefinitionCompileError, compile_theme_definition, compile_theme_definition_json,
+    materialize_theme, materialize_theme_json, materialize_theme_json_with_resource_policy,
+    materialize_theme_with_resource_policy,
 };
 pub use effects::{DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive};
 #[cfg(feature = "internal-theme-acceptance")]
@@ -77,7 +86,6 @@ pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape,
 };
-pub use materializer::ThemeMaterializer;
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };

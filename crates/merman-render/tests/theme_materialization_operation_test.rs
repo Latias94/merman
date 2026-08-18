@@ -1,7 +1,8 @@
 use merman_render::diagram_theme::{
-    DiagramThemeCompiler, ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeMaterializer,
-    ThemeResourceLimitId, ThemeResourcePolicy, compile_theme_definition,
-    compile_theme_definition_json,
+    DiagramThemeCompiler, ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeResourceLimitId,
+    ThemeResourcePolicy, compile_theme_definition, compile_theme_definition_json,
+    materialize_theme, materialize_theme_json, materialize_theme_json_with_resource_policy,
+    materialize_theme_with_resource_policy,
 };
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeMaterializationErrorV1,
@@ -35,19 +36,23 @@ fn typed_and_json_operations_share_bounded_materialization_without_compiling() {
         },
     }]);
     let compiler = DiagramThemeCompiler::new();
-    let materializer = ThemeMaterializer::new();
 
-    let typed = materializer
-        .materialize_theme(&definition)
+    let typed = materialize_theme(&definition)
         .expect("the typed operation should stop after materialization");
     let json = definition
         .canonical_json_bytes()
         .expect("the definition should have canonical JSON");
-    let decoded = materializer
-        .materialize_theme_json(&json)
+    let decoded = materialize_theme_json(&json)
         .expect("the JSON operation should use the same materialization path");
+    let resources = ThemeResourcePolicy::interactive();
+    let policy_typed = materialize_theme_with_resource_policy(&definition, &resources)
+        .expect("the policy-aware typed operation should use the same lowering path");
+    let policy_json = materialize_theme_json_with_resource_policy(&json, &resources)
+        .expect("the policy-aware JSON operation should use the same lowering path");
 
     assert_eq!(typed, decoded);
+    assert_eq!(typed, policy_typed);
+    assert_eq!(typed, policy_json);
     assert!(matches!(
         compile_theme_definition(&compiler, &definition),
         Err(ThemeDefinitionCompileError::Compilation(_))
@@ -63,13 +68,10 @@ fn compile_facade_delegates_the_contract_materialization_error() {
     let definition = ThemeDefinitionV1::new(ThemeTokensV1::default().with_series(Vec::new()));
     let compiler = DiagramThemeCompiler::new();
 
-    let materializer = ThemeMaterializer::new();
-    let operation_error = materializer
-        .materialize_theme(&definition)
+    let operation_error = materialize_theme(&definition)
         .expect_err("the public operation must reject an empty series");
     let json = br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"series":[]}}"#;
-    let json_error = materializer
-        .materialize_theme_json(json)
+    let json_error = materialize_theme_json(json)
         .expect_err("the JSON operation must share the same expansion error");
     let compile_error = compile_theme_definition(&compiler, &definition)
         .expect_err("the compile convenience must delegate materialization");
@@ -89,13 +91,10 @@ fn compile_facade_delegates_the_contract_materialization_error() {
 
 #[test]
 fn materialization_errors_use_the_closed_contract_diagnostics() {
-    let materializer = ThemeMaterializer::new();
-
     let invalid_color = ThemeDefinitionV1::new(
         ThemeTokensV1::default().with_color(ThemeColorTokenV1::Canvas, "not-a-color"),
     );
-    let error = materializer
-        .materialize_theme(&invalid_color)
+    let error = materialize_theme(&invalid_color)
         .expect_err("an invalid token must fail without a partial result");
     assert_eq!(
         error.diagnostic().code(),
@@ -114,8 +113,7 @@ fn materialization_errors_use_the_closed_contract_diagnostics() {
             colors: vec!["#222222".to_owned()],
         },
     ]);
-    let error = materializer
-        .materialize_theme(&duplicate_palette)
+    let error = materialize_theme(&duplicate_palette)
         .expect_err("duplicate authored palettes must fail closed");
     let diagnostic = error.diagnostic();
     assert_eq!(
@@ -139,8 +137,7 @@ fn materialization_errors_use_the_closed_contract_diagnostics() {
             },
         },
     ]);
-    let error = materializer
-        .materialize_theme(&unsupported_effect)
+    let error = materialize_theme(&unsupported_effect)
         .expect_err("effect references are outside the version one authoring envelope");
     let diagnostic = error.diagnostic();
     assert_eq!(
@@ -160,11 +157,10 @@ fn materialization_budgets_keep_their_stable_contract_limits() {
         ordinal: None,
         style: ThemeStylePatchWireV1::default(),
     };
-    let rule_error = ThemeMaterializer::new()
-        .materialize_theme(
-            &ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![authored_rule; 490]),
-        )
-        .expect_err("the first authored rule beyond the derived budget must fail");
+    let rule_error = materialize_theme(
+        &ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![authored_rule; 490]),
+    )
+    .expect_err("the first authored rule beyond the derived budget must fail");
     let diagnostic = rule_error.diagnostic();
     assert_eq!(diagnostic.code(), "theme-authoring.rule-budget-exceeded");
     assert_eq!(diagnostic.limit_id(), Some("max_authored_rules"));
@@ -177,9 +173,9 @@ fn materialization_budgets_keep_their_stable_contract_limits() {
             colors: vec!["#123456".to_owned()],
         })
         .collect();
-    let palette_error = ThemeMaterializer::new()
-        .materialize_theme(&ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(palettes))
-        .expect_err("the first materialized palette beyond the complete-spec budget must fail");
+    let palette_error =
+        materialize_theme(&ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(palettes))
+            .expect_err("the first materialized palette beyond the complete-spec budget must fail");
     let diagnostic = palette_error.diagnostic();
     assert_eq!(diagnostic.code(), "theme-authoring.resource-limit-exceeded");
     assert_eq!(diagnostic.path(), "/styles");
@@ -190,14 +186,12 @@ fn materialization_budgets_keep_their_stable_contract_limits() {
 
 #[test]
 fn json_operation_reports_versions_and_stable_rejection_reasons() {
-    let materializer = ThemeMaterializer::new();
     let unsupported = br#"{
         "authoring_schema_version": 2,
         "expansion_version": 7,
         "tokens": {}
     }"#;
-    let error = materializer
-        .materialize_theme_json(unsupported)
+    let error = materialize_theme_json(unsupported)
         .expect_err("unknown authoring tuples must fail before typed decoding");
     assert_eq!(
         error.diagnostic().code(),
@@ -217,8 +211,7 @@ fn json_operation_reports_versions_and_stable_rejection_reasons() {
         ),
     ];
     for (json, expected_reason) in cases {
-        let error = materializer
-            .materialize_theme_json(json)
+        let error = materialize_theme_json(json)
             .expect_err("invalid JSON must use one stable coarse rejection reason");
         assert_eq!(
             error.diagnostic().code(),
@@ -236,11 +229,9 @@ fn unknown_version_tuple_precedes_version_one_semantic_errors() {
         r#"{{"styles":[{styles}],"tokens":{{}},"authoring_schema_version":2,"expansion_version":7}}"#
     );
 
-    let error = ThemeMaterializer::new()
-        .materialize_theme_json(json.as_bytes())
-        .expect_err(
-            "an unknown tuple must win even when a V1 rule budget fails first in source order",
-        );
+    let error = materialize_theme_json(json.as_bytes()).expect_err(
+        "an unknown tuple must win even when a V1 rule budget fails first in source order",
+    );
 
     assert_eq!(
         error.diagnostic().code(),
@@ -263,12 +254,9 @@ fn typed_and_canonical_json_failures_share_diagnostic_identity() {
     let rules_json = oversized_rules
         .canonical_json_bytes()
         .expect("an over-budget typed definition still has canonical JSON");
-    let materializer = ThemeMaterializer::new();
-    let typed_error = materializer
-        .materialize_theme(&oversized_rules)
+    let typed_error = materialize_theme(&oversized_rules)
         .expect_err("typed rules must fail the authored-rule budget");
-    let json_error = materializer
-        .materialize_theme_json(&rules_json)
+    let json_error = materialize_theme_json(&rules_json)
         .expect_err("canonical JSON rules must fail the same budget");
     assert_same_budget_diagnostic(&typed_error, &json_error);
     assert_eq!(
@@ -289,11 +277,9 @@ fn typed_and_canonical_json_failures_share_diagnostic_identity() {
     let series_json = oversized_series
         .canonical_json_bytes()
         .expect("an over-budget palette still has canonical JSON");
-    let typed_error = materializer
-        .materialize_theme(&oversized_series)
+    let typed_error = materialize_theme(&oversized_series)
         .expect_err("typed palette colors must fail the palette budget");
-    let json_error = materializer
-        .materialize_theme_json(&series_json)
+    let json_error = materialize_theme_json(&series_json)
         .expect_err("canonical JSON palette colors must fail the same budget");
     assert_same_budget_diagnostic(&typed_error, &json_error);
     assert_eq!(
@@ -312,16 +298,12 @@ fn typed_and_canonical_json_failures_share_diagnostic_identity() {
     let json = definition
         .canonical_json_bytes()
         .expect("the default definition must have canonical JSON");
-    let materializer = ThemeMaterializer::new().with_resource_policy(
-        ThemeResourcePolicy::default()
-            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
-            .expect("one byte is a valid caller-owned input ceiling"),
-    );
-    let typed_error = materializer
-        .materialize_theme(&definition)
+    let resources = ThemeResourcePolicy::default()
+        .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+        .expect("one byte is a valid caller-owned input ceiling");
+    let typed_error = materialize_theme_with_resource_policy(&definition, &resources)
         .expect_err("typed input must fail the encoded-byte budget");
-    let json_error = materializer
-        .materialize_theme_json(&json)
+    let json_error = materialize_theme_json_with_resource_policy(&json, &resources)
         .expect_err("canonical JSON must fail the same encoded-byte budget");
     assert_same_budget_diagnostic(&typed_error, &json_error);
     assert_eq!(
@@ -359,13 +341,9 @@ fn rule_budget_precedes_earlier_palette_errors_for_typed_and_json() {
     let json = definition
         .canonical_json_bytes()
         .expect("the over-budget definition should still have canonical JSON");
-    let materializer = ThemeMaterializer::new();
-
-    let typed_error = materializer
-        .materialize_theme(&definition)
+    let typed_error = materialize_theme(&definition)
         .expect_err("the typed operation must apply the global rule budget first");
-    let json_error = materializer
-        .materialize_theme_json(&json)
+    let json_error = materialize_theme_json(&json)
         .expect_err("the JSON operation must use the same semantic error priority");
 
     assert_eq!(json_error, typed_error);
@@ -384,8 +362,7 @@ fn json_collection_limits_fail_as_resources_before_typed_decode() {
         r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{"series":[{colors},{{"typed":"decode must not reach this value"}}]}}}}"#
     );
 
-    let error = ThemeMaterializer::new()
-        .materialize_theme_json(oversized.as_bytes())
+    let error = materialize_theme_json(oversized.as_bytes())
         .expect_err("the first item beyond the palette bound must fail during preflight");
     let diagnostic = error.diagnostic();
     assert_eq!(diagnostic.code(), "theme-authoring.resource-limit-exceeded");
@@ -405,8 +382,7 @@ fn json_preflight_preserves_duplicate_palette_precedence_over_the_total_budget()
         r#"{{"authoring_schema_version":1,"expansion_version":1,"tokens":{{}},"styles":[{styles}]}}"#
     );
 
-    let error = ThemeMaterializer::new()
-        .materialize_theme_json(json.as_bytes())
+    let error = materialize_theme_json(json.as_bytes())
         .expect_err("the second repeated target must fail before the palette-count ceiling");
     let diagnostic = error.diagnostic();
     assert_eq!(

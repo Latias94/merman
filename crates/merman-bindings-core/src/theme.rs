@@ -261,8 +261,8 @@ fn invalid_options(message: impl Into<String>) -> BindingError {
 mod tests {
     use super::*;
     use merman::diagram_theme::{
-        ThemeAuthoringTypographyV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializer,
-        ThemeTokensV1, compile_theme_definition,
+        ThemeAuthoringTypographyV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1,
+        compile_theme_definition, materialize_theme,
     };
     use merman::svg::{ThemeCapability, ThemeResourceLimitId};
 
@@ -401,13 +401,10 @@ mod tests {
                 .expect("the typed definition should canonicalize"),
         );
 
-        let materializer = ThemeMaterializer::new();
-        let decoded_materialized = materializer
-            .materialize_theme(&decoded_definition)
-            .expect("the JSON definition should materialize");
-        let typed_materialized = materializer
-            .materialize_theme(&typed_definition)
-            .expect("the typed definition should materialize");
+        let decoded_materialized =
+            materialize_theme(&decoded_definition).expect("the JSON definition should materialize");
+        let typed_materialized =
+            materialize_theme(&typed_definition).expect("the typed definition should materialize");
         assert_eq!(decoded_materialized.spec(), typed_materialized.spec());
 
         let binding_theme = crate::compile_theme_definition_json(DEFINITION_JSON)

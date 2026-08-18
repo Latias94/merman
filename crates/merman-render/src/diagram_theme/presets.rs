@@ -4,7 +4,7 @@ use merman_theme_contract::{
     ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
 };
 
-use super::ThemeMaterializer;
+use super::definition_admission::materialize_theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
@@ -129,8 +129,7 @@ impl ThemePreset {
             preset_palette_rule("timeline-event", palette.series),
             preset_palette_rule("journey-task", palette.series),
         ]);
-        let mut spec = ThemeMaterializer::new()
-            .materialize_admitted_theme(&definition)
+        let mut spec = materialize_theme(&definition)
             .expect("built-in theme preset values must remain statically valid")
             .into_spec();
         spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {

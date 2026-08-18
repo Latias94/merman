@@ -7,10 +7,8 @@ use merman_theme_contract::{
     ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTextStyleWireV1, ThemeTypographySpecWireV1,
 };
 
-use super::{
-    FontStack, LineHeight, ThemeColorValue, ThemeResourcePolicy, ThemeTarget, ThemeTextStyle,
-    ThemeVariant,
-};
+use super::definition_admission::AdmittedThemeDefinition;
+use super::{FontStack, LineHeight, ThemeColorValue, ThemeTarget, ThemeTextStyle, ThemeVariant};
 
 const DEFAULT_SERIES: [&str; 4] = ["#2563eb", "#16a34a", "#d97706", "#9333ea"];
 const DEFAULT_FONT_STACK: [&str; 4] = ["Inter", "ui-sans-serif", "system-ui", "sans-serif"];
@@ -197,60 +195,19 @@ pub(super) const fn first_rejected_actual(max: usize) -> usize {
     max.saturating_add(1)
 }
 
-/// Resource-bounded versioned lowering from compact authoring input to a complete theme-spec wire.
-#[derive(Debug, Clone)]
-pub struct ThemeMaterializer {
-    resources: ThemeResourcePolicy,
-}
-
-impl Default for ThemeMaterializer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// Deterministic lowering from an admitted authoring definition to a complete theme-spec wire.
+///
+/// Admission is intentionally performed by [`super::definition_admission`] before lowering can be
+/// invoked. Keeping the proof value private prevents renderer-internal callers from accidentally
+/// bypassing host resource limits or the bounded JSON preflight.
+#[derive(Debug)]
+pub(super) struct ThemeMaterializer;
 
 impl ThemeMaterializer {
-    /// Creates the versioned materializer with the interactive resource policy.
-    pub const fn new() -> Self {
-        Self {
-            resources: ThemeResourcePolicy::interactive(),
-        }
-    }
-
-    /// Replaces the caller-owned resource policy used for typed and JSON admission.
-    pub fn with_resource_policy(mut self, resources: ThemeResourcePolicy) -> Self {
-        self.resources = resources;
-        self
-    }
-
-    /// Admits and materializes one typed definition without compiling render-time capabilities.
-    pub fn materialize_theme(
-        &self,
-        definition: &ThemeDefinitionV1,
-    ) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
-        super::definition_admission::admit_typed_definition(&self.resources, definition)
-            .map_err(super::definition_admission::admission_contract_error)?;
-        self.materialize_admitted_theme(definition)
-            .map_err(ThemeMaterializationError::into_contract_error)
-    }
-
-    /// Decodes, admits, and materializes one JSON definition without compiling it.
-    pub fn materialize_theme_json(
-        &self,
-        bytes: &[u8],
-    ) -> Result<MaterializedThemeWireV1, ThemeMaterializationErrorV1> {
-        let definition = super::definition_admission::decode_bounded_theme_definition_json(
-            &self.resources,
-            bytes,
-        )?;
-        self.materialize_admitted_theme(&definition)
-            .map_err(ThemeMaterializationError::into_contract_error)
-    }
-
-    pub(crate) fn materialize_admitted_theme(
-        &self,
-        definition: &ThemeDefinitionV1,
+    pub(super) fn materialize(
+        admitted: AdmittedThemeDefinition<'_>,
     ) -> Result<MaterializedThemeWireV1, ThemeMaterializationError> {
+        let definition = admitted.definition();
         validate_definition_shape(definition)?;
         let tokens = ResolvedTokensV1::resolve(definition)?;
         let mut styles = GENERATED_RULES

@@ -1,4 +1,4 @@
-use merman_render::diagram_theme::{DiagramThemeCompiler, ThemeMaterializer};
+use merman_render::diagram_theme::{DiagramThemeCompiler, materialize_theme};
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeAuthoringTypographyV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1,
     ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1,
@@ -9,9 +9,7 @@ use merman_theme_contract::{
 fn tokens_only_definition_materializes_the_complete_version_one_spec() {
     let definition = ThemeDefinitionV1::new(ThemeTokensV1::default());
 
-    let first = ThemeMaterializer::new()
-        .materialize_theme(&definition)
-        .expect("version one defaults should materialize");
+    let first = materialize_theme(&definition).expect("version one defaults should materialize");
 
     assert_eq!(first.schema_version(), 1);
     assert_eq!(first.authoring_schema_version(), 1);
@@ -160,9 +158,8 @@ fn authored_rules_append_and_authored_palettes_replace_or_extend_generated_slots
         },
     ]);
 
-    let materialized = ThemeMaterializer::new()
-        .materialize_theme(&definition)
-        .expect("authored rules and unique palettes should compose");
+    let materialized =
+        materialize_theme(&definition).expect("authored rules and unique palettes should compose");
     let styles = materialized.spec().styles.as_ref().expect("styles");
 
     assert_eq!(styles.len(), 27);
@@ -230,8 +227,7 @@ fn duplicate_authored_palette_targets_fail_without_a_partial_spec() {
         },
     ]);
 
-    let error = ThemeMaterializer::new()
-        .materialize_theme(&definition)
+    let error = materialize_theme(&definition)
         .expect_err("duplicate authored palette targets must fail closed");
     let diagnostic = error.diagnostic();
     assert_eq!(
@@ -256,8 +252,7 @@ fn authored_rule_budget_accepts_489_and_rejects_490_before_expansion() {
     let boundary =
         ThemeDefinitionV1::new(ThemeTokensV1::default())
             .with_styles(vec![authored_rule.clone(); 489]);
-    let materialized = ThemeMaterializer::new()
-        .materialize_theme(&boundary)
+    let materialized = materialize_theme(&boundary)
         .expect("23 generated plus 489 authored rules should fit the compiler ceiling");
     assert_eq!(
         materialized
@@ -273,8 +268,7 @@ fn authored_rule_budget_accepts_489_and_rejects_490_before_expansion() {
 
     let exceeded =
         ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![authored_rule; 490]);
-    let error = ThemeMaterializer::new()
-        .materialize_theme(&exceeded)
+    let error = materialize_theme(&exceeded)
         .expect_err("the exact-plus-one authored rule must fail closed");
     let diagnostic = error.diagnostic();
     assert_eq!(diagnostic.code(), "theme-authoring.rule-budget-exceeded");
@@ -291,14 +285,12 @@ fn authored_palette_budget_counts_generated_replacements_before_expansion() {
     };
     let boundary = ThemeDefinitionV1::new(ThemeTokensV1::default())
         .with_styles((0..62).map(palette).collect());
-    ThemeMaterializer::new()
-        .materialize_theme(&boundary)
+    materialize_theme(&boundary)
         .expect("two generated palettes plus 62 authored palettes should fit");
 
     let exceeded = ThemeDefinitionV1::new(ThemeTokensV1::default())
         .with_styles((0..63).map(palette).collect());
-    let error = ThemeMaterializer::new()
-        .materialize_theme(&exceeded)
+    let error = materialize_theme(&exceeded)
         .expect_err("the 65th materialized palette must fail before expansion");
     let diagnostic = error.diagnostic();
     assert_eq!(diagnostic.code(), "theme-authoring.resource-limit-exceeded");
@@ -325,8 +317,7 @@ fn concrete_effect_references_are_rejected_but_explicit_clear_is_preserved() {
         ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![rule_with_effect(
             SpecifiedWireV1::Value("soft-shadow".to_owned()),
         )]);
-    let error = ThemeMaterializer::new()
-        .materialize_theme(&rejected)
+    let error = materialize_theme(&rejected)
         .expect_err("version one authoring carries no effect graph authority");
     let diagnostic = error.diagnostic();
     assert_eq!(
@@ -338,8 +329,7 @@ fn concrete_effect_references_are_rejected_but_explicit_clear_is_preserved() {
 
     let cleared = ThemeDefinitionV1::new(ThemeTokensV1::default())
         .with_styles(vec![rule_with_effect(SpecifiedWireV1::Clear)]);
-    let materialized = ThemeMaterializer::new()
-        .materialize_theme(&cleared)
+    let materialized = materialize_theme(&cleared)
         .expect("clear uses the existing atomic facet and names no graph");
     assert!(matches!(
         &materialized.spec().styles.as_ref().expect("styles")[23],
@@ -352,8 +342,7 @@ fn concrete_effect_references_are_rejected_but_explicit_clear_is_preserved() {
 fn explicitly_empty_series_uses_the_dedicated_authoring_error() {
     let definition = ThemeDefinitionV1::new(ThemeTokensV1::default().with_series(Vec::new()));
 
-    let error = ThemeMaterializer::new()
-        .materialize_theme(&definition)
+    let error = materialize_theme(&definition)
         .expect_err("an explicitly empty series cannot produce ordinal palettes");
     assert_eq!(error.diagnostic().code(), "theme-authoring.empty-series");
     assert_eq!(error.diagnostic().path(), "/tokens/series");
@@ -399,9 +388,7 @@ fn authored_non_finite_style_numbers_fail_before_materialization_returns() {
             },
         ]);
 
-        let error = ThemeMaterializer::new()
-            .materialize_theme(&definition)
-            .unwrap_err();
+        let error = materialize_theme(&definition).unwrap_err();
         assert_eq!(
             error.diagnostic().code(),
             "theme-authoring.invalid-token-value",
