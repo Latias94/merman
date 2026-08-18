@@ -36,13 +36,13 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "9f853b940917835235a07f51d6ed4328e5c9ba44fb65d1d23877b19cf65d4c84",
+    "cargo_lock_sha256": "a707be20fc0c0f255493d8a58a572d7f398810d3bd4e90ca855a50f62844ba3c",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "0938c4c85310fb3d012916ae15c9db49b116e4e488b2c0371f74f9d6f991a1ad"
   },
   "dependency_closure": {
-    "package_count": 99,
-    "packages_sha256": "2747acaa6f614c3f4dcf985e08efbf74e9ec5d41cf89231e253f19f10cc735be"
+    "package_count": 101,
+    "packages_sha256": "3305d2d52edca7fde1a0f03039257419a0775e89b43f4c7c1e4c8d19bac5ca90"
   },
   "licenses": [
     {
@@ -584,6 +584,28 @@
             "Andrew Gallant <jamslam@gmail.com>"
           ],
           "repository": "https://github.com/BurntSushi/ucd-generate"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
+        },
+        {
+          "name": "unicode-width",
+          "version": "0.2.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-width"
         },
         {
           "name": "url",
