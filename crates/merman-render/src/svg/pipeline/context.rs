@@ -191,6 +191,27 @@ impl<'a> SvgPostprocessExecution<'a> {
         self.session.resource_policy()
     }
 
+    pub(crate) fn preflight_svg_byte_count(self, actual: usize) -> crate::Result<()> {
+        self.session
+            .work_meter()
+            .preflight_svg_byte_count(
+                actual,
+                ResourceLimitPhase::SvgPostprocess,
+                OperationPhase::Postprocess,
+            )
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn svg_byte_count_overflow(self) -> crate::Error {
+        self.session
+            .work_meter()
+            .terminate_svg_byte_count_overflow(
+                ResourceLimitPhase::SvgPostprocess,
+                OperationPhase::Postprocess,
+            )
+            .into()
+    }
+
     pub(crate) fn controlled_text_measurer(
         self,
         phase: TextMeasurementPhase,

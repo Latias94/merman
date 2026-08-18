@@ -817,6 +817,40 @@ impl OperationWorkMeter {
         }
     }
 
+    /// Checks an absolute SVG byte projection without consuming the cumulative icon reservation.
+    ///
+    /// Whole-document postprocessors use this after a streaming size pass. A rejection is still an
+    /// operation terminal, but a successful preflight must not double-count icon bytes already
+    /// included in the projected document.
+    pub(crate) fn preflight_svg_byte_count(
+        &self,
+        actual: usize,
+        resource_phase: ResourceLimitPhase,
+        operation_phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
+        self.resource_checkpoint(operation_phase)?;
+        self.policy
+            .check_svg_byte_count(actual, resource_phase)
+            .map_err(|error| self.terminate_resource_error(error, operation_phase, 0, actual))
+    }
+
+    pub(crate) fn terminate_svg_byte_count_overflow(
+        &self,
+        resource_phase: ResourceLimitPhase,
+        operation_phase: OperationPhase,
+    ) -> OperationWorkError {
+        self.terminate_resource_error(
+            accumulation_overflow(
+                self.policy,
+                resource_phase,
+                RenderResourceLimitId::MaxSvgBytes,
+            ),
+            operation_phase,
+            0,
+            usize::MAX,
+        )
+    }
+
     fn terminate_resource_error(
         &self,
         error: ResourceLimitExceeded,
@@ -998,6 +1032,10 @@ impl OperationWorkMeter {
 }
 
 fn resource_phase(id: &str, phase: OperationPhase) -> ResourceLimitPhase {
+    if matches!(phase, OperationPhase::Postprocess | OperationPhase::Export) {
+        return ResourceLimitPhase::SvgPostprocess;
+    }
+
     if let Some(id) = ResourceLimitId::from_stable_id(id) {
         return id.descriptor().phase;
     }
@@ -1005,7 +1043,6 @@ fn resource_phase(id: &str, phase: OperationPhase) -> ResourceLimitPhase {
     match phase {
         OperationPhase::Parse => ResourceLimitPhase::Source,
         OperationPhase::Emit => ResourceLimitPhase::SvgOutput,
-        OperationPhase::Postprocess | OperationPhase::Export => ResourceLimitPhase::SvgPostprocess,
         _ => ResourceLimitPhase::LayoutModel,
     }
 }
