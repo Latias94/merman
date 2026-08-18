@@ -652,6 +652,20 @@ async function viewportZoom(viewport: Locator): Promise<number> {
 
 async function expectInsideViewport(page: Page, locator: Locator): Promise<void> {
   await expect(locator).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await locator.boundingBox();
+      const viewport = page.viewportSize();
+      return Boolean(
+        box &&
+          viewport &&
+          box.x >= 0 &&
+          box.y >= 0 &&
+          box.x + box.width <= viewport.width + 1 &&
+          box.y + box.height <= viewport.height + 1,
+      );
+    })
+    .toBe(true);
   const box = await locator.boundingBox();
   const viewport = page.viewportSize();
   expect(box).not.toBeNull();
