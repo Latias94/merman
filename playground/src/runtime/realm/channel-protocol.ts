@@ -64,6 +64,39 @@ export interface RealmEngineArtifact extends RealmEngineArtifactIdentity {
   readonly source: string;
 }
 
+const REALM_ENGINE_SOURCE_ENCODER = new TextEncoder();
+const REALM_ENGINE_SOURCE_BYTES = new WeakMap<
+  RealmEngineArtifact,
+  Uint8Array
+>();
+
+export function realmEngineArtifactSourceBytes(
+  artifact: RealmEngineArtifact,
+): Uint8Array {
+  const cached = REALM_ENGINE_SOURCE_BYTES.get(artifact);
+  if (cached) return cached;
+  if (
+    !Number.isSafeInteger(artifact.bytes) ||
+    artifact.bytes <= 0 ||
+    artifact.bytes > REALM_BUDGETS.engineArtifactBytes
+  ) {
+    throw new RealmProtocolError("Realm engine artifact byte length is invalid.");
+  }
+  const bytes = new Uint8Array(artifact.bytes);
+  const encoded = REALM_ENGINE_SOURCE_ENCODER.encodeInto(
+    artifact.source,
+    bytes,
+  );
+  if (
+    encoded.read !== artifact.source.length ||
+    encoded.written !== artifact.bytes
+  ) {
+    throw new RealmProtocolError("Realm engine artifact byte length is invalid.");
+  }
+  REALM_ENGINE_SOURCE_BYTES.set(artifact, bytes);
+  return bytes;
+}
+
 export interface RealmIdentity {
   readonly kind: RealmKind;
   readonly realmId: string;
@@ -366,9 +399,6 @@ export function validateRealmEngineArtifact(
     throw new RealmProtocolError("Realm engine artifact identity is invalid.");
   }
   const source = expectString(artifact.source, "engine artifact source");
-  if (utf8ByteLength(source) !== artifact.bytes) {
-    throw new RealmProtocolError("Realm engine artifact byte length is invalid.");
-  }
   const resourceUrl = artifact.resourceUrl;
   if (
     resourceUrl !== null &&
@@ -387,7 +417,7 @@ export function validateRealmEngineArtifact(
       "Realm engine resource URL does not match its generated policy."
     );
   }
-  return Object.freeze({
+  const validated = Object.freeze({
     schemaVersion: 1,
     id: artifact.id as RealmEngineArtifactId,
     bytes: artifact.bytes,
@@ -395,6 +425,8 @@ export function validateRealmEngineArtifact(
     resourceUrl: resourceUrl as string | null,
     source,
   });
+  realmEngineArtifactSourceBytes(validated);
+  return validated;
 }
 
 export function validateRealmReady(

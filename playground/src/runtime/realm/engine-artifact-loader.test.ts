@@ -40,7 +40,7 @@ test("engine artifact loader construction rejects source tampering", async () =>
       { ...artifact, source: `${source}\n` },
       (module) => module
     ),
-    /digest is invalid/
+    /byte length is invalid|digest is invalid/
   );
 });
 

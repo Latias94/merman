@@ -1,6 +1,6 @@
 # Python UniFFI Package - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## M0 - Scope And Evidence Freeze

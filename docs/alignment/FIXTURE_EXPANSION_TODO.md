@@ -191,9 +191,15 @@ Upstream source:
 
 Current status:
 
-- Snapshot-gated only (no upstream SVG baselines).
-- Translation-based compatibility mode implemented in:
-  - `crates/merman-core/src/diagrams/zenuml.rs`
+- Full grammar-derived lexer, recovering parser, semantic/editor model, typed layout, and headless
+  SVG are implemented against the admitted ZenUML Core 3.50.1 behavior source.
+- ZenUML remains outside the built-in upstream-SVG matrix; its exact external plugin graph is tested
+  in a separate opaque-browser comparison lane.
+- Family-owned implementation:
+  - Syntax and model: `crates/merman-core/src/diagrams/zenuml/`
+  - Typed layout: `crates/merman-render/src/zenuml.rs`
+  - Headless SVG: `crates/merman-render/src/svg/parity/zenuml.rs`
+- ZenUML is parsed directly and is never translated through Mermaid Sequence JSON or actions.
 
 Imported from docs (snapshot-gated):
 

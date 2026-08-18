@@ -12,6 +12,7 @@ import {
 
 export const executeArtifactAction = createArtifactActionOwner({
   getRenderState: renderCoordinatorStore.getState,
+  getRuntimeState: mermanRuntimeStore.getState,
   io: {
     copyAscii: copyASCIIToClipboard,
     copySvg: copySVGToClipboard,

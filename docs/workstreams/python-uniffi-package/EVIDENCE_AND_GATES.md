@@ -1,6 +1,6 @@
 # Python UniFFI Package - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Smallest Current Repro

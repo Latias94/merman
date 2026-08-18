@@ -1,6 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import {
   RealmProtocolError,
+  realmEngineArtifactSourceBytes,
   type RealmEngineArtifact,
 } from "./channel-protocol.ts";
 
@@ -17,13 +18,14 @@ export async function verifyAndCreateRealmEngineModuleLoader<T extends object>(
   artifact: RealmEngineArtifact,
   validate: (module: Record<string, unknown>) => T
 ): Promise<() => Promise<T>> {
-  const actual = await sha256Hex(new TextEncoder().encode(artifact.source));
+  const sourceBytes = realmEngineArtifactSourceBytes(artifact);
+  const actual = await sha256Hex(sourceBytes);
   if (actual !== artifact.sha256) {
     throw new RealmProtocolError("Realm engine artifact digest is invalid.");
   }
   let modulePromise: Promise<T> | null = null;
   return () => {
-    modulePromise ??= importEngineModule(artifact, validate).catch((error) => {
+    modulePromise ??= importEngineModule(sourceBytes, validate).catch((error) => {
       modulePromise = null;
       throw error;
     });
@@ -49,12 +51,12 @@ export async function sha256Hex(
 }
 
 async function importEngineModule<T extends object>(
-  artifact: RealmEngineArtifact,
+  sourceBytes: Uint8Array,
   validate: (module: Record<string, unknown>) => T
 ): Promise<T> {
   installEphemeralStorageFacades();
   const url = URL.createObjectURL(
-    new Blob([artifact.source], { type: "text/javascript" })
+    new Blob([sourceBytes], { type: "text/javascript" })
   );
   try {
     const module = (await import(/* @vite-ignore */ url)) as Record<

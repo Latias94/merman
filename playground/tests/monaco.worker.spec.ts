@@ -9,6 +9,42 @@ import {
 test("Monaco starts local semantic and Tree-sitter workers with staged WASM", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    const timeline: {
+      workers: Array<{ readonly at: number; readonly name: string }>;
+    } = {
+      workers: [],
+    };
+    Object.defineProperty(window, "__mermanStartupTimeline", {
+      configurable: true,
+      value: timeline,
+    });
+
+    const NativeWorker = window.Worker;
+    class ObservableWorker extends NativeWorker {
+      constructor(
+        scriptURL: string | URL,
+        options?: { readonly name?: string; readonly type?: "classic" | "module" },
+      ) {
+        super(scriptURL, options);
+        if (
+          options?.name === "merman-editor-language" ||
+          options?.name === "mermaid-tree-sitter"
+        ) {
+          timeline.workers.push({
+            at: performance.now(),
+            name: options.name,
+          });
+        }
+      }
+    }
+    Object.defineProperty(window, "Worker", {
+      configurable: true,
+      value: ObservableWorker,
+      writable: true,
+    });
+  });
+
   const errors = monitorBrowserErrors(page);
   const requests: string[] = [];
   const workers: string[] = [];
@@ -19,6 +55,22 @@ test("Monaco starts local semantic and Tree-sitter workers with staged WASM", as
   await expect(page.getByRole("textbox", { name: "Mermaid source" })).toBeVisible();
   await expect.poll(() => workers.some((url) => /merman-language\.worker/i.test(url))).toBe(true);
   await expect.poll(() => workers.some((url) => /mermaid-syntax\.worker/i.test(url))).toBe(true);
+  const startupTimeline = await page.evaluate(() => ({
+    previewPresentedAt:
+      performance.getEntriesByName("merman:initial-preview-presented")[0]
+        ?.startTime ?? null,
+    workers: (window as unknown as Window & {
+      __mermanStartupTimeline: {
+        workers: Array<{ readonly at: number; readonly name: string }>;
+      };
+    }).__mermanStartupTimeline.workers,
+  }));
+  expect(startupTimeline.previewPresentedAt).not.toBeNull();
+  for (const worker of startupTimeline.workers) {
+    expect(worker.at, `${worker.name} started before the first preview SVG`).toBeGreaterThanOrEqual(
+      startupTimeline.previewPresentedAt ?? Number.POSITIVE_INFINITY,
+    );
+  }
   await expect
     .poll(() => requests.some((url) => /merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/.test(url)))
     .toBe(true);
@@ -68,6 +120,72 @@ test("Monaco starts local semantic and Tree-sitter workers with staged WASM", as
   expect(external).toEqual([]);
   for (const workerUrl of workers) expect(new URL(workerUrl).origin).toBe(pageOrigin);
   errors.assertNone();
+});
+
+test("editor intent can activate language workers before a blocked preview", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("merman-language", "en");
+  });
+  let releaseWasm: () => void = () => undefined;
+  const wasmBlocked = new Promise<void>((resolve) => {
+    releaseWasm = resolve;
+  });
+  const requests: string[] = [];
+  const workers: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  page.on("worker", (worker) => workers.push(worker.url()));
+  await page.route(/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/i, async (route) => {
+    await wasmBlocked;
+    await route.continue();
+  });
+
+  try {
+    await page.goto("./", { waitUntil: "domcontentloaded" });
+    const activation = page.getByTestId("editor-activation");
+    await expect(activation).toBeVisible();
+    expect(workers.filter((url) => /merman-language|mermaid-syntax/i.test(url))).toEqual([]);
+    expect(
+      requests.filter((url) =>
+        /monaco|floatingMenu|contribution-[\w-]+\.js|codicon|editor\.worker/i.test(
+          url,
+        ),
+      ),
+    ).toEqual([]);
+
+    await activation.focus();
+    const editor = page.getByRole("textbox", { name: "Mermaid source" });
+    await expect(editor).toBeVisible();
+    await expect
+      .poll(() => workers.some((url) => /merman-language\.worker/i.test(url)))
+      .toBe(true);
+    await expect
+      .poll(() => workers.some((url) => /mermaid-syntax\.worker/i.test(url)))
+      .toBe(true);
+    expect(
+      await page.evaluate(
+        () =>
+          performance.getEntriesByName("merman:initial-preview-presented")
+            .length,
+      ),
+    ).toBe(0);
+  } finally {
+    releaseWasm();
+  }
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          performance.getEntriesByName("merman:initial-preview-presented")
+            .length,
+      ),
+    )
+    .toBe(1);
+  await expect(
+    page.getByText("Language tools initializing", { exact: true }),
+  ).toBeHidden();
 });
 
 test("Tree-sitter worker returns version-bound tokens for incomplete emoji input", async ({

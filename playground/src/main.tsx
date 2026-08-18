@@ -13,7 +13,6 @@ import {
   resumeRenderCoordinator,
   suspendRenderCoordinator,
 } from "./runtime/render-coordinator-browser";
-import { configureLocalMonaco } from "./editor/monaco";
 import { installUIThemeLifecycle, useAppStore } from "./store";
 import { hydrateStartupShareLocation } from "./lib/share-view";
 
@@ -21,7 +20,6 @@ hydrateStartupShareLocation(window.location, (hydration) => {
   useAppStore.getState().applyStartupShareHydration(hydration);
 });
 
-const monacoOwner = configureLocalMonaco();
 const removeThemeLifecycle = installUIThemeLifecycle();
 void ensureMermanReady().catch(() => undefined);
 const removeDocumentLifecycle = installMermanDocumentLifecycle(
@@ -46,7 +44,6 @@ if (import.meta.hot) {
     removeThemeLifecycle();
     disposeRenderCoordinator();
     disposeMermanRuntime();
-    monacoOwner.dispose();
     root.unmount();
   });
 }
