@@ -683,18 +683,13 @@ impl ResourceContext {
         self.operation.as_ref().map_or(Ok(()), |operation| {
             operation
                 .control
-                .checkpoint_at(operation.phase)
-                .map_err(AsciiError::Cancelled)
+                .terminal_checkpoint_at(operation.phase)
+                .map_err(|error| self.operation_error(error))
         })
     }
 
     fn resource_checkpoint(&self) -> Result<()> {
-        self.operation.as_ref().map_or(Ok(()), |operation| {
-            operation
-                .control
-                .resource_checkpoint_at(operation.phase)
-                .map_err(|error| self.operation_error(error))
-        })
+        self.checkpoint()
     }
 
     fn terminate_resource_error(&self, error: AsciiError) -> AsciiError {

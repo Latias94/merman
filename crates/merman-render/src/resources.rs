@@ -682,21 +682,15 @@ impl OperationWorkMeter {
         self.policy
     }
 
-    /// Checks cooperative cancellation without observing or recording resource terminals.
-    ///
-    /// Formal resource admission and charges use [`Self::resource_checkpoint`] so the operation's
-    /// first cancellation, ceiling, or overflow remains sticky. Callers use this cancellation-only
-    /// checkpoint around work that has not yet committed a resource decision.
+    /// Replays the operation's first cancellation, ceiling, or overflow terminal.
     pub(crate) fn checkpoint(&self, phase: OperationPhase) -> Result<(), OperationWorkError> {
         self.control
-            .checkpoint_at(phase)
-            .map_err(OperationWorkError::Cancelled)
+            .terminal_checkpoint_at(phase)
+            .map_err(|error| self.map_terminal_error(error))
     }
 
     fn resource_checkpoint(&self, phase: OperationPhase) -> Result<(), OperationWorkError> {
-        self.control
-            .resource_checkpoint_at(phase)
-            .map_err(|error| self.map_terminal_error(error))
+        self.checkpoint(phase)
     }
 
     pub(crate) fn preflight(&self, additional: usize) -> Result<(), OperationWorkError> {
