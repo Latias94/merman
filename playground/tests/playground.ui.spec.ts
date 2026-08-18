@@ -39,12 +39,14 @@ test("manual tabs preserve the editor model, selection, and undo history", async
     .poll(() => page.locator(".monaco-editor:visible .squiggly-error").count())
     .toBeGreaterThan(0);
   await codeTab.click();
+  await expect(page.locator(".monaco-editor")).toHaveCount(1);
   await configTab.click();
   await expect(page.getByText(/Invalid JSON/)).toBeVisible();
   await configEditor.focus();
   await page.keyboard.press("Control+Z");
   await expect(page.getByText("Config OK", { exact: true })).toBeVisible();
   await codeTab.click();
+  await expect(page.locator(".monaco-editor")).toHaveCount(1);
 
   await editor.focus();
   await page.keyboard.insertText("C");

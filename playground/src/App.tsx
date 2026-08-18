@@ -156,17 +156,11 @@ function EditorPanel({
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
 }) {
-  const [hasActivatedConfig, setHasActivatedConfig] = useState(
-    editorMode === "config",
-  );
-  const configActivated = hasActivatedConfig || editorMode === "config";
-
   return (
     <Tabs
       value={editorMode}
       onValueChange={(value) => {
         const mode = value as "code" | "config";
-        if (mode === "config") setHasActivatedConfig(true);
         setEditorMode(mode);
       }}
       activationMode="manual"
@@ -200,17 +194,14 @@ function EditorPanel({
       </TabsContent>
       <TabsContent
         value="config"
-        forceMount={configActivated ? true : undefined}
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        {configActivated && (
-          <LazyFeatureBoundary
-            feature={t("editor.configMode")}
-            presentation={{ kind: "panel" }}
-          >
-            <ConfigEditor className="h-full min-h-0" />
-          </LazyFeatureBoundary>
-        )}
+        <LazyFeatureBoundary
+          feature={t("editor.configMode")}
+          presentation={{ kind: "panel" }}
+        >
+          <ConfigEditor className="h-full min-h-0" />
+        </LazyFeatureBoundary>
       </TabsContent>
     </Tabs>
   );
