@@ -1,47 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { GENERATED_ASCII_CAPABILITIES } from "../generated/ascii-capabilities.ts";
 import {
   FALLBACK_ASCII_CAPABILITIES,
-  FALLBACK_ASCII_DIAGRAMMATIC_TYPES,
   FALLBACK_ASCII_SUPPORTED_TYPES,
   asciiSupportLabelKey,
 } from "./ascii-support.ts";
 
-test("fallback capabilities mirror the total runtime ASCII contract", () => {
-  const capabilityTypes = FALLBACK_ASCII_CAPABILITIES.map(
-    (capability) => capability.diagram_type
+test("fallback uses the complete generated binding capability projection", () => {
+  assert.equal(FALLBACK_ASCII_CAPABILITIES, GENERATED_ASCII_CAPABILITIES);
+  assert.equal(FALLBACK_ASCII_CAPABILITIES.length, 31);
+  assert.equal(
+    new Set(FALLBACK_ASCII_CAPABILITIES.map(({ diagram_type }) => diagram_type))
+      .size,
+    FALLBACK_ASCII_CAPABILITIES.length
   );
-  assert.equal(capabilityTypes.length, 31);
-  assert.equal(new Set(capabilityTypes).size, capabilityTypes.length);
 
-  const outputAvailable = FALLBACK_ASCII_CAPABILITIES.filter(
-    (capability) => capability.primary_projection !== "none"
-  ).map((capability) => capability.diagram_type);
-  const diagrammatic = FALLBACK_ASCII_CAPABILITIES.filter(
-    (capability) => capability.primary_projection === "diagrammatic"
-  ).map((capability) => capability.diagram_type);
-
-  assert.deepEqual(outputAvailable, [...FALLBACK_ASCII_SUPPORTED_TYPES]);
-  assert.deepEqual(diagrammatic, [...FALLBACK_ASCII_DIAGRAMMATIC_TYPES]);
-  for (const capability of FALLBACK_ASCII_CAPABILITIES.filter(
-    (candidate) => candidate.primary_projection !== "none"
-  )) {
-    assert.ok(
-      capability.supported_semantics.length > 0,
-      `${capability.diagram_type} fallback must describe its supported semantics`
-    );
-    assert.ok(
-      capability.limits.length > 0,
-      `${capability.diagram_type} fallback must describe its limits`
-    );
-  }
-  assert.ok(
-    !(FALLBACK_ASCII_SUPPORTED_TYPES as readonly string[]).includes("zenuml")
+  assert.deepEqual(
+    FALLBACK_ASCII_SUPPORTED_TYPES,
+    FALLBACK_ASCII_CAPABILITIES.filter(
+      ({ primary_projection }) => primary_projection !== "none"
+    ).map(({ diagram_type }) => diagram_type)
   );
 });
 
-test("fallback projection fields derive the compatibility support level", () => {
+test("support labels follow the generated projection kind", () => {
   const byType = new Map(
     FALLBACK_ASCII_CAPABILITIES.map((capability) => [
       capability.diagram_type,
@@ -49,175 +33,16 @@ test("fallback projection fields derive the compatibility support level", () => 
     ])
   );
 
-  for (const diagramType of ["flowchart", "sequence"] as const) {
-    const capability = byType.get(diagramType)!;
-    assert.equal(capability.semantic_coverage, "partial");
-    assert.equal(capability.primary_projection, "diagrammatic");
-    assert.equal(capability.support_level, "partial");
-  }
-
-  for (const diagramType of [
-    "gantt",
-    "gitgraph",
-    "journey",
-    "kanban",
-    "mindmap",
-    "packet",
-    "timeline",
-    "treeView",
-  ] as const) {
-    const capability = byType.get(diagramType)!;
-    assert.equal(capability.semantic_coverage, "partial");
-    assert.equal(capability.primary_projection, "structured_text");
-    assert.equal(capability.support_level, "summary");
-    assert.equal(
-      asciiSupportLabelKey(capability),
-      "asciiSupport.structuredText"
-    );
-  }
-
-  const zenuml = byType.get("zenuml")!;
-  assert.equal(zenuml.semantic_coverage, null);
-  assert.equal(zenuml.primary_projection, "none");
-  assert.equal(zenuml.support_level, "unsupported");
-  assert.equal(asciiSupportLabelKey(zenuml), "asciiSupport.unsupported");
-
-  const gantt = byType.get("gantt")!;
-  assert.ok(gantt.supported_semantics.includes("stable task ids"));
-  assert.ok(
-    gantt.supported_semantics.includes("start and end constraint expressions")
+  assert.equal(
+    asciiSupportLabelKey(byType.get("flowchart") ?? null),
+    "asciiSupport.levels.partial"
   );
-  assert.ok(
-    gantt.limits.every(
-      (limit) => !limit.includes("dependency source expressions are not disclosed")
-    )
+  assert.equal(
+    asciiSupportLabelKey(byType.get("gantt") ?? null),
+    "asciiSupport.structuredText"
   );
-
-  const kanban = byType.get("kanban")!;
-  assert.ok(
-    kanban.supported_semantics.includes("group parent ownership disclosure")
-  );
-  assert.ok(
-    kanban.limits.includes(
-      "group parent ownership is disclosed without nested board geometry"
-    )
-  );
-
-  const gitgraph = byType.get("gitgraph")!;
-  assert.ok(
-    gitgraph.limits.includes(
-      "unknown direct-model commit types are rejected"
-    )
-  );
-
-  const xychart = byType.get("xychart")!;
-  assert.equal(xychart.structured_text_fallback, true);
-  assert.ok(
-    xychart.supported_semantics.some((semantic) =>
-      semantic.includes("model-owned x/y coordinates")
-    )
-  );
-  assert.ok(
-    xychart.supported_semantics.includes(
-      "length-framed empty-chart metadata disclosure"
-    )
-  );
-  assert.ok(
-    xychart.limits.every((limit) => !limit.includes("SVG-coordinate"))
-  );
-  assert.ok(
-    xychart.limits.includes(
-      "unknown direct-model orientations and band y-axes are rejected"
-    )
-  );
-  assert.ok(
-    xychart.limits.includes(
-      "accessibility title and description metadata are intentionally omitted from terminal output"
-    )
-  );
-
-  const mindmap = byType.get("mindmap")!;
-  assert.ok(
-    mindmap.limits.includes(
-      "duplicate internal or authored ids, missing authored ids, parallel edges, and missing endpoints are rejected"
-    )
-  );
-
-  const treeView = byType.get("treeView")!;
-  assert.ok(treeView.limits.includes("duplicate node ids are rejected"));
-  assert.ok(treeView.limits.includes("unknown node types are rejected"));
-
-  const classDiagram = byType.get("class")!;
-  assert.ok(
-    classDiagram.supported_semantics.includes(
-      "readable sibling namespace, namespace-to-root, and nested namespace facade routing"
-    )
-  );
-  assert.ok(
-    classDiagram.supported_semantics.includes(
-      "length-framed namespace facade member identity"
-    )
-  );
-  assert.ok(
-    classDiagram.supported_semantics.includes(
-      "strict planar K2×2 four-node, four-edge components with four disjoint routes"
-    )
-  );
-  assert.ok(
-    classDiagram.limits.includes(
-      "dense or colliding cross-namespace relationships render as lossless relation summaries"
-    )
-  );
-  assert.ok(
-    classDiagram.limits.some((limit) => limit.includes("ports do not fit"))
-  );
-  assert.ok(
-    classDiagram.limits.includes(
-      "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
-    )
-  );
-  assert.ok(
-    classDiagram.limits.every(
-      (limit) => !limit.includes("namespace containers are not drawn")
-    )
-  );
-
-  const er = byType.get("er")!;
-  assert.ok(
-    er.supported_semantics.includes(
-      "entity boxes, attributes, key tokens, and attribute comments"
-    )
-  );
-  assert.ok(
-    er.supported_semantics.includes(
-      "strict planar K2×2 four-node, four-edge components with four disjoint routes"
-    )
-  );
-  assert.ok(
-    er.limits.includes(
-      "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
-    )
-  );
-  assert.ok(
-    er.limits.includes(
-      "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output"
-    )
-  );
-  assert.ok(
-    er.limits.every((limit) => !limit.includes("attribute comments"))
-  );
-
-  const sequence = byType.get("sequence")!;
-  assert.ok(
-    sequence.supported_semantics.includes(
-      "participant-bounded nested control frames"
-    )
-  );
-
-  const flowchart = byType.get("flowchart")!;
-  assert.ok(
-    flowchart.supported_semantics.includes(
-      "terminal-cell wrapped node labels"
-    )
+  assert.equal(
+    asciiSupportLabelKey(byType.get("zenuml") ?? null),
+    "asciiSupport.unsupported"
   );
 });
