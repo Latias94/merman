@@ -2,6 +2,9 @@ use crate::artifact_contract::ValidatedArtifactContract;
 use crate::capability::{OperationKey, operation_is_compiled};
 use crate::payload_contract::BINDING_OPERATION_SCHEMA_VERSION;
 use crate::resource_contract::BindingResourceScope;
+use crate::theme_execution_evidence::{
+    BindingThemeExecutionEvidence, parse_theme_execution_evidence,
+};
 use crate::{BindingEngine, BindingError, BindingStatus};
 use merman::{OperationControl, OperationPhase};
 use serde::Serialize;
@@ -283,6 +286,7 @@ impl BindingOperationResult {
 pub(crate) struct BindingOperationOutput {
     data: Vec<u8>,
     output_plan: Option<BindingOutputPlan>,
+    theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
 }
 
 #[derive(Debug)]
@@ -491,6 +495,7 @@ pub struct BindingOperationMetadata {
     runtime_policy: String,
     byte_length: u64,
     output_plan: Option<BindingOutputPlan>,
+    theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
     json: Arc<[u8]>,
 }
 
@@ -518,6 +523,10 @@ impl BindingOperationMetadata {
             None | Some(Value::Null) => None,
             Some(value) => Some(parse_output_plan(value)?),
         };
+        let theme_execution_evidence = match object.get("theme_execution_evidence") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(parse_theme_execution_evidence(value)?),
+        };
 
         Ok(Self {
             version,
@@ -526,6 +535,7 @@ impl BindingOperationMetadata {
             runtime_policy,
             byte_length,
             output_plan,
+            theme_execution_evidence,
             json: Arc::from(json),
         })
     }
@@ -535,6 +545,7 @@ impl BindingOperationMetadata {
         runtime_policy: &str,
         byte_length: u64,
         output_plan: Option<BindingOutputPlan>,
+        theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
     ) -> Result<Self, BindingError> {
         #[cfg(test)]
         METADATA_SERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
@@ -546,6 +557,7 @@ impl BindingOperationMetadata {
             runtime_policy,
             byte_length,
             output_plan: output_plan.as_ref(),
+            theme_execution_evidence: theme_execution_evidence.as_ref(),
         })
         .map_err(|error| {
             BindingError::internal(format!("failed to serialize operation metadata: {error}"))
@@ -558,6 +570,7 @@ impl BindingOperationMetadata {
             runtime_policy: runtime_policy.to_owned(),
             byte_length,
             output_plan,
+            theme_execution_evidence,
             json: Arc::from(json),
         })
     }
@@ -593,6 +606,11 @@ impl BindingOperationMetadata {
     }
 
     #[must_use]
+    pub const fn theme_execution_evidence(&self) -> Option<&BindingThemeExecutionEvidence> {
+        self.theme_execution_evidence.as_ref()
+    }
+
+    #[must_use]
     pub fn json_bytes(&self) -> &[u8] {
         &self.json
     }
@@ -608,11 +626,25 @@ impl BindingOperationOutput {
         Self {
             data,
             output_plan: None,
+            theme_execution_evidence: None,
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    pub(crate) fn svg(data: Vec<u8>, evidence: BindingThemeExecutionEvidence) -> Self {
+        Self {
+            data,
+            output_plan: None,
+            theme_execution_evidence: Some(evidence),
         }
     }
 
     #[cfg(any(feature = "png", feature = "jpeg"))]
-    pub(crate) fn raster(data: Vec<u8>, plan: merman::svg::export::RasterPlan) -> Self {
+    pub(crate) fn raster(
+        data: Vec<u8>,
+        plan: merman::svg::export::RasterPlan,
+        evidence: BindingThemeExecutionEvidence,
+    ) -> Self {
         Self {
             data,
             output_plan: Some(BindingOutputPlan::Raster(BindingRasterOutputPlan {
@@ -624,11 +656,16 @@ impl BindingOperationOutput {
                 effective_scale: plan.effective_scale,
                 limited: plan.limited,
             })),
+            theme_execution_evidence: Some(evidence),
         }
     }
 
     #[cfg(feature = "pdf")]
-    pub(crate) fn pdf(data: Vec<u8>, plan: merman::svg::export::PdfFilterImagePlan) -> Self {
+    pub(crate) fn pdf(
+        data: Vec<u8>,
+        plan: merman::svg::export::PdfFilterImagePlan,
+        evidence: BindingThemeExecutionEvidence,
+    ) -> Self {
         Self {
             data,
             output_plan: Some(BindingOutputPlan::PdfFilterImages(
@@ -641,6 +678,7 @@ impl BindingOperationOutput {
                     limited: plan.limited,
                 },
             )),
+            theme_execution_evidence: Some(evidence),
         }
     }
 }
@@ -654,6 +692,8 @@ struct BindingOperationMetadataWire<'a> {
     byte_length: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_plan: Option<&'a BindingOutputPlan>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    theme_execution_evidence: Option<&'a BindingThemeExecutionEvidence>,
 }
 
 fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
@@ -907,9 +947,7 @@ impl BindingEngine {
             OperationKey::Png => self.render_png_output(source, control.clone()),
             OperationKey::Jpeg => self.render_jpeg_output(source, control.clone()),
             OperationKey::Pdf => self.render_pdf_output(source, control.clone()),
-            OperationKey::Svg => self
-                .render_svg_data(source, control.clone())
-                .map(BindingOperationOutput::plain),
+            OperationKey::Svg => self.render_svg_output(source, control.clone()),
             OperationKey::SvgPlanJson => self
                 .svg_plan_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
@@ -958,7 +996,11 @@ fn operation_result(
     runtime_policy_id: &'static str,
     output: BindingOperationOutput,
 ) -> Result<BindingOperationResult, BindingError> {
-    let BindingOperationOutput { data, output_plan } = output;
+    let BindingOperationOutput {
+        data,
+        output_plan,
+        theme_execution_evidence,
+    } = output;
     let byte_length = u64::try_from(data.len()).map_err(|_| {
         BindingError::internal("operation result byte length exceeds unsigned 64-bit range")
     })?;
@@ -967,6 +1009,7 @@ fn operation_result(
         runtime_policy_id,
         byte_length,
         output_plan,
+        theme_execution_evidence,
     )?;
 
     Ok(BindingOperationResult {
@@ -1101,6 +1144,164 @@ mod tests {
         assert!(error.message().contains("requested_width_px"));
     }
 
+    fn metadata_json_with_theme_execution_evidence(evidence: Value) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "version": 1,
+            "operation_id": "svg",
+            "media_type": "image/svg+xml",
+            "runtime_policy": "deterministic",
+            "byte_length": 42,
+            "theme_execution_evidence": evidence,
+        }))
+        .unwrap()
+    }
+
+    fn known_theme_execution_evidence_json() -> Value {
+        serde_json::json!({
+            "version": 1,
+            "family_id": "flowchart",
+            "theme_status": "verified",
+            "output_mutated": false,
+            "target_kind": "svg",
+            "target_status": "portable",
+            "target_reason_ids": ["host_dependent_text_layout"],
+            "font_source": "embedded",
+        })
+    }
+
+    #[test]
+    fn typed_metadata_decodes_known_theme_execution_evidence() {
+        let json =
+            metadata_json_with_theme_execution_evidence(known_theme_execution_evidence_json());
+        let metadata = BindingOperationMetadata::from_json_bytes(&json).unwrap();
+
+        let Some(crate::BindingThemeExecutionEvidence::V1(evidence)) =
+            metadata.theme_execution_evidence()
+        else {
+            panic!("expected version-one theme execution evidence");
+        };
+        assert_eq!(metadata.theme_execution_evidence().unwrap().version(), 1);
+        assert_eq!(evidence.family_id(), "flowchart");
+        assert_eq!(evidence.theme_status_id(), "verified");
+        assert!(!evidence.output_mutated());
+        assert_eq!(evidence.target_kind_id(), "svg");
+        assert_eq!(evidence.target_status_id(), "portable");
+        assert_eq!(
+            evidence
+                .target_reason_ids()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["host_dependent_text_layout"],
+        );
+        assert_eq!(evidence.font_source_id(), "embedded");
+    }
+
+    #[test]
+    fn typed_metadata_preserves_unknown_theme_evidence_and_exact_outer_json() {
+        let json = br#"{ "version": 1, "operation_id": "svg", "media_type": "image/svg+xml", "runtime_policy": "future-policy", "byte_length": 7, "theme_execution_evidence": { "version": 9, "future": { "answer": 42 } } }"#;
+        let metadata = BindingOperationMetadata::from_json_bytes(json).unwrap();
+
+        assert_eq!(metadata.json_bytes(), json);
+        let Some(crate::BindingThemeExecutionEvidence::Unknown(evidence)) =
+            metadata.theme_execution_evidence()
+        else {
+            panic!("expected unknown theme execution evidence");
+        };
+        assert_eq!(metadata.theme_execution_evidence().unwrap().version(), 9);
+        assert_eq!(evidence.version(), 9);
+        assert_eq!(evidence.value()["future"]["answer"], 42);
+    }
+
+    #[test]
+    fn known_theme_execution_evidence_enforces_id_and_reason_bounds() {
+        for field in [
+            "family_id",
+            "theme_status",
+            "target_kind",
+            "target_status",
+            "font_source",
+        ] {
+            let mut evidence = known_theme_execution_evidence_json();
+            evidence[field] = Value::String("x".repeat(129));
+            let json = metadata_json_with_theme_execution_evidence(evidence);
+            let error = BindingOperationMetadata::from_json_bytes(&json).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains(field), "{error:?}");
+        }
+
+        let mut evidence = known_theme_execution_evidence_json();
+        evidence["target_reason_ids"] = serde_json::json!(["x".repeat(129)]);
+        let json = metadata_json_with_theme_execution_evidence(evidence);
+        let error = BindingOperationMetadata::from_json_bytes(&json).unwrap_err();
+        assert!(
+            error.message().contains("target_reason_ids[0]"),
+            "{error:?}"
+        );
+
+        let mut evidence = known_theme_execution_evidence_json();
+        evidence["family_id"] = Value::String("é".repeat(65));
+        let json = metadata_json_with_theme_execution_evidence(evidence);
+        let error = BindingOperationMetadata::from_json_bytes(&json).unwrap_err();
+        assert!(error.message().contains("UTF-8 bytes"), "{error:?}");
+
+        let mut evidence = known_theme_execution_evidence_json();
+        evidence["target_reason_ids"] = Value::Array(
+            (0..33)
+                .map(|index| Value::String(format!("reason-{index}")))
+                .collect(),
+        );
+        let json = metadata_json_with_theme_execution_evidence(evidence);
+        let error = BindingOperationMetadata::from_json_bytes(&json).unwrap_err();
+        assert!(error.message().contains("at most 32"), "{error:?}");
+
+        let mut evidence = known_theme_execution_evidence_json();
+        evidence["target_reason_ids"] = serde_json::json!(["duplicate", "duplicate"]);
+        let json = metadata_json_with_theme_execution_evidence(evidence);
+        let error = BindingOperationMetadata::from_json_bytes(&json).unwrap_err();
+        assert!(error.message().contains("must be unique"), "{error:?}");
+    }
+
+    #[test]
+    fn known_theme_execution_evidence_accepts_exact_bounds_and_rejects_malformed_fields() {
+        let max_id = "x".repeat(128);
+        let max_reason_ids = (0..32)
+            .map(|index| Value::String(format!("{index:02}{}", "x".repeat(126))))
+            .collect::<Vec<_>>();
+        let mut evidence = known_theme_execution_evidence_json();
+        for field in [
+            "family_id",
+            "theme_status",
+            "target_kind",
+            "target_status",
+            "font_source",
+        ] {
+            evidence[field] = Value::String(max_id.clone());
+        }
+        evidence["target_reason_ids"] = Value::Array(max_reason_ids);
+        let json = metadata_json_with_theme_execution_evidence(evidence);
+        BindingOperationMetadata::from_json_bytes(&json).unwrap();
+
+        for evidence in [
+            serde_json::json!([]),
+            serde_json::json!({"version": 1}),
+            serde_json::json!({
+                "version": 1,
+                "family_id": "flowchart",
+                "theme_status": "verified",
+                "output_mutated": false,
+                "target_kind": "svg",
+                "target_status": "portable",
+                "target_reason_ids": "not-an-array",
+                "font_source": "none",
+            }),
+        ] {
+            let json = metadata_json_with_theme_execution_evidence(evidence);
+            let error = BindingOperationMetadata::from_json_bytes(&json).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        }
+    }
+
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
         let operations = BindingOperationKind::all().collect::<Vec<_>>();
@@ -1162,6 +1363,8 @@ mod tests {
         let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
 
         assert_eq!(metadata["runtime_policy"], "deterministic");
+        assert!(metadata.get("theme_execution_evidence").is_none());
+        assert!(result.metadata().theme_execution_evidence().is_none());
     }
 
     #[test]
@@ -1944,6 +2147,88 @@ mod tests {
         assert_eq!(metadata["operation_id"], "svg");
         assert_eq!(metadata["byte_length"], result.data.len());
         assert_eq!(metadata["runtime_policy"], "deterministic");
+        let evidence = &metadata["theme_execution_evidence"];
+        assert_eq!(evidence["version"], 1);
+        assert_eq!(evidence["family_id"], "flowchart");
+        assert_eq!(evidence["theme_status"], "not_applicable");
+        assert_eq!(evidence["output_mutated"], false);
+        assert_eq!(evidence["target_kind"], "svg");
+        assert!(evidence["target_status"].is_string());
+        assert!(evidence["target_reason_ids"].is_array());
+        assert!(evidence["font_source"].is_string());
+
+        let mut keys = evidence
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [
+                "family_id",
+                "font_source",
+                "output_mutated",
+                "target_kind",
+                "target_reason_ids",
+                "target_status",
+                "theme_status",
+                "version",
+            ]
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn themed_svg_operation_projects_renderer_owned_theme_status() {
+        let result = execute_once(
+            BindingOperationRequest::new("svg", b"stateDiagram-v2\n[*] --> Ready\nReady --> [*]")
+                .with_options_json(
+                    br##"{
+                    "theme": {
+                        "spec": {
+                            "styles": [{
+                                "kind": "ordinal-palette",
+                                "target": "state",
+                                "colors": ["#0f172a", "#22d3ee"]
+                            }]
+                        }
+                    }
+                }"##,
+                ),
+        )
+        .unwrap();
+
+        let Some(crate::BindingThemeExecutionEvidence::V1(evidence)) =
+            result.metadata().theme_execution_evidence()
+        else {
+            panic!("expected version-one theme execution evidence");
+        };
+        assert_eq!(evidence.family_id(), "state");
+        assert_eq!(evidence.theme_status_id(), "verified");
+        assert!(!evidence.output_mutated());
+        assert_eq!(evidence.target_kind_id(), "svg");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_byte_path_discards_evidence_without_serializing_metadata() {
+        let source = b"flowchart TD\nA --> B";
+        let engine = BindingEngine::new(b"").unwrap();
+
+        reset_metadata_serialization_count();
+        let result = engine
+            .execute(BindingOperationRequest::new("svg", source))
+            .unwrap();
+        assert_eq!(metadata_serialization_count(), 1);
+
+        reset_metadata_serialization_count();
+        let bytes = engine.render_svg(source).unwrap();
+
+        assert_eq!(metadata_serialization_count(), 0);
+        assert_eq!(result.data(), bytes);
+        assert!(result.metadata().theme_execution_evidence().is_some());
     }
 
     #[cfg(feature = "svg")]
@@ -1966,6 +2251,23 @@ mod tests {
         assert_eq!(plan["planned_operation_id"], "svg");
         assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
         assert_eq!(plan["ready"], true);
+        assert!(result.metadata().theme_execution_evidence().is_none());
+        let metadata: Value = serde_json::from_slice(result.metadata_json()).unwrap();
+        assert!(metadata.get("theme_execution_evidence").is_none());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn layout_operation_omits_theme_execution_evidence() {
+        let result = execute_once(BindingOperationRequest::new(
+            "layout-json",
+            b"flowchart TD\nA --> B",
+        ))
+        .unwrap();
+        let metadata: Value = serde_json::from_slice(result.metadata_json()).unwrap();
+
+        assert!(result.metadata().theme_execution_evidence().is_none());
+        assert!(metadata.get("theme_execution_evidence").is_none());
     }
 
     #[cfg(feature = "svg")]
@@ -2103,6 +2405,23 @@ mod tests {
         assert_eq!(metadata["output_plan"]["limited"], false);
         assert_eq!(metadata["output_plan"]["requested_scale"], 1.0);
         assert_eq!(metadata["output_plan"]["effective_scale"], 1.0);
+        assert_eq!(metadata["theme_execution_evidence"]["target_kind"], "png");
+    }
+
+    #[cfg(feature = "jpeg")]
+    #[test]
+    fn generic_jpeg_operation_carries_target_theme_execution_evidence() {
+        let result = execute_once(BindingOperationRequest::new(
+            "jpeg",
+            b"flowchart TD\nA --> B",
+        ))
+        .unwrap();
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
+
+        assert_eq!(result.media_type(), "image/jpeg");
+        assert!(result.data().starts_with(&[0xff, 0xd8]));
+        assert_eq!(metadata["output_plan"]["kind"], "raster");
+        assert_eq!(metadata["theme_execution_evidence"]["target_kind"], "jpeg");
     }
 
     #[cfg(feature = "png")]
@@ -2216,6 +2535,7 @@ mod tests {
         assert_eq!(plan["kind"], "pdf-filter-images");
         assert_eq!(plan["requested_scale"], serde_json::json!(0.1));
         assert_eq!(plan["effective_scale"], serde_json::json!(0.1));
+        assert_eq!(metadata["theme_execution_evidence"]["target_kind"], "pdf");
         assert!(
             std::str::from_utf8(result.metadata_json())
                 .unwrap()

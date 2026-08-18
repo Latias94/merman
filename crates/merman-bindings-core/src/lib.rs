@@ -27,6 +27,7 @@ mod svg_plan;
 mod text_measurement;
 #[cfg(feature = "svg")]
 mod theme_definition;
+mod theme_execution_evidence;
 mod transport_contract;
 
 #[cfg(feature = "ascii")]
@@ -86,9 +87,9 @@ pub use operation::{
 pub use operation_contract::{
     BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION, BindingJsonFieldContract,
     BindingOperationExpectation, BindingOperationMetadataContract, BindingOutputPlanContract,
-    BindingUnavailableOperationExpectation, binding_operation_expectations,
-    binding_operation_expectations_json, operation_metadata_contract,
-    operation_metadata_contract_json,
+    BindingThemeExecutionEvidenceContract, BindingUnavailableOperationExpectation,
+    binding_operation_expectations, binding_operation_expectations_json,
+    operation_metadata_contract, operation_metadata_contract_json,
 };
 pub use option_contract::{BindingOptionGroupKey, BindingOptionGroupSpec};
 pub use payload_contract::{BINDING_OPERATION_SCHEMA_VERSION, BindingPayloadSchemaKey};
@@ -104,6 +105,12 @@ pub use services::BindingEngineServices;
 #[cfg(feature = "svg")]
 pub use services::{BindingIconRegistry, build_icon_registry};
 pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
+pub use theme_execution_evidence::{
+    BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
+    BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
+    BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION, BindingThemeExecutionEvidence,
+    BindingThemeExecutionEvidenceV1, BindingUnknownThemeExecutionEvidence,
+};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

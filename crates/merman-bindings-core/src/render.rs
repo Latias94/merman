@@ -23,13 +23,13 @@ pub(crate) struct RenderOperationConfig {
 }
 
 impl CachedRenderEngine {
-    pub(crate) fn render_svg(
+    pub(crate) fn render_svg_output(
         &self,
         source: &[u8],
         control: merman::OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_svg(source, control)
+        self.plan.render_svg_output(source, control)
     }
 
     pub(crate) fn layout_json(

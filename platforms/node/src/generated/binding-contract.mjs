@@ -139,6 +139,13 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "required": false,
       "integer_width_bits": null,
       "open_value": true
+    },
+    {
+      "name": "theme_execution_evidence",
+      "json_type": "object",
+      "required": false,
+      "integer_width_bits": null,
+      "open_value": true
     }
   ],
   "output_plans": [
@@ -258,8 +265,75 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       ]
     }
   ],
+  "theme_execution_evidence_versions": [
+    {
+      "version": 1,
+      "fields": [
+        {
+          "name": "version",
+          "json_type": "unsigned-integer",
+          "required": true,
+          "integer_width_bits": 32,
+          "open_value": false
+        },
+        {
+          "name": "family_id",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "theme_status",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "output_mutated",
+          "json_type": "boolean",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "target_kind",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "target_status",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "target_reason_ids",
+          "json_type": "array",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        },
+        {
+          "name": "font_source",
+          "json_type": "string",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": true
+        }
+      ],
+      "max_id_utf8_bytes": 128,
+      "max_target_reason_ids": 32,
+      "target_reason_ids_unique": true
+    }
+  ],
   "additional_fields_policy": "preserve",
   "unknown_output_plan_policy": "preserve",
+  "unknown_theme_execution_evidence_policy": "preserve",
   "original_json_policy": "preserve-exact-bytes"
 };
 

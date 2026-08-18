@@ -390,9 +390,9 @@ impl BindingEngine {
                         .map_err(BindingError::cancelled)?;
                     let render = configs.render.materialize(&self.services);
                     let output = match operation.key() {
-                        crate::OperationKey::Svg => render
-                            .render_svg(source, control.clone())
-                            .map(BindingOperationOutput::plain),
+                        crate::OperationKey::Svg => {
+                            render.render_svg_output(source, control.clone())
+                        }
                         crate::OperationKey::SvgPlanJson => render
                             .svg_plan_json(source, control.clone())
                             .map(BindingOperationOutput::plain),
@@ -485,14 +485,14 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("svg", source))
     }
 
-    pub(crate) fn render_svg_data(
+    pub(crate) fn render_svg_output(
         &self,
         source: &[u8],
         control: OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
+    ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.render_svg(source, control)
+            self.render.render_svg_output(source, control)
         }
 
         #[cfg(not(feature = "svg"))]

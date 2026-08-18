@@ -7,6 +7,7 @@ use crate::common::{
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
+use crate::theme_execution_evidence::BindingThemeExecutionEvidence;
 use merman::svg::{
     LayoutOptions, MeasurementProfileId, RenderCapability, RenderCapabilityPolicy,
     TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
@@ -44,11 +45,11 @@ pub(super) struct RenderOperationConfig {
 }
 
 impl RenderRequestPlan {
-    pub(super) fn render_svg(
+    pub(super) fn render_svg_output(
         &self,
         source: &str,
         control: OperationControl,
-    ) -> Result<Vec<u8>, BindingError> {
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
             .render(self.request(source, merman::RenderTarget::Svg(self.svg.clone()), control))
@@ -56,8 +57,13 @@ impl RenderRequestPlan {
         let RenderOutput::Svg(svg) = output else {
             return Err(unexpected_render_output("svg"));
         };
-        svg.map(|output| output.into_parts().0.into_bytes())
-            .ok_or_else(no_diagram_error)
+        let output = svg.ok_or_else(no_diagram_error)?;
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
+        Ok(crate::operation::BindingOperationOutput::svg(
+            output.into_parts().0.into_bytes(),
+            evidence,
+        ))
     }
 
     pub(super) fn layout_json(
@@ -126,9 +132,12 @@ impl RenderRequestPlan {
         };
         let output = output.ok_or_else(no_diagram_error)?;
         let plan = output.plan();
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
         Ok(crate::operation::BindingOperationOutput::raster(
             output.into_bytes(),
             plan,
+            evidence,
         ))
     }
 
@@ -154,9 +163,12 @@ impl RenderRequestPlan {
         };
         let output = output.ok_or_else(no_diagram_error)?;
         let plan = output.plan();
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
         Ok(crate::operation::BindingOperationOutput::raster(
             output.into_bytes(),
             plan,
+            evidence,
         ))
     }
 
@@ -182,9 +194,12 @@ impl RenderRequestPlan {
         };
         let output = output.ok_or_else(no_diagram_error)?;
         let plan = output.plan();
+        let evidence =
+            BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
         Ok(crate::operation::BindingOperationOutput::pdf(
             output.into_bytes(),
             plan,
+            evidence,
         ))
     }
 
