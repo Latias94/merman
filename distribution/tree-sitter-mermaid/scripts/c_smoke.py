@@ -16,6 +16,7 @@ PROVENANCE = json.loads(
     (PACKAGE_ROOT / "metadata/provenance.json").read_text(encoding="utf-8")
 )
 TREE_SITTER_RUNTIME_VERSION = PROVENANCE["toolchain"]["rustRuntime"]
+TREE_SITTER_RUNTIME_DEFINES = ("_POSIX_C_SOURCE=200112L", "_DEFAULT_SOURCE")
 
 
 def runtime_directory(package: Path) -> Path:
@@ -66,6 +67,7 @@ def compiler_command(
             *compiler,
             "/nologo",
             "/std:c11",
+            *(f"/D{define}" for define in TREE_SITTER_RUNTIME_DEFINES),
             "/Isrc",
             "/Ibindings/c",
             f"/I{runtime / 'include'}",
@@ -76,6 +78,7 @@ def compiler_command(
     return [
         *compiler,
         "-std=c11",
+        *(f"-D{define}" for define in TREE_SITTER_RUNTIME_DEFINES),
         "-Isrc",
         "-Ibindings/c",
         f"-I{runtime / 'include'}",

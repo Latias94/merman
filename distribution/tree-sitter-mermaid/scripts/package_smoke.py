@@ -13,7 +13,7 @@ import textwrap
 from pathlib import Path
 import tomllib
 
-from c_smoke import find_compiler, runtime_directory
+from c_smoke import TREE_SITTER_RUNTIME_DEFINES, find_compiler, runtime_directory
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -275,6 +275,7 @@ def run_cmake_consumer(
         [
             *compiler,
             "-std=c11",
+            *(f"-D{define}" for define in TREE_SITTER_RUNTIME_DEFINES),
             f"-I{installed / 'include'}",
             f"-I{runtime / 'include'}",
             f"-I{runtime / 'src'}",
