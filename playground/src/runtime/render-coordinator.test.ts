@@ -286,6 +286,62 @@ test("retains only the latest input while rendering is disabled", async () => {
   assert.deepEqual(renderedSources, ["hidden-latest"]);
 });
 
+test("hidden input changes stale the visible publication without reading it", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 0,
+  });
+  coordinator.setInput(input("visible"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  const visible = coordinator.store.getState();
+  assert.equal(visible.status, "success");
+  if (visible.status !== "success") return;
+
+  coordinator.setEnabled(false);
+  let sourceReads = 0;
+  const hiddenWorkspace = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    get code() {
+      sourceReads += 1;
+      return "hidden-latest";
+    },
+  };
+  coordinator.setInput({
+    facade: facade(),
+    renderViewport: captureRenderViewport(),
+    workspace: hiddenWorkspace,
+  });
+
+  const stale = coordinator.store.getState();
+  assert.equal(stale.status, "updating");
+  if (stale.status !== "updating") return;
+  assert.equal(stale.previous, visible);
+  assert.notEqual(stale.snapshot.publicationId, visible.snapshot.publicationId);
+  assert.equal(sourceReads, 0);
+
+  const newestWorkspace = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    get code() {
+      sourceReads += 1;
+      return "hidden-newest";
+    },
+  };
+  coordinator.setInput({
+    facade: facade(),
+    renderViewport: captureRenderViewport(),
+    workspace: newestWorkspace,
+  });
+  assert.equal(coordinator.store.getState(), stale);
+  assert.equal(sourceReads, 0);
+
+  coordinator.setEnabled(true);
+  await waitFor(() => coordinator.store.getState().status === "success");
+  const latest = coordinator.store.getState();
+  assert.equal(latest.status, "success");
+  if (latest.status !== "success") return;
+  assert.equal(latest.snapshot.operation.source, "hidden-newest");
+});
+
 test("does not inspect hidden workspace source until rendering resumes", async () => {
   let sourceReads = 0;
   const workspace = {
@@ -512,8 +568,9 @@ test("preserves producer SVG validation failures", async () => {
 test("renders ASCII only after the feature is activated", async () => {
   let asciiRenderCalls = 0;
   let svgRenderCalls = 0;
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("svg-only"))]);
   const coordinator = createRenderCoordinator({
-    compare: fakeCompare([]),
+    compare,
     debounceMs: 0,
   });
   const domainFacade: MermanDomainFacade = {
@@ -530,18 +587,25 @@ test("renders ASCII only after the feature is activated", async () => {
 
   coordinator.setFeatures({
     asciiEnabled: false,
-    compareEnabled: false,
-    diagnosticsEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: true,
   });
-  coordinator.setInput(input("svg-only", domainFacade));
+  coordinator.setInput(
+    input("svg-only", domainFacade, {
+      presentationProfileId: "future-profile",
+    }),
+  );
   await waitFor(() => coordinator.store.getState().status === "success");
+  const initial = coordinator.store.getState();
+  assert.equal(initial.status, "success");
+  if (initial.status !== "success") return;
   assert.equal(asciiRenderCalls, 0);
   assert.equal(svgRenderCalls, 1);
 
   coordinator.setFeatures({
     asciiEnabled: true,
-    compareEnabled: false,
-    diagnosticsEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: true,
   });
   await waitFor(() => asciiRenderCalls === 1);
   const state = coordinator.store.getState();
@@ -551,15 +615,21 @@ test("renders ASCII only after the feature is activated", async () => {
     artifact: "svg-only",
     status: "success",
   });
-  assert.equal(svgRenderCalls, 2);
+  assert.equal(svgRenderCalls, 1);
+  assert.notEqual(state.snapshot.publicationId, initial.snapshot.publicationId);
+  assert.equal(state.merman, initial.merman);
+  assert.equal(state.mermaid, initial.mermaid);
+  assert.equal(state.diagnostics, initial.diagnostics);
+  assert.equal(state.svgPlan, initial.svgPlan);
+  assert.equal(compare.calls.length, 1);
 
   coordinator.setFeatures({
     asciiEnabled: false,
-    compareEnabled: false,
-    diagnosticsEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: true,
   });
   assert.equal(coordinator.store.getState(), state);
-  assert.equal(svgRenderCalls, 2);
+  assert.equal(svgRenderCalls, 1);
 });
 
 test("publishes ASCII independently when SVG validation fails", async () => {

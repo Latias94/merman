@@ -41,6 +41,7 @@ import {
 import { copyWorkspaceShareUrl } from "@/src/lib/share";
 import { copyIssueShareUrl } from "@/src/lib/share-view";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
+import { isAsciiExportAvailable } from "@/src/components/toolbar-artifact-availability";
 import {
   selectCompletedRenderBatch,
   selectCurrentDiagramType,
@@ -78,7 +79,7 @@ export function useToolbarArtifactActions() {
   const currentMerman =
     currentBatch?.merman.status === "success" ? currentBatch.merman : null;
   const artifactActionsEnabled = currentMerman !== null;
-  const asciiAvailable = asciiSupported && currentBatch !== null;
+  const asciiAvailable = isAsciiExportAvailable(asciiSupported, currentBatch);
 
   const handleOpenExport = useCallback((restoreFocus?: HTMLElement | null) => {
     if (!currentBatch) return;

@@ -430,11 +430,24 @@ export function createRenderCoordinator({
   const setInput = (input: RenderCoordinatorInput) => {
     currentInput = input;
     if (!enabled) {
+      markCompletedInputStale();
       renderRequiredWhenEnabled = true;
       return;
     }
     scheduleCurrent(false);
   };
+
+  const markCompletedInputStale = () => {
+    const state = store.getState();
+    if (!isCompletedRenderState(state)) return;
+
+    requestSequence += 1;
+    const snapshot: ScheduledRenderSnapshot = Object.freeze({
+      publicationId: requestSequence as RenderPublicationId,
+    });
+    replaceState({ status: "updating", previous: state, snapshot });
+  };
+
   const setEnabled = (nextEnabled: boolean) => {
     if (disposed || enabled === nextEnabled) return;
     enabled = nextEnabled;
@@ -451,10 +464,68 @@ export function createRenderCoordinator({
     renderRequiredWhenEnabled =
       state.status === "pending" || state.status === "updating";
     if (state.status === "pending") replaceState(EMPTY_STATE);
-    if (state.status === "updating") replaceState(state.previous);
   };
+
+  const activateAsciiFromCompleted = (): boolean => {
+    const state = store.getState();
+    if (
+      !enabled ||
+      !isCompletedRenderState(state) ||
+      !latest ||
+      latest.publicationId !== state.snapshot.publicationId ||
+      active ||
+      suspended ||
+      pauseCount > 0 ||
+      state.snapshot.operation.asciiEnabled
+    ) {
+      return false;
+    }
+
+    const publicationId = ++requestSequence as RenderPublicationId;
+    const operation: FrozenRenderOperation = Object.freeze({
+      ...state.snapshot.operation,
+      asciiEnabled: true,
+    });
+    const snapshot: FrozenRenderSnapshot = Object.freeze({
+      operation,
+      publicationId,
+    });
+    latest = {
+      ...latest,
+      operationInput: Object.freeze({
+        ...latest.operationInput,
+        asciiEnabled: true,
+      }),
+      publicationId,
+    };
+    replaceState({
+      status: "updating",
+      previous: state,
+      snapshot: Object.freeze({ publicationId }),
+    });
+    const ascii = renderMermanAscii(latest.facade, operation, state.detection);
+    replaceState(
+      classifyBatch(
+        snapshot,
+        state.detection,
+        state.diagnostics,
+        state.svgPlan,
+        state.merman,
+        ascii,
+        state.mermaid,
+        now(),
+      ),
+    );
+    return true;
+  };
+
   const setFeatures = (features: RenderFeatures) => {
     const leavingCompare = compareEnabled && !features.compareEnabled;
+    const activatingAsciiOnly =
+      !asciiEnabled &&
+      features.asciiEnabled &&
+      compareEnabled === features.compareEnabled &&
+      diagnosticsEnabled === features.diagnosticsEnabled;
     const shouldSchedule =
       compareEnabled !== features.compareEnabled ||
       diagnosticsEnabled !== features.diagnosticsEnabled ||
@@ -471,6 +542,9 @@ export function createRenderCoordinator({
     compareEnabled = features.compareEnabled;
     diagnosticsEnabled = features.diagnosticsEnabled;
     if (!shouldSchedule) return;
+    if (activatingAsciiOnly && activateAsciiFromCompleted()) {
+      return;
+    }
     if (!enabled) {
       renderRequiredWhenEnabled = true;
       return;

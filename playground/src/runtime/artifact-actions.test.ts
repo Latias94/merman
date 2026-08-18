@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { isAsciiExportAvailable } from "../components/toolbar-artifact-availability.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -21,11 +22,41 @@ import {
 } from "./merman-operation-input.ts";
 import type {
   CompletedRenderBatch,
+  MermanAsciiBatchResult,
   RenderCoordinatorState,
   RenderPublicationId,
 } from "./render-coordinator.ts";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
+
+test("enables ASCII export only for lazy or successful artifacts", () => {
+  const cases: ReadonlyArray<
+    readonly [string, MermanAsciiBatchResult | null, boolean]
+  > = [
+    ["lazy", null, true],
+    ["success", { artifact: "ascii", status: "success" }, true],
+    [
+      "failure",
+      {
+        error: { summary: "render failed", detail: null },
+        status: "failure",
+      },
+      false,
+    ],
+    ["unsupported", { diagramType: "flowchart", status: "unsupported" }, false],
+    [
+      "unavailable",
+      { reason: "diagram-detection-unavailable", status: "unavailable" },
+      false,
+    ],
+  ];
+
+  assert.equal(isAsciiExportAvailable(true, null), false);
+  for (const [label, ascii, expected] of cases) {
+    assert.equal(isAsciiExportAvailable(true, { ascii }), expected, label);
+  }
+  assert.equal(isAsciiExportAvailable(false, { ascii: cases[1][1] }), false);
+});
 
 test("selects copied SVG and ASCII only from the named current publication", async () => {
   const publication = completedPublication("current");
@@ -87,6 +118,71 @@ test("renders and caches ASCII only after an explicit artifact action", async ()
     "copy-ascii:ascii-on-demand",
     "download-ascii:ascii-on-demand:merman-diagram",
   ]);
+});
+
+test("on-demand ASCII failures reject before artifact I/O", async () => {
+  const completed = completedPublication("on-demand-failure");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...completed,
+    ascii: null,
+  });
+  const cases: ReadonlyArray<{
+    readonly code: ArtifactActionError["code"];
+    readonly runtime: () => MermanRuntimeState;
+    readonly stage: string | null;
+  }> = [
+    {
+      code: "runtime-unavailable",
+      runtime: () => ({ status: "idle", suspended: false }),
+      stage: null,
+    },
+    {
+      code: "runtime-version-mismatch",
+      runtime: () => readyRuntime(undefined, undefined, "different-version"),
+      stage: null,
+    },
+    {
+      code: "ascii-render-failed",
+      runtime: () =>
+        readyRuntime(undefined, () => {
+          throw new Error("ASCII render threw.");
+        }),
+      stage: "render",
+    },
+    {
+      code: "ascii-render-failed",
+      runtime: () =>
+        readyRuntime(undefined, () => ({
+          ascii: null,
+          error: { detail: null, summary: "ASCII render failed." },
+          status: "failure",
+        })),
+      stage: "render",
+    },
+  ];
+
+  for (const { code, runtime, stage } of cases) {
+    const calls: string[] = [];
+    const owner = createArtifactActionOwner({
+      getRenderState: () => publication,
+      getRuntimeState: runtime,
+      io: recordingIo(calls),
+    });
+
+    await assert.rejects(
+      owner({
+        action: "copy-ascii",
+        publicationId: publication.snapshot.publicationId,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ArtifactActionError);
+        assert.equal(error.code, code);
+        assert.equal(error.stage, stage);
+        return true;
+      },
+    );
+    assert.deepEqual(calls, []);
+  }
 });
 
 test("publishes ASCII actions independently from a failed Merman SVG", async () => {
@@ -317,12 +413,13 @@ function readyRuntime(
     error: null,
     status: "success",
   }),
+  packageVersion = "test-merman",
 ): MermanRuntimeState {
   return {
     status: "ready",
     suspended: false,
     facade: {
-      packageVersion: "test-merman",
+      packageVersion,
       render,
       renderAscii,
     } as MermanDomainFacade,

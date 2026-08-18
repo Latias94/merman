@@ -138,8 +138,19 @@ test("hidden editor workspace defers Preview rendering and resumes the latest so
     "flowchart LR\n  hidden[Hidden] --> newest[Newest source]",
   );
   await page.waitForTimeout(450);
-  expect(await previewSvgText(page)).toContain("Latest source");
-  expect(await previewSvgText(page)).not.toContain("Newest source");
+  await expect(host).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Export", exact: true }).tap();
+  await expect(
+    page.getByRole("menuitem", { name: "Export image…" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("menuitem", { name: /^Export ASCII/u }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy SVG", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
 
   await previewTab.tap();
   await expect.poll(() => previewSvgText(page)).toContain("Newest source");
