@@ -71,6 +71,9 @@ jobs:
           npm run check:generated --prefix distribution/tree-sitter-mermaid
           npm run test:generation-script --prefix distribution/tree-sitter-mermaid
 
+      - name: Verify Windows native binding
+        run: npm run build:node --prefix distribution/tree-sitter-mermaid
+
   wasm:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
