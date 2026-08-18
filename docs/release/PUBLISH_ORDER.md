@@ -67,7 +67,9 @@ queries.
 The initial npm package was bootstrapped manually from attested run `32114670734` with the
 maintainer's 2FA-protected credential. Its registry tarball SHA-256 is
 `a4e54b9caee7940cfbcffbe2b97d6edf04d8979b3eafe75fc0bba7804d04b23b`; it does not carry npm
-provenance. The crates.io package was accepted by run `32117231294` and has checksum
+provenance. Trusted Publishing is configured for later versions through
+`release-tree-sitter-mermaid.yml` and the `npm` environment. The crates.io package was accepted by
+run `32117231294` and has checksum
 `34921c596d2732a74eb6489f1148df732163f0c4fd20737547396f40a588b559`. That run reported a false
 failure because crates.io rejected curl's default User-Agent during post-publish download; direct
 registry verification confirmed the published bytes. Do not rerun it to create a GitHub Release:

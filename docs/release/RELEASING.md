@@ -108,8 +108,9 @@ The independent syntax package is `@mermanjs/tree-sitter-mermaid`, owned by
 `release-tree-sitter-mermaid.yml`. Its first `0.1.0` npm publication used a verified workflow
 artifact and a maintainer's 2FA-protected bootstrap credential before Trusted Publishing could be
 configured for that exact scoped name. That manual bootstrap does not carry npm provenance; keep
-that boundary explicit and configure the trusted publisher before the next version. The Rust crate
-remains `tree-sitter-mermaid`; the two registry packages share a version but not a registry name.
+that boundary explicit. Trusted Publishing is now configured for later versions through
+`release-tree-sitter-mermaid.yml` and the `npm` environment. The Rust crate remains
+`tree-sitter-mermaid`; the two registry packages share a version but not a registry name.
 
 Native prebuild bytes are not assumed to reproduce across independent workflow runs. A first-publish
 or recovery operator must publish and reconcile the exact candidate from one workflow run, then

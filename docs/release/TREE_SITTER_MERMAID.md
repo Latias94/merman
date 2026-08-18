@@ -105,7 +105,8 @@ tag rather than a separately rebuilt archive.
 
 For `0.1.0`, crates.io and npm publication completed on 2026-08-18 from
 `tree-sitter-mermaid-v0.1.0`. npm used a manual 2FA bootstrap and therefore has no npm provenance.
-The standalone GitHub Release is intentionally deferred.
+Trusted Publishing is configured for later versions through `release-tree-sitter-mermaid.yml` and
+the `npm` environment. The standalone GitHub Release is intentionally deferred.
 
 Downstream Neovim, Helix, and Zed changes happen only after the immutable GitHub release exists.
 Those repositories pin the release commit and their own query copies; they do not consume the npm
