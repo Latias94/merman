@@ -26,9 +26,29 @@ const STATE_NODE_PROJECTION_WORK_UNITS: usize = 10;
 const STATE_EDGE_PROJECTION_WORK_UNITS: usize = 2;
 const STATE_TEXT_COPY_CHUNK_BYTES: usize = 8 * 1024;
 
-struct StateDirectionProjection<'a> {
-    node_by_id: HashMap<&'a str, GraphDirection>,
-    group_by_id: HashMap<&'a str, GraphDirection>,
+#[derive(Debug)]
+struct StateParentProjection {
+    parent_by_index: Vec<Option<usize>>,
+    depth_by_index: Vec<usize>,
+    parent_first_indices: Vec<usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StateParentVisit {
+    Pending,
+    Active,
+    Complete,
+}
+
+struct StateDirectionProjection {
+    node_by_index: Vec<GraphDirection>,
+    group_by_index: Vec<Option<GraphDirection>>,
+}
+
+struct StateGroupOrderEntry<'a> {
+    node_index: usize,
+    depth: usize,
+    node: &'a StateDiagramRenderNode,
 }
 
 type StateGroupMembers<'a> = HashMap<&'a str, Vec<&'a str>>;
@@ -82,7 +102,7 @@ fn from_state_model_transactional(
     preflight_state_projection_text(model, resources, execution)?;
     let projection_work = state_projection_work(model, resources, execution)?;
     resources.charge_layout_work(projection_work)?;
-    validate_supported_state_model(model, resources, execution)?;
+    let parent_projection = validate_supported_state_model(model, resources, execution)?;
 
     let direction = parse_state_direction(&model.direction)?;
     let group_members = group_members_by_id(model, execution)?;
@@ -101,7 +121,8 @@ fn from_state_model_transactional(
         resources,
         execution,
     )?;
-    let state_directions = state_direction_projection(model, direction, resources, execution)?;
+    let state_directions =
+        state_direction_projection(model, direction, &parent_projection, resources, execution)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
     graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.nodes.len())?;
     graph.use_incoming_edge_roots();
@@ -127,8 +148,8 @@ fn from_state_model_transactional(
             state_node_shape(
                 node,
                 state_directions
-                    .node_by_id
-                    .get(node.id.as_str())
+                    .node_by_index
+                    .get(index)
                     .copied()
                     .unwrap_or_else(|| direction.canonical()),
             )?,
@@ -137,11 +158,20 @@ fn from_state_model_transactional(
         );
     }
 
-    for (index, node) in sorted_group_nodes(model, &group_members, resources, execution)?
-        .into_iter()
-        .enumerate()
+    for (index, group) in sorted_group_nodes(
+        model,
+        &group_members,
+        &parent_projection,
+        resources,
+        execution,
+    )?
+    .into_iter()
+    .enumerate()
     {
         checkpoint_projection(execution, index)?;
+        let StateGroupOrderEntry {
+            node_index, node, ..
+        } = group;
         let members = materialize_group_members(
             group_members.get(node.id.as_str()).map(Vec::as_slice),
             resources,
@@ -158,7 +188,11 @@ fn from_state_model_transactional(
         graph.add_group_with_kind_and_style(
             materialize_state_text(&node.id, resources)?,
             title,
-            state_directions.group_by_id.get(node.id.as_str()).copied(),
+            state_directions
+                .group_by_index
+                .get(node_index)
+                .copied()
+                .flatten(),
             members,
             state_group_kind(node),
             state_group_style(node),
@@ -519,19 +553,20 @@ fn validate_supported_state_model(
     model: &StateDiagramRenderModel,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<()> {
-    let mut node_by_id = HashMap::new();
-    node_by_id
+) -> Result<StateParentProjection> {
+    let mut node_index_by_id = HashMap::new();
+    node_index_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        if node_by_id.insert(node.id.as_str(), node).is_some() {
+        if node_index_by_id.insert(node.id.as_str(), index).is_some() {
             return Err(unsupported("duplicate node ids"));
         }
         validate_supported_state_node(node)?;
     }
-    validate_state_parent_ownership(model, &node_by_id, resources, execution)?;
+    let parent_projection =
+        StateParentProjection::try_new(model, &node_index_by_id, resources, execution)?;
 
     for (index, edge) in model.edges.iter().enumerate() {
         checkpoint_projection(execution, index)?;
@@ -545,48 +580,150 @@ fn validate_supported_state_model(
         }
     }
 
-    Ok(())
+    Ok(parent_projection)
 }
 
-fn validate_state_parent_ownership(
-    model: &StateDiagramRenderModel,
-    node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
+impl StateParentProjection {
+    fn try_new(
+        model: &StateDiagramRenderModel,
+        node_index_by_id: &HashMap<&str, usize>,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        let mut parent_by_index = Vec::new();
+        parent_by_index
+            .try_reserve_exact(model.nodes.len())
+            .map_err(|_| projection_allocation_failed())?;
+        for (node_index, node) in model.nodes.iter().enumerate() {
+            checkpoint_projection(execution, node_index)?;
+            let parent_index = node
+                .parent_id
+                .as_deref()
+                .map(|parent_id| {
+                    node_index_by_id
+                        .get(parent_id)
+                        .copied()
+                        .ok_or_else(|| unsupported("unknown state parent ids"))
+                })
+                .transpose()?;
+            if let Some(parent_index) = parent_index {
+                let parent = model
+                    .nodes
+                    .get(parent_index)
+                    .ok_or_else(|| unsupported("state parent index"))?;
+                if !parent.is_group {
+                    return Err(unsupported("state parents that are not groups"));
+                }
+            }
+            parent_by_index.push(parent_index);
+        }
+
+        let (depth_by_index, parent_first_indices) =
+            cache_state_parent_depths(&parent_by_index, resources, execution)?;
+        Ok(Self {
+            parent_by_index,
+            depth_by_index,
+            parent_first_indices,
+        })
+    }
+}
+
+fn cache_state_parent_depths(
+    parent_by_index: &[Option<usize>],
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<()> {
-    for (index, node) in model.nodes.iter().enumerate() {
-        checkpoint_projection(execution, index)?;
-        let Some(parent_id) = node.parent_id.as_deref() else {
+) -> Result<(Vec<usize>, Vec<usize>)> {
+    let mut visit_by_index = Vec::new();
+    visit_by_index
+        .try_reserve_exact(parent_by_index.len())
+        .map_err(|_| projection_allocation_failed())?;
+    visit_by_index.resize(parent_by_index.len(), StateParentVisit::Pending);
+
+    let mut depth_by_index = Vec::new();
+    depth_by_index
+        .try_reserve_exact(parent_by_index.len())
+        .map_err(|_| projection_allocation_failed())?;
+    depth_by_index.resize(parent_by_index.len(), 0usize);
+
+    let mut parent_first_indices = Vec::new();
+    parent_first_indices
+        .try_reserve_exact(parent_by_index.len())
+        .map_err(|_| projection_allocation_failed())?;
+    let mut path = Vec::new();
+    path.try_reserve_exact(parent_by_index.len())
+        .map_err(|_| projection_allocation_failed())?;
+
+    // Reuse one path while each node advances Pending -> Active -> Complete exactly once.
+    for start_index in 0..parent_by_index.len() {
+        checkpoint_projection(execution, start_index)?;
+        if visit_by_index.get(start_index) == Some(&StateParentVisit::Complete) {
             continue;
-        };
-        let parent = node_by_id
-            .get(parent_id)
-            .copied()
-            .ok_or_else(|| unsupported("unknown state parent ids"))?;
-        if !parent.is_group {
-            return Err(unsupported("state parents that are not groups"));
         }
-    }
 
-    for (index, node) in model.nodes.iter().enumerate() {
-        checkpoint_projection(execution, index)?;
-        let mut parent_id = node.parent_id.as_deref();
-        for _ in 0..model.nodes.len() {
-            checkpoint_projection_before_charge(execution)?;
-            let Some(current_parent_id) = parent_id else {
-                break;
+        path.clear();
+        let mut current_index = Some(start_index);
+        while let Some(node_index) = current_index {
+            let visit = visit_by_index
+                .get(node_index)
+                .copied()
+                .ok_or_else(|| unsupported("state parent index"))?;
+            match visit {
+                StateParentVisit::Complete => break,
+                StateParentVisit::Active => {
+                    return Err(unsupported("cyclic state parent ids"));
+                }
+                StateParentVisit::Pending => {
+                    let slot = visit_by_index
+                        .get_mut(node_index)
+                        .ok_or_else(|| unsupported("state parent index"))?;
+                    *slot = StateParentVisit::Active;
+                    path.push(node_index);
+                    // Stop an over-depth chain before walking the remainder of its parents.
+                    resources.check_nesting_depth(path.len())?;
+
+                    let parent_index = parent_by_index
+                        .get(node_index)
+                        .copied()
+                        .ok_or_else(|| unsupported("state parent index"))?;
+                    if parent_index.is_some() {
+                        checkpoint_projection_before_charge(execution)?;
+                        resources.charge_layout_work(1)?;
+                    }
+                    current_index = parent_index;
+                }
+            }
+        }
+
+        while let Some(node_index) = path.pop() {
+            let parent_index = parent_by_index
+                .get(node_index)
+                .copied()
+                .ok_or_else(|| unsupported("state parent index"))?;
+            let depth = match parent_index {
+                Some(parent_index) => depth_by_index
+                    .get(parent_index)
+                    .copied()
+                    .ok_or_else(|| unsupported("state parent index"))?
+                    .checked_add(1)
+                    .ok_or_else(|| resources.nesting_overflow())?,
+                None => 0,
             };
-            resources.charge_layout_work(1)?;
-            parent_id = node_by_id
-                .get(current_parent_id)
-                .and_then(|parent| parent.parent_id.as_deref());
-        }
-        if parent_id.is_some() {
-            return Err(unsupported("cyclic state parent ids"));
+            let nesting_depth = depth
+                .checked_add(1)
+                .ok_or_else(|| resources.nesting_overflow())?;
+            resources.check_nesting_depth(nesting_depth)?;
+
+            *depth_by_index
+                .get_mut(node_index)
+                .ok_or_else(|| unsupported("state parent index"))? = depth;
+            *visit_by_index
+                .get_mut(node_index)
+                .ok_or_else(|| unsupported("state parent index"))? = StateParentVisit::Complete;
+            parent_first_indices.push(node_index);
         }
     }
 
-    Ok(())
+    Ok((depth_by_index, parent_first_indices))
 }
 
 fn validate_supported_state_node(node: &StateDiagramRenderNode) -> Result<()> {
@@ -801,172 +938,130 @@ fn canonical_note_edge_endpoints<'a>(
 fn sorted_group_nodes<'a>(
     model: &'a StateDiagramRenderModel,
     group_members: &StateGroupMembers<'a>,
+    parent_projection: &StateParentProjection,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<Vec<&'a StateDiagramRenderNode>> {
-    let mut parent_by_id = HashMap::new();
-    parent_by_id
-        .try_reserve(model.nodes.len())
-        .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
-        checkpoint_projection(execution, index)?;
-        parent_by_id.insert(node.id.as_str(), node.parent_id.as_deref());
-    }
-
-    let mut depth_by_id = HashMap::new();
-    depth_by_id
-        .try_reserve(model.nodes.len())
-        .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
-        checkpoint_projection(execution, index)?;
-        depth_by_id.insert(
-            node.id.as_str(),
-            node_depth(node, &parent_by_id, model.nodes.len(), resources, execution)?,
-        );
-    }
-
+) -> Result<Vec<StateGroupOrderEntry<'a>>> {
     let mut groups = Vec::new();
     groups
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    groups.extend(
-        model
-            .nodes
-            .iter()
-            .filter(|node| is_group_container(node, group_members)),
-    );
-    groups.sort_by_key(|node| {
-        std::cmp::Reverse(
-            depth_by_id
-                .get(node.id.as_str())
-                .copied()
-                .unwrap_or_default(),
-        )
-    });
+    for (node_index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, node_index)?;
+        if !is_group_container(node, group_members) {
+            continue;
+        }
+        let depth = parent_projection
+            .depth_by_index
+            .get(node_index)
+            .copied()
+            .ok_or_else(|| unsupported("state parent index"))?;
+        groups.push(StateGroupOrderEntry {
+            node_index,
+            depth,
+            node,
+        });
+    }
+    charge_state_group_sort_work(groups.len(), resources, execution)?;
+    groups.sort_by_key(|group| std::cmp::Reverse(group.depth));
     Ok(groups)
 }
 
-fn node_depth(
-    node: &StateDiagramRenderNode,
-    parent_by_id: &HashMap<&str, Option<&str>>,
-    node_count: usize,
+fn charge_state_group_sort_work(
+    len: usize,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<usize> {
-    let mut depth = 0usize;
-    let mut parent = node.parent_id.as_deref();
-    resources.check_nesting_depth(1)?;
-
-    for _ in 0..node_count {
-        let Some(parent_id) = parent else {
-            return Ok(depth);
-        };
-        checkpoint_projection_before_charge(execution)?;
-        resources.charge_layout_work(1)?;
-        depth = depth.checked_add(1).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxNestingDepth)
-        })?;
-        let nesting_depth = depth.checked_add(1).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxNestingDepth)
-        })?;
-        resources.check_nesting_depth(nesting_depth)?;
-        parent = parent_by_id.get(parent_id).copied().flatten();
+) -> Result<()> {
+    if len <= 1 {
+        return Ok(());
     }
-
-    if parent.is_some() {
-        Err(unsupported("cyclic state parent ids"))
-    } else {
-        Ok(depth)
-    }
+    let comparison_levels = usize::BITS as usize - (len - 1).leading_zeros() as usize;
+    // Account two numeric key visits per comparison level before entering the sort.
+    let key_visits = resources.checked_work_mul(len, comparison_levels)?;
+    let sort_work = resources.checked_work_mul(key_visits, 2)?;
+    checkpoint_projection_before_charge(execution)?;
+    resources.charge_layout_work(sort_work)
 }
 
-fn state_direction_projection<'a>(
-    model: &'a StateDiagramRenderModel,
+fn state_direction_projection(
+    model: &StateDiagramRenderModel,
     root_direction: GraphDirection,
+    parent_projection: &StateParentProjection,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<StateDirectionProjection<'a>> {
-    let mut node_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
-    node_by_id
-        .try_reserve(model.nodes.len())
+) -> Result<StateDirectionProjection> {
+    let mut explicit_by_index = Vec::new();
+    explicit_by_index
+        .try_reserve_exact(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint_projection(execution, index)?;
-        node_by_id.insert(node.id.as_str(), node);
-    }
-
-    let mut node_directions = HashMap::new();
-    node_directions
-        .try_reserve(model.nodes.len())
-        .map_err(|_| projection_allocation_failed())?;
-    let mut group_directions = HashMap::new();
-    group_directions
-        .try_reserve(model.nodes.len())
-        .map_err(|_| projection_allocation_failed())?;
-    for (index, node) in model.nodes.iter().enumerate() {
-        checkpoint_projection(execution, index)?;
-        let inherited = nearest_explicit_ancestor_direction(
-            node,
-            &node_by_id,
-            model.nodes.len(),
-            resources,
-            execution,
-        )?;
-        node_directions.insert(node.id.as_str(), inherited.unwrap_or(root_direction));
-
-        let group_direction = if node.explicit_dir == Some(true) {
+        let explicit = if node.explicit_dir == Some(true) {
             Some(parse_state_direction(node.dir.as_deref().ok_or_else(
                 || unsupported("state explicit direction without value"),
             )?)?)
         } else {
-            inherited
+            None
         };
-        if let Some(group_direction) = group_direction {
-            group_directions.insert(node.id.as_str(), group_direction);
-        }
+        explicit_by_index.push(explicit);
+    }
+
+    let mut inherited_by_index = Vec::new();
+    inherited_by_index
+        .try_reserve_exact(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    inherited_by_index.resize(model.nodes.len(), None);
+    // Validation cached a parent-first order, so every inherited value is already available here.
+    for (iteration, node_index) in parent_projection
+        .parent_first_indices
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        checkpoint_projection(execution, iteration)?;
+        let parent_index = parent_projection
+            .parent_by_index
+            .get(node_index)
+            .copied()
+            .ok_or_else(|| unsupported("state parent index"))?;
+        let inherited = match parent_index {
+            Some(parent_index) => {
+                checkpoint_projection_before_charge(execution)?;
+                resources.charge_layout_work(1)?;
+                explicit_by_index
+                    .get(parent_index)
+                    .copied()
+                    .flatten()
+                    .or_else(|| inherited_by_index.get(parent_index).copied().flatten())
+            }
+            None => None,
+        };
+        *inherited_by_index
+            .get_mut(node_index)
+            .ok_or_else(|| unsupported("state parent index"))? = inherited;
+    }
+
+    let mut node_by_index = Vec::new();
+    node_by_index
+        .try_reserve_exact(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    let mut group_by_index = Vec::new();
+    group_by_index
+        .try_reserve_exact(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    for (index, (explicit, inherited)) in explicit_by_index
+        .into_iter()
+        .zip(inherited_by_index)
+        .enumerate()
+    {
+        checkpoint_projection(execution, index)?;
+        node_by_index.push(inherited.unwrap_or(root_direction));
+        group_by_index.push(explicit.or(inherited));
     }
     Ok(StateDirectionProjection {
-        node_by_id: node_directions,
-        group_by_id: group_directions,
+        node_by_index,
+        group_by_index,
     })
-}
-
-fn nearest_explicit_ancestor_direction(
-    node: &StateDiagramRenderNode,
-    node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
-    node_count: usize,
-    resources: &ResourceContext,
-    execution: AsciiExecution<'_>,
-) -> Result<Option<GraphDirection>> {
-    let mut parent_id = node.parent_id.as_deref();
-    for _ in 0..node_count {
-        let Some(parent) = parent_id else {
-            return Ok(None);
-        };
-        checkpoint_projection_before_charge(execution)?;
-        resources.charge_layout_work(1)?;
-        let Some(parent_node) = node_by_id.get(parent).copied() else {
-            return Ok(None);
-        };
-        if parent_node.explicit_dir == Some(true) {
-            return parent_node
-                .dir
-                .as_deref()
-                .map(parse_state_direction)
-                .transpose();
-        }
-        parent_id = parent_node.parent_id.as_deref();
-    }
-
-    if parent_id.is_some() {
-        Err(unsupported("cyclic state parent ids"))
-    } else {
-        Ok(None)
-    }
 }
 
 fn checkpoint_projection_before_charge(execution: AsciiExecution<'_>) -> Result<()> {
@@ -1210,22 +1305,37 @@ mod tests {
         };
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
 
-        let node_by_id = model
-            .nodes
-            .iter()
-            .map(|node| (node.id.as_str(), node))
-            .collect::<HashMap<_, _>>();
         let validation_resources = ResourceContext::new(unbounded);
         let execution = AsciiExecution::for_test(&unbounded);
-        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, execution)
-            .expect("large flat state model should pass ownership validation");
+        let parent_projection =
+            validate_supported_state_model(&model, &validation_resources, execution)
+                .expect("large flat state model should pass parent projection");
+        assert_eq!(parent_projection.parent_by_index.len(), NODE_COUNT);
+        assert!(
+            parent_projection
+                .parent_by_index
+                .iter()
+                .all(Option::is_none)
+        );
+        assert!(
+            parent_projection
+                .depth_by_index
+                .iter()
+                .all(|depth| *depth == 0)
+        );
         assert_eq!(validation_resources.layout_work_used(), 0);
 
         let group_members = group_members_by_id(&model, execution)
             .expect("large flat state model should project group members");
         let sorting_resources = ResourceContext::new(unbounded);
-        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, execution)
-            .expect("large flat state model should sort groups");
+        let groups = sorted_group_nodes(
+            &model,
+            &group_members,
+            &parent_projection,
+            &sorting_resources,
+            execution,
+        )
+        .expect("large flat state model should sort groups");
         assert!(groups.is_empty());
         assert_eq!(sorting_resources.layout_work_used(), 0);
 
@@ -1233,12 +1343,13 @@ mod tests {
         let projection = state_direction_projection(
             &model,
             GraphDirection::TopDown,
+            &parent_projection,
             &direction_resources,
             execution,
         )
         .expect("large flat state model should project directions");
-        assert_eq!(projection.node_by_id.len(), NODE_COUNT);
-        assert!(projection.group_by_id.is_empty());
+        assert_eq!(projection.node_by_index.len(), NODE_COUNT);
+        assert!(projection.group_by_index.iter().all(Option::is_none));
         assert_eq!(direction_resources.layout_work_used(), 0);
         assert_eq!(
             state_projection_work(&model, &direction_resources, execution)
@@ -1248,36 +1359,46 @@ mod tests {
     }
 
     #[test]
-    fn flat_state_ancestor_queries_do_not_reserve_the_model_width() {
-        let node = state_node("flat");
-        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let resources = ResourceContext::new(unbounded);
-        let execution = AsciiExecution::for_test(&unbounded);
+    fn state_parent_projection_rejects_nesting_before_full_chain_work() {
+        const NODE_COUNT: usize = 64;
+        const MAX_NESTING_DEPTH: usize = 8;
 
-        let parent_by_id = HashMap::new();
-        assert_eq!(
-            node_depth(&node, &parent_by_id, usize::MAX, &resources, execution,)
-                .expect("a flat state should not allocate from the model-width bound"),
-            0
-        );
+        let id_prefix = "x".repeat(512);
+        let mut nodes = Vec::new();
+        for index in 0..NODE_COUNT {
+            let mut node = state_node(&format!("{id_prefix}-{index}"));
+            node.is_group = index + 1 < NODE_COUNT;
+            if index > 0 {
+                node.parent_id = Some(format!("{id_prefix}-{}", index - 1));
+            }
+            nodes.push(node);
+        }
+        nodes.reverse();
+        let model = StateDiagramRenderModel {
+            direction: "TB".to_string(),
+            nodes,
+            ..StateDiagramRenderModel::default()
+        };
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxNestingDepth, MAX_NESTING_DEPTH)
+            .expect("the test nesting limit should be valid");
+        let resources = ResourceContext::new(policy);
+        let execution = AsciiExecution::for_test(&policy);
 
-        let node_by_id = HashMap::from([(node.id.as_str(), &node)]);
-        assert_eq!(
-            nearest_explicit_ancestor_direction(
-                &node,
-                &node_by_id,
-                usize::MAX,
-                &resources,
-                execution,
-            )
-            .expect("a flat state direction lookup should not allocate from the model width"),
-            None
-        );
-        assert_eq!(resources.layout_work_used(), 0);
+        let error = validate_supported_state_model(&model, &resources, execution)
+            .expect_err("the parent projection should reject the first over-depth node");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxNestingDepth
+                    && details.actual == MAX_NESTING_DEPTH + 1
+                    && details.max == MAX_NESTING_DEPTH
+        ));
+        assert!(resources.layout_work_used() <= MAX_NESTING_DEPTH);
     }
 
     #[test]
-    fn deep_state_parent_chain_preserves_work_sorting_and_direction() {
+    fn deep_state_parent_chain_caches_semantics_with_bounded_work() {
         const NODE_COUNT: usize = 64;
 
         let mut nodes = Vec::new();
@@ -1292,64 +1413,79 @@ mod tests {
             }
             nodes.push(node);
         }
+        nodes.reverse();
         let model = StateDiagramRenderModel {
             direction: "TB".to_string(),
             nodes,
             ..StateDiagramRenderModel::default()
         };
-        let expected_ancestor_steps = NODE_COUNT * (NODE_COUNT - 1) / 2;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
 
-        let node_by_id = model
-            .nodes
-            .iter()
-            .map(|node| (node.id.as_str(), node))
-            .collect::<HashMap<_, _>>();
         let validation_resources = ResourceContext::new(unbounded);
         let execution = AsciiExecution::for_test(&unbounded);
-        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, execution)
-            .expect("deep valid state parent chain should pass ownership validation");
+        let parent_projection =
+            validate_supported_state_model(&model, &validation_resources, execution)
+                .expect("deep valid state parent chain should cache its parents");
+        let leaf_index = model
+            .nodes
+            .iter()
+            .position(|node| node.id == "state-63")
+            .expect("the chain leaf should remain in the model");
         assert_eq!(
-            validation_resources.layout_work_used(),
-            expected_ancestor_steps
+            parent_projection.depth_by_index.get(leaf_index).copied(),
+            Some(NODE_COUNT - 1)
         );
+        assert_eq!(parent_projection.parent_first_indices.len(), NODE_COUNT);
+        assert!(validation_resources.layout_work_used() < NODE_COUNT);
 
         let group_members = group_members_by_id(&model, execution)
             .expect("deep valid state parent chain should project group members");
         let sorting_resources = ResourceContext::new(unbounded);
-        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, execution)
-            .expect("deep valid state parent chain should sort groups");
+        let groups = sorted_group_nodes(
+            &model,
+            &group_members,
+            &parent_projection,
+            &sorting_resources,
+            execution,
+        )
+        .expect("deep valid state parent chain should sort groups");
         assert_eq!(groups.len(), NODE_COUNT - 1);
         assert_eq!(
-            groups.first().map(|node| node.id.as_str()),
+            groups.first().map(|group| group.node.id.as_str()),
             Some("state-62")
         );
-        assert_eq!(groups.last().map(|node| node.id.as_str()), Some("state-0"));
         assert_eq!(
-            sorting_resources.layout_work_used(),
-            expected_ancestor_steps
+            groups.last().map(|group| group.node.id.as_str()),
+            Some("state-0")
         );
+        let group_count = NODE_COUNT - 1;
+        let comparison_levels = usize::BITS as usize - (group_count - 1).leading_zeros() as usize;
+        let sort_work_upper_bound = group_count * comparison_levels * 2;
+        assert!(sorting_resources.layout_work_used() <= sort_work_upper_bound);
 
         let direction_resources = ResourceContext::new(unbounded);
         let projection = state_direction_projection(
             &model,
             GraphDirection::TopDown,
+            &parent_projection,
             &direction_resources,
             execution,
         )
         .expect("deep valid state parent chain should project directions");
+        let deepest_group_index = model
+            .nodes
+            .iter()
+            .position(|node| node.id == "state-62")
+            .expect("the deepest group should remain in the model");
         assert_eq!(
-            projection.node_by_id.get("state-63"),
+            projection.node_by_index.get(leaf_index),
             Some(&GraphDirection::LeftRight)
         );
         assert_eq!(
-            projection.group_by_id.get("state-62"),
-            Some(&GraphDirection::LeftRight)
+            projection.group_by_index.get(deepest_group_index),
+            Some(&Some(GraphDirection::LeftRight))
         );
-        assert_eq!(
-            direction_resources.layout_work_used(),
-            expected_ancestor_steps
-        );
+        assert!(direction_resources.layout_work_used() < NODE_COUNT);
 
         assert_projection_accepts_exact_work(&model);
     }
