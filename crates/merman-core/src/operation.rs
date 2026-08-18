@@ -393,8 +393,17 @@ impl OperationControl {
         &self,
         id: &'static str,
         phase: OperationPhase,
+        resource_phase: &'static str,
+        actual: u64,
+        maximum: u64,
     ) -> OperationLedgerError {
-        self.latch_terminal_error(OperationLedgerError::ArithmeticOverflow { id, phase })
+        self.latch_terminal_error(OperationLedgerError::ArithmeticOverflow {
+            id,
+            phase,
+            resource_phase,
+            actual,
+            maximum,
+        })
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -458,6 +467,7 @@ fn default_clock() -> Clock {
 pub struct OperationResourceLimitExceeded {
     pub id: &'static str,
     pub phase: OperationPhase,
+    pub resource_phase: &'static str,
     pub limit: u64,
     pub consumed: u64,
     pub requested: u64,
@@ -470,10 +480,15 @@ pub enum OperationLedgerError {
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
     ResourceLimitExceeded(#[from] OperationResourceLimitExceeded),
-    #[error("operation resource `{id}` arithmetic overflow during {phase}")]
+    #[error(
+        "operation resource `{id}` arithmetic overflow during {phase} ({resource_phase}; actual {actual}, maximum {maximum})"
+    )]
     ArithmeticOverflow {
         id: &'static str,
         phase: OperationPhase,
+        resource_phase: &'static str,
+        actual: u64,
+        maximum: u64,
     },
 }
 
@@ -519,7 +534,13 @@ impl OperationLedger {
             let next = match consumed.checked_add(requested) {
                 Some(next) => next,
                 None => {
-                    return Err(control.terminate_resource_overflow(self.id, phase));
+                    return Err(control.terminate_resource_overflow(
+                        self.id,
+                        phase,
+                        phase.as_str(),
+                        u64::MAX,
+                        self.limit.unwrap_or(u64::MAX),
+                    ));
                 }
             };
             if self.limit.is_some_and(|limit| next > limit) {
@@ -551,6 +572,7 @@ impl OperationLedger {
         OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
             id: self.id,
             phase,
+            resource_phase: phase.as_str(),
             limit: self.limit.unwrap_or(u64::MAX),
             consumed,
             requested,
@@ -703,6 +725,9 @@ mod tests {
         let parent_terminal = OperationLedgerError::ArithmeticOverflow {
             id: "parent_work",
             phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            actual: u64::MAX,
+            maximum: u64::MAX,
         };
 
         parent.cancel();
@@ -745,6 +770,9 @@ mod tests {
         let parent_terminal = OperationLedgerError::ArithmeticOverflow {
             id: "parent_work",
             phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            actual: u64::MAX,
+            maximum: u64::MAX,
         };
         let clock = Arc::new(move || {
             if let Some(parent) = clock_parent.get() {
@@ -840,6 +868,7 @@ mod tests {
             OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
                 id: "work",
                 phase: OperationPhase::Layout,
+                resource_phase: "layout",
                 limit: 2,
                 consumed: 2,
                 requested: 1,
@@ -952,6 +981,9 @@ mod tests {
             OperationLedgerError::ArithmeticOverflow {
                 id: "layout_work",
                 phase: OperationPhase::Layout,
+                resource_phase: "layout",
+                actual: u64::MAX,
+                maximum: u64::MAX,
             }
         );
         assert_eq!(

@@ -4,7 +4,7 @@ use super::builtin::util::{
 use super::preset::SvgPipelinePreset;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::family::RenderFamilyKind;
-use crate::resources::{RenderResourcePolicy, ResourceLimitPhase};
+use crate::resources::{RenderResourcePolicy, ResourceLimitExceeded, ResourceLimitPhase};
 use merman_core::OperationPhase;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -37,9 +37,7 @@ impl SvgPostprocessMetadata {
         execution: SvgPostprocessExecution<'_>,
     ) -> crate::Result<Self> {
         execution.checkpoint()?;
-        execution
-            .resource_policy()
-            .check_svg_bytes(svg, ResourceLimitPhase::SvgPostprocess)?;
+        execution.preflight_svg_byte_count(svg.len())?;
         Self::from_svg_with_checkpoints(svg, &mut || execution.checkpoint())
     }
 
@@ -202,6 +200,17 @@ impl<'a> SvgPostprocessExecution<'a> {
             .map_err(Into::into)
     }
 
+    pub(crate) fn preflight_svg_structure(
+        self,
+        elements: usize,
+        tree_depth: usize,
+    ) -> crate::Result<()> {
+        self.session
+            .work_meter()
+            .preflight_svg_structure(elements, tree_depth, OperationPhase::Postprocess)
+            .map_err(Into::into)
+    }
+
     pub(crate) fn svg_byte_count_overflow(self) -> crate::Error {
         self.session
             .work_meter()
@@ -209,6 +218,13 @@ impl<'a> SvgPostprocessExecution<'a> {
                 ResourceLimitPhase::SvgPostprocess,
                 OperationPhase::Postprocess,
             )
+            .into()
+    }
+
+    pub(crate) fn terminate_resource_error(self, error: ResourceLimitExceeded) -> crate::Error {
+        self.session
+            .work_meter()
+            .terminate_absolute_resource_error(error, OperationPhase::Postprocess)
             .into()
     }
 

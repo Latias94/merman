@@ -43,7 +43,7 @@ fn materialize_encoded_lines(
     resources: &ResourceContext,
 ) -> Result<String> {
     resources.checkpoint()?;
-    let mut output = CheckedOutput::new(resources.policy());
+    let mut output = CheckedOutput::new(resources);
     for (index, line) in lines.into_iter().enumerate() {
         resources.checkpoint()?;
         if index > 0 {

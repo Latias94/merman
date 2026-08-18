@@ -56,10 +56,7 @@ pub(super) fn validate_rustdoc_admission_svg(
 
 fn admit_svg_bytes(svg: &str, execution: SvgPostprocessExecution<'_>) -> Result<()> {
     execution.checkpoint()?;
-    execution
-        .resource_policy()
-        .check_svg_bytes(svg, crate::resources::ResourceLimitPhase::SvgPostprocess)
-        .map_err(Error::from)
+    execution.preflight_svg_byte_count(svg.len())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -335,9 +332,7 @@ fn validate_browser_reference_expansion(
         Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
     };
     checkpoint()?;
-    execution
-        .resource_policy()
-        .check_svg_structure(plan.expanded_elements(), plan.max_tree_depth())?;
+    execution.preflight_svg_structure(plan.expanded_elements(), plan.max_tree_depth())?;
     checkpoint()
 }
 

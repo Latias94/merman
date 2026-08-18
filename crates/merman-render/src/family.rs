@@ -704,9 +704,11 @@ impl RenderedFamilySvg {
             &output_metadata,
             &self.session,
         )?;
-        self.session
-            .resource_policy()
-            .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
+        self.session.work_meter().preflight_svg_byte_count(
+            self.svg.len(),
+            ResourceLimitPhase::SvgPostprocess,
+            OperationPhase::Postprocess,
+        )?;
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(self)
     }
@@ -720,9 +722,11 @@ impl RenderedFamilySvg {
             &output_metadata,
             &self.session,
         )?;
-        self.session
-            .resource_policy()
-            .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
+        self.session.work_meter().preflight_svg_byte_count(
+            svg.as_str().len(),
+            ResourceLimitPhase::SvgPostprocess,
+            OperationPhase::Export,
+        )?;
         self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
@@ -874,9 +878,11 @@ impl FamilyRenderArtifact {
 fn admit_rendered_svg_output(session: &RenderSession, svg: &str) -> Result<()> {
     // Termination wins over the final output ceiling when both become observable during emit.
     session.checkpoint(OperationPhase::Emit)?;
-    session
-        .resource_policy()
-        .check_svg_bytes(svg, ResourceLimitPhase::SvgOutput)?;
+    session.work_meter().preflight_svg_byte_count(
+        svg.len(),
+        ResourceLimitPhase::SvgOutput,
+        OperationPhase::Emit,
+    )?;
     Ok(())
 }
 
@@ -1040,6 +1046,7 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
 }
 
 fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) -> Result<()> {
+    session.checkpoint(OperationPhase::Layout)?;
     let meta = parsed.metadata();
     let model = parsed.model();
     let diagram_type = meta.diagram_type.as_str();
@@ -1060,7 +1067,9 @@ fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) 
         });
     }
 
-    session.resource_policy().check_parsed_render(parsed)?;
+    session
+        .work_meter()
+        .preflight_parsed_render(parsed, OperationPhase::Layout)?;
     Ok(())
 }
 
@@ -1681,6 +1690,36 @@ mod tests {
             panic!("expected final SVG admission cancellation");
         };
         assert_eq!(error.phase, OperationPhase::Emit);
+    }
+
+    #[test]
+    fn final_svg_resource_terminal_replays_before_later_cancellation() {
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let svg = "<svg/>";
+
+        let first = admit_rendered_svg_output(&session, svg)
+            .expect_err("the formal SVG output admission must reject");
+        let Error::ResourceLimitExceeded(first_limit) = first else {
+            panic!("expected a resource rejection");
+        };
+        assert_eq!(first_limit.limit, "max_svg_bytes");
+        assert_eq!(first_limit.actual, svg.len());
+        assert_eq!(first_limit.max, 1);
+
+        control.cancel();
+        let replayed = admit_rendered_svg_output(&session, svg)
+            .expect_err("the first SVG output terminal must remain sticky");
+        let Error::ResourceLimitExceeded(replayed_limit) = replayed else {
+            panic!("expected the resource terminal to replay");
+        };
+        assert_eq!(replayed_limit, first_limit);
     }
 
     #[test]

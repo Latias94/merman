@@ -157,6 +157,7 @@ impl std::fmt::Display for RenderCapability {
 }
 
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
+use merman_core::OperationPhase;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
@@ -329,10 +330,6 @@ impl<'a> LayoutExecution<'a> {
         self.session.math_renderer()
     }
 
-    pub(crate) const fn resource_policy(&self) -> RenderResourcePolicy {
-        self.session.resource_policy()
-    }
-
     pub(crate) fn work_meter(&self) -> std::sync::Arc<crate::resources::OperationWorkMeter> {
         std::sync::Arc::clone(self.session.work_meter())
     }
@@ -381,7 +378,9 @@ pub(crate) fn layout_class_typed_by_engine(
         return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
     }
 
-    options.resource_policy().check_class_complexity(model)?;
+    options
+        .work_meter_ref()
+        .preflight_class_complexity(model, OperationPhase::Layout)?;
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
@@ -401,7 +400,9 @@ fn layout_class_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
-    options.resource_policy().check_class_complexity(model)?;
+    options
+        .work_meter_ref()
+        .preflight_class_complexity(model, OperationPhase::Layout)?;
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;

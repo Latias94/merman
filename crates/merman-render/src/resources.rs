@@ -91,6 +91,13 @@ impl std::fmt::Display for ResourceLimitCause {
 }
 
 impl ResourceLimitPhase {
+    const ALL: [Self; 4] = [
+        Self::Source,
+        Self::LayoutModel,
+        Self::SvgOutput,
+        Self::SvgPostprocess,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Source => "source",
@@ -98,6 +105,10 @@ impl ResourceLimitPhase {
             Self::SvgOutput => "svg_output",
             Self::SvgPostprocess => "svg_postprocess",
         }
+    }
+
+    fn from_stable_id(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|phase| phase.as_str() == value)
     }
 }
 
@@ -828,6 +839,60 @@ impl OperationWorkMeter {
             .map_err(|error| self.terminate_resource_error(error, operation_phase, 0, actual))
     }
 
+    pub(crate) fn preflight_svg_structure(
+        &self,
+        elements: usize,
+        tree_depth: usize,
+        operation_phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
+        self.resource_checkpoint(operation_phase)?;
+        self.policy
+            .check_svg_structure(elements, tree_depth)
+            .map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
+    }
+
+    pub(crate) fn preflight_parsed_render(
+        &self,
+        parsed: &ParsedDiagramRender,
+        operation_phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
+        self.resource_checkpoint(operation_phase)?;
+        let result = self.policy.check_parsed_render(parsed);
+        self.resource_checkpoint(operation_phase)?;
+        result.map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
+    }
+
+    pub(crate) fn preflight_class_complexity(
+        &self,
+        model: &ClassDiagram,
+        operation_phase: OperationPhase,
+    ) -> Result<ClassComplexity, OperationWorkError> {
+        self.resource_checkpoint(operation_phase)?;
+        let result = self.policy.check_class_complexity(model);
+        self.resource_checkpoint(operation_phase)?;
+        result.map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
+    }
+
+    pub(crate) fn preflight_sequence_complexity(
+        &self,
+        model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+        operation_phase: OperationPhase,
+    ) -> Result<SequenceComplexity, OperationWorkError> {
+        self.resource_checkpoint(operation_phase)?;
+        let result = self.policy.check_sequence_complexity(model);
+        self.resource_checkpoint(operation_phase)?;
+        result.map_err(|error| self.terminate_absolute_resource_error(error, operation_phase))
+    }
+
+    pub(crate) fn terminate_absolute_resource_error(
+        &self,
+        error: ResourceLimitExceeded,
+        operation_phase: OperationPhase,
+    ) -> OperationWorkError {
+        let actual = error.actual;
+        self.terminate_resource_error(error, operation_phase, 0, actual)
+    }
+
     pub(crate) fn terminate_svg_byte_count_overflow(
         &self,
         resource_phase: ResourceLimitPhase,
@@ -858,14 +923,19 @@ impl OperationWorkMeter {
                     .terminate_resource_limit(OperationResourceLimitExceeded {
                         id: error.limit,
                         phase,
+                        resource_phase: error.phase.as_str(),
                         limit: saturating_u64(error.max),
                         consumed: saturating_u64(consumed),
                         requested: saturating_u64(requested),
                     })
             }
-            ResourceLimitCause::ArithmeticOverflow => {
-                self.control.terminate_resource_overflow(error.limit, phase)
-            }
+            ResourceLimitCause::ArithmeticOverflow => self.control.terminate_resource_overflow(
+                error.limit,
+                phase,
+                error.phase.as_str(),
+                saturating_u64(error.actual),
+                saturating_u64(error.max),
+            ),
         };
         self.map_terminal_error(terminal)
     }
@@ -876,9 +946,19 @@ impl OperationWorkMeter {
             OperationLedgerError::ResourceLimitExceeded(error) => {
                 OperationWorkError::ResourceLimitExceeded(self.project_resource_limit(error))
             }
-            OperationLedgerError::ArithmeticOverflow { id, phase } => {
-                OperationWorkError::ResourceLimitExceeded(self.project_resource_overflow(id, phase))
-            }
+            OperationLedgerError::ArithmeticOverflow {
+                id,
+                phase,
+                resource_phase,
+                actual,
+                maximum,
+            } => OperationWorkError::ResourceLimitExceeded(self.project_resource_overflow(
+                id,
+                phase,
+                resource_phase,
+                actual,
+                maximum,
+            )),
         }
     }
 
@@ -888,7 +968,7 @@ impl OperationWorkMeter {
     ) -> ResourceLimitExceeded {
         ResourceLimitExceeded {
             cause: ResourceLimitCause::Ceiling,
-            phase: resource_phase(error.id, error.phase),
+            phase: resource_phase_from_stable_id(error.resource_phase, error.id, error.phase),
             limit: error.id,
             actual: saturating_usize(error.consumed.saturating_add(error.requested)),
             max: saturating_usize(error.limit),
@@ -905,16 +985,16 @@ impl OperationWorkMeter {
         &self,
         id: &'static str,
         phase: OperationPhase,
+        stored_resource_phase: &'static str,
+        actual: u64,
+        maximum: u64,
     ) -> ResourceLimitExceeded {
-        let limit = ResourceLimitId::from_stable_id(id);
         ResourceLimitExceeded {
             cause: ResourceLimitCause::ArithmeticOverflow,
-            phase: resource_phase(id, phase),
+            phase: resource_phase_from_stable_id(stored_resource_phase, id, phase),
             limit: id,
-            actual: usize::MAX,
-            max: limit
-                .and_then(|limit| self.policy.value(limit))
-                .unwrap_or(usize::MAX),
+            actual: saturating_usize(actual),
+            max: saturating_usize(maximum),
             profile: self.policy.profile(),
             explicit_overrides: self
                 .policy
@@ -978,8 +1058,9 @@ impl OperationWorkMeter {
                 std::sync::atomic::Ordering::Relaxed,
             ) {
                 Ok(_) => {
-                    let limit_error = (additional_bytes < requested)
-                        .then(|| svg_byte_limit_error(self.policy, maximum));
+                    let limit_error = (additional_bytes < requested).then(|| {
+                        svg_reservation_limit_error(self.policy, maximum, used, requested)
+                    });
                     return Ok(SvgByteReservation {
                         additional_bytes,
                         limit_error,
@@ -1041,6 +1122,15 @@ fn resource_phase(id: &str, phase: OperationPhase) -> ResourceLimitPhase {
     }
 }
 
+fn resource_phase_from_stable_id(
+    stored: &str,
+    id: &str,
+    operation_phase: OperationPhase,
+) -> ResourceLimitPhase {
+    ResourceLimitPhase::from_stable_id(stored)
+        .unwrap_or_else(|| resource_phase(id, operation_phase))
+}
+
 fn saturating_usize(value: u64) -> usize {
     usize::try_from(value).unwrap_or(usize::MAX)
 }
@@ -1082,6 +1172,22 @@ fn svg_byte_limit_error(policy: RenderResourcePolicy, maximum: usize) -> Resourc
             .map(|(id, value)| ResourceLimitOverride { id, value })
             .collect(),
     }
+}
+
+fn svg_reservation_limit_error(
+    policy: RenderResourcePolicy,
+    maximum: usize,
+    used: usize,
+    requested: usize,
+) -> ResourceLimitExceeded {
+    if used.checked_add(requested).is_none() {
+        return accumulation_overflow(
+            policy,
+            ResourceLimitPhase::SvgOutput,
+            RenderResourceLimitId::MaxSvgBytes,
+        );
+    }
+    svg_byte_limit_error(policy, maximum)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1343,6 +1449,36 @@ mod tests {
     }
 
     #[test]
+    fn model_preflight_observes_cancellation_before_latching_its_limit() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
+            .expect("the controlled fixture should parse")
+            .expect("the controlled fixture should produce a render model");
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxModelItems, 1)
+            .expect("the model limit should be valid");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let meter = OperationWorkMeter::new_with_control(policy, control);
+
+        let first = meter
+            .preflight_parsed_render(&parsed, OperationPhase::Layout)
+            .expect_err("cancellation after the scan must beat its pending resource rejection");
+        assert!(matches!(
+            first,
+            OperationWorkError::Cancelled(error)
+                if error.phase == OperationPhase::Layout
+                    && error.reason == merman_core::CancelReason::Requested
+        ));
+        assert_eq!(
+            meter
+                .preflight_parsed_render(&parsed, OperationPhase::Emit)
+                .expect_err("the cancellation must remain the sticky terminal"),
+            first
+        );
+    }
+
+    #[test]
     fn operation_svg_meter_checks_shared_control_before_reserving_bytes() {
         let control = OperationControl::new();
         control.cancel();
@@ -1467,6 +1603,35 @@ mod tests {
 
         meter.charge_svg_bytes(2).unwrap();
         assert_eq!(meter.projected_svg_bytes(), 10);
+    }
+
+    #[test]
+    fn partial_svg_reservation_preserves_arithmetic_overflow_classification() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, usize::MAX)
+            .unwrap();
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(policy, control.clone());
+
+        meter.charge_svg_bytes(usize::MAX).unwrap();
+        let reservation = meter.reserve_svg_bytes_up_to(1).unwrap();
+        assert_eq!(reservation.additional_bytes, 0);
+        let error = reservation
+            .limit_error
+            .expect("an overflowing partial reservation must retain its error");
+        assert_eq!(error.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert_eq!(error.actual, usize::MAX);
+        assert_eq!(error.max, usize::MAX);
+        assert_eq!(meter.projected_svg_bytes(), usize::MAX);
+
+        let first = meter.terminate_absolute_resource_error(error, OperationPhase::Emit);
+        control.cancel();
+        assert_eq!(
+            meter
+                .charge(1)
+                .expect_err("the finalized overflow must remain the sticky terminal"),
+            first
+        );
     }
 
     #[test]

@@ -1,9 +1,10 @@
 use crate::color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
 use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+#[cfg(test)]
+use crate::resource::AsciiResourcePolicy;
 use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, CheckedOutput,
-    LogicalExtent, ResourceContext,
+    AsciiResourceLimitId, AsciiResourceLimitPhase, CheckedOutput, LogicalExtent, ResourceContext,
 };
 use crate::safe_text::{
     DeferredTextLine, DeferredTextRegistry, terminal_char_display_width, visit_html_escaped_text,
@@ -97,14 +98,17 @@ impl TerminalOutputSink for CheckedOutput {
 }
 
 #[derive(Debug)]
-struct CountingTerminalOutput {
-    policy: AsciiResourcePolicy,
+struct CountingTerminalOutput<'a> {
+    resources: &'a ResourceContext,
     bytes: usize,
 }
 
-impl CountingTerminalOutput {
-    const fn new(policy: AsciiResourcePolicy) -> Self {
-        Self { policy, bytes: 0 }
+impl<'a> CountingTerminalOutput<'a> {
+    const fn new(resources: &'a ResourceContext) -> Self {
+        Self {
+            resources,
+            bytes: 0,
+        }
     }
 
     const fn bytes(&self) -> usize {
@@ -112,12 +116,12 @@ impl CountingTerminalOutput {
     }
 }
 
-impl TerminalOutputSink for CountingTerminalOutput {
+impl TerminalOutputSink for CountingTerminalOutput<'_> {
     fn push_str(&mut self, value: &str) -> crate::Result<()> {
-        self.bytes = self
-            .bytes
-            .checked_add(value.len())
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        self.bytes = self.bytes.checked_add(value.len()).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxOutputBytes)
+        })?;
         Ok(())
     }
 
@@ -126,10 +130,10 @@ impl TerminalOutputSink for CountingTerminalOutput {
     }
 
     fn push_encoded_bytes(&mut self, bytes: usize) -> crate::Result<()> {
-        self.bytes = self
-            .bytes
-            .checked_add(bytes)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        self.bytes = self.bytes.checked_add(bytes).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxOutputBytes)
+        })?;
         Ok(())
     }
 }
@@ -721,11 +725,13 @@ impl Canvas {
     }
 
     fn finish_with_options_controlled(
-        self,
+        mut self,
         options: &AsciiRenderOptions,
         trim: bool,
         execution: AsciiExecution<'_>,
     ) -> crate::Result<String> {
+        self.resources =
+            execution.resource_context(&self.resources, merman_core::OperationPhase::Emit);
         let resources = self.resources.clone();
         resources.transaction(|_| {
             self.finish_encoded(options.color_mode, options.color_theme, trim, execution)
@@ -758,12 +764,12 @@ impl Canvas {
             return Ok(None);
         }
 
-        let policy = self.resources.policy();
-        let mut counted = CountingTerminalOutput::new(policy);
+        let mut counted = CountingTerminalOutput::new(&self.resources);
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut counted)?;
         let encoded_bytes = counted.bytes();
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        policy.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
+        self.resources
+            .check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
         Ok(Some(encoded_bytes))
     }
 
@@ -776,7 +782,7 @@ impl Canvas {
         encoded_bytes: usize,
     ) -> crate::Result<String> {
         execution.checkpoint(merman_core::OperationPhase::Emit)?;
-        let mut output = CheckedOutput::new(self.resources.policy());
+        let mut output = CheckedOutput::new(&self.resources);
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut output)?;
         let output = output.finish();
         if output.len() != encoded_bytes {
@@ -1088,7 +1094,7 @@ fn finish_styled_line_iter<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    let resources = resources.clone();
+    let resources = execution.resource_context(resources, merman_core::OperationPhase::Emit);
     resources.transaction(|resources| {
         let Some(encoded_bytes) =
             admit_styled_line_iter(lines.clone(), options, trim, resources, deferred, execution)?
@@ -1208,8 +1214,7 @@ where
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
     document_resources.charge_usage(remaining_work, document_cells)?;
 
-    let policy = resources.policy();
-    let mut counted = CountingTerminalOutput::new(policy);
+    let mut counted = CountingTerminalOutput::new(resources);
     encode_styled_line_iter_to_sink(
         lines.clone(),
         options,
@@ -1221,7 +1226,7 @@ where
     )?;
     let encoded_bytes = counted.bytes();
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    policy.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
+    resources.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
     Ok(Some(encoded_bytes))
 }
 
@@ -1238,7 +1243,7 @@ where
     I: Iterator<Item = &'a crate::text::StyledLine>,
 {
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    let mut output = CheckedOutput::new(resources.policy());
+    let mut output = CheckedOutput::new(resources);
     encode_styled_line_iter_to_sink(
         lines,
         options,
@@ -2242,6 +2247,38 @@ mod tests {
                 if cancelled.phase == OperationPhase::Emit
                     && cancelled.reason == CancelReason::Requested
         ));
+    }
+
+    #[test]
+    fn controlled_output_limit_replays_before_later_cancellation() {
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
+        let mut canvas = Canvas::try_with_policy(2, 1, TerminalWidthProfile::Unicode, policy)
+            .expect("controlled test canvas should allocate");
+        canvas.set(0, 0, 'A');
+        canvas.set(1, 0, 'B');
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let first = canvas
+            .finish_with_options_with_execution(&AsciiRenderOptions::ascii(), execution)
+            .expect_err("the formal output admission must reject the encoded document");
+        assert!(matches!(
+            &first,
+            crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxOutputBytes,
+                actual: 3,
+                max: 1,
+                ..
+            })
+        ));
+
+        control.cancel();
+        assert_eq!(
+            execution
+                .checkpoint(OperationPhase::Layout)
+                .expect_err("the first output terminal must remain sticky"),
+            first
+        );
     }
 
     #[test]

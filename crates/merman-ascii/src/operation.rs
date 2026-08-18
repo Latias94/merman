@@ -4,8 +4,8 @@
 //! runtime policy, and cancellation ownership stay in `merman-core`; this crate owns the complete
 //! ASCII layout and output resource policy.
 
-use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourcePolicy, ResourceContext};
+use crate::error::Result;
+use crate::resource::{AsciiResourcePolicy, ResourceContext, operation_terminal_error};
 use merman_core::{OperationControl, OperationPhase};
 
 const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
@@ -68,8 +68,8 @@ impl<'a> AsciiExecution<'a> {
 
     pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
         self.control
-            .checkpoint_at(phase)
-            .map_err(AsciiError::Cancelled)
+            .terminal_checkpoint_at(phase)
+            .map_err(|error| operation_terminal_error(*self.resources, error))
     }
 
     /// Checks caller-owned cancellation at a bounded cadence inside deterministic long loops.

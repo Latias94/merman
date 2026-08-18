@@ -367,7 +367,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
 ) -> Result<SequencePreparedArtifact> {
     let checkpoints = SequenceLayoutCheckpoints::new(work_meter);
     checkpoints.checkpoint()?;
-    work_meter.policy().check_sequence_complexity(model)?;
+    work_meter.preflight_sequence_complexity(model, OperationPhase::Layout)?;
     checkpoints.checkpoint()?;
     let work_units = sequence_layout_work_units_controlled(model, diagram_title, checkpoints)?
         .ok_or_else(|| work_meter.arithmetic_overflow())?;

@@ -63,7 +63,7 @@ fn finish_sequence_lines(
 ) -> Result<String> {
     if options.color_mode == AsciiColorMode::Plain {
         let document_resources = resources.scoped();
-        let mut output = CheckedOutput::new(resources.policy());
+        let mut output = CheckedOutput::new(resources);
         if lines.is_empty() {
             checkpoints.before_charge()?;
             document_resources.charge_layout_work(1)?;
@@ -240,6 +240,38 @@ mod tests {
                 if cancelled.phase == OperationPhase::Emit
                     && cancelled.reason == merman_core::CancelReason::Requested
         ));
+    }
+
+    #[test]
+    fn plain_output_limit_replays_before_later_cancellation() {
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
+            .expect("the output limit should be valid");
+        let line = SequenceLine::plain_text_with_profile("AB", options.terminal_width_profile);
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+        let base_resources = ResourceContext::new(policy);
+        let mut resources = execution.resource_context(&base_resources, OperationPhase::Emit);
+        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Emit);
+
+        let first = finish_sequence_lines(vec![line], &options, &mut resources, &mut checkpoints)
+            .expect_err("the second byte must exceed the output budget");
+        assert!(matches!(
+            &first,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual == 2
+                    && details.max == 1
+        ));
+
+        control.cancel();
+        assert_eq!(
+            execution
+                .checkpoint(OperationPhase::Layout)
+                .expect_err("the first output terminal must remain sticky"),
+            first
+        );
     }
 
     fn finish_styled_test_lines(

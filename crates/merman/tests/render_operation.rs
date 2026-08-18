@@ -136,6 +136,44 @@ fn renderer_defaults_apply_when_the_request_does_not_override_them() {
 }
 
 #[test]
+fn source_resource_terminal_replays_before_later_cancellation() {
+    let renderer = Renderer::new().with_resource_policy(
+        InputResourcePolicy::default()
+            .with_limit(InputResourceLimitId::MaxSourceBytes, 4)
+            .expect("valid source limit"),
+    );
+    let control = OperationControl::new();
+
+    let first = renderer
+        .render(RenderRequest::semantic(
+            "flowchart TD\nA --> B",
+            control.clone(),
+        ))
+        .expect_err("the source limit must reject the request");
+    assert!(matches!(
+        &first,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_source_bytes"
+                && limit.phase == "source"
+                && limit.actual == 20
+                && limit.maximum == 4
+    ));
+
+    control.cancel();
+    let replayed = renderer
+        .render(RenderRequest::semantic("info", control))
+        .expect_err("the first source terminal must remain sticky");
+    assert!(matches!(
+        replayed,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_source_bytes"
+                && limit.phase == "source"
+                && limit.actual == 20
+                && limit.maximum == 4
+    ));
+}
+
+#[test]
 fn request_overrides_take_precedence_over_renderer_defaults() {
     let renderer = Renderer::new()
         .with_parse_options(ParseOptions::strict())

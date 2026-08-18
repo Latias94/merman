@@ -706,48 +706,27 @@ impl ResourceContext {
                     .terminate_resource_limit(OperationResourceLimitExceeded {
                         id: details.limit.as_str(),
                         phase: operation.phase,
+                        resource_phase: details.limit.descriptor().phase.as_str(),
                         limit: details.max as u64,
                         consumed: 0,
                         requested: details.actual as u64,
                     })
             }
-            AsciiResourceLimitCause::ArithmeticOverflow => operation
-                .control
-                .terminate_resource_overflow(details.limit.as_str(), operation.phase),
+            AsciiResourceLimitCause::ArithmeticOverflow => {
+                operation.control.terminate_resource_overflow(
+                    details.limit.as_str(),
+                    operation.phase,
+                    details.limit.descriptor().phase.as_str(),
+                    u64::try_from(details.actual).unwrap_or(u64::MAX),
+                    u64::try_from(details.max).unwrap_or(u64::MAX),
+                )
+            }
         };
         self.operation_error(terminal)
     }
 
     fn operation_error(&self, error: OperationLedgerError) -> AsciiError {
-        match error {
-            OperationLedgerError::Cancelled(error) => AsciiError::Cancelled(error),
-            OperationLedgerError::ResourceLimitExceeded(error) => {
-                let Some(limit) = AsciiResourceLimitId::from_stable_id(error.id) else {
-                    return AsciiError::InvalidOption {
-                        field: "operation_control",
-                        message: "resource terminal does not belong to the ASCII renderer",
-                    };
-                };
-                AsciiResourceLimitExceeded {
-                    cause: AsciiResourceLimitCause::Ceiling,
-                    limit,
-                    actual: usize::try_from(error.consumed.saturating_add(error.requested))
-                        .unwrap_or(usize::MAX),
-                    max: usize::try_from(error.limit).unwrap_or(usize::MAX),
-                    profile: self.policy.profile(),
-                }
-                .into()
-            }
-            OperationLedgerError::ArithmeticOverflow { id, .. } => {
-                let Some(limit) = AsciiResourceLimitId::from_stable_id(id) else {
-                    return AsciiError::InvalidOption {
-                        field: "operation_control",
-                        message: "resource terminal does not belong to the ASCII renderer",
-                    };
-                };
-                self.policy.overflow(limit)
-            }
-        }
+        operation_terminal_error(self.policy, error)
     }
 
     fn checked_total(
@@ -764,27 +743,73 @@ impl ResourceContext {
     }
 }
 
+pub(crate) fn operation_terminal_error(
+    policy: AsciiResourcePolicy,
+    error: OperationLedgerError,
+) -> AsciiError {
+    match error {
+        OperationLedgerError::Cancelled(error) => AsciiError::Cancelled(error),
+        OperationLedgerError::ResourceLimitExceeded(error) => {
+            let Some(limit) = AsciiResourceLimitId::from_stable_id(error.id) else {
+                return AsciiError::InvalidOption {
+                    field: "operation_control",
+                    message: "resource terminal does not belong to the ASCII renderer",
+                };
+            };
+            AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::Ceiling,
+                limit,
+                actual: usize::try_from(error.consumed.saturating_add(error.requested))
+                    .unwrap_or(usize::MAX),
+                max: usize::try_from(error.limit).unwrap_or(usize::MAX),
+                profile: policy.profile(),
+            }
+            .into()
+        }
+        OperationLedgerError::ArithmeticOverflow {
+            id,
+            actual,
+            maximum,
+            ..
+        } => {
+            let Some(limit) = AsciiResourceLimitId::from_stable_id(id) else {
+                return AsciiError::InvalidOption {
+                    field: "operation_control",
+                    message: "resource terminal does not belong to the ASCII renderer",
+                };
+            };
+            AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::ArithmeticOverflow,
+                limit,
+                actual: usize::try_from(actual).unwrap_or(usize::MAX),
+                max: usize::try_from(maximum).unwrap_or(usize::MAX),
+                profile: policy.profile(),
+            }
+            .into()
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct CheckedOutput {
-    policy: AsciiResourcePolicy,
+    resources: ResourceContext,
     output: String,
 }
 
 impl CheckedOutput {
-    pub(crate) fn new(policy: AsciiResourcePolicy) -> Self {
+    pub(crate) fn new(resources: &ResourceContext) -> Self {
         Self {
-            policy,
+            resources: resources.clone(),
             output: String::new(),
         }
     }
 
     pub(crate) fn push_str(&mut self, value: &str) -> Result<()> {
-        let actual = self
-            .output
-            .len()
-            .checked_add(value.len())
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
-        self.policy
+        let actual = self.output.len().checked_add(value.len()).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxOutputBytes)
+        })?;
+        self.resources
             .check(AsciiResourceLimitId::MaxOutputBytes, actual)?;
         self.output
             .try_reserve(value.len())
@@ -959,7 +984,8 @@ mod tests {
         let policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, 3)
             .expect("valid override");
-        let mut output = CheckedOutput::new(policy);
+        let resources = ResourceContext::new(policy);
+        let mut output = CheckedOutput::new(&resources);
 
         output.push_str("abc").expect("exact limit should pass");
         let error = output

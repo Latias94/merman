@@ -19,7 +19,7 @@ pub use builtin::{
 pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
 pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
-pub(crate) use final_validation::validate_well_formed_svg_with_checkpoint;
+pub(crate) use final_validation::validate_well_formed_svg_with_controls;
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;
 
@@ -86,7 +86,6 @@ pub fn validate_static_inline_svg_admission(svg: &str, session: &RenderSession) 
 }
 
 use crate::environment::RenderSession;
-use crate::resources::ResourceLimitPhase;
 use crate::{Error, Result};
 use std::borrow::Cow;
 use std::fmt;
@@ -329,9 +328,7 @@ impl SvgPipeline {
         let execution = SvgPostprocessExecution::new(session);
         execution.checkpoint()?;
         let mut current = svg;
-        execution
-            .resource_policy()
-            .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+        execution.preflight_svg_byte_count(current.len())?;
         if self.static_inline_admission {
             static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
         }
@@ -345,23 +342,22 @@ impl SvgPipeline {
                 metadata,
                 session,
             );
-            current = match postprocessor.process(current, &ctx) {
+            let result = postprocessor.process(current, &ctx);
+            execution.checkpoint()?;
+            current = match result {
                 Ok(current) => current,
-                Err(error @ (Error::Cancelled(_) | Error::ResourceLimitExceeded(_))) => {
-                    return Err(error);
+                Err(Error::Cancelled(error)) => return Err(Error::Cancelled(error)),
+                Err(Error::ResourceLimitExceeded(error)) => {
+                    return Err(execution.terminate_resource_error(error));
                 }
                 Err(error) => {
-                    execution.checkpoint()?;
                     return Err(Error::svg_postprocess(
                         postprocessor.name(),
                         error.to_string(),
                     ));
                 }
             };
-            execution.checkpoint()?;
-            execution
-                .resource_policy()
-                .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+            execution.preflight_svg_byte_count(current.len())?;
         }
 
         execution.checkpoint()?;
@@ -376,9 +372,7 @@ impl SvgPipeline {
             crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(finalized, || {
                 execution.checkpoint()
             })?;
-        execution
-            .resource_policy()
-            .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
+        execution.preflight_svg_byte_count(finalized.len())?;
         if self.static_inline_validation {
             static_validation::validate_rustdoc_static_svg(finalized.as_ref(), execution)?;
         }

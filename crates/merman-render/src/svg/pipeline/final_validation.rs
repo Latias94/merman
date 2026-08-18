@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::resources::RenderResourcePolicy;
 #[cfg(test)]
 use crate::resources::ResourceLimitId;
@@ -35,15 +36,30 @@ pub(crate) fn validate_well_formed_svg_with_execution(
     svg: &str,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<()> {
-    validate_well_formed_svg_with_checkpoint(svg, execution.resource_policy(), &mut || {
-        execution.checkpoint()
-    })
+    validate_well_formed_svg_with_controls(
+        svg,
+        &mut || execution.checkpoint(),
+        &mut |elements, tree_depth| execution.preflight_svg_structure(elements, tree_depth),
+    )
 }
 
+#[cfg(test)]
 pub(crate) fn validate_well_formed_svg_with_checkpoint(
     svg: &str,
     limits: RenderResourcePolicy,
     checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    validate_well_formed_svg_with_controls(svg, checkpoint, &mut |elements, tree_depth| {
+        limits
+            .check_svg_structure(elements, tree_depth)
+            .map_err(Into::into)
+    })
+}
+
+pub(crate) fn validate_well_formed_svg_with_controls(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<()> {
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
@@ -83,7 +99,7 @@ pub(crate) fn validate_well_formed_svg_with_checkpoint(
                 depth += 1;
                 max_tree_depth = max_tree_depth.max(depth.saturating_sub(1));
                 checkpoint()?;
-                limits.check_svg_structure(elements, max_tree_depth)?;
+                check_structure(elements, max_tree_depth)?;
             }
             Event::Empty(element) => {
                 document_started = true;
@@ -104,7 +120,7 @@ pub(crate) fn validate_well_formed_svg_with_checkpoint(
                 elements = elements.saturating_add(1);
                 max_tree_depth = max_tree_depth.max(depth);
                 checkpoint()?;
-                limits.check_svg_structure(elements, max_tree_depth)?;
+                check_structure(elements, max_tree_depth)?;
                 if is_root {
                     root_seen = true;
                     root_closed = true;
@@ -402,6 +418,7 @@ pub(crate) fn validate_resvg_compatible_svg(
     validate_resvg_compatible_svg_with_checkpoint(svg, limits, &mut checkpoint)
 }
 
+#[cfg(test)]
 pub(crate) fn validate_resvg_compatible_svg_with_checkpoint(
     svg: &str,
     limits: RenderResourcePolicy,
@@ -415,15 +432,38 @@ pub(crate) fn validate_resvg_compatible_svg_with_execution(
     svg: &str,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<SvgReferencePlan> {
-    validate_resvg_compatible_svg_with_checkpoint(svg, execution.resource_policy(), &mut || {
-        execution.checkpoint()
-    })
+    let mut checkpoint = || execution.checkpoint();
+    let mut check_structure =
+        |elements, tree_depth| execution.preflight_svg_structure(elements, tree_depth);
+    validate_well_formed_svg_with_controls(svg, &mut checkpoint, &mut check_structure)?;
+    validate_resvg_compatible_svg_after_xml_with_structure(
+        svg,
+        &mut checkpoint,
+        &mut check_structure,
+    )
 }
 
+#[cfg(test)]
 fn validate_resvg_compatible_svg_after_xml(
     svg: &str,
     limits: RenderResourcePolicy,
     checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<SvgReferencePlan> {
+    validate_resvg_compatible_svg_after_xml_with_structure(
+        svg,
+        checkpoint,
+        &mut |elements, tree_depth| {
+            limits
+                .check_svg_structure(elements, tree_depth)
+                .map_err(Into::into)
+        },
+    )
+}
+
+fn validate_resvg_compatible_svg_after_xml_with_structure(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<SvgReferencePlan> {
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
@@ -584,7 +624,7 @@ fn validate_resvg_compatible_svg_after_xml(
             Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
         };
     checkpoint()?;
-    limits.check_svg_structure(
+    check_structure(
         reference_plan.expanded_elements(),
         reference_plan.max_tree_depth(),
     )?;

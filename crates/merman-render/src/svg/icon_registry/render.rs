@@ -1,7 +1,7 @@
 use super::IconRenderRequest;
 use super::ingest::ResolvedIcon;
 use super::xml::ValidatedIconBody;
-use crate::svg::pipeline::validate_well_formed_svg_with_checkpoint;
+use crate::svg::pipeline::validate_well_formed_svg_with_controls;
 use merman_core::OperationPhase;
 use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
 
@@ -145,7 +145,10 @@ pub(super) fn render_resolved_icon(
                 .work_meter
                 .reconcile_svg_bytes(reserved_svg_bytes, 0)?;
             if let Some(error) = growth_reservation.limit_error {
-                return Err(error.into());
+                return Err(request
+                    .work_meter
+                    .terminate_absolute_resource_error(error, OperationPhase::Emit)
+                    .into());
             }
             return Err(crate::Error::icon_processing(
                 "icon SVG sanitizer exceeded its fixed expansion ceiling",
@@ -187,13 +190,18 @@ pub(super) fn render_resolved_icon(
             "sanitization removed the complete icon SVG",
         ));
     }
-    let validation = validate_well_formed_svg_with_checkpoint(
+    let validation = validate_well_formed_svg_with_controls(
         &sanitized,
-        request.work_meter.policy(),
         &mut || {
             request
                 .work_meter
                 .checkpoint(OperationPhase::Postprocess)
+                .map_err(crate::Error::from)
+        },
+        &mut |elements, tree_depth| {
+            request
+                .work_meter
+                .preflight_svg_structure(elements, tree_depth, OperationPhase::Postprocess)
                 .map_err(crate::Error::from)
         },
     );

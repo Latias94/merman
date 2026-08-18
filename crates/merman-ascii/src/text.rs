@@ -229,7 +229,7 @@ impl StyledLine {
 
     #[cfg(test)]
     pub(crate) fn try_text(&self) -> Result<String> {
-        let mut output = CheckedOutput::new(self.resources.policy());
+        let mut output = CheckedOutput::new(&self.resources);
         self.try_write_plain_to(&mut output)?;
         Ok(output.finish())
     }
