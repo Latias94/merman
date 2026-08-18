@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 
 ## Version Decision
 
@@ -28,9 +28,11 @@ Workspace-coupled manifests remain aligned to `0.8.0-alpha.5`. Python package me
 PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a surface reached its
 registry or that separately published alpha.5 channels share one source snapshot. The
 independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
-release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis,
-and is prepared for protected crates.io, npm, and GitHub publication through its dedicated release
-workflow. Its initial `0.1.0` publication has not yet been executed.
+release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis.
+Version `0.1.0` is published on crates.io and npm from tag `tree-sitter-mermaid-v0.1.0`, commit
+`34ddaccbfb8b4a7a502e67122b2cd709b4989e19`. Its standalone GitHub Release is intentionally
+deferred so it can be announced alongside the next Merman product release; the two releases retain
+their own tags and version identities.
 
 ## Publish Order
 
@@ -50,16 +52,27 @@ release-order database.
 `roughr-merman` is versioned separately as `0.12.3`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
 
-`tree-sitter-mermaid` starts at `0.1.0` as a separately packaged language distribution. Its Cargo
-package is `tree-sitter-mermaid`; its npm package is `@mermanjs/tree-sitter-mermaid`. Use
+`tree-sitter-mermaid` `0.1.0` is a separately packaged language distribution. Its Cargo package is
+`tree-sitter-mermaid`; its npm package is `@mermanjs/tree-sitter-mermaid`. Use
 `release-tree-sitter-mermaid.yml`, not the generic independent-crate workflow. It builds native Node
 prebuilds, verifies the root language WASM, installs the exact npm/Cargo/C candidate, stages a
-grammar-subdirectory source archive and checksums, and publishes only when the matching immutable
-`tree-sitter-mermaid-vX.Y.Z` tag passes the protected crates.io, npm, and GitHub environments.
+grammar-subdirectory source archive and checksums, and publishes registry packages only when the
+matching immutable `tree-sitter-mermaid-vX.Y.Z` tag passes the protected crates.io and npm
+environments. GitHub Release publication is a separate explicit workflow input.
 Because `merman-lsp` now consumes this crate for syntax highlighting, the exact Cargo version must
 exist on crates.io before publishing a dependent workspace release. The scoped npm package is
 independent of the workspace crates and supplies browser consumers with the same grammar WASM and
 queries.
+
+The initial npm package was bootstrapped manually from attested run `32114670734` with the
+maintainer's 2FA-protected credential. Its registry tarball SHA-256 is
+`a4e54b9caee7940cfbcffbe2b97d6edf04d8979b3eafe75fc0bba7804d04b23b`; it does not carry npm
+provenance. The crates.io package was accepted by run `32117231294` and has checksum
+`34921c596d2732a74eb6489f1148df732163f0c4fd20737547396f40a588b559`. That run reported a false
+failure because crates.io rejected curl's default User-Agent during post-publish download; direct
+registry verification confirmed the published bytes. Do not rerun it to create a GitHub Release:
+the independent native prebuild outputs differ across runs, so the later run's npm candidate is not
+byte-identical to the bootstrapped artifact.
 
 ## Binding Release Chain
 

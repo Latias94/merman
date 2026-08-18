@@ -145,9 +145,13 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
 
         self.assertNotIn("- tree-sitter-mermaid", independent)
         self.assertIn("tree-sitter-mermaid-v", workflow)
+        self.assertIn("publish_github_release:", workflow)
         self.assertIn("default: false", workflow)
         self.assertIn("main is build-only", workflow)
         self.assertIn("publishing requires source_ref to be the matching immutable tag", workflow)
+        self.assertIn(
+            "a GitHub Release requires registry publication or reconciliation", workflow
+        )
         self.assertIn("distribution/tree-sitter-mermaid", workflow)
         self.assertIn('npm_manifest["name"] != "@mermanjs/tree-sitter-mermaid"', verify)
         self.assertIn("npm run prebuild", prebuild)
@@ -174,6 +178,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             "https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download",
             publish_crates,
         )
+        self.assertIn('--user-agent "$registry_user_agent"', publish_crates)
         self.assertIn("npm publish", publish_npm)
         self.assertIn("--provenance", publish_npm)
         self.assertIn(
@@ -184,6 +189,10 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("attestations: write", attest)
         self.assertIn("gh release create", publish_github)
         self.assertIn("verify_existing_release", publish_github)
+        self.assertIn(
+            "if: ${{ inputs.publish && inputs.publish_github_release }}",
+            publish_github,
+        )
         self.assertIn("environment: crates.io", publish_crates)
         self.assertIn("environment: npm", publish_npm)
         self.assertIn("environment: github-release", publish_github)

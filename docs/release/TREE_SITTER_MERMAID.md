@@ -1,6 +1,6 @@
 # Tree-sitter Mermaid Release
 
-`tree-sitter-mermaid` is an independently versioned release candidate for crates.io, npm, and
+`tree-sitter-mermaid` is an independently versioned distribution for crates.io, npm, and optional
 GitHub Releases. Passing this checklist prepares artifacts; it does not authorize registry
 publication without the protected release environment and maintainer credentials.
 
@@ -86,16 +86,26 @@ npm candidate.
 ## Publication and recovery
 
 The crates.io package is `tree-sitter-mermaid`; the npm package is
-`@mermanjs/tree-sitter-mermaid`. Publish only from the protected workflow and the exact release
-commit. If one registry job fails, re-run only failed jobs from the same workflow run. Each publish
-job reconciles an already-visible version or GitHub Release against the staged candidate bytes: an
-exact match is success, while any mismatch fails closed. Both registries reject overwriting an
-existing immutable version.
+`@mermanjs/tree-sitter-mermaid`. Ordinary publication uses the protected workflow and the exact
+release commit. If one registry job fails, re-run only failed jobs from the same workflow run. Each
+publish job reconciles an already-visible version against the staged candidate bytes: an exact
+match is success, while any mismatch fails closed. Both registries reject overwriting an existing
+immutable version.
 
 The first npm publication requires a maintainer's short-lived 2FA-protected bootstrap credential
 for `@mermanjs/tree-sitter-mermaid` before Trusted Publishing can be configured. Do not store that
-bootstrap token in repository secrets. crates.io publication uses the protected crates.io
+bootstrap token in repository secrets. Publish the exact candidate from the tagged workflow run
+that will own recovery, then rerun only that same run's failed jobs. Native prebuilds are not assumed
+to be byte-reproducible across separate runs. crates.io publication uses the protected crates.io
 environment.
+
+Set `publish_github_release` only when the standalone source/WASM release should become public.
+Deferring it is supported, but later publication must use the original verified candidate for that
+tag rather than a separately rebuilt archive.
+
+For `0.1.0`, crates.io and npm publication completed on 2026-08-18 from
+`tree-sitter-mermaid-v0.1.0`. npm used a manual 2FA bootstrap and therefore has no npm provenance.
+The standalone GitHub Release is intentionally deferred.
 
 Downstream Neovim, Helix, and Zed changes happen only after the immutable GitHub release exists.
 Those repositories pin the release commit and their own query copies; they do not consume the npm

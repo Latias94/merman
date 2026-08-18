@@ -13,7 +13,12 @@ on:
         default: "main"
         type: string
       publish:
-        description: "Publish the verified crate, npm package, and GitHub release"
+        description: "Publish the verified crate and npm package"
+        required: true
+        default: false
+        type: boolean
+      publish_github_release:
+        description: "Publish the verified assets as a GitHub Release"
         required: true
         default: false
         type: boolean
@@ -41,6 +46,7 @@ jobs:
         shell: bash
         env:
           DISPATCH_PUBLISH: ${{ inputs.publish }}
+          DISPATCH_PUBLISH_GITHUB_RELEASE: ${{ inputs.publish_github_release }}
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
         run: |
@@ -77,6 +83,10 @@ jobs:
           fi
           if [[ "$DISPATCH_PUBLISH" == "true" && "$validated_source_ref" != "refs/tags/$release_tag" ]]; then
             echo "::error::publishing requires source_ref to be the matching immutable tag" >&2
+            exit 1
+          fi
+          if [[ "$DISPATCH_PUBLISH_GITHUB_RELEASE" == "true" && "$DISPATCH_PUBLISH" != "true" ]]; then
+            echo "::error::a GitHub Release requires registry publication or reconciliation" >&2
             exit 1
           fi
 
@@ -378,8 +388,10 @@ jobs:
           candidate="$release_dir/tree-sitter-mermaid-$VERSION.crate"
           registry_copy="$RUNNER_TEMP/tree-sitter-mermaid-$VERSION-registry.crate"
           registry_url="https://crates.io/api/v1/crates/tree-sitter-mermaid/$VERSION/download"
+          registry_user_agent="merman-tree-sitter-release/$VERSION (+https://github.com/Latias94/merman)"
 
           if curl --fail --silent --show-error --location \
+            --user-agent "$registry_user_agent" \
             --output "$registry_copy" "$registry_url"; then
             cmp "$candidate" "$registry_copy"
             echo "crates.io already contains the verified candidate"
@@ -391,6 +403,7 @@ jobs:
             --registry crates-io --token "$CARGO_REGISTRY_TOKEN" || publish_status=$?
           for _ in {1..6}; do
             if curl --fail --silent --show-error --location \
+              --user-agent "$registry_user_agent" \
               --output "$registry_copy" "$registry_url"; then
               cmp "$candidate" "$registry_copy"
               exit 0
@@ -458,7 +471,7 @@ jobs:
 
   publish-github:
     needs: [validate-inputs, assemble, attest, publish-crates, publish-npm]
-    if: ${{ inputs.publish }}
+    if: ${{ inputs.publish && inputs.publish_github_release }}
     runs-on: ubuntu-24.04
     environment: github-release
     permissions:

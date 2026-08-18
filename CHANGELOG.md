@@ -33,8 +33,8 @@ The next workspace release remains in development. This section records only com
 - Added production Tree-sitter syntax highlighting to the native LSP and Playground. Both adapters
   consume the canonical `tree-sitter-mermaid` grammar and portable highlight query; the Playground
   loads the distribution WASM and runs incremental syntax parsing in a dedicated browser worker.
-  The independently versioned grammar release is prepared as the `tree-sitter-mermaid` crate and
-  the `@mermanjs/tree-sitter-mermaid` npm package.
+  The independently versioned grammar is published as the `tree-sitter-mermaid` crate and the
+  `@mermanjs/tree-sitter-mermaid` npm package; its standalone GitHub Release remains deferred.
 - Added the experimental public `@mermanjs/node` alpha package group for Node.js 22 and newer on macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The root loader selects one exact-version native package and exposes deterministic static SVG plus metadata/layout operations without a postinstall downloader or browser-WASM fallback.
 - Added `merman-cli rustdoc build/check` as a checked static-fragment workflow. Crates can commit deterministic light/dark SVG Markdown, consume it through Rust's native `include_str!`, verify freshness in CI, and build hosted documentation without adding a Merman renderer or proc macro to the consuming Cargo graph.
 
