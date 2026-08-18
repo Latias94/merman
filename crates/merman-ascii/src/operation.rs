@@ -26,8 +26,10 @@ impl<'a> AsciiExecution<'a> {
     /// Creates a real, never-cancelled execution projection for crate-local unit tests.
     #[cfg(test)]
     pub fn for_test(resources: &'a AsciiResourcePolicy) -> Self {
-        static CONTROL: std::sync::OnceLock<OperationControl> = std::sync::OnceLock::new();
-        Self::new(CONTROL.get_or_init(OperationControl::new), resources)
+        // The leaked handle is bounded to the test process and keeps terminal state isolated
+        // between independently scheduled unit tests.
+        let control = Box::leak(Box::new(OperationControl::new()));
+        Self::new(control, resources)
     }
 
     pub const fn resources(self) -> &'a AsciiResourcePolicy {
