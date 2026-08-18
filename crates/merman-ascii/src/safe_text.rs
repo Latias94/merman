@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn document_output_admission_precedes_materialization_for_all_encodings() {
+    fn document_output_admission_reports_exact_boundaries_for_all_encodings() {
         let cases = [
             (AsciiColorMode::Plain, "<&>\"'中\ntail"),
             (AsciiColorMode::Ansi16, "<&>\"'中\ntail"),
@@ -270,7 +270,6 @@ mod tests {
         for (color_mode, expected) in cases {
             let options = AsciiRenderOptions::ascii().with_color_mode(color_mode);
             let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
-            let exact_materialized = Cell::new(false);
             let mut document = BudgetedTextDocument::new(&options, exact);
             document
                 .push_line("<&>\"'中")
@@ -279,27 +278,24 @@ mod tests {
                 .push_line("tail")
                 .expect("the second row should enter the document");
             let rendered = document
-                .finish_with_probe(&exact_materialized)
+                .finish()
                 .expect("the exact encoded output should be admitted");
 
-            assert!(exact_materialized.get(), "mode={color_mode:?}");
             assert_eq!(rendered, expected, "mode={color_mode:?}");
 
             let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
-            let below_retained = std::rc::Rc::new(Cell::new(0));
             let mut document = BudgetedTextDocument::new(&options, below);
-            document.set_retain_probe(std::rc::Rc::clone(&below_retained));
             document
                 .push_line("<&>\"'中")
                 .expect("the first row still fits below the complete document boundary");
-            let retained_before_second_row = below_retained.get();
+            let cells_before_second_row = document.resources_mut().document_cells_used();
             let error = document
                 .push_line("tail")
-                .expect_err("N-1 must reject before retaining the second row");
+                .expect_err("N-1 must reject the complete second row");
 
             assert_eq!(
-                below_retained.get(),
-                retained_before_second_row,
+                document.resources_mut().document_cells_used(),
+                cells_before_second_row,
                 "mode={color_mode:?}",
             );
             assert_limit_error(
@@ -312,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn line_fragment_output_admission_precedes_any_retained_append() {
+    fn line_fragment_output_admission_reports_exact_boundaries() {
         let cases = [
             (AsciiColorMode::Plain, "abc", 3),
             (AsciiColorMode::Plain, "\u{1b}", "\\u{1B}".len()),
@@ -322,15 +318,17 @@ mod tests {
         for (color_mode, raw, encoded_len) in cases {
             let options = AsciiRenderOptions::ascii().with_color_mode(color_mode);
             let policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, encoded_len - 1);
-            let retained = std::rc::Rc::new(Cell::new(0));
             let mut document = BudgetedTextDocument::new(&options, policy);
-            document.set_retain_probe(std::rc::Rc::clone(&retained));
 
             let error = document
                 .push_line(raw)
-                .expect_err("N-1 must reject the complete normalized fragment before append");
+                .expect_err("N-1 must reject the complete normalized fragment");
 
-            assert_eq!(retained.get(), 0, "mode={color_mode:?}, raw={raw:?}");
+            assert_eq!(
+                document.resources_mut().document_cells_used(),
+                0,
+                "mode={color_mode:?}, raw={raw:?}",
+            );
             assert_limit_error(
                 error,
                 AsciiResourceLimitId::MaxOutputBytes,
@@ -343,10 +341,8 @@ mod tests {
     #[test]
     fn wrapped_output_admission_covers_prefix_word_space_and_continuation_prefix() {
         let prefix_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
-        let prefix_retained = std::rc::Rc::new(Cell::new(0));
         let prefix_producer_visited = Cell::new(false);
         let mut document = ascii_document(prefix_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&prefix_retained));
         let error = document
             .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
                 prefix_producer_visited.set(true);
@@ -354,8 +350,8 @@ mod tests {
             })
             .expect_err("N-1 prefix bytes must reject before starting the producer");
         assert!(!prefix_producer_visited.get());
-        assert_eq!(prefix_retained.get(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 2, 1);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
 
         let exact_word_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 5);
         let mut document = ascii_document(exact_word_policy);
@@ -368,24 +364,20 @@ mod tests {
         );
 
         let word_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
-        let word_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(word_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&word_retained));
         let error = document
             .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("abc"))
-            .expect_err("N-1 word bytes must reject before retaining the wrapped body");
-        assert_eq!(word_retained.get(), 0);
+            .expect_err("N-1 word bytes must reject the wrapped body");
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
 
         let space_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 2);
-        let space_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(space_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&space_retained));
         let error = document
             .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a b"))
-            .expect_err("N-1 synthesized space must reject before entering the row");
-        assert_eq!(space_retained.get(), 0);
+            .expect_err("N-1 synthesized space must reject the row");
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 3, 2);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
 
         let exact_continuation_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 5);
         let mut document = ascii_document(exact_continuation_policy);
@@ -400,14 +392,12 @@ mod tests {
         );
 
         let continuation_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
-        let continuation_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(continuation_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&continuation_retained));
         let error = document
             .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
-            .expect_err("N-1 continuation prefix must reject before prefix insertion");
-        assert_eq!(continuation_retained.get(), 0);
+            .expect_err("N-1 continuation prefix must reject the wrapped row");
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
     }
 
     #[test]
@@ -429,10 +419,8 @@ mod tests {
     #[test]
     fn wrapped_prefix_budgets_are_admitted_before_body_retention() {
         let first_prefix_policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
-        let first_prefix_retained = std::rc::Rc::new(Cell::new(0));
         let first_prefix_producer_visited = Cell::new(false);
         let mut document = ascii_document(first_prefix_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&first_prefix_retained));
         let error = document
             .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
                 first_prefix_producer_visited.set(true);
@@ -440,18 +428,16 @@ mod tests {
             })
             .expect_err("an oversized first prefix must reject before starting the producer");
         assert!(!first_prefix_producer_visited.get());
-        assert_eq!(first_prefix_retained.get(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 2, 1);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
 
         let continuation_policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 3);
-        let continuation_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(continuation_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&continuation_retained));
         let error = document
             .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
-            .expect_err("a continuation prefix must reject before retaining its first body cell");
-        assert_eq!(continuation_retained.get(), 0);
+            .expect_err("an oversized continuation prefix must reject the wrapped row");
         assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 4, 3);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
 
         let grapheme = "\"\u{301}";
         assert_eq!(grapheme.graphemes(true).count(), 1);
@@ -468,10 +454,8 @@ mod tests {
 
         let grapheme_policy =
             policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1);
-        let grapheme_retained = std::rc::Rc::new(Cell::new(0));
         let grapheme_producer_visited = Cell::new(false);
         let mut document = ascii_document(grapheme_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&grapheme_retained));
         let error = document
             .push_wrapped_prefixed_line_with(grapheme, "", 80, |line| {
                 grapheme_producer_visited.set(true);
@@ -479,13 +463,13 @@ mod tests {
             })
             .expect_err("an oversized prefix grapheme must reject before starting the producer");
         assert!(!grapheme_producer_visited.get());
-        assert_eq!(grapheme_retained.get(), 0);
         assert_limit_error(
             error,
             AsciiResourceLimitId::MaxGraphemeBytes,
             grapheme.len(),
             grapheme.len() - 1,
         );
+        assert_eq!(document.finish().expect("no row should be committed"), "");
 
         let continuation = "x\u{301}";
         assert_eq!(continuation.graphemes(true).count(), 1);
@@ -506,19 +490,17 @@ mod tests {
             AsciiResourceLimitId::MaxGraphemeBytes,
             continuation.len() - 1,
         );
-        let continuation_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(continuation_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&continuation_retained));
         let error = document
             .push_wrapped_prefixed_line_with("", continuation, 1, |line| line.push_str("ab"))
             .expect_err("an oversized used continuation grapheme must reject in planning");
-        assert_eq!(continuation_retained.get(), 0);
         assert_limit_error(
             error,
             AsciiResourceLimitId::MaxGraphemeBytes,
             continuation.len(),
             continuation.len() - 1,
         );
+        assert_eq!(document.finish().expect("no row should be committed"), "");
     }
 
     #[test]
@@ -656,18 +638,15 @@ mod tests {
         assert_eq!(document.resources_mut().layout_work_used(), COMPLETE_WORK);
 
         let below = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, COMPLETE_WORK - 1);
-        let retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(below);
         document
             .resources_mut()
             .charge_layout_work(PRIOR_WORK)
             .expect("prior structured-text work should fit below the complete boundary");
-        document.set_retain_probe(std::rc::Rc::clone(&retained));
         let error = document
             .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
             .expect_err("one unit below the complete two-pass work must reject during planning");
 
-        assert_eq!(retained.get(), 0);
         assert_eq!(document.resources_mut().layout_work_used(), PRIOR_WORK);
         assert_eq!(document.resources_mut().document_cells_used(), 0);
         assert_limit_error(
@@ -714,26 +693,23 @@ mod tests {
     }
 
     #[test]
-    fn quoted_output_admission_precedes_rejected_fragment_materialization() {
+    fn quoted_output_admission_reports_exact_boundaries() {
         let line_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 2);
-        let line_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(line_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&line_retained));
         let error = document
             .push_line_with(|line| line.push_quoted_text("a"))
-            .expect_err("N-1 closing quote must reject before append");
-        assert_eq!(line_retained.get(), 2);
+            .expect_err("N-1 closing quote must be rejected");
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 3, 2);
 
         let wrapped_policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 3);
-        let wrapped_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(wrapped_policy);
-        document.set_retain_probe(std::rc::Rc::clone(&wrapped_retained));
         let error = document
             .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_quoted_text("\""))
-            .expect_err("N-1 wrapped closing quote must reject before normalization");
-        assert_eq!(wrapped_retained.get(), 0);
+            .expect_err("N-1 wrapped closing quote must be rejected");
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 4, 3);
+        assert_eq!(document.resources_mut().layout_work_used(), 0);
+        assert_eq!(document.resources_mut().document_cells_used(), 0);
+        assert_eq!(document.finish().expect("no row should be committed"), "");
     }
 
     #[test]

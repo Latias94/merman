@@ -169,29 +169,12 @@ impl<'a> SequenceControlTitlePlan<'a> {
         checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<String> {
         checkpoints.checkpoint()?;
-        let materialized = self.materialize_impl(|| {}, || checkpoints.checkpoint());
+        let materialized = self.materialize_impl(|| checkpoints.checkpoint());
         checkpoints.checkpoint()?;
         materialized
     }
 
-    #[cfg(test)]
-    fn materialize_with(
-        self,
-        resources: &ResourceContext,
-        checkpoints: &SequenceCheckpointCursor<'_>,
-        before_materialize: impl FnOnce(),
-    ) -> Result<String> {
-        checkpoints.before_charge()?;
-        resources.charge_layout_work(self.materialization_work_units(resources)?)?;
-        self.materialize_impl(before_materialize, || checkpoints.checkpoint())
-    }
-
-    fn materialize_impl(
-        self,
-        before_materialize: impl FnOnce(),
-        mut checkpoint: impl FnMut() -> Result<()>,
-    ) -> Result<String> {
-        before_materialize();
+    fn materialize_impl(self, mut checkpoint: impl FnMut() -> Result<()>) -> Result<String> {
         let label = match self.label_plan {
             Some(plan) => {
                 let (mut lines, _) = plan
@@ -219,16 +202,6 @@ impl<'a> SequenceControlTitlePlan<'a> {
             return Err(invalid_control_frame());
         }
         Ok(title)
-    }
-
-    #[cfg(test)]
-    fn materialize_with_probe(
-        self,
-        resources: &ResourceContext,
-        checkpoints: &SequenceCheckpointCursor<'_>,
-        materialized: &std::cell::Cell<bool>,
-    ) -> Result<String> {
-        self.materialize_with(resources, checkpoints, || materialized.set(true))
     }
 }
 
@@ -727,8 +700,6 @@ fn allocation_failed() -> AsciiError {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
-
     use super::*;
     use crate::operation::AsciiExecution;
     use crate::resource::AsciiResourcePolicy;
@@ -759,13 +730,11 @@ mod tests {
 
     #[test]
     fn control_title_materialization_follows_aggregate_grid_admission() {
-        let exact_materialized = Cell::new(false);
-        admit_and_materialize_control_title(84, &exact_materialized)
+        let exact = admit_and_materialize_control_title(84)
             .expect("the exact 14x6 aggregate control extent should be admitted");
-        assert!(exact_materialized.get());
+        assert_eq!(exact, " loop batch ");
 
-        let below_materialized = Cell::new(false);
-        let error = admit_and_materialize_control_title(83, &below_materialized)
+        let error = admit_and_materialize_control_title(83)
             .expect_err("the aggregate control extent should exceed the limit by one cell");
         assert!(matches!(
             error,
@@ -774,13 +743,9 @@ mod tests {
                     && details.actual == 84
                     && details.max == 83
         ));
-        assert!(!below_materialized.get());
     }
 
-    fn admit_and_materialize_control_title(
-        maximum: usize,
-        materialized: &Cell<bool>,
-    ) -> Result<()> {
+    fn admit_and_materialize_control_title(maximum: usize) -> Result<String> {
         let policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
             .expect("the aggregate control grid limit override should be valid");
@@ -802,29 +767,37 @@ mod tests {
             AsciiExecution::for_test(&policy),
             OperationPhase::Layout,
         );
-        let frame_plans = plan_control_frames(
-            &tree.forest,
-            &tree.frames,
-            &footprints,
-            &test_layout(),
-            4,
-            &mut resources,
-            &mut checkpoints,
-        )?;
-        let admission = admit_control_output(
-            &footprints,
-            &tree.forest,
-            &tree.frames,
-            &frame_plans,
-            &mut resources,
-            &mut checkpoints,
-        )?;
-        assert_eq!(admission.max_width, 14);
-        assert_eq!(admission.height, 6);
-        frame_plans[0]
-            .title
-            .materialize_with_probe(&resources, &checkpoints, materialized)?;
-        Ok(())
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            let frame_plans = plan_control_frames(
+                &tree.forest,
+                &tree.frames,
+                &footprints,
+                &test_layout(),
+                4,
+                &mut resources,
+                &mut checkpoints,
+            )?;
+            let admission = admit_control_output(
+                &footprints,
+                &tree.forest,
+                &tree.frames,
+                &frame_plans,
+                &mut resources,
+                &mut checkpoints,
+            )?;
+            assert_eq!(admission.max_width, 14);
+            assert_eq!(admission.height, 6);
+            let title = frame_plans[0].title;
+            checkpoints.before_charge()?;
+            resources.charge_layout_work(title.materialization_work_units(&resources)?)?;
+            title.materialize_after_admission(&checkpoints)
+        });
+        if result.is_err() {
+            assert_eq!(resources.layout_work_used(), 0);
+            assert_eq!(resources.document_cells_used(), 0);
+        }
+        result
     }
 
     #[cfg(not(target_arch = "wasm32"))]

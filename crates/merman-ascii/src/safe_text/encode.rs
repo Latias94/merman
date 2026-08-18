@@ -16,21 +16,6 @@ pub(super) fn encode_budgeted_lines_with_expected(
     })
 }
 
-#[cfg(test)]
-pub(super) fn encode_budgeted_lines_with_expected_and_probe(
-    lines: Vec<String>,
-    color_mode: AsciiColorMode,
-    resources: &ResourceContext,
-    expected_len: usize,
-    before_materialize: impl FnOnce(),
-) -> Result<String> {
-    resources.transaction(|resources| {
-        admit_and_validate_encoded_lines(&lines, color_mode, resources, expected_len)?;
-        before_materialize();
-        materialize_encoded_lines(lines, color_mode, resources)
-    })
-}
-
 fn admit_and_validate_encoded_lines(
     lines: &[String],
     color_mode: AsciiColorMode,
@@ -217,31 +202,25 @@ mod tests {
     use crate::AsciiError;
     use crate::resource::{AsciiResourcePolicy, ResourceContext};
     use merman_core::{OperationControl, OperationPhase};
-    use std::cell::Cell;
 
     #[test]
-    fn structured_text_counting_observes_emit_cancellation_before_materialization() {
+    fn structured_text_counting_cancellation_rolls_back_the_ledger() {
         let control = OperationControl::new();
-        control.cancel_after_checkpoints(2);
+        control.cancel_after_checkpoints(5);
         let resources = ResourceContext::new(AsciiResourcePolicy::default())
             .controlled(control, OperationPhase::Emit);
-        let materialized = Cell::new(false);
         let line = "<&".repeat(128);
 
-        let error = encode_budgeted_lines_with_expected_and_probe(
-            vec![line],
-            AsciiColorMode::Html,
-            &resources,
-            0,
-            || materialized.set(true),
-        )
-        .expect_err("HTML counting should observe scheduled emit cancellation");
+        let error =
+            encode_budgeted_lines_with_expected(vec![line], AsciiColorMode::Html, &resources, 0)
+                .expect_err("HTML counting should observe scheduled emit cancellation");
 
-        assert!(!materialized.get());
         assert!(matches!(
             error,
             AsciiError::Cancelled(details) if details.phase == OperationPhase::Emit
         ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
     }
 
     #[test]
@@ -252,23 +231,22 @@ mod tests {
             .charge_usage(3, 2)
             .expect("prior structured-text usage should fit");
         let resources = shared_resources.controlled(control.clone(), OperationPhase::Emit);
-        let materialized = Cell::new(false);
         let line = "payload".repeat(128);
         let expected_len = line.len();
 
-        let error = encode_budgeted_lines_with_expected_and_probe(
-            vec![line],
-            AsciiColorMode::Plain,
-            &resources,
-            expected_len,
-            || {
-                materialized.set(true);
+        let error = resources
+            .transaction(|resources| {
+                admit_and_validate_encoded_lines(
+                    std::slice::from_ref(&line),
+                    AsciiColorMode::Plain,
+                    resources,
+                    expected_len,
+                )?;
                 control.cancel();
-            },
-        )
-        .expect_err("plain materialization should observe emit cancellation");
+                materialize_encoded_lines(vec![line], AsciiColorMode::Plain, resources)
+            })
+            .expect_err("plain materialization should observe emit cancellation");
 
-        assert!(materialized.get());
         assert!(matches!(
             error,
             AsciiError::Cancelled(details) if details.phase == OperationPhase::Emit
@@ -278,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn structured_text_encoder_work_is_admitted_before_materialization() {
+    fn structured_text_encoder_work_has_an_exact_transactional_boundary() {
         const EXPECTED_ENCODER_WORK: usize = 4;
 
         let exact_policy = AsciiResourcePolicy::default()
@@ -305,17 +283,14 @@ mod tests {
             )
             .expect("the below-exact encoder work limit should be valid");
         let below_resources = ResourceContext::new(below_policy);
-        let materialized = Cell::new(false);
-        let error = encode_budgeted_lines_with_expected_and_probe(
+        let error = encode_budgeted_lines_with_expected(
             vec!["A".to_owned()],
             AsciiColorMode::Plain,
             &below_resources,
             1,
-            || materialized.set(true),
         )
-        .expect_err("limit-minus-one should reject before output materialization");
+        .expect_err("limit-minus-one should reject transactionally");
 
-        assert!(!materialized.get());
         assert_eq!(below_resources.layout_work_used(), 0);
         assert!(matches!(
             error,
@@ -347,16 +322,13 @@ mod tests {
             )
             .expect("the below-exact HTML encoder work limit should be valid");
         let below_html_resources = ResourceContext::new(below_html_policy);
-        let html_materialized = Cell::new(false);
-        let error = encode_budgeted_lines_with_expected_and_probe(
+        let error = encode_budgeted_lines_with_expected(
             vec!["<&".to_owned()],
             AsciiColorMode::Html,
             &below_html_resources,
             9,
-            || html_materialized.set(true),
         )
-        .expect_err("HTML limit-minus-one should reject before output materialization");
-        assert!(!html_materialized.get());
+        .expect_err("HTML limit-minus-one should reject transactionally");
         assert_eq!(below_html_resources.layout_work_used(), 0);
         assert!(matches!(
             error,

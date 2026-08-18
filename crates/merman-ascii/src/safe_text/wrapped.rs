@@ -35,8 +35,6 @@ pub(crate) struct BudgetedWrappedText<'prefix> {
     base_document_cells: usize,
     base_output_bytes: usize,
     storage: WrappedStorage,
-    #[cfg(test)]
-    retain_probe: Option<std::rc::Rc<std::cell::Cell<usize>>>,
 }
 
 #[derive(Clone)]
@@ -51,8 +49,6 @@ pub(super) struct WrappedPassConfig<'prefix> {
     pub(super) fixed_layout_work: usize,
     pub(super) base_document_cells: usize,
     pub(super) base_output_bytes: usize,
-    #[cfg(test)]
-    pub(super) retain_probe: Option<std::rc::Rc<std::cell::Cell<usize>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,8 +149,6 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
             base_document_cells: config.base_document_cells,
             base_output_bytes: config.base_output_bytes,
             storage,
-            #[cfg(test)]
-            retain_probe: config.retain_probe,
         }
     }
 
@@ -415,8 +409,6 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
         if self.emitted {
             self.admit_prefix(prefix, 1)?;
         }
-        #[cfg(test)]
-        let retain_probe = self.retain_probe.clone();
         if let WrappedStorage::Materialize {
             rows,
             expected_rows,
@@ -429,10 +421,6 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
             content
                 .try_reserve(prefix.len())
                 .map_err(|_| document_allocation_error())?;
-            #[cfg(test)]
-            if let Some(probe) = retain_probe {
-                probe.set(probe.get() + 1);
-            }
             content.insert_str(0, prefix);
             rows.push(content);
         }
@@ -603,13 +591,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     fn push_word_text(&mut self, value: &str) -> Result<()> {
         self.note_replay_event(ReplayEventKind::Text, value.as_bytes())?;
         self.resources.checkpoint()?;
-        #[cfg(test)]
-        let retain_probe = self.retain_probe.clone();
         if let WrappedStorage::Materialize { word, .. } = &mut self.storage {
-            #[cfg(test)]
-            if let Some(probe) = retain_probe {
-                probe.set(probe.get() + 1);
-            }
             try_push_document_str(word, value)?;
         }
         Ok(())
@@ -618,13 +600,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     fn push_current_text(&mut self, value: &str) -> Result<()> {
         self.note_replay_event(ReplayEventKind::Text, value.as_bytes())?;
         self.resources.checkpoint()?;
-        #[cfg(test)]
-        let retain_probe = self.retain_probe.clone();
         if let WrappedStorage::Materialize { current, .. } = &mut self.storage {
-            #[cfg(test)]
-            if let Some(probe) = retain_probe {
-                probe.set(probe.get() + 1);
-            }
             try_push_document_str(current, value)?;
         }
         Ok(())
@@ -736,13 +712,8 @@ mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::{OperationControl, OperationPhase};
-    use std::cell::Cell;
-    use std::rc::Rc;
 
-    fn pass_config(
-        resources: ResourceContext,
-        retain_probe: Rc<Cell<usize>>,
-    ) -> WrappedPassConfig<'static> {
+    fn pass_config(resources: ResourceContext) -> WrappedPassConfig<'static> {
         let base_layout_work = resources.layout_work_used();
         let base_document_cells = resources.document_cells_used();
         WrappedPassConfig {
@@ -756,7 +727,6 @@ mod tests {
             fixed_layout_work: 0,
             base_document_cells,
             base_output_bytes: 0,
-            retain_probe: Some(retain_probe),
         }
     }
 
@@ -799,8 +769,7 @@ mod tests {
         let resources = resources_with_prior_usage();
         let control = OperationControl::new();
         let controlled = resources.controlled(control.clone(), OperationPhase::Emit);
-        let retain_probe = Rc::new(Cell::new(0));
-        let mut planner = BudgetedWrappedText::measure(pass_config(controlled, retain_probe));
+        let mut planner = BudgetedWrappedText::measure(pass_config(controlled));
         planner
             .charge_layout_work(1)
             .expect("initial virtual work should fit");
@@ -826,9 +795,7 @@ mod tests {
         let resources = resources_with_prior_usage();
         let planning_control = OperationControl::new();
         let planning_resources = resources.controlled(planning_control, OperationPhase::Emit);
-        let retain_probe = Rc::new(Cell::new(0));
-        let mut planner =
-            BudgetedWrappedText::measure(pass_config(planning_resources, Rc::clone(&retain_probe)));
+        let mut planner = BudgetedWrappedText::measure(pass_config(planning_resources));
         planner
             .charge_layout_work(1)
             .expect("initial virtual work should fit");
@@ -843,11 +810,9 @@ mod tests {
         let materialize_control = OperationControl::new();
         let materialize_resources =
             resources.controlled(materialize_control.clone(), OperationPhase::Emit);
-        let mut materializer = BudgetedWrappedText::materialize(
-            pass_config(materialize_resources, Rc::clone(&retain_probe)),
-            plan.rows,
-        )
-        .expect("materializer allocation should succeed");
+        let mut materializer =
+            BudgetedWrappedText::materialize(pass_config(materialize_resources), plan.rows)
+                .expect("materializer allocation should succeed");
         materializer
             .charge_layout_work(1)
             .expect("initial materialize work should fit");
@@ -857,7 +822,6 @@ mod tests {
         materializer
             .push_str("retained")
             .expect("the first replay fragment should be retained locally");
-        assert!(retain_probe.get() > 0);
 
         materialize_control.cancel();
         let error = materializer

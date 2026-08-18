@@ -1,6 +1,4 @@
 use super::encode::encode_budgeted_lines_with_expected;
-#[cfg(test)]
-use super::encode::encode_budgeted_lines_with_expected_and_probe;
 use super::normalization::{
     NormalizedSegment, NormalizedSegmentKind, try_append_normalized_segment, visible_escape,
     visible_escape_len, visit_normalized_segments,
@@ -41,8 +39,6 @@ pub(crate) struct BudgetedTextDocument {
     // Debit bytes only when new semantic text enters retained storage. Buffer-to-buffer moves keep
     // ownership of their original debit; line separators and prefixes are admitted separately.
     encoded_bytes_used: usize,
-    #[cfg(test)]
-    retain_probe: Option<std::rc::Rc<std::cell::Cell<usize>>>,
 }
 
 /// Streams one structured-text row from borrowed fragments.
@@ -76,18 +72,11 @@ impl BudgetedTextDocument {
             width_profile: options.terminal_width_profile,
             color_mode: options.color_mode,
             encoded_bytes_used: 0,
-            #[cfg(test)]
-            retain_probe: None,
         }
     }
 
     pub(crate) fn resources_mut(&mut self) -> &mut ResourceContext {
         &mut self.resources
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_retain_probe(&mut self, probe: std::rc::Rc<std::cell::Cell<usize>>) {
-        self.retain_probe = Some(probe);
     }
 
     #[cfg(test)]
@@ -183,8 +172,6 @@ impl BudgetedTextDocument {
             fixed_layout_work: prefix_width_work,
             base_document_cells,
             base_output_bytes,
-            #[cfg(test)]
-            retain_probe: self.retain_probe.clone(),
         };
 
         let mut planner = BudgetedWrappedText::measure(pass_config.clone());
@@ -239,17 +226,6 @@ impl BudgetedTextDocument {
             self.color_mode,
             &self.resources,
             self.encoded_bytes_used,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn finish_with_probe(self, materialized: &std::cell::Cell<bool>) -> Result<String> {
-        encode_budgeted_lines_with_expected_and_probe(
-            self.lines,
-            self.color_mode,
-            &self.resources,
-            self.encoded_bytes_used,
-            || materialized.set(true),
         )
     }
 
@@ -394,16 +370,6 @@ impl BudgetedTextDocument {
         self.encoded_bytes_used = actual;
         Ok(())
     }
-
-    #[cfg(test)]
-    fn note_retain_materialization(&self) {
-        if let Some(probe) = &self.retain_probe {
-            probe.set(probe.get() + 1);
-        }
-    }
-
-    #[cfg(not(test))]
-    fn note_retain_materialization(&self) {}
 }
 
 impl BudgetedTextLine<'_> {
@@ -419,7 +385,6 @@ impl BudgetedTextLine<'_> {
                 }
                 _ => {
                     self.document.budget_document_segment(segment)?;
-                    self.document.note_retain_materialization();
                     try_append_normalized_segment(
                         &mut self.current,
                         segment,
