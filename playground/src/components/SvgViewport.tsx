@@ -24,6 +24,23 @@ interface Point {
   readonly y: number;
 }
 
+interface FitGeometry {
+  readonly centerOffset: Point;
+  readonly dimensions: SvgDimensions;
+}
+
+interface SvgBounds {
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+}
+
+interface RootOverflowSnapshot {
+  readonly priority: string;
+  readonly value: string;
+}
+
 const SVG_VIEWPORT_CONTROLLER = Symbol("svg-viewport-controller");
 
 export interface SvgViewportController {
@@ -149,6 +166,7 @@ interface AppliedTransform {
 interface MountedPresentation {
   readonly key: number | null;
   onReady?: (at: number) => void;
+  readonly originalRootOverflow: RootOverflowSnapshot | null;
   readonly preview: PreparedSvgPreview;
   readonly root: ShadowRoot;
 }
@@ -225,6 +243,7 @@ export function SvgViewport({
   const suppressNextAnchorClickRef = useRef(false);
   const [mountFailure, setMountFailure] = useState<SvgMountFailure | null>(null);
   const navigationEnabledRef = useRef(navigationEnabled);
+  const presentationModeRef = useRef(presentationMode);
   const previewRef = useRef(preview);
   const lastAppliedRef = useRef<AppliedTransform | null>(null);
   const mountedPresentationRef = useRef<MountedPresentation | null>(null);
@@ -251,6 +270,7 @@ export function SvgViewport({
   });
   previewRef.current = preview;
   navigationEnabledRef.current = navigationEnabled;
+  presentationModeRef.current = presentationMode;
   const presentationError =
     prepared.error ??
     (mountFailure?.preview === preview ? mountFailure.error : null);
@@ -414,27 +434,32 @@ export function SvgViewport({
     const intrinsicSize = currentPreview.dimensions;
     let nextZoom: number;
     let scaleBaseZoom: number;
+    let centerOffset: Point = { x: 0, y: 0 };
 
     if (intrinsicSize) {
+      const fitGeometry = resolveFitGeometry(
+        mountedPresentationRef.current,
+        currentPreview,
+        presentationModeRef.current,
+        intrinsicSize
+      );
+      centerOffset = fitGeometry.centerOffset;
       const insets = measureElementInsets(content);
       const availableSvgWidth = Math.max(availableWidth - insets.width, 1);
       const availableSvgHeight = Math.max(availableHeight - insets.height, 1);
       nextZoom = Math.min(
         1,
-        availableSvgWidth / intrinsicSize.width,
-        availableSvgHeight / intrinsicSize.height
+        availableSvgWidth / fitGeometry.dimensions.width,
+        availableSvgHeight / fitGeometry.dimensions.height
       );
       if (!isPositiveFinite(nextZoom)) return false;
       if (currentPreview.rootSizing === "responsive") {
-        shadowHost.style.width = `${Math.max(
-          1,
-          intrinsicSize.width * nextZoom
-        )}px`;
-        shadowHost.style.height = `${Math.max(
-          1,
-          intrinsicSize.height * nextZoom
-        )}px`;
-        scaleBaseZoom = nextZoom;
+        scaleBaseZoom = resolveResponsiveSvgBaseZoom(
+          intrinsicSize,
+          nextZoom
+        );
+        shadowHost.style.width = `${intrinsicSize.width * scaleBaseZoom}px`;
+        shadowHost.style.height = `${intrinsicSize.height * scaleBaseZoom}px`;
       } else {
         shadowHost.style.width = `${intrinsicSize.width}px`;
         shadowHost.style.height = `${intrinsicSize.height}px`;
@@ -459,7 +484,10 @@ export function SvgViewport({
     state.autoFit = true;
     state.fitZoom = nextZoom;
     state.fittedPreview = currentPreview;
-    state.position = { x: 0, y: 0 };
+    state.position = {
+      x: -centerOffset.x * nextZoom,
+      y: -centerOffset.y * nextZoom,
+    };
     state.scaleBaseZoom = scaleBaseZoom;
     state.zoom = nextZoom;
     scheduleTransform();
@@ -544,11 +572,22 @@ export function SvgViewport({
     root.replaceChildren(node);
     stabilizeInheritedSvgColor(node, host);
     setNavigableAnchorsEnabled(root, navigationEnabledRef.current);
+    const svg = node instanceof SVGSVGElement ? node : null;
+    const originalRootOverflow = svg ? readRootOverflow(svg) : null;
+    applySvgPresentationMode(svg, originalRootOverflow, presentationModeRef.current);
+    const cleanupMountedNode = () => {
+      restoreRootOverflow(svg, originalRootOverflow);
+      root.replaceChildren();
+    };
     const requested = requestedPresentationRef.current;
-    if (requested.preview !== preview) return;
+    if (requested.preview !== preview) {
+      cleanupMountedNode();
+      return;
+    }
     mountedPresentationRef.current = {
       key: requested.key,
       onReady: requested.onReady,
+      originalRootOverflow,
       preview,
       root,
     };
@@ -559,7 +598,7 @@ export function SvgViewport({
       if (mounted?.preview === preview && mounted.root === root) {
         mountedPresentationRef.current = null;
       }
-      root.replaceChildren();
+      cleanupMountedNode();
     };
   }, [cancelGesture, preview, scheduleFit, scheduleTransform]);
 
@@ -567,6 +606,21 @@ export function SvgViewport({
     const root = mountedPresentationRef.current?.root;
     if (root) setNavigableAnchorsEnabled(root, navigationEnabled);
   }, [navigationEnabled, preview]);
+
+  useLayoutEffect(() => {
+    const mounted = mountedPresentationRef.current;
+    if (!mounted || mounted.preview !== preview) return;
+    applySvgPresentationMode(
+      mounted.root.querySelector("svg"),
+      mounted.originalRootOverflow,
+      presentationMode
+    );
+    if (stateRef.current.autoFit) {
+      scheduleFit();
+    } else {
+      schedulePresentationReady();
+    }
+  }, [presentationMode, preview, scheduleFit, schedulePresentationReady]);
 
   useLayoutEffect(() => {
     requestedPresentationRef.current = {
@@ -983,6 +1037,271 @@ function setNavigableAnchorsEnabled(root: ShadowRoot, enabled: boolean): void {
     }
     anchor.setAttribute("aria-disabled", "true");
   }
+}
+
+function resolveFitGeometry(
+  mounted: MountedPresentation | null,
+  preview: PreparedSvgPreview,
+  presentationMode: SvgPresentationMode,
+  intrinsicSize: SvgDimensions
+): FitGeometry {
+  const fallback = {
+    centerOffset: { x: 0, y: 0 },
+    dimensions: intrinsicSize,
+  } satisfies FitGeometry;
+  if (
+    presentationMode !== "infinite" ||
+    mounted?.preview !== preview
+  ) {
+    return fallback;
+  }
+
+  const svg = mounted.root.querySelector("svg");
+  return svg ? measureVisualFitGeometry(svg, intrinsicSize) ?? fallback : fallback;
+}
+
+function measureVisualFitGeometry(
+  svg: SVGSVGElement,
+  intrinsicSize: SvgDimensions
+): FitGeometry | null {
+  const viewBox = svg.viewBox.baseVal;
+  if (
+    !isFiniteRectangle(viewBox.x, viewBox.y, viewBox.width, viewBox.height) ||
+    viewBox.width <= 0 ||
+    viewBox.height <= 0
+  ) {
+    return null;
+  }
+
+  const visualBounds = measureConnectedVisualBounds(svg, {
+    bottom: viewBox.y + viewBox.height,
+    left: viewBox.x,
+    right: viewBox.x + viewBox.width,
+    top: viewBox.y,
+  });
+  if (!visualBounds) return null;
+
+  const { bottom, left, right, top } = visualBounds;
+  const scaleX = intrinsicSize.width / viewBox.width;
+  const scaleY = intrinsicSize.height / viewBox.height;
+  const width = (right - left) * scaleX;
+  const height = (bottom - top) * scaleY;
+  const centerOffset = {
+    x:
+      ((left + right) / 2 - (viewBox.x + viewBox.width / 2)) * scaleX,
+    y:
+      ((top + bottom) / 2 - (viewBox.y + viewBox.height / 2)) * scaleY,
+  };
+  if (
+    !isPositiveFinite(width) ||
+    !isPositiveFinite(height) ||
+    !Number.isFinite(centerOffset.x) ||
+    !Number.isFinite(centerOffset.y)
+  ) {
+    return null;
+  }
+
+  return {
+    centerOffset,
+    dimensions: { width, height },
+  };
+}
+
+function measureConnectedVisualBounds(
+  svg: SVGSVGElement,
+  rootBounds: SvgBounds
+): SvgBounds | null {
+  const rootTransform = svg.getCTM();
+  if (!rootTransform) return null;
+
+  let toRoot: DOMMatrix;
+  try {
+    toRoot = rootTransform.inverse();
+  } catch {
+    return null;
+  }
+
+  let connectedBounds = rootBounds;
+  let pending = Array.from(svg.querySelectorAll<SVGGraphicsElement>("*"))
+    .filter(isMeasurableSvgGraphic)
+    .flatMap((element) => {
+      const bounds = measureSvgGraphicInRootSpace(element, toRoot);
+      return bounds ? [bounds] : [];
+    });
+
+  while (pending.length > 0) {
+    const disconnected: SvgBounds[] = [];
+    let foundConnection = false;
+    for (const candidate of pending) {
+      if (!boundsIntersect(connectedBounds, candidate)) {
+        disconnected.push(candidate);
+        continue;
+      }
+      connectedBounds = unionBounds(connectedBounds, candidate);
+      foundConnection = true;
+    }
+    if (!foundConnection) break;
+    pending = disconnected;
+  }
+
+  return connectedBounds;
+}
+
+function isMeasurableSvgGraphic(element: SVGGraphicsElement): boolean {
+  if (
+    element.localName === "a" ||
+    element.localName === "g" ||
+    element.localName === "svg" ||
+    element.localName === "switch"
+  ) {
+    return false;
+  }
+
+  for (
+    let ancestor = element.parentElement;
+    ancestor && ancestor instanceof SVGElement;
+    ancestor = ancestor.parentElement
+  ) {
+    if (
+      ancestor.localName === "clipPath" ||
+      ancestor.localName === "defs" ||
+      ancestor.localName === "marker" ||
+      ancestor.localName === "mask" ||
+      ancestor.localName === "pattern" ||
+      ancestor.localName === "symbol"
+    ) {
+      return false;
+    }
+  }
+
+  const style = getComputedStyle(element);
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.visibility !== "collapse"
+  );
+}
+
+function measureSvgGraphicInRootSpace(
+  element: SVGGraphicsElement,
+  rootInverse: DOMMatrix
+): SvgBounds | null {
+  try {
+    const box = element.getBBox();
+    const elementTransform = element.getCTM();
+    if (
+      !elementTransform ||
+      !isFiniteRectangle(box.x, box.y, box.width, box.height) ||
+      box.width < 0 ||
+      box.height < 0
+    ) {
+      return null;
+    }
+
+    const transform = rootInverse.multiply(elementTransform);
+    const corners = [
+      transformSvgPoint(transform, box.x, box.y),
+      transformSvgPoint(transform, box.x + box.width, box.y),
+      transformSvgPoint(transform, box.x, box.y + box.height),
+      transformSvgPoint(
+        transform,
+        box.x + box.width,
+        box.y + box.height
+      ),
+    ];
+    const left = Math.min(...corners.map((point) => point.x));
+    const right = Math.max(...corners.map((point) => point.x));
+    const top = Math.min(...corners.map((point) => point.y));
+    const bottom = Math.max(...corners.map((point) => point.y));
+    return [left, right, top, bottom].every(Number.isFinite)
+      ? { bottom, left, right, top }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function transformSvgPoint(matrix: DOMMatrix, x: number, y: number): Point {
+  return {
+    x: matrix.a * x + matrix.c * y + matrix.e,
+    y: matrix.b * x + matrix.d * y + matrix.f,
+  };
+}
+
+function boundsIntersect(left: SvgBounds, right: SvgBounds): boolean {
+  return (
+    left.left <= right.right &&
+    left.right >= right.left &&
+    left.top <= right.bottom &&
+    left.bottom >= right.top
+  );
+}
+
+function unionBounds(left: SvgBounds, right: SvgBounds): SvgBounds {
+  return {
+    bottom: Math.max(left.bottom, right.bottom),
+    left: Math.min(left.left, right.left),
+    right: Math.max(left.right, right.right),
+    top: Math.min(left.top, right.top),
+  };
+}
+
+function resolveResponsiveSvgBaseZoom(
+  intrinsicSize: SvgDimensions,
+  fitZoom: number
+): number {
+  const minimumBaseZoom = Math.max(
+    1 / intrinsicSize.width,
+    1 / intrinsicSize.height
+  );
+  return Number.isFinite(minimumBaseZoom)
+    ? Math.max(fitZoom, minimumBaseZoom)
+    : fitZoom;
+}
+
+function applySvgPresentationMode(
+  svg: SVGSVGElement | null,
+  originalOverflow: RootOverflowSnapshot | null,
+  presentationMode: SvgPresentationMode
+): void {
+  if (!svg) return;
+  if (presentationMode === "infinite") {
+    svg.style.setProperty("overflow", "visible", "important");
+    return;
+  }
+  restoreRootOverflow(svg, originalOverflow);
+}
+
+function readRootOverflow(svg: SVGSVGElement): RootOverflowSnapshot {
+  return {
+    priority: svg.style.getPropertyPriority("overflow"),
+    value: svg.style.getPropertyValue("overflow"),
+  };
+}
+
+function restoreRootOverflow(
+  svg: SVGSVGElement | null,
+  originalOverflow: RootOverflowSnapshot | null
+): void {
+  if (!svg) return;
+  if (originalOverflow?.value) {
+    svg.style.setProperty(
+      "overflow",
+      originalOverflow.value,
+      originalOverflow.priority
+    );
+  } else {
+    svg.style.removeProperty("overflow");
+  }
+}
+
+function isFiniteRectangle(
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): boolean {
+  return [x, y, width, height].every(Number.isFinite);
 }
 
 function measureRenderedContent(content: HTMLDivElement): SvgDimensions | null {

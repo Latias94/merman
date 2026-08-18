@@ -127,14 +127,19 @@ either link is clipboard-only.
 Renderer geometry, operation viewport, responsive presentation, and export dimensions remain
 separate owners. Visual and Compare share two presentation shells over the same mounted artifact
 and camera state. Infinite Canvas uses the full available grid surface without a finite paper edge.
-ViewBox Frame removes the grid and outlines the exact mounted SVG viewport with a finite surface and
+Its mounted clone reveals browser-measured overflow from SVG graphics connected to the root
+viewport, and Fit uses the union of those bounds and the renderer-owned viewport. Disconnected
+root-clipped decorations remain outside Fit so an intentionally off-range marker cannot collapse
+the diagram. ViewBox Frame restores the root's original overflow
+behavior, removes the grid, and outlines the exact mounted SVG viewport with a finite surface and
 shadow; it adds no padding, rounding, or renderer geometry. The responsive presentation clone
-preserves a valid renderer `viewBox` byte-for-byte. An SVG without `viewBox` may use only
-preview-local intrinsic width and height. The clone suppresses the known Merman default white root
-background so the selected presentation shell owns the surface; the frozen artifact, exports, and
-non-default root backgrounds remain unchanged. SVG Bounds is an independent pointer-transparent
-outline on the mounted root; neither control synthesizes browser bounds, exposes arbitrary
-`viewBox` editing, mutates export geometry, or claims to repair renderer-owned title clipping.
+preserves a valid renderer `viewBox` byte-for-byte. An SVG without `viewBox`, or one whose browser
+bounds cannot be measured safely, falls back to preview-local intrinsic geometry. The clone
+suppresses the known Merman default white root background so the selected presentation shell owns
+the surface; the frozen artifact, exports, and non-default root backgrounds remain unchanged. SVG
+Bounds is an independent pointer-transparent outline on the mounted root. Connected browser bounds
+remain a presentation-only camera input: neither mode exposes arbitrary `viewBox` editing, mutates export
+geometry, or claims to repair renderer-owned bounds.
 
 ## Export Workbench
 
