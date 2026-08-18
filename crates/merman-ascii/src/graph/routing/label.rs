@@ -470,14 +470,12 @@ fn write_label_overlay(
     let mut offset = 0;
     let label = SafeLine::new(label);
     for grapheme in label.graphemes(width_profile) {
-        if grapheme.text() != " " {
-            match color {
-                CanvasColor::Role(role) => {
-                    canvas.write_text_role(x + offset, y, grapheme.text(), role)?
-                }
-                CanvasColor::Direct(color) => {
-                    canvas.write_text_color(x + offset, y, grapheme.text(), color)?
-                }
+        match color {
+            CanvasColor::Role(role) => {
+                canvas.write_text_role(x + offset, y, grapheme.text(), role)?
+            }
+            CanvasColor::Direct(color) => {
+                canvas.write_text_color(x + offset, y, grapheme.text(), color)?
             }
         }
         offset += grapheme.width();
@@ -591,10 +589,12 @@ mod tests {
             canvas.get_text(0, 0),
             Some(TerminalCellText::Grapheme("e\u{301}"))
         );
+        assert_eq!(canvas.get_text(1, 0), Some(TerminalCellText::Scalar(' ')));
         assert_eq!(
             canvas.get_text(2, 0),
             Some(TerminalCellText::Grapheme("\u{1f469}\u{200d}\u{1f4bb}"))
         );
+        assert_eq!(canvas.get_text(4, 0), Some(TerminalCellText::Scalar(' ')));
         assert_eq!(
             canvas.get_text(5, 0),
             Some(TerminalCellText::Grapheme("\u{1f1fa}\u{1f1f8}"))

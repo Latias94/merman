@@ -18,6 +18,7 @@ use crate::resource::AsciiResourceLimitId;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
     ComposedTextPlan, DeferredTextLine, DeferredTextPart, DeferredTextRegistry, charge_text_layout,
+    terminal_text_requires_normalization,
 };
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
@@ -931,11 +932,13 @@ fn class_sections<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<Vec<Vec<DeferredTextLine>>> {
+    let disclose_identity =
+        class.text != class.id || terminal_text_requires_normalization(&class.id, resources)?;
     let header_capacity = class
         .annotations
         .len()
         .checked_add(1)
-        .and_then(|capacity| capacity.checked_add(usize::from(class.text != class.id)))
+        .and_then(|capacity| capacity.checked_add(usize::from(disclose_identity)))
         .ok_or_else(|| work_overflow(resources))?;
     let mut header = Vec::new();
     header
@@ -954,7 +957,7 @@ fn class_sections<'a>(
         width_profile,
         resources,
     )?);
-    if class.text != class.id {
+    if disclose_identity {
         header.push(deferred_text.try_register_framed_value(
             "id(bytes=",
             &class.id,
@@ -1386,9 +1389,24 @@ fn relation_endpoint_label<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<Option<RelationGraphLabel>> {
-    label.map_or(Ok(None), |label| {
-        RelationGraphLabel::try_new(label, width_profile, deferred_text, resources)
-    })
+    let Some(label) = label else {
+        return Ok(None);
+    };
+    if !label.is_empty() {
+        return RelationGraphLabel::try_new(label, width_profile, deferred_text, resources);
+    }
+
+    let line = deferred_text.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push(""))?,
+        width_profile,
+        resources,
+    )?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(1)
+        .map_err(|_| layout_allocation_failed())?;
+    lines.push(line);
+    RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
 }
 
 fn plan_vertical_relation<'plan>(

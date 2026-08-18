@@ -456,6 +456,28 @@ fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width(
 }
 
 #[test]
+fn class_terminal_normalization_discloses_the_authored_box_identity() {
+    let render_identity = |identity: &str| {
+        let mut model = parse_class_model("classDiagram\nclass A");
+        let mut class = model
+            .classes
+            .shift_remove("A")
+            .expect("class A should exist");
+        class.id = identity.to_string();
+        class.text = identity.to_string();
+        model.classes.insert(identity.to_string(), class);
+        render_class_model(&model, &AsciiRenderOptions::ascii())
+            .expect("direct class identity should render")
+    };
+
+    let control = render_identity("\u{1b}");
+    let authored_escape = render_identity(r"\u{1B}");
+
+    assert!(control.contains(r#"id(bytes=1)="\\u{1B}""#), "{control}");
+    assert_ne!(control, authored_escape);
+}
+
+#[test]
 fn class_relationship_labels_preserve_complex_graphemes() {
     let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B : owns");
     model
@@ -1974,6 +1996,18 @@ fn class_parser_authored_none_endpoint_labels_are_not_absence_sentinels() {
             "authored endpoint label {label:?} should remain visible:\n{rendered}"
         );
     }
+
+    let absent = render_class(
+        "classDiagram\nclass A\nclass B\nA --> B",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("an absent endpoint label should render");
+    let authored_empty = render_class(
+        "classDiagram\nclass A\nclass B\nA \"\" --> B",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("an authored empty endpoint label should render");
+    assert_ne!(absent, authored_empty);
 }
 
 #[test]
@@ -2326,9 +2360,12 @@ fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
         .expect("literal slash endpoint label should render through summary fallback");
     let authored_break = render_class(&source("a<br>b"), &AsciiRenderOptions::ascii())
         .expect("multiline endpoint label should render through summary fallback");
+    let authored_empty = render_class(&source(""), &AsciiRenderOptions::ascii())
+        .expect("empty endpoint label should render through summary fallback");
 
     assert!(literal_slash.contains("relations:"), "{literal_slash}");
     assert!(authored_break.contains("relations:"), "{authored_break}");
+    assert!(authored_empty.contains("relations:"), "{authored_empty}");
     assert!(
         literal_slash.contains("<-- endpoint1=[bytes=3 \"a/b\"]"),
         "literal slash identity should remain framed:\n{literal_slash}"
@@ -2337,7 +2374,12 @@ fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
         authored_break.contains("<-- endpoint1=[bytes=1 \"a\", bytes=1 \"b\"]"),
         "authored line boundaries should remain framed:\n{authored_break}"
     );
+    assert!(
+        authored_empty.contains("<-- endpoint1=[bytes=0 \"\"]"),
+        "authored empty endpoint labels should remain framed:\n{authored_empty}"
+    );
     assert_ne!(literal_slash, authored_break);
+    assert_ne!(literal_slash, authored_empty);
 }
 
 #[test]

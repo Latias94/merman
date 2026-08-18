@@ -14,7 +14,7 @@ use crate::relation_graph::{
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
     ComposedTextPlan, DeferredTextLine, DeferredTextPart, DeferredTextRegistry, charge_text_layout,
-    terminal_char_display_width,
+    terminal_char_display_width, terminal_text_requires_normalization,
 };
 #[cfg(test)]
 use crate::text::StyledLine;
@@ -439,12 +439,14 @@ fn entity_sections<'a>(
 ) -> Result<Vec<Vec<DeferredTextLine>>> {
     let mut header = Vec::new();
     let display_label = entity_display_label(entity);
+    let disclose_identity = display_label != authored_identity
+        || terminal_text_requires_normalization(authored_identity, resources)?;
     header
-        .try_reserve_exact(1 + usize::from(display_label != authored_identity))
+        .try_reserve_exact(1 + usize::from(disclose_identity))
         .map_err(|_| layout_allocation_failed())?;
     let header_plan = ComposedTextPlan::try_new(resources, 1, |push| push(display_label))?;
     header.push(deferred_text.try_register(header_plan, width_profile, resources)?);
-    if display_label != authored_identity {
+    if disclose_identity {
         header.push(deferred_text.try_register_framed_value(
             "id(bytes=",
             authored_identity,

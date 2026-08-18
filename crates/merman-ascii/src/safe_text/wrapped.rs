@@ -247,17 +247,16 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     fn push_normalized_text(&mut self, value: &str) -> Result<()> {
-        let mut word_start = 0usize;
-        for (iteration, (index, ch)) in value.char_indices().enumerate() {
+        let mut whitespace = true;
+        for (iteration, ch) in value.chars().enumerate() {
             self.checkpoint_loop(iteration)?;
-            if !ch.is_whitespace() {
-                continue;
-            }
-            self.push_word_fragment(&value[word_start..index])?;
-            self.finish_word()?;
-            word_start = index + ch.len_utf8();
+            whitespace &= ch.is_whitespace();
         }
-        self.push_word_fragment(&value[word_start..])
+        if whitespace {
+            self.finish_word()
+        } else {
+            self.push_word_fragment(value)
+        }
     }
 
     fn push_word_fragment(&mut self, value: &str) -> Result<()> {

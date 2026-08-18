@@ -411,6 +411,22 @@ mod tests {
     }
 
     #[test]
+    fn wrapped_document_preserves_combining_marks_with_their_whitespace_base() {
+        let raw = " \u{301}word";
+        let mut document = ascii_document(unbounded_policy());
+        document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str(raw))
+            .expect("the complete grapheme should pass wrapped admission");
+
+        assert_eq!(
+            document
+                .finish()
+                .expect("the wrapped document should encode"),
+            raw,
+        );
+    }
+
+    #[test]
     fn wrapped_prefix_budgets_are_admitted_before_body_retention() {
         let first_prefix_policy = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
         let first_prefix_retained = std::rc::Rc::new(Cell::new(0));
