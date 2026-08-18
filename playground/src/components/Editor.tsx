@@ -14,6 +14,7 @@ import {
   type MermaidLanguageRegistration,
 } from "@/src/lib/mermaid-language";
 import { registerBrowserMermaidLanguage } from "@/src/lib/mermaid-language-browser";
+import { playgroundStartupBoundary } from "@/src/runtime/startup-boundary";
 import { useAppStore } from "@/src/store";
 
 interface CodeEditorProps {
@@ -112,15 +113,25 @@ export function CodeEditor({ className }: CodeEditorProps) {
     let active = true;
     let registration: MermaidLanguageRegistration | null = null;
     languageFailureRef.current = null;
-    void registerBrowserMermaidLanguage(localMonaco, {
-      onRequestRejected: (rejection) => {
-        if (languageGenerationRef.current !== generation) return;
-        setRequestRejection(rejection);
-      },
-      onSemanticUnavailable: (error) => markLanguageDegraded(error, generation),
-      onSyntaxUnavailable: (error) => markLanguageDegraded(error, generation),
-    })
+    void playgroundStartupBoundary
+      .wait()
+      .then(() => {
+        if (!active || languageGenerationRef.current !== generation) {
+          return null;
+        }
+        return registerBrowserMermaidLanguage(localMonaco, {
+          onRequestRejected: (rejection) => {
+            if (languageGenerationRef.current !== generation) return;
+            setRequestRejection(rejection);
+          },
+          onSemanticUnavailable: (error) =>
+            markLanguageDegraded(error, generation),
+          onSyntaxUnavailable: (error) =>
+            markLanguageDegraded(error, generation),
+        });
+      })
       .then((nextRegistration) => {
+        if (!nextRegistration) return;
         if (!active || languageGenerationRef.current !== generation) {
           nextRegistration.dispose();
           return;
@@ -237,7 +248,15 @@ export function CodeEditor({ className }: CodeEditorProps) {
   }, [disposeLanguageService, language.status]);
 
   return (
-    <div className={`${className ?? ""} relative`}>
+    <div
+      className={`${className ?? ""} relative`}
+      onFocusCapture={() =>
+        playgroundStartupBoundary.activate("editor-intent")
+      }
+      onPointerDownCapture={() =>
+        playgroundStartupBoundary.activate("editor-intent")
+      }
+    >
       <Editor
         height="100%"
         language={MERMAID_LANGUAGE_ID}
