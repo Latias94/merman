@@ -250,7 +250,14 @@ impl OperationControl {
         self.observe_cancellation_at(phase).map_or(Ok(()), Err)
     }
 
-    fn ledger_checkpoint_at(&self, phase: OperationPhase) -> Result<(), OperationLedgerError> {
+    /// Checks cancellation, deadlines, and a previously observed operation resource terminal.
+    ///
+    /// Target resource adapters call this before formal charges. Speculative estimates that may be
+    /// discarded should use [`Self::checkpoint_at`] and must not record a resource terminal.
+    pub fn resource_checkpoint_at(
+        &self,
+        phase: OperationPhase,
+    ) -> Result<(), OperationLedgerError> {
         if let Some(error) = self.state.terminal_ledger_error.get() {
             return Err(*error);
         }
@@ -314,6 +321,23 @@ impl OperationControl {
 
     fn latch_terminal_error(&self, error: OperationLedgerError) -> OperationLedgerError {
         self.state.latch_ledger_error(error)
+    }
+
+    /// Records a target-owned resource ceiling as this operation's first terminal outcome.
+    pub fn terminate_resource_limit(
+        &self,
+        error: OperationResourceLimitExceeded,
+    ) -> OperationLedgerError {
+        self.latch_terminal_error(OperationLedgerError::ResourceLimitExceeded(error))
+    }
+
+    /// Records target-owned resource accounting overflow as this operation's first terminal outcome.
+    pub fn terminate_resource_overflow(
+        &self,
+        id: &'static str,
+        phase: OperationPhase,
+    ) -> OperationLedgerError {
+        self.latch_terminal_error(OperationLedgerError::ArithmeticOverflow { id, phase })
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -389,8 +413,11 @@ pub enum OperationLedgerError {
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
     ResourceLimitExceeded(#[from] OperationResourceLimitExceeded),
-    #[error("operation ledger arithmetic overflow during {phase}")]
-    ArithmeticOverflow { phase: OperationPhase },
+    #[error("operation resource `{id}` arithmetic overflow during {phase}")]
+    ArithmeticOverflow {
+        id: &'static str,
+        phase: OperationPhase,
+    },
 }
 
 /// A checked operation-scoped work ledger. Target-specific quotas remain adapter-owned.
@@ -428,15 +455,14 @@ impl OperationLedger {
         phase: OperationPhase,
         requested: u64,
     ) -> Result<u64, OperationLedgerError> {
-        control.ledger_checkpoint_at(phase)?;
+        control.resource_checkpoint_at(phase)?;
 
         let mut consumed = self.consumed.load(Ordering::Acquire);
         loop {
             let next = match consumed.checked_add(requested) {
                 Some(next) => next,
                 None => {
-                    return Err(control
-                        .latch_terminal_error(OperationLedgerError::ArithmeticOverflow { phase }));
+                    return Err(control.terminate_resource_overflow(self.id, phase));
                 }
             };
             if self.limit.is_some_and(|limit| next > limit) {
@@ -452,7 +478,7 @@ impl OperationLedger {
             ) {
                 Ok(_) => return Ok(next),
                 Err(actual) => {
-                    control.ledger_checkpoint_at(phase)?;
+                    control.resource_checkpoint_at(phase)?;
                     consumed = actual;
                 }
             }
@@ -771,6 +797,7 @@ mod tests {
         assert_eq!(
             first,
             OperationLedgerError::ArithmeticOverflow {
+                id: "layout_work",
                 phase: OperationPhase::Layout,
             }
         );
