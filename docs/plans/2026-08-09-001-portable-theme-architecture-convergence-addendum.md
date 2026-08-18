@@ -418,6 +418,16 @@ Public presets declare per-target admission expectations and allowed residual ID
   wildcard for family typography, rule typography, paint, effects, or arbitrary inherited CSS; it
   does not enter the scalar route manifest, require a PNG pair, create a C6 cell, or broaden a
   cross-target claim.
+- KTD20. **Delete the unpublished alpha.4 host-theme share migration.** (session-settled:
+  user-directed - chosen over retaining a Playground-only forwarding shim after the renderer,
+  Options JSON, CLI, and binding contracts removed the same provisional model.) The August 6 KTD1
+  records `HostTheme`, `HostThemePreset`, and `MermanModern` as unreleased migration inputs rather
+  than compatibility authorities. Therefore the earlier Playground-plan requirement to preserve
+  `migrateLegacyHostTheme` is superseded for this one alpha.4 field: current share snapshots carry
+  `themePresetId` and `svgPipeline` explicitly, `hostThemePreset` is rejected, and no first-party
+  surface translates the removed IDs. This decision does not forbid a future versioned migration
+  for a genuinely published share-wire contract; such a migration would require an explicit
+  compatibility decision and bounded decoder rather than reviving the old runtime theme model.
 
 ### Product Milestones
 

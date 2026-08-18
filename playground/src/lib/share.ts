@@ -12,17 +12,6 @@ const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
 const SHARE_CONFIG_BYTES = 1024 * 1024;
 const SHARE_JSON_OVERHEAD_BYTES = 16 * 1024;
 const SHARE_THEME_PRESET_ID_BYTES = 16 * 1024;
-// Frozen legacy share-wire values, not the live preset catalog. Current snapshots carry the
-// pipeline explicitly and discover preset IDs from the selected artifact.
-const LEGACY_RESVG_SAFE_HOST_THEME_IDS = new Set([
-  "editor-light",
-  "editor-dark",
-  "one-dark",
-  "gruvbox-light",
-  "gruvbox-dark",
-  "ayu-light",
-  "ayu-dark",
-]);
 export const SHARE_LIMITS = Object.freeze({
   jsonBytes:
     SHARE_SOURCE_BYTES + SHARE_CONFIG_BYTES + SHARE_JSON_OVERHEAD_BYTES,
@@ -92,19 +81,17 @@ export function decodeShareHash(
     if (
       config === null ||
       textMeasurementMode === null ||
-      diagramFont === null
+      diagramFont === null ||
+      Object.hasOwn(value, "hostThemePreset")
     ) {
       return null;
     }
 
-    const hasCurrentRenderOptions = ["themePresetId", "svgPipeline"].some(
-      (key) => Object.hasOwn(value, key),
-    );
-    const renderOptions = hasCurrentRenderOptions
+    const renderOptions = ["themePresetId", "svgPipeline"].some((key) =>
+      Object.hasOwn(value, key),
+    )
       ? decodeCurrentRenderOptions(value, defaults)
-      : Object.hasOwn(value, "hostThemePreset")
-        ? decodeLegacyHostTheme(value.hostThemePreset)
-        : selectDefaultRenderOptions(defaults);
+      : selectDefaultRenderOptions(defaults);
     if (!renderOptions) return null;
 
     return {
@@ -143,28 +130,6 @@ export async function copyShareUrl(
   environment.replaceUrl(url);
 }
 
-export function migrateLegacyHostTheme(
-  value: unknown,
-): Pick<WorkspaceSnapshot, "themePresetId" | "svgPipeline"> {
-  if (
-    typeof value !== "string" ||
-    value === "none" ||
-    value === "mermaid" ||
-    value === "merman-modern"
-  ) {
-    return {
-      themePresetId: null,
-      svgPipeline: "parity",
-    };
-  }
-  return {
-    themePresetId: value,
-    svgPipeline: LEGACY_RESVG_SAFE_HOST_THEME_IDS.has(value)
-      ? "resvg-safe"
-      : "parity",
-  };
-}
-
 function decodeCurrentRenderOptions(
   value: Record<string, unknown>,
   defaults: Readonly<WorkspaceSnapshot>,
@@ -188,15 +153,6 @@ function decodeCurrentRenderOptions(
     themePresetId,
     svgPipeline,
   };
-}
-
-function decodeLegacyHostTheme(
-  value: unknown,
-): Pick<WorkspaceSnapshot, "themePresetId" | "svgPipeline"> | null {
-  if (value !== null && value !== undefined && !isOptionalId(value)) {
-    return null;
-  }
-  return migrateLegacyHostTheme(value);
 }
 
 function selectDefaultRenderOptions(

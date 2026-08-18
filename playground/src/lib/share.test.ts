@@ -5,7 +5,6 @@ import {
   copyShareUrl,
   decodeShareHash,
   encodeShareHash,
-  migrateLegacyHostTheme,
   SHARE_LIMITS,
   type ShareCommandEnvironment,
 } from "./share.ts";
@@ -45,39 +44,25 @@ test("round-trips Unicode without changing byte-oriented validation", () => {
   assert.deepEqual(decodeShareHash(encodeShareHash(snapshot)), snapshot);
 });
 
-test("migrates legacy host theme values into a complete defaulted snapshot", () => {
-  const cases = [
-    ["editor-light", "editor-light", "resvg-safe"],
-    ["merman-modern", null, "parity"],
-    ["none", null, "parity"],
-    ["mermaid", null, "parity"],
-    ["future-theme", "future-theme", "parity"],
-  ] as const;
-
-  for (const [legacy, themePresetId, pipeline] of cases) {
-    assert.deepEqual(decodeShareHash(legacyHash(legacy)), {
-      ...DEFAULT_WORKSPACE_SNAPSHOT,
-      code: "flowchart TD\nA",
-      themePresetId,
-      svgPipeline: pipeline,
-    });
-  }
-});
-
-test("keeps the legacy host-theme migration callable as a pure contract", () => {
-  assert.deepEqual(migrateLegacyHostTheme("editor-light"), {
-    themePresetId: "editor-light",
-    svgPipeline: "resvg-safe",
-  });
-});
-
-test("prefers present current fields and defaults omitted optional fields", () => {
-  assert.deepEqual(
+test("rejects the removed alpha host-theme share field", () => {
+  assert.equal(
     decodeShareHash(
       encodedPayload({
         code: "flowchart TD\nA",
         theme: "default",
         hostThemePreset: "editor-light",
+      }),
+    ),
+    null,
+  );
+});
+
+test("uses present current fields and defaults omitted optional fields", () => {
+  assert.deepEqual(
+    decodeShareHash(
+      encodedPayload({
+        code: "flowchart TD\nA",
+        theme: "default",
         themePresetId: "future-theme",
       }),
     ),
@@ -158,7 +143,7 @@ test("rejects source, config, and total payloads beyond shared byte budgets", ()
   );
 });
 
-test("rejects oversized current and legacy theme preset IDs", () => {
+test("rejects an oversized current theme preset ID", () => {
   const oversizedId = "x".repeat(SHARE_LIMITS.idBytes + 1);
   assert.equal(
     decodeShareHash(
@@ -170,7 +155,6 @@ test("rejects oversized current and legacy theme preset IDs", () => {
     ),
     null,
   );
-  assert.equal(decodeShareHash(legacyHash(oversizedId)), null);
 });
 
 test("refuses to serialize a workspace that cannot be decoded", () => {
@@ -239,18 +223,6 @@ test("malformed Base64, URI encoding, and JSON fail closed", () => {
   assert.equal(decodeShareHash(btoa("%E0%A4%A")), null);
   assert.equal(decodeShareHash(btoa(encodeURIComponent("not-json"))), null);
 });
-
-function legacyHash(
-  hostThemePreset: string,
-  extra: Record<string, unknown> = {},
-): string {
-  return encodedPayload({
-    code: "flowchart TD\nA",
-    theme: "default",
-    hostThemePreset,
-    ...extra,
-  });
-}
 
 function encodedPayload(payload: Record<string, unknown>): string {
   return btoa(encodeURIComponent(JSON.stringify(payload)));

@@ -88,6 +88,11 @@ The unreleased `ThemeDefinitionV1` contract is still pre-freeze. Development sna
 `requirement` target is now reserved for Requirement diagrams. There is no compatibility alias,
 because keeping both target meanings would preserve a second semantic authority.
 
+Development-snapshot Playground hashes that carried `hostThemePreset` must be regenerated from a
+current workspace snapshot. Current hashes encode `themePresetId` and `svgPipeline` explicitly;
+the unpublished alpha.4 field and the public `migrateLegacyHostTheme` helper were removed rather
+than retained as a second theme-selection model.
+
 The candidate token object also removes `subtle_text`, `error`, `warning`, and `success`. After
 row-coverage pruning those fields had no generated direct consumer, so accepting them would produce
 a shareable definition whose materialized appearance did not change. Use explicit authored rules
