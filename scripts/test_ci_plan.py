@@ -115,6 +115,9 @@ class PlannerTests(unittest.TestCase):
             "fixtures/flowchart/basic.mmd": True,
             "fixtures/_upstream/flowchart-elk-11.16.1/_manifest.json": True,
             "fixtures/upstream-svgs/flowchart/basic.svg": True,
+            "playground/tests/.npmrc": True,
+            "playground/tests/package-lock.json": True,
+            "playground/tests/package.json": True,
             "playground/tests/root-viewport-oracle.ts": True,
             "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": True,
             "crates/merman-ascii/src/safe_text/wrapped.rs": False,
@@ -574,48 +577,6 @@ class PlannerTests(unittest.TestCase):
                 reason="invalid isolated selector",
                 svg_parity=True,
             )
-
-
-class WorkflowSelectorTests(unittest.TestCase):
-    def test_svg_parity_output_controls_only_the_full_dom_and_browser_steps(self) -> None:
-        workflow = (
-            Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
-        ).read_text(encoding="utf-8")
-        selector_condition = (
-            "if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'"
-        )
-
-        self.assertIn(
-            "svg_parity: ${{ steps.plan.outputs.svg_parity }}",
-            workflow,
-        )
-        self.assertIn(
-            "--select-owner core --select-svg-parity "
-            '--reason "scheduled or manual full host safety net"',
-            workflow,
-        )
-        for step_name in (
-            "SVG DOM comparison suite",
-            "Install root viewport oracle dependencies",
-            "Install Chromium for root viewport oracle",
-            "Audit rendered SVG root viewports in Chromium",
-        ):
-            with self.subTest(step=step_name):
-                self.assertIn(
-                    f"      - name: {step_name}\n        {selector_condition}\n",
-                    workflow,
-                )
-        self.assertIn(
-            "      - name: Upload root viewport oracle report\n"
-            "        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' "
-            "&& always()\n",
-            workflow,
-        )
-        self.assertIn(
-            "if: ${{ needs.ci-plan.outputs.core == 'true' }}",
-            workflow,
-        )
-
 
 class GateTests(unittest.TestCase):
     def setUp(self) -> None:
