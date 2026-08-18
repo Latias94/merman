@@ -1,5 +1,7 @@
 # tree-sitter-mermaid
 
+[![crates.io](https://img.shields.io/crates/v/tree-sitter-mermaid.svg)](https://crates.io/crates/tree-sitter-mermaid) [![npm](https://img.shields.io/npm/v/%40mermanjs%2Ftree-sitter-mermaid.svg)](https://www.npmjs.com/package/@mermanjs/tree-sitter-mermaid) [![MIT license](https://img.shields.io/badge/license-MIT-59636e.svg)](#license-and-provenance)
+
 A tolerant, incremental [Tree-sitter] grammar for Mermaid source. It provides structured concrete
 syntax trees and editor queries for all 35 public diagram families in Mermaid 11.16.1, including
 the ZenUML integration backed by ZenUML Core 3.50.1.
@@ -17,7 +19,7 @@ accept or render the document.
 | Node.js | [`@mermanjs/tree-sitter-mermaid`] | Native Node binding, TypeScript declarations, queries, and language WASM |
 | Browser or Worker | [`@mermanjs/tree-sitter-mermaid`] + [`web-tree-sitter`] | Language WASM and portable queries for the generic browser runtime |
 | Rust | [`tree-sitter-mermaid`] | `LANGUAGE`, `NODE_TYPES`, and the portable queries |
-| C/C++ and editors | [GitHub Release] or repository source | Generated C parser/scanner, public header, Make, CMake, and pkg-config metadata |
+| C/C++ and editors | Repository source, or a matching [GitHub Release] when available | Generated C parser/scanner, public header, Make, CMake, and pkg-config metadata |
 
 The grammar has its own version line, independent of Merman. Its npm and Cargo artifacts share that
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while

@@ -4,12 +4,15 @@
 
 [![CI status](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml) [![merman on crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman) [![Rust API documentation](https://docs.rs/merman/badge.svg)](https://docs.rs/merman) [![MIT or Apache 2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](#license-and-attribution)
 
-[Quick start](#quick-start) · [One-shot and reuse](#one-shot-and-repeated-rendering) · [Output targets](#output-targets) · [Cargo features](#cargo-features) · [Compatibility](#compatibility)
+[Quick start](#quick-start) · [One-shot and reuse](#one-shot-and-repeated-rendering) · [Output targets](#output-targets) · [Cargo features](#cargo-features) · [Ecosystem](#ecosystem) · [Compatibility](#compatibility)
 
 `merman` is the main Rust crate in this repository. It parses Mermaid source into a typed semantic
 model, computes layout, and renders SVG. Optional features add diagnostics, editor facts,
 ASCII/Unicode output, PNG, JPEG, and PDF. The native path does not start Node.js, Puppeteer,
 Chromium, or another JavaScript runtime.
+
+For incremental editor syntax, the repository also publishes [`tree-sitter-mermaid`]: a tolerant
+grammar and query package for Rust, Node.js, browser Workers, and editor integrations.
 
 Merman currently follows `mermaid@11.16.1`. Its parser, layout, configuration, theming,
 sanitization, and SVG structure are checked against pinned Mermaid source and fixtures.
@@ -141,17 +144,19 @@ for the complete policy model.
 
 ```text
 Mermaid source
+    |-- tree-sitter-mermaid
+    |      `-- tolerant CST ---------------------> highlighting, folding, syntax selection
     |
-    v
-parser-owned semantic model
-    |-- diagnostics, fixes, and editor facts
-    |-- typed layout ----------------------------> Mermaid-style SVG
-    |-- validated SVG ---------------------------> PNG, JPEG, and PDF
-    `-- supported typed diagram models ----------> ASCII and Unicode
+    `-- Merman semantic parser
+           |-- typed model ----------------------> diagnostics, navigation, refactoring
+           |-- typed layout ---------------------> Mermaid-style SVG
+           |-- validated SVG --------------------> PNG, JPEG, and PDF
+           `-- supported typed diagram models ---> ASCII and Unicode
 ```
 
-The semantic model is shared by analysis and rendering. Binary export starts from validated SVG,
-not a browser screenshot.
+The two parsers have different contracts. Tree-sitter keeps useful syntax structure while a document
+is incomplete; Merman remains the strict semantic and rendering authority. The semantic model is
+shared by analysis and rendering. Binary export starts from validated SVG, not a browser screenshot.
 
 ## Rendered output
 
@@ -162,57 +167,40 @@ not a browser screenshot.
 These examples were rendered headlessly by `merman-cli`, which uses the same Rust parser and
 rendering pipeline. The [Playground] covers all 35 built-in diagram families.
 
+## Ecosystem
+
+Choose the surface that owns the job instead of pulling the complete renderer into every host:
+
+| Need | Start with |
+| --- | --- |
+| Parse, lay out, and render from Rust | `merman` |
+| Run shell commands, Markdown batches, linting, or `mmdc` compatibility | [`merman-cli`] |
+| Use WebAssembly in a browser or Worker | [Browser packages] |
+| Use native Node.js bindings | [Node.js package] |
+| Build incremental CSTs, syntax highlighting, folding, or selections | [`tree-sitter-mermaid`] on [crates.io] or [`@mermanjs/tree-sitter-mermaid`] on npm |
+| Add diagnostics, completion, navigation, and rename | [`merman-lsp`] or the [VS Code extension] |
+| Integrate C/C++, Python, Flutter, Android, Apple, Typst, or other delivery surfaces | [Package surface guide] |
+
+`tree-sitter-mermaid` is independently versioned because editor syntax trees and queries have a
+different compatibility contract from Merman's semantic model and renderer. Its [package README]
+covers Node.js, browser, Rust, C/C++, query, and downstream-editor integration.
+
+The [documentation index] covers architecture records, contributor procedures, parity evidence,
+and release operations. The [Typst package] and other independently delivered integrations remain
+listed in the [package surface guide].
+
 ## Rustdoc integrations
 
-Merman supports two independent static-SVG paths for Rustdoc. Neither path loads JavaScript or
-fetches a diagram at page-view time, and neither invokes or falls back to the other.
+Merman offers two static-SVG paths for Rustdoc; neither loads JavaScript or fetches diagrams when a
+reader opens the generated documentation.
 
-Use checked CLI generation when the documented crate must have no Merman renderer in its Cargo
-graph. Author Markdown under `docs/rustdoc-src`, declare fragments in `merman-rustdoc.toml`, commit
-the generated bundle, and use Rust's built-in `include_str!`:
+| Choose | When |
+| --- | --- |
+| [`merman-cli` Rustdoc guide] | Generate and commit checked Markdown fragments without adding a renderer to the documented crate's Cargo graph |
+| [`merman-rustdoc`] | Render annotated Mermaid blocks during `cargo doc` through an opt-in procedural macro and native renderer closure |
 
-```sh
-merman-cli rustdoc build --config merman-rustdoc.toml
-merman-cli rustdoc check --config merman-rustdoc.toml --quiet
-cargo doc --no-deps
-```
-
-```rust
-#![doc = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/docs/generated/merman-rustdoc/crate-overview.md"
-))]
-```
-
-Use the [`merman-rustdoc`] attribute macro when one-step rendering during `cargo doc` is worth
-compiling the selected procedural-macro and renderer closure:
-
-````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
-/// ```mermaid
-/// flowchart TD
-///   Source --> Rustdoc
-/// ```
-pub fn documented() {}
-````
-
-```sh
-cargo doc --features doc-diagrams
-```
-
-| Concern | `merman-cli rustdoc` | `merman-rustdoc` attribute macro |
-| --- | --- | --- |
-| Cargo dependency closure | No attributable Merman package in the documented crate | Compiles the selected macro and native renderer closure |
-| Authoring loop | Explicit `build`; CI runs read-only `check` | One-step rendering during `cargo doc` |
-| Generated ownership | Commit and review Markdown fragments plus `receipt.json` | SVG exists only in generated Rustdoc output |
-| docs.rs | Reads packaged fragments without running the CLI | Enables the optional documentation feature and expands the macro |
-| Failure timing | Authoring build or CI freshness check | Macro expansion during `cargo doc` |
-| Rollback | Restore or regenerate the managed bundle with the source change | Revert the annotated Rust source or feature selection |
-
-The CLI path supports crate-level and item-level native includes. Include each generated fragment
-at most once on a rendered Rustdoc page because it contains deterministic SVG DOM IDs. See the
-[`merman-cli` Rustdoc guide] and [`merman-rustdoc`] guide for complete configuration, CI, packaging,
-and migration examples.
+The dedicated guides cover configuration, CI freshness, docs.rs, packaging, generated ownership,
+and migration. The two paths are explicit alternatives; neither silently falls back to the other.
 
 ## Compatibility
 
@@ -226,19 +214,6 @@ PDF target when the consumer cannot render `foreignObject`.
 
 Read the [alignment dashboard], [SVG output pipeline], [rendering security guide], and [benchmark
 methodology] for the current evidence boundary.
-
-## Other packages in this repository
-
-This README covers the Rust library. The other products have separate guides:
-
-- Use [`merman-cli`] for shell commands, Markdown batches, linting, and `mmdc` compatibility.
-- Use the [browser packages] for WebAssembly and the [Node.js package] for native Node.js.
-- Use [`merman-lsp`] or the [VS Code extension] for language tooling.
-- The [package surface guide] lists C/C++, Python, Flutter, Android, and Apple bindings.
-- [`merman-rustdoc`] and the [Typst package] cover documentation-system integrations.
-
-The [documentation index] covers architecture records, contributor procedures, parity evidence,
-and release operations.
 
 ## Development
 
@@ -280,6 +255,10 @@ project or its maintainers.
 [Node.js package]: https://github.com/Latias94/merman/tree/main/platforms/node#readme
 [`merman-lsp`]: https://github.com/Latias94/merman/tree/main/crates/merman-lsp#readme
 [VS Code extension]: https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme
+[crates.io]: https://crates.io/crates/tree-sitter-mermaid
+[`@mermanjs/tree-sitter-mermaid`]: https://www.npmjs.com/package/@mermanjs/tree-sitter-mermaid
+[`tree-sitter-mermaid`]: https://github.com/Latias94/merman/tree/main/distribution/tree-sitter-mermaid#readme
+[package README]: https://github.com/Latias94/merman/tree/main/distribution/tree-sitter-mermaid#readme
 [Package surface guide]: https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md
 [`merman-rustdoc`]: https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc#readme
 [Typst package]: https://github.com/Latias94/merman/tree/main/distribution/typst/merman#readme
