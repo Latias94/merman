@@ -313,26 +313,26 @@ impl OperationControl {
                     | OperationLedgerError::ArithmeticOverflow { .. } => None,
                 }
             } else if current.cancelled.load(Ordering::Acquire) {
-                match current.latch_terminal(OperationLedgerError::Cancelled(OperationCancelled {
+                let cancellation = OperationCancelled {
                     phase,
                     reason: CancelReason::Requested,
-                })) {
-                    OperationLedgerError::Cancelled(error) => Some(error),
-                    OperationLedgerError::ResourceLimitExceeded(_)
-                    | OperationLedgerError::ArithmeticOverflow { .. } => return None,
+                };
+                match Self::resolve_latched_cancellation(current, inherited, cancellation) {
+                    Some(error) => Some(error),
+                    None => return None,
                 }
             } else if current
                 .deadline
                 .get()
                 .is_some_and(|deadline| (current.clock)() >= *deadline)
             {
-                match current.latch_terminal(OperationLedgerError::Cancelled(OperationCancelled {
+                let cancellation = OperationCancelled {
                     phase,
                     reason: CancelReason::DeadlineExceeded,
-                })) {
-                    OperationLedgerError::Cancelled(error) => Some(error),
-                    OperationLedgerError::ResourceLimitExceeded(_)
-                    | OperationLedgerError::ArithmeticOverflow { .. } => return None,
+                };
+                match Self::resolve_latched_cancellation(current, inherited, cancellation) {
+                    Some(error) => Some(error),
+                    None => return None,
                 }
             } else {
                 None
@@ -356,6 +356,24 @@ impl OperationControl {
             inherited = true;
         }
         None
+    }
+
+    fn resolve_latched_cancellation(
+        state: &OperationState,
+        inherited: bool,
+        cancellation: OperationCancelled,
+    ) -> Option<OperationCancelled> {
+        match state.latch_terminal(OperationLedgerError::Cancelled(cancellation)) {
+            OperationLedgerError::Cancelled(error) => Some(error),
+            OperationLedgerError::ResourceLimitExceeded(_)
+            | OperationLedgerError::ArithmeticOverflow { .. }
+                if inherited =>
+            {
+                Some(cancellation)
+            }
+            OperationLedgerError::ResourceLimitExceeded(_)
+            | OperationLedgerError::ArithmeticOverflow { .. } => None,
+        }
     }
 
     fn latch_terminal_error(&self, error: OperationLedgerError) -> OperationLedgerError {
@@ -671,6 +689,95 @@ mod tests {
                 .unwrap_err()
                 .reason,
             CancelReason::DeadlineExceeded
+        );
+    }
+
+    #[test]
+    fn child_keeps_an_observed_parent_cancellation_when_parent_resource_wins_the_latch() {
+        let parent = OperationControl::new();
+        let child = parent.child();
+        let cancellation = OperationCancelled {
+            phase: OperationPhase::Parse,
+            reason: CancelReason::Requested,
+        };
+        let parent_terminal = OperationLedgerError::ArithmeticOverflow {
+            id: "parent_work",
+            phase: OperationPhase::Layout,
+        };
+
+        parent.cancel();
+        assert_eq!(
+            parent.latch_terminal_error(parent_terminal),
+            parent_terminal
+        );
+        let observed = OperationControl::resolve_latched_cancellation(
+            parent.state.as_ref(),
+            true,
+            cancellation,
+        )
+        .expect("an ancestor resource terminal must not hide an observed cancellation");
+        assert_eq!(observed, cancellation);
+        assert_eq!(
+            child.latch_terminal_error(OperationLedgerError::Cancelled(observed)),
+            OperationLedgerError::Cancelled(cancellation)
+        );
+        assert_eq!(
+            child
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the child must replay its cancellation"),
+            OperationLedgerError::Cancelled(cancellation)
+        );
+        assert_eq!(
+            parent
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the parent must retain its resource terminal"),
+            parent_terminal
+        );
+    }
+
+    #[test]
+    fn child_latches_parent_deadline_when_parent_resource_wins_during_clock_read() {
+        let now = Arc::new(AtomicU64::new(0));
+        let clock_now = Arc::clone(&now);
+        let parent_slot = Arc::new(OnceLock::<OperationControl>::new());
+        let clock_parent = Arc::clone(&parent_slot);
+        let base = Instant::now();
+        let parent_terminal = OperationLedgerError::ArithmeticOverflow {
+            id: "parent_work",
+            phase: OperationPhase::Layout,
+        };
+        let clock = Arc::new(move || {
+            if let Some(parent) = clock_parent.get() {
+                parent.latch_terminal_error(parent_terminal);
+            }
+            base + Duration::from_millis(clock_now.load(Ordering::Relaxed))
+        });
+        let parent = OperationControl::with_clock(clock).with_deadline(Duration::from_millis(1));
+        assert!(parent_slot.set(parent.clone()).is_ok());
+        let child = parent.child();
+
+        now.store(2, Ordering::Relaxed);
+        let cancellation = child
+            .terminal_checkpoint_at(OperationPhase::Parse)
+            .expect_err("the child must observe the expired parent deadline");
+        assert_eq!(
+            cancellation,
+            OperationLedgerError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Parse,
+                reason: CancelReason::DeadlineExceeded,
+            })
+        );
+        assert_eq!(
+            child
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the child must replay its cancellation"),
+            cancellation
+        );
+        assert_eq!(
+            parent
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .expect_err("the parent must retain its resource terminal"),
+            parent_terminal
         );
     }
 
