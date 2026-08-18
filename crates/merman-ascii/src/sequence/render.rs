@@ -4,6 +4,7 @@ use super::layout::calculate_layout_with_resources;
 use super::model::AsciiSequenceDiagram;
 use super::notes::apply_note_gutters;
 use super::plan::build_sequence_row_document;
+use super::row_document::{PreparedSequenceDocument, prepare_sequence_title};
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
@@ -21,6 +22,7 @@ pub(crate) fn render_sequence_diagram(
     let mut resources = ResourceContext::new(*policy);
     render_sequence_diagram_inner(
         diagram,
+        None,
         options,
         &mut resources,
         AsciiExecution::for_test(policy),
@@ -29,28 +31,31 @@ pub(crate) fn render_sequence_diagram(
 
 pub(crate) fn render_sequence_diagram_with_execution(
     diagram: &AsciiSequenceDiagram,
+    title: Option<&str>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     debug_assert_eq!(resources.policy(), *execution.resources());
-    render_sequence_diagram_inner(diagram, options, resources, execution)
+    render_sequence_diagram_inner(diagram, title, options, resources, execution)
 }
 
 fn render_sequence_diagram_inner(
     diagram: &AsciiSequenceDiagram,
+    title: Option<&str>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let transaction = resources.clone();
     transaction.transaction(|_| {
-        render_sequence_diagram_transactional(diagram, options, resources, execution)
+        render_sequence_diagram_transactional(diagram, title, options, resources, execution)
     })
 }
 
 fn render_sequence_diagram_transactional(
     diagram: &AsciiSequenceDiagram,
+    title: Option<&str>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -68,6 +73,12 @@ fn render_sequence_diagram_transactional(
     let mut layout_resources = execution.resource_context(resources, OperationPhase::Layout);
     let chars = SequenceChars::for_options(options);
     let mut layout_checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+    let title = prepare_sequence_title(
+        title,
+        options.terminal_width_profile,
+        &mut layout_resources,
+        &mut layout_checkpoints,
+    )?;
     let mut layout = calculate_layout_with_resources(
         diagram,
         options,
@@ -89,7 +100,7 @@ fn render_sequence_diagram_transactional(
         &mut layout_checkpoints,
     )?;
     row_document.render(
-        diagram,
+        PreparedSequenceDocument::new(diagram, title),
         &layout,
         &chars,
         options,
@@ -171,6 +182,36 @@ mod tests {
     }
 
     #[test]
+    fn sequence_title_grid_admission_precedes_row_planning() {
+        let diagram = single_participant_diagram();
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 3)
+            .expect("three grid cells should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+        let control = merman_core::OperationControl::new();
+
+        let error = render_sequence_diagram_with_execution(
+            &diagram,
+            Some("Wide"),
+            &options,
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("the title must be admitted before row planning");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 4
+                    && details.max == 3
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
     fn final_output_failure_restores_layout_and_document_ledgers() {
         let mut diagram = single_participant_diagram();
         diagram.participants[0].label =
@@ -190,6 +231,7 @@ mod tests {
 
         let error = render_sequence_diagram_with_execution(
             &diagram,
+            None,
             &options,
             &mut resources,
             AsciiExecution::new(&control, &policy),
@@ -208,7 +250,6 @@ mod tests {
 
     fn single_participant_diagram() -> AsciiSequenceDiagram {
         AsciiSequenceDiagram {
-            title: None,
             participants: vec![SequenceParticipant {
                 id: "p0".to_string(),
                 label: SequenceParticipantLabel::from_raw(

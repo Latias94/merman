@@ -80,4 +80,11 @@ test("binding error contract accepts operation statuses and cancellation-only de
     }),
     false,
   );
+  assert.equal(
+    isBindingErrorPayload({
+      ...cancellationError,
+      code: 5,
+    }),
+    false,
+  );
 });

@@ -7,6 +7,8 @@ use super::control::{
 use super::layout::{LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at};
 use super::model::{AsciiSequenceDiagram, SequenceEvent};
 use super::prepared_body::{SequencePreparedBody, SequenceRowStep};
+#[cfg(test)]
+use super::row_document::PreparedSequenceDocument;
 use super::row_document::SequenceRowDocument;
 #[cfg(test)]
 use super::text::blank_line;
@@ -1016,7 +1018,7 @@ mod tests {
         .unwrap();
         let rendered = plan
             .render(
-                &diagram,
+                PreparedSequenceDocument::new(&diagram, None),
                 &layout,
                 &ascii_chars(),
                 &options,
@@ -1037,8 +1039,7 @@ mod tests {
 
     #[test]
     fn row_plan_renders_title_before_content() {
-        let mut diagram = diagram(1);
-        diagram.title = Some("Timeline".to_string());
+        let diagram = diagram(1);
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();
         let layout = calculate_layout(&diagram, &options, &policy).unwrap();
@@ -1053,10 +1054,17 @@ mod tests {
             &mut layout_cursor,
         )
         .unwrap();
+        let title = crate::sequence::row_document::prepare_sequence_title(
+            Some("Timeline"),
+            options.terminal_width_profile,
+            &mut resources,
+            &mut layout_cursor,
+        )
+        .unwrap();
 
         let rendered = plan
             .render(
-                &diagram,
+                PreparedSequenceDocument::new(&diagram, title),
                 &layout,
                 &ascii_chars(),
                 &options,
@@ -1088,7 +1096,7 @@ mod tests {
         let before_finalization = resources.layout_work_used();
 
         plan.render(
-            &diagram,
+            PreparedSequenceDocument::new(&diagram, None),
             &layout,
             &ascii_chars(),
             &options,
@@ -1117,7 +1125,7 @@ mod tests {
         .unwrap();
         exact_plan
             .render(
-                &diagram,
+                PreparedSequenceDocument::new(&diagram, None),
                 &exact_layout,
                 &ascii_chars(),
                 &options,
@@ -1147,7 +1155,7 @@ mod tests {
         .unwrap();
         let error = below_plan
             .render(
-                &diagram,
+                PreparedSequenceDocument::new(&diagram, None),
                 &below_layout,
                 &ascii_chars(),
                 &options,
@@ -1223,7 +1231,7 @@ mod tests {
 
         let error = plan
             .render(
-                &diagram,
+                PreparedSequenceDocument::new(&diagram, None),
                 &layout,
                 &ascii_chars(),
                 &options,
@@ -1242,7 +1250,6 @@ mod tests {
 
     fn diagram(participant_count: usize) -> AsciiSequenceDiagram {
         AsciiSequenceDiagram {
-            title: None,
             participants: (0..participant_count)
                 .map(|index| SequenceParticipant {
                     id: format!("p{index}"),

@@ -296,7 +296,13 @@ fn render_sequence_model(
         &mut resources,
         *execution,
     )?;
-    sequence::render_sequence_diagram_with_execution(&diagram, options, &mut resources, *execution)
+    sequence::render_sequence_diagram_with_execution(
+        &diagram,
+        model.title.as_deref().filter(|title| !title.is_empty()),
+        options,
+        &mut resources,
+        *execution,
+    )
 }
 
 fn render_state_model(

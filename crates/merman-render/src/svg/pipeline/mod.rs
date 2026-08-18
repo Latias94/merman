@@ -327,6 +327,7 @@ impl SvgPipeline {
     ) -> Result<(Cow<'a, str>, Option<SvgReferencePlan>)> {
         let execution = SvgPostprocessExecution::new(session);
         execution.checkpoint()?;
+        execution.preflight_svg_byte_count(svg.len())?;
         let mut current =
             crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(svg, || {
                 execution.checkpoint()
@@ -859,6 +860,41 @@ mod tests {
             .unwrap_err();
 
         assert!(error.to_string().contains("max_svg_bytes"), "{error}");
+    }
+
+    #[test]
+    fn provided_metadata_admits_raw_svg_bytes_before_xml_cleanup() {
+        let svg = "<svg>\u{0}</svg>";
+        let maximum = svg.len() - 1;
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
+                    .unwrap(),
+            )
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let metadata = SvgPostprocessMetadata::new();
+
+        let error = SvgPipeline::parity()
+            .process_with_metadata(svg, &metadata, &session)
+            .expect_err("raw SVG bytes must be admitted before XML cleanup allocates");
+        let Error::ResourceLimitExceeded(first) = error else {
+            panic!("expected a resource rejection");
+        };
+        assert_eq!(first.limit, "max_svg_bytes");
+        assert_eq!(first.actual, svg.len());
+        assert_eq!(first.max, maximum);
+
+        control.cancel();
+        let replayed = SvgPipeline::parity()
+            .process_with_metadata("<svg/>", &metadata, &session)
+            .expect_err("the first resource terminal must remain sticky");
+        let Error::ResourceLimitExceeded(replayed) = replayed else {
+            panic!("expected the resource rejection to replay");
+        };
+        assert_eq!(replayed, first);
     }
 
     #[test]

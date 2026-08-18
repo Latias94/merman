@@ -27,7 +27,6 @@ pub(super) use merman_core::diagrams::sequence::{SequenceControlKind, SequenceNo
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
-    pub(super) title: Option<String>,
     pub(super) participants: Vec<SequenceParticipant>,
     pub(super) lifecycles: Vec<SequenceActorLifecycle>,
     pub(super) boxes: Vec<SequenceGroupBox>,
@@ -533,12 +532,6 @@ fn from_sequence_model_transactional(
     }
 
     Ok(AsciiSequenceDiagram {
-        title: model
-            .title
-            .as_deref()
-            .filter(|title| !title.is_empty())
-            .map(|title| try_clone_projection_string(title, execution))
-            .transpose()?,
         participants,
         lifecycles,
         boxes,

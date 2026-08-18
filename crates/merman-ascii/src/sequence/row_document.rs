@@ -17,6 +17,28 @@ pub(super) struct SequenceRowDocument {
     lines: Vec<SequenceLine>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PreparedSequenceTitle<'a> {
+    text: &'a str,
+    width: usize,
+    width_profile: TerminalWidthProfile,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PreparedSequenceDocument<'a> {
+    diagram: &'a AsciiSequenceDiagram,
+    title: Option<PreparedSequenceTitle<'a>>,
+}
+
+impl<'a> PreparedSequenceDocument<'a> {
+    pub(super) const fn new(
+        diagram: &'a AsciiSequenceDiagram,
+        title: Option<PreparedSequenceTitle<'a>>,
+    ) -> Self {
+        Self { diagram, title }
+    }
+}
+
 impl SequenceRowDocument {
     pub(super) fn new(lines: Vec<SequenceLine>) -> Self {
         Self { lines }
@@ -24,7 +46,7 @@ impl SequenceRowDocument {
 
     pub(super) fn render(
         self,
-        diagram: &AsciiSequenceDiagram,
+        document: PreparedSequenceDocument<'_>,
         layout: &SequenceLayout,
         chars: &SequenceChars,
         options: &AsciiRenderOptions,
@@ -32,17 +54,17 @@ impl SequenceRowDocument {
         layout_checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<String> {
         let mut lines = self.lines;
-        if !diagram.boxes.is_empty() {
+        if !document.diagram.boxes.is_empty() {
             lines = render_sequence_boxes(
                 lines,
-                diagram,
+                document.diagram,
                 layout,
                 chars,
                 resources,
                 layout_checkpoints,
             )?;
         }
-        if let Some(title) = diagram.title.as_deref() {
+        if let Some(title) = document.title {
             prepend_title_line(&mut lines, title, resources, layout_checkpoints)?;
         }
         // Box/title geometry, extent admission, and canvas construction are layout work. Only
@@ -53,6 +75,24 @@ impl SequenceRowDocument {
         let mut emit_checkpoints = layout_checkpoints.next_phase(OperationPhase::Emit);
         finish_sequence_lines(lines, options, &mut emit_resources, &mut emit_checkpoints)
     }
+}
+
+pub(super) fn prepare_sequence_title<'a>(
+    title: Option<&'a str>,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Option<PreparedSequenceTitle<'a>>> {
+    let Some(title) = title.filter(|title| !title.is_empty()) else {
+        return Ok(None);
+    };
+    let width = measure_title_width(title, width_profile, resources, checkpoints)?;
+    resources.grid_extent(width, 1)?;
+    Ok(Some(PreparedSequenceTitle {
+        text: title,
+        width,
+        width_profile,
+    }))
 }
 
 fn finish_sequence_lines(
@@ -123,7 +163,7 @@ fn write_plain_sequence_line(
 
 fn prepend_title_line(
     lines: &mut Vec<SequenceLine>,
-    title: &str,
+    title: PreparedSequenceTitle<'_>,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
@@ -132,23 +172,18 @@ fn prepend_title_line(
         checkpoints.tick()?;
         width = width.max(line.len());
     }
-    let width_profile = lines
-        .first()
-        .map(SequenceLine::width_profile)
-        .unwrap_or(TerminalWidthProfile::Unicode);
-    let title_width = measure_title_width(title, width_profile, resources, checkpoints)?;
     let height = resources.checked_grid_add(lines.len(), 1)?;
-    resources.grid_extent(width.max(title_width), height)?;
+    resources.grid_extent(width.max(title.width), height)?;
     checkpoints.before_charge()?;
-    resources.charge_layout_work(title_width.max(1))?;
+    resources.charge_layout_work(title.width.max(1))?;
     lines.try_reserve(1).map_err(|_| allocation_failed())?;
     lines.insert(
         0,
         render_title_line(
-            title,
-            title_width,
+            title.text,
+            title.width,
             width,
-            width_profile,
+            title.width_profile,
             resources,
             checkpoints,
         )?,

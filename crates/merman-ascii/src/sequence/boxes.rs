@@ -684,7 +684,6 @@ mod tests {
             .expect("the box output limit override should be valid");
         let mut resources = ResourceContext::new(policy);
         let diagram = AsciiSequenceDiagram {
-            title: None,
             participants: Vec::new(),
             lifecycles: Vec::new(),
             boxes: vec![SequenceGroupBox {

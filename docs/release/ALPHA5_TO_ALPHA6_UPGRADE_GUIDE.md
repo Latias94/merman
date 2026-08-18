@@ -97,11 +97,12 @@ fact disclosures.
 Families whose terminal value is primarily a report remain StructuredText. Unsupported families
 continue to fail explicitly; they do not silently return a lossy summary.
 
-## Timeline and Journey direct models
+## Sectioned direct models
 
-`TimelineRenderTask` and `JourneyRenderTask` now carry an optional `section_index` occurrence
-owner. Parser-produced tasks always point at the section occurrence that authored them, so repeated
-section labels remain distinct. Direct-model callers should set `section_index` when the label is
-ambiguous; a unique legacy label may remain `None` and is inferred. Unknown, orphan, and empty
-sections are retained in the structured-text projection with explicit `[undeclared]` or
-`[unsectioned]` markers instead of being silently dropped.
+`TimelineRenderTask`, `JourneyRenderTask`, and `GanttRenderTask` now carry an optional
+`section_index` occurrence owner. Parser-produced tasks always point at the section occurrence that
+authored them, so repeated section labels remain distinct. Direct-model callers should set
+`section_index` when the label is ambiguous; a unique legacy label may remain `None` and is inferred.
+Gantt rejects an explicit occurrence when no declared section exists. Unknown, orphan, and empty
+Timeline or Journey sections are retained in the structured-text projection with explicit
+`[undeclared]` or `[unsectioned]` markers instead of being silently dropped.

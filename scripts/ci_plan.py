@@ -513,6 +513,8 @@ def _decode_and_validate_path(raw: bytes) -> str:
 def _requires_svg_parity(path: str) -> bool:
     if path in _SVG_PARITY_EXACT_PATHS:
         return True
+    if path.startswith("crates/") and "/benches/" in path:
+        return False
     if path.startswith(_SVG_PARITY_CRATE_PREFIXES + _SVG_PARITY_PREFIXES):
         return True
     return path.startswith("fixtures/") and not path.startswith(

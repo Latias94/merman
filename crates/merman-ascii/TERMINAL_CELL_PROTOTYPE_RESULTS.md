@@ -178,27 +178,16 @@ The CJK finalize miss is a private-stage attribution result, not a public render
 The absolute difference is small, but U2 should retain a primary-grapheme/run encoder seam so the
 production implementation can remove the continuation scan and rerun this gate.
 
-## Reproduction
+## Historical evidence
 
-The checked-in benchmark is:
+This report is a frozen U2 decision record from revision `98c7651ed` plus the working-tree state
+identified above. The plan-owned benchmark and its rejected candidate implementations were removed
+after the representation decision; they are not executable from the current tree and must not be
+restored as standing test infrastructure.
 
-```text
-crates/merman-ascii/benches/terminal_cell_representation.rs
-crates/merman-ascii/benches/terminal_cell_representation/prototype.rs
-```
-
-The canonical command, after the normal workspace lockfile records the ASCII dev benchmark, is:
-
-```console
-CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-ascii \
-  --bench terminal_cell_representation -- \
-  --noplot --sample-size 50 --warm-up-time 1 --measurement-time 2
-```
-
-This run used an ignored standalone manifest under `target/bench/experiments/u2-terminal-cell-representation`
-because the active dirty workspace did not yet list Criterion in the `merman-ascii` lockfile entry.
-The root `Cargo.lock` was intentionally not modified. The standalone manifest was locked and run
-offline against the already cached Criterion 0.8.2 dependency.
-
-Raw Criterion output remains under `target/criterion/`; the allocator output is deterministic text
-printed by `MERMAN_ASCII_CELL_REPORT=1` and is not production instrumentation.
+The measured source formerly lived at
+`crates/merman-ascii/benches/terminal_cell_representation.rs` and its `prototype.rs` module. Raw
+Criterion and allocator logs were local diagnostic artifacts rather than durable release evidence.
+The tables in this document preserve the accepted architectural observation only; current public
+renderer performance claims require the canonical pipeline benchmark and a current closeout
+receipt.

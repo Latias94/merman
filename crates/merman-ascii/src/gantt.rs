@@ -127,14 +127,9 @@ impl GanttStructureAdmission {
         let task_capacity = model.tasks.len();
         let grouped = !model.sections.is_empty();
 
-        // The grouped path retains one slot per task in the id set, section-order vector,
-        // section map, and section task vectors. Its emitted-section set additionally admits the
-        // authored sections plus the worst case where every task names a distinct orphan section.
-        let section_lookup_capacity = if grouped {
-            resources.checked_work_add(model.sections.len(), task_capacity)?
-        } else {
-            0
-        };
+        // The declared-section lookup contains exactly one entry per authored occurrence. Orphan
+        // sections are owned separately by the per-task grouped index.
+        let section_lookup_capacity = if grouped { model.sections.len() } else { 0 };
         let allocation_work = if grouped {
             let grouped_task_slots = resources.checked_work_mul(task_capacity, 3)?;
             let indexed_task_slots =
@@ -245,6 +240,9 @@ impl<'model> GanttTaskIndex<'model> {
                 });
             }
             let Some(index) = grouped_index.as_mut() else {
+                if task.section_index.is_some() {
+                    return Err(invalid_task_section_occurrence());
+                }
                 continue;
             };
             let section_key = match task.section_index {
@@ -523,7 +521,7 @@ mod tests {
 
     #[test]
     fn gantt_admission_accepts_exact_work_before_materializing_index() {
-        const STRUCTURE_WORK: usize = 42;
+        const STRUCTURE_WORK: usize = 40;
         let model = direct_model();
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, STRUCTURE_WORK)
@@ -545,7 +543,7 @@ mod tests {
 
     #[test]
     fn gantt_admission_rejects_max_minus_one_before_materializing_index() {
-        const STRUCTURE_WORK: usize = 42;
+        const STRUCTURE_WORK: usize = 40;
         let model = direct_model();
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, STRUCTURE_WORK - 1)
@@ -598,6 +596,31 @@ mod tests {
         );
         assert_eq!(resources.layout_work_used(), PRIOR_WORK);
         assert_eq!(resources.document_cells_used(), PRIOR_CELLS);
+    }
+
+    #[test]
+    fn gantt_rejects_explicit_section_occurrence_without_declared_sections() {
+        let mut model = GanttDiagramRenderModel::default();
+        model.tasks.push(GanttRenderTask {
+            id: "task".to_string(),
+            section: "missing".to_string(),
+            section_index: Some(0),
+            ..GanttRenderTask::default()
+        });
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+
+        let error = match admit_then_materialize_gantt_structure(
+            &model,
+            &resources,
+            |admission, resources| GanttTaskIndex::materialize(&model, admission, resources),
+        ) {
+            Ok(_) => panic!("an explicit occurrence requires a declared section"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, invalid_task_section_occurrence());
     }
 
     #[test]

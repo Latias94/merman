@@ -62,7 +62,7 @@ Manual ASCII confirmation example:
 gh workflow run performance.yml \
   --ref main \
   -f run=ascii \
-  -f base_ref=main \
+  -f base_ref=YOUR_BENCHMARK_BACKPORT_SHA \
   -f head_ref=my-ascii-branch \
   -f preset=long \
   -f ascii_suite=comparable \
@@ -70,6 +70,11 @@ gh workflow run performance.yml \
   -f relative_threshold_percent=10 \
   -f absolute_threshold_ns=50000
 ```
+
+Replace `YOUR_BENCHMARK_BACKPORT_SHA` with a revision that contains the byte-identical
+`ascii_pipeline` harness, corpus, fixtures,
+and preflight contract while retaining the selected base product implementation. Do not substitute
+plain `main` unless it already satisfies that identity contract.
 
 Use `-f ascii_suite=closeout` for the five-family medium closeout observation. `run=full` explicitly
 selects the ordinary regression, ASCII, frontmatter, and reference lanes; the weekly schedule does

@@ -120,6 +120,7 @@ class PlannerTests(unittest.TestCase):
             "playground/tests/package.json": True,
             "playground/tests/root-viewport-oracle.ts": True,
             "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": True,
+            "crates/merman/benches/ascii_pipeline.rs": False,
             "crates/merman-ascii/src/safe_text/wrapped.rs": False,
             "crates/merman-cli/src/main.rs": False,
             "crates/xtask/src/cmd/native_abi.rs": False,

@@ -435,8 +435,10 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     payload.version >= 1 &&
     typeof payload.code === "number" &&
     Number.isSafeInteger(payload.code) &&
-    payload.code >= 0 &&
+    payload.code > 0 &&
+    payload.code < BINDING_STATUS_CODE_NAMES.length &&
     typeof payload.code_name === "string" &&
+    BINDING_STATUS_CODE_NAMES[payload.code] === payload.code_name &&
     typeof payload.kind === "string" &&
     (payload.capability_id === null ||
       typeof payload.capability_id === "string") &&
