@@ -99,8 +99,6 @@ const editorRuntimeExportNames = [
   "editorPrepareRename",
   "editorRename",
   "editorCompletionTriggerCharacters",
-  "editorSemanticTokenDescriptor",
-  "editorSemanticTokens",
 ];
 
 const editorWasmExportNames = [
@@ -117,18 +115,6 @@ const editorWasmExportNames = [
   "editorPrepareRename",
   "editorRename",
   "editorCompletionTriggerCharacters",
-  "editorSemanticTokenDescriptor",
-  "editorSemanticTokens",
-];
-
-const editorDescriptorValueExportNames = [
-  "SEMANTIC_TOKEN_DESCRIPTOR",
-  "SEMANTIC_TOKEN_DESCRIPTOR_DIGEST",
-  "SEMANTIC_TOKEN_MODIFIER_LSP_NAMES",
-  "SEMANTIC_TOKEN_RECORD_WIDTH",
-  "SEMANTIC_TOKEN_TYPE_LSP_NAMES",
-  "SEMANTIC_TOKEN_VALID_MODIFIER_MASK",
-  "SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX",
 ];
 
 export const resourceContractValueExportNames = [
@@ -241,11 +227,6 @@ export const surfaceModules = defineSurfaceModules([
     ],
   },
   {
-    specifier: "../generated/token-descriptor.js",
-    owner: "editor",
-    valueExportNames: editorDescriptorValueExportNames,
-  },
-  {
     specifier: "../runtime-state.js",
     owner: "shared",
     internalValueExportNames: [
@@ -270,7 +251,6 @@ export const surfaceModules = defineSurfaceModules([
     valueExportNames: resourceContractValueExportNames,
   },
   { specifier: "../svg-safety-policy.js", owner: "render" },
-  { specifier: "../editor-semantic-tokens.js", owner: "editor" },
 ]);
 
 export const surfaceModuleOwners = Object.freeze(
@@ -342,10 +322,7 @@ const runtimeProfiles = Object.freeze({
       ...analysisProfile.runtimeExportNames,
       ...editorRuntimeExportNames,
     ],
-    valueExportNames: [
-      ...packageStableValueExportNames,
-      ...editorDescriptorValueExportNames,
-    ],
+    valueExportNames: packageStableValueExportNames,
     wasmExportNames: [
       ...analysisProfile.wasmExportNames,
       ...editorWasmExportNames,
@@ -361,7 +338,6 @@ const runtimeProfiles = Object.freeze({
     valueExportNames: [
       ...packageStableValueExportNames,
       ...packageRenderValueExportNames,
-      ...editorDescriptorValueExportNames,
     ],
     wasmExportNames: [
       ...analysisProfile.wasmExportNames,

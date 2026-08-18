@@ -17,9 +17,13 @@ import type {
 import {
   EditorWorkerProtocolError,
   type EditorCancellationToken,
-  type EditorLanguageIdentity,
-  type MermanLanguageWorkerClient,
+  type MermanLanguageWorkerStartup,
 } from "../editor/worker-client.ts";
+import {
+  StaleSyntaxSnapshotError,
+  type MermaidSyntaxWorkerStartup,
+} from "../editor/syntax-worker-client.ts";
+import { MERMAID_SYNTAX_TOKEN_LEGEND } from "../editor/syntax-tokens.ts";
 
 export const MERMAID_LANGUAGE_ID = "mermaid";
 export const MERMAID_DOCUMENT_URI = "file:///merman/playground.mmd";
@@ -27,10 +31,14 @@ export const MERMAID_DOCUMENT_URI = "file:///merman/playground.mmd";
 const MARKER_OWNER = "merman";
 const DIAGNOSTIC_DELAY_MS = 180;
 
-export type MermaidSemanticTokenLegend = EditorLanguageIdentity["legend"];
-
 export interface MermaidLanguageRegistration extends IDisposable {
+  /** Bind the single Monaco model owned by this registration. Create a new registration to rebind. */
   bindModel(model: editor.ITextModel): Promise<IDisposable>;
+}
+
+export interface MermaidLanguageWorkers {
+  readonly semantic: MermanLanguageWorkerStartup;
+  readonly syntax: MermaidSyntaxWorkerStartup;
 }
 
 export interface MermaidLanguageRequestRejection {
@@ -44,7 +52,8 @@ export interface MermaidLanguageCallbacks {
   readonly onRequestRejected?: (
     rejection: MermaidLanguageRequestRejection,
   ) => void;
-  readonly onUnavailable?: (error: Error) => void;
+  readonly onSemanticUnavailable?: (error: Error) => void;
+  readonly onSyntaxUnavailable?: (error: Error) => void;
 }
 
 const configuredMonacoInstances = new WeakSet<object>();
@@ -65,29 +74,61 @@ const mermaidLanguageConfig: languages.LanguageConfiguration = {
   ],
 };
 
-export function registerMermaidLanguage(
+export async function registerMermaidLanguage(
   monaco: typeof import("monaco-editor"),
-  client: MermanLanguageWorkerClient,
-  identity: EditorLanguageIdentity,
+  workers: MermaidLanguageWorkers,
   callbacks: MermaidLanguageCallbacks = {},
-): MermaidLanguageRegistration {
+): Promise<MermaidLanguageRegistration> {
   ensureMermaidLanguageRegistered(monaco);
+  const semanticClient = workers.semantic.client;
+  const syntaxClient = workers.syntax.client;
+
   const disposables: IDisposable[] = [];
   const modelBindings = new Set<IDisposable>();
-  const semanticListeners = new Set<() => void>();
+  const syntaxListeners = new Set<() => void>();
   let managedModel: editor.ITextModel | null = null;
+  let modelClaimed = false;
   let disposed = false;
-  let unavailable = false;
-  const notifyUnavailable = (error: unknown) => {
-    if (disposed || unavailable || isExpectedDiscard(error)) return;
-    unavailable = true;
+  let semanticAvailable = true;
+  let syntaxAvailable = true;
+  let flushSemantics: (() => Promise<void>) | null = null;
+  let flushSyntax: (() => Promise<void>) | null = null;
+  const notifySemanticUnavailable = (error: unknown) => {
+    if (disposed || !semanticAvailable || isExpectedDiscard(error)) return;
+    semanticAvailable = false;
     if (managedModel && !managedModel.isDisposed()) {
       clearMermaidMarkers(monaco, managedModel);
     }
     const failure = error instanceof Error ? error : new Error(String(error));
-    console.error("Merman editor language worker failed", failure);
-    callbacks.onUnavailable?.(failure);
+    console.error("Merman semantic worker failed", failure);
+    callbacks.onSemanticUnavailable?.(failure);
   };
+  const notifySyntaxUnavailable = (error: unknown) => {
+    if (disposed || !syntaxAvailable || isExpectedDiscard(error)) return;
+    syntaxAvailable = false;
+    for (const listener of syntaxListeners) listener();
+    const failure = error instanceof Error ? error : new Error(String(error));
+    console.error("Mermaid Tree-sitter syntax worker failed", failure);
+    callbacks.onSyntaxUnavailable?.(failure);
+  };
+  disposables.push(semanticClient.onDidFail(notifySemanticUnavailable));
+  disposables.push(syntaxClient.onDidFail(notifySyntaxUnavailable));
+  const semanticReadiness = workers.semantic.ready
+    .then((identity) => {
+      if (disposed || !semanticAvailable) return null;
+      registerCompletionProvider(identity.completionTriggerCharacters);
+      return identity;
+    })
+    .catch((error: unknown) => {
+      notifySemanticUnavailable(error);
+      return null;
+    });
+  const syntaxReadiness = workers.syntax.ready
+    .then(() => !disposed && syntaxAvailable)
+    .catch((error: unknown) => {
+      notifySyntaxUnavailable(error);
+      return false;
+    });
   const rejectRename = (
     message: string,
     detail: string | null = null,
@@ -102,40 +143,66 @@ export function registerMermaidLanguage(
     const nativeCodeSuffix = nativeCode ? ` (${nativeCode})` : "";
     return { edits: [], rejectReason: `${message}${nativeCodeSuffix}` };
   };
-  const query = <Query extends EditorWorkerQuery, Fallback>(
+  const query = async <Query extends EditorWorkerQuery, Fallback>(
     model: editor.ITextModel,
     request: Query,
     token: EditorCancellationToken | undefined,
     fallback: Fallback,
-  ) => queryOr(client, model, request, token, fallback, notifyUnavailable);
-  const legend: languages.SemanticTokensLegend = {
-    tokenTypes: [...identity.legend.tokenTypes],
-    tokenModifiers: [...identity.legend.tokenModifiers],
+  ) => {
+    if (
+      !semanticAvailable ||
+      managedModel !== model ||
+      flushSemantics === null
+    ) {
+      return fallback;
+    }
+    try {
+      const identity = await semanticReadiness;
+      if (!identity || !semanticAvailable) return fallback;
+      await flushSemantics();
+      if (!semanticAvailable) return fallback;
+      return await semanticClient.query(
+        identityForModel(model),
+        request,
+        token,
+      );
+    } catch (error) {
+      if (isExpectedDiscard(error) || isRequestLocalWorkerError(error)) {
+        return fallback;
+      }
+      notifySemanticUnavailable(error);
+      return fallback;
+    }
   };
 
-  disposables.push(
-    monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {
-      triggerCharacters: [...identity.completionTriggerCharacters],
-      async provideCompletionItems(model, position, _context, token) {
-        const completions = await query(
-          model,
-          {
-            kind: "completions",
-            position: toEditorPosition(position),
-          },
-          token,
-          null,
-        );
-        if (!completions) return { suggestions: [] };
-        return {
-          incomplete: completions.is_incomplete,
-          suggestions: completions.items.map((item) =>
-            toEditorCompletionItem(monaco, item, position),
-          ),
-        };
-      },
-    }),
-  );
+  function registerCompletionProvider(
+    completionTriggerCharacters: readonly string[],
+  ): void {
+    if (disposed || !semanticAvailable) return;
+    disposables.push(
+      monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {
+        triggerCharacters: [...completionTriggerCharacters],
+        async provideCompletionItems(model, position, _context, token) {
+          const completions = await query(
+            model,
+            {
+              kind: "completions",
+              position: toEditorPosition(position),
+            },
+            token,
+            null,
+          );
+          if (!completions) return { suggestions: [] };
+          return {
+            incomplete: completions.is_incomplete,
+            suggestions: completions.items.map((item) =>
+              toEditorCompletionItem(monaco, item, position),
+            ),
+          };
+        },
+      }),
+    );
+  }
 
   disposables.push(
     monaco.languages.registerHoverProvider(MERMAID_LANGUAGE_ID, {
@@ -241,8 +308,23 @@ export function registerMermaidLanguage(
       },
       async provideRenameEdits(model, position, newName, token) {
         let edit: EditorWorkspaceEdit | null;
+        if (
+          !semanticAvailable ||
+          managedModel !== model ||
+          flushSemantics === null
+        ) {
+          return rejectRename("Mermaid semantic tools are unavailable.");
+        }
         try {
-          edit = await client.query(
+          const identity = await semanticReadiness;
+          if (!identity || !semanticAvailable) {
+            return rejectRename("Mermaid semantic tools are unavailable.");
+          }
+          await flushSemantics();
+          if (!semanticAvailable) {
+            return rejectRename("Mermaid semantic tools are unavailable.");
+          }
+          edit = await semanticClient.query(
             identityForModel(model),
             {
               kind: "rename",
@@ -258,7 +340,7 @@ export function registerMermaidLanguage(
           if (isRequestLocalWorkerError(error)) {
             return rejectRename(error.message, error.detail, error.nativeCode);
           }
-          notifyUnavailable(error);
+          notifySemanticUnavailable(error);
           return {
             edits: [],
             rejectReason: "Mermaid language tools are unavailable.",
@@ -283,22 +365,42 @@ export function registerMermaidLanguage(
     monaco.languages.registerDocumentSemanticTokensProvider(
       MERMAID_LANGUAGE_ID,
       {
-        getLegend: () => legend,
+        getLegend: () => ({
+          tokenTypes: [...MERMAID_SYNTAX_TOKEN_LEGEND.tokenTypes],
+          tokenModifiers: [...MERMAID_SYNTAX_TOKEN_LEGEND.tokenModifiers],
+        }),
         onDidChange(listener) {
-          semanticListeners.add(listener);
-          return { dispose: () => semanticListeners.delete(listener) };
+          syntaxListeners.add(listener);
+          return { dispose: () => syntaxListeners.delete(listener) };
         },
         async provideDocumentSemanticTokens(model, _lastResultId, token) {
-          const tokens = await query(
-            model,
-            { kind: "semanticTokens" },
-            token,
-            new Uint32Array(),
-          );
-          return {
-            data: tokens,
-            resultId: undefined,
-          };
+          if (
+            !syntaxAvailable ||
+            token.isCancellationRequested ||
+            managedModel !== model ||
+            flushSyntax === null
+          ) {
+            return { data: new Uint32Array() };
+          }
+          try {
+            if (!(await syntaxReadiness) || !syntaxAvailable) {
+              return { data: new Uint32Array() };
+            }
+            await flushSyntax();
+            if (!syntaxAvailable || token.isCancellationRequested) {
+              return { data: new Uint32Array() };
+            }
+            const identity = identityForModel(model);
+            const data = await syntaxClient.highlights(identity);
+            return token.isCancellationRequested ||
+              model.getVersionId() !== identity.version
+              ? { data: new Uint32Array() }
+              : { data };
+          } catch (error) {
+            if (isExpectedDiscard(error)) return { data: new Uint32Array() };
+            notifySyntaxUnavailable(error);
+            return { data: new Uint32Array() };
+          }
         },
         releaseDocumentSemanticTokens() {},
       },
@@ -309,8 +411,10 @@ export function registerMermaidLanguage(
     async bindModel(model) {
       if (disposed)
         throw new Error("Mermaid language registration is disposed.");
-      if (managedModel) {
-        throw new Error("Mermaid language registration already owns a model.");
+      if (modelClaimed) {
+        throw new Error(
+          "Mermaid language registration owns one model lifetime; create a new registration to rebind.",
+        );
       }
       const snapshot = snapshotForModel(model);
       if (snapshot.uri !== MERMAID_DOCUMENT_URI) {
@@ -318,17 +422,81 @@ export function registerMermaidLanguage(
           `Mermaid editor model must use ${MERMAID_DOCUMENT_URI}; received ${snapshot.uri}.`,
         );
       }
-      managedModel = model;
-      let opening: Promise<void>;
-      try {
-        opening = client.openDocument(snapshot);
-      } catch (error) {
-        managedModel = null;
-        throw error;
+      if (model.isDisposed()) {
+        throw new Error("Mermaid editor model is already disposed.");
       }
-
+      modelClaimed = true;
+      managedModel = model;
+      let pendingSemanticSnapshot: EditorDocumentSnapshot | null = null;
+      let pendingSyntaxSnapshot: EditorDocumentSnapshot | null = null;
+      let semanticSyncedVersion = 0;
+      let syntaxSyncedVersion = 0;
       let diagnosticTimer: ReturnType<typeof setTimeout> | null = null;
       let bindingDisposed = false;
+      const semanticOpening = (async (): Promise<boolean> => {
+        const identity = await semanticReadiness;
+        if (
+          !identity ||
+          !semanticAvailable ||
+          disposed ||
+          bindingDisposed
+        ) {
+          return false;
+        }
+        await semanticClient.openDocument(snapshot);
+        semanticSyncedVersion = snapshot.version;
+        return true;
+      })();
+      const syntaxOpening = (async (): Promise<boolean> => {
+        if (
+          !(await syntaxReadiness) ||
+          !syntaxAvailable ||
+          disposed ||
+          bindingDisposed
+        ) {
+          return false;
+        }
+        await syntaxClient.openDocument(snapshot);
+        syntaxSyncedVersion = snapshot.version;
+        return true;
+      })();
+      let semanticFlush: Promise<void> | null = null;
+      flushSemantics = async () => {
+        if (!semanticAvailable || disposed || bindingDisposed) return;
+        if (semanticFlush) return semanticFlush;
+        semanticFlush = (async () => {
+          if (!(await semanticOpening)) return;
+          while (semanticAvailable && !disposed && !bindingDisposed) {
+            const next = pendingSemanticSnapshot;
+            if (!next || next.version <= semanticSyncedVersion) return;
+            pendingSemanticSnapshot = null;
+            await semanticClient.changeDocument(next);
+            semanticSyncedVersion = next.version;
+          }
+        })().finally(() => {
+          semanticFlush = null;
+        });
+        return semanticFlush;
+      };
+      let syntaxFlush: Promise<void> | null = null;
+      flushSyntax = async () => {
+        if (!syntaxAvailable || disposed || bindingDisposed) return;
+        if (syntaxFlush) return syntaxFlush;
+        syntaxFlush = (async () => {
+          if (!(await syntaxOpening)) return;
+          while (syntaxAvailable && !disposed && !bindingDisposed) {
+            const next = pendingSyntaxSnapshot;
+            if (!next || next.version <= syntaxSyncedVersion) return;
+            pendingSyntaxSnapshot = null;
+            await syntaxClient.changeDocument(next);
+            syntaxSyncedVersion = next.version;
+          }
+        })().finally(() => {
+          syntaxFlush = null;
+        });
+        return syntaxFlush;
+      };
+
       const publishDiagnostics = async () => {
         const current = identityForModel(model);
         const result = await query(
@@ -350,18 +518,22 @@ export function registerMermaidLanguage(
         if (diagnosticTimer !== null) clearTimeout(diagnosticTimer);
         diagnosticTimer = setTimeout(() => {
           diagnosticTimer = null;
-          void publishDiagnostics().catch(notifyUnavailable);
+          void publishDiagnostics().catch(notifySemanticUnavailable);
         }, DIAGNOSTIC_DELAY_MS);
       };
       const contentListener = model.onDidChangeContent(() => {
-        try {
-          void client
-            .changeDocument(snapshotForModel(model))
-            .catch(notifyUnavailable);
-        } catch (error) {
-          notifyUnavailable(error);
+        const changedSnapshot = snapshotForModel(model);
+        pendingSemanticSnapshot = changedSnapshot;
+        pendingSyntaxSnapshot = changedSnapshot;
+        const synchronizeSyntax = flushSyntax;
+        if (syntaxAvailable && synchronizeSyntax) {
+          void synchronizeSyntax()
+            .then(() => {
+              if (bindingDisposed || !syntaxAvailable) return;
+              for (const listener of syntaxListeners) listener();
+            })
+            .catch(notifySyntaxUnavailable);
         }
-        for (const listener of semanticListeners) listener();
         scheduleDiagnostics();
       });
       const binding: IDisposable = {
@@ -372,30 +544,36 @@ export function registerMermaidLanguage(
           if (diagnosticTimer !== null) clearTimeout(diagnosticTimer);
           if (!model.isDisposed()) clearMermaidMarkers(monaco, model);
           if (managedModel === model) managedModel = null;
+          flushSemantics = null;
+          flushSyntax = null;
           modelBindings.delete(binding);
         },
       };
       modelBindings.add(binding);
-      try {
-        await opening;
-        if (disposed || bindingDisposed || model.isDisposed()) {
-          throw new Error("Mermaid editor model was disposed while opening.");
-        }
-        for (const listener of semanticListeners) listener();
-        void publishDiagnostics().catch(notifyUnavailable);
-        return binding;
-      } catch (error) {
-        binding.dispose();
-        throw error;
-      }
+      void semanticOpening
+        .then(async (opened) => {
+          if (!opened || bindingDisposed || !semanticAvailable) return;
+          if (model.getVersionId() !== snapshot.version) return;
+          await publishDiagnostics();
+        })
+        .catch(notifySemanticUnavailable);
+      void syntaxOpening
+        .then(async (opened) => {
+          if (!opened || bindingDisposed || !syntaxAvailable) return;
+          await flushSyntax?.();
+          for (const listener of syntaxListeners) listener();
+        })
+        .catch(notifySyntaxUnavailable);
+      return binding;
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       for (const binding of [...modelBindings]) binding.dispose();
       for (const disposable of disposables.reverse()) disposable.dispose();
-      semanticListeners.clear();
-      client.dispose();
+      syntaxListeners.clear();
+      semanticClient.dispose();
+      syntaxClient.dispose();
     },
   };
 }
@@ -417,24 +595,6 @@ export function ensureMermaidLanguageRegistered(
     mermaidLanguageConfig,
   );
   configuredMonacoInstances.add(monaco);
-}
-
-async function queryOr<Query extends EditorWorkerQuery, Fallback>(
-  client: MermanLanguageWorkerClient,
-  model: editor.ITextModel,
-  query: Query,
-  token: EditorCancellationToken | undefined,
-  fallback: Fallback,
-  onFailure: (error: unknown) => void,
-) {
-  try {
-    return await client.query(identityForModel(model), query, token);
-  } catch (error) {
-    if (isExpectedDiscard(error)) return fallback;
-    if (isRequestLocalWorkerError(error)) return fallback;
-    onFailure(error);
-    return fallback;
-  }
 }
 
 function isRequestLocalWorkerError(
@@ -758,7 +918,9 @@ function symbolKind(
 function isExpectedDiscard(error: unknown): boolean {
   return (
     error instanceof Error &&
-    (error.name === "AbortError" || error.name === "StaleLanguageSnapshotError")
+    (error.name === "AbortError" ||
+      error.name === "StaleLanguageSnapshotError" ||
+      error instanceof StaleSyntaxSnapshotError)
   );
 }
 

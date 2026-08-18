@@ -93,6 +93,17 @@ ABI schemas, workflow/classifier code, legal policy, unclassified crates, and un
 select every owner. The table is intentionally static and reviewable rather than a partial Cargo or
 Rust dependency analyzer.
 
+The independently versioned Tree-sitter language distribution has its own `grammar` owner. Changes
+under `distribution/tree-sitter-mermaid/` select that owner and `hygiene`; npm manifests and
+lockfiles also select `npm` and `security`, while Cargo manifests and provenance also select
+`security`. Package license and third-party notice changes also select `security`. Changes to the
+composed contract under `contracts/tree-sitter/` select `grammar` and
+`hygiene`. Workspace manifests, shared fixtures, and pinned upstream sources
+remain shared authorities and therefore select every owner. The grammar workflow verifies the
+35-family catalog projection, Rust package tests, production dependency isolation, legal inventory,
+and Cargo/npm package assembly. A planned family is metadata only: it cannot advertise a support
+tier or query evidence until the corresponding executable gates exist.
+
 The pull-request feature matrix validates the complete declared feature graph but compiles a curated
 set of representative products and transports. It deliberately does not compile every bounded
 pairwise combination and artifact recipe.
@@ -159,6 +170,7 @@ build and measure a second Cargo-only approximation of the same package.
 | Browser package size | Final npm package WASM measurements |
 | Cross-browser behavior | Playground browser tests |
 | Native ABI compatibility | ABI descriptor, frozen consumer, symbol, and lifecycle tests |
+| Tree-sitter family support | Language metadata, composed catalog contract, corpus, incremental, query, and conformance gates |
 | Dependency policy | `cargo deny`, RustSec governance, and release closure reports |
 | Published bytes | Release package, checksum, provenance, and install smoke |
 

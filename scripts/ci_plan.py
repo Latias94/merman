@@ -19,6 +19,7 @@ OWNER_NAMES = (
     "cli",
     "core",
     "fuzz",
+    "grammar",
     "hygiene",
     "node",
     "npm",
@@ -415,6 +416,30 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path in {"Cargo.lock", "Cargo.toml", "rust-toolchain.toml", "dist-workspace.toml"}:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
+    if path in {
+        "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm",
+        "distribution/tree-sitter-mermaid/queries/portable/highlights.scm",
+    }:
+        return (
+            frozenset({"grammar", "hygiene", "web"}),
+            f"Browser Tree-sitter asset changed: {path}",
+            False,
+        )
+
+    if path.startswith("distribution/tree-sitter-mermaid/"):
+        owners = {"grammar", "hygiene"}
+        if path.endswith(("package.json", "package-lock.json")):
+            owners.update({"npm", "security"})
+        elif (
+            path.endswith("Cargo.toml")
+            or path.endswith("/LICENSE")
+            or "/THIRD_PARTY_LICENSES/" in path
+            or path.endswith("/THIRD_PARTY_NOTICES.md")
+            or path.startswith("distribution/tree-sitter-mermaid/metadata/provenance")
+        ):
+            owners.add("security")
+        return frozenset(owners), f"Tree-sitter Mermaid owner changed: {path}", False
+
     if path.startswith("capabilities/"):
         return _ALL_OWNERS, f"shared capability schema changed: {path}", True
     if path.startswith("crates/"):
@@ -450,6 +475,13 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         if path.startswith(_HYGIENE_SCRIPT_PREFIXES):
             return frozenset({"hygiene"}), f"repository hygiene script changed: {path}", False
         return _ALL_OWNERS, f"unclassified repository script changed: {path}", True
+
+    if path == "docs/release/THIRD_PARTY_COMPONENTS.json":
+        return (
+            frozenset({"grammar", "hygiene", "security"}),
+            f"Tree-sitter Mermaid legal authority changed: {path}",
+            False,
+        )
 
     if path.startswith(
         "playground/editor-artifact-receipt-v"

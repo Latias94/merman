@@ -1,0 +1,10 @@
+block
+columns 3
+block:services["Services"]:2
+  api["API"] db[("Database")]
+  api -- "queries" --> db
+end
+arrow<["flow"]>(right, down) space:2
+classDef core fill:#eef,stroke:#333
+class api,db core
+style services fill:#fff,stroke-width:2px

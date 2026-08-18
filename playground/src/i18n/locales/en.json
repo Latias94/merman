@@ -242,6 +242,7 @@
     "loading": "Loading editor...",
     "languageInitializing": "Language tools initializing",
     "languageReconnecting": "Language tools reconnecting",
+    "languageDegraded": "Some language tools unavailable: {{message}}",
     "languageUnavailable": "Language tools unavailable: {{message}}",
     "retryLanguage": "Retry",
     "hover": {

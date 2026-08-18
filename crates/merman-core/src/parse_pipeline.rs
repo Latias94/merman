@@ -129,8 +129,6 @@ impl<'a> EditorParseSourceMap<'a> {
             remapped_symbols.push(symbol);
         }
         facts.symbols = remapped_symbols;
-        let dropped_lexemes =
-            facts.remap_lexemes_controlled(|span| self.try_remap_source_span(span), control)?;
 
         let mut dropped_diagnostic_spans = 0usize;
         for (index, diagnostic) in facts.diagnostics.iter_mut().enumerate() {
@@ -160,8 +158,7 @@ impl<'a> EditorParseSourceMap<'a> {
 
         let dropped_symbols = original_symbol_count - facts.symbols.len();
         let dropped_expected = original_expected_count - facts.expected_syntax.len();
-        let dropped_spans =
-            dropped_symbols + dropped_lexemes + dropped_expected + dropped_diagnostic_spans;
+        let dropped_spans = dropped_symbols + dropped_expected + dropped_diagnostic_spans;
         if dropped_spans > 0 {
             facts.mark_recovered_with_diagnostic(
                 format!(
@@ -652,11 +649,8 @@ impl<'a> ParsePipeline<'a> {
     ) -> OperationControlResult<EditorSemanticFacts> {
         let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
         source_map.remap_facts(&mut facts, control)?;
-        let family = family::diagram_type_family_id(&meta.diagram_type)
-            .expect("built-in combined semantic facts belong to a catalog family");
         facts.family_semantics = family::diagram_type_editor_semantics(&meta.diagram_type)
             .expect("built-in combined semantic facts have typed editor family semantics");
-        facts.finalize_lexemes_controlled(family, source_map.source.global_lexemes(), control)?;
         for expected in source_map.source.global_expected_syntax().chunks(128) {
             control.checkpoint()?;
             facts.expected_syntax.extend_from_slice(expected);

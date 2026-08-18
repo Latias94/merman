@@ -252,9 +252,7 @@ fn consume_runtime_catalog(api: &MermanNativeApi) {
 
 fn consume_metadata(api: &MermanNativeApi, metadata_id: &[u8]) {
     let mut result = empty_result();
-    let status = unsafe {
-        api.metadata_collect.unwrap()(borrowed_slice(metadata_id), &mut result)
-    };
+    let status = unsafe { api.metadata_collect.unwrap()(borrowed_slice(metadata_id), &mut result) };
     consume_result(api, &mut result, status);
 }
 

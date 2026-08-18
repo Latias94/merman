@@ -81,4 +81,5 @@ When an external linter owns Problems output, users can keep Merman language fea
 }
 ```
 
-This does not disable completion, hover, symbols, references, rename, semantic tokens, preview, export, or source actions.
+This does not disable Tree-sitter syntax highlighting, completion, hover, symbols, references,
+rename, preview, export, or source actions.

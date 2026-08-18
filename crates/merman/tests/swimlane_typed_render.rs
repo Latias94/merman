@@ -108,11 +108,11 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
     // The fixture's stable preflight estimate is 90 units. Probe the precise layout boundary so
     // this contract remains about operation-wide accounting rather than internal routing passes.
     let layout_boundary = (90..=256)
-        .find(|max_layout_work_units| {
+        .find(|&max_layout_work_units| {
             let resources = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
-                    *max_layout_work_units,
+                    max_layout_work_units,
                 )
                 .unwrap();
             let request = SvgRequest {

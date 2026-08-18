@@ -16,6 +16,7 @@ import {
 } from "@/src/lib/mermaid-config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { WORKBENCH_EDITOR_THEMES } from "@/src/editor/workbench-editor-theme";
 import {
   Tooltip,
   TooltipContent,
@@ -40,7 +41,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
     [mermaidConfig, t],
   );
 
-  const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
+  const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
 
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>

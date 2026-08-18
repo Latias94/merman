@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: "Independently versioned crate to publish"
+        description: "Independently versioned crate to verify or publish"
         required: true
         type: choice
         options:
@@ -45,7 +45,12 @@ jobs:
             exit 1
           }
 
-          [[ "$DISPATCH_PACKAGE" == "roughr-merman" ]] || fail "package is not an admitted independently versioned crate."
+          case "$DISPATCH_PACKAGE" in
+            roughr-merman) ;;
+            *)
+              fail "package is not an admitted independently versioned crate."
+              ;;
+          esac
           canonical_version="$(python3 scripts/release-version.py canonical --version "$DISPATCH_VERSION")" || fail "version is not canonical SemVer."
           [[ "$canonical_version" == "$DISPATCH_VERSION" ]] || fail "version must not use a v prefix."
 

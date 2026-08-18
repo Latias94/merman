@@ -1,5 +1,5 @@
 use crate::diagrams::langium_common::{
-    LangiumCommonField, LangiumLexemeTrace, parse_langium_common, push_langium_common_editor_fact,
+    LangiumCommonField, parse_langium_common, push_langium_common_editor_fact,
 };
 use crate::diagrams::scan::{physical_line_at, split_ascii_indent};
 use crate::{
@@ -80,32 +80,22 @@ struct TreeViewParseIssue {
 
 struct TreeViewParseOutcome {
     snapshot: ParsedTreeViewInput,
-    lexemes: LangiumLexemeTrace,
     first_issue: Option<TreeViewParseIssue>,
 }
 
 impl TreeViewParseOutcome {
-    fn into_strict(mut self, code: &str, meta: &ParseMetadata) -> Result<ParsedTreeViewInput> {
+    fn into_strict(self, meta: &ParseMetadata) -> Result<ParsedTreeViewInput> {
         match self.first_issue {
             Some(issue) => Err(issue.into_error(meta)),
-            None => {
-                self.lexemes.attach(code, &mut self.snapshot.editor_facts);
-                Ok(self.snapshot)
-            }
+            None => Ok(self.snapshot),
         }
     }
 
-    fn into_combined(
-        self,
-        code: &str,
-        meta: &ParseMetadata,
-    ) -> crate::family::CombinedSemanticParse {
+    fn into_combined(self, meta: &ParseMetadata) -> crate::family::CombinedSemanticParse {
         let Self {
-            mut snapshot,
-            lexemes,
+            snapshot,
             first_issue,
         } = self;
-        lexemes.attach(code, &mut snapshot.editor_facts);
         let construction = match first_issue {
             Some(issue) => Err(crate::family::CombinedSemanticFailure::new(
                 issue.into_error(meta),
@@ -172,7 +162,6 @@ struct TreeViewNodeStatement {
 
 struct TreeViewNodeParseFailure {
     error: Box<Error>,
-    lexemes: LangiumLexemeTrace,
 }
 
 #[derive(Debug, Clone)]
@@ -185,7 +174,6 @@ struct TreeViewNodeLineDetails {
     description: Option<TreeViewSpannedValue>,
     span: SourceSpan,
     selection: SourceSpan,
-    lexemes: LangiumLexemeTrace,
 }
 
 #[derive(Debug, Clone)]
@@ -239,7 +227,7 @@ pub(crate) fn parse_tree_view_json_and_editor_facts(
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("treeView");
-    let parsed = parse_tree_view_input_controlled(code, meta, control)?.into_combined(code, meta);
+    let parsed = parse_tree_view_input_controlled(code, meta, control)?.into_combined(meta);
     control.checkpoint()?;
     Ok(parsed)
 }
@@ -281,7 +269,7 @@ fn construct_tree_view_semantic_source(
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("treeView");
 
-    let parsed = parse_tree_view_input(code, meta).into_strict(code, meta)?;
+    let parsed = parse_tree_view_input(code, meta).into_strict(meta)?;
     let ParsedTreeViewInput {
         title,
         acc_title,
@@ -320,14 +308,11 @@ fn parse_tree_view_input_controlled(
                     nodes: Vec::new(),
                     editor_facts,
                 },
-                lexemes: LangiumLexemeTrace::default(),
                 first_issue,
             });
         }
     };
     let mut offset = body.offset;
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
     let mut title = None;
     let mut acc_title = None;
     let mut acc_descr = None;
@@ -339,7 +324,6 @@ fn parse_tree_view_input_controlled(
         if let Some(parsed) = parse_langium_common(code, offset) {
             if saw_node {
                 let span = parsed.fact.raw_span;
-                lexemes.extend(parsed.lexemes);
                 mark_tree_view_recovery(
                     &mut editor_facts,
                     &mut first_issue,
@@ -353,7 +337,6 @@ fn parse_tree_view_input_controlled(
             }
             let field = parsed.fact.field;
             let value = parsed.fact.value.clone();
-            lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "tree view");
             match field {
                 LangiumCommonField::Title => title = Some(value),
@@ -397,13 +380,11 @@ fn parse_tree_view_input_controlled(
         }
         match parse_node_line_details(&statement.line, statement.line_start, line_format, meta) {
             Ok(Some(node)) => {
-                lexemes.extend(node.lexemes.clone());
                 push_tree_view_node_editor_facts(&mut editor_facts, &node);
                 nodes.push(node);
             }
             Ok(None) => {}
             Err(failure) => {
-                lexemes.extend(failure.lexemes);
                 let trimmed = statement.line.trim();
                 let leading = statement
                     .line
@@ -431,7 +412,6 @@ fn parse_tree_view_input_controlled(
             nodes,
             editor_facts,
         },
-        lexemes,
         first_issue,
     })
 }
@@ -439,7 +419,6 @@ fn parse_tree_view_input_controlled(
 #[derive(Debug, Clone, Copy)]
 struct TreeViewBodyStart {
     offset: usize,
-    header_span: SourceSpan,
 }
 
 fn tree_view_body_start_controlled(
@@ -473,10 +452,6 @@ fn tree_view_body_start_controlled(
         }
         return Ok(Ok(TreeViewBodyStart {
             offset: next_offset,
-            header_span: SourceSpan::new(
-                offset + leading,
-                offset + leading + "treeView-beta".len(),
-            ),
         }));
     }
 
@@ -689,7 +664,6 @@ fn parse_node_line_details(
     let line_view =
         tree_view_line_view(line, line_format, meta).map_err(|error| TreeViewNodeParseFailure {
             error: Box::new(error),
-            lexemes: LangiumLexemeTrace::default(),
         })?;
     let Some(line_view) = line_view else {
         return Ok(None);
@@ -815,9 +789,8 @@ fn parse_node_content(
     let content = line_view.content;
     let content_abs = line_start + line_view.content_offset;
     let span = SourceSpan::new(content_abs, content_abs + content.len());
-    let mut lexemes = LangiumLexemeTrace::default();
 
-    let (mut raw_name, name_start, name_end, suffix_start, quoted) =
+    let (mut raw_name, name_start, name_end, suffix_start) =
         if let Some((_, quote @ ('"' | '\''))) = content.char_indices().next() {
             let mut end = None;
             for (idx, ch) in content[quote.len_utf8()..].char_indices() {
@@ -827,10 +800,8 @@ fn parse_node_content(
                 }
             }
             let Some(end_idx) = end else {
-                lexemes.delimiter(SourceSpan::new(content_abs, content_abs + quote.len_utf8()));
                 return Err(TreeViewNodeParseFailure {
                     error: Box::new(parse_error(meta, "unterminated quoted tree node name")),
-                    lexemes,
                 });
             };
             (
@@ -838,7 +809,6 @@ fn parse_node_content(
                 quote.len_utf8(),
                 end_idx,
                 end_idx + quote.len_utf8(),
-                true,
             )
         } else {
             let annotation_start =
@@ -847,16 +817,9 @@ fn parse_node_content(
             if name_end == 0 {
                 return Err(TreeViewNodeParseFailure {
                     error: Box::new(parse_error(meta, "expected tree node name")),
-                    lexemes,
                 });
             }
-            (
-                content[..name_end].to_string(),
-                0,
-                name_end,
-                name_end,
-                false,
-            )
+            (content[..name_end].to_string(), 0, name_end, name_end)
         };
     if line_view.expand_content_tabs {
         raw_name = raw_name.replace('\t', "    ");
@@ -864,27 +827,14 @@ fn parse_node_content(
 
     let (name, node_type, selection_end) = normalize_tree_view_node_name(raw_name, name_end);
     let selection = SourceSpan::new(content_abs + name_start, content_abs + selection_end);
-    if quoted {
-        lexemes.string(SourceSpan::new(content_abs, content_abs + suffix_start));
-    } else {
-        lexemes.identifier(selection);
-        if selection_end < name_end {
-            lexemes.delimiter(SourceSpan::new(
-                content_abs + selection_end,
-                content_abs + name_end,
-            ));
-        }
-    }
 
     let suffix = &content[suffix_start..];
     let suffix_abs = content_abs + suffix_start;
-    let mut annotations = match parse_tree_view_annotations(suffix, suffix_abs, meta, &mut lexemes)
-    {
+    let mut annotations = match parse_tree_view_annotations(suffix, suffix_abs, meta) {
         Ok(annotations) => annotations,
         Err(error) => {
             return Err(TreeViewNodeParseFailure {
                 error: Box::new(error),
-                lexemes,
             });
         }
     };
@@ -903,7 +853,6 @@ fn parse_node_content(
         description: annotations.description,
         span,
         selection,
-        lexemes,
     })
 }
 
@@ -932,7 +881,6 @@ fn parse_tree_view_annotations(
     suffix: &str,
     abs_base: usize,
     meta: &ParseMetadata,
-    lexemes: &mut LangiumLexemeTrace,
 ) -> Result<TreeViewAnnotations> {
     let mut annotations = TreeViewAnnotations::default();
     let mut pos = 0usize;
@@ -943,7 +891,6 @@ fn parse_tree_view_annotations(
         }
 
         if suffix[pos..].starts_with(":::") && is_annotation_token_boundary(suffix, pos) {
-            lexemes.delimiter(SourceSpan::new(abs_base + pos, abs_base + pos + 3));
             let value_start = skip_ascii_whitespace(suffix, pos + 3);
             let Some(value_end) = tree_view_class_name_end(suffix, value_start) else {
                 return Err(parse_error(meta, "expected tree node class after :::"));
@@ -952,23 +899,11 @@ fn parse_tree_view_annotations(
                 value: suffix[value_start..value_end].to_string(),
                 span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
-            lexemes.identifier(SourceSpan::new(
-                abs_base + value_start,
-                abs_base + value_end,
-            ));
             pos = value_end;
             continue;
         }
 
         if suffix[pos..].starts_with("icon(") && is_annotation_token_boundary(suffix, pos) {
-            lexemes.keyword(SourceSpan::new(
-                abs_base + pos,
-                abs_base + pos + "icon".len(),
-            ));
-            lexemes.delimiter(SourceSpan::new(
-                abs_base + pos + "icon".len(),
-                abs_base + pos + "icon(".len(),
-            ));
             let value_start = pos + "icon(".len();
             let Some(close_rel) = suffix[value_start..].find(')') else {
                 return Err(parse_error(meta, "unterminated tree node icon annotation"));
@@ -987,20 +922,11 @@ fn parse_tree_view_annotations(
                 value,
                 span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
             });
-            lexemes.literal(SourceSpan::new(
-                abs_base + value_start,
-                abs_base + value_end,
-            ));
-            lexemes.delimiter(SourceSpan::new(
-                abs_base + value_end,
-                abs_base + value_end + 1,
-            ));
             pos = value_end + ')'.len_utf8();
             continue;
         }
 
         if suffix[pos..].starts_with("##") && is_annotation_token_boundary(suffix, pos) {
-            lexemes.delimiter(SourceSpan::new(abs_base + pos, abs_base + pos + 2));
             let value_start = skip_ascii_whitespace(suffix, pos + 2);
             let (trimmed_start, trimmed_end) = trim_ascii_span(suffix, value_start, suffix.len());
             if trimmed_start != trimmed_end {
@@ -1008,10 +934,6 @@ fn parse_tree_view_annotations(
                     value: suffix[trimmed_start..trimmed_end].to_string(),
                     span: SourceSpan::new(abs_base + trimmed_start, abs_base + trimmed_end),
                 });
-                lexemes.string(SourceSpan::new(
-                    abs_base + trimmed_start,
-                    abs_base + trimmed_end,
-                ));
             }
             break;
         }
@@ -1263,10 +1185,7 @@ fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeProducerKind, Engine,
-        MermaidConfig, ParseMetadata, SourceSpan,
-    };
+    use crate::{EditorExpectedSyntaxKind, Engine, MermaidConfig, ParseMetadata, SourceSpan};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -1770,7 +1689,7 @@ treeView-beta
     }
 
     #[test]
-    fn tree_view_recovery_keeps_partial_and_later_lexemes_with_crlf_spans() {
+    fn tree_view_recovery_keeps_partial_and_later_semantic_facts_with_crlf_spans() {
         let text = concat!(
             "treeView-beta\r\n",
             "root/\r\n",
@@ -1797,7 +1716,6 @@ treeView-beta
             facts.completeness,
             crate::EditorSemanticCompleteness::Recovered
         );
-        assert_eq!(facts.lexeme_failure(), None);
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
         assert!(
             facts
@@ -1810,48 +1728,6 @@ treeView-beta
                 .symbols
                 .iter()
                 .any(|symbol| symbol.name == "broken.txt")
-        );
-
-        let assert_lexeme = |kind: EditorLexemeKind, span: SourceSpan| {
-            assert!(
-                facts.lexemes().iter().any(|lexeme| {
-                    lexeme.kind() == kind
-                        && lexeme.span() == span
-                        && lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
-                }),
-                "missing {kind:?} lexeme at {span:?}"
-            );
-        };
-
-        let broken = text.find("broken.txt").unwrap();
-        assert_lexeme(
-            EditorLexemeKind::Identifier,
-            SourceSpan::new(broken, broken + "broken.txt".len()),
-        );
-        let broken_icon = text[broken..].find("icon(").unwrap() + broken;
-        assert_lexeme(
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(broken_icon, broken_icon + "icon".len()),
-        );
-        assert_lexeme(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(broken_icon + "icon".len(), broken_icon + "icon(".len()),
-        );
-
-        let later = text.find("later.txt").unwrap();
-        assert_lexeme(
-            EditorLexemeKind::Identifier,
-            SourceSpan::new(later, later + "later.txt".len()),
-        );
-        let class_marker = text[later..].find(":::").unwrap() + later;
-        assert_lexeme(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(class_marker, class_marker + ":::".len()),
-        );
-        let class_name = text[class_marker..].find("ready").unwrap() + class_marker;
-        assert_lexeme(
-            EditorLexemeKind::Identifier,
-            SourceSpan::new(class_name, class_name + "ready".len()),
         );
 
         let malformed_line = "broken.txt icon(unclosed";

@@ -1,8 +1,7 @@
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, LangiumCommonParse, LangiumLexemeTrace, parse_langium_common,
-    parse_langium_string, push_langium_common_editor_fact, push_langium_common_recovery,
-    strip_langium_inline_comment,
+    LangiumCommonFacts, LangiumCommonParse, parse_langium_common, parse_langium_string,
+    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -164,10 +163,7 @@ fn construct_pie_semantic_source_controlled(
     let mut common = LangiumCommonFacts::default();
     let mut parsed_sections = Vec::new();
     let mut editor_facts = EditorSemanticFacts::new();
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.keyword(body.header_span);
     if let Some(span) = body.show_data_span {
-        lexemes.keyword(span);
         push_show_data_editor_fact(&mut editor_facts, span);
     }
     let mut first_error = None;
@@ -186,7 +182,6 @@ fn construct_pie_semantic_source_controlled(
                         )
                     });
                 }
-                lexemes.extend(parsed.lexemes.clone());
                 push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "pie");
                 common.push(parsed.fact);
                 offset += parsed.consumed;
@@ -195,7 +190,6 @@ fn construct_pie_semantic_source_controlled(
                 section,
                 next_offset,
             } => {
-                lexemes.extend(section.lexemes.clone());
                 push_pie_section_editor_fact(&mut editor_facts, &section);
                 parsed_sections.push(section);
                 offset = next_offset;
@@ -245,7 +239,6 @@ fn construct_pie_semantic_source_controlled(
     }
 
     let common = LangiumCommonDbFields::from_facts(&common);
-    lexemes.attach(code, &mut editor_facts);
 
     if let Some(error) = first_error {
         return Ok(Err(family::CombinedSemanticFailure::new(
@@ -290,7 +283,6 @@ struct PieParsedSection {
     statement_span: SourceSpan,
     label_span: SourceSpan,
     value_span: SourceSpan,
-    lexemes: LangiumLexemeTrace,
 }
 
 fn parse_pie_statement(code: &str, offset: usize) -> PieStatement {
@@ -330,15 +322,10 @@ fn parse_pie_section(line: &str, line_start: usize) -> Option<PieParsedSection> 
 
     let (rest, rest_start) = trim_start_with_offset(parsed_label.rest, parsed_label.rest_start);
     let rest = rest.strip_prefix(':')?;
-    let colon_span = SourceSpan::new(rest_start, rest_start + 1);
     let (number_and_trailing, number_start) = trim_start_with_offset(rest, rest_start + 1);
     let number = number_and_trailing.trim_end();
     let value = parse_number_pie(number)?;
     let value_span = SourceSpan::new(number_start, number_start + number.len());
-    let mut lexemes = LangiumLexemeTrace::default();
-    lexemes.string(parsed_label.raw_span);
-    lexemes.delimiter(colon_span);
-    lexemes.number(value_span);
 
     Some(PieParsedSection {
         label: parsed_label.value,
@@ -346,7 +333,6 @@ fn parse_pie_section(line: &str, line_start: usize) -> Option<PieParsedSection> 
         statement_span: SourceSpan::new(line_start, line_start + line.len()),
         label_span: parsed_label.value_span,
         value_span,
-        lexemes,
     })
 }
 
@@ -373,7 +359,6 @@ fn parse_number_pie(input: &str) -> Option<f64> {
 
 struct ParsedQuotedString<'a> {
     value: String,
-    raw_span: SourceSpan,
     value_span: SourceSpan,
     rest: &'a str,
     rest_start: usize,
@@ -383,7 +368,6 @@ fn parse_quoted_string(input: &str, input_start: usize) -> Option<ParsedQuotedSt
     let parsed = parse_langium_string(input, input_start)?;
     Some(ParsedQuotedString {
         value: parsed.value,
-        raw_span: parsed.raw_span,
         value_span: parsed.value_span,
         rest: &input[parsed.consumed..],
         rest_start: input_start + parsed.consumed,
@@ -427,7 +411,6 @@ enum PieHeader {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PieBodyStart {
     offset: usize,
-    header_span: SourceSpan,
     show_data_span: Option<SourceSpan>,
 }
 
@@ -464,7 +447,6 @@ fn pie_body_start_controlled(
         let body_start = show_data_span.map_or(after_header, |span| span.end);
         return Ok(PieHeader::Body(PieBodyStart {
             offset: body_start,
-            header_span: SourceSpan::new(header_start, after_header),
             show_data_span,
         }));
     }

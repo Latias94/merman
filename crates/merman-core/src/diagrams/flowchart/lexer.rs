@@ -1,26 +1,14 @@
 use super::{
-    ArrowToken, ClickAction, ClickStmt, DirectionStatementToken, FlowchartLexemeComponent,
-    LabeledText, LexError, LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok,
+    ArrowToken, ClickAction, ClickStmt, DirectionStatementToken, LabeledText, LexError, LinkToken,
+    NodeLabelToken, SubgraphHeader, TitleKind, Tok,
     ast::{FlowchartClickEditorEvidence, FlowchartDirectiveEditorEvidence},
     destruct_end_link, destruct_labeled_end_link, destruct_start_link, is_ecmascript_trim_char,
     lex, parse_label_text,
 };
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, SourceSpan,
-    editor::source_value_span,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, SourceSpan, editor::source_value_span,
 };
 use std::collections::VecDeque;
-
-fn prepend_statement_keyword(
-    components: &mut Vec<FlowchartLexemeComponent>,
-    start: usize,
-    end: usize,
-) {
-    components.insert(
-        0,
-        FlowchartLexemeComponent::new(EditorLexemeKind::Keyword, SourceSpan::new(start, end)),
-    );
-}
 
 fn directive_argument_spans(
     rest: &str,
@@ -379,7 +367,6 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "direction".len();
-        let keyword_end = self.pos;
         self.skip_ws();
 
         let direction_start = self.pos;
@@ -399,16 +386,6 @@ impl<'input> Lexer<'input> {
         let statement_end = self.pos;
         let direction = &self.input[direction_start..direction_end];
         let selection = SourceSpan::new(direction_start, direction_end);
-        let mut lexeme_components = vec![FlowchartLexemeComponent::new(
-            EditorLexemeKind::Keyword,
-            SourceSpan::new(start, keyword_end),
-        )];
-        if selection.start < selection.end {
-            lexeme_components.push(FlowchartLexemeComponent::new(
-                EditorLexemeKind::Literal,
-                selection,
-            ));
-        }
 
         let Some(dir) = ["TB", "TD", "BT", "LR", "RL"]
             .into_iter()
@@ -424,7 +401,6 @@ impl<'input> Lexer<'input> {
                     Tok::DirectionStmt(DirectionStatementToken {
                         direction: String::new(),
                         selection,
-                        lexeme_components,
                         recovery_error: Some(error),
                     }),
                     statement_end,
@@ -438,7 +414,6 @@ impl<'input> Lexer<'input> {
             Tok::DirectionStmt(DirectionStatementToken {
                 direction: dir.to_string(),
                 selection,
-                lexeme_components,
                 recovery_error: None,
             }),
             statement_end,
@@ -638,7 +613,6 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "style".len();
-        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         let statement_span = SourceSpan::new(start, end);
@@ -647,7 +621,6 @@ impl<'input> Lexer<'input> {
         match lex::parse_style_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_style_stmt_spans(&mut stmt, &rest, rest_start);
-                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
                 stmt.editor_evidence = directive_editor_evidence(
                     statement_span,
                     target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
@@ -678,7 +651,6 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "classDef".len();
-        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         let statement_span = SourceSpan::new(start, end);
@@ -687,7 +659,6 @@ impl<'input> Lexer<'input> {
         match lex::parse_classdef_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
-                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
                 stmt.editor_evidence = directive_editor_evidence(
                     statement_span,
                     class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
@@ -712,7 +683,6 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "class".len();
-        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         let statement_span = SourceSpan::new(start, end);
@@ -721,7 +691,6 @@ impl<'input> Lexer<'input> {
         match lex::parse_class_assign_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
-                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
                 stmt.editor_evidence = directive_editor_evidence(
                     statement_span,
                     targets.map(|span| (EditorExpectedSyntaxKind::IdList, span)),
@@ -751,14 +720,12 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "click".len();
-        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         let statement_span = SourceSpan::new(start, end);
         let (target, _) = directive_argument_spans(&rest, rest_start);
         match lex::parse_click_stmt(&rest, rest_start) {
             Ok(mut stmt) => {
-                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
                 stmt.editor_evidence = directive_editor_evidence(
                     statement_span,
                     target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
@@ -775,11 +742,6 @@ impl<'input> Lexer<'input> {
                     [(EditorExpectedSyntaxKind::NodeIdentifier, target)],
                 );
                 if self.recover_partial_node_labels && target.start < target.end {
-                    let mut lexeme_components = vec![FlowchartLexemeComponent::new(
-                        EditorLexemeKind::Identifier,
-                        target,
-                    )];
-                    prepend_statement_keyword(&mut lexeme_components, start, keyword_end);
                     Some(Ok((
                         start,
                         Tok::ClickStmt(ClickStmt {
@@ -793,7 +755,6 @@ impl<'input> Lexer<'input> {
                                 None,
                             ),
                             interaction_evidence: FlowchartClickEditorEvidence::default(),
-                            lexeme_components,
                             recovery_error: Some(error),
                         }),
                         end,
@@ -813,14 +774,10 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "linkStyle".len();
-        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         match lex::parse_link_style_stmt(&rest, rest_start) {
-            Ok(mut stmt) => {
-                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
-                Some(Ok((start, Tok::LinkStyleStmt(stmt), end)))
-            }
+            Ok(stmt) => Some(Ok((start, Tok::LinkStyleStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
     }
@@ -882,23 +839,10 @@ impl<'input> Lexer<'input> {
         let mut raw_title = raw_id.clone();
         let mut title_kind = TitleKind::Text;
         let mut id_equals_title = true;
-        let mut lexeme_components = Vec::new();
-        let (trimmed_id, trimmed_id_span) = trimmed_slice_with_span(self.input, start, raw_id_end);
-        if !trimmed_id.is_empty() {
-            lexeme_components.push(FlowchartLexemeComponent::new(
-                EditorLexemeKind::Identifier,
-                trimmed_id_span,
-            ));
-        }
 
         if self.pos < self.input.len() && self.input.as_bytes()[self.pos] == b'[' {
             id_equals_title = false;
-            let open_start = self.pos;
             self.pos += 1;
-            lexeme_components.push(FlowchartLexemeComponent::new(
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(open_start, self.pos),
-            ));
             let title_start = self.pos;
             in_quote = false;
             while self.pos < self.input.len() {
@@ -924,14 +868,6 @@ impl<'input> Lexer<'input> {
                 self.pos += 1;
             }
             raw_title = self.input[title_start..self.pos].to_string();
-            let (trimmed_title, trimmed_title_span) =
-                trimmed_slice_with_span(self.input, title_start, self.pos);
-            if !trimmed_title.is_empty() {
-                lexeme_components.push(FlowchartLexemeComponent::new(
-                    EditorLexemeKind::String,
-                    trimmed_title_span,
-                ));
-            }
             let parsed_title = match lex::parse_node_label_text(&raw_title) {
                 Ok(parsed) => parsed,
                 Err(error) => {
@@ -943,12 +879,7 @@ impl<'input> Lexer<'input> {
             };
             title_kind = parsed_title.kind;
             if self.pos < self.input.len() && self.input.as_bytes()[self.pos] == b']' {
-                let close_start = self.pos;
                 self.pos += 1;
-                lexeme_components.push(FlowchartLexemeComponent::new(
-                    EditorLexemeKind::Delimiter,
-                    SourceSpan::new(close_start, self.pos),
-                ));
             }
         } else if raw_id.contains('"') && !(raw_id.starts_with('"') && raw_id.ends_with('"')) {
             return Some(Err(LexError::with_span(
@@ -966,7 +897,6 @@ impl<'input> Lexer<'input> {
                 raw_title,
                 title_kind,
                 id_equals_title,
-                lexeme_components,
             }),
             self.pos,
         )))
@@ -1224,10 +1154,6 @@ impl<'input> Lexer<'input> {
                 };
                 let arrow = ArrowToken {
                     link,
-                    lexeme_components: vec![FlowchartLexemeComponent::new(
-                        EditorLexemeKind::Operator,
-                        link_match.operator_span,
-                    )],
                     recovery_error: None,
                 };
 
@@ -1249,21 +1175,15 @@ impl<'input> Lexer<'input> {
                         };
                         self.pos += 1;
                         let token_span = SourceSpan::new(pipe_pos, self.pos);
-                        let mut label = labeled_text_with_spans(
+                        let label = labeled_text_with_spans(
                             self.input,
                             LabeledText {
                                 text: parsed.text,
                                 kind: parsed.kind,
                                 span: None,
                                 selection: None,
-                                lexeme_components: Vec::new(),
                             },
                             token_span,
-                            raw_span,
-                        );
-                        label.lexeme_components = label_lexeme_components(
-                            token_span,
-                            SourceSpan::new(label_start, label_end),
                             raw_span,
                         );
                         self.pending
@@ -1364,15 +1284,8 @@ impl<'input> Lexer<'input> {
         }
 
         let arrow_token =
-            |link: LinkToken, end_span: SourceSpan, recovery_error: Option<LexError>| ArrowToken {
+            |link: LinkToken, _end_span: SourceSpan, recovery_error: Option<LexError>| ArrowToken {
                 link,
-                lexeme_components: vec![
-                    FlowchartLexemeComponent::new(
-                        EditorLexemeKind::Operator,
-                        start_match.operator_span,
-                    ),
-                    FlowchartLexemeComponent::new(EditorLexemeKind::Operator, end_span),
-                ],
                 recovery_error,
             };
 
@@ -1434,7 +1347,6 @@ impl<'input> Lexer<'input> {
                                 kind: parsed.kind,
                                 span: None,
                                 selection: None,
-                                lexeme_components: Vec::new(),
                             },
                             SourceSpan::new(edge_text_start, match_start),
                             raw_span,
@@ -1920,7 +1832,7 @@ fn build_node_label_token_from_raw(
     input: &str,
     shape: &str,
     token_span: SourceSpan,
-    content_span: SourceSpan,
+    _content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
     trigger_span: Option<SourceSpan>,
@@ -1930,7 +1842,6 @@ fn build_node_label_token_from_raw(
         shape: shape.to_string(),
         text: labeled_text_with_spans(input, text, token_span, raw_span),
         trigger_span,
-        lexeme_components: label_lexeme_components(token_span, content_span, raw_span),
         recovery_error: None,
     }))
 }
@@ -1944,7 +1855,7 @@ fn build_partial_node_label_token_from_raw(
     input: &str,
     shape: &str,
     token_span: SourceSpan,
-    content_span: SourceSpan,
+    _content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
     recovery: PartialNodeLabelRecovery,
@@ -1959,42 +1870,13 @@ fn build_partial_node_label_token_from_raw(
                 kind,
                 span: None,
                 selection: None,
-                lexeme_components: Vec::new(),
             },
             token_span,
             raw_span,
         ),
         trigger_span: recovery.trigger_span,
-        lexeme_components: label_lexeme_components(token_span, content_span, raw_span),
         recovery_error: Some(recovery.error),
     })
-}
-
-fn label_lexeme_components(
-    token_span: SourceSpan,
-    content_span: SourceSpan,
-    value_span: SourceSpan,
-) -> Vec<FlowchartLexemeComponent> {
-    let mut components = Vec::with_capacity(3);
-    if token_span.start < content_span.start {
-        components.push(FlowchartLexemeComponent::new(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(token_span.start, content_span.start),
-        ));
-    }
-    if value_span.start < value_span.end {
-        components.push(FlowchartLexemeComponent::new(
-            EditorLexemeKind::String,
-            value_span,
-        ));
-    }
-    if content_span.end < token_span.end {
-        components.push(FlowchartLexemeComponent::new(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(content_span.end, token_span.end),
-        ));
-    }
-    components
 }
 
 fn labeled_text_with_spans(
@@ -2005,12 +1887,6 @@ fn labeled_text_with_spans(
 ) -> LabeledText {
     text.span = Some(token_span);
     text.selection = label_value_selection(input, content_span, &text.text).or(Some(content_span));
-    if text.lexeme_components.is_empty() && content_span.start < content_span.end {
-        text.lexeme_components.push(FlowchartLexemeComponent::new(
-            EditorLexemeKind::String,
-            content_span,
-        ));
-    }
     text
 }
 
@@ -2019,18 +1895,4 @@ fn label_value_selection(input: &str, content_span: SourceSpan, value: &str) -> 
         return None;
     }
     source_value_span(input, content_span, value)
-}
-
-fn trimmed_slice_with_span(input: &str, start: usize, end: usize) -> (&str, SourceSpan) {
-    let slice = &input[start..end];
-    let leading = slice
-        .len()
-        .saturating_sub(slice.trim_start_matches(is_ecmascript_trim_char).len());
-    let text = &slice[leading..];
-    let trimmed_len = text.trim_end_matches(is_ecmascript_trim_char).len();
-    let start = start + leading;
-    (
-        &text[..trimmed_len],
-        SourceSpan::new(start, start + trimmed_len),
-    )
 }

@@ -1,0 +1,271 @@
+==================
+sets intersections text labels sizes and styles stay structural
+==================
+
+venn-beta
+title "Team overlap"
+set A["Frontend"]:10
+set "Backend Team"
+union A,"Backend Team"[Shared]:4
+text A,"Backend Team" "OpenAPI"["contract"]
+  text "Implicit label"[display]
+style A,"Backend Team" fill:#ffcc00,stroke:rgba(0, 0, 0, 0.5)
+
+---
+
+(source_file
+  (venn_diagram
+    (venn_header
+      (diagram_keyword))
+    (venn_body
+      (venn_title_statement
+        (statement_keyword)
+        (venn_title_text))
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_bare_identifier)))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_quoted_label
+            (venn_quote)
+            (venn_quoted_label_content)
+            (venn_quote))
+          (venn_label_delimiter))
+        (venn_value_delimiter)
+        (venn_number))
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_quoted_identifier
+              (venn_quote)
+              (venn_quoted_identifier_content)
+              (venn_quote)))))
+      (venn_union_statement
+        (statement_keyword)
+        (venn_intersection_expression
+          (venn_identifier
+            (venn_bare_identifier))
+          (venn_set_delimiter)
+          (venn_identifier
+            (venn_quoted_identifier
+              (venn_quote)
+              (venn_quoted_identifier_content)
+              (venn_quote))))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_unquoted_label)
+          (venn_label_delimiter))
+        (venn_value_delimiter)
+        (venn_number))
+      (venn_text_statement
+        (statement_keyword)
+        (venn_expression
+          (venn_intersection_expression
+            (venn_identifier
+              (venn_bare_identifier))
+            (venn_set_delimiter)
+            (venn_identifier
+              (venn_quoted_identifier
+                (venn_quote)
+                (venn_quoted_identifier_content)
+                (venn_quote)))))
+        (venn_text_value
+          (venn_identifier
+            (venn_quoted_identifier
+              (venn_quote)
+              (venn_quoted_identifier_content)
+              (venn_quote))))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_quoted_label
+            (venn_quote)
+            (venn_quoted_label_content)
+            (venn_quote))
+          (venn_label_delimiter)))
+      (venn_indented_text_statement
+        (venn_indented_text_marker)
+        (venn_text_value
+          (venn_identifier
+            (venn_quoted_identifier
+              (venn_quote)
+              (venn_quoted_identifier_content)
+              (venn_quote))))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_unquoted_label)
+          (venn_label_delimiter)))
+      (venn_style_statement
+        (statement_keyword)
+        (venn_expression
+          (venn_intersection_expression
+            (venn_identifier
+              (venn_bare_identifier))
+            (venn_set_delimiter)
+            (venn_identifier
+              (venn_quoted_identifier
+                (venn_quote)
+                (venn_quoted_identifier_content)
+                (venn_quote)))))
+        (venn_style_list
+          (venn_style_field
+            (venn_style_property)
+            (venn_value_delimiter)
+            (venn_style_value
+              (venn_color)))
+          (venn_style_delimiter)
+          (venn_style_field
+            (venn_style_property)
+            (venn_value_delimiter)
+            (venn_style_value
+              (venn_color))))))))
+
+==================
+higher arity intersections and numeric text values
+==================
+
+VeNn-BeTa
+set A
+set B
+set C
+union A,B,C["All"]:.5
+text A,B,C +12[Count]
+
+---
+
+(source_file
+  (venn_diagram
+    (venn_header
+      (diagram_keyword))
+    (venn_body
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_bare_identifier))))
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_bare_identifier))))
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_bare_identifier))))
+      (venn_union_statement
+        (statement_keyword)
+        (venn_intersection_expression
+          (venn_identifier
+            (venn_bare_identifier))
+          (venn_set_delimiter)
+          (venn_identifier
+            (venn_bare_identifier))
+          (venn_set_delimiter)
+          (venn_identifier
+            (venn_bare_identifier)))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_quoted_label
+            (venn_quote)
+            (venn_quoted_label_content)
+            (venn_quote))
+          (venn_label_delimiter))
+        (venn_value_delimiter)
+        (venn_number))
+      (venn_text_statement
+        (statement_keyword)
+        (venn_expression
+          (venn_intersection_expression
+            (venn_identifier
+              (venn_bare_identifier))
+            (venn_set_delimiter)
+            (venn_identifier
+              (venn_bare_identifier))
+            (venn_set_delimiter)
+            (venn_identifier
+              (venn_bare_identifier))))
+        (venn_text_value
+          (venn_number))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_unquoted_label)
+          (venn_label_delimiter))))))
+
+==================
+incomplete expressions recover locally and preserve following siblings
+==================
+
+venn-beta
+set Before[ok]
+union Before,
+broken payload
+set Label["unclosed
+set After
+style After fill:#fff
+
+---
+
+(source_file
+  (venn_diagram
+    (venn_header
+      (diagram_keyword))
+    (venn_body
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_bare_identifier)))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_unquoted_label)
+          (venn_label_delimiter)))
+      (venn_incomplete_union_statement
+        (statement_keyword)
+        (venn_incomplete_intersection_expression
+          (venn_identifier
+            (venn_bare_identifier))
+          (venn_set_delimiter)))
+      (venn_malformed_statement
+        (venn_malformed_text))
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_bare_identifier)))
+        (venn_label
+          (venn_label_delimiter)
+          (venn_unclosed_quoted_label
+            (venn_quote)
+            (venn_quoted_label_content))))
+      (venn_set_statement
+        (statement_keyword)
+        (venn_set_expression
+          (venn_identifier
+            (venn_bare_identifier))))
+      (venn_style_statement
+        (statement_keyword)
+        (venn_expression
+          (venn_identifier
+            (venn_bare_identifier)))
+        (venn_style_list
+          (venn_style_field
+            (venn_style_property)
+            (venn_value_delimiter)
+            (venn_style_value
+              (venn_color))))))))
+
+==================
+header only at eof
+==================
+
+venn-beta
+
+---
+
+(source_file
+  (venn_diagram
+    (venn_header
+      (diagram_keyword))))

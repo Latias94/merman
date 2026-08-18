@@ -9,14 +9,18 @@ status: active
 
 ## Scope
 
-`merman-lsp` is the canonical LSP adapter for Merman diagnostics and editor intelligence. It does not parse Mermaid through an LSP-specific grammar and does not render previews.
+`merman-lsp` is the canonical LSP adapter for Merman diagnostics and editor intelligence. It does
+not render previews. Strict language behavior remains Merman-owned; tolerant syntax highlighting
+uses the shared `tree-sitter-mermaid` grammar and portable highlight query.
 
-`merman-editor-core` owns protocol-neutral document snapshots, UTF-16 ranges, completion, hover, document symbols, selection and folding ranges, navigation, rename, and semantic-token planning. `merman-lsp` owns:
+`merman-editor-core` owns protocol-neutral semantic document snapshots, UTF-16 ranges, completion,
+hover, document symbols, selection and folding ranges, navigation, and rename. `merman-lsp` owns:
 
 - LSP initialization, lifecycle, capability negotiation, and `tower_lsp_server::ls_types` projection;
 - synchronous message admission plus ordered document and configuration transactions;
 - generation acquisition, singleflight execution, weighted caching, stale-result suppression, and diagnostics publication;
-- semantic-token result IDs and delta state;
+- the independent incremental Tree-sitter syntax state, highlight projection, semantic-token result
+  IDs, and delta state;
 - standard request handlers and Merman-specific extension requests; and
 - client effects, refresh coordination, cancellation, and bounded session shutdown.
 
@@ -41,7 +45,10 @@ The server advertises editor-agnostic Merman requests under `ServerCapabilities.
 
 ## Document And State Model
 
-Plain Mermaid files and Mermaid fences in Markdown and MDX use the same typed `DocumentSnapshot`/`FenceTextIndex` model. Host-document positions remain UTF-16 correct, including diagnostics, fixes, completion edits, navigation, rename, and semantic tokens.
+Plain Mermaid files and Mermaid fences in Markdown and MDX use the same typed semantic
+`DocumentSnapshot` / `FenceTextIndex` model. A separate syntax-side document state owns one
+incremental Tree-sitter tree for plain Mermaid and one tree per Mermaid fence for Markdown/MDX.
+Both projections keep host-document positions UTF-16 correct.
 
 `MermanLspService` synchronously admits each JSON-RPC message before transport futures can run concurrently. State mutations are ordered by arrival, while reads wait for every earlier mutation to commit or abort. One private `LanguageSession` versions source and analyzer configuration independently and owns generation acquisition, singleflight execution, weighted LRU entries, guarded commits, client effects, refresh coordination, cancellation, and endpoint lifetime. Typed session operations capture a short-lived state ticket, perform parsing or projection outside the session mutex, then commit only if the captured epoch and configuration remain current. Handlers do not own transaction choreography.
 
@@ -57,10 +64,13 @@ The session cache has one weighted strong-reference entry per current URI stamp.
 
 - Push diagnostics re-check currentness immediately before publication.
 - Pull diagnostics retry bounded stale computations against the latest context.
-- Semantic-token state is committed only for the captured current snapshot.
+- Semantic-token state is committed only for the captured current syntax epoch.
 - A matching previous result ID can produce a delta; a stale ID falls back to full tokens.
-- Snapshot-affecting configuration clears snapshot-dependent state.
-- Diagnostic-only rule changes refresh diagnostics without rebuilding semantic snapshots.
+- Source and document-kind changes invalidate syntax state; strict-analysis configuration changes
+  do not rebuild syntax trees.
+- Snapshot-affecting semantic configuration clears analysis-dependent state.
+- Diagnostic-only rule changes refresh diagnostics without rebuilding semantic snapshots or syntax
+  trees.
 
 Initialization and workspace settings can provide deterministic `fixed_today` and `fixed_local_offset_minutes` values. `fixed_today` uses the canonical `CivilDate` spelling: years `0000` through `9999` use `YYYY-MM-DD`, later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The LSP does not expose a native runtime selector or forward the facade's `system-*` Cargo features.
 
@@ -69,11 +79,15 @@ Initialization and workspace settings can provide deterministic `fixed_today` an
 Language behavior is driven by parser-backed facts from `merman-analysis` and queries from `merman-editor-core`:
 
 - definition, references, prepare rename, and rename operate on typed entity groups rather than raw text matches;
-- payload facts may feed hover, lint, semantic tokens, and code actions without becoming navigation or rename targets;
+- payload facts may feed hover, lint, and code actions without becoming navigation or rename
+  targets;
 - code actions use explicit `DiagnosticFix` metadata, never invent edits for diagnostics without a safe fix, and materialize one workspace edit when several requested diagnostics share the same fix allocation; and
 - completion uses editor-core replacement ranges, while resolve adds documentation without changing the selected insert edit.
 
-`Unavailable` provenance means no parser-backed body facts exist. Unknown or unrecoverable body text therefore receives no guessed body symbols, navigation, rename, or semantic tokens. Source-start diagram headers and templates remain available from the static family catalog.
+`Unavailable` provenance means no parser-backed body facts exist. Unknown or unrecoverable body
+text therefore receives no guessed body symbols, navigation, or rename. Tolerant Tree-sitter
+syntax highlighting remains independent of that semantic state. Source-start diagram headers and
+templates remain available from the static family catalog.
 
 The LSP consumes typed snapshots directly; it does not serialize and decode `AnalysisFactsPayload` for normal requests. The separately exposed binding facts payload and diagnostics payload are independent wire contracts (facts schema 2, diagnostics schema 1), not LSP document versions or Mermaid grammar IDs.
 

@@ -2,12 +2,27 @@
 
 ## Status
 
-Accepted
+Accepted; syntax-highlighting ownership amended by ADR-0084.
 
 ## Dates
 
 - Accepted: 2026-06-24
 - Updated: 2026-08-12
+- Amended: 2026-08-17 by ADR-0084
+
+## 2026-08-17 Highlighting Amendment
+
+ADR-0084 supersedes this decision's family-owned lexical journal, mixed semantic-token planner,
+generated token descriptor, and Merman WASM/Monaco coloring clauses. Tree-sitter now exclusively
+owns base syntax highlighting in the LSP and Playground, with independent native and browser
+syntax-state lifecycles.
+
+The semantic seam established here remains in force. Parser-owned semantic identity, expected
+syntax, diagnostics, source mapping, completion, hover, navigation, and safe rename must not be
+derived from Tree-sitter CST recovery or portable locals/tags queries. References to lexical facts
+and Merman-produced semantic tokens below record the original accepted architecture rather than the
+current highlighting owner. The LSP method name `semanticTokens` remains a protocol transport and
+does not change that ownership boundary.
 
 ## Context
 
@@ -235,3 +250,4 @@ decoded.
 - ADR-0070: Diagnostics-First Analysis Contract
 - ADR-0072: Lint Rule Governance
 - ADR-0073: Family-Owned Diagram Architecture
+- ADR-0084: Tree-sitter Highlighting Ownership

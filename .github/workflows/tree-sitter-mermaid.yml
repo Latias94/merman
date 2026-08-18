@@ -1,0 +1,121 @@
+name: Tree-sitter Mermaid
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
+
+      - name: Install grammar toolchain
+        run: |
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
+
+      - name: Verify parser and bindings
+        run: |
+          npm run check:generated --prefix distribution/tree-sitter-mermaid
+          npm run test:generation-script --prefix distribution/tree-sitter-mermaid
+          npm run test:corpus --prefix distribution/tree-sitter-mermaid
+          cargo nextest run --locked -p tree-sitter-mermaid --build-jobs 1 --no-fail-fast
+          cargo clippy --locked -p tree-sitter-mermaid --all-targets -- -D warnings
+
+  generation-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install grammar toolchain
+        run: |
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
+
+      - name: Verify cross-platform generation entry
+        run: |
+          npm run check:generated --prefix distribution/tree-sitter-mermaid
+          npm run test:generation-script --prefix distribution/tree-sitter-mermaid
+
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install grammar toolchain
+        run: |
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          npm rebuild tree-sitter-cli --prefix distribution/tree-sitter-mermaid
+
+      - name: Verify language WASM
+        run: |
+          npm run check:wasm --prefix distribution/tree-sitter-mermaid
+          npm run test:wasm --prefix distribution/tree-sitter-mermaid
+
+  packages:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Build local release shape
+        run: |
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          npm run prebuild --prefix distribution/tree-sitter-mermaid
+          TREE_SITTER_MERMAID_REQUIRE_PREBUILDS=1 \
+            npm run test:package-smoke --prefix distribution/tree-sitter-mermaid

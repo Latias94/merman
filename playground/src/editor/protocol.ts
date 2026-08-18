@@ -1,14 +1,11 @@
-import type { EditorPosition, EditorSemanticTokenLegend } from "@mermanjs/web";
+import type { EditorPosition } from "@mermanjs/web";
 
 import type {
   EditorWorkerQuery,
   EditorWorkerQueryResult,
   EditorWorkerQueryResults,
 } from "./protocol-query-results.ts";
-import {
-  projectEditorSemanticTokenLegend,
-  projectEditorWorkerQueryResult,
-} from "./protocol-query-results.ts";
+import { projectEditorWorkerQueryResult } from "./protocol-query-results.ts";
 import {
   EditorWorkerProtocolProjectionError,
   assertSchema,
@@ -32,7 +29,7 @@ import {
   MERMAN_WEB_TRANSPORT_API_VERSION,
 } from "./protocol-version.ts";
 
-export { projectEditorSemanticTokenLegend, projectEditorWorkerQueryResult };
+export { projectEditorWorkerQueryResult };
 export type {
   EditorWorkerQuery,
   EditorWorkerQueryResult,
@@ -81,7 +78,6 @@ export type EditorWorkerRequest =
       readonly type: "query";
       readonly uri: string;
       readonly version: number;
-      readonly legendDigest: string;
       readonly query: EditorWorkerQuery;
     })
   | {
@@ -99,8 +95,6 @@ export interface EditorWorkerReadyResponse extends EditorWorkerResponseBase {
   readonly completionTriggerCharacters: string[];
   readonly transportApiVersion: number;
   readonly editorSchema: typeof EDITOR_SCHEMA_VERSION;
-  readonly legendDigest: string;
-  readonly legend: EditorSemanticTokenLegend;
 }
 
 export interface EditorWorkerSyncResponse extends EditorWorkerResponseBase {
@@ -112,7 +106,6 @@ export interface EditorWorkerRawQueryResponse extends EditorWorkerResponseBase {
   readonly type: "queryResult";
   readonly uri: string;
   readonly version: number;
-  readonly legendDigest: string;
   readonly result: unknown;
 }
 
@@ -143,7 +136,6 @@ const QUERY_REQUEST_SCHEMA = schema([
   "type",
   "uri",
   "version",
-  "legendDigest",
   "query",
 ]);
 const DISPOSE_REQUEST_SCHEMA = schema(["protocol", "type"]);
@@ -157,8 +149,6 @@ const READY_RESPONSE_SCHEMA = schema([
   "completionTriggerCharacters",
   "transportApiVersion",
   "editorSchema",
-  "legendDigest",
-  "legend",
 ]);
 const SYNC_RESPONSE_SCHEMA = schema([
   "protocol",
@@ -172,7 +162,6 @@ const QUERY_RESPONSE_SCHEMA = schema([
   "type",
   "uri",
   "version",
-  "legendDigest",
   "result",
 ]);
 const ERROR_RESPONSE_SCHEMA = schema([
@@ -236,10 +225,6 @@ export function projectEditorWorkerRequest(
         type: "query",
         uri: expectNonEmptyString(request.uri, "query URI"),
         version: expectPositiveSafeInteger(request.version, "query version"),
-        legendDigest: expectNonEmptyString(
-          request.legendDigest,
-          "query legend digest",
-        ),
         query: projectEditorWorkerQuery(request.query),
       };
     case "dispose":
@@ -285,7 +270,6 @@ export function projectEditorWorkerQuery(value: unknown): EditorWorkerQuery {
     case "diagnostics":
     case "diagramDetection":
     case "documentSymbols":
-    case "semanticTokens":
       assertSchema(query, NO_ARGUMENT_QUERY_SCHEMA, `${query.kind} query`);
       return { kind: query.kind };
     case "completions":
@@ -348,11 +332,6 @@ export function projectEditorWorkerResponse(
         ),
         transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
         editorSchema: EDITOR_SCHEMA_VERSION,
-        legendDigest: expectNonEmptyString(
-          response.legendDigest,
-          "legend digest",
-        ),
-        legend: projectEditorSemanticTokenLegend(response.legend),
       };
     case "result":
       assertSchema(response, SYNC_RESPONSE_SCHEMA, "synchronization response");
@@ -375,10 +354,6 @@ export function projectEditorWorkerResponse(
         version: expectPositiveSafeInteger(
           response.version,
           "query response version",
-        ),
-        legendDigest: expectNonEmptyString(
-          response.legendDigest,
-          "query response legend digest",
         ),
         result: response.result,
       };

@@ -1,6 +1,6 @@
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeKind,
-    OperationControl, OperationControlResult, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, OperationControl, OperationControlResult,
+    SourceSpan,
 };
 use std::ops::Range;
 
@@ -47,7 +47,6 @@ impl SourceEdit {
 pub struct PreprocessedSource {
     text: String,
     edit_map: SourceEditMap,
-    global_lexemes: Vec<EditorLexeme>,
     global_expected_syntax: Vec<EditorExpectedSyntax>,
     global_directive_prefixes: Vec<String>,
     recovered_incomplete_directive: bool,
@@ -80,7 +79,6 @@ impl PreprocessedSource {
         Ok(Self {
             text,
             edit_map: SourceEditMap::identity(source.len()),
-            global_lexemes: Vec::new(),
             global_expected_syntax: Vec::new(),
             global_directive_prefixes: Vec::new(),
             recovered_incomplete_directive: false,
@@ -105,10 +103,6 @@ impl PreprocessedSource {
         self.edit_map.try_map_enclosing_span(span)
     }
 
-    pub(crate) fn global_lexemes(&self) -> &[EditorLexeme] {
-        &self.global_lexemes
-    }
-
     pub(crate) fn global_expected_syntax(&self) -> &[EditorExpectedSyntax] {
         &self.global_expected_syntax
     }
@@ -128,15 +122,6 @@ impl PreprocessedSource {
     pub(super) fn record_global_directive_prefix(&mut self, prefix: String) {
         if !self.global_directive_prefixes.contains(&prefix) {
             self.global_directive_prefixes.push(prefix);
-        }
-    }
-
-    pub(super) fn record_global_lexeme(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
-        let Some(span) = self.try_map_span(span) else {
-            return;
-        };
-        if span.start < span.end {
-            self.global_lexemes.push(EditorLexeme::global(kind, span));
         }
     }
 
@@ -1571,7 +1556,6 @@ mod tests {
             expected.edit_map.unmapped_output_ranges
         );
         assert_eq!(actual.edit_map.scan_stats, expected.edit_map.scan_stats);
-        assert_eq!(actual.global_lexemes, expected.global_lexemes);
         assert_eq!(
             actual.global_expected_syntax,
             expected.global_expected_syntax

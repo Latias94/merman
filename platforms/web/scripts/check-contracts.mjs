@@ -20,11 +20,11 @@ const bindingOptionsTypeTests = path.join(
   "type-tests",
   "binding-options.ts",
 );
-const generatedTokenDescriptor = path.join(
+const generatedRenamePolicy = path.join(
   root,
   "src",
   "generated",
-  "token-descriptor.ts",
+  "editor-rename-policy.ts",
 );
 const runtimeState = path.join(root, "src", "runtime-state.ts");
 const packageEntries = webPackages.map((descriptor) => descriptor.id);
@@ -118,7 +118,6 @@ const requiredTypeProperties = new Map([
       "references",
       "prepareRename",
       "rename",
-      "semanticTokens",
       "dispose",
     ],
   ],
@@ -213,7 +212,7 @@ const exactTypeStringLiterals = new Map([
   [
     "AnalysisRenamePolicy",
     contract.exportedStringLiteralMembers(
-      generatedTokenDescriptor,
+      generatedRenamePolicy,
       "EditorRenamePolicy",
     ),
   ],

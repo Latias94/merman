@@ -1,4 +1,4 @@
-use crate::{SourceSpan, editor::EditorLexemeBatchResult};
+use crate::SourceSpan;
 
 mod actor;
 mod scanner;
@@ -95,10 +95,6 @@ impl<'input> Lexer<'input> {
 
     pub(super) fn position(&self) -> usize {
         self.scanner.position()
-    }
-
-    pub(super) fn finish_lexemes(self) -> EditorLexemeBatchResult {
-        self.scanner.finish_lexemes()
     }
 }
 

@@ -26,7 +26,7 @@ pub use editor_language::{
     WasmEditorSession, editor_code_actions, editor_completion_trigger_characters,
     editor_completions, editor_definition, editor_diagnostics, editor_diagram_detection,
     editor_document_symbols, editor_hover, editor_prepare_rename, editor_references, editor_rename,
-    editor_search_document_symbols, editor_semantic_token_descriptor, editor_semantic_tokens,
+    editor_search_document_symbols,
 };
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -38,7 +38,7 @@ use serde::Deserialize;
 ///
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
-pub const WASM_TRANSPORT_API_VERSION: u32 = 4;
+pub const WASM_TRANSPORT_API_VERSION: u32 = 5;
 const WASM_TIMEOUT_MS_MAX: u64 = u32::MAX as u64;
 const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
-        assert_eq!(WASM_TRANSPORT_API_VERSION, 4);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 5);
     }
 
     #[cfg(feature = "ascii")]

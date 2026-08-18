@@ -1,6 +1,5 @@
 import type {
   BrowserEditorSession,
-  EditorSemanticTokenDescriptor,
   RuntimeCatalog,
 } from "@mermanjs/web";
 import {
@@ -30,10 +29,8 @@ export interface EditorWorkerRuntimeBindings {
     version: number,
     uri: string,
   ) => BrowserEditorSession;
-  readonly editorSemanticTokenDescriptor: () => EditorSemanticTokenDescriptor;
   readonly editorCompletionTriggerCharacters: () => string[];
   readonly initMerman: () => Promise<unknown>;
-  readonly legendDigest: string;
   readonly runtimeCatalog: () => RuntimeCatalog;
   readonly transportApiVersion: () => number;
 }
@@ -50,7 +47,6 @@ export interface EditorWorkerRuntime {
 
 interface InitializedContract {
   readonly completionTriggerCharacters: readonly string[];
-  readonly descriptor: EditorSemanticTokenDescriptor;
   readonly transportApiVersion: number;
 }
 
@@ -142,18 +138,10 @@ export function createEditorWorkerRuntime(
           "Merman editor worker was loaded without the editor capability.",
         );
       }
-      const descriptor = bindings.editorSemanticTokenDescriptor();
-      if (descriptor.digest !== bindings.legendDigest) {
-        throw new WorkerStateError(
-          "PROTOCOL_MISMATCH",
-          `Merman editor legend ${descriptor.digest} does not match ${bindings.legendDigest}.`,
-        );
-      }
       initializedContract = Object.freeze({
         completionTriggerCharacters: Object.freeze([
           ...bindings.editorCompletionTriggerCharacters(),
         ]),
-        descriptor,
         transportApiVersion: transportVersion,
       });
     }
@@ -167,11 +155,6 @@ export function createEditorWorkerRuntime(
       completionTriggerCharacters: [
         ...contract.completionTriggerCharacters,
       ],
-      legendDigest: contract.descriptor.digest,
-      legend: {
-        tokenTypes: [...contract.descriptor.tokenTypeLspNames],
-        tokenModifiers: [...contract.descriptor.modifierLspNames],
-      },
     });
   };
 
@@ -242,15 +225,8 @@ export function createEditorWorkerRuntime(
   const requireDocument = (
     uri: string,
     version: number,
-    legendDigest: string,
   ): BrowserEditorSession => {
-    const contract = requireInitialized();
-    if (legendDigest !== contract.descriptor.digest) {
-      throw new WorkerStateError(
-        "PROTOCOL_MISMATCH",
-        `Editor query legend ${legendDigest} does not match ${contract.descriptor.digest}.`,
-      );
-    }
+    requireInitialized();
     if (
       !document ||
       !editorSession ||
@@ -292,8 +268,6 @@ export function createEditorWorkerRuntime(
         return current.prepareRename(query.position);
       case "rename":
         return current.rename(query.position, query.newName);
-      case "semanticTokens":
-        return current.semanticTokens();
     }
   };
 
@@ -303,31 +277,19 @@ export function createEditorWorkerRuntime(
     const projected = projectEditorWorkerQueryResult(
       request.query,
       executeQuery(
-        requireDocument(request.uri, request.version, request.legendDigest),
+        requireDocument(request.uri, request.version),
         request.query,
       ),
     );
-    const result =
-      request.query.kind === "semanticTokens" &&
-      projected instanceof Uint32Array
-        ? new Uint32Array(projected)
-        : projected;
     const message: EditorWorkerResponse = {
       protocol: EDITOR_WORKER_PROTOCOL,
       type: "queryResult",
       requestId: request.requestId,
       uri: request.uri,
       version: request.version,
-      legendDigest: request.legendDigest,
-      result,
+      result: projected,
     };
-    const transfer =
-      request.query.kind === "semanticTokens" &&
-      result instanceof Uint32Array &&
-      result.buffer instanceof ArrayBuffer
-        ? [result.buffer]
-        : undefined;
-    post(message, transfer);
+    post(message);
   };
 
   const workerErrorCode = (

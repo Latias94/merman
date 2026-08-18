@@ -56,16 +56,10 @@ pub(super) struct NodeSpec {
 pub(super) struct NodeSpecTrace {
     pub id_span: Option<SourceSpan>,
     pub description_span: Option<SourceSpan>,
-    pub shape_opening: Option<SourceSpan>,
-    pub shape_closing: Option<SourceSpan>,
-    pub text_opening: Option<SourceSpan>,
-    pub text_closing: Option<SourceSpan>,
-    pub explicit_id: bool,
 }
 
 pub(super) struct NodeSpecError {
     pub message: String,
-    pub trace: NodeSpecTrace,
     pub continuation: Option<NodeSpecContinuation>,
 }
 
@@ -101,41 +95,19 @@ impl NodeSpecContinuation {
 pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<NodeSpecError>> {
     let input = input.trim_end();
     if input.is_empty() {
-        return Err(node_spec_error(
-            "expected node",
-            NodeSpecTrace::default(),
-            None,
-        ));
+        return Err(node_spec_error("expected node", None));
     }
 
     if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let opening = SourceSpan::new(0, start.len());
-        let (inner, tail, closing_start) =
-            extract_delimited(input, start, end).map_err(|failure| {
-                let text_opening = text_opening_span(&input[start.len()..], start.len());
-                node_spec_error(
-                    failure.message(),
-                    NodeSpecTrace {
-                        shape_opening: Some(opening),
-                        text_opening,
-                        ..NodeSpecTrace::default()
-                    },
-                    failure.continuation(),
-                )
-            })?;
-        let closing = SourceSpan::new(closing_start, closing_start + end.len());
+        let (inner, tail, _) = extract_delimited(input, start, end)
+            .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
         let parsed_text = parse_node_text(inner, start.len());
         let trace = NodeSpecTrace {
             id_span: Some(parsed_text.content),
             description_span: None,
-            shape_opening: Some(opening),
-            shape_closing: Some(closing),
-            text_opening: parsed_text.opening,
-            text_closing: parsed_text.closing,
-            explicit_id: false,
         };
         if !tail.trim().is_empty() {
-            return Err(node_spec_error("unexpected trailing input", trace, None));
+            return Err(node_spec_error("unexpected trailing input", None));
         }
         let ty = node_type_for(start, end);
         return Ok(NodeSpec {
@@ -159,56 +131,25 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
             descr_is_markdown: false,
             trace: NodeSpecTrace {
                 id_span: Some(SourceSpan::new(0, id_end)),
-                explicit_id: true,
                 ..NodeSpecTrace::default()
             },
         });
     }
 
     let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
-        let id_end = id_raw.trim_end().len();
-        return Err(node_spec_error(
-            "expected node delimiter",
-            NodeSpecTrace {
-                id_span: Some(SourceSpan::new(0, id_end)),
-                explicit_id: true,
-                ..NodeSpecTrace::default()
-            },
-            None,
-        ));
+        return Err(node_spec_error("expected node delimiter", None));
     };
 
     let rest_start = input.len() - rest.len();
-    let opening = SourceSpan::new(rest_start, rest_start + start.len());
-    let (inner, tail, closing_start_in_rest) =
-        extract_delimited(rest, start, end).map_err(|failure| {
-            let text_opening = text_opening_span(&rest[start.len()..], rest_start + start.len());
-            node_spec_error(
-                failure.message(),
-                NodeSpecTrace {
-                    id_span: Some(SourceSpan::new(0, id_raw.trim_end().len())),
-                    shape_opening: Some(opening),
-                    text_opening,
-                    explicit_id: true,
-                    ..NodeSpecTrace::default()
-                },
-                failure.continuation(),
-            )
-        })?;
-    let closing_start = rest_start + closing_start_in_rest;
-    let closing = SourceSpan::new(closing_start, closing_start + end.len());
+    let (inner, tail, _) = extract_delimited(rest, start, end)
+        .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
     let parsed_text = parse_node_text(inner, rest_start + start.len());
     let trace = NodeSpecTrace {
         id_span: Some(SourceSpan::new(0, input[..rest_start].trim_end().len())),
         description_span: Some(parsed_text.content),
-        shape_opening: Some(opening),
-        shape_closing: Some(closing),
-        text_opening: parsed_text.opening,
-        text_closing: parsed_text.closing,
-        explicit_id: true,
     };
     if !tail.trim().is_empty() {
-        return Err(node_spec_error("unexpected trailing input", trace, None));
+        return Err(node_spec_error("unexpected trailing input", None));
     }
 
     let ty = node_type_for(start, end);
@@ -232,12 +173,10 @@ pub(super) fn starts_node_spec(input: &str) -> bool {
 
 fn node_spec_error(
     message: impl Into<String>,
-    trace: NodeSpecTrace,
     continuation: Option<NodeSpecContinuation>,
 ) -> Box<NodeSpecError> {
     Box::new(NodeSpecError {
         message: message.into(),
-        trace,
         continuation,
     })
 }
@@ -395,8 +334,6 @@ fn extract_delimited<'a>(
 struct ParsedNodeText {
     value: String,
     content: SourceSpan,
-    opening: Option<SourceSpan>,
-    closing: Option<SourceSpan>,
     is_markdown: bool,
 }
 
@@ -405,11 +342,6 @@ fn parse_node_text(raw: &str, raw_start: usize) -> ParsedNodeText {
         return ParsedNodeText {
             value: inner.to_string(),
             content: SourceSpan::new(raw_start + 2, raw_start + raw.len() - 2),
-            opening: Some(SourceSpan::new(raw_start, raw_start + 2)),
-            closing: Some(SourceSpan::new(
-                raw_start + raw.len() - 2,
-                raw_start + raw.len(),
-            )),
             is_markdown: true,
         };
     }
@@ -417,30 +349,13 @@ fn parse_node_text(raw: &str, raw_start: usize) -> ParsedNodeText {
         return ParsedNodeText {
             value: inner.to_string(),
             content: SourceSpan::new(raw_start + 1, raw_start + raw.len() - 1),
-            opening: Some(SourceSpan::new(raw_start, raw_start + 1)),
-            closing: Some(SourceSpan::new(
-                raw_start + raw.len() - 1,
-                raw_start + raw.len(),
-            )),
             is_markdown: false,
         };
     }
     ParsedNodeText {
         value: raw.to_string(),
         content: SourceSpan::new(raw_start, raw_start + raw.len()),
-        opening: None,
-        closing: None,
         is_markdown: false,
-    }
-}
-
-fn text_opening_span(raw: &str, raw_start: usize) -> Option<SourceSpan> {
-    if raw.starts_with("\"`") {
-        Some(SourceSpan::new(raw_start, raw_start + 2))
-    } else if raw.starts_with('"') {
-        Some(SourceSpan::new(raw_start, raw_start + 1))
-    } else {
-        None
     }
 }
 

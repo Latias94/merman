@@ -1,8 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::EditorLexemeJournal, family,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -106,7 +105,6 @@ struct SankeyRecord {
 
 struct SankeySemanticSource {
     records: Vec<SankeyRecord>,
-    lexemes: Vec<SankeyLexeme>,
 }
 
 struct SankeySemanticConstruction {
@@ -122,7 +120,7 @@ struct SankeySyntaxOutcome {
 impl SankeySemanticSource {
     fn editor_facts_controlled(
         &self,
-        source: &str,
+        _source: &str,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<EditorSemanticFacts> {
         let mut facts = EditorSemanticFacts::new();
@@ -152,7 +150,6 @@ impl SankeySemanticSource {
                 true,
             );
         }
-        attach_sankey_lexemes_controlled(source, &self.lexemes, &mut facts, control)?;
         Ok(facts)
     }
 
@@ -377,29 +374,6 @@ struct SankeySyntaxError {
     span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct SankeyLexeme {
-    kind: EditorLexemeKind,
-    span: SourceSpan,
-}
-
-fn attach_sankey_lexemes_controlled(
-    source: &str,
-    lexemes: &[SankeyLexeme],
-    facts: &mut EditorSemanticFacts,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<()> {
-    let mut journal = EditorLexemeJournal::family_parser(source);
-    for (index, lexeme) in lexemes.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        journal.push(lexeme.kind, EditorLexemeModifiers::NONE, lexeme.span);
-    }
-    facts.replace_family_lexemes(journal.finish());
-    Ok(())
-}
-
 struct PreparedSankeyText {
     text: String,
     source_bytes: Vec<SourceSpan>,
@@ -528,11 +502,6 @@ impl PreparedSankeyText {
         field
     }
 
-    fn map_lexeme(&self, mut lexeme: SankeyLexeme) -> SankeyLexeme {
-        lexeme.span = self.map_span(lexeme.span);
-        lexeme
-    }
-
     fn map_error(&self, mut error: SankeySyntaxError) -> SankeySyntaxError {
         error.span = self.map_span(error.span);
         error
@@ -561,21 +530,9 @@ fn parse_sankey_syntax_outcome_controlled(
     let prepared = PreparedSankeyText::new_controlled(code, control)?;
     let Some(header_end) = find_sankey_newline_controlled(&prepared.text, control)? else {
         let span = prepared.map_span(SourceSpan::new(0, prepared.text.len()));
-        let lexemes = (!prepared.text.is_empty())
-            .then(|| SankeyLexeme {
-                kind: if is_sankey_header(prepared.text.trim()) {
-                    EditorLexemeKind::Keyword
-                } else {
-                    EditorLexemeKind::Literal
-                },
-                span,
-            })
-            .into_iter()
-            .collect();
         return Ok(SankeySyntaxOutcome {
             source: SankeySemanticSource {
                 records: Vec::new(),
-                lexemes,
             },
             errors: vec![SankeySyntaxError {
                 message: "expected sankey header followed by csv".to_string(),
@@ -594,10 +551,6 @@ fn parse_sankey_syntax_outcome_controlled(
         return Ok(SankeySyntaxOutcome {
             source: SankeySemanticSource {
                 records: Vec::new(),
-                lexemes: vec![SankeyLexeme {
-                    kind: EditorLexemeKind::Literal,
-                    span,
-                }],
             },
             errors: vec![SankeySyntaxError {
                 message: "expected sankey".to_string(),
@@ -627,17 +580,6 @@ fn parse_sankey_syntax_outcome_controlled(
         });
     }
 
-    let mut lexemes = vec![SankeyLexeme {
-        kind: EditorLexemeKind::Keyword,
-        span: prepared.map_span(header_span),
-    }];
-    for (index, lexeme) in parser.take_lexemes().into_iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        lexemes.push(prepared.map_lexeme(lexeme));
-    }
-
     let mut mapped_records = Vec::with_capacity(records.len());
     for (index, record) in records.into_iter().enumerate() {
         if index % 128 == 0 {
@@ -654,23 +596,9 @@ fn parse_sankey_syntax_outcome_controlled(
     Ok(SankeySyntaxOutcome {
         source: SankeySemanticSource {
             records: mapped_records,
-            lexemes,
         },
         errors,
     })
-}
-
-#[derive(Debug, Clone, Copy)]
-enum SankeyFieldRole {
-    Node,
-    Value,
-}
-
-fn sankey_value_lexeme_kind(value: &str) -> EditorLexemeKind {
-    match value.trim().parse::<f64>() {
-        Ok(number) if number.is_finite() => EditorLexemeKind::Number,
-        _ => EditorLexemeKind::Literal,
-    }
 }
 
 type ControlledSankeySyntaxResult<T> =
@@ -679,7 +607,6 @@ type ControlledSankeySyntaxResult<T> =
 struct CsvParser<'input, 'control> {
     input: &'input str,
     pos: usize,
-    lexemes: Vec<SankeyLexeme>,
     control: &'control crate::OperationControl,
 }
 
@@ -688,18 +615,7 @@ impl<'input, 'control> CsvParser<'input, 'control> {
         Self {
             input,
             pos,
-            lexemes: Vec::new(),
             control,
-        }
-    }
-
-    fn take_lexemes(&mut self) -> Vec<SankeyLexeme> {
-        std::mem::take(&mut self.lexemes)
-    }
-
-    fn push_lexeme(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
-        if span.start < span.end {
-            self.lexemes.push(SankeyLexeme { kind, span });
         }
     }
 
@@ -749,7 +665,6 @@ impl<'input, 'control> CsvParser<'input, 'control> {
             Ok(source) => source,
             Err(error) => return Ok(Err(error)),
         };
-        self.record_field(&source, SankeyFieldRole::Node);
         if let Err(error) = self.consume_comma() {
             return Ok(Err(error));
         }
@@ -757,7 +672,6 @@ impl<'input, 'control> CsvParser<'input, 'control> {
             Ok(target) => target,
             Err(error) => return Ok(Err(error)),
         };
-        self.record_field(&target, SankeyFieldRole::Node);
         if let Err(error) = self.consume_comma() {
             return Ok(Err(error));
         }
@@ -765,7 +679,6 @@ impl<'input, 'control> CsvParser<'input, 'control> {
             Ok(value) => value,
             Err(error) => return Ok(Err(error)),
         };
-        self.record_field(&value, SankeyFieldRole::Value);
         if !self.try_consume_newline() && !self.eof() {
             let end = find_sankey_newline_controlled(self.rest(), self.control)?
                 .map_or(self.input.len(), |end| self.pos + end);
@@ -781,31 +694,8 @@ impl<'input, 'control> CsvParser<'input, 'control> {
     }
 
     fn consume_comma(&mut self) -> std::result::Result<(), SankeySyntaxError> {
-        let start = self.pos;
         self.consume_char(',')?;
-        self.push_lexeme(
-            EditorLexemeKind::Delimiter,
-            SourceSpan::new(start, self.pos),
-        );
         Ok(())
-    }
-
-    fn record_field(&mut self, field: &SankeyField, role: SankeyFieldRole) {
-        if let Some([opening, closing]) = field.quotes {
-            self.push_lexeme(EditorLexemeKind::Delimiter, opening);
-            let kind = match role {
-                SankeyFieldRole::Node => EditorLexemeKind::String,
-                SankeyFieldRole::Value => sankey_value_lexeme_kind(&field.text),
-            };
-            self.push_lexeme(kind, field.span);
-            self.push_lexeme(EditorLexemeKind::Delimiter, closing);
-            return;
-        }
-        let kind = match role {
-            SankeyFieldRole::Node => EditorLexemeKind::Identifier,
-            SankeyFieldRole::Value => sankey_value_lexeme_kind(&field.text),
-        };
-        self.push_lexeme(kind, field.span);
     }
 
     fn parse_field(&mut self) -> ControlledSankeySyntaxResult<SankeyField> {

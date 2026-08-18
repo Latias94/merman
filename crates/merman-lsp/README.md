@@ -4,7 +4,12 @@
 
 Local Mermaid language intelligence for `.mmd`, `.mermaid`, Markdown, and MDX documents.
 
-`merman-lsp` provides parser-backed diagnostics, completion, hover, navigation, rename, code actions, symbols, folding, and semantic tokens. It does not render previews; pair it with [`merman-cli`](https://crates.io/crates/merman-cli), or use the [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) for an integrated editor experience.
+`merman-lsp` provides strict-parser-backed diagnostics, completion, hover, navigation, rename,
+code actions, symbols, and folding. Syntax highlighting uses the canonical
+`tree-sitter-mermaid` grammar and highlight query. It does not render previews; pair it with
+[`merman-cli`](https://crates.io/crates/merman-cli), or use the
+[Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
+for an integrated editor experience.
 
 ## Install The Stdio Server
 
@@ -35,7 +40,14 @@ cargo run -p merman-lsp --features stdio
 - Mermaid code fences in Markdown, MDX, and Markdown-family documents.
 - Multiple fences per document with source ranges mapped back to the host file.
 
-Language behavior comes from `merman-analysis` and `merman-editor-core`. `MermanLspService` owns synchronous message admission, while its private `LanguageSession` owns document and configuration transactions, generation acquisition and caching, stale-result suppression, cancellation, client effects, refresh coordination, and shutdown. The remaining LSP layer projects those results onto the protocol.
+Strict language behavior comes from `merman-analysis` and `merman-editor-core`. A separate
+document-owned Tree-sitter state provides tolerant syntax captures without waiting for an analysis
+generation. Standalone Mermaid documents own one incremental tree; Markdown and MDX documents own
+one tree per Mermaid fence with syntax-side host coordinate mapping. `MermanLspService` owns
+synchronous message admission, while its private `LanguageSession` owns document and configuration
+transactions, generation acquisition and caching, stale-result suppression, cancellation, client
+effects, refresh coordination, and shutdown. The remaining LSP layer projects those results onto
+the protocol.
 
 Unconfigured sessions admit at most 4 MiB of source text and 256 Mermaid fences per Markdown or MDX document. Source-byte rejection discards the oversized text and requires a later full replacement. Fence-count rejection retains authoritative text, so ranged edits or a configuration increase can restore analysis without reopening the document. Both limits are exposed through the analysis settings and `merman/configSchema`.
 
@@ -45,7 +57,8 @@ Unconfigured sessions admit at most 4 MiB of source text and 256 Mermaid fences 
 - Completion and completion-item resolution.
 - Hover, document symbols, selection ranges, and folding ranges.
 - Definition, references, prepare rename, and rename.
-- Full-document and range semantic tokens.
+- Full-document, range, and delta semantic-token transport backed exclusively by Tree-sitter
+  syntax captures.
 - Merman extension requests for the rule catalog and configuration schema.
 
 The server intentionally rejects workspace diagnostics until unopened workspace-file discovery has a defined owner. Formatting is not currently provided.

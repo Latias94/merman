@@ -1,0 +1,311 @@
+==================
+axes quadrants points classes and styles stay structural
+==================
+
+quadrantChart
+title 分析象限图
+accTitle: Accessible quadrant
+accDescr {
+  Unicode 描述 across lines.
+}
+x-axis "Low Reach ❤" --> High Reach
+y-axis "`Low Engagement`" --> 高参与度
+quadrant-1 需要扩展
+quadrant-2 "Need: promotion"
+quadrant-3 Re-evaluate
+quadrant-4 May be improved
+Campaign A: [0.3, 0.6]
+Campaign B:::class1: [0.45, 0.23] radius: 10, color: #ff0000
+classDef class1 color: #908342, stroke-color: #310085, stroke-width: 10px
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))
+    (quadrant_chart_body
+      (quadrant_chart_title_statement
+        (statement_keyword)
+        (quadrant_chart_line_text))
+      (quadrant_chart_accessibility_title_statement
+        (statement_keyword)
+        (quadrant_chart_accessibility_line_text))
+      (quadrant_chart_accessibility_description_statement
+        (statement_keyword)
+        (quadrant_chart_accessibility_description_block))
+      (quadrant_chart_axis_statement
+        (quadrant_chart_axis)
+        (quadrant_chart_axis_text
+          (quadrant_chart_quoted_text))
+        (quadrant_chart_axis_delimiter)
+        (quadrant_chart_axis_text))
+      (quadrant_chart_axis_statement
+        (quadrant_chart_axis)
+        (quadrant_chart_axis_text
+          (quadrant_chart_quoted_text))
+        (quadrant_chart_axis_delimiter)
+        (quadrant_chart_axis_text))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_quoted_text)))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (quadrant_chart_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate)))
+      (quadrant_chart_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_class_clause
+          (quadrant_chart_class_delimiter)
+          (quadrant_chart_class_name))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate))
+        (quadrant_chart_style_list
+          (quadrant_chart_style
+            (quadrant_chart_style_name)
+            (quadrant_chart_style_value))
+          (quadrant_chart_style
+            (quadrant_chart_style_name)
+            (quadrant_chart_style_value))))
+      (quadrant_chart_class_definition_statement
+        (statement_keyword)
+        (quadrant_chart_class_name)
+        (quadrant_chart_style_list
+          (quadrant_chart_style
+            (quadrant_chart_style_name)
+            (quadrant_chart_style_value))
+          (quadrant_chart_style
+            (quadrant_chart_style_name)
+            (quadrant_chart_style_value))
+          (quadrant_chart_style
+            (quadrant_chart_style_name)
+            (quadrant_chart_style_value)))))))
+
+==================
+header only at eof
+==================
+
+quadrantChart
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))))
+
+==================
+same line body and semicolon boundaries
+==================
+
+quadrantChart x-axis Low --> High;quadrant-1 Plan;Point: [0, 1]
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))
+    (quadrant_chart_body
+      (quadrant_chart_axis_statement
+        (quadrant_chart_axis)
+        (quadrant_chart_axis_text)
+        (quadrant_chart_axis_delimiter)
+        (quadrant_chart_axis_text))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (quadrant_chart_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate))))))
+
+==================
+one sided axes quoted labels Unicode and comments
+==================
+
+QuadRantChart
+x-axis Café --> Größe
+y-axis Engagement -->
+quadrant-1 "Plan: now"
+quadrant-2 🚀Growth %% trailing note
+产品A: [0.3, 0.6]
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))
+    (quadrant_chart_body
+      (quadrant_chart_axis_statement
+        (quadrant_chart_axis)
+        (quadrant_chart_axis_text)
+        (quadrant_chart_axis_delimiter)
+        (quadrant_chart_axis_text))
+      (quadrant_chart_axis_statement
+        (quadrant_chart_axis)
+        (quadrant_chart_axis_text)
+        (quadrant_chart_axis_delimiter))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_quoted_text)))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (comment)
+      (quadrant_chart_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate))))))
+
+==================
+invalid point and malformed row preserve following siblings
+==================
+
+quadrantChart
+quadrant-1 Before
+Broken: [1.2, 0.4]
+unknown row payload
+quadrant-2 After
+Healthy: [0.2, 0.4]
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))
+    (quadrant_chart_body
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (quadrant_chart_malformed_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_malformed_coordinates
+          (quadrant_chart_invalid_coordinate)
+          (quadrant_chart_coordinate)))
+      (quadrant_chart_malformed_statement
+        (quadrant_chart_malformed_text))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (quadrant_chart_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate))))))
+
+==================
+missing delimiters and incomplete labels stay local
+==================
+
+quadrantChart
+Missing comma: [0.2 0.4]
+Missing close: [0.2, 0.4
+x-axis
+quadrant-3
+Healthy: [0.2, 0.4]
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))
+    (quadrant_chart_body
+      (quadrant_chart_malformed_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_malformed_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate)))
+      (quadrant_chart_malformed_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_malformed_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate)))
+      (quadrant_chart_incomplete_axis_statement
+        (quadrant_chart_axis))
+      (quadrant_chart_incomplete_quadrant_statement
+        (quadrant_chart_quadrant))
+      (quadrant_chart_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate))))))
+
+==================
+unclosed quote and accessibility block preserve siblings
+==================
+
+quadrantChart
+x-axis "unterminated
+quadrant-1 After
+accDescr {unterminated
+Healthy: [0.2, 0.4]
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))
+    (quadrant_chart_body
+      (quadrant_chart_axis_statement
+        (quadrant_chart_axis)
+        (quadrant_chart_axis_text
+          (quadrant_chart_unclosed_quoted_text)))
+      (quadrant_chart_quadrant_statement
+        (quadrant_chart_quadrant)
+        (quadrant_chart_label
+          (quadrant_chart_bare_label)))
+      (quadrant_chart_accessibility_description_statement
+        (statement_keyword)
+        (quadrant_chart_unclosed_accessibility_description_block))
+      (quadrant_chart_point_statement
+        (quadrant_chart_point_label
+          (quadrant_chart_bare_point_label))
+        (quadrant_chart_point_delimiter)
+        (quadrant_chart_coordinates
+          (quadrant_chart_coordinate)
+          (quadrant_chart_coordinate))))))

@@ -242,6 +242,7 @@
     "loading": "正在加载编辑器...",
     "languageInitializing": "语言工具正在初始化",
     "languageReconnecting": "语言工具正在重连",
+    "languageDegraded": "部分语言工具不可用：{{message}}",
     "languageUnavailable": "语言工具不可用：{{message}}",
     "retryLanguage": "重试",
     "hover": {

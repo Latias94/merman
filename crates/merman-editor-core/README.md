@@ -4,7 +4,7 @@
 
 Protocol-neutral Mermaid editor intelligence for Rust hosts.
 
-Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak the Language Server Protocol. Use this library, normally through the [`merman`](https://crates.io/crates/merman) facade, when a Rust host needs completion, navigation, rename, diagnostics, and semantic-token logic in process without LSP, WASM, Monaco, or VS Code types.
+Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak the Language Server Protocol. Use this library, normally through the [`merman`](https://crates.io/crates/merman) facade, when a Rust host needs completion, navigation, rename, and diagnostics in process without LSP, WASM, Monaco, or VS Code types.
 
 ## Quick Start
 
@@ -43,7 +43,7 @@ Use `analyze_document_context_with_shared_text` when the initial analysis payloa
 ## Responsibilities
 
 - Construct immutable document, diagram, and Mermaid-fence snapshots through one-shot analysis functions, `DocumentSnapshot`, and `FenceSnapshot`.
-- Project parser-backed facts into completion, hover, symbols, folding, definition, references, prepare-rename, rename, selection ranges, code actions, and semantic tokens.
+- Project parser-backed facts into completion, hover, symbols, folding, definition, references, prepare-rename, rename, selection ranges, and code actions.
 - Preserve source provenance with `FenceTextIndexSource`, distinguishing `ParserComplete`, `ParserRecovered`, and `Unavailable` facts.
 - Keep exact original-source spans when preprocessing can represent them; omit unrepresentable facts and emit recovery diagnostics.
 - Keep all editor results protocol-neutral so adapters can map them to LSP, browser, or native UI types.
@@ -67,14 +67,12 @@ Completion policy is evaluated only by `completion_for_snapshot`. The former pub
 use merman_editor_core::CompletionContext;
 ```
 
-## Semantic Token Planning
-
-Use `plan_semantic_tokens_for_snapshot` or `plan_semantic_tokens_for_snapshot_range`. Both return `Result<SemanticTokenPlan, TokenPlanError>`; range planning accepts editor-core's protocol-neutral `Range`. Inspect `SemanticTokenPlan::tokens()` for `PlannedToken` values or `packed()` for the generated five-word LSP-relative UTF-16 representation.
-
-`semantic_token_descriptor()` is the single descriptor for `PlannedTokenKind` codes, `PlannedTokenModifier` bits, LSP legend indices, and packed-field order. Hosts should derive protocol tables from that descriptor rather than maintaining a second legend or numeric mapping.
-
 Completion adapters should likewise derive activation characters from
 `COMPLETION_TRIGGER_CHARACTERS`; LSP and browser adapters project that one editor-owned list.
+
+Syntax highlighting is intentionally outside this crate. Merman's LSP and Playground adapters use
+the canonical `tree-sitter-mermaid` grammar and portable highlight query, while this crate remains
+the protocol-neutral owner of strict semantic editor features.
 
 ## Boundary
 

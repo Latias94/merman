@@ -3,6 +3,11 @@ import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
 
 import { GENERATED_EXAMPLES } from "../src/generated/examples.ts";
+import {
+  monitorBrowserErrors,
+  replaceEditorSource,
+  waitForPreviewSvg,
+} from "./helpers/playground";
 
 let sourceServer: ViteDevServer | null = null;
 let sourceOrigin = "";
@@ -30,6 +35,36 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await sourceServer?.close();
   sourceServer = null;
+});
+
+test("ViewBox Frame restores root clipping after StrictMode effect replay", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.goto(sourceOrigin);
+  await replaceEditorSource(
+    page,
+    [
+      "sequenceDiagram",
+      "    title A diagram title that is quite long and might affect vertical bounds",
+      "    Alice->>Bob: hi",
+    ].join("\n")
+  );
+  await waitForPreviewSvg(page);
+
+  const host = page.locator(".preview-container > div").first();
+  const rootOverflow = () =>
+    host.evaluate((element) => {
+      const svg = element.shadowRoot?.querySelector<SVGSVGElement>("svg");
+      return svg ? getComputedStyle(svg).overflow : null;
+    });
+  await expect.poll(rootOverflow).toBe("visible");
+
+  await page
+    .getByRole("button", { name: "ViewBox Frame", exact: true })
+    .click();
+  await expect.poll(rootOverflow).toBe("hidden");
+  errors.assertNone();
 });
 
 test("raster export changes only the root canvas and encodes explicit alpha or JPEG background", async ({

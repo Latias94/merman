@@ -2879,9 +2879,10 @@ mod png_feature_tests {
         control.cancel();
 
         let prepared_error =
-            prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone())
-                .err()
-                .expect("pre-cancelled preparation must fail");
+            match prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone()) {
+                Ok(_) => panic!("pre-cancelled preparation must fail"),
+                Err(error) => error,
+            };
         assert!(matches!(
             prepared_error,
             ExportError::Cancelled(OperationCancelled {
@@ -3043,9 +3044,11 @@ mod pdf_feature_tests {
         let control = OperationControl::new();
         control.cancel();
 
-        let prepared_error = prepare_pdf_controlled(&svg, &PdfOptions::default(), control.clone())
-            .err()
-            .expect("pre-cancelled PDF preparation must fail");
+        let prepared_error =
+            match prepare_pdf_controlled(&svg, &PdfOptions::default(), control.clone()) {
+                Ok(_) => panic!("pre-cancelled PDF preparation must fail"),
+                Err(error) => error,
+            };
         assert!(matches!(
             prepared_error,
             ExportError::Cancelled(OperationCancelled {

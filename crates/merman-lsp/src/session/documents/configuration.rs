@@ -163,9 +163,6 @@ impl SessionState {
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
         self.analysis_cache.clear();
-        for record in self.documents.values_mut() {
-            record.semantic_tokens_state = None;
-        }
         self.analysis_executor.invalidate_all();
     }
 
@@ -204,6 +201,7 @@ impl SessionState {
         resource_rejections: &HashMap<Uri, Option<AnalysisRejection>>,
     ) {
         let max_source_bytes = self.analyzer.options().max_source_bytes();
+        let syntax_parent_cancellation = self.session_cancellation.clone();
         for (uri, record) in &mut self.documents {
             let retained_rejection = record.document.source.retained_text().map(|_| {
                 resource_rejections
@@ -211,10 +209,16 @@ impl SessionState {
                     .expect("resource reclassification must cover every retained document")
                     .as_ref()
             });
-            record.document.source = record
+            let source = record
                 .document
                 .source
                 .reclassify(max_source_bytes, retained_rejection.flatten());
+            if source.retained_text().is_none() {
+                record.syntax_cancellation.cancel();
+                record.syntax_cancellation = syntax_parent_cancellation.child();
+                record.syntax_document = None;
+            }
+            record.document.source = source;
         }
     }
 

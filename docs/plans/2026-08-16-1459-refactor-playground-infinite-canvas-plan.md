@@ -15,9 +15,11 @@ origin: docs/plans/2026-08-15-2329-feat-playground-host-export-plan.md
 
 Make the Playground preview behave like Mermaid Live's canvas: the whole available preview surface is the navigable workspace, the rendered SVG has no decorative paper/card boundary, and users can pan, pinch, zoom, fit, and optionally inspect the exact SVG root bounds. Keep rendering deterministic at the existing canonical `800×600` environment for both engines, keep exports finite and artifact-owned, and remove the Playground-only Host measurement and locked-environment contracts that no longer serve the clarified product goal.
 
-Success means the Visual and Compare views use the infinite-canvas presentation on desktop and mobile; an optional SVG Bounds overlay exposes rather than repairs root `viewBox` clipping; current workspace and issue links remain bounded and usable; legacy Host-bearing links safely degrade to canonical rendering; focused runtime/share/browser checks, lint, typecheck, build, and required PR CI pass.
+Success means the Visual and Compare views use the infinite-canvas presentation on desktop and mobile; Infinite Canvas reveals measurable SVG overflow connected to the renderer-owned root viewport while ViewBox Frame and the optional SVG Bounds overlay expose that exact viewport; current workspace and issue links remain bounded and usable; legacy Host-bearing links safely degrade to canonical rendering; focused runtime/share/browser checks, lint, typecheck, build, and required PR CI pass.
 
 This plan supersedes only the Playground-specific Host viewport, live measurement, and locked reproduction environment decisions in `docs/plans/2026-08-15-2329-feat-playground-host-export-plan.md`. Its export workbench, exact-artifact ownership, responsive SVG clone, and portable sharing decisions remain in force.
+
+On 2026-08-17, the presentation contract was refined after reproducing long Sequence titles that both Merman and pinned Mermaid.js draw outside their unchanged root `viewBox`. Infinite Canvas now reveals that visual overflow and includes it in Fit, while ViewBox Frame restores the root's original overflow behavior for exact clipping diagnosis. This amendment changes only mounted-preview presentation; renderer, artifact, and export geometry remain unchanged.
 
 ---
 
@@ -30,17 +32,17 @@ The current Playground already has a presentation camera, but it renders the SVG
 - the renderer's finite layout environment, which must stay controlled for a meaningful Merman/Mermaid.js comparison; and
 - the user's presentation camera, which may move over an effectively unbounded workspace without changing layout or output geometry.
 
-The Host mode does not resolve the Zed title-clipping report. When Mermaid.js publishes content outside its root `viewBox`, the SVG viewport clips that content regardless of the outer host's CSS size. The Playground should make this behavior easy to inspect, not hide it with a Merman-only bounds rewrite.
+The Host mode does not resolve the Zed title-clipping report. When Mermaid.js publishes content outside its root `viewBox`, changing the outer host's CSS size does not change that renderer-owned viewport. The Playground should provide an editor-oriented Infinite Canvas that reveals the overflow while retaining ViewBox Frame as an exact diagnostic, without a Merman-only bounds rewrite.
 
 ### Requirements
 
 **Canvas and render semantics**
 
 - **R1 — Infinite canvas by default.** Visual and Compare preview panes use their entire available area as the canvas. The rendered diagram has no paper background, padding, rounded card, or drop shadow imposed by the Playground. The responsive presentation clone suppresses Merman's known default white root background so the grid remains the canvas, while the published/exported artifact and non-default renderer backgrounds remain unchanged.
-- **R2 — Presentation and rendering stay separate.** Pan, pinch, wheel zoom, reset, fit, canvas resize, and bounds visibility are presentation state only. They do not trigger rendering, alter operation identity, mutate published SVG, or change export dimensions.
+- **R2 — Presentation and rendering stay separate.** Pan, pinch, wheel zoom, reset, fit, canvas resize, presentation mode, browser bounding-box measurement, and bounds visibility are presentation state only. They do not trigger rendering, alter operation identity, mutate published SVG, or change export dimensions.
 - **R3 — Deterministic render environment.** Interactive Merman and Mermaid.js operations both use the same canonical `800×600` container environment and canonical `screenAvailableWidth=800`. Benchmark continues to own its canonical environment independently.
 - **R4 — SVG Bounds is diagnostic.** A user can show or hide a lightweight overlay aligned to the mounted SVG root. The overlay changes neither the root `viewBox` nor intrinsic dimensions, serialized artifact, hit testing, navigation, fit geometry, or export.
-- **R5 — Preserve renderer semantics.** The responsive presentation clone preserves a valid engine-owned `viewBox` byte-for-byte. The Playground does not call `getBBox()` or widen bounds to conceal clipping inherited from pinned Mermaid.js.
+- **R5 — Preserve renderer semantics.** The responsive presentation clone preserves a valid engine-owned `viewBox` byte-for-byte. Infinite Canvas may measure mounted SVG graphics to reveal overflow connected to the root viewport and fit their union. Disconnected root-clipped decorations stay outside Fit. ViewBox Frame restores original root overflow behavior. Browser measurements never rewrite renderer or export geometry and fall back to intrinsic root geometry when unavailable, invalid, or non-finite.
 
 **Host removal and sharing migration**
 
@@ -61,9 +63,9 @@ The Host mode does not resolve the Zed title-clipping report. When Mermaid.js pu
 
 ### Acceptance Examples
 
-- **AE1 — Default Visual canvas (R1-R5, R11).** Given a newly opened Playground, when a diagram renders in Visual, then the grid fills the preview pane, the diagram floats directly on the canvas, Fit centers it with breathing room, and no finite white card is visible.
+- **AE1 — Default Visual canvas (R1-R5, R11).** Given a newly opened Playground, when a diagram renders in Visual, then the grid fills the preview pane, the diagram floats directly on the canvas, Fit centers the union of its root viewport and connected measurable SVG overflow with breathing room, and no finite white card is visible.
 - **AE2 — Presentation-only camera (R2-R3, R10).** Given a valid publication, when the user pans, zooms, resizes the Preview, or opens it on a host with a different `screen.availWidth`, then no presentation action changes the operation, both engines retain the same canonical environment, and exported dimensions remain unchanged.
-- **AE3 — Bounds diagnosis (R4-R5, R13).** Given an SVG whose title or content reaches or crosses its root `viewBox`, when SVG Bounds is enabled, then a dashed outline exactly marks the root viewport while the same clipping remains visible; disabling it restores the same artifact and camera.
+- **AE3 — Overflow and bounds diagnosis (R4-R5, R13).** Given an SVG whose title or content crosses its root `viewBox`, Infinite Canvas reveals and fits that overflow. When ViewBox Frame is selected, the original root clipping is restored; enabling SVG Bounds exactly marks that unchanged viewport. Switching modes or bounds preserves the mounted artifact and changes neither published bytes nor export geometry.
 - **AE4 — Compare parity (R1-R5).** Given Compare mode, both panes use the same infinite-canvas presentation and canonical render input. Their cameras may be controlled independently, but neither pane's allocated width becomes renderer input.
 - **AE5 — Legacy Host link (R6, R8-R9).** Given an old URL containing a Host workspace field and a complete locked environment, when it loads, then code/config/theme/page/editor/Preview mode are restored, the removed Host fields are ignored, no warning is shown solely because they are legacy, and rendering uses `800×600`.
 - **AE6 — Current issue link (R8-R9, R13).** Given Preview/Compare with SVG Bounds enabled, when the user copies and opens an issue link, then the recipient opens Preview/Compare with bounds enabled and no Host environment query fields are emitted.
@@ -95,7 +97,7 @@ The Host mode does not resolve the Zed title-clipping report. When Mermaid.js pu
 ### Key Technical Decisions
 
 - **KTD1 — One canonical Playground render input.** `CANONICAL_RENDER_VIEWPORT` remains the only interactive Playground viewport, and its width is also the canonical `screenAvailableWidth`. Operation capture creates one frozen `800×600×800` layout environment for both engines; no selected mode, live measurement, or browser screen geometry participates in operation identity. (session-settled: user-directed — chosen over retaining Host as a visible or hidden advanced mode after the user clarified that the desired behavior is an infinite presentation canvas.) Governs R2-R3, R6-R7.
-- **KTD2 — Infinite canvas is the existing camera with a different shell.** Reuse `SvgViewport`'s established transform, fitting, pointer, wheel, anchor-suppression, and responsive clone machinery. Remove the finite paper decoration and suppress only the known renderer-default white root background in the presentation clone; do not rewrite the published artifact or any non-default root background. Add a canvas-level theme contract without a new canvas library or second gesture implementation. (session-settled: user-approved — chosen over adding another Canvas/ViewBox mode because the existing camera already supplies the required unbounded navigation; source-confirmed against Mermaid Live's transparent rendered SVG over its grid canvas.) Governs R1-R2, R10-R12.
+- **KTD2 — Infinite canvas is the existing camera with a presentation-only measured boundary.** Reuse `SvgViewport`'s established transform, fitting, pointer, wheel, anchor-suppression, and responsive clone machinery. Remove the finite paper decoration and suppress only the known renderer-default white root background in the presentation clone; do not rewrite the published artifact or any non-default root background. On the mounted clone only, Infinite Canvas enables visible overflow and fits finite graphics connected to the unchanged root viewport; disconnected root-clipped decorations remain outside Fit. ViewBox Frame restores original overflow behavior. Invalid measurements fall back to root geometry. Add no canvas dependency or second gesture implementation. Governs R1-R2, R5, R10-R12.
 - **KTD3 — Bounds belongs to presentation state.** Store one `showSvgBounds` preference for the Preview workspace and pass it into every `SvgViewport`. Implement the visual with a non-interactive outline on the exact content/root host so it follows camera transforms but contributes no layout insets. (session-settled: user-approved — chosen over editable `viewBox`, which would change or conceal the renderer behavior under investigation.) Governs R2, R4-R5, R13.
 - **KTD4 — Share versions keep bounded, explicit migration.** Because `s2` and `rv=1` exist only on the open branch, keep their visible prefixes while redefining the pre-merge current contract. Isolated legacy decoding covers three existing Host-bearing shapes: the original Base64 workspace hash, the `s2` workspace envelope, and the `rv=1` query lock. Each path validates within its existing budget, discards only removed environment fields, and returns the new canonical snapshot/view without warning when all remaining fields are valid. New encoders never emit Host fields. Governs R6, R8-R9.
 - **KTD5 — Canvas contrast follows the effective diagram theme, not only app chrome.** Reuse Mermaid config parsing/precedence to resolve the valid effective theme, classify every `SUPPORTED_THEMES` value into a light or dark canvas family, and keep the grid, status text, focus treatment, and Bounds outline legible. The SVG remains responsible for its own explicit background and arbitrary `themeVariables`/`themeCSS`; the Playground supplies only the surrounding presentation surface. Governs R1, R11.
@@ -204,21 +206,23 @@ sequenceDiagram
 **Approach:**
 
 1. Keep the viewport container full-size and overflow-hidden, remove `bg-white`, padding, rounded corners, and shadow from the diagram wrapper, and remove only a default `background-color: white` declaration from the responsive presentation clone. Preserve the frozen artifact and any non-default renderer background for copy/export.
-2. Preserve the existing camera state machine and fit margin. Recalculate only code that assumed paper padding; do not rewrite gesture logic.
+2. Preserve the existing camera state machine and fit margin. In Infinite Canvas, measure finite mounted SVG graphics in root user space, expand from the unchanged `viewBox` only through intersecting geometry, and use that connected presentation-only union for Fit and centering. This reveals titles and content crossing the viewport without admitting disconnected markers that rely on root clipping. Fall back to intrinsic root geometry when measurement is unavailable or invalid. ViewBox Frame continues to fit the root viewport. Do not rewrite gesture logic.
 3. Add `showSvgBounds` to the Preview-owned store state and expose one native pressed button in a stable toolbar position whenever SVG or Compare mode is selected, including loading, empty, error, source, and stale-publication states. The preference remains toggleable before an SVG mounts; its translated label explains that it applies to all mounted Visual panes. Preview resolves the canvas family and passes both controlled values to CompareView, which forwards them to its two `SvgViewport` instances; components do not introduce a second direct-store ownership path.
-4. Render a pointer-transparent dashed outline on the exact mounted SVG host/wrapper, following camera transforms without adding box size or changing fit calculations.
+4. Render a pointer-transparent dashed outline on the exact mounted SVG host/wrapper, following camera transforms without adding box size or independently changing fit calculations. Apply visible overflow only to the Infinite Canvas mounted clone and restore its original inline overflow declaration in ViewBox Frame.
 5. Resolve the effective theme through existing Mermaid config precedence, map all supported themes to a light/dark canvas family, and apply family tokens for surface, grid, status content, focus, and Bounds. Cover the config-overrides-toolbar case without attempting to infer arbitrary custom theme-variable contrast.
 6. Preserve one-finger pan inside each mobile canvas. Keep the Compare scroll owner reachable through pane headers/gutters and verify the second engine remains reachable without weakening canvas gestures.
 
 **Test scenarios:**
 
 - Visual and Compare contain no finite card classes and still fit/zoom/pan.
+- A long Sequence title that extends beyond an unchanged root `viewBox` is fully visible after Infinite Canvas Fit and clipped again in ViewBox Frame; both engines use the shared `SvgViewport` path.
+- A Gantt marker positioned far outside its date range remains excluded from Fit while the in-range diagram stays readable in Visual and Compare.
 - Bounds toggling uses a translated native button with `aria-pressed`; Enter and Space update only the preference/diagnostic style and do not replace the mounted artifact or alter reported zoom.
 - Anchor navigation suppression and gesture promotion still work.
 - Every supported effective theme maps to a canvas family; a config `theme=dark` overrides a toolbar `default` selection for canvas contrast.
 - On a narrow Compare view, users can still scroll from a pane header/gutter to the second engine while one-finger drags inside a canvas continue to pan it.
 
-**Definition of done:** The canvas fills every Preview pane, SVG Bounds is accessible and non-semantic, and existing camera behavior remains intact.
+**Definition of done:** The canvas fills every Preview pane, Infinite Canvas reveals connected measurable SVG overflow without mutating artifacts, ViewBox Frame preserves root clipping diagnosis, SVG Bounds is accessible and non-semantic, and existing camera behavior remains intact.
 
 ### U3 — Simplify share contracts and migrate Host-bearing links
 
@@ -267,13 +271,13 @@ sequenceDiagram
 
 **Approach:**
 
-1. Replace Host mode browser cases with one desktop infinite-canvas/bounds/share scenario and one mobile gesture/safe-area scenario.
+1. Replace Host mode browser cases with one desktop infinite-canvas/bounds/share scenario, one focused overflow-versus-ViewBox regression, and one mobile gesture/safe-area scenario.
 2. Assert export isolation using existing export coverage rather than duplicating encoder tests.
 3. Run focused unit tests first, then lint/typecheck/build and the affected Chromium desktop/mobile suites. Run non-Chromium smoke only if changed behavior crosses its existing lane.
 
 **Test scenarios:**
 
-- Desktop Visual/Compare show full-surface canvas, bounds toggle, canonical render metadata, and usable share links.
+- Desktop Visual/Compare show full-surface canvas, bounds toggle, canonical render metadata, usable share links, and the shared overflow-aware Fit behavior without changing either engine's root `viewBox`.
 - Mobile Preview supports pan/pinch/fit/bounds/export without overflow or safe-area collision; a single WebKit mobile smoke covers layout, tap activation, and shared pointer-handler state, without claiming native touch delivery.
 - PNG/JPEG/SVG output excludes grid, bounds, and camera transforms.
 - Source search finds no stale active Host product strings or dead viewport ownership outside the labeled legacy decoder/fixture compatibility points.
@@ -288,7 +292,7 @@ Run in dependency order and avoid redundant full-suite reruns:
 
 1. **Pure contracts:** `npm run test:runtime` from `playground/`, covering canonical capture, store snapshots, share migration, and coordinator identity.
 2. **Static gates:** `npm run lint`, `npm run test:browser:typecheck`, and `npm run build` from `playground/`.
-3. **Desktop browser:** the affected tests in `playground/tests/render.presentation.spec.ts` against the built Playground, including infinite shell, Bounds keyboard/pressed semantics, legacy link hydration, and export isolation.
+3. **Desktop browser:** the affected tests in `playground/tests/render.presentation.spec.ts` against the built Playground, including infinite shell, overflow-aware Fit versus exact ViewBox clipping, Bounds keyboard/pressed semantics, legacy link hydration, and export isolation.
 4. **Mobile browser:** the affected tests in `playground/tests/mobile.interactions.spec.ts`, including pan/pinch, Compare scroll reachability, reachable controls, safe areas, and no horizontal overflow. Run the detailed matrix in Chromium and one focused iPhone/WebKit smoke for layout, tap activation, and shared pointer-handler state; retain native touch delivery in the real-device residual checklist.
 5. **Regression ownership:** reuse existing export coverage; do not add DOM simulation dependencies, per-theme browser cases, or duplicate the same behavior across multiple suites.
 6. **PR gate:** every required GitHub check for PR #67 is green and no unresolved change-request thread remains.
@@ -299,7 +303,7 @@ Run in dependency order and avoid redundant full-suite reruns:
 | --- | --- |
 | Canonical operation for both engines | runtime/coordinator unit test |
 | No render on canvas/camera changes | focused coordinator + browser request-count assertion |
-| Infinite shell, exact bounds overlay, and pressed semantics | Chromium presentation test |
+| Infinite shell, connected overflow Fit, exact ViewBox clipping, bounds overlay, and pressed semantics | Chromium presentation test |
 | Legacy Host link degradation | Base64/`s2`/`rv=1` share unit tests + one browser hydration case |
 | Finite export unaffected | existing export unit/browser coverage |
 | Mobile gesture and safe-area behavior | mobile Chromium test |
@@ -320,7 +324,7 @@ Run in dependency order and avoid redundant full-suite reruns:
 ## Definition of Done
 
 - The Playground has no visible or hidden Canonical/Host mode selection, live Host measurement, or locked environment state.
-- Visual and Compare use a full-surface, theme-aware infinite canvas with existing pan/zoom/pinch/fit behavior.
+- Visual and Compare use a full-surface, theme-aware infinite canvas whose Fit includes finite browser-measured overflow connected to the root viewport while ViewBox Frame preserves exact root clipping diagnosis.
 - SVG Bounds can be toggled accessibly and is absent from artifacts and exports.
 - Merman and Mermaid.js receive the same canonical `800×600` interactive environment; lower-level container sizing APIs remain intact.
 - New workspace and issue links omit Host geometry; only issue links carry current page/editor/Preview/Bounds state, and old Base64/`s2`/`rv=1` Host-bearing links safely restore supported fields.

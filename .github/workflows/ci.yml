@@ -29,6 +29,7 @@ jobs:
       cli: ${{ steps.plan.outputs.cli }}
       core: ${{ steps.plan.outputs.core }}
       fuzz: ${{ steps.plan.outputs.fuzz }}
+      grammar: ${{ steps.plan.outputs.grammar }}
       hygiene: ${{ steps.plan.outputs.hygiene }}
       node: ${{ steps.plan.outputs.node }}
       npm: ${{ steps.plan.outputs.npm }}
@@ -1033,6 +1034,12 @@ jobs:
     if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
     uses: ./.github/workflows/fuzz.yml
 
+  grammar-owner:
+    name: grammar-owner
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.grammar == 'true' }}
+    uses: ./.github/workflows/tree-sitter-mermaid.yml
+
   web-owner:
     name: web-owner
     needs: ci-plan
@@ -1101,6 +1108,7 @@ jobs:
       - npm-owner
       - security-owner
       - fuzz-owner
+      - grammar-owner
       - web-owner
       - vscode-owner
       - performance-contracts
@@ -1133,6 +1141,7 @@ jobs:
             "npm-owner":{"owner":"npm","required":true,"result":"${{ needs.npm-owner.result }}"},
             "security-owner":{"owner":"security","required":true,"result":"${{ needs.security-owner.result }}"},
             "fuzz-owner":{"owner":"fuzz","required":true,"result":"${{ needs.fuzz-owner.result }}"},
+            "grammar-owner":{"owner":"grammar","required":true,"result":"${{ needs.grammar-owner.result }}"},
             "web-owner":{"owner":"web","required":true,"result":"${{ needs.web-owner.result }}"},
             "vscode-owner":{"owner":"vscode","required":true,"result":"${{ needs.vscode-owner.result }}"},
             "performance-contracts":{"owner":"performance","required":true,"result":"${{ needs.performance-contracts.result }}"}}

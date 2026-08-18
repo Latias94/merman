@@ -1,0 +1,290 @@
+==================
+frames nested data gwt and accessibility
+==================
+
+eventmodeling
+title Checkout lifecycle
+accTitle: Checkout accessibility
+accDescr {
+  Models checkout state changes.
+}
+entity Sales.Order
+tf 01 cmd UpdateCart
+tf 02 evt CartUpdated ->> 01 `jsobj`{ a: b }
+rf 03 rmo Sales.CartSummary ->> 02 [[CartData]]
+data CartData `json` {
+  { "cart": {
+    "ready": true
+  }}
+}
+note 02 `md` {
+  **reviewed**
+}
+gwt 01
+  given
+    cmd Sales.Order
+  when
+    evt Sales.CartUpdated
+  then
+    rmo Sales.CartSummary
+
+---
+
+(source_file
+  (event_modeling_diagram
+    (event_modeling_header
+      (diagram_keyword))
+    (event_modeling_body
+      (event_title_statement
+        (event_statement_keyword)
+        (event_line_text))
+      (event_accessibility_title_statement
+        (event_statement_keyword)
+        (event_line_text))
+      (event_accessibility_description_block
+        (event_statement_keyword)
+        (event_accessibility_block_text))
+      (event_entity_statement
+        (event_statement_keyword)
+        (event_qualified_name
+          (event_name_part)
+          (event_name_part)))
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part)))
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part))
+        (event_frame_relation
+          (event_relation_operator)
+          (event_frame_id))
+        (event_inline_data
+          (event_data_type
+            (event_data_type_name))
+          (event_inline_object)))
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part)
+          (event_name_part))
+        (event_frame_relation
+          (event_relation_operator)
+          (event_frame_id))
+        (event_data_reference
+          (event_data_name)))
+      (event_data_statement
+        (event_statement_keyword)
+        (event_data_name)
+        (event_data_block
+          (event_data_type
+            (event_data_type_name))
+          (event_data_fragment)
+          (event_nested_data_block
+            (event_data_fragment)
+            (event_nested_data_block
+              (event_data_fragment)))
+          (event_data_fragment)))
+      (event_note_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_data_block
+          (event_data_type
+            (event_data_type_name))
+          (event_data_fragment)))
+      (event_gwt_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_gwt_given_group
+          (event_statement_keyword)
+          (event_gwt_clause
+            (event_entity_kind)
+            (event_qualified_name
+              (event_name_part)
+              (event_name_part))))
+        (event_gwt_when_group
+          (event_statement_keyword)
+          (event_gwt_clause
+            (event_entity_kind)
+            (event_qualified_name
+              (event_name_part)
+              (event_name_part))))
+        (event_gwt_then_group
+          (event_statement_keyword)
+          (event_gwt_clause
+            (event_entity_kind)
+            (event_qualified_name
+              (event_name_part)
+              (event_name_part))))))))
+
+==================
+inline gwt and source fan in
+==================
+
+eventmodeling
+tf 01 ui Shop.Cart
+tf 02 cmd Ordering.AddItem ->> 01
+tf 03 evt Cart.ItemAdded ->> 01 ->> 02 [[payload]] {ready}
+data payload { {id: 42} }
+gwt 03 given cmd Ordering.AddItem when evt Cart.ItemAdded then rmo Cart.Summary
+
+---
+
+(source_file
+  (event_modeling_diagram
+    (event_modeling_header
+      (diagram_keyword))
+    (event_modeling_body
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part)
+          (event_name_part)))
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part)
+          (event_name_part))
+        (event_frame_relation
+          (event_relation_operator)
+          (event_frame_id)))
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part)
+          (event_name_part))
+        (event_frame_relation
+          (event_relation_operator)
+          (event_frame_id))
+        (event_frame_relation
+          (event_relation_operator)
+          (event_frame_id))
+        (event_data_reference
+          (event_data_name))
+        (event_inline_data
+          (event_inline_object)))
+      (event_data_statement
+        (event_statement_keyword)
+        (event_data_name)
+        (event_data_block
+          (event_nested_data_block
+            (event_data_fragment))))
+      (event_gwt_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_gwt_given_group
+          (event_statement_keyword)
+          (event_gwt_clause
+            (event_entity_kind)
+            (event_qualified_name
+              (event_name_part)
+              (event_name_part))))
+        (event_gwt_when_group
+          (event_statement_keyword)
+          (event_gwt_clause
+            (event_entity_kind)
+            (event_qualified_name
+              (event_name_part)
+              (event_name_part))))
+        (event_gwt_then_group
+          (event_statement_keyword)
+          (event_gwt_clause
+            (event_entity_kind)
+            (event_qualified_name
+              (event_name_part)
+              (event_name_part))))))))
+
+==================
+line recovery preserves following frames
+==================
+
+eventmodeling
+tf 01 cmd Before
+tf nope broken payload
+tf 02 evt After ->> 01
+
+---
+
+(source_file
+  (event_modeling_diagram
+    (event_modeling_header
+      (diagram_keyword))
+    (event_modeling_body
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part)))
+      (event_recovered_statement
+        (event_statement_keyword)
+        (event_recovery_text))
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part))
+        (event_frame_relation
+          (event_relation_operator)
+          (event_frame_id))))))
+
+==================
+comments directives and eof statement
+==================
+
+eventmodeling
+// source comment
+/* block
+   comment */
+%% mermaid comment
+entity Sales.Order
+resetframe 007 event Sales.OrderPlaced
+
+---
+
+(source_file
+  (event_modeling_diagram
+    (event_modeling_header
+      (diagram_keyword))
+    (event_modeling_body
+      (event_line_comment)
+      (event_multiline_comment)
+      (comment)
+      (event_entity_statement
+        (event_statement_keyword)
+        (event_qualified_name
+          (event_name_part)
+          (event_name_part)))
+      (event_frame_statement
+        (event_statement_keyword)
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (event_name_part)
+          (event_name_part))))))
+
+==================
+header at eof
+==================
+
+eventmodeling
+---
+
+(source_file
+  (event_modeling_diagram
+    (event_modeling_header
+      (diagram_keyword))))

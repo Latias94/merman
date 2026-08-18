@@ -1,0 +1,300 @@
+==================
+all statements and repeatable clauses stay structured
+==================
+
+gitGraph TB:
+commit tag:"release" id:"c1" msg:"Ship 🚀" type:HIGHLIGHT tag:'stable' %% release metadata
+%%{init: {}}%%
+%% standalone comment
+branch feature/test-branch order:2
+checkout feature/test-branch
+commit "完成"
+switch main
+merge feature/test-branch type:REVERSE tag:"merged" id:"m1" tag:"v2"
+cherry-pick tag:"backport" parent:"c0" id:"c1" tag:"urgent"
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword)
+      (git_graph_direction)
+      (git_graph_header_separator))
+    (git_graph_body
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_tag_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_message_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_type_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (git_graph_commit_type))
+        (git_graph_tag_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string)))
+      (comment)
+      (directive)
+      (comment)
+      (git_graph_branch_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference)
+        (git_graph_order_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (git_graph_integer)))
+      (git_graph_checkout_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference))
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_message_clause
+          (langium_string)))
+      (git_graph_checkout_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference))
+      (git_graph_merge_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference)
+        (git_graph_type_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (git_graph_commit_type))
+        (git_graph_tag_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_tag_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string)))
+      (git_graph_cherry_pick_statement
+        (git_graph_statement_keyword)
+        (git_graph_tag_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_parent_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_tag_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))))))
+
+==================
+header and first statement may share a line
+==================
+
+gitGraph: commit id:"root" msg:"inline"
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword)
+      (git_graph_header_separator))
+    (git_graph_body
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))
+        (git_graph_message_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))))))
+
+==================
+ASCII references and quoted Unicode names
+==================
+
+gitGraph
+branch A
+branch 1.0.1
+branch release-
+branch "功能/分支"
+checkout "功能/分支"
+commit msg:"第一行
+second line"
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword))
+    (git_graph_body
+      (git_graph_branch_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference))
+      (git_graph_branch_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference))
+      (git_graph_branch_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference))
+      (git_graph_branch_statement
+        (git_graph_statement_keyword)
+        (langium_string))
+      (git_graph_checkout_statement
+        (git_graph_statement_keyword)
+        (langium_string))
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_message_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))))))
+
+==================
+title and accessibility statements use shared Langium nodes
+==================
+
+gitGraph
+title Release history
+accTitle: Accessible history
+accDescr: One line description
+accDescr {
+  多行说明
+  second line
+}
+commit
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword))
+    (git_graph_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_acc_descr_block
+          (langium_acc_descr_block_text)))
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)))))
+
+==================
+malformed line remains between valid siblings
+==================
+
+gitGraph
+commit id:"before"
+frobnicate branch
+commit id:"after"
+checkout main
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword))
+    (git_graph_body
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string)))
+      (git_graph_malformed_statement
+        (git_graph_unknown_statement_keyword)
+        (git_graph_malformed_statement_tail))
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string)))
+      (git_graph_checkout_statement
+        (git_graph_statement_keyword)
+        (git_graph_reference)))))
+
+==================
+incomplete required operands remain local
+==================
+
+gitGraph
+commit id:"before"
+branch
+merge
+checkout
+switch
+commit id:"after"
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword))
+    (git_graph_body
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string)))
+      (git_graph_incomplete_branch_statement
+        (git_graph_statement_keyword))
+      (git_graph_incomplete_merge_statement
+        (git_graph_statement_keyword))
+      (git_graph_incomplete_checkout_statement
+        (git_graph_statement_keyword))
+      (git_graph_incomplete_checkout_statement
+        (git_graph_statement_keyword))
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)
+        (git_graph_id_clause
+          (git_graph_clause_keyword)
+          (git_graph_clause_separator)
+          (langium_string))))))
+
+==================
+colon header retains upstream adjacent-body behavior
+==================
+
+gitGraph:commit
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword)
+      (git_graph_header_separator))
+    (git_graph_body
+      (git_graph_commit_statement
+        (git_graph_statement_keyword)))))

@@ -159,41 +159,6 @@ fn combined_flowchart_variants_construct_one_token_and_accessibility_trace() {
 }
 
 #[test]
-fn flowchart_accessibility_statements_emit_lexer_owned_unicode_lexemes() {
-    let source = concat!(
-        "flowchart TD\n",
-        "  accTitle : 结账流程\n",
-        "accDescr {\n  第一行\n  第二行\n}\n",
-        "A --> B\n",
-    );
-    let snapshot = Engine::new()
-        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
-        .unwrap()
-        .expect("Flowchart snapshot");
-    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
-        panic!("Flowchart editor facts");
-    };
-    let lexemes = facts
-        .lexemes()
-        .iter()
-        .map(|lexeme| {
-            let span = lexeme.span();
-            (lexeme.kind(), &source[span.start..span.end])
-        })
-        .collect::<Vec<_>>();
-
-    for keyword in ["accTitle", "accDescr"] {
-        assert!(lexemes.contains(&(EditorLexemeKind::Keyword, keyword)));
-    }
-    for delimiter in [":", "{", "}"] {
-        assert!(lexemes.contains(&(EditorLexemeKind::Delimiter, delimiter)));
-    }
-    for value in ["结账流程", "第一行\n  第二行"] {
-        assert!(lexemes.contains(&(EditorLexemeKind::String, value)));
-    }
-}
-
-#[test]
 fn parse_swimlane_reuses_flowchart_apostrophe_semantics() {
     let engine = Engine::new();
     let text = "swimlane-beta LR\nsubgraph Supplier\nA[Update the RFQs based on the supplier's response]\nB[Done]\nend\nA -->|'Owner's review'| B\n";

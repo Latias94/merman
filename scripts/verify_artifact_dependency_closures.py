@@ -52,6 +52,17 @@ NATIVE_BINDING_FORBIDDEN_PACKAGES = (
     "tokio",
     "uniffi_bindgen",
 )
+TREE_SITTER_FORBIDDEN_PACKAGES = (
+    "tree-sitter",
+    "tree-sitter-language",
+    "tree-sitter-mermaid",
+)
+TREE_SITTER_ALLOWED_PROFILE_IDS = frozenset(
+    {
+        "lsp-library",
+        "lsp-stdio-release",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -337,7 +348,7 @@ def load_verification_cases(
     descriptor_path: Path = DEFAULT_DESCRIPTOR,
     semantic_claims: Sequence[ClosureClaim] = SEMANTIC_CLAIMS,
 ) -> tuple[VerificationCase, ...]:
-    """Join descriptor-owned recipes with semantic runtime-closure checks."""
+    """Join every descriptor recipe with semantic and universal closure checks."""
     try:
         profiles = load_artifact_profiles(descriptor_path)
     except ArtifactProfileError as error:
@@ -358,6 +369,15 @@ def load_verification_cases(
         profile_id = profile.profile_id
         recipe = profile.cargo
 
+        if (
+            profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS
+            and recipe.package != "merman-lsp"
+        ):
+            raise ClosureVerificationError(
+                f"Tree-sitter exception profile {profile_id!r} must build "
+                "package 'merman-lsp'"
+            )
+
         if recipe.build_target_kind == "host":
             expected_targets = (HOST_CLOSURE_REFERENCE_TARGET,)
         elif recipe.build_target_kind == "target-set":
@@ -376,8 +396,20 @@ def load_verification_cases(
                 required_packages=(recipe.package,),
                 forbidden_packages=NATIVE_BINDING_FORBIDDEN_PACKAGES,
             )
+        if claim is None and profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS:
+            claim = ClosureClaim(
+                claim_id=f"{profile_id}-tree-sitter-lsp-boundary",
+                profile_id=profile_id,
+                required_packages=(recipe.package,),
+                forbidden_packages=(),
+            )
         if claim is None:
-            continue
+            claim = ClosureClaim(
+                claim_id=f"{profile_id}-tree-sitter-production-boundary",
+                profile_id=profile_id,
+                required_packages=(recipe.package,),
+                forbidden_packages=TREE_SITTER_FORBIDDEN_PACKAGES,
+            )
         if recipe.package not in claim.required_packages:
             raise ClosureVerificationError(
                 f"semantic claim {claim.claim_id!r} must require descriptor root "
@@ -890,6 +922,12 @@ def check_case(
     failures: list[str] = []
     required = set(claim.required_packages)
     forbidden = set(claim.forbidden_packages)
+    tree_sitter_allowed = (
+        case.recipe.profile_id in TREE_SITTER_ALLOWED_PROFILE_IDS
+        and case.recipe.package == "merman-lsp"
+    )
+    if not tree_sitter_allowed:
+        forbidden.update(TREE_SITTER_FORBIDDEN_PACKAGES)
 
     overlaps = sorted(required & forbidden)
     if overlaps:

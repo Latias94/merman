@@ -1,0 +1,389 @@
+==================
+settings sections tasks constraints and interactions stay structural
+==================
+
+gantt
+title 发布路线
+accTitle: Accessible roadmap
+accDescr {
+  Unicode 描述
+}
+dateFormat YYYY-MM-DD
+axisFormat %Y-%m-%d
+tickInterval 1week
+inclusiveEndDates
+topAxis
+includes 2026-08-15
+excludes weekends 2026-08-16
+todayMarker off
+weekday monday
+weekend friday
+section 研发阶段
+设计 parser :crit, active, task-1, 2026-08-15, 1.5d
+实现 renderer :task-2, after task-1 docs, until release
+click task-1 href "https://mermaid.js.org/" call onTask("参数", 2)
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_title_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_accessibility_title_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_accessibility_description_statement
+        (statement_keyword)
+        (gantt_accessibility_description_block
+          (gantt_accessibility_block_text)))
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (gantt_flag_statement
+        (statement_keyword))
+      (gantt_flag_statement
+        (statement_keyword))
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_today_marker_value))
+      (gantt_weekday_statement
+        (statement_keyword)
+        (gantt_weekday))
+      (gantt_weekend_statement
+        (statement_keyword)
+        (gantt_weekend_day))
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_status))
+          (gantt_task_item
+            (gantt_task_status))
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_date))
+          (gantt_task_item
+            (gantt_duration))))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_dependency_clause
+              (gantt_constraint_keyword)
+              (gantt_reference)
+              (gantt_reference)))
+          (gantt_task_item
+            (gantt_until_clause
+              (gantt_constraint_keyword)
+              (gantt_reference)))))
+      (gantt_click_statement
+        (statement_keyword)
+        (gantt_reference)
+        (gantt_href_action
+          (gantt_action_keyword)
+          (gantt_url))
+        (gantt_call_action
+          (gantt_action_keyword)
+          (gantt_callback_name)
+          (gantt_callback_arguments))))))
+
+==================
+same line body and eof task
+==================
+
+gantt section Minimal
+Only task:2d
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_duration)))))))
+
+==================
+keyword prefixes and typed value prefixes stay task data
+==================
+
+gantt
+titleCase:critical, 2days
+sectionWorker:aftershock, 2026-08-15T12:30:00, 1d
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_task_atom))))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_duration)))))))
+
+==================
+incomplete task and unknown row preserve following siblings
+==================
+
+gantt
+section Before
+Broken task:
+unknown setting payload
+section After
+Healthy task:done, healthy, 1d
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_incomplete_task_statement
+        (gantt_task_name))
+      (gantt_malformed_statement
+        (gantt_malformed_text))
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_status))
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_duration)))))))
+
+==================
+header only at eof
+==================
+
+gantt
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))))
+
+==================
+header comments and exact statement words can remain task names
+==================
+
+gantt %% header comment
+%% body comment
+%%{init: {"theme": "dark"}}%%
+section Keywords
+title: 1d
+dateFormat: 2026-8-5
+click: .5d
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword)
+      (comment))
+    (gantt_body
+      (comment)
+      (directive)
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_duration))))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom))))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom)))))))
+
+==================
+unclosed accessibility block recovers before later siblings
+==================
+
+gantt
+section Before
+accDescr {unfinished
+section After
+Healthy:done, id1, 2026-08-14, 1d
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_accessibility_description_statement
+        (statement_keyword)
+        (gantt_unclosed_accessibility_description_block
+          (gantt_unclosed_accessibility_block_text)))
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_status))
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_date))
+          (gantt_task_item
+            (gantt_duration)))))))
+
+==================
+malformed click action stays on its own line
+==================
+
+gantt
+Task:id1, 1d
+click id1 href"https://example.test/"
+section Preserved
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_duration))))
+      (gantt_click_statement
+        (statement_keyword)
+        (gantt_reference)
+        (gantt_malformed_href_action
+          (gantt_action_keyword)
+          (gantt_url)))
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text)))))
+
+==================
+strict fixture boundaries stay structural
+==================
+
+gantt
+dateFormat YYYY-MM-DD HH:mm:ss # ignored
+excludes weekends; ignored
+todayMarker stroke:#00f;opacity:0.5
+section Runtime
+Timed: id1, 2025-07-04 20:30:30, 1h
+Marker: vert, 01,
+click id1,id2 href "https://example.test/" "details"
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))
+    (gantt_body
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (comment)
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_setting_value))
+      (gantt_semicolon_suffix)
+      (gantt_setting_statement
+        (statement_keyword)
+        (gantt_today_marker_value))
+      (gantt_semicolon_suffix)
+      (gantt_section_statement
+        (statement_keyword)
+        (gantt_line_text))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_atom))
+          (gantt_task_item
+            (gantt_date))
+          (gantt_task_item
+            (gantt_duration))))
+      (gantt_task_statement
+        (gantt_task_name)
+        (gantt_task_metadata
+          (gantt_task_item
+            (gantt_task_status))
+          (gantt_task_item
+            (gantt_task_atom))))
+      (gantt_click_statement
+        (statement_keyword)
+        (gantt_reference)
+        (gantt_reference)
+        (gantt_href_action
+          (gantt_action_keyword)
+          (gantt_url))
+        (gantt_url)))))

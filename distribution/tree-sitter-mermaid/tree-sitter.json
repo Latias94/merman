@@ -1,0 +1,40 @@
+{
+  "grammars": [
+    {
+      "name": "mermaid",
+      "camelcase": "Mermaid",
+      "scope": "source.mermaid",
+      "path": ".",
+      "highlights": "queries/portable/highlights.scm",
+      "injections": "queries/portable/injections.scm",
+      "locals": "queries/portable/locals.scm",
+      "tags": "queries/portable/tags.scm",
+      "file-types": [
+        "mmd",
+        "mermaid"
+      ],
+      "injection-regex": "^(mermaid|mmd)$"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Tolerant Tree-sitter grammar and editor queries for Mermaid",
+    "authors": [
+      {
+        "name": "Merman contributors"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/Latias94/merman"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "node": true,
+    "rust": true,
+    "python": false,
+    "swift": false,
+    "go": false
+  }
+}

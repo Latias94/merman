@@ -5,10 +5,6 @@ import {
   runtimeCatalog,
   UNAVAILABLE_DIAGRAM_DETECTION,
 } from "./runtime-core.js";
-import {
-  validatePackedSemanticTokens,
-  validateSemanticTokenDescriptor,
-} from "./editor-semantic-tokens.js";
 import { isDiagramType } from "./public-catalog.js";
 import {
   type MermanRuntimeState,
@@ -26,16 +22,10 @@ import type {
   EditorLocation,
   EditorPosition,
   EditorPrepareRename,
-  EditorSemanticTokenDescriptor,
   EditorSymbolInformation,
   EditorWorkspaceEdit,
   WasmEditorSessionBinding,
 } from "./public-types.js";
-
-const editorSemanticTokenDescriptorCaches = new WeakMap<
-  MermanRuntimeState,
-  EditorSemanticTokenDescriptor
->();
 
 export function createEditorSession(
   source: string,
@@ -134,13 +124,6 @@ class BrowserEditorSessionImpl implements BrowserEditorSession {
     return this.withNative((native) =>
       native.rename(position.line, position.character, newName)
     );
-  }
-
-  semanticTokens(): Uint32Array {
-    return this.withNative((native) => {
-      cachedEditorSemanticTokenDescriptor();
-      return validatePackedSemanticTokens(native.semanticTokens());
-    });
   }
 
   dispose(): void {
@@ -276,10 +259,6 @@ export function editorRename(
   return rename(source, position.line, position.character, newName, uri, encodeOptions(options));
 }
 
-export function editorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
-  return cloneSemanticTokenDescriptor(cachedEditorSemanticTokenDescriptor());
-}
-
 export function editorCompletionTriggerCharacters(): string[] {
   const triggers = requireEditorLanguage(
     "editorCompletionTriggerCharacters",
@@ -295,49 +274,6 @@ export function editorCompletionTriggerCharacters(): string[] {
     throw new Error("Merman editor completion trigger characters are invalid.");
   }
   return [...triggers];
-}
-
-function cachedEditorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
-  const state = currentRuntimeState();
-  const cached = editorSemanticTokenDescriptorCaches.get(state);
-  if (cached) {
-    return cached;
-  }
-  const descriptor = requireEditorLanguage(
-    "editorSemanticTokenDescriptor",
-    getMerman().editorSemanticTokenDescriptor
-  );
-  const validated = validateSemanticTokenDescriptor(descriptor());
-  editorSemanticTokenDescriptorCaches.set(state, validated);
-  return validated;
-}
-
-function cloneSemanticTokenDescriptor(
-  descriptor: EditorSemanticTokenDescriptor
-): EditorSemanticTokenDescriptor {
-  return {
-    ...descriptor,
-    renamePolicies: [...descriptor.renamePolicies],
-    tokenTypes: descriptor.tokenTypes.map((tokenType) => ({ ...tokenType })),
-    modifiers: descriptor.modifiers.map((modifier) => ({ ...modifier })),
-    packed: {
-      ...descriptor.packed,
-      fieldOrder: [...descriptor.packed.fieldOrder],
-    },
-    overlayPrecedence: descriptor.overlayPrecedence.map((entry) => ({ ...entry })),
-    tokenTypeLspNames: [...descriptor.tokenTypeLspNames],
-    modifierLspNames: [...descriptor.modifierLspNames],
-  } as unknown as EditorSemanticTokenDescriptor;
-}
-
-export function editorSemanticTokens(
-  source: string,
-  uri?: string,
-  options?: EditorBindingOptions | string
-): Uint32Array {
-  cachedEditorSemanticTokenDescriptor();
-  const tokens = requireEditorLanguage("editorSemanticTokens", getMerman().editorSemanticTokens);
-  return validatePackedSemanticTokens(tokens(source, uri, encodeOptions(options)));
 }
 
 function requireEditorLanguage<T>(

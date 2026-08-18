@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "policies": [
+    {
+      "id": "none",
+      "rust_variant": "None",
+      "description": "The symbol is not an addressable rename target.",
+      "default": false
+    },
+    {
+      "id": "identifier",
+      "rust_variant": "Identifier",
+      "description": "Mermaid's common identifier form: Unicode alphanumeric characters, `_`, or `-`.",
+      "default": true
+    },
+    {
+      "id": "qualified_identifier",
+      "rust_variant": "QualifiedIdentifier",
+      "description": "Dot-separated ASCII identifiers.",
+      "default": false
+    },
+    {
+      "id": "event_modeling_id",
+      "rust_variant": "EventModelingId",
+      "description": "Event Modeling `EM_ID`: an ASCII identifier beginning with a letter or `_`.",
+      "default": false
+    },
+    {
+      "id": "event_modeling_frame_id",
+      "rust_variant": "EventModelingFrameId",
+      "description": "Event Modeling frame id: one to three ASCII digits.",
+      "default": false
+    },
+    {
+      "id": "flowchart_node_id",
+      "rust_variant": "FlowchartNodeId",
+      "description": "A Flowchart node id as accepted by the Flowchart lexer.",
+      "default": false
+    },
+    {
+      "id": "git_graph_reference",
+      "rust_variant": "GitGraphReference",
+      "description": "A GitGraph unquoted `REFERENCE` token.",
+      "default": false
+    },
+    {
+      "id": "architecture_identifier",
+      "rust_variant": "ArchitectureIdentifier",
+      "description": "An Architecture entity id, excluding reserved layout keywords.",
+      "default": false
+    },
+    {
+      "id": "railroad_ir_rule",
+      "rust_variant": "RailroadIrRule",
+      "description": "A Railroad IR rule identifier, excluding expression constructors.",
+      "default": false
+    },
+    {
+      "id": "railroad_ebnf_rule",
+      "rust_variant": "RailroadEbnfRule",
+      "description": "An EBNF Railroad rule identifier.",
+      "default": false
+    },
+    {
+      "id": "railroad_peg_rule",
+      "rust_variant": "RailroadPegRule",
+      "description": "A PEG Railroad rule identifier.",
+      "default": false
+    },
+    {
+      "id": "railroad_abnf_rule",
+      "rust_variant": "RailroadAbnfRule",
+      "description": "An ABNF rule identifier.",
+      "default": false
+    }
+  ]
+}

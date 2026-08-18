@@ -1,14 +1,11 @@
 use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind,
-    EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
-    editor::{
-        EditorLexemeJournal, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
-        lalrpop_recovery_span,
-    },
+    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
+    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, OperationControl,
+    OperationControlResult, ParseMetadata, Result, SourceSpan,
+    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -56,7 +53,6 @@ mod accessibility;
 mod ast;
 mod build;
 mod lex;
-mod lexeme;
 mod lexer;
 mod lexer_iter;
 mod link;
@@ -88,7 +84,6 @@ pub(crate) use ast::{
     LinkStyleStmt, Stmt, StyleStmt, SubgraphBlock,
 };
 
-pub(crate) use lexeme::FlowchartLexemeComponent;
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
 use accessibility::{
@@ -170,7 +165,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
         statements: accessibility_statements,
     } = scan_flowchart_accessibility_controlled(code, control)?;
     control.checkpoint()?;
-    let trace = construct_flowchart_token_trace(&code, &accessibility_statements, control)?;
+    let trace = construct_flowchart_token_trace(&code, control)?;
     let construction = match parse_flowchart_ast_from_trace(&trace, control)? {
         Ok(ast) => {
             let mut facts = editor_facts_from_flowchart_ast(&ast, control)?;
@@ -181,7 +176,6 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
                 control,
             )?;
             collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
-            facts.replace_family_lexemes(trace.lexemes);
             let (model, warning_facts) = match parse_flowchart_semantic_source_from_ast_controlled(
                 ast, acc_title, acc_descr, meta, control,
             )? {
@@ -530,7 +524,6 @@ enum FlowchartTracedItem {
 
 struct FlowchartTokenTrace {
     items: Vec<FlowchartTracedItem>,
-    lexemes: crate::editor::EditorLexemeBatchResult,
 }
 
 impl FlowchartTokenTrace {
@@ -564,7 +557,6 @@ impl FlowchartTokenTrace {
 
 fn construct_flowchart_token_trace(
     code: &str,
-    accessibility_statements: &[FlowchartAccessibilityStatement],
     control: &OperationControl,
 ) -> OperationControlResult<FlowchartTokenTrace> {
     #[cfg(test)]
@@ -574,25 +566,13 @@ fn construct_flowchart_token_trace(
             .saturating_add(1),
     );
 
-    let mut journal = EditorLexemeJournal::family_lexer(code);
-    for (index, component) in accessibility_statements
-        .iter()
-        .flat_map(|statement| statement.lexemes.iter())
-        .enumerate()
-    {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
-    }
     let mut items = Vec::new();
     for item in Lexer::recovering(code) {
         if items.len() % 128 == 0 {
             control.checkpoint()?;
         }
         match item {
-            Ok(mut token @ (start, _, end)) => {
-                record_flowchart_lexeme(&mut journal, &token.1, start, end);
+            Ok(mut token) => {
                 let strict_error = match &mut token.1 {
                     Tok::NodeLabel(label) => label.recovery_error.take(),
                     Tok::DirectionStmt(direction) => direction.recovery_error.take(),
@@ -613,10 +593,7 @@ fn construct_flowchart_token_trace(
     }
 
     control.checkpoint()?;
-    Ok(FlowchartTokenTrace {
-        items,
-        lexemes: journal.finish(),
-    })
+    Ok(FlowchartTokenTrace { items })
 }
 
 fn parse_flowchart_ast_from_trace(
@@ -629,75 +606,6 @@ fn parse_flowchart_ast_from_trace(
         .map_err(Box::new);
     control.checkpoint()?;
     Ok(parsed)
-}
-
-fn record_flowchart_lexeme(
-    journal: &mut EditorLexemeJournal<'_>,
-    token: &Tok,
-    start: usize,
-    end: usize,
-) {
-    let components = match token {
-        Tok::DirectionStmt(token) => Some(token.lexeme_components.as_slice()),
-        Tok::NodeLabel(token) => Some(token.lexeme_components.as_slice()),
-        Tok::Arrow(arrow) if !arrow.lexeme_components.is_empty() => {
-            Some(arrow.lexeme_components.as_slice())
-        }
-        Tok::EdgeLabel(label) => Some(label.lexeme_components.as_slice()),
-        Tok::SubgraphHeader(header) => Some(header.lexeme_components.as_slice()),
-        Tok::StyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::ClassDefStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::ClassAssignStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::ClickStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        Tok::LinkStyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
-        _ => None,
-    };
-    if let Some(components) = components {
-        for component in components {
-            journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
-        }
-        return;
-    }
-
-    let span = SourceSpan::new(start, end);
-    let kind = match token {
-        Tok::KwGraph
-        | Tok::KwFlowchart
-        | Tok::KwFlowchartElk
-        | Tok::KwSwimlane
-        | Tok::KwSubgraph
-        | Tok::KwEnd => EditorLexemeKind::Keyword,
-        Tok::Amp | Tok::StyleSep | Tok::Arrow(_) => EditorLexemeKind::Operator,
-        Tok::Direction(_) => EditorLexemeKind::Literal,
-        Tok::ShapeData(_) => EditorLexemeKind::Style,
-        Tok::Id(_) => EditorLexemeKind::Identifier,
-        Tok::EdgeId(_) => {
-            if start + 1 < end {
-                journal.push(
-                    EditorLexemeKind::Identifier,
-                    EditorLexemeModifiers::NONE,
-                    SourceSpan::new(start, end - 1),
-                );
-            }
-            journal.push(
-                EditorLexemeKind::Operator,
-                EditorLexemeModifiers::NONE,
-                SourceSpan::new(end - 1, end),
-            );
-            return;
-        }
-        Tok::DirectionStmt(_)
-        | Tok::NodeLabel(_)
-        | Tok::EdgeLabel(_)
-        | Tok::SubgraphHeader(_)
-        | Tok::StyleStmt(_)
-        | Tok::ClassDefStmt(_)
-        | Tok::ClassAssignStmt(_)
-        | Tok::ClickStmt(_)
-        | Tok::LinkStyleStmt(_) => unreachable!("compound tokens return above"),
-        Tok::Sep => return,
-    };
-    journal.push(kind, EditorLexemeModifiers::NONE, span);
 }
 
 fn flowchart_warning_facts(
@@ -755,8 +663,6 @@ fn recover_flowchart_editor_facts_from_tokens(
             facts.push_directive_prefix(prefix);
         }
     }
-    facts.replace_family_lexemes(trace.lexemes);
-
     control.checkpoint()?;
     Ok(facts)
 }
@@ -2210,7 +2116,7 @@ F -- "&nbsp;" --> G
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
-            construct_flowchart_token_trace(&source, &[], &control),
+            construct_flowchart_token_trace(&source, &control),
             Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());

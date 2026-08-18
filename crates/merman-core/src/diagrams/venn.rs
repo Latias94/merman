@@ -1,7 +1,6 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    diagrams::langium_common::LangiumLexemeTrace,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
@@ -59,7 +58,6 @@ struct VennSemanticState {
     current_sets: Option<Vec<String>>,
     indent_mode: bool,
     editor_facts: EditorSemanticFacts,
-    lexemes: LangiumLexemeTrace,
 }
 
 impl VennSemanticState {
@@ -70,7 +68,6 @@ impl VennSemanticState {
             current_sets: None,
             indent_mode: false,
             editor_facts: EditorSemanticFacts::new(),
-            lexemes: LangiumLexemeTrace::default(),
         }
     }
 
@@ -167,7 +164,6 @@ struct VennCursor<'a> {
     input: &'a str,
     line_start: usize,
     pos: usize,
-    lexemes: LangiumLexemeTrace,
 }
 
 impl<'a> VennCursor<'a> {
@@ -176,7 +172,6 @@ impl<'a> VennCursor<'a> {
             input,
             line_start,
             pos: 0,
-            lexemes: LangiumLexemeTrace::default(),
         }
     }
 
@@ -205,8 +200,6 @@ impl<'a> VennCursor<'a> {
         if let Some((value, after)) = parse_string_token(rest) {
             let consumed = rest.len() - after.len();
             self.pos += consumed;
-            self.lexemes
-                .string(SourceSpan::new(token_start, token_start + consumed));
             return Ok(VennFieldSpan {
                 text: normalize_text(&value),
                 span: SourceSpan::new(token_start, token_start + consumed),
@@ -219,8 +212,6 @@ impl<'a> VennCursor<'a> {
         };
         let consumed = rest.len() - after.len();
         self.pos += consumed;
-        self.lexemes
-            .identifier(SourceSpan::new(token_start, token_start + consumed));
         Ok(VennFieldSpan {
             text: value.to_string(),
             span: SourceSpan::new(token_start, token_start + consumed),
@@ -237,8 +228,6 @@ impl<'a> VennCursor<'a> {
         };
         let consumed = rest.len() - after.len();
         self.pos += consumed;
-        self.lexemes
-            .identifier(SourceSpan::new(token_start, token_start + consumed));
         Ok(VennFieldSpan {
             text: value.to_string(),
             span: SourceSpan::new(token_start, token_start + consumed),
@@ -254,8 +243,6 @@ impl<'a> VennCursor<'a> {
         if let Some((value, after)) = parse_string_token(rest) {
             let consumed = rest.len() - after.len();
             self.pos += consumed;
-            self.lexemes
-                .string(SourceSpan::new(token_start, token_start + consumed));
             return Ok((
                 VennFieldSpan {
                     text: normalize_text(&value),
@@ -269,8 +256,6 @@ impl<'a> VennCursor<'a> {
         if let Some((value, after)) = parse_numeric_token(rest) {
             let consumed = rest.len() - after.len();
             self.pos += consumed;
-            self.lexemes
-                .number(SourceSpan::new(token_start, token_start + consumed));
             return Ok((
                 VennFieldSpan {
                     text: value,
@@ -295,8 +280,6 @@ impl<'a> VennCursor<'a> {
         };
 
         let token_start = self.abs_start();
-        self.lexemes
-            .delimiter(SourceSpan::new(token_start, token_start + 1));
         if let Some(rest) = rest.strip_prefix('"') {
             let Some(end) = rest.find("\"]") else {
                 return Err(parse_error(meta, "unterminated bracket label"));
@@ -304,12 +287,6 @@ impl<'a> VennCursor<'a> {
             let text = rest[..end].to_string();
             let consumed = end + 4;
             self.pos += consumed;
-            self.lexemes
-                .string(SourceSpan::new(token_start + 1, token_start + consumed - 1));
-            self.lexemes.delimiter(SourceSpan::new(
-                token_start + consumed - 1,
-                token_start + consumed,
-            ));
             if text.is_empty() {
                 return Ok(None);
             }
@@ -330,10 +307,6 @@ impl<'a> VennCursor<'a> {
         let text = raw.trim().to_string();
         let consumed = end + 2;
         self.pos += consumed;
-        self.lexemes.delimiter(SourceSpan::new(
-            token_start + consumed - 1,
-            token_start + consumed,
-        ));
         if text.is_empty() {
             return Ok(None);
         }
@@ -343,7 +316,6 @@ impl<'a> VennCursor<'a> {
             token_start + 1 + leading,
             token_start + 1 + raw.len() - trailing,
         );
-        self.lexemes.string(selection);
         Ok(Some(VennFieldSpan {
             text,
             span: SourceSpan::new(token_start, token_start + consumed),
@@ -357,10 +329,7 @@ impl<'a> VennCursor<'a> {
             return Ok(None);
         };
 
-        let colon_start = self.abs_start();
         self.pos += 1;
-        self.lexemes
-            .delimiter(SourceSpan::new(colon_start, colon_start + 1));
         self.skip_ws();
         let token_start = self.abs_start();
         let rest = self.remaining();
@@ -369,8 +338,6 @@ impl<'a> VennCursor<'a> {
         };
         let consumed = rest.len() - after.len();
         self.pos += consumed;
-        self.lexemes
-            .number(SourceSpan::new(token_start, token_start + consumed));
         Ok(Some(VennFieldSpan {
             text: value,
             span: SourceSpan::new(token_start, token_start + consumed),
@@ -391,7 +358,6 @@ impl<'a> VennCursor<'a> {
         let span_start = self.abs_start() + leading;
         let span_end = self.abs_start() + rest.len() - trailing;
         self.pos = self.input.len();
-        self.lexemes.string(SourceSpan::new(span_start, span_end));
 
         let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
         {
@@ -426,7 +392,6 @@ impl<'a> VennCursor<'a> {
         } else {
             style_value_tokens(trimmed, meta)?.join(" ")
         };
-        self.lexemes.style(SourceSpan::new(span_start, span_end));
 
         let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
         {
@@ -457,11 +422,8 @@ impl<'a> VennCursor<'a> {
     }
 
     fn take_delimiter(&mut self, delimiter: char) -> bool {
-        let start = self.abs_start();
         if self.remaining().starts_with(delimiter) {
             self.pos += delimiter.len_utf8();
-            self.lexemes
-                .delimiter(SourceSpan::new(start, start + delimiter.len_utf8()));
             true
         } else {
             false
@@ -581,7 +543,6 @@ fn construct_venn_parse_outcome_controlled(
             };
 
             let header_span = SourceSpan::new(statement_start, statement_start + "venn-beta".len());
-            state.lexemes.keyword(header_span);
             state
                 .editor_facts
                 .push_expected_syntax(EditorExpectedSyntax::new(
@@ -647,8 +608,6 @@ fn construct_venn_parse_outcome_controlled(
         );
     }
 
-    state.lexemes.attach(code, &mut state.editor_facts);
-
     control.checkpoint()?;
     Ok(VennParseOutcome {
         source: VennSemanticSource {
@@ -702,10 +661,6 @@ fn parse_venn_statement_facts(
 
     let statement_start = line_start + indent;
     if indent > 0 && state.indent_mode && starts_with_keyword_ci(statement, "text") {
-        state.lexemes.keyword(SourceSpan::new(
-            statement_start,
-            statement_start + "text".len(),
-        ));
         state.editor_facts.push_directive_prefix("text");
         let rest = strip_keyword_ci(statement, "text")
             .expect("starts_with_keyword_ci and strip_keyword_ci agree");
@@ -732,10 +687,6 @@ fn parse_venn_statement_facts(
         {
             return Err(parse_error(meta, "invalid Venn title syntax"));
         }
-        state.lexemes.keyword(SourceSpan::new(
-            statement_start,
-            statement_start + "title".len(),
-        ));
         state.editor_facts.push_directive_prefix("title");
         let mut cursor = VennCursor::new(rest, statement_start + "title".len());
         let Some(payload) = cursor.take_remaining_payload() else {
@@ -748,24 +699,15 @@ fn parse_venn_statement_facts(
             EditorSemanticKind::String,
         );
         state.model.title = Some(rest.trim().to_string());
-        state.lexemes.extend(cursor.lexemes);
         return Ok(());
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "set") {
-        state.lexemes.keyword(SourceSpan::new(
-            statement_start,
-            statement_start + "set".len(),
-        ));
         state.editor_facts.push_directive_prefix("set");
         return parse_venn_set_statement_facts(rest, statement_start + "set".len(), state, meta);
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "union") {
-        state.lexemes.keyword(SourceSpan::new(
-            statement_start,
-            statement_start + "union".len(),
-        ));
         state.editor_facts.push_directive_prefix("union");
         return parse_venn_union_statement_facts(
             rest,
@@ -776,10 +718,6 @@ fn parse_venn_statement_facts(
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "text") {
-        state.lexemes.keyword(SourceSpan::new(
-            statement_start,
-            statement_start + "text".len(),
-        ));
         state.editor_facts.push_directive_prefix("text");
         return parse_venn_text_statement_facts(
             rest,
@@ -791,10 +729,6 @@ fn parse_venn_statement_facts(
     }
 
     if let Some(rest) = strip_keyword_ci(statement, "style") {
-        state.lexemes.keyword(SourceSpan::new(
-            statement_start,
-            statement_start + "style".len(),
-        ));
         state.editor_facts.push_directive_prefix("style");
         return parse_venn_style_statement_facts(
             rest,
@@ -834,7 +768,6 @@ fn parse_venn_set_statement_facts(
             .map_err(|_| parse_error(meta, "expected numeric"))?;
         Ok((identifier, label, size, size_value))
     })();
-    state.lexemes.extend(cursor.lexemes);
     let (identifier, label, size, size_value) = parsed?;
 
     state
@@ -896,7 +829,6 @@ fn parse_venn_union_statement_facts(
             .map_err(|_| parse_error(meta, "expected numeric"))?;
         Ok((identifiers, label, size, size_value))
     })();
-    state.lexemes.extend(cursor.lexemes);
     let (identifiers, label, size, size_value) = parsed?;
 
     let identifier_values = identifiers
@@ -977,7 +909,6 @@ fn parse_venn_text_statement_facts(
         }
         Ok((explicit_sets, set_fields, identifier, label))
     })();
-    state.lexemes.extend(cursor.lexemes);
     let (explicit_sets, set_fields, identifier, label) = parsed?;
 
     if let Some(sets) = set_fields {
@@ -1065,7 +996,6 @@ fn parse_venn_style_statement_facts(
         }
         Ok((targets, styles))
     })();
-    state.lexemes.extend(cursor.lexemes);
     let (targets, styles) = parsed?;
 
     let list_span = venn_list_span(&targets);
@@ -1933,7 +1863,7 @@ style A,B fill:#ff6b6b, color:red
     }
 
     #[test]
-    fn venn_recovery_preserves_cursor_prefix_and_later_crlf_lexemes() {
+    fn venn_recovery_preserves_later_semantic_facts_with_crlf_spans() {
         let text = concat!(
             "venn-beta\r\n",
             "  union A, %% missing identifier\r\n",
@@ -1948,22 +1878,6 @@ style A,B fill:#ff6b6b, color:red
             &meta(),
         );
 
-        let has_lexeme = |needle: &str, kind: crate::EditorLexemeKind| {
-            let start = text.find(needle).unwrap();
-            facts.lexemes().iter().any(|lexeme| {
-                lexeme.kind() == kind
-                    && lexeme.span() == SourceSpan::new(start, start + needle.len())
-                    && lexeme.producer().kind() == crate::EditorLexemeProducerKind::FamilyRecovery
-            })
-        };
-        assert!(has_lexeme("union", crate::EditorLexemeKind::Keyword));
-        assert!(has_lexeme("A", crate::EditorLexemeKind::Identifier));
-        assert!(has_lexeme(",", crate::EditorLexemeKind::Delimiter));
-        assert!(has_lexeme("set", crate::EditorLexemeKind::Keyword));
-        assert!(has_lexeme("Later", crate::EditorLexemeKind::Identifier));
-        assert!(has_lexeme("12", crate::EditorLexemeKind::Number));
-        assert!(has_lexeme("title", crate::EditorLexemeKind::Keyword));
-        assert!(has_lexeme("Done", crate::EditorLexemeKind::String));
         assert!(facts.symbols.iter().any(|symbol| {
             symbol.name == "Later" && symbol.detail.as_deref() == Some("venn set")
         }));

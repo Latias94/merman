@@ -33,7 +33,6 @@ import {
 } from "./language-intelligence.js";
 import { ensureLanguageServerOutputChannel } from "./language-server-output.js";
 import { startLanguageClientWithCleanup } from "./language-client-start.js";
-import { assertLanguageServerEditorContract } from "./semantic-token-contract.js";
 import { registerPreview } from "./preview.js";
 import { runRestartLanguageServerCommand } from "./restart-command.js";
 import { runServerBackedCommand } from "./server-backed-command.js";
@@ -243,7 +242,6 @@ async function startClient(
     isCurrentGeneration: isCurrentLifecycleGeneration,
     wireClient: wireClientStatus,
     validateClient: async (activeClient) => {
-      assertLanguageServerEditorContract(activeClient.initializeResult);
       assertAnalysisConfigCapability(activeClient.initializeResult);
       pendingAnalysisConfigContract = negotiateAnalysisConfig(
         await fetchConfigSchema(activeClient),

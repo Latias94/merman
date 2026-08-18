@@ -1,0 +1,248 @@
+==================
+entities attributes relations aliases styles and accessibility stay structural
+==================
+
+erDiagram
+title: Commerce
+accTitle: ER domain
+accDescr {Entities and relationships}
+direction LR
+CUSTOMER["Customer account"]:::person {
+  string id PK "identifier"
+  string? email UK
+  `decimal(10,2)` balance
+}
+ORDER:::aggregate {
+  uuid id PK
+  uuid customer_id FK
+}
+商品
+CUSTOMER:::person ||--o{ ORDER:::aggregate : places
+ORDER one or more optionally to zero or one 商品 : contains
+classDef person fill:#eef,stroke:#333
+class CUSTOMER,ORDER person,aggregate
+style CUSTOMER fill:#fff,stroke:#000
+buzz LEGACY["Legacy alias"]:::person
+
+---
+
+(source_file
+  (entity_relationship_diagram
+    (entity_relationship_header
+      (diagram_keyword))
+    (entity_relationship_body
+      (er_title_statement
+        (er_statement_keyword)
+        (er_line_text))
+      (er_accessibility_title_statement
+        (er_statement_keyword)
+        (er_line_text))
+      (er_accessibility_description_statement
+        (er_statement_keyword)
+        (er_accessibility_description_block))
+      (er_direction_statement
+        (er_statement_keyword)
+        (er_direction))
+      (er_entity_declaration
+        (er_entity_name)
+        (er_entity_alias
+          (er_quoted_text))
+        (er_class_annotation
+          (er_identifier_list
+            (er_style_name)))
+        (er_attribute_block
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_attribute_key_list
+              (er_attribute_key))
+            (er_quoted_text))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_attribute_key_list
+              (er_attribute_key)))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name))))
+      (er_entity_declaration
+        (er_entity_name)
+        (er_class_annotation
+          (er_identifier_list
+            (er_style_name)))
+        (er_attribute_block
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_attribute_key_list
+              (er_attribute_key)))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_attribute_key_list
+              (er_attribute_key)))))
+      (er_entity_declaration
+        (er_entity_name))
+      (er_relationship
+        (er_entity_reference)
+        (er_class_annotation
+          (er_identifier_list
+            (er_style_name)))
+        (er_cardinality)
+        (er_relationship_operator)
+        (er_cardinality)
+        (er_entity_reference)
+        (er_class_annotation
+          (er_identifier_list
+            (er_style_name)))
+        (er_role_text))
+      (er_relationship
+        (er_entity_reference)
+        (er_cardinality)
+        (er_relationship_operator)
+        (er_cardinality)
+        (er_entity_reference)
+        (er_role_text))
+      (er_definition_statement
+        (er_statement_keyword)
+        (er_identifier_list
+          (er_style_name))
+        (er_style_list
+          (er_style_item)
+          (er_style_item)))
+      (er_class_assignment_statement
+        (er_statement_keyword)
+        (er_identifier_list
+          (er_style_name)
+          (er_style_name))
+        (er_identifier_list
+          (er_style_name)
+          (er_style_name)))
+      (er_style_statement
+        (er_statement_keyword)
+        (er_identifier_list
+          (er_style_name))
+        (er_style_list
+          (er_style_item)
+          (er_style_item)))
+      (er_alias_declaration
+        (er_alias_prefix)
+        (er_entity_name)
+        (er_entity_alias
+          (er_quoted_text))
+        (er_class_annotation
+          (er_identifier_list
+            (er_style_name)))))))
+
+==================
+line and block recovery preserve later entities and relationships
+==================
+
+erDiagram
+A ||--o{
+B
+C ||--|| D : "unfinished
+E ||--|| F : follows
+BOOK {
+  string id PK
+  broken
+  string title
+}
+G ||--|| H : after
+
+---
+
+(source_file
+  (entity_relationship_diagram
+    (entity_relationship_header
+      (diagram_keyword))
+    (entity_relationship_body
+      (er_incomplete_relationship
+        (er_entity_reference)
+        (er_cardinality)
+        (er_relationship_operator)
+        (er_cardinality))
+      (er_entity_declaration
+        (er_entity_name))
+      (er_relationship
+        (er_entity_reference)
+        (er_cardinality)
+        (er_relationship_operator)
+        (er_cardinality)
+        (er_entity_reference)
+        (er_unclosed_quoted_text))
+      (er_relationship
+        (er_entity_reference)
+        (er_cardinality)
+        (er_relationship_operator)
+        (er_cardinality)
+        (er_entity_reference)
+        (er_role_text))
+      (er_entity_declaration
+        (er_entity_name)
+        (er_attribute_block
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_attribute_key_list
+              (er_attribute_key)))
+          (er_incomplete_attribute
+            (er_attribute_type))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name))))
+      (er_relationship
+        (er_entity_reference)
+        (er_cardinality)
+        (er_relationship_operator)
+        (er_cardinality)
+        (er_entity_reference)
+        (er_role_text)))))
+
+==================
+header is case insensitive and may terminate at eof
+==================
+
+ERDIAGRAM
+
+---
+
+(source_file
+  (entity_relationship_diagram
+    (entity_relationship_header
+      (diagram_keyword))))
+
+==================
+attribute comments remain structured
+==================
+
+erDiagram
+  BOOK {
+    string title "Title"
+    float price PK "Price"
+    text notes
+  }
+
+---
+
+(source_file
+  (entity_relationship_diagram
+    (entity_relationship_header
+      (diagram_keyword))
+    (entity_relationship_body
+      (er_entity_declaration
+        (er_entity_name)
+        (er_attribute_block
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_quoted_text))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)
+            (er_attribute_key_list
+              (er_attribute_key))
+            (er_quoted_text))
+          (er_attribute
+            (er_attribute_type)
+            (er_attribute_name)))))))

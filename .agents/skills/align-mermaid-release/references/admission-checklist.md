@@ -77,6 +77,7 @@ with a reason.
 | Monaco, VS Code, and Playground behavior |  |
 | Reference CLI registration |  |
 | Public ABI and editor/facts schema constraints |  |
+| Independent Tree-sitter package baseline, tiers, queries, bindings, fuzz, and metrics |  |
 | Positive, negative, recovery, resource, and security fixtures |  |
 | Generated catalogs, status, and provenance |  |
 
@@ -112,6 +113,10 @@ security admission; it must not weaken the canonical inline-SVG policy.
       internals locally.
 - [ ] Every changed LALRPOP grammar was regenerated through `xtask`; checked-in parser output was
       not hand-edited and `verify-lalrpop-parsers` passes.
+- [ ] Repository Mermaid/ZenUML drift was recorded separately from the Tree-sitter package's
+      selected baseline; an intentional package-baseline change demoted affected tiers and replayed
+      header, conformance, incremental, query, binding, fuzz, metrics, and generated-artifact gates
+      before any family returned to `conformant`.
 - [ ] New or removed registrations cannot disappear from parser/editor/render/Playground inventory.
 - [ ] Focused family, parser, editor, LSP, Web, Playground, CLI, and security tests pass as applicable.
 - [ ] Workspace `nextest`, formatting, clippy, strict verification, and alignment gates pass.
