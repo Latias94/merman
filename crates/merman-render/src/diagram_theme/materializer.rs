@@ -664,39 +664,47 @@ mod tests {
     };
     use super::*;
 
-    fn direct_consumer_for_generated_rule(row: GeneratedRule) -> Option<DiagramFamilyId> {
+    fn family_directly_consumes_generated_rule(
+        family: DiagramFamilyId,
+        row: GeneratedRule,
+    ) -> bool {
+        if !row.target.valid_for(family) {
+            return false;
+        }
         let selector = FamilyThemeSelectorShape::Static {
             variant: row.variant,
         };
-        DiagramFamilyId::all().iter().copied().find(|family| {
-            if !row.target.valid_for(*family) {
-                return false;
-            }
-            [
-                FamilyThemePaintKind::Solid,
-                FamilyThemePaintKind::Transparent,
-            ]
-            .into_iter()
-            .all(|paint_kind| {
-                let fill_is_direct = row.fill.is_none_or(|_| {
-                    classify_rule_facet(
-                        *family,
-                        row.target,
-                        selector,
-                        FamilyThemeRuleFacet::Fill(paint_kind),
-                    ) == FamilyThemeDisposition::TypedAdapter
-                });
-                let stroke_is_direct = row.stroke.is_none_or(|_| {
-                    classify_rule_facet(
-                        *family,
-                        row.target,
-                        selector,
-                        FamilyThemeRuleFacet::Stroke(paint_kind),
-                    ) == FamilyThemeDisposition::TypedAdapter
-                });
-                fill_is_direct && stroke_is_direct
-            })
+        [
+            FamilyThemePaintKind::Solid,
+            FamilyThemePaintKind::Transparent,
+        ]
+        .into_iter()
+        .all(|paint_kind| {
+            let fill_is_direct = row.fill.is_none_or(|_| {
+                classify_rule_facet(
+                    family,
+                    row.target,
+                    selector,
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ) == FamilyThemeDisposition::TypedAdapter
+            });
+            let stroke_is_direct = row.stroke.is_none_or(|_| {
+                classify_rule_facet(
+                    family,
+                    row.target,
+                    selector,
+                    FamilyThemeRuleFacet::Stroke(paint_kind),
+                ) == FamilyThemeDisposition::TypedAdapter
+            });
+            fill_is_direct && stroke_is_direct
         })
+    }
+
+    fn direct_consumer_for_generated_rule(row: GeneratedRule) -> Option<DiagramFamilyId> {
+        DiagramFamilyId::all()
+            .iter()
+            .copied()
+            .find(|family| family_directly_consumes_generated_rule(*family, row))
     }
 
     fn direct_consumer_for_generated_palette(target: ThemeTarget) -> Option<DiagramFamilyId> {
@@ -730,14 +738,25 @@ mod tests {
 
     #[test]
     fn invalid_family_targets_cannot_borrow_state_direct_classification() {
-        let invalid_rule = generated_rule(
+        let requirement_rule = generated_rule(
             ThemeTarget::Requirement,
             None,
             Some(ThemeColorTokenV1::Surface),
             None,
         );
 
-        assert_eq!(direct_consumer_for_generated_rule(invalid_rule), None);
+        assert!(!family_directly_consumes_generated_rule(
+            DiagramFamilyId::STATE,
+            requirement_rule,
+        ));
+        assert!(family_directly_consumes_generated_rule(
+            DiagramFamilyId::REQUIREMENT,
+            requirement_rule,
+        ));
+        assert_eq!(
+            direct_consumer_for_generated_rule(requirement_rule),
+            Some(DiagramFamilyId::REQUIREMENT),
+        );
         assert_eq!(
             direct_consumer_for_generated_palette(ThemeTarget::Requirement),
             None

@@ -3,10 +3,10 @@ use crate::RenderCapability;
 use crate::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, FontStack, GradientStop, LinearGradient, MermaidThemeCompatibility,
-    OrdinalPalette, OrdinalSelector, RootThemeEvaluation, RootThemeMechanismKey,
-    RootThemeVerification, Specified, TextStylePatch, ThemeCapability, ThemeColorValue,
-    ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
-    TypographySpec,
+    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RootThemeEvaluation,
+    RootThemeMechanismKey, RootThemeVerification, Specified, TextStylePatch, ThemeCapability,
+    ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, TypographySpec,
 };
 #[cfg(feature = "layout-cytoscape")]
 use std::sync::Arc;
@@ -293,18 +293,23 @@ fn flowchart_node_label_typography_theme(
         .expect("compile Flowchart NodeLabel font-stack theme")
 }
 
-fn flowchart_node_shape_style(svg: &str, node_id: &str) -> String {
-    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
-    let node_id_marker = format!("-flowchart-{node_id}-");
-    let wrapper = document
+fn flowchart_node_wrapper<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    node_id: &str,
+) -> roxmltree::Node<'a, 'input> {
+    document
         .descendants()
         .find(|node| {
             node.has_tag_name("g")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.contains(&node_id_marker))
+                && node.attribute("data-et") == Some("node")
+                && node.attribute("data-id") == Some(node_id)
         })
-        .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
+        .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"))
+}
+
+fn flowchart_node_shape_style(svg: &str, node_id: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let wrapper = flowchart_node_wrapper(&document, node_id);
     wrapper
         .descendants()
         .find(|node| {
@@ -361,16 +366,7 @@ fn flowchart_marker_contains(svg: &str, marker_id: &str, needle: &str) -> bool {
 
 fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> Option<String> {
     let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
-    let node_id_marker = format!("-flowchart-{node_id}-");
-    let wrapper = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.contains(&node_id_marker))
-        })
-        .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
+    let wrapper = flowchart_node_wrapper(&document, node_id);
     wrapper
         .descendants()
         .find(|node| {
@@ -387,16 +383,7 @@ fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> 
 
 fn flowchart_node_label_style(svg: &str, node_id: &str) -> String {
     let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
-    let node_id_marker = format!("-flowchart-{node_id}-");
-    let wrapper = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.contains(&node_id_marker))
-        })
-        .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
+    let wrapper = flowchart_node_wrapper(&document, node_id);
     wrapper
         .descendants()
         .find(|node| {
@@ -1128,18 +1115,17 @@ fn family_theme_evidence_is_invalidated_by_untrusted_svg_postprocessing() {
 }
 
 #[test]
-fn unsupported_root_gradient_residual_survives_terminal_svg_completion() {
-    let gradient = LinearGradient::new(
-        90.0,
-        [
-            GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
-            GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
-        ],
+fn unsupported_root_pattern_residual_survives_terminal_svg_completion() {
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#22d3ee").unwrap(),
     )
     .unwrap();
     let canvas = CanvasSpec::default()
-        .with_layer(CanvasLayer::new(CanvasPaint::LinearGradient(gradient)))
-        .expect("bounded gradient canvas layer");
+        .with_layer(CanvasLayer::new(CanvasPaint::Pattern(pattern)))
+        .expect("bounded pattern canvas layer");
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
         .expect("compile layered canvas theme");
@@ -1281,21 +1267,20 @@ fn require_portable_accepts_a_root_layer_proved_by_the_svg_consumer() {
 }
 
 #[test]
-fn require_portable_rejects_an_unsupported_root_theme_after_svg_consumption() {
-    let gradient = LinearGradient::new(
-        90.0,
-        [
-            GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
-            GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
-        ],
+fn require_portable_rejects_an_unsupported_root_pattern_after_svg_consumption() {
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#22d3ee").unwrap(),
     )
     .unwrap();
     let canvas = CanvasSpec::transparent()
-        .with_layer(CanvasLayer::new(CanvasPaint::LinearGradient(gradient)))
-        .expect("bounded gradient layer");
+        .with_layer(CanvasLayer::new(CanvasPaint::Pattern(pattern)))
+        .expect("bounded pattern layer");
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_canvas(canvas))
-        .expect("compile gradient theme");
+        .expect("compile pattern theme");
     let parsed = theme
         .install_parse_compatibility(Engine::new())
         .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
@@ -1310,7 +1295,7 @@ fn require_portable_rejects_an_unsupported_root_theme_after_svg_consumption() {
 
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     {
-        Ok(_) => panic!("strict portability must reject an unsupported root gradient"),
+        Ok(_) => panic!("strict portability must reject an unsupported root pattern"),
         Err(error) => error,
     };
     let (verification, residual_count) = error
@@ -9548,7 +9533,9 @@ linkStyle 0 font-size:12px,font-style:italic
     let label_group = document
         .descendants()
         .find(|node| {
-            node.has_tag_name("g") && node.attribute("id") == Some("edge-label-A-B-styled")
+            node.has_tag_name("g")
+                && node.attribute("data-et") == Some("edge-label")
+                && node.attribute("data-id") == Some("styled")
         })
         .expect("generated labelRect group");
     let visible = label_group
