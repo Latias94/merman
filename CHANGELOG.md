@@ -50,6 +50,9 @@ The next workspace release remains in development. This section records only com
 
 ### Fixed
 
+- `merman-rustdoc` now defaults to browser-parity SVG instead of adding a second visible text
+  fallback beside each native HTML label. Explicit `readable` and `resvg-safe` pipelines remain
+  available for consumers that need SVG text fallbacks. #81
 - Restored `roughr-merman` 0.12 source compatibility for stable Merman 0.7 without removing the operation-owned randomness contract used by current releases, and raised the workspace dependency floor to the repaired patch.
 - Playground Mermaid.js comparison realms now preserve SVG label colors without letting page CSS override Mermaid output, and ZenUML's injected `MS Sans Serif` font remains isolated to the affected comparison instead of changing other examples.
 - Native Assets eliminates Flutter's legacy Linux Windows-wrapper linkage and SwiftPM symlink packaging paths, while Apple dylibs use normalized install names and refreshed signatures before Flutter's final assembly. #55 #56 #57

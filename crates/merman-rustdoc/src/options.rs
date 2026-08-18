@@ -5,8 +5,14 @@ use crate::error::{Error, Result};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PipelineMode {
+    /// Keep the Mermaid-compatible SVG unchanged for browser presentation.
     Parity,
+    /// Retain native HTML labels and add SVG text fallbacks alongside them.
+    ///
+    /// Hosts that can render both representations must select or hide one to
+    /// avoid displaying duplicate labels.
     Readable,
+    /// Replace browser-only labels with fallbacks and finalize for resvg.
     ResvgSafe,
 }
 
@@ -55,7 +61,9 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             scope: ScopeMode::Item,
-            pipeline: PipelineMode::Readable,
+            // Rustdoc is presented in a browser, where the native Mermaid
+            // labels are supported and a second fallback can become visible.
+            pipeline: PipelineMode::Parity,
             fail: FailMode::Error,
             source: SourceMode::Hide,
             sanitize: SanitizeMode::Strict,
@@ -206,10 +214,10 @@ mod tests {
 
     #[test]
     fn parses_default_options() {
-        assert_eq!(
-            Options::parse(TokenStream::new()).unwrap(),
-            Options::default()
-        );
+        let options = Options::parse(TokenStream::new()).unwrap();
+
+        assert_eq!(options, Options::default());
+        assert_eq!(options.pipeline, PipelineMode::Parity);
     }
 
     #[test]
