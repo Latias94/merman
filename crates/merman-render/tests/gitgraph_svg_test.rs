@@ -84,6 +84,35 @@ fn has_class(node: &roxmltree::Node<'_, '_>, class: &str) -> bool {
         .is_some_and(|classes| classes.split_ascii_whitespace().any(|value| value == class))
 }
 
+fn render_source_and_site_config_cases(
+    source: &str,
+    config: serde_json::Value,
+    theme: &DiagramTheme,
+    diagram_id_prefix: &str,
+    mut assert_case: impl FnMut(&str, family::RenderedFamilySvg),
+) {
+    let source_config = serde_json::to_string(&config).expect("serialize GitGraph source config");
+    let source_owned = format!("%%{{init: {source_config}}}%%\n{source}");
+    let cases = [
+        (
+            "site",
+            source.to_string(),
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        ),
+        (
+            "source",
+            source_owned,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({ "secure": [] }))),
+        ),
+    ];
+
+    for (owner, source, engine) in cases {
+        let diagram_id = format!("{diagram_id_prefix}-{owner}");
+        let rendered = render_gitgraph_with_theme_and_engine(&source, theme, engine, &diagram_id);
+        assert_case(owner, rendered);
+    }
+}
+
 #[test]
 fn gitgraph_node_palette_reaches_terminal_commit_arrow_and_branch_label_surfaces() {
     let theme = gitgraph_node_palette_theme(&["#123456", "transparent"]);
@@ -218,4 +247,179 @@ fn gitgraph_node_palette_is_not_applicable_when_every_visible_slot_is_owned() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_redux_palette_preserves_source_and_site_node_border_per_terminal_surface() {
+    let theme = gitgraph_node_palette_theme(&["#123456", "#654321"]);
+    render_source_and_site_config_cases(
+        TWO_BRANCHES,
+        json!({
+            "theme": "redux",
+            "themeVariables": { "nodeBorder": "#fedcba" }
+        }),
+        &theme,
+        "git-redux-node-border",
+        |owner, rendered| {
+            let document =
+                roxmltree::Document::parse(rendered.svg()).expect("valid Redux GitGraph SVG");
+            for class in ["commit0", "arrow0", "label0"] {
+                assert!(
+                    document.descendants().any(|node| has_class(&node, class)),
+                    "the Redux fixture must contain the terminal {class} surface"
+                );
+            }
+            let css = stylesheet(rendered.svg());
+            let diagram_id = format!("git-redux-node-border-{owner}");
+
+            assert!(
+                css.contains(&format!("#{diagram_id} .commit0{{stroke:#fedcba;}}")),
+                "the {owner}-owned nodeBorder must remain the terminal commit owner"
+            );
+            assert!(
+                css.contains(&format!("#{diagram_id} .arrow0{{stroke:#fedcba;}}")),
+                "the {owner}-owned nodeBorder must remain the terminal arrow owner"
+            );
+            assert!(
+                !css.contains(&format!(
+                    "#{diagram_id} .commit0{{stroke:#123456;fill:#123456;}}"
+                )),
+                "the typed palette must not overwrite the {owner}-owned commit surface"
+            );
+            assert!(
+                !css.contains(&format!("#{diagram_id} .arrow0{{stroke:#123456;}}")),
+                "the typed palette must not overwrite the {owner}-owned arrow surface"
+            );
+            assert!(
+                css.contains(&format!("#{diagram_id} .label0{{fill:#123456;}}")),
+                "the unowned branch-label background must still consume the typed palette"
+            );
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{owner}");
+            assert_eq!(evidence.applied_count(), 1, "{owner}");
+            assert_eq!(evidence.not_applicable_count(), 0, "{owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+        },
+    );
+}
+
+#[test]
+fn gitgraph_redux_color_palette_preserves_site_border_color_array_surfaces() {
+    let theme = gitgraph_node_palette_theme(&["#123456", "#654321"]);
+    let config = json!({
+        "theme": "redux-color",
+        "themeVariables": {
+            "borderColorArray": ["#aabbcc", "#fedcba"]
+        }
+    });
+    let rendered = render_gitgraph_with_theme_and_engine(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        "git-redux-color-array-site",
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Redux-color GitGraph SVG");
+    for class in ["commit0", "commit1", "arrow1", "label1"] {
+        assert!(
+            document.descendants().any(|node| has_class(&node, class)),
+            "the Redux-color fixture must contain the terminal {class} surface"
+        );
+    }
+    let css = stylesheet(rendered.svg());
+    let diagram_id = "git-redux-color-array-site";
+
+    for rule in [
+        format!("#{diagram_id} .commit1{{stroke:#fedcba;fill:#fedcba;}}"),
+        format!("#{diagram_id} .arrow1{{stroke:#fedcba;}}"),
+        format!("#{diagram_id} .label1{{fill:#fedcba;stroke:#fedcba;stroke-width:"),
+    ] {
+        assert!(
+            css.contains(&rule),
+            "the site-owned borderColorArray must remain the terminal owner: {rule}"
+        );
+    }
+    for rule in [
+        format!("#{diagram_id} .commit1{{stroke:#654321;fill:#654321;}}"),
+        format!("#{diagram_id} .arrow1{{stroke:#654321;}}"),
+        format!("#{diagram_id} .label1{{fill:#654321;}}"),
+    ] {
+        assert!(
+            !css.contains(&rule),
+            "the typed palette must not overwrite the site-owned slot-one surface: {rule}"
+        );
+    }
+    assert!(
+        css.contains(&format!(
+            "#{diagram_id} .commit0{{stroke:#123456;fill:#123456;}}"
+        )),
+        "the unowned slot-zero commit must still consume the typed palette"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_neo_palette_is_not_applicable_when_source_or_site_owns_every_surface() {
+    let theme = gitgraph_node_palette_theme(&["#123456"]);
+    render_source_and_site_config_cases(
+        "gitGraph\n  commit id: \"1\"\n",
+        json!({
+            "theme": "neo",
+            "themeVariables": {
+                "nodeBorder": "#fedcba",
+                "mainBkg": "#abcdef",
+                "useGradient": true
+            }
+        }),
+        &theme,
+        "git-neo-owned",
+        |owner, rendered| {
+            let document =
+                roxmltree::Document::parse(rendered.svg()).expect("valid Neo GitGraph SVG");
+            for class in ["commit0", "label0"] {
+                assert!(
+                    document.descendants().any(|node| has_class(&node, class)),
+                    "the Neo fixture must contain the terminal {class} surface"
+                );
+            }
+            let css = stylesheet(rendered.svg());
+            let diagram_id = format!("git-neo-owned-{owner}");
+
+            assert!(
+                css.contains(&format!("#{diagram_id} .commit0{{stroke:#fedcba;}}")),
+                "the {owner}-owned nodeBorder must remain the terminal commit owner"
+            );
+            assert!(
+                css.contains(&format!(
+                    "#{diagram_id} .label0{{fill:#abcdef;stroke:url(#{diagram_id}-gradient);stroke-width:"
+                )),
+                "the {owner}-owned mainBkg must remain the terminal label owner"
+            );
+            assert!(
+                !css.contains(&format!(
+                    "#{diagram_id} .commit0{{stroke:#123456;fill:#123456;}}"
+                )),
+                "the typed palette must not overwrite the {owner}-owned commit surface"
+            );
+            assert!(
+                !css.contains(&format!("#{diagram_id} .label0{{fill:#123456;}}")),
+                "the typed palette must not overwrite the {owner}-owned label surface"
+            );
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{owner}");
+            assert_eq!(evidence.applied_count(), 0, "{owner}");
+            assert_eq!(evidence.not_applicable_count(), 1, "{owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+        },
+    );
 }

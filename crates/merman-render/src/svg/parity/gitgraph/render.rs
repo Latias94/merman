@@ -479,24 +479,146 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct GitGraphTerminalPaletteSources {
+    use_color_theme: bool,
+    use_neo_theme: bool,
+    use_dark_theme: bool,
+    use_color_gen: bool,
+    use_gradient: bool,
+    has_border_color_array: bool,
+}
+
+impl GitGraphTerminalPaletteSources {
+    fn from_config(effective_config: &serde_json::Value) -> Self {
+        let theme_name = gitgraph_theme_name(effective_config);
+        Self {
+            use_color_theme: gitgraph_theme_is_color(&theme_name),
+            use_neo_theme: gitgraph_theme_is_neo(&theme_name),
+            use_dark_theme: gitgraph_theme_is_dark(&theme_name),
+            use_color_gen: gitgraph_theme_uses_color_gen(&theme_name),
+            use_gradient: config_bool(effective_config, &["themeVariables", "useGradient"])
+                .unwrap_or(false),
+            has_border_color_array: !gitgraph_theme_array(effective_config, "borderColorArray")
+                .is_empty(),
+        }
+    }
+
+    fn branch_slot(self, slot: usize) -> crate::gitgraph::GitGraphPaletteSource {
+        if !self.use_color_gen {
+            crate::gitgraph::GitGraphPaletteSource::Git(slot)
+        } else if self.use_neo_theme {
+            if slot == 0 {
+                crate::gitgraph::GitGraphPaletteSource::NodeBorder
+            } else {
+                crate::gitgraph::GitGraphPaletteSource::Git(slot)
+            }
+        } else if !self.use_color_theme || slot == 0 || !self.has_border_color_array {
+            crate::gitgraph::GitGraphPaletteSource::NodeBorder
+        } else {
+            crate::gitgraph::GitGraphPaletteSource::BorderColorArray
+        }
+    }
+
+    fn state(self) -> crate::gitgraph::GitGraphPaletteSource {
+        if self.use_color_gen {
+            crate::gitgraph::GitGraphPaletteSource::MainBackground
+        } else {
+            crate::gitgraph::GitGraphPaletteSource::PrimaryColor
+        }
+    }
+
+    fn branch_label_background(
+        self,
+        slot: usize,
+    ) -> Option<crate::gitgraph::GitGraphPaletteSource> {
+        if !self.use_color_gen {
+            Some(crate::gitgraph::GitGraphPaletteSource::Git(slot))
+        } else if self.use_neo_theme {
+            self.use_gradient
+                .then_some(crate::gitgraph::GitGraphPaletteSource::MainBackground)
+        } else if !self.use_color_theme || slot == 0 || self.use_dark_theme {
+            Some(crate::gitgraph::GitGraphPaletteSource::MainBackground)
+        } else {
+            Some(self.branch_slot(slot))
+        }
+    }
+}
+
+fn gitgraph_node_palette_surface_ownership(
+    effective_config: &serde_json::Value,
+    node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
+) -> crate::gitgraph::GitGraphPaletteSurfaceOwnership {
+    let sources = GitGraphTerminalPaletteSources::from_config(effective_config);
+    let mut ownership = crate::gitgraph::GitGraphPaletteSurfaceOwnership::default();
+
+    for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
+        if node_palette.surface_is_visible(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot)
+            && node_palette.mermaid_source_is_owned(sources.branch_slot(slot))
+        {
+            ownership.mark_owned(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot);
+        }
+        if node_palette.surface_is_visible(
+            crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
+            slot,
+        ) && sources
+            .branch_label_background(slot)
+            .is_some_and(|source| node_palette.mermaid_source_is_owned(source))
+        {
+            ownership.mark_owned(
+                crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
+                slot,
+            );
+        }
+    }
+
+    for (slot, role) in node_palette.commit_palette_elements() {
+        let source = match role {
+            crate::gitgraph::GitGraphCommitPaletteRole::BranchSlot => sources.branch_slot(slot),
+            crate::gitgraph::GitGraphCommitPaletteRole::State => sources.state(),
+        };
+        if node_palette.mermaid_source_is_owned(source) {
+            // A single `.commitN` selector covers every palette-bearing element in the slot. If
+            // any concrete element has a higher-priority Mermaid owner, suppress the shared direct
+            // rule rather than overwrite that owner while claiming only the unowned siblings.
+            ownership.mark_owned(crate::gitgraph::GitGraphPaletteSurface::Commit, slot);
+        }
+    }
+
+    ownership
+}
+
 fn gitgraph_node_palette_css(
     diagram_id: &str,
     node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
+    ownership: crate::gitgraph::GitGraphPaletteSurfaceOwnership,
     receipt: &mut Option<crate::gitgraph::GitGraphNodePaletteReceipt>,
 ) -> String {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let mut css = String::new();
     for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
-        let Some(fill) = node_palette.fill_css(slot) else {
-            continue;
-        };
-        let _ = write!(
-            &mut css,
-            r#"#{} .commit{}{{stroke:{};fill:{};}}#{} .arrow{}{{stroke:{};}}#{} .label{}{{fill:{};}}"#,
-            id, slot, fill, fill, id, slot, fill, id, slot, fill
-        );
-        if let Some(receipt) = receipt.as_mut() {
-            receipt.record_stylesheet_rule(node_palette, slot, fill);
+        for surface in crate::gitgraph::GitGraphPaletteSurface::ALL {
+            let Some(fill) = node_palette.terminal_fill_css(surface, slot, ownership) else {
+                continue;
+            };
+            match surface {
+                crate::gitgraph::GitGraphPaletteSurface::Commit => {
+                    let _ = write!(
+                        &mut css,
+                        r#"#{} .commit{}{{stroke:{};fill:{};}}"#,
+                        id, slot, fill, fill
+                    );
+                }
+                crate::gitgraph::GitGraphPaletteSurface::Arrow => {
+                    let _ = write!(&mut css, r#"#{} .arrow{}{{stroke:{};}}"#, id, slot, fill);
+                }
+                crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground => {
+                    let _ = write!(&mut css, r#"#{} .label{}{{fill:{};}}"#, id, slot, fill);
+                }
+            }
+            if let Some(receipt) = receipt.as_mut() {
+                receipt.record_stylesheet_rule(node_palette, surface, slot, fill);
+            }
         }
     }
     css
@@ -688,9 +810,15 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
     let look = config_diagram_look(effective_config);
     let css = gitgraph_css(diagram_id, effective_config);
-    let mut node_palette_receipt = node_palette.begin_terminal_receipt();
-    let node_palette_css =
-        gitgraph_node_palette_css(diagram_id, node_palette, &mut node_palette_receipt);
+    let node_palette_ownership =
+        gitgraph_node_palette_surface_ownership(effective_config, node_palette);
+    let mut node_palette_receipt = node_palette.begin_terminal_receipt(node_palette_ownership);
+    let node_palette_css = gitgraph_node_palette_css(
+        diagram_id,
+        node_palette,
+        node_palette_ownership,
+        &mut node_palette_receipt,
+    );
     let title_style = crate::text::TextStyle {
         font_family: Some(css.font_family.clone()),
         font_size: TITLE_FONT_SIZE_PX,
@@ -917,30 +1045,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
     out.push_str("</g>");
 
-    fn commit_class_type(symbol_type: i64) -> &'static str {
-        match symbol_type {
-            0 => "commit-normal",
-            1 => "commit-reverse",
-            2 => "commit-highlight",
-            3 => "commit-merge",
-            4 => "commit-cherry-pick",
-            _ => "commit-normal",
-        }
-    }
-
-    fn commit_symbol_type(commit: &crate::model::GitGraphCommitLayout) -> i64 {
-        commit.custom_type.unwrap_or(commit.commit_type)
-    }
-
     out.push_str(r#"<g class="commit-bullets">"#);
     for (commit_index, c) in layout.commits.iter().enumerate() {
         let branch_i = branch_idx.get(c.branch.as_str()).copied().unwrap_or(0);
-        let symbol_type = commit_symbol_type(c);
-        let type_class = commit_class_type(symbol_type);
+        let commit_kind = crate::gitgraph::GitGraphCommitKind::from_layout(c);
+        let type_class = commit_kind.class_name();
+        let palette_roles = commit_kind.palette_element_roles();
         let idx = crate::gitgraph::palette_slot(branch_i);
         let id = escape_attr(&c.id);
 
-        if symbol_type == 2 {
+        if commit_kind == crate::gitgraph::GitGraphCommitKind::Highlight {
             let outer_half_size = if use_redux_geometry { 7.0 } else { 10.0 };
             let inner_half_size = if use_redux_geometry { 4.0 } else { 6.0 };
             let _ = write!(
@@ -963,10 +1077,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 idx = idx,
                 type_class = type_class
             );
-            if let Some(receipt) = node_palette_receipt.as_mut() {
-                receipt.record_commit_element(node_palette, commit_index, 0, idx);
+            if let (Some(receipt), Some(role)) = (
+                node_palette_receipt.as_mut(),
+                palette_roles.first().copied(),
+            ) {
+                receipt.record_commit_element(node_palette, commit_index, 0, idx, role);
             }
-        } else if symbol_type == 4 {
+        } else if commit_kind == crate::gitgraph::GitGraphCommitKind::CherryPick {
             let outer_radius = if use_redux_geometry { 7.0 } else { 10.0 };
             let inner_radius = if use_redux_geometry { 2.5 } else { 2.75 };
             let cherry_pick_detail_color = if use_dark_theme { "#000000" } else { "#fff" };
@@ -1032,10 +1149,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 id = id,
                 idx = idx
             );
-            if let Some(receipt) = node_palette_receipt.as_mut() {
-                receipt.record_commit_element(node_palette, commit_index, 0, idx);
+            if let (Some(receipt), Some(role)) = (
+                node_palette_receipt.as_mut(),
+                palette_roles.first().copied(),
+            ) {
+                receipt.record_commit_element(node_palette, commit_index, 0, idx, role);
             }
-            if symbol_type == 3 {
+            if commit_kind == crate::gitgraph::GitGraphCommitKind::Merge {
                 let inner_radius = if use_redux_geometry { 5.0 } else { 6.0 };
                 let _ = write!(
                     &mut out,
@@ -1047,11 +1167,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
-                if let Some(receipt) = node_palette_receipt.as_mut() {
-                    receipt.record_commit_element(node_palette, commit_index, 1, idx);
+                if let (Some(receipt), Some(role)) =
+                    (node_palette_receipt.as_mut(), palette_roles.get(1).copied())
+                {
+                    receipt.record_commit_element(node_palette, commit_index, 1, idx, role);
                 }
             }
-            if symbol_type == 1 {
+            if commit_kind == crate::gitgraph::GitGraphCommitKind::Reverse {
                 let cross_offset = if use_redux_geometry { 4.0 } else { 5.0 };
                 let d = format!(
                     "M {},{}L{},{}M {},{}L{},{}",
@@ -1072,8 +1194,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
-                if let Some(receipt) = node_palette_receipt.as_mut() {
-                    receipt.record_commit_element(node_palette, commit_index, 1, idx);
+                if let (Some(receipt), Some(role)) =
+                    (node_palette_receipt.as_mut(), palette_roles.get(1).copied())
+                {
+                    receipt.record_commit_element(node_palette, commit_index, 1, idx, role);
                 }
             }
         }
