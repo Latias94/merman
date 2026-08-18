@@ -208,8 +208,18 @@ impl ThemeTarget {
                     | DiagramFamilyId::REQUIREMENT
                     | DiagramFamilyId::KANBAN
             ),
-            Self::Node
-            | Self::NodeLabel
+            Self::Node => matches!(
+                family,
+                DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::SWIMLANE
+                    | DiagramFamilyId::CLASS
+                    | DiagramFamilyId::MINDMAP
+                    | DiagramFamilyId::TREE_VIEW
+                    | DiagramFamilyId::BLOCK
+                    | DiagramFamilyId::GIT_GRAPH
+                    | DiagramFamilyId::SANKEY
+            ),
+            Self::NodeLabel
             | Self::Edge
             | Self::EdgeLabel
             | Self::EdgeLabelBackground
@@ -876,5 +886,21 @@ mod tests {
         assert!(!ThemeTarget::Requirement.valid_for(DiagramFamilyId::ER));
         assert!(ThemeTarget::Relation.valid_for(DiagramFamilyId::ER));
         assert!(ThemeTarget::Relation.valid_for(DiagramFamilyId::REQUIREMENT));
+    }
+
+    #[test]
+    fn sankey_admits_node_without_borrowing_the_other_node_family_targets() {
+        assert!(ThemeTarget::Node.valid_for(DiagramFamilyId::SANKEY));
+        for target in [
+            ThemeTarget::NodeLabel,
+            ThemeTarget::Edge,
+            ThemeTarget::EdgeLabel,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeTarget::Cluster,
+            ThemeTarget::ClusterLabel,
+            ThemeTarget::Marker,
+        ] {
+            assert!(!target.valid_for(DiagramFamilyId::SANKEY));
+        }
     }
 }

@@ -187,6 +187,14 @@ requirement req1 {
   verifymethod: analysis
 }
 "#;
+const PIE_STROKE_SOURCE: &str = r#"pie
+  "Alpha" : 3
+  "Beta" : 2
+"#;
+const BLOCK_STROKE_SOURCE: &str = r#"block-beta
+  columns 5
+  rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -310,6 +318,12 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
             Ok(REQUIREMENT_FILL_SOURCE)
+        }
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(PIE_STROKE_SOURCE)
+        }
+        (DiagramFamilyId::BLOCK, ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(BLOCK_STROKE_SOURCE)
         }
         _ => Err(C6ProofError::new(
             "route-source",
@@ -773,7 +787,8 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                 | ThemeTarget::Lifeline
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
-                | ThemeTarget::Message => SOLID_STROKE.css,
+                | ThemeTarget::Message
+                | ThemeTarget::PieSlice => SOLID_STROKE.css,
                 target => {
                     return Err(C6ProofError::new(
                         "route-theme",
@@ -1100,7 +1115,8 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Lifeline
             | ThemeTarget::Note
             | ThemeTarget::Activation
-            | ThemeTarget::Message,
+            | ThemeTarget::Message
+            | ThemeTarget::PieSlice,
             ThemeRouteCutoverFacet::Stroke,
         ) => Ok(SOLID_STROKE),
         (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE),
@@ -1121,9 +1137,11 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
     match route.value() {
         ThemeRouteCutoverValue::Transparent => match route.family_id() {
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE => Ok("none"),
-            DiagramFamilyId::SEQUENCE | DiagramFamilyId::TREEMAP | DiagramFamilyId::REQUIREMENT => {
-                Ok("transparent")
-            }
+            DiagramFamilyId::SEQUENCE
+            | DiagramFamilyId::TREEMAP
+            | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::PIE
+            | DiagramFamilyId::BLOCK => Ok("transparent"),
             family => Err(C6ProofError::new(
                 "route-svg-proof",
                 format!("unsupported transparent cutover family {family}"),
@@ -1148,7 +1166,8 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Lifeline
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
-                | ThemeTarget::Message,
+                | ThemeTarget::Message
+                | ThemeTarget::PieSlice,
                 ThemeRouteCutoverFacet::Stroke,
             ) => Ok(SOLID_STROKE.css),
             (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE.css),
@@ -1314,11 +1333,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_thirty_eight_routes_and_fifty_artifact_witnesses() {
+    fn route_inventory_retains_forty_two_routes_and_fifty_four_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 38);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 50);
+        assert_eq!(inventory.len(), 42);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 54);
     }
 
     #[test]

@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 8;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 9;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 16] = [
+); 17] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -80,6 +80,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::RequirementFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::PieSliceStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -141,6 +145,8 @@ const TITLE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TitleFill];
 const REQUIREMENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementFill];
+const PIE_SLICE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::PieSliceStroke];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -155,7 +161,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 38] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 42] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -421,6 +427,34 @@ const ACTIVE_ROUTES: [RouteAuthorization; 38] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         REQUIREMENT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        PIE_SLICE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::PIE,
+        ThemeTarget::PieSlice,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        PIE_SLICE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::BLOCK,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
     ),
 ];
 
@@ -732,7 +766,13 @@ mod tests {
         assert!(reconcile_manifest(&current[1..], &MANIFEST).is_err());
 
         let mut drifted = current;
-        drifted[0].1 = ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE;
+        let drift_index = drifted
+            .iter()
+            .position(|(_, projections)| {
+                *projections != ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE
+            })
+            .expect("current inventory contains a non-node-stroke projection");
+        drifted[drift_index].1 = ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE;
         assert!(reconcile_manifest(&drifted, &MANIFEST).is_err());
     }
 

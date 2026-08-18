@@ -290,7 +290,7 @@ fn legacy_bridge_projections(
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_FILL),
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::BLOCK,
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE),
@@ -336,6 +336,9 @@ fn legacy_bridge_projections(
         }
         (DiagramFamilyId::REQUIREMENT, ThemeTarget::Requirement, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_FILL)
+        }
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_STROKE)
         }
         _ => None,
     }
@@ -611,6 +614,7 @@ fn classify_ordinal_palette(
                 | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::GIT_GRAPH
+                | DiagramFamilyId::SANKEY
         ) && target == ThemeTarget::Node)
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
@@ -790,6 +794,23 @@ fn classify_base_typography(
             ThemeTypographyProperty::FontStack => FamilyThemeDisposition::TypedAdapter,
             ThemeTypographyProperty::FontSize
             | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
+    if family == DiagramFamilyId::RAILROAD {
+        return match property {
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
+                FamilyThemeDisposition::TypedAdapter
+            }
+            ThemeTypographyProperty::FontWeight
             | ThemeTypographyProperty::FontStyle
             | ThemeTypographyProperty::LineHeight
             | ThemeTypographyProperty::LetterSpacing
@@ -1039,6 +1060,19 @@ pub(super) fn classify_rule_facet(
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        (family, target),
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice) | (DiagramFamilyId::BLOCK, ThemeTarget::Node)
+    ) && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -1427,6 +1461,69 @@ mod tests {
             DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::Node
         ));
+    }
+
+    #[test]
+    fn sankey_node_palette_is_direct_only() {
+        assert_eq!(
+            compile_ordinal_palette_route(DiagramFamilyId::SANKEY, ThemeTarget::Node).disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert!(!legacy_palette_supported(
+            DiagramFamilyId::SANKEY,
+            ThemeTarget::Node
+        ));
+    }
+
+    #[test]
+    fn pie_and_block_own_only_unqualified_scalar_stroke() {
+        for (family, target) in [
+            (DiagramFamilyId::PIE, ThemeTarget::PieSlice),
+            (DiagramFamilyId::BLOCK, ThemeTarget::Node),
+        ] {
+            for kind in [
+                FamilyThemePaintKind::Transparent,
+                FamilyThemePaintKind::Solid,
+            ] {
+                assert_eq!(
+                    classify_rule_facet(
+                        family,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        FamilyThemeRuleFacet::Stroke(kind),
+                    ),
+                    FamilyThemeDisposition::TypedAdapter
+                );
+                assert_eq!(
+                    classify_rule_facet(
+                        family,
+                        target,
+                        FamilyThemeSelectorShape::Static {
+                            variant: Some(ThemeVariant::Default),
+                        },
+                        FamilyThemeRuleFacet::Stroke(kind),
+                    ),
+                    FamilyThemeDisposition::LegacyCompatibility
+                );
+            }
+
+            for kind in [
+                FamilyThemePaintKind::Clear,
+                FamilyThemePaintKind::LinearGradient,
+                FamilyThemePaintKind::RadialGradient,
+                FamilyThemePaintKind::Pattern,
+            ] {
+                assert_eq!(
+                    classify_rule_facet(
+                        family,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        FamilyThemeRuleFacet::Stroke(kind),
+                    ),
+                    FamilyThemeDisposition::Unsupported
+                );
+            }
+        }
     }
 
     #[test]
@@ -2480,6 +2577,20 @@ mod tests {
             .collect::<Vec<_>>();
         let expected = vec![
             (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Node,
+                Stroke,
+                Transparent,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Node,
+                Stroke,
+                Solid,
+                vec!["node.stroke"],
+            ),
+            (
                 DiagramFamilyId::FLOWCHART,
                 ThemeTarget::Node,
                 Fill,
@@ -2548,6 +2659,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::PieSlice,
+                Stroke,
+                Transparent,
+                vec!["slice.stroke"],
+            ),
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::PieSlice,
+                Stroke,
+                Solid,
+                vec!["slice.stroke"],
             ),
             (
                 DiagramFamilyId::REQUIREMENT,
@@ -2911,6 +3036,40 @@ mod tests {
         assert!(routes.iter().any(|route| {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
+    }
+
+    #[test]
+    fn railroad_directly_owns_only_base_font_stack_and_size() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace").expect("valid Railroad font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Railroad font size")
+            .with_font_weight(700)
+            .expect("valid Railroad font weight");
+        let routes = compile_base_typography_routes(DiagramFamilyId::RAILROAD, &typography);
+
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
                 && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
         assert!(

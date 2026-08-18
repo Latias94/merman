@@ -1691,6 +1691,106 @@ mod tests {
     }
 
     #[test]
+    fn railroad_font_stack_and_size_retire_only_the_legacy_typography_projection() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::new(["Inter", "sans-serif"])
+                    .expect("valid Railroad font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Railroad font size");
+        let spec = DiagramThemeSpec::new()
+            .with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::RAILROAD, typography),
+            )
+            .with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid("#334155")),
+                    )
+                    .for_family(DiagramFamilyId::RAILROAD),
+                ),
+            );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::RAILROAD);
+
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.railroad.typography"));
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.railroad.text.fill")
+        );
+        let source = include_str!(
+            "../../../../fixtures/railroad/upstream_cypress_railroad_spec_renders_a_simple_rule_001.mmd"
+        );
+        let parsed = parse(&spec, source);
+        let baseline = parse(&DiagramThemeSpec::default(), source);
+        for path in [
+            "fontFamily",
+            "themeVariables.fontFamily",
+            "themeVariables.fontSize",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Railroad typography must not write legacy `{path}`"
+            );
+        }
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.textColor"),
+            Some("#334155")
+        );
+    }
+
+    #[test]
+    fn pie_and_block_unqualified_stroke_retire_only_their_direct_projection() {
+        for (family, target, contribution_id) in [
+            (
+                DiagramFamilyId::PIE,
+                ThemeTarget::PieSlice,
+                "merman.legacy-family-theme.v1.pie.slice.stroke",
+            ),
+            (
+                DiagramFamilyId::BLOCK,
+                ThemeTarget::Node,
+                "merman.legacy-family-theme.v1.block.node.stroke",
+            ),
+        ] {
+            let direct_spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default().with_stroke(solid("#2563eb")),
+                    )
+                    .for_family(family),
+                ),
+            );
+            let direct_bridge = bridge(&direct_spec);
+            let direct = direct_bridge.compile_for_family(family);
+
+            assert!(!direct.contribution_ids.contains(contribution_id));
+            assert!(!direct_bridge.owns_contribution_id(contribution_id));
+
+            let legacy_spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default().with_stroke(solid("#2563eb")),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(family),
+                ),
+            );
+            let legacy_bridge = bridge(&legacy_spec);
+            let legacy = legacy_bridge.compile_for_family(family);
+
+            assert!(legacy.contribution_ids.contains(contribution_id));
+            assert!(legacy_bridge.owns_contribution_id(contribution_id));
+        }
+    }
+
+    #[test]
     fn unsupported_base_typography_does_not_emit_unrelated_legacy_fields() {
         let sequence_typography = TextStyle::default()
             .with_font_weight(700)

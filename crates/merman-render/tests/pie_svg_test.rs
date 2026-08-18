@@ -112,6 +112,22 @@ fn pie_slice_fill_and_palette_theme() -> DiagramTheme {
         .expect("compile Pie fill and palette theme")
 }
 
+fn pie_slice_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::PieSlice,
+                        ThemeStylePatch::default().with_stroke(stroke),
+                    )
+                    .for_family(DiagramFamilyId::PIE),
+                ),
+            ),
+        )
+        .expect("compile Pie stroke theme")
+}
+
 #[test]
 fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
     let theme = pie_slice_palette_theme(&["transparent", "#22c55e"]);
@@ -649,4 +665,159 @@ fn pie_static_fill_rule_outranks_the_typed_palette_for_slices_and_legend() {
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 1);
+}
+
+#[test]
+fn pie_static_stroke_is_verified_from_slice_and_outer_circle_css() {
+    for (stroke, expected_css) in [
+        (
+            CanvasPaint::solid("#7c3aed").expect("valid solid Pie stroke"),
+            "#7c3aed",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = pie_slice_stroke_theme(stroke);
+        let rendered = render_pie_with_theme("pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n", &theme);
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Pie stylesheet");
+
+        assert!(
+            stylesheet.contains(&format!("#merman .pieCircle{{stroke:{expected_css};}}")),
+            "typed Pie slice stroke must be emitted by the terminal writer: {stylesheet}"
+        );
+        assert!(
+            stylesheet.contains(&format!(
+                "#merman .pieOuterCircle{{stroke:{expected_css};}}"
+            )),
+            "typed Pie outer stroke must be emitted by the terminal writer: {stylesheet}"
+        );
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path")
+                        && node.attribute("class").is_some_and(|class| {
+                            class
+                                .split_ascii_whitespace()
+                                .any(|part| part == "pieCircle")
+                        })
+                })
+                .count(),
+            2,
+            "both semantic slices must reach the CSS-owned terminal surface"
+        );
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("circle") && node.attribute("class") == Some("pieOuterCircle")
+        }));
+
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.status(),
+            merman_render::__private::FamilyEvidenceStatus::Verified
+        );
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_static_stroke_respects_per_site_mermaid_ownership() {
+    let theme =
+        pie_slice_stroke_theme(CanvasPaint::solid("#7c3aed").expect("valid typed Pie stroke"));
+    for (owned_key, owned_color, owned_rule, typed_rule, forbidden_typed_rule) in [
+        (
+            "pieStrokeColor",
+            "#0f172a",
+            "#merman .pieCircle{stroke:#0f172a;stroke-width:",
+            "#merman .pieOuterCircle{stroke:#7c3aed;}",
+            "#merman .pieCircle{stroke:#7c3aed;}",
+        ),
+        (
+            "pieOuterStrokeColor",
+            "#1e293b",
+            "#merman .pieOuterCircle{stroke:#1e293b;stroke-width:",
+            "#merman .pieCircle{stroke:#7c3aed;}",
+            "#merman .pieOuterCircle{stroke:#7c3aed;}",
+        ),
+    ] {
+        let source = format!(
+            "%%{{init: {{\"themeVariables\": {{\"{owned_key}\": \"{owned_color}\"}}}}}}%%\npie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n"
+        );
+        let rendered = render_pie_with_theme(&source, &theme);
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("valid Pie SVG for {owned_key}: {error}"));
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Pie stylesheet");
+
+        assert!(
+            stylesheet.contains(owned_rule),
+            "the explicit Mermaid {owned_key} value must retain terminal ownership: {stylesheet}"
+        );
+        assert!(
+            !stylesheet.contains(forbidden_typed_rule),
+            "typed Pie stroke must not overwrite the explicitly owned {owned_key} site: {stylesheet}"
+        );
+        assert!(
+            stylesheet.contains(typed_rule),
+            "typed Pie stroke must still own the independent site for {owned_key}: {stylesheet}"
+        );
+
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{owned_key}");
+        assert_eq!(evidence.accounted_count(), 1, "{owned_key}");
+        assert_eq!(evidence.applied_count(), 1, "{owned_key}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{owned_key}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{owned_key}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "{owned_key}");
+    }
+}
+
+#[test]
+fn pie_static_stroke_is_not_applicable_when_mermaid_owns_both_sites() {
+    let theme =
+        pie_slice_stroke_theme(CanvasPaint::solid("#7c3aed").expect("valid typed Pie stroke"));
+    let rendered = render_pie_with_theme(
+        r##"%%{init: {"themeVariables": {"pieStrokeColor": "#0f172a", "pieOuterStrokeColor": "#1e293b"}}}%%
+pie
+  "Alpha" : 1
+  "Beta" : 1
+"##,
+        &theme,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Pie SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Pie stylesheet");
+
+    assert!(stylesheet.contains("#merman .pieCircle{stroke:#0f172a;stroke-width:"));
+    assert!(stylesheet.contains("#merman .pieOuterCircle{stroke:#1e293b;stroke-width:"));
+    assert!(!stylesheet.contains("#merman .pieCircle{stroke:#7c3aed;}"));
+    assert!(!stylesheet.contains("#merman .pieOuterCircle{stroke:#7c3aed;}"));
+
+    drop(document);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }

@@ -1,5 +1,8 @@
 use super::super::*;
-use crate::block::{BlockRectangleKind, BlockShapeBoundary, block_label_is_effectively_empty};
+use crate::block::{
+    BlockNodeShellKind, BlockNodeStrokeSourceOwnership, BlockNodeStrokeThemePlan,
+    BlockRectangleKind, BlockShapeBoundary, block_label_is_effectively_empty,
+};
 use crate::model::{LayoutEdge, LayoutPoint};
 
 // Block diagram SVG renderer implementation (split from parity.rs).
@@ -42,6 +45,7 @@ fn write_important_declarations<'a>(
 pub(crate) fn render_block_diagram_svg_model(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    node_stroke_theme: &BlockNodeStrokeThemePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -111,6 +115,8 @@ pub(crate) fn render_block_diagram_svg_model(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
+    let node_stroke_source_ownership = BlockNodeStrokeSourceOwnership::new(&model.class_defs);
+    let mut node_stroke_receipt = node_stroke_theme.begin_terminal_receipt();
 
     fn marker_id(diagram_id: &str, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
@@ -500,6 +506,14 @@ pub(crate) fn render_block_diagram_svg_model(
         let Some(node) = nodes_by_id.get(&n.id) else {
             continue;
         };
+        let node_index =
+            node_stroke_theme
+                .index_for_node_id(&n.id)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("missing Block theme occurrence for node `{}`", n.id),
+                })?;
+        let source_owns_stroke = node_stroke_source_ownership.owns(&node.styles, &node.classes);
+        let typed_stroke = node_stroke_theme.typed_stroke(node_index, source_owns_stroke);
 
         let class_str = if node.classes.is_empty() {
             "default".to_string()
@@ -507,8 +521,13 @@ pub(crate) fn render_block_diagram_svg_model(
             node.classes.join(" ")
         };
         let class_str = format!("{class_str} flowchart-label");
-        let (node_box_style, node_text_style, node_div_style_prefix) =
+        let (mut node_box_style, node_text_style, node_div_style_prefix) =
             compile_block_inline_styles(&node.styles);
+        if let Some((_, css)) = typed_stroke {
+            node_box_style.push_str("stroke:");
+            node_box_style.push_str(css);
+            node_box_style.push(';');
+        }
 
         let geometry =
             shape_geometries_by_id
@@ -526,6 +545,7 @@ pub(crate) fn render_block_diagram_svg_model(
             fmt(geometry.allocated.y)
         );
 
+        let shell_kinds: &[BlockNodeShellKind];
         match &geometry.boundary {
             BlockShapeBoundary::Rectangle {
                 width,
@@ -549,6 +569,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     fmt(*width),
                     fmt(*height)
                 );
+                shell_kinds = &[BlockNodeShellKind::Rect];
             }
             BlockShapeBoundary::Circle {
                 radius,
@@ -563,6 +584,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     fmt(*width_attribute),
                     fmt(*height_attribute)
                 );
+                shell_kinds = &[BlockNodeShellKind::Circle];
             }
             BlockShapeBoundary::DoubleCircle {
                 outer_radius,
@@ -582,6 +604,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     fmt(*inner_width_attribute),
                     fmt(*inner_height_attribute)
                 );
+                shell_kinds = &[BlockNodeShellKind::Circle, BlockNodeShellKind::Circle];
             }
             BlockShapeBoundary::Stadium { width, height } => {
                 let radius = height / 2.0;
@@ -596,6 +619,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     fmt(*width),
                     fmt(*height)
                 );
+                shell_kinds = &[BlockNodeShellKind::Rect];
             }
             BlockShapeBoundary::Cylinder {
                 width,
@@ -623,6 +647,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     fmt_display(-width / 2.0),
                     fmt_display(-(body_height / 2.0 + radius_y))
                 );
+                shell_kinds = &[BlockNodeShellKind::Path];
             }
             BlockShapeBoundary::Polygon {
                 points,
@@ -647,8 +672,19 @@ pub(crate) fn render_block_diagram_svg_model(
                     fmt_display(translation.x),
                     fmt_display(translation.y)
                 );
+                shell_kinds = &[BlockNodeShellKind::Polygon];
             }
         }
+        out.checkpoint()?;
+        node_stroke_receipt.record_checkpointed_node(
+            node_index,
+            source_owns_stroke,
+            typed_stroke,
+            shell_kinds
+                .iter()
+                .copied()
+                .map(|kind| (kind, node_box_style.as_str())),
+        );
 
         let label = decode_block_label_html(&node.label);
         let label_effectively_empty =
@@ -767,7 +803,13 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if !node_stroke_theme.record_terminal(node_stroke_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Block node stroke terminal receipt was incomplete".to_string(),
+        });
+    }
+    Ok(rooted)
 }
 
 #[cfg(test)]
@@ -856,8 +898,15 @@ mod tests {
             crate::DiagramFamilyId::BLOCK,
         )
         .expect("SVG execution");
+        let node_stroke_theme = BlockNodeStrokeThemePlan::baseline(&layout);
 
-        render_block_diagram_svg_model(&layout, model, effective_config, &execution)
+        render_block_diagram_svg_model(
+            &layout,
+            model,
+            &node_stroke_theme,
+            effective_config,
+            &execution,
+        )
     }
 
     #[derive(Default)]

@@ -50,6 +50,22 @@ pub(super) fn prove_svg_routes(
                     observation.target_regions,
                 )
             }
+            DiagramFamilyId::PIE => {
+                let observation = pie_route_observation(&document, route)?;
+                (
+                    observation.value,
+                    observation.terminal_digest,
+                    observation.target_regions,
+                )
+            }
+            DiagramFamilyId::BLOCK => {
+                let observation = block_route_observation(&document, route)?;
+                (
+                    observation.value,
+                    observation.terminal_digest,
+                    observation.target_regions,
+                )
+            }
             _ => {
                 return Err(C6ProofError::new(
                     "route-svg-proof",
@@ -189,6 +205,37 @@ fn target_underlay_colors(
                 .attribute("id")
                 .ok_or_else(|| C6ProofError::new("route-svg-proof", "SVG root lacks an id"))?;
             let selector = format!("#{root_id} .cluster rect");
+            let underlay =
+                parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?;
+            std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
+        }
+        (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Stroke) => {
+            let mut colors = Vec::new();
+            for color in document
+                .descendants()
+                .filter(|node| node.has_tag_name("path") && class_contains(*node, "pieCircle"))
+                .filter_map(|node| node.attribute("fill"))
+                .map(parse_css_rgb)
+            {
+                let color = color?;
+                if !colors.contains(&color) {
+                    colors.push(color);
+                }
+            }
+            c6_ensure!(
+                "route-svg-proof",
+                !colors.is_empty(),
+                "Pie stroke witness lacks slice-fill underlay colors"
+            );
+            std::iter::repeat_n(colors, region_count).collect()
+        }
+        (DiagramFamilyId::BLOCK, ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
+            let root_id = document.root_element().attribute("id").ok_or_else(|| {
+                C6ProofError::new("route-svg-proof", "Block SVG root lacks an id")
+            })?;
+            let selector = format!(
+                "#{root_id} .node rect,#{root_id} .node circle,#{root_id} .node ellipse,#{root_id} .node polygon,#{root_id} .node path"
+            );
             let underlay =
                 parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?;
             std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
@@ -995,6 +1042,18 @@ struct RequirementRouteObservation {
     target_regions: Vec<[f64; 4]>,
 }
 
+struct PieRouteObservation {
+    value: String,
+    terminal_digest: [u8; 32],
+    target_regions: Vec<[f64; 4]>,
+}
+
+struct BlockRouteObservation {
+    value: String,
+    terminal_digest: [u8; 32],
+    target_regions: Vec<[f64; 4]>,
+}
+
 fn flowchart_route_observation(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
@@ -1223,6 +1282,213 @@ fn requirement_fill_observation(
         value: value.to_owned(),
         terminal_digest: sha256(terminal),
         target_regions: vec![region],
+    })
+}
+
+fn pie_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<PieRouteObservation> {
+    c6_ensure!(
+        "route-svg-proof",
+        route.target() == ThemeTarget::PieSlice && route.facet() == ThemeRouteCutoverFacet::Stroke,
+        "unsupported Pie cutover route {}",
+        route_label(route)
+    );
+    let root_id = document
+        .root_element()
+        .attribute("id")
+        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Pie SVG root lacks an id"))?;
+    let slice_selector = format!("#{root_id} .pieCircle");
+    let outer_selector = format!("#{root_id} .pieOuterCircle");
+    let slice_value = stylesheet_property(document, &slice_selector, "stroke")?;
+    let outer_value = stylesheet_property(document, &outer_selector, "stroke")?;
+    c6_ensure!(
+        "route-svg-proof",
+        slice_value == outer_value,
+        "Pie slice and outer-circle stroke owners disagree: `{slice_value}` != `{outer_value}`"
+    );
+
+    let slices = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && class_contains(*node, "pieCircle"))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        slices.len() == 2,
+        "Pie stroke witness expected two terminal slice paths, found {}",
+        slices.len()
+    );
+    let outer_circles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("circle") && node.attribute("class") == Some("pieOuterCircle")
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        outer_circles.len() == 1,
+        "Pie stroke witness expected one terminal outer circle, found {}",
+        outer_circles.len()
+    );
+
+    let mut terminal = b"merman.c6-route-pie-slice-stroke.v1\0".to_vec();
+    append_len_prefixed(&mut terminal, slice_selector.as_bytes());
+    append_len_prefixed(&mut terminal, slice_value.as_bytes());
+    append_len_prefixed(&mut terminal, outer_selector.as_bytes());
+    append_len_prefixed(&mut terminal, outer_value.as_bytes());
+    let mut target_regions = Vec::with_capacity(slices.len() + outer_circles.len());
+    for surface in slices.into_iter().chain(outer_circles) {
+        c6_ensure!(
+            "route-svg-proof",
+            surface.attribute("stroke").is_none() && style_value(surface, "stroke").is_none(),
+            "Pie terminal surface retained a direct stroke that bypasses its final stylesheet owner"
+        );
+        let region = element_bounds(surface, route.facet())?;
+        append_len_prefixed(&mut terminal, surface.tag_name().name().as_bytes());
+        append_len_prefixed(
+            &mut terminal,
+            surface.attribute("class").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(
+            &mut terminal,
+            surface.attribute("d").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(
+            &mut terminal,
+            surface.attribute("r").unwrap_or_default().as_bytes(),
+        );
+        append_rect(&mut terminal, region);
+        target_regions.push(region);
+    }
+
+    Ok(PieRouteObservation {
+        value: slice_value.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+const BLOCK_RECT_SHELLS: &[&str] = &["rect"];
+const BLOCK_CIRCLE_SHELLS: &[&str] = &["circle"];
+const BLOCK_DOUBLE_CIRCLE_SHELLS: &[&str] = &["circle", "circle"];
+const BLOCK_CYLINDER_SHELLS: &[&str] = &["path"];
+const BLOCK_POLYGON_SHELLS: &[&str] = &["polygon"];
+
+fn block_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<BlockRouteObservation> {
+    c6_ensure!(
+        "route-svg-proof",
+        route.target() == ThemeTarget::Node && route.facet() == ThemeRouteCutoverFacet::Stroke,
+        "unsupported Block cutover route {}",
+        route_label(route)
+    );
+    let root_id = document
+        .root_element()
+        .attribute("id")
+        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Block SVG root lacks an id"))?;
+    let expected_nodes = [
+        ("rect", BLOCK_RECT_SHELLS),
+        ("circle", BLOCK_CIRCLE_SHELLS),
+        ("double", BLOCK_DOUBLE_CIRCLE_SHELLS),
+        ("cylinder", BLOCK_CYLINDER_SHELLS),
+        ("polygon", BLOCK_POLYGON_SHELLS),
+    ];
+    let mut common_value = None;
+    let mut target_regions = Vec::with_capacity(6);
+    let mut terminal = b"merman.c6-route-block-node-stroke.v1\0".to_vec();
+    for (semantic_id, expected_shells) in expected_nodes {
+        let node_id = format!("{root_id}-{semantic_id}");
+        let nodes = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g")
+                    && class_contains(*node, "node")
+                    && node.attribute("id") == Some(node_id.as_str())
+            })
+            .collect::<Vec<_>>();
+        c6_ensure!(
+            "route-svg-proof",
+            nodes.len() == 1,
+            "Block stroke witness expected one node `{node_id}`, found {}",
+            nodes.len()
+        );
+        let shells = nodes[0]
+            .descendants()
+            .filter(|surface| {
+                surface.is_element()
+                    && matches!(
+                        surface.tag_name().name(),
+                        "rect" | "circle" | "path" | "polygon"
+                    )
+                    && style_value(*surface, "stroke").is_some()
+            })
+            .collect::<Vec<_>>();
+        let actual_shells = shells
+            .iter()
+            .map(|surface| surface.tag_name().name())
+            .collect::<Vec<_>>();
+        c6_ensure!(
+            "route-svg-proof",
+            actual_shells == expected_shells,
+            "Block node `{node_id}` shell shape drifted: actual={actual_shells:?}, expected={expected_shells:?}"
+        );
+
+        append_len_prefixed(&mut terminal, node_id.as_bytes());
+        for shell in shells {
+            c6_ensure!(
+                "route-svg-proof",
+                shell.attribute("stroke").is_none(),
+                "Block node `{node_id}` bypassed its terminal inline-style stroke owner"
+            );
+            let value = style_value(shell, "stroke").ok_or_else(|| {
+                C6ProofError::new(
+                    "route-svg-proof",
+                    format!("Block node `{node_id}` lacks its terminal stroke"),
+                )
+            })?;
+            if let Some(common) = common_value {
+                c6_ensure!(
+                    "route-svg-proof",
+                    common == value,
+                    "Block terminal shell strokes disagree: `{common}` != `{value}`"
+                );
+            } else {
+                common_value = Some(value);
+            }
+            let region = element_bounds(shell, route.facet())?;
+            append_len_prefixed(&mut terminal, shell.tag_name().name().as_bytes());
+            append_len_prefixed(
+                &mut terminal,
+                shell.attribute("style").unwrap_or_default().as_bytes(),
+            );
+            append_len_prefixed(
+                &mut terminal,
+                shell.attribute("d").unwrap_or_default().as_bytes(),
+            );
+            append_len_prefixed(
+                &mut terminal,
+                shell.attribute("points").unwrap_or_default().as_bytes(),
+            );
+            append_rect(&mut terminal, region);
+            target_regions.push(region);
+        }
+    }
+    c6_ensure!(
+        "route-svg-proof",
+        target_regions.len() == 6,
+        "Block stroke witness expected six terminal shells, found {}",
+        target_regions.len()
+    );
+
+    Ok(BlockRouteObservation {
+        value: common_value
+            .ok_or_else(|| C6ProofError::new("route-svg-proof", "missing Block stroke value"))?
+            .to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions,
     })
 }
 

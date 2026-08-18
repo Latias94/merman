@@ -83,6 +83,82 @@ fn prepare_mindmap_family(
 }
 
 #[inline(never)]
+fn prepare_sankey_family(
+    model: diagrams::sankey::SankeyDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::sankey::layout_sankey_diagram_typed_with_work_meter(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+        execution.work_meter_ref(),
+    )?;
+    let node_palette = crate::sankey::SankeyNodePalettePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Sankey(Box::new(
+        SankeyFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            node_palette,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_block_family(
+    model: diagrams::block::BlockDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::block::layout_block_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    let node_stroke_theme = crate::block::BlockNodeStrokeThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Block(Box::new(
+        BlockFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            node_stroke_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_railroad_family(
+    model: diagrams::railroad::RailroadDiagramRenderModel,
+    diagram_type: &str,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let typography_theme = crate::railroad::RailroadTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::railroad::layout_railroad_diagram_typed_for_type_with_theme(
+        &model,
+        diagram_type,
+        &typography_theme,
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Railroad(Box::new(
+        RailroadFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            typography_theme,
+        },
+    )))
+}
+
+#[inline(never)]
 fn prepare_state_family(
     model: diagrams::state::StateDiagramRenderModel,
     meta: &ParseMetadata,
@@ -292,7 +368,7 @@ fn prepare_pie_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let slice_paint = crate::pie::PieSlicePaintPlan::resolve(
+    let theme = crate::pie::PieThemePlan::resolve(
         &model,
         &meta.effective_config,
         execution.resolved_theme(),
@@ -302,12 +378,12 @@ fn prepare_pie_family(
         &model,
         meta.title.as_deref(),
         meta.effective_config.as_value(),
-        &slice_paint,
+        &theme,
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Pie(Box::new(PieFamilyArtifact {
         pair: FamilyPair::new(model, layout),
-        slice_paint,
+        theme,
     })))
 }
 
@@ -739,14 +815,7 @@ pub(super) fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Railroad(model) => {
-            BuiltinFamilyArtifact::Railroad(prepare_pair(model, |model| {
-                crate::railroad::layout_railroad_diagram_typed_for_type(
-                    model,
-                    diagram_type,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            prepare_railroad_family(model, diagram_type, &meta, &execution)?
         }
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
@@ -767,16 +836,7 @@ pub(super) fn prepare_non_class_render(
         RenderSemanticModel::Requirement(model) => {
             prepare_requirement_family(model, &meta, &execution)?
         }
-        RenderSemanticModel::Sankey(model) => {
-            BuiltinFamilyArtifact::Sankey(prepare_pair(model, |model| {
-                crate::sankey::layout_sankey_diagram_typed_with_work_meter(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                    execution.work_meter_ref(),
-                )
-            })?)
-        }
+        RenderSemanticModel::Sankey(model) => prepare_sankey_family(model, &meta, &execution)?,
         RenderSemanticModel::Radar(model) => prepare_radar_family(model, &meta, &execution)?,
         RenderSemanticModel::Info(model) => {
             BuiltinFamilyArtifact::Info(prepare_pair(model, |model| {
@@ -788,15 +848,7 @@ pub(super) fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::Treemap(model) => prepare_treemap_family(model, &meta, &execution)?,
-        RenderSemanticModel::Block(model) => {
-            BuiltinFamilyArtifact::Block(prepare_pair(model, |model| {
-                crate::block::layout_block_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
-        }
+        RenderSemanticModel::Block(model) => prepare_block_family(model, &meta, &execution)?,
         RenderSemanticModel::Er(model) => prepare_er_family(model, &meta, &execution)?,
         RenderSemanticModel::QuadrantChart(model) => {
             prepare_quadrant_chart_family(model, &meta, &execution)?

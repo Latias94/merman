@@ -10,7 +10,7 @@ mod config;
 mod theme;
 
 pub(crate) use config::{PieConfigView, PieLegendPosition};
-pub(crate) use theme::{PieSlicePaintPlan, PieSlicePaintReceipt};
+pub(crate) use theme::{PieThemePlan, PieThemeReceipt};
 
 fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     // Mermaid pie charts use a "12 o'clock is zero" convention with y increasing downwards.
@@ -49,7 +49,7 @@ pub(crate) fn layout_pie_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
-    let paint_plan = PieSlicePaintPlan::baseline(model, effective_config);
+    let paint_plan = PieThemePlan::baseline(model, effective_config);
     layout_pie_diagram_typed_with_paint_plan(
         model,
         diagram_title,
@@ -63,7 +63,7 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
     model: &PieDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
-    paint_plan: &PieSlicePaintPlan,
+    paint_plan: &PieThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let _ = (
@@ -270,12 +270,12 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
     })
 }
 
-fn pie_fill_for(paint_plan: &PieSlicePaintPlan, label: &str) -> Result<String> {
+fn pie_fill_for(paint_plan: &PieThemePlan, label: &str) -> Result<String> {
     paint_plan
         .fill_for(label)
         .map(str::to_string)
         .ok_or_else(|| crate::Error::InvalidModel {
-            message: format!("Pie slice paint plan is missing label `{label}`"),
+            message: format!("Pie theme plan is missing slice label `{label}`"),
         })
 }
 

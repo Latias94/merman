@@ -601,10 +601,10 @@ fn render_builtin_family_artifact_raw(
             title,
             options,
         ),
-        BuiltinFamilyArtifact::Railroad(pair) => railroad::render_railroad_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
+        BuiltinFamilyArtifact::Railroad(artifact) => railroad::render_railroad_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.typography_theme(),
             measurer,
             options,
         ),
@@ -669,7 +669,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Pie(artifact) => pie::render_pie_diagram_svg_model_with_paint_plan(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.slice_paint(),
+            artifact.theme(),
             effective_config_value,
             options,
         ),
@@ -710,9 +710,12 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::Sankey(pair) => {
-            sankey::render_sankey_diagram_svg(pair.layout(), effective_config_value, options)
-        }
+        BuiltinFamilyArtifact::Sankey(artifact) => sankey::render_sankey_diagram_svg(
+            artifact.pair().layout(),
+            artifact.node_palette(),
+            effective_config_value,
+            options,
+        ),
         BuiltinFamilyArtifact::Radar(artifact) => {
             radar::render_radar_diagram_svg_model_with_series_paint(
                 artifact.pair().layout(),
@@ -739,9 +742,10 @@ fn render_builtin_family_artifact_raw(
             title,
             options,
         ),
-        BuiltinFamilyArtifact::Block(pair) => block::render_block_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.node_stroke_theme(),
             effective_config_value,
             options,
         ),

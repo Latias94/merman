@@ -57,9 +57,11 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 
 mod config;
+mod theme;
 
 pub(crate) use config::SankeyConfigView;
 use config::{NodeAlign, SankeyLayoutSettings};
+pub(crate) use theme::{SankeyNodePalettePlan, SankeyNodePaletteReceipt};
 
 #[derive(Debug, Clone)]
 struct Node {

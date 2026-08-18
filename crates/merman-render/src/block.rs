@@ -5,8 +5,12 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
+mod theme;
 
 use config::{BlockConfigView, BlockLayoutSettings};
+pub(crate) use theme::{
+    BlockNodeShellKind, BlockNodeStrokeSourceOwnership, BlockNodeStrokeThemePlan,
+};
 
 mod geometry;
 

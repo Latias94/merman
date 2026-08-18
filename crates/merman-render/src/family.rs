@@ -999,6 +999,9 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::TREEMAP
                 | DiagramFamilyId::REQUIREMENT
                 | DiagramFamilyId::PACKET
+                | DiagramFamilyId::SANKEY
+                | DiagramFamilyId::BLOCK
+                | DiagramFamilyId::RAILROAD
                 | DiagramFamilyId::GIT_GRAPH
                 | DiagramFamilyId::C4
                 | DiagramFamilyId::ER
@@ -1324,7 +1327,7 @@ pub(crate) struct GanttFamilyArtifact {
 #[derive(Debug)]
 pub(crate) struct PieFamilyArtifact {
     pair: FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>,
-    slice_paint: crate::pie::PieSlicePaintPlan,
+    theme: crate::pie::PieThemePlan,
 }
 
 #[derive(Debug)]
@@ -1381,6 +1384,60 @@ pub(crate) struct XyChartFamilyArtifact {
 pub(crate) struct RadarFamilyArtifact {
     pair: FamilyPair<diagrams::radar::RadarDiagramRenderModel, RadarDiagramLayout>,
     series_paint: crate::radar::RadarSeriesPaintPlan,
+}
+
+#[derive(Debug)]
+pub(crate) struct SankeyFamilyArtifact {
+    pair: FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>,
+    node_palette: crate::sankey::SankeyNodePalettePlan,
+}
+
+#[derive(Debug)]
+pub(crate) struct BlockFamilyArtifact {
+    pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
+    node_stroke_theme: crate::block::BlockNodeStrokeThemePlan,
+}
+
+impl BlockFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn node_stroke_theme(&self) -> &crate::block::BlockNodeStrokeThemePlan {
+        &self.node_stroke_theme
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RailroadFamilyArtifact {
+    pair: FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>,
+    typography_theme: crate::railroad::RailroadTypographyThemePlan,
+}
+
+impl RailroadFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::railroad::RailroadTypographyThemePlan {
+        &self.typography_theme
+    }
+}
+
+impl SankeyFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn node_palette(&self) -> &crate::sankey::SankeyNodePalettePlan {
+        &self.node_palette
+    }
 }
 
 #[derive(Debug)]
@@ -1534,8 +1591,8 @@ impl PieFamilyArtifact {
         &self.pair
     }
 
-    pub(crate) const fn slice_paint(&self) -> &crate::pie::PieSlicePaintPlan {
-        &self.slice_paint
+    pub(crate) const fn theme(&self) -> &crate::pie::PieThemePlan {
+        &self.theme
     }
 }
 
@@ -1653,9 +1710,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     C4(Box<C4FamilyArtifact>),
     Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
     Wardley(Box<FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>>),
-    Railroad(
-        Box<FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>>,
-    ),
+    Railroad(Box<RailroadFamilyArtifact>),
     Kanban(
         Box<
             FamilyPair<
@@ -1670,11 +1725,11 @@ pub(crate) enum BuiltinFamilyArtifact {
     Timeline(Box<TimelineFamilyArtifact>),
     Journey(Box<JourneyFamilyArtifact>),
     Requirement(Box<RequirementFamilyArtifact>),
-    Sankey(Box<FamilyPair<diagrams::sankey::SankeyDiagramRenderModel, SankeyDiagramLayout>>),
+    Sankey(Box<SankeyFamilyArtifact>),
     Radar(Box<RadarFamilyArtifact>),
     Info(Box<FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>>),
     Treemap(Box<TreemapFamilyArtifact>),
-    Block(Box<FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>>),
+    Block(Box<BlockFamilyArtifact>),
     Er(Box<ErFamilyArtifact>),
     QuadrantChart(Box<QuadrantChartFamilyArtifact>),
     XyChart(Box<XyChartFamilyArtifact>),
@@ -1923,7 +1978,7 @@ impl BuiltinFamilyArtifact {
 
     fn pie_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Pie(artifact) => Some(artifact.slice_paint().finish_evidence()),
+            Self::Pie(artifact) => Some(artifact.theme().finish_evidence()),
             _ => None,
         }
     }
@@ -1959,6 +2014,27 @@ impl BuiltinFamilyArtifact {
     fn radar_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::Radar(artifact) => Some(artifact.series_paint().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn sankey_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Sankey(artifact) => Some(artifact.node_palette().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn block_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Block(artifact) => Some(artifact.node_stroke_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn railroad_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Railroad(artifact) => Some(artifact.typography_theme().finish_evidence()),
             _ => None,
         }
     }
@@ -2045,7 +2121,7 @@ impl BuiltinFamilyArtifact {
             Self::C4(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Cynefin(pair) => pair.compatibility_json(metadata),
             Self::Wardley(pair) => pair.compatibility_json(metadata),
-            Self::Railroad(pair) => pair.compatibility_json(metadata),
+            Self::Railroad(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Kanban(pair) => pair.compatibility_json(metadata),
             Self::Gantt(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Pie(artifact) => artifact.pair.compatibility_json(metadata),
@@ -2053,11 +2129,11 @@ impl BuiltinFamilyArtifact {
             Self::Timeline(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Journey(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Requirement(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Sankey(pair) => pair.compatibility_json(metadata),
+            Self::Sankey(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Radar(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Info(pair) => pair.compatibility_json(metadata),
             Self::Treemap(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Block(pair) => pair.compatibility_json(metadata),
+            Self::Block(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Er(artifact) => artifact.pair.compatibility_json(metadata),
             Self::QuadrantChart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::XyChart(artifact) => artifact.pair.compatibility_json(metadata),
@@ -2086,7 +2162,7 @@ impl BuiltinFamilyArtifact {
             Self::C4(artifact) => LayoutProjection::C4Diagram(artifact.pair.layout()),
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
             Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
-            Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
+            Self::Railroad(artifact) => LayoutProjection::RailroadDiagram(artifact.pair().layout()),
             Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout().layout()),
             Self::Gantt(artifact) => LayoutProjection::GanttDiagram(artifact.pair.layout()),
             Self::Pie(artifact) => LayoutProjection::PieDiagram(artifact.pair.layout()),
@@ -2096,11 +2172,11 @@ impl BuiltinFamilyArtifact {
             Self::Requirement(artifact) => {
                 LayoutProjection::RequirementDiagram(artifact.pair.layout().layout())
             }
-            Self::Sankey(pair) => LayoutProjection::SankeyDiagram(pair.layout()),
+            Self::Sankey(artifact) => LayoutProjection::SankeyDiagram(artifact.pair().layout()),
             Self::Radar(artifact) => LayoutProjection::RadarDiagram(artifact.pair.layout()),
             Self::Info(pair) => LayoutProjection::InfoDiagram(pair.layout()),
             Self::Treemap(artifact) => LayoutProjection::TreemapDiagram(artifact.pair.layout()),
-            Self::Block(pair) => LayoutProjection::BlockDiagram(pair.layout()),
+            Self::Block(artifact) => LayoutProjection::BlockDiagram(artifact.pair().layout()),
             Self::Er(artifact) => LayoutProjection::ErDiagram(artifact.pair.layout()),
             Self::QuadrantChart(artifact) => {
                 LayoutProjection::QuadrantChartDiagram(artifact.pair.layout())
@@ -2690,6 +2766,9 @@ impl FamilyRenderArtifact {
         let quadrant_chart_theme_evidence = self.family.quadrant_chart_theme_evidence();
         let xychart_theme_evidence = self.family.xychart_theme_evidence();
         let radar_theme_evidence = self.family.radar_theme_evidence();
+        let sankey_theme_evidence = self.family.sankey_theme_evidence();
+        let block_theme_evidence = self.family.block_theme_evidence();
+        let railroad_theme_evidence = self.family.railroad_theme_evidence();
         let treemap_theme_evidence = self.family.treemap_theme_evidence();
         let requirement_theme_evidence = self.family.requirement_theme_evidence();
         let packet_theme_evidence = self.family.packet_theme_evidence();
@@ -2743,6 +2822,15 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = radar_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::RADAR, evidence);
+        }
+        if let Some(evidence) = sankey_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::SANKEY, evidence);
+        }
+        if let Some(evidence) = block_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::BLOCK, evidence);
+        }
+        if let Some(evidence) = railroad_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::RAILROAD, evidence);
         }
         if let Some(evidence) = treemap_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::TREEMAP, evidence);

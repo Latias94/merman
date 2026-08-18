@@ -2,13 +2,17 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::{DiagramFamilyId, LayoutOptions};
 use regex::Regex;
 
 fn render_block_svg_from_text(text: &str) -> String {
@@ -94,6 +98,236 @@ fn deep_block_chain(depth: usize) -> String {
         input.push_str("end\n");
     }
     input
+}
+
+fn block_node_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_stroke(stroke),
+                    )
+                    .for_family(DiagramFamilyId::BLOCK),
+                ),
+            ),
+        )
+        .expect("compile Block node stroke theme")
+}
+
+fn render_block_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::RenderedFamilySvg {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Block")
+        .expect("detect themed Block");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Block session");
+
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare themed Block")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("block-theme".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render themed Block")
+}
+
+fn terminal_shell_styles(svg: &str, node_id: &str) -> Vec<(String, String)> {
+    let document = roxmltree::Document::parse(svg).expect("valid Block SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(node_id))
+        .unwrap_or_else(|| panic!("missing Block node {node_id}: {svg}"));
+
+    node.descendants()
+        .filter_map(|shell| {
+            if !shell.is_element() {
+                return None;
+            }
+            let tag = shell.tag_name().name();
+            matches!(tag, "rect" | "circle" | "path" | "polygon")
+                .then(|| shell.attribute("style").map(|style| (tag, style)))
+                .flatten()
+        })
+        .map(|(tag, style)| (tag.to_string(), style.to_string()))
+        .collect()
+}
+
+fn terminal_stroke(style: &str) -> Option<&str> {
+    style
+        .split(';')
+        .filter_map(|declaration| declaration.trim().split_once(':'))
+        .filter(|(property, _)| property.trim().eq_ignore_ascii_case("stroke"))
+        .map(|(_, value)| value.trim())
+        .next_back()
+}
+
+#[test]
+fn block_typed_node_stroke_reaches_every_terminal_shape() {
+    let source = r#"block-beta
+  columns 5
+  rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
+"#;
+    let cases = [
+        (
+            CanvasPaint::solid("#123456").expect("valid Block node stroke"),
+            "#123456",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ];
+
+    for (stroke, expected_stroke) in cases {
+        let theme = block_node_stroke_theme(stroke);
+        let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+        let expected_shells = [
+            ("block-theme-rect", ["rect"].as_slice()),
+            ("block-theme-circle", ["circle"].as_slice()),
+            ("block-theme-double", ["circle", "circle"].as_slice()),
+            ("block-theme-cylinder", ["path"].as_slice()),
+            ("block-theme-polygon", ["polygon"].as_slice()),
+        ];
+
+        for (node_id, expected_tags) in expected_shells {
+            let shells = terminal_shell_styles(rendered.svg(), node_id);
+            assert_eq!(
+                shells
+                    .iter()
+                    .map(|(tag, _)| tag.as_str())
+                    .collect::<Vec<_>>(),
+                expected_tags,
+                "unexpected terminal shells for {node_id}: {}",
+                rendered.svg()
+            );
+            assert!(
+                shells
+                    .iter()
+                    .all(|(_, style)| terminal_stroke(style) == Some(expected_stroke)),
+                "typed stroke must reach every terminal shell for {node_id}: {shells:?}"
+            );
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn block_inline_and_class_strokes_outrank_typed_node_stroke_per_node() {
+    let source = r#"block-beta
+  columns 3
+  bare["Bare"] assigned(("Assigned")) inline{{"Inline"}}
+  classDef accent stroke:#00bb00
+  class assigned accent
+  style inline stroke:#0000bb
+"#;
+    let theme =
+        block_node_stroke_theme(CanvasPaint::solid("#123456").expect("valid Block node stroke"));
+    let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+
+    let bare = terminal_shell_styles(rendered.svg(), "block-theme-bare");
+    assert_eq!(terminal_stroke(&bare[0].1), Some("#123456"), "{bare:?}");
+    let inline = terminal_shell_styles(rendered.svg(), "block-theme-inline");
+    assert_eq!(terminal_stroke(&inline[0].1), Some("#0000bb"), "{inline:?}");
+    let assigned = terminal_shell_styles(rendered.svg(), "block-theme-assigned");
+    assert!(
+        assigned
+            .iter()
+            .all(|(_, style)| terminal_stroke(style) != Some("#123456")),
+        "assigned class must suppress typed inline stroke: {assigned:?}"
+    );
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"#block-theme .accent&gt;*{stroke:#00bb00!important;}"#),
+        "assigned class stroke must retain source ownership: {}",
+        rendered.svg()
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_default_class_stroke_makes_typed_node_stroke_not_applicable() {
+    let source = r#"block
+  A["Alpha"]
+  classDef default stroke:#bb0000
+"#;
+    let theme = block_node_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid suppressed Block node stroke"),
+    );
+    let rendered = render_block_with_theme_and_engine(source, &theme, Engine::new());
+    let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
+
+    assert!(
+        shells
+            .iter()
+            .all(|(_, style)| terminal_stroke(style) != Some("#123456")),
+        "default class must suppress typed inline stroke: {shells:?}"
+    );
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"#block-theme .default&gt;*{stroke:#bb0000!important;}"#),
+        "default class stroke must retain source ownership: {}",
+        rendered.svg()
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_explicit_node_border_outranks_typed_node_stroke() {
+    let theme = block_node_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid config-suppressed Block node stroke"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "nodeBorder": "#445566" }
+    })));
+    let rendered = render_block_with_theme_and_engine("block\n  A[\"Alpha\"]\n", &theme, engine);
+    let shells = terminal_shell_styles(rendered.svg(), "block-theme-A");
+
+    assert!(
+        shells
+            .iter()
+            .all(|(_, style)| terminal_stroke(style) != Some("#123456")),
+        "explicit nodeBorder must suppress typed inline stroke: {shells:?}"
+    );
+    assert!(
+        rendered.svg().contains("stroke:#445566;stroke-width:1px"),
+        "explicit nodeBorder must remain the Block base stroke: {}",
+        rendered.svg()
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

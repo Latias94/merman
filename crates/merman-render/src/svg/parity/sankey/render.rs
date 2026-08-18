@@ -3,12 +3,13 @@ use super::super::*;
 fn write_sankey_nodes(
     out: &mut impl SvgOutput,
     nodes: &[crate::model::SankeyNodeLayout],
+    node_palette: &crate::sankey::SankeyNodePalettePlan,
+    mut receipt: Option<&mut crate::sankey::SankeyNodePaletteReceipt>,
     node_uid_by_id: &std::collections::HashMap<String, String>,
     scope_generated_ids: bool,
     diagram_id: &str,
-    color_for: &mut impl FnMut(&str) -> String,
 ) -> Result<()> {
-    for node in nodes {
+    for (node_index, node) in nodes.iter().enumerate() {
         let node_uid = node_uid_by_id.get(&node.id).cloned().unwrap_or_else(|| {
             if scope_generated_ids {
                 scoped_svg_id(diagram_id, "node-0")
@@ -20,7 +21,16 @@ fn write_sankey_nodes(
         let y = node.y0;
         let w = node.x1 - node.x0;
         let h = node.y1 - node.y0;
-        let fill = color_for(&node.id);
+        let fill =
+            node_palette
+                .fill_for(node_index, &node.id)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!(
+                        "Sankey node palette has no paint for node {} at ordinal {}",
+                        node.id,
+                        node_index + 1
+                    ),
+                })?;
         let _ = write!(
             out,
             r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"/></g>"#,
@@ -32,12 +42,22 @@ fn write_sankey_nodes(
             fill = escape_attr(&fill),
         );
         out.checkpoint()?;
+        if let Some(receipt) = receipt.as_deref_mut() {
+            receipt.record_node(
+                node_palette,
+                node_index,
+                &node.id,
+                node_index + 1,
+                Some(fill),
+            );
+        }
     }
     Ok(())
 }
 
 pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
+    node_palette: &crate::sankey::SankeyNodePalettePlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -48,7 +68,6 @@ pub(crate) fn render_sankey_diagram_svg(
     let suffix = render_settings.suffix;
     let link_color = render_settings.link_color;
     let outlined_labels = render_settings.outlined_labels;
-    let node_colors = render_settings.node_colors;
 
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
@@ -126,28 +145,6 @@ pub(crate) fn render_sankey_diagram_svg(
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
-    let scheme_tableau10: [&str; 10] = [
-        "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",
-        "#9c755f", "#bab0ab",
-    ];
-
-    let mut color_domain: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
-    let mut color_for = |id: &str| -> String {
-        if let Some(color) = node_colors
-            .and_then(|colors| colors.get(id))
-            .and_then(|color| color.as_str())
-        {
-            return color.to_string();
-        }
-        if let Some(&idx) = color_domain.get(id) {
-            return scheme_tableau10[idx % scheme_tableau10.len()].to_string();
-        }
-        let idx = color_domain.len();
-        color_domain.insert(id.to_string(), idx);
-        scheme_tableau10[idx % scheme_tableau10.len()].to_string()
-    };
-
     let mut uid_count: usize = 0;
     let mut next_generated_id = |prefix: &str| -> String {
         uid_count += 1;
@@ -163,21 +160,29 @@ pub(crate) fn render_sankey_diagram_svg(
         std::collections::HashMap::new();
     for n in &layout.nodes {
         node_uid_by_id.insert(n.id.clone(), next_generated_id("node-"));
-        let _ = color_for(&n.id);
     }
 
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
+    let mut node_palette_receipt = node_palette.begin_terminal_receipt();
     write_sankey_nodes(
         &mut out,
         &layout.nodes,
+        node_palette,
+        node_palette_receipt.as_mut(),
         &node_uid_by_id,
         scope_generated_ids,
         diagram_id,
-        &mut color_for,
     )?;
     out.push_str("</g>");
     out.checkpoint()?;
+    if let Some(receipt) = node_palette_receipt {
+        if !node_palette.record_terminal(receipt) {
+            return Err(Error::InvalidModel {
+                message: "Sankey node palette receipt did not match the terminal SVG".to_string(),
+            });
+        }
+    }
 
     let _ = write!(
         &mut out,
@@ -280,12 +285,38 @@ pub(crate) fn render_sankey_diagram_svg(
         out.checkpoint()?;
 
         let stroke = match link_color.as_str() {
-            "source" => color_for(&source.id),
-            "target" => color_for(&target.id),
+            "source" => node_palette
+                .fill_for_id(&source.id)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("Sankey node palette has no source paint for {}", source.id),
+                })?
+                .to_string(),
+            "target" => node_palette
+                .fill_for_id(&target.id)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("Sankey node palette has no target paint for {}", target.id),
+                })?
+                .to_string(),
             "gradient" => {
                 let gradient_id = next_generated_id("linearGradient-");
-                let source_color = color_for(&source.id);
-                let target_color = color_for(&target.id);
+                let source_color =
+                    node_palette
+                        .fill_for_id(&source.id)
+                        .ok_or_else(|| Error::InvalidModel {
+                            message: format!(
+                                "Sankey node palette has no gradient source paint for {}",
+                                source.id
+                            ),
+                        })?;
+                let target_color =
+                    node_palette
+                        .fill_for_id(&target.id)
+                        .ok_or_else(|| Error::InvalidModel {
+                            message: format!(
+                                "Sankey node palette has no gradient target paint for {}",
+                                target.id
+                            ),
+                        })?;
                 let _ = write!(
                     &mut out,
                     r#"<linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="{x1}" x2="{x2}"><stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/></linearGradient>"#,
@@ -399,17 +430,36 @@ mod tests {
                 y1: 20.0,
             })
             .collect::<Vec<_>>();
+        let layout = crate::model::SankeyDiagramLayout {
+            bounds: None,
+            width: 100.0,
+            height: 100.0,
+            node_width: 10.0,
+            node_padding: 12.0,
+            nodes: nodes.clone(),
+            links: Vec::new(),
+        };
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let node_palette = crate::sankey::SankeyNodePalettePlan::resolve(
+            None,
+            &merman_core::MermaidConfig::default(),
+            &layout,
+            &work_meter,
+        )
+        .expect("resolve baseline Sankey node palette");
         let node_uid_by_id = std::collections::HashMap::new();
-        let mut color_for = |_id: &str| "#4e79a7".to_string();
         let mut out = RejectAfterFirstWrite::default();
 
         let error = write_sankey_nodes(
             &mut out,
             &nodes,
+            &node_palette,
+            None,
             &node_uid_by_id,
             false,
             "sankey",
-            &mut color_for,
         )
         .expect_err("the rejecting sink must stop Sankey node emission");
 

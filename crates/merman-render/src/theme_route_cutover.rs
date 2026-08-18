@@ -103,11 +103,12 @@ pub enum ThemeRouteCutoverProjection {
     LifelineStroke = 13,
     TitleFill = 14,
     RequirementFill = 15,
+    PieSliceStroke = 16,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 16] = [
+    const ALL: [Self; 17] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -124,6 +125,7 @@ impl ThemeRouteCutoverProjection {
         Self::LifelineStroke,
         Self::TitleFill,
         Self::RequirementFill,
+        Self::PieSliceStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -144,6 +146,7 @@ impl ThemeRouteCutoverProjection {
             Self::LifelineStroke => "lifeline.stroke",
             Self::TitleFill => "title.fill",
             Self::RequirementFill => "requirement.fill",
+            Self::PieSliceStroke => "slice.stroke",
         }
     }
 
@@ -165,12 +168,13 @@ impl ThemeRouteCutoverProjection {
             | Self::ClusterStroke
             | Self::LifelineStroke
             | Self::TitleFill
-            | Self::RequirementFill => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::RequirementFill
+            | Self::PieSliceStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const fn bit(self) -> u16 {
+    const fn bit(self) -> u32 {
         1 << self as u8
     }
 }
@@ -196,7 +200,7 @@ impl ThemeRouteCutoverProjectionAction {
 /// Fixed, canonical set of legacy projection obligations for one route.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ThemeRouteCutoverProjectionSet(u16);
+pub struct ThemeRouteCutoverProjectionSet(u32);
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 impl ThemeRouteCutoverProjectionSet {
@@ -223,6 +227,8 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_TITLE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TitleFill);
     pub const REPLACE_REQUIREMENT_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::RequirementFill);
+    pub const REPLACE_PIE_SLICE_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::PieSliceStroke);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -423,6 +429,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(projection.contribution_id(), "requirement.fill");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn pie_slice_stroke_projection_is_an_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::PieSliceStroke;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_STROKE
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "slice.stroke");
         assert_eq!(
             projection.action(),
             ThemeRouteCutoverProjectionAction::Replace
