@@ -563,7 +563,7 @@ fn validate_supported_state_model(
         if node_index_by_id.insert(node.id.as_str(), index).is_some() {
             return Err(unsupported("duplicate node ids"));
         }
-        validate_supported_state_node(node)?;
+        validate_supported_state_node(node, execution)?;
     }
     let parent_projection =
         StateParentProjection::try_new(model, &node_index_by_id, resources, execution)?;
@@ -726,7 +726,26 @@ fn cache_state_parent_depths(
     Ok((depth_by_index, parent_first_indices))
 }
 
-fn validate_supported_state_node(node: &StateDiagramRenderNode) -> Result<()> {
+fn validate_supported_state_node(
+    node: &StateDiagramRenderNode,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    if let Some(label) = node.label.as_ref()
+        && !label.is_string()
+    {
+        if let Some(items) = label.as_array()
+            && !items.is_empty()
+        {
+            for (index, item) in items.iter().enumerate() {
+                checkpoint_projection(execution, index)?;
+                if !item.is_string() {
+                    return Err(unsupported("state labels with unsupported values"));
+                }
+            }
+        } else {
+            return Err(unsupported("state labels with unsupported values"));
+        }
+    }
     if is_state_note_group(node) {
         if !matches!(node.position.as_deref(), Some("left of" | "right of")) {
             return Err(unsupported("state note positions"));

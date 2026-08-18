@@ -766,6 +766,19 @@ fn validate_supported_flowchart_model(
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
+        if node.icon.is_some()
+            || node.img.is_some()
+            || node.form.is_some()
+            || node.pos.is_some()
+            || node.constraint.is_some()
+            || node.asset_width.is_some()
+            || node.asset_height.is_some()
+        {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "flowchart icon and image node metadata",
+            });
+        }
         if !node_ids.insert(node.id.as_str()) {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
