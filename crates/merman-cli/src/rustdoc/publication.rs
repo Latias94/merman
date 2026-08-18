@@ -17,6 +17,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+const MANAGED_TARGET_CHUNK_BYTES: usize = 64 * 1024;
+
 struct ApprovedFragment {
     index: usize,
     target: RelativeTarget,
@@ -40,6 +42,13 @@ struct ManagedTargetObservation {
     generation: TargetGeneration,
     matches_expected: bool,
     sha256: Option<[u8; 32]>,
+    captured_bytes: Option<Vec<u8>>,
+}
+
+#[derive(Debug)]
+struct ManagedTargetContent {
+    matches_expected: bool,
+    sha256: [u8; 32],
     captured_bytes: Option<Vec<u8>>,
 }
 
@@ -77,14 +86,20 @@ pub(crate) fn build(
     super::document::verify_input_snapshots(config, expected.generated(), resources, control)?;
 
     let mut backup_bytes = resources.checked_bytes(ByteLedgerKind::StagedOutput);
-    let approved_fragments =
-        approve_fragments(&expected, publications, acquired.root(), &mut backup_bytes)?;
+    let approved_fragments = approve_fragments(
+        &expected,
+        publications,
+        acquired.root(),
+        &mut backup_bytes,
+        control,
+    )?;
     let approved_receipt = approve_receipt(
         &expected,
         resources,
         publications,
         acquired.root(),
         &mut backup_bytes,
+        control,
     )?;
     if let Some(previous) = approved_receipt.previous.as_ref() {
         previous.ensure_owner(config, expected.receipt_path())?;
@@ -95,6 +110,7 @@ pub(crate) fn build(
         &acquired,
         publications,
         &mut backup_bytes,
+        control,
     )?;
     let changed_fragments = approved_fragments
         .iter()
@@ -171,6 +187,7 @@ fn approve_fragments(
     publications: &PublicationGuards,
     root: &Path,
     backup_bytes: &mut crate::resources::CheckedBytes,
+    control: &merman::OperationControl,
 ) -> Result<Vec<ApprovedFragment>, CliError> {
     let mut approved = Vec::new();
     for (index, fragment) in expected.generated().fragments().iter().enumerate() {
@@ -188,6 +205,7 @@ fn approve_fragments(
             generation,
             backup_bytes,
             None,
+            control,
         )?;
         approved.push(ApprovedFragment {
             index,
@@ -205,6 +223,7 @@ fn approve_receipt(
     publications: &PublicationGuards,
     root: &Path,
     backup_bytes: &mut crate::resources::CheckedBytes,
+    control: &merman::OperationControl,
 ) -> Result<ApprovedReceipt, CliError> {
     let target = publications.approved_transaction_target(expected.receipt_path())?;
     let (path, generation) = target.into_parts();
@@ -220,6 +239,7 @@ fn approve_receipt(
         generation,
         backup_bytes,
         Some(receipt_limit(resources)),
+        control,
     )?;
     let previous = observation
         .captured_bytes
@@ -240,6 +260,7 @@ fn approve_stale(
     acquired: &AcquiredTransaction,
     publications: &PublicationGuards,
     backup_bytes: &mut crate::resources::CheckedBytes,
+    control: &merman::OperationControl,
 ) -> Result<Vec<ApprovedStale>, CliError> {
     let current = expected
         .generated()
@@ -273,7 +294,8 @@ fn approve_stale(
                 "stale receipt target changed during approval",
             ));
         }
-        let observation = observe_managed_target(&path, None, generation, backup_bytes, None)?;
+        let observation =
+            observe_managed_target(&path, None, generation, backup_bytes, None, control)?;
         let Some(actual_sha256) = observation.sha256 else {
             continue;
         };
@@ -297,8 +319,12 @@ fn observe_managed_target(
     generation: TargetGeneration,
     backup_bytes: &mut crate::resources::CheckedBytes,
     capture_limit: Option<usize>,
+    control: &merman::OperationControl,
 ) -> Result<ManagedTargetObservation, CliError> {
-    let metadata = match std::fs::symlink_metadata(path) {
+    checkpoint_publication(control)?;
+    let metadata = std::fs::symlink_metadata(path);
+    checkpoint_publication(control)?;
+    let metadata = match metadata {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             if generation.matches_identity(None) {
@@ -327,16 +353,25 @@ fn observe_managed_target(
             "managed target is a symlink or non-regular file",
         ));
     }
-    backup_bytes.try_add(metadata.len()).map_err(|error| {
+    checkpoint_publication(control)?;
+    let backup_result = backup_bytes.try_add(metadata.len());
+    checkpoint_publication(control)?;
+    backup_result.map_err(|error| {
         publication_error(
             path,
             format!("managed target backup budget exceeded: {error}"),
         )
     })?;
-    let file = File::open(path).map_err(|error| {
+    checkpoint_publication(control)?;
+    let file = File::open(path);
+    checkpoint_publication(control)?;
+    let file = file.map_err(|error| {
         publication_error(path, format!("failed to open managed target: {error}"))
     })?;
-    let opened_metadata = file.metadata().map_err(|error| {
+    checkpoint_publication(control)?;
+    let opened_metadata = file.metadata();
+    checkpoint_publication(control)?;
+    let opened_metadata = opened_metadata.map_err(|error| {
         publication_error(
             path,
             format!("failed to inspect opened managed target: {error}"),
@@ -348,13 +383,19 @@ fn observe_managed_target(
             "managed target length changed while it was opened",
         ));
     }
-    let opened_identity = same_file::Handle::from_file(file.try_clone().map_err(|error| {
+    checkpoint_publication(control)?;
+    let identity_file = file.try_clone();
+    checkpoint_publication(control)?;
+    let identity_file = identity_file.map_err(|error| {
         publication_error(
             path,
             format!("failed to clone managed target for identity inspection: {error}"),
         )
-    })?)
-    .map_err(|error| {
+    })?;
+    checkpoint_publication(control)?;
+    let opened_identity = same_file::Handle::from_file(identity_file);
+    checkpoint_publication(control)?;
+    let opened_identity = opened_identity.map_err(|error| {
         publication_error(
             path,
             format!("failed to inspect opened managed target identity: {error}"),
@@ -366,13 +407,57 @@ fn observe_managed_target(
             "managed target identity changed after preflight",
         ));
     }
-    let mut file = file;
-    let mut hasher = Sha256::new();
-    let mut offset = 0usize;
-    let mut matches_expected = expected.is_some_and(|expected| {
-        metadata.len() == u64::try_from(expected.len()).unwrap_or(u64::MAX)
-    });
     let observed_len = metadata.len();
+    let content =
+        read_managed_target_content(file, path, expected, observed_len, capture_limit, control)?;
+
+    checkpoint_publication(control)?;
+    let final_metadata = std::fs::symlink_metadata(path);
+    checkpoint_publication(control)?;
+    let final_metadata = final_metadata.map_err(|error| {
+        publication_error(
+            path,
+            format!("failed to reinspect managed target after reading: {error}"),
+        )
+    })?;
+    if !final_metadata.file_type().is_file() || final_metadata.len() != observed_len {
+        return Err(publication_error(
+            path,
+            "managed target type or length changed while reading",
+        ));
+    }
+    checkpoint_publication(control)?;
+    let final_identity = same_file::Handle::from_path(path);
+    checkpoint_publication(control)?;
+    let final_identity = final_identity.map_err(|error| {
+        publication_error(
+            path,
+            format!("failed to reinspect managed target identity: {error}"),
+        )
+    })?;
+    if !generation.matches_identity(Some(&final_identity)) {
+        return Err(publication_error(
+            path,
+            "managed target identity changed while reading",
+        ));
+    }
+    Ok(ManagedTargetObservation {
+        generation: generation.pin_content(observed_len, content.sha256),
+        matches_expected: content.matches_expected,
+        sha256: Some(content.sha256),
+        captured_bytes: content.captured_bytes,
+    })
+}
+
+fn read_managed_target_content(
+    mut reader: impl Read,
+    path: &Path,
+    expected: Option<&[u8]>,
+    observed_len: u64,
+    capture_limit: Option<usize>,
+    control: &merman::OperationControl,
+) -> Result<ManagedTargetContent, CliError> {
+    checkpoint_publication(control)?;
     let mut captured_bytes = match capture_limit {
         Some(limit) => {
             if observed_len > limit as u64 {
@@ -388,12 +473,21 @@ fn observe_managed_target(
         }
         None => None,
     };
+    checkpoint_publication(control)?;
+
+    let mut hasher = Sha256::new();
+    let mut offset = 0usize;
+    let mut matches_expected = expected
+        .is_some_and(|expected| observed_len == u64::try_from(expected.len()).unwrap_or(u64::MAX));
     let mut remaining = observed_len;
-    let mut buffer = [0u8; 64 * 1024];
+    let mut buffer = [0u8; MANAGED_TARGET_CHUNK_BYTES];
     while remaining > 0 {
         let requested = usize::try_from(remaining.min(buffer.len() as u64))
             .expect("the bounded managed-target buffer length fits usize");
-        let read = file.read(&mut buffer[..requested]).map_err(|error| {
+        checkpoint_publication(control)?;
+        let read = reader.read(&mut buffer[..requested]);
+        checkpoint_publication(control)?;
+        let read = read.map_err(|error| {
             publication_error(path, format!("failed to read managed target: {error}"))
         })?;
         if read == 0 {
@@ -418,7 +512,10 @@ fn observe_managed_target(
         remaining -= read as u64;
     }
     let mut extra = [0u8; 1];
-    if file.read(&mut extra).map_err(|error| {
+    checkpoint_publication(control)?;
+    let extra = reader.read(&mut extra);
+    checkpoint_publication(control)?;
+    if extra.map_err(|error| {
         publication_error(
             path,
             format!("failed to probe managed target length: {error}"),
@@ -430,37 +527,16 @@ fn observe_managed_target(
             "managed target became longer while reading",
         ));
     }
-    let final_metadata = std::fs::symlink_metadata(path).map_err(|error| {
-        publication_error(
-            path,
-            format!("failed to reinspect managed target after reading: {error}"),
-        )
-    })?;
-    if !final_metadata.file_type().is_file() || final_metadata.len() != observed_len {
-        return Err(publication_error(
-            path,
-            "managed target type or length changed while reading",
-        ));
-    }
-    let final_identity = same_file::Handle::from_path(path).map_err(|error| {
-        publication_error(
-            path,
-            format!("failed to reinspect managed target identity: {error}"),
-        )
-    })?;
-    if !generation.matches_identity(Some(&final_identity)) {
-        return Err(publication_error(
-            path,
-            "managed target identity changed while reading",
-        ));
-    }
     let sha256: [u8; 32] = hasher.finalize().into();
-    Ok(ManagedTargetObservation {
-        generation: generation.pin_content(observed_len, sha256),
+    Ok(ManagedTargetContent {
         matches_expected,
-        sha256: Some(sha256),
+        sha256,
         captured_bytes,
     })
+}
+
+fn checkpoint_publication(control: &merman::OperationControl) -> Result<(), CliError> {
+    crate::operation::checkpoint(control, merman::OperationPhase::Emit)
 }
 
 fn charge(staged_bytes: &mut crate::resources::CheckedBytes, bytes: usize) -> Result<(), CliError> {
@@ -491,7 +567,37 @@ fn report(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{self, Cursor, Read};
     use std::sync::Arc;
+
+    struct CancelOnRead<R> {
+        inner: R,
+        control: merman::OperationControl,
+        cancel_on_call: usize,
+        calls: usize,
+    }
+
+    impl<R> CancelOnRead<R> {
+        fn new(inner: R, control: &merman::OperationControl, cancel_on_call: usize) -> Self {
+            Self {
+                inner,
+                control: control.clone(),
+                cancel_on_call,
+                calls: 0,
+            }
+        }
+    }
+
+    impl<R: Read> Read for CancelOnRead<R> {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.calls += 1;
+            let count = self.inner.read(buffer)?;
+            if self.calls == self.cancel_on_call {
+                self.control.cancel();
+            }
+            Ok(count)
+        }
+    }
 
     fn observed_generation(path: &Path) -> TargetGeneration {
         let identity = same_file::Handle::from_path(path).expect("target identity");
@@ -517,6 +623,7 @@ mod tests {
             .apply_override("max_staged_bytes", 10)
             .expect("test override");
         let mut backup_bytes = resources.checked_bytes(ByteLedgerKind::StagedOutput);
+        let control = merman::OperationControl::new();
 
         observe_managed_target(
             &first,
@@ -524,6 +631,7 @@ mod tests {
             observed_generation(&first),
             &mut backup_bytes,
             None,
+            &control,
         )
         .expect("first target fits aggregate budget");
         let error = match observe_managed_target(
@@ -532,6 +640,7 @@ mod tests {
             observed_generation(&second),
             &mut backup_bytes,
             None,
+            &control,
         ) {
             Ok(_) => panic!("second target must exceed aggregate budget"),
             Err(error) => error,
@@ -554,10 +663,17 @@ mod tests {
             .apply_override("max_staged_bytes", 1024)
             .expect("test override");
         let mut backup_bytes = resources.checked_bytes(ByteLedgerKind::StagedOutput);
+        let control = merman::OperationControl::new();
 
-        let observation =
-            observe_managed_target(&receipt, None, generation, &mut backup_bytes, Some(1024))
-                .expect("observe receipt");
+        let observation = observe_managed_target(
+            &receipt,
+            None,
+            generation,
+            &mut backup_bytes,
+            Some(1024),
+            &control,
+        )
+        .expect("observe receipt");
         std::fs::write(&receipt, b"temporary alternate bytes").expect("write alternate receipt");
         std::fs::write(&receipt, b"approved receipt bytes").expect("restore approved receipt");
 
@@ -567,5 +683,55 @@ mod tests {
         );
         let expected_sha256: [u8; 32] = Sha256::digest(b"approved receipt bytes").into();
         assert_eq!(observation.sha256, Some(expected_sha256));
+    }
+
+    #[test]
+    fn managed_target_hash_observes_emit_cancellation_between_chunks() {
+        let bytes = vec![b'x'; MANAGED_TARGET_CHUNK_BYTES * 2 + 1];
+        let control = merman::OperationControl::new();
+        let reader = CancelOnRead::new(Cursor::new(bytes.as_slice()), &control, 1);
+
+        let error = read_managed_target_content(
+            reader,
+            Path::new("fragment.md"),
+            Some(bytes.as_slice()),
+            bytes.len() as u64,
+            None,
+            &control,
+        )
+        .expect_err("cancellation after the first chunk must stop hashing");
+
+        assert!(matches!(
+            error,
+            CliError::Render(merman::RenderError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Emit,
+                reason: merman::CancelReason::Requested,
+            }))
+        ));
+    }
+
+    #[test]
+    fn managed_target_length_probe_observes_emit_cancellation() {
+        let bytes = b"managed bytes";
+        let control = merman::OperationControl::new();
+        let reader = CancelOnRead::new(Cursor::new(bytes.as_slice()), &control, 2);
+
+        let error = read_managed_target_content(
+            reader,
+            Path::new("fragment.md"),
+            Some(bytes),
+            bytes.len() as u64,
+            None,
+            &control,
+        )
+        .expect_err("cancellation during the trailing probe must be reported");
+
+        assert!(matches!(
+            error,
+            CliError::Render(merman::RenderError::Cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Emit,
+                reason: merman::CancelReason::Requested,
+            }))
+        ));
     }
 }
