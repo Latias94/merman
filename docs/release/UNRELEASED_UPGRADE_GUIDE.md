@@ -70,6 +70,19 @@ by the one-shot call.
 
 ### Theme authoring candidate corrections
 
+Development snapshots briefly exposed `ThemeMaterializer` as a public constructor. It is now a
+private deterministic lowering step behind the host-admitted operations below:
+
+| Previous development API | Replacement |
+| --- | --- |
+| `ThemeMaterializer::new().materialize_theme(&definition)` | `materialize_theme(&definition)` |
+| `ThemeMaterializer::new().materialize_theme_json(bytes)` | `materialize_theme_json(bytes)` |
+| materialization with a caller resource policy | `materialize_theme_with_resource_policy(&definition, &policy)` or `materialize_theme_json_with_resource_policy(bytes, &policy)` |
+
+The replacement functions preserve one shared typed/JSON admission authority before invoking the
+pure lowering step. Do not recreate a public materializer wrapper, because that would reopen a path
+around host resource admission.
+
 The unreleased `ThemeDefinitionV1` contract is still pre-freeze. Development snapshots that used
 `family = "er", target = "requirement"` must use `family = "er", target = "entity"`; the
 `requirement` target is now reserved for Requirement diagrams. There is no compatibility alias,
