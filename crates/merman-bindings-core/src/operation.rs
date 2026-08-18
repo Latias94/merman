@@ -2,7 +2,7 @@ use crate::artifact_contract::ValidatedArtifactContract;
 use crate::capability::{OperationKey, operation_is_compiled};
 use crate::payload_contract::BINDING_OPERATION_SCHEMA_VERSION;
 use crate::resource_contract::BindingResourceScope;
-use crate::{BindingEngine, BindingError, BindingStatus};
+use crate::{BindingEngine, BindingEngineServices, BindingError, BindingStatus};
 use merman::{OperationControl, OperationPhase};
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -761,7 +761,8 @@ fn required_f32(object: &Map<String, Value>, field: &str) -> Result<f32, Binding
 pub fn execute_once(
     request: BindingOperationRequest<'_>,
 ) -> Result<BindingOperationResult, BindingError> {
-    crate::artifact_contract::default_artifact_contract().execute_once(request)
+    crate::artifact_contract::default_artifact_contract()
+        .execute_once_with_services(request, BindingEngineServices::new())
 }
 
 pub(crate) fn execute_once_data(
@@ -776,7 +777,26 @@ impl ValidatedArtifactContract {
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
-        let operation = resolve_operation_request(&request)?;
+        self.execute_once_with_services(request, BindingEngineServices::new())
+    }
+
+    /// Executes one operation with immutable constructor services against this exact transport
+    /// contract without retaining an engine.
+    pub fn execute_once_with_services(
+        &self,
+        request: BindingOperationRequest<'_>,
+        services: BindingEngineServices,
+    ) -> Result<BindingOperationResult, BindingError> {
+        let (engine, admitted, control) = self.prepare_one_shot_execution(&request, services)?;
+        engine.execute_admitted(admitted, request.source, request.uri, control)
+    }
+
+    fn prepare_one_shot_execution(
+        &self,
+        request: &BindingOperationRequest<'_>,
+        services: BindingEngineServices,
+    ) -> Result<(BindingEngine, AdmittedArtifactOperation, OperationControl), BindingError> {
+        let operation = resolve_operation_request(request)?;
         let control = request.control_or_default();
         control
             .checkpoint_at(OperationPhase::Admission)
@@ -785,32 +805,20 @@ impl ValidatedArtifactContract {
             request.options_json,
             operation.resource_scope(),
         )?;
-        let engine = self.create_engine(request.options_json)?;
+        let engine = self.create_engine_with_services(request.options_json, services)?;
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
         let admitted = self.admit_operation(operation)?;
-        engine.execute_admitted(admitted, request.source, request.uri, control)
+        Ok((engine, admitted, control))
     }
 
     pub(crate) fn execute_once_data(
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<Vec<u8>, BindingError> {
-        let operation = resolve_operation_request(&request)?;
-        let control = request.control_or_default();
-        control
-            .checkpoint_at(OperationPhase::Admission)
-            .map_err(BindingError::cancelled)?;
-        crate::common::validate_one_shot_resource_options(
-            request.options_json,
-            operation.resource_scope(),
-        )?;
-        let engine = self.create_engine(request.options_json)?;
-        control
-            .checkpoint_at(OperationPhase::Admission)
-            .map_err(BindingError::cancelled)?;
-        let admitted = self.admit_operation(operation)?;
+        let (engine, admitted, control) =
+            self.prepare_one_shot_execution(&request, BindingEngineServices::new())?;
         engine.execute_admitted_data(admitted, request.source, request.uri, control)
     }
 }
@@ -1730,6 +1738,45 @@ mod tests {
         })
         .unwrap_err();
 
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("max_svg_bytes"));
+        assert!(error.message().contains("semantic-model"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn one_shot_with_services_preserves_operation_resource_scope() {
+        struct PanicHostTextMeasurer;
+
+        impl crate::HostTextMeasurer for PanicHostTextMeasurer {
+            fn measure(
+                &self,
+                _request: crate::HostTextMeasurementRequest<'_>,
+            ) -> crate::HostMeasurementResult {
+                panic!("resource scope validation must precede service-backed execution")
+            }
+        }
+
+        const CONTRACT: ValidatedArtifactContract = crate::ArtifactContractSpec::new(
+            crate::TargetKey::Native,
+            crate::BindingTransportKey::Rust,
+        )
+        .with_operations(&[OperationKey::SemanticJson, OperationKey::Svg])
+        .with_constructor_services(&[crate::ConstructorServiceKey::HostTextMeasurement])
+        .materialize();
+
+        let request = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+            .with_options_json(br#"{"resources":{"limits":{"max_svg_bytes":1024}}}"#);
+        let expected = CONTRACT.execute_once(request.clone()).unwrap_err();
+        let error = CONTRACT
+            .execute_once_with_services(
+                request,
+                BindingEngineServices::new()
+                    .with_host_text_measurer(Arc::new(PanicHostTextMeasurer)),
+            )
+            .unwrap_err();
+
+        assert_eq!(error, expected);
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("max_svg_bytes"));
         assert!(error.message().contains("semantic-model"));
