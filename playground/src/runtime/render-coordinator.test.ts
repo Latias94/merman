@@ -952,6 +952,30 @@ test("synchronous compare exceptions become protocol failures and later work sti
   assert.equal(renderCalls, 2);
 });
 
+test("leaving a completed Compare publication resets its retained realm", async () => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("complete"))]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    debounceMs: 0,
+  });
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: true,
+    diagnosticsEnabled: false,
+  });
+  coordinator.setInput(input("complete"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.equal(compare.resetCalls, 0);
+
+  coordinator.setFeatures({
+    asciiEnabled: false,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
+  });
+  assert.equal(compare.resetCalls, 1);
+  await waitFor(() => coordinator.store.getState().status === "success");
+});
+
 test("superseding Compare work is cancelled before publishing the latest SVG batch", async () => {
   const pending = deferred<MermaidRealmRenderResult>();
   const compare = fakeCompare([pending.promise]);

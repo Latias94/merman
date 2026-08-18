@@ -420,6 +420,7 @@ export function createRenderCoordinator({
     scheduleCurrent(false);
   };
   const setFeatures = (features: RenderFeatures) => {
+    const leavingCompare = compareEnabled && !features.compareEnabled;
     const shouldSchedule =
       compareEnabled !== features.compareEnabled ||
       diagnosticsEnabled !== features.diagnosticsEnabled ||
@@ -431,6 +432,7 @@ export function createRenderCoordinator({
     ) {
       return;
     }
+    if (leavingCompare && !cancelActiveCompare()) compare.reset();
     asciiEnabled = features.asciiEnabled;
     compareEnabled = features.compareEnabled;
     diagnosticsEnabled = features.diagnosticsEnabled;
