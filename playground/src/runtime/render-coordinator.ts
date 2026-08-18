@@ -12,7 +12,7 @@ import type {
 } from "./merman-core.ts";
 import {
   freezeRenderOperation,
-  sameRenderOperation,
+  type FreezeRenderOperationInput,
   type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "../lib/workspace-snapshot.ts";
@@ -40,6 +40,10 @@ export interface RenderCoordinatorInput {
 
 export interface FrozenRenderSnapshot {
   readonly operation: FrozenRenderOperation;
+  readonly publicationId: RenderPublicationId;
+}
+
+export interface ScheduledRenderSnapshot {
   readonly publicationId: RenderPublicationId;
 }
 
@@ -170,12 +174,12 @@ export type RenderCoordinatorState =
   | { readonly status: "empty" }
   | {
       readonly status: "pending";
-      readonly snapshot: FrozenRenderSnapshot;
+      readonly snapshot: ScheduledRenderSnapshot;
     }
   | {
       readonly status: "updating";
       readonly previous: CompletedRenderBatch;
-      readonly snapshot: FrozenRenderSnapshot;
+      readonly snapshot: ScheduledRenderSnapshot;
     }
   | CompletedRenderBatch;
 
@@ -207,12 +211,21 @@ export interface RenderFeatures {
 export interface RenderCoordinatorOptions {
   readonly compare: MermaidRealmController;
   readonly debounceMs?: number;
+  readonly freezeOperation?: (
+    input: FreezeRenderOperationInput,
+  ) => FrozenRenderOperation;
   readonly now?: () => number;
 }
 
 interface ScheduledRequest {
   readonly facade: MermanDomainFacade;
+  readonly operationInput: FreezeRenderOperationInput;
+  readonly publicationId: RenderPublicationId;
   readonly scheduledAt: number;
+}
+
+interface ActiveRequest {
+  readonly facade: MermanDomainFacade;
   readonly snapshot: FrozenRenderSnapshot;
 }
 
@@ -222,6 +235,7 @@ const EMPTY_STATE: RenderCoordinatorState = Object.freeze({
 export function createRenderCoordinator({
   compare,
   debounceMs = 300,
+  freezeOperation = freezeRenderOperation,
   now = () => performance.now(),
 }: RenderCoordinatorOptions): RenderCoordinator {
   const store = createStore<RenderCoordinatorState>(() => EMPTY_STATE);
@@ -236,7 +250,7 @@ export function createRenderCoordinator({
   let latest: ScheduledRequest | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
-  let activeRequest: ScheduledRequest | null = null;
+  let activeRequest: ActiveRequest | null = null;
 
   const replaceState = (state: RenderCoordinatorState) => {
     store.setState(state, true);
@@ -272,7 +286,7 @@ export function createRenderCoordinator({
       return;
     }
 
-    const operation = freezeRenderOperation({
+    const operationInput = freezeScheduledOperationInput({
       asciiEnabled,
       compareEnabled,
       diagnosticsEnabled,
@@ -287,7 +301,7 @@ export function createRenderCoordinator({
     if (
       !force &&
       latest !== null &&
-      sameRenderOperation(latest.snapshot.operation, operation) &&
+      sameScheduledOperationInput(latest.operationInput, operationInput) &&
       latest.facade === facade
     ) {
       return;
@@ -295,14 +309,15 @@ export function createRenderCoordinator({
 
     cancelActiveCompare();
     requestSequence += 1;
-    const snapshot: FrozenRenderSnapshot = Object.freeze({
-      operation,
-      publicationId: requestSequence as RenderPublicationId,
+    const publicationId = requestSequence as RenderPublicationId;
+    const snapshot: ScheduledRenderSnapshot = Object.freeze({
+      publicationId,
     });
     latest = {
       facade,
+      operationInput,
+      publicationId,
       scheduledAt: now(),
-      snapshot,
     };
     const previous = previousCompleted();
     replaceState(
@@ -329,14 +344,21 @@ export function createRenderCoordinator({
       timer = null;
       const request = latest;
       if (!request || disposed || suspended || pauseCount > 0) return;
-      activeRequest = request;
-      const execution = execute(request)
+      const activeRequestForExecution: ActiveRequest = Object.freeze({
+        facade: request.facade,
+        snapshot: Object.freeze({
+          operation: freezeOperation(request.operationInput),
+          publicationId: request.publicationId,
+        }),
+      });
+      activeRequest = activeRequestForExecution;
+      const execution = execute(activeRequestForExecution)
         .then((completed) => {
           if (
             !disposed &&
             !suspended &&
             pauseCount === 0 &&
-            latest?.snapshot.publicationId === request.snapshot.publicationId
+            latest?.publicationId === request.publicationId
           ) {
             replaceState(completed);
           }
@@ -348,7 +370,7 @@ export function createRenderCoordinator({
           }
           if (
             latest &&
-            latest.snapshot.publicationId !== request.snapshot.publicationId
+            latest.publicationId !== request.publicationId
           ) {
             scheduleLatest(false);
           }
@@ -358,7 +380,7 @@ export function createRenderCoordinator({
   };
 
   const execute = async (
-    request: ScheduledRequest,
+    request: ActiveRequest,
   ): Promise<CompletedRenderBatch> => {
     const { facade, snapshot } = request;
     const operation = snapshot.operation;
@@ -523,6 +545,58 @@ export function createRenderCoordinator({
     setInput,
     suspend,
   };
+}
+
+function freezeScheduledOperationInput({
+  asciiEnabled,
+  compareEnabled,
+  diagnosticsEnabled,
+  layoutEnvironment,
+  versions,
+  viewport,
+  workspace,
+}: FreezeRenderOperationInput): FreezeRenderOperationInput {
+  return Object.freeze({
+    asciiEnabled,
+    compareEnabled,
+    diagnosticsEnabled,
+    layoutEnvironment: Object.freeze({ ...layoutEnvironment }),
+    versions: Object.freeze({ ...versions }),
+    viewport: viewport ? Object.freeze({ ...viewport }) : null,
+    workspace: Object.freeze({ ...workspace }),
+  });
+}
+
+function sameScheduledOperationInput(
+  left: FreezeRenderOperationInput,
+  right: FreezeRenderOperationInput,
+): boolean {
+  return (
+    left.asciiEnabled === right.asciiEnabled &&
+    left.compareEnabled === right.compareEnabled &&
+    left.diagnosticsEnabled === right.diagnosticsEnabled &&
+    left.layoutEnvironment.containerWidth ===
+      right.layoutEnvironment.containerWidth &&
+    left.layoutEnvironment.containerHeight ===
+      right.layoutEnvironment.containerHeight &&
+    (left.layoutEnvironment.screenAvailableWidth ?? null) ===
+      (right.layoutEnvironment.screenAvailableWidth ?? null) &&
+    left.versions.merman === right.versions.merman &&
+    left.versions.mermaid === right.versions.mermaid &&
+    (left.viewport?.width ?? null) === (right.viewport?.width ?? null) &&
+    (left.viewport?.height ?? null) === (right.viewport?.height ?? null) &&
+    left.workspace.code === right.workspace.code &&
+    left.workspace.mermaidConfig === right.workspace.mermaidConfig &&
+    left.workspace.diagramTheme === right.workspace.diagramTheme &&
+    left.workspace.presentationThemePresetId ===
+      right.workspace.presentationThemePresetId &&
+    left.workspace.presentationProfileId ===
+      right.workspace.presentationProfileId &&
+    left.workspace.svgPipeline === right.workspace.svgPipeline &&
+    left.workspace.textMeasurementMode ===
+      right.workspace.textMeasurementMode &&
+    left.workspace.diagramFont === right.workspace.diagramFont
+  );
 }
 
 function collectSvgPlan(

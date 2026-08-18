@@ -3,9 +3,11 @@ import test from "node:test";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
-import type {
-  ConfiguredMermanOperationInput,
-  FrozenRenderOperation,
+import {
+  freezeRenderOperation,
+  type FreezeRenderOperationInput,
+  type ConfiguredMermanOperationInput,
+  type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
@@ -216,6 +218,32 @@ test("deduplicates only when both the operation and facade authority are unchang
   coordinator.setInput(input("stable", replacementFacade));
   await waitFor(() => replacementRenderCalls === 1);
   assert.equal(firstRenderCalls, 1);
+});
+
+test("freezes only the latest input after the debounce window", async () => {
+  const frozenSources: string[] = [];
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    debounceMs: 10,
+    freezeOperation(input: FreezeRenderOperationInput) {
+      frozenSources.push(input.workspace.code);
+      return freezeRenderOperation(input);
+    },
+  });
+
+  coordinator.setInput(input("first"));
+  coordinator.setInput(input("second"));
+  coordinator.setInput(input("third"));
+
+  assert.deepEqual(frozenSources, []);
+  const pending = coordinator.store.getState();
+  assert.equal(pending.status, "pending");
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.deepEqual(frozenSources, ["third"]);
+  const completed = coordinator.store.getState();
+  assert.equal(completed.status, "success");
+  if (completed.status !== "success") return;
+  assert.equal(completed.snapshot.operation.source, "third");
 });
 
 test("passes one frozen operation to every Merman projection", async () => {
