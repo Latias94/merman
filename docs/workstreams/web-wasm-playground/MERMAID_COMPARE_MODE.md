@@ -99,14 +99,18 @@ host dimensions or camera coordinates; legacy Host-bearing links restore support
 degrade to canonical rendering. Neither copy action mutates the current URL or active operation.
 
 Preview presentation preserves each engine's valid SVG `viewBox` byte-for-byte. Infinite Canvas
-floats the diagram on a full-surface grid; ViewBox Frame removes the grid and gives the exact mounted
-SVG viewport a finite outline and shadow. Both modes share the same artifact and camera state. The
-responsive clone suppresses Merman's known default white root background without changing the
-frozen artifact, exports, or non-default root backgrounds. A missing-`viewBox` artifact may retain
-preview-local intrinsic dimensions, but browser bounds are never promoted into renderer geometry.
-The optional SVG Bounds outline follows the mounted root and affects neither fit nor export.
-Browser-dependent title or root-viewBox clipping visible in pinned Mermaid therefore remains
-visible in both panes; the Playground does not hide it with a Merman-only bounds workaround.
+floats the diagram on a full-surface grid, reveals measurable overflow from SVG graphics connected
+to the renderer-owned root viewport, and fits their union. Disconnected decorations that the root
+viewport intentionally clips remain outside Fit, preventing an off-range marker from collapsing the
+diagram.
+ViewBox Frame restores the root's original overflow behavior, removes the grid, and gives the exact
+mounted SVG viewport a finite outline and shadow. Both modes share the same artifact and camera state. The responsive clone
+suppresses Merman's known default white root background without changing the frozen artifact,
+exports, or non-default root backgrounds. A missing-`viewBox` artifact, failed measurement, or
+non-finite browser result falls back to preview-local intrinsic dimensions. Connected browser bounds are
+never promoted into renderer or export geometry. The optional SVG Bounds outline follows the mounted root
+and affects neither fit nor export. This shared presentation path applies equally to Merman and
+Mermaid.js; ViewBox Frame remains the diagnostic mode for engine-owned root clipping.
 
 Each Compare pane has one export launcher. The workbench keeps the engine identity visible and
 does not retarget when a newer render completes. Mermaid raster output uses the pane's validated
