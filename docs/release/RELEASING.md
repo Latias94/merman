@@ -28,6 +28,7 @@ is zero.
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 | `release-web.yml` | admitted `@mermanjs/web` browser package group | npm |
 | `release-node.yml` | experimental `@mermanjs/node` loader and five native platform packages | npm |
+| `release-tree-sitter-mermaid.yml` | `tree-sitter-mermaid` crate, `@mermanjs/tree-sitter-mermaid`, language WASM, and source archive | crates.io, npm, and GitHub Release |
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
@@ -56,7 +57,7 @@ produces a durable pending-recovery receipt instead of a blind retry.
 | crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
 | pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and `flutter-v{{version}}` |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
-| npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` and `@mermanjs/node*` package, this repository, its owning release workflow, and the `npm` environment |
+| npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` and `@mermanjs/node*` package plus `@mermanjs/tree-sitter-mermaid`, this repository, each owning release workflow, and the `npm` environment |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
 | VS Code Marketplace | Not configured. Marketplace publishing would need `VSCE_PAT`, an explicit publish job, and VSIX provenance verification before enabling. |
 
@@ -102,6 +103,12 @@ need `--provenance`. For any package name that does not yet exist, first run the
 publication, publish only the verified missing tarball directly under the requested final tag with a
 maintainer's 2FA-protected credential, configure its trusted publisher, and rerun the workflow with
 publication enabled. Do not add the bootstrap credential to GitHub Actions.
+
+The independent syntax package is `@mermanjs/tree-sitter-mermaid`, owned by
+`release-tree-sitter-mermaid.yml`. Its first `0.1.0` publication uses the same verified-artifact,
+2FA-protected bootstrap boundary before Trusted Publishing is configured for that exact scoped
+name. The Rust crate remains `tree-sitter-mermaid`; the two registry packages share a version but
+not a registry name.
 
 The experimental native Node group is `@mermanjs/node`, `@mermanjs/node-darwin-arm64`,
 `@mermanjs/node-darwin-x64`, `@mermanjs/node-linux-x64-gnu`,

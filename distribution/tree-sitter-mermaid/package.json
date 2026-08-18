@@ -1,5 +1,5 @@
 {
-  "name": "tree-sitter-mermaid",
+  "name": "@mermanjs/tree-sitter-mermaid",
   "version": "0.1.0",
   "description": "Tolerant Tree-sitter grammar and editor queries for Mermaid",
   "license": "MIT",
@@ -9,6 +9,9 @@
     "directory": "distribution/tree-sitter-mermaid"
   },
   "homepage": "https://github.com/Latias94/merman/tree/main/distribution/tree-sitter-mermaid",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "incremental",
     "mermaid",

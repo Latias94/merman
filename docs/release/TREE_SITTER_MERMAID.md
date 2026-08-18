@@ -9,6 +9,8 @@ publication without the protected release environment and maintainer credentials
 - Package root: `distribution/tree-sitter-mermaid`
 - Initial version: `0.1.0`
 - Tag form: `tree-sitter-mermaid-v0.1.0`
+- Cargo package: `tree-sitter-mermaid`
+- npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
 - Language ABI: 15
 - Tree-sitter CLI/Rust/web runtime: 0.26.12
@@ -59,7 +61,8 @@ git diff --check
 One candidate release stages:
 
 - `tree-sitter-mermaid-0.1.0.crate` for crates.io;
-- an npm tarball containing Node source fallback and release-built N-API prebuilds;
+- an `@mermanjs/tree-sitter-mermaid` tarball containing Node source fallback and release-built
+  N-API prebuilds;
 - root `tree-sitter-mermaid.wasm` for npm and GitHub Releases;
 - a grammar-subdirectory source archive for editor and C consumers;
 - SHA-256 checksums and GitHub's build provenance for the staged files.
@@ -82,15 +85,17 @@ npm candidate.
 
 ## Publication and recovery
 
-crates.io and npm package names are both `tree-sitter-mermaid`. Publish only from the protected
-workflow and the exact release commit. If one registry job fails, re-run only failed jobs from the
-same workflow run. Each publish job reconciles an already-visible version or GitHub Release against
-the staged candidate bytes: an exact match is success, while any mismatch fails closed. Both
-registries reject overwriting an existing immutable version.
+The crates.io package is `tree-sitter-mermaid`; the npm package is
+`@mermanjs/tree-sitter-mermaid`. Publish only from the protected workflow and the exact release
+commit. If one registry job fails, re-run only failed jobs from the same workflow run. Each publish
+job reconciles an already-visible version or GitHub Release against the staged candidate bytes: an
+exact match is success, while any mismatch fails closed. Both registries reject overwriting an
+existing immutable version.
 
-The first npm publication may require a maintainer's short-lived 2FA-protected bootstrap credential
-before Trusted Publishing can be configured for the new package name. Do not store that bootstrap
-token in repository secrets. crates.io publication uses the protected crates.io environment.
+The first npm publication requires a maintainer's short-lived 2FA-protected bootstrap credential
+for `@mermanjs/tree-sitter-mermaid` before Trusted Publishing can be configured. Do not store that
+bootstrap token in repository secrets. crates.io publication uses the protected crates.io
+environment.
 
 Downstream Neovim, Helix, and Zed changes happen only after the immutable GitHub release exists.
 Those repositories pin the release commit and their own query copies; they do not consume the npm

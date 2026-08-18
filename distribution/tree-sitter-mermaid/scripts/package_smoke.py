@@ -113,7 +113,7 @@ def run_npm_consumer(consumer: Path, tarball: Path, npm: str, node: str) -> None
         "version": "0.0.0",
         "dependencies": {
             "tree-sitter": NODE_RUNTIME_VERSION,
-            "tree-sitter-mermaid": tarball.resolve().as_uri(),
+            "@mermanjs/tree-sitter-mermaid": tarball.resolve().as_uri(),
             "web-tree-sitter": WEB_RUNTIME_VERSION,
         },
     }
@@ -131,9 +131,9 @@ def run_npm_consumer(consumer: Path, tarball: Path, npm: str, node: str) -> None
     native_smoke = r"""
 const assert = require('node:assert/strict');
 const Parser = require('tree-sitter');
-const Mermaid = require('tree-sitter-mermaid');
+const Mermaid = require('@mermanjs/tree-sitter-mermaid');
 
-const grammarMetadata = require('tree-sitter-mermaid/tree-sitter.json');
+const grammarMetadata = require('@mermanjs/tree-sitter-mermaid/tree-sitter.json');
 assert.equal(grammarMetadata.grammars[0].scope, 'source.mermaid');
 
 const source = 'flowchart TD\nA --> B\n';
@@ -145,6 +145,23 @@ assert.equal(tree.rootNode.namedChildren[0].type, 'flowchart_diagram');
 """
     run([node, "-e", native_smoke], cwd=consumer, env=environment)
 
+    esm_smoke = r"""
+import assert from 'node:assert/strict';
+import Parser from 'tree-sitter';
+import Mermaid from '@mermanjs/tree-sitter-mermaid';
+
+const parser = new Parser();
+parser.setLanguage(Mermaid);
+const tree = parser.parse('sequenceDiagram\nAlice->>Bob: Hello\n');
+assert.equal(tree.rootNode.hasError, false);
+assert.equal(tree.rootNode.namedChildren[0].type, 'sequence_diagram');
+"""
+    run(
+        [node, "--input-type=module", "-e", esm_smoke],
+        cwd=consumer,
+        env=environment,
+    )
+
     wasm_smoke = r"""
 const assert = require('node:assert/strict');
 const { Language, Parser } = require('web-tree-sitter');
@@ -152,7 +169,7 @@ const { Language, Parser } = require('web-tree-sitter');
 (async () => {
   await Parser.init();
   const language = await Language.load(
-    require.resolve('tree-sitter-mermaid/tree-sitter-mermaid.wasm'),
+    require.resolve('@mermanjs/tree-sitter-mermaid/tree-sitter-mermaid.wasm'),
   );
   assert.equal(language.abiVersion, 15);
   const wasmParser = new Parser();

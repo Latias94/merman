@@ -149,6 +149,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("main is build-only", workflow)
         self.assertIn("publishing requires source_ref to be the matching immutable tag", workflow)
         self.assertIn("distribution/tree-sitter-mermaid", workflow)
+        self.assertIn('npm_manifest["name"] != "@mermanjs/tree-sitter-mermaid"', verify)
         self.assertIn("npm run prebuild", prebuild)
         self.assertIn("PREBUILDS_ONLY=1 npm run test:node", prebuild)
         self.assertIn("TREE_SITTER_MERMAID_REQUIRE_PREBUILDS=1", assemble)
@@ -175,7 +176,10 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         )
         self.assertIn("npm publish", publish_npm)
         self.assertIn("--provenance", publish_npm)
-        self.assertIn('npm view "tree-sitter-mermaid@$VERSION" dist.tarball', publish_npm)
+        self.assertIn(
+            'npm view "@mermanjs/tree-sitter-mermaid@$VERSION" dist.tarball',
+            publish_npm,
+        )
         self.assertIn("uses: actions/attest@v4.2.2", attest)
         self.assertIn("attestations: write", attest)
         self.assertIn("gh release create", publish_github)
