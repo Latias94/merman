@@ -140,6 +140,12 @@ function validManifest() {
       isDynamicEntry: true,
       imports: ["shared"],
     },
+    [OPTIONAL_FEATURE_SOURCES.editor]: {
+      file: "assets/editor.js",
+      src: OPTIONAL_FEATURE_SOURCES.editor,
+      isDynamicEntry: true,
+      imports: ["shared"],
+    },
     [OPTIONAL_FEATURE_SOURCES.examples]: {
       file: "assets/examples.js",
       src: OPTIONAL_FEATURE_SOURCES.examples,

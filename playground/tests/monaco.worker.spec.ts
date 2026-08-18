@@ -132,7 +132,9 @@ test("editor intent can activate language workers before a blocked preview", asy
   const wasmBlocked = new Promise<void>((resolve) => {
     releaseWasm = resolve;
   });
+  const requests: string[] = [];
   const workers: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
   page.on("worker", (worker) => workers.push(worker.url()));
   await page.route(/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/i, async (route) => {
     await wasmBlocked;
@@ -141,11 +143,20 @@ test("editor intent can activate language workers before a blocked preview", asy
 
   try {
     await page.goto("./", { waitUntil: "domcontentloaded" });
+    const activation = page.getByTestId("editor-activation");
+    await expect(activation).toBeVisible();
+    expect(workers.filter((url) => /merman-language|mermaid-syntax/i.test(url))).toEqual([]);
+    expect(
+      requests.filter((url) =>
+        /monaco|floatingMenu|contribution-[\w-]+\.js|codicon|editor\.worker/i.test(
+          url,
+        ),
+      ),
+    ).toEqual([]);
+
+    await activation.focus();
     const editor = page.getByRole("textbox", { name: "Mermaid source" });
     await expect(editor).toBeVisible();
-    expect(workers.filter((url) => /merman-language|mermaid-syntax/i.test(url))).toEqual([]);
-
-    await editor.focus();
     await expect
       .poll(() => workers.some((url) => /merman-language\.worker/i.test(url)))
       .toBe(true);

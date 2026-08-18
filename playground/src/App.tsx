@@ -18,12 +18,18 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import { CodeEditor } from "./components/Editor";
 import { Preview } from "./components/Preview";
 import { ExportWorkbench } from "./components/ExportDialog";
 import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
+import { playgroundStartupBoundary } from "@/src/runtime/startup-boundary";
+
+const CodeEditor = lazy(() =>
+  import("./components/EditorFeature").then((module) => ({
+    default: module.CodeEditor,
+  })),
+);
 
 const ConfigEditor = lazy(() =>
   import("./components/ConfigEditorFeature").then((module) => ({
@@ -180,7 +186,7 @@ function EditorPanel({
         forceMount
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <CodeEditor className="h-full min-h-0" />
+        <DeferredCodeEditor className="h-full min-h-0" />
       </TabsContent>
       <TabsContent
         value="config"
@@ -197,6 +203,53 @@ function EditorPanel({
         )}
       </TabsContent>
     </Tabs>
+  );
+}
+
+function DeferredCodeEditor({ className }: { readonly className?: string }) {
+  const { t } = useTranslation();
+  const [activated, setActivated] = useState(
+    () => playgroundStartupBoundary.reason() !== null,
+  );
+
+  useEffect(() => {
+    let active = true;
+    void playgroundStartupBoundary.wait().then(() => {
+      if (active) setActivated(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const activateFromEditorIntent = () => {
+    playgroundStartupBoundary.activate("editor-intent");
+    setActivated(true);
+  };
+
+  if (!activated) {
+    return (
+      <button
+        type="button"
+        data-testid="editor-activation"
+        aria-label={t("editor.loading")}
+        className={`${className ?? ""} flex w-full items-center justify-center bg-card text-sm text-muted-foreground`}
+        onClick={activateFromEditorIntent}
+        onFocus={activateFromEditorIntent}
+        onPointerDown={activateFromEditorIntent}
+      >
+        {t("editor.loading")}
+      </button>
+    );
+  }
+
+  return (
+    <LazyFeatureBoundary
+      feature={t("layout.editor")}
+      presentation={{ kind: "panel" }}
+    >
+      <CodeEditor className={className} />
+    </LazyFeatureBoundary>
   );
 }
 

@@ -125,6 +125,8 @@ test("Playground startup closure includes toolbar ownership but excludes lazy wo
 
   assert.equal(startup.has("src/components/ToolbarControls.tsx"), true);
   assert.equal(startup.has("src/components/ToolbarFeatureLaunchers.tsx"), true);
+  assert.equal(startup.has("src/components/Editor.tsx"), false);
+  assert.equal(startup.has("src/editor/monaco.ts"), false);
   assert.deepEqual(
     [...startup]
       .filter(
