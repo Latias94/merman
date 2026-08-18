@@ -297,6 +297,16 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
     if path in {"Cargo.lock", "Cargo.toml", "rust-toolchain.toml", "dist-workspace.toml"}:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
 
+    if path in {
+        "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm",
+        "distribution/tree-sitter-mermaid/queries/portable/highlights.scm",
+    }:
+        return (
+            frozenset({"grammar", "hygiene", "web"}),
+            f"Browser Tree-sitter asset changed: {path}",
+            False,
+        )
+
     if path.startswith("distribution/tree-sitter-mermaid/"):
         owners = {"grammar", "hygiene"}
         if path.endswith(("package.json", "package-lock.json")):

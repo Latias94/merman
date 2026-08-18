@@ -2,17 +2,17 @@
 
 ## Status
 
-Accepted; syntax-highlighting ownership amended by ADR-0083.
+Accepted; syntax-highlighting ownership amended by ADR-0084.
 
 ## Dates
 
 - Accepted: 2026-06-24
 - Updated: 2026-08-12
-- Amended: 2026-08-17 by ADR-0083
+- Amended: 2026-08-17 by ADR-0084
 
 ## 2026-08-17 Highlighting Amendment
 
-ADR-0083 supersedes this decision's family-owned lexical journal, mixed semantic-token planner,
+ADR-0084 supersedes this decision's family-owned lexical journal, mixed semantic-token planner,
 generated token descriptor, and Merman WASM/Monaco coloring clauses. Tree-sitter now exclusively
 owns base syntax highlighting in the LSP and Playground, with independent native and browser
 syntax-state lifecycles.
@@ -250,4 +250,4 @@ decoded.
 - ADR-0070: Diagnostics-First Analysis Contract
 - ADR-0072: Lint Rule Governance
 - ADR-0073: Family-Owned Diagram Architecture
-- ADR-0083: Tree-sitter Highlighting Ownership
+- ADR-0084: Tree-sitter Highlighting Ownership

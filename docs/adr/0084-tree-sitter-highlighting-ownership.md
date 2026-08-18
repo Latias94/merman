@@ -1,4 +1,4 @@
-# ADR-0083: Tree-sitter Highlighting Ownership
+# ADR-0084: Tree-sitter Highlighting Ownership
 
 ## Status
 
@@ -103,12 +103,12 @@ harness.
 
 ## Amendments to Earlier Decisions
 
-This ADR supersedes only the highlighting clauses of ADR-0071 and ADR-0082:
+This ADR supersedes only the highlighting clauses of ADR-0071 and ADR-0083:
 
 - ADR-0071's family-owned lexical journal and `merman-editor-core` token-planner ownership are
   retired. Its parser-owned semantic identity, expected-syntax, diagnostics, source-mapping, and
   refactoring-safety decisions remain in force.
-- ADR-0082's blanket prohibition on production Merman dependencies is narrowed for the two LSP
+- ADR-0083's blanket prohibition on production Merman dependencies is narrowed for the two LSP
   artifact profiles, and its rejection of LSP CST use is narrowed to semantic use. Its strict
   parser boundary, one-way conformance strategy, lean verification policy, and independent
   distribution decision remain in force.
@@ -162,4 +162,4 @@ to `merman-wasm`.
 - ADR-0074: Browser Runtime and Benchmark Ownership
 - ADR-0076: Capability-Driven Feature and Package Surfaces
 - ADR-0081: Release Quality Gates
-- ADR-0082: Tree-sitter Mermaid Language Boundary
+- ADR-0083: Tree-sitter Mermaid Language Boundary

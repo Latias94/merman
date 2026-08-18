@@ -97,6 +97,7 @@ class PlannerTests(unittest.TestCase):
             "distribution/tree-sitter-mermaid/queries/portable/highlights.scm": {
                 "grammar",
                 "hygiene",
+                "web",
             },
             "platforms/web/src/index.ts": {"hygiene", "npm", "web"},
             "platforms/node/package-lock.json": {"core", "hygiene", "node", "npm", "security"},
@@ -142,6 +143,22 @@ class PlannerTests(unittest.TestCase):
                     name for name, enabled in plan["owners"].items() if enabled
                 }
                 self.assertEqual(selected, {"grammar", "hygiene"})
+
+    def test_browser_tree_sitter_assets_select_the_web_owner(self) -> None:
+        for path in (
+            "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm",
+            "distribution/tree-sitter-mermaid/queries/portable/highlights.scm",
+        ):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {
+                    name for name, enabled in plan["owners"].items() if enabled
+                }
+                self.assertEqual(selected, {"grammar", "hygiene", "web"})
 
     def test_tree_sitter_manifests_select_dependency_owners(self) -> None:
         fixtures = {

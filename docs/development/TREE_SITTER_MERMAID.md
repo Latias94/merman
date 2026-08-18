@@ -10,7 +10,7 @@ strict validity, semantic construction, diagnostics, completion, navigation iden
 refactoring, IR, and rendering. A recovered Tree-sitter tree is useful editor state, not proof that
 Mermaid accepts the source.
 
-See ADR-0083 for the superseding highlighting decision and ADR-0082 for the preserved strict
+See ADR-0084 for the superseding highlighting decision and ADR-0083 for the preserved strict
 language boundary.
 
 ## Runtime adapters and ownership
@@ -93,6 +93,11 @@ npm run check:wasm --prefix distribution/tree-sitter-mermaid
 Both paths explicitly select ABI 15. Native freshness is an ordinary grammar gate. WASM freshness
 is a slower CI/release lane because it requires the pinned WASI SDK. The generator keeps only wide
 gross size ceilings; noisy timing and RSS receipts are not release contracts.
+
+The package's Node-side WASM validation uses `--liftoff-only`: it checks the browser asset's bytes,
+ABI, load, and representative parse without exercising Node 24's optimizing compiler on the large
+generated lexer. Browser execution remains owned by the real Chromium smoke, while Node package
+consumers are tested through the native binding under the default runtime.
 
 ## Test ownership
 

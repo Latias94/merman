@@ -68,7 +68,7 @@
     "test:queries": "cargo nextest run --locked -p tree-sitter-mermaid --test queries --no-fail-fast",
     "test:node": "node --test bindings/node/binding_test.js",
     "test:c": "node scripts/run_python.js scripts/c_smoke.py",
-    "test:wasm": "node --test bindings/node/wasm_test.js",
+    "test:wasm": "node --liftoff-only --test bindings/node/wasm_test.js",
     "test:package-smoke": "node scripts/run_python.js scripts/package_smoke.py",
     "test": "npm run test:corpus && npm run test:node && npm run test:wasm"
   },

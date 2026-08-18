@@ -128,11 +128,10 @@ def run_npm_consumer(consumer: Path, tarball: Path, npm: str, node: str) -> None
         cwd=consumer,
         env=environment,
     )
-    smoke = r"""
+    native_smoke = r"""
 const assert = require('node:assert/strict');
 const Parser = require('tree-sitter');
 const Mermaid = require('tree-sitter-mermaid');
-const { Language, Parser: WasmParser } = require('web-tree-sitter');
 
 const grammarMetadata = require('tree-sitter-mermaid/tree-sitter.json');
 assert.equal(grammarMetadata.grammars[0].scope, 'source.mermaid');
@@ -143,16 +142,22 @@ parser.setLanguage(Mermaid);
 const tree = parser.parse(source);
 assert.equal(tree.rootNode.hasError, false);
 assert.equal(tree.rootNode.namedChildren[0].type, 'flowchart_diagram');
+"""
+    run([node, "-e", native_smoke], cwd=consumer, env=environment)
+
+    wasm_smoke = r"""
+const assert = require('node:assert/strict');
+const { Language, Parser } = require('web-tree-sitter');
 
 (async () => {
-  await WasmParser.init();
+  await Parser.init();
   const language = await Language.load(
     require.resolve('tree-sitter-mermaid/tree-sitter-mermaid.wasm'),
   );
   assert.equal(language.abiVersion, 15);
-  const wasmParser = new WasmParser();
+  const wasmParser = new Parser();
   wasmParser.setLanguage(language);
-  const wasmTree = wasmParser.parse(source);
+  const wasmTree = wasmParser.parse('flowchart TD\nA --> B\n');
   assert.equal(wasmTree.rootNode.hasError, false);
   assert.equal(wasmTree.rootNode.namedChildren[0].type, 'flowchart_diagram');
   wasmTree.delete();
@@ -162,7 +167,10 @@ assert.equal(tree.rootNode.namedChildren[0].type, 'flowchart_diagram');
   process.exitCode = 1;
 });
 """
-    run([node, "-e", smoke], cwd=consumer, env=environment)
+    # This validates the browser asset's packaged bytes and ABI without asking
+    # Node 24's optimizing compiler to compile the generated lexer. Chromium owns
+    # the default-runtime browser execution smoke.
+    run([node, "--liftoff-only", "-e", wasm_smoke], cwd=consumer, env=environment)
 
 
 def package_identity(package: Path) -> tuple[str, str]:

@@ -269,7 +269,18 @@ def build_wasm(package: Path, cli: list[str], destination: Path) -> None:
         ],
         cwd=source,
     )
-    run([cli[0], str(package / "scripts/validate_wasm.js"), str(output)], cwd=package)
+    # The published module is a browser asset. Use V8's baseline compiler for this
+    # Node-side structural smoke so Node 24 does not optimize the generated lexer as
+    # one unusually large function; browser execution is covered separately.
+    run(
+        [
+            cli[0],
+            "--liftoff-only",
+            str(package / "scripts/validate_wasm.js"),
+            str(output),
+        ],
+        cwd=package,
+    )
     assert_size(output, WASM_MAX_BYTES)
 
 

@@ -31,7 +31,7 @@ origin_plans:
   engine, capture receipt graph, or combinatorial per-runtime or per-editor matrix.
 
 This plan supersedes only the following boundaries in the earlier Tree-sitter plans, ADR-0071, and
-ADR-0082:
+ADR-0083:
 
 - production adapters may now depend on Tree-sitter for syntax highlighting;
 - the Playground no longer keeps Merman semantic tokens as its default coloring path; and
@@ -319,13 +319,13 @@ consume Merman lexemes.
 
 - **Goal:** Make syntax-versus-semantics ownership explicit before changing code.
 - **Files:**
-  - new `docs/adr/0083-tree-sitter-highlighting-ownership.md`;
-  - `docs/adr/0082-tree-sitter-language-boundary.md` related-decision note;
+  - new `docs/adr/0084-tree-sitter-highlighting-ownership.md`;
+  - `docs/adr/0083-tree-sitter-language-boundary.md` related-decision note;
   - `docs/adr/0071-editor-parser-semantic-seam.md` related-decision note;
   - `docs/development/TREE_SITTER_MERMAID.md`;
   - `scripts/verify_artifact_dependency_closures.py`;
   - relevant package/editor README wording.
-- **Approach:** Add a new ADR rather than rewriting history. It should amend ADR-0082's rejection of
+- **Approach:** Add a new ADR rather than rewriting history. It should amend ADR-0083's rejection of
   production LSP use and ADR-0071's lexical-fact ownership, while explicitly preserving their
   strict semantic and parser-owned identity decisions.
 - **Test scenarios:** Documentation links resolve; dependency-boundary wording matches the code
@@ -514,7 +514,7 @@ Any migration-only old-versus-new token comparison must be deleted before final 
 ## Sources
 
 - `docs/adr/0071-editor-parser-semantic-seam.md`
-- `docs/adr/0082-tree-sitter-language-boundary.md`
+- `docs/adr/0083-tree-sitter-language-boundary.md`
 - `docs/plans/2026-08-14-001-feat-tree-sitter-mermaid-language-plan.md`
 - `docs/plans/2026-08-16-001-refactor-tree-sitter-mermaid-distribution-plan.md`
 - `distribution/tree-sitter-mermaid/grammar.js`

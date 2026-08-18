@@ -62,6 +62,12 @@ syntax worker. Strict diagnostics, completion, navigation, and rename still come
 separate semantic worker; browser consumers can adopt the same split without a grammar-specific
 JavaScript SDK.
 
+The package's Node API uses the native binding shown above. The repository's Node-side WASM smoke
+runs with V8's `--liftoff-only` flag because Node 24 can exhaust its optimizing-compiler memory on
+this large generated lexer; the browser smoke runs the published WASM without that flag in
+Chromium. Node applications should use the native binding rather than treating the browser asset
+as a second server-side API.
+
 ## Rust
 
 ```rust

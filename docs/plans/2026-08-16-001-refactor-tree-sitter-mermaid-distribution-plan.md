@@ -274,7 +274,7 @@ generator.
 - `docs/release/TREE_SITTER_MERMAID.md`
 - `docs/release/MERMAID_UPGRADE_PLAYBOOK.md`
 - `docs/release/PUBLISH_ORDER.md`
-- `docs/adr/0082-tree-sitter-language-boundary.md`
+- `docs/adr/0083-tree-sitter-language-boundary.md`
 
 **Work:**
 
@@ -292,7 +292,7 @@ generator.
 - update release and upgrade docs to describe crates.io, npm, WASM, editor adoption, and the lean
   Merman fixture oracle, including concrete Neovim `location`, Helix `subpath`, and Zed `path/rev`
   examples;
-- amend ADR-0082 to remove the evidence lattice/receipt architecture while preserving the semantic
+- amend ADR-0083 to remove the evidence lattice/receipt architecture while preserving the semantic
   boundary.
 
 **Test scenarios:** generation drift and accidental ABI drift are detected; WASM load is proven
@@ -355,7 +355,7 @@ projections, and any CI/release projections required by U1-U3.
 ## Sources
 
 - `docs/plans/2026-08-14-001-feat-tree-sitter-mermaid-language-plan.md`
-- `docs/adr/0082-tree-sitter-language-boundary.md`
+- `docs/adr/0083-tree-sitter-language-boundary.md`
 - Tree-sitter parser configuration: https://tree-sitter.github.io/tree-sitter/cli/init.html
 - Tree-sitter query model: https://tree-sitter.github.io/tree-sitter/3-syntax-highlighting.html
 - Tree-sitter CLI WASM build: https://tree-sitter.github.io/tree-sitter/cli/build.html

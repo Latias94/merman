@@ -1,18 +1,18 @@
-# ADR-0082: Tree-sitter Mermaid Language Boundary
+# ADR-0083: Tree-sitter Mermaid Language Boundary
 
 ## Status
 
-Accepted; production highlighting boundary amended by ADR-0083.
+Accepted; production highlighting boundary amended by ADR-0084.
 
 ## Dates
 
 - Accepted: 2026-08-14
 - Amended: 2026-08-16
-- Amended: 2026-08-17 by ADR-0083
+- Amended: 2026-08-17 by ADR-0084
 
 ## 2026-08-17 Highlighting Amendment
 
-ADR-0083 makes the canonical Tree-sitter highlight query the sole syntax-coloring implementation
+ADR-0084 makes the canonical Tree-sitter highlight query the sole syntax-coloring implementation
 for Merman's native LSP and Playground. It narrows this ADR's blanket production-dependency
 prohibition only for the exact `lsp-library` and `lsp-stdio-release` artifact profiles, and narrows
 the rejected LSP CST use to semantic use. Core, analysis, editor-core, render, IR, Web and
@@ -37,7 +37,7 @@ source-backed contract for all 35 public Merman families or the exact Mermaid an
 
 Treating Tree-sitter as a replacement parser would create an unproved second semantic engine. The
 original decision also kept it out of editor-internal production paths to avoid successful editor
-semantics that were not produced by the family semantic construction. ADR-0083 later admitted the
+semantics that were not produced by the family semantic construction. ADR-0084 later admitted the
 tolerant CST for syntax highlighting while preserving that semantic prohibition.
 
 ## Decision
@@ -58,7 +58,7 @@ The following ownership rules are mandatory:
   ZenUML authorities; the Tree-sitter package does not define another semantic contract.
 - The conformance harness is one-way: Merman may classify strict-valid fixtures and expected public
   families, then inspect Tree-sitter output. No Merman production crate may consume Tree-sitter CST
-  nodes as semantic facts. ADR-0083 permits only `merman-lsp` library and stdio artifacts to depend
+  nodes as semantic facts. ADR-0084 permits only `merman-lsp` library and stdio artifacts to depend
   on Tree-sitter for syntax highlighting; other Merman production crates remain dependency-free.
 - Tree-sitter recovery is useful editing behavior, not proof of Mermaid validity. A tree without an
   `ERROR` node does not imply strict validity.
@@ -104,7 +104,7 @@ side effects, typed models, diagnostics, or refactoring identity. There is no eq
 ### Feed Tree-sitter CST semantic facts into editor-core or LSP
 
 Rejected. That would recreate the second successful editor grammar removed by ADR-0071 and permit
-semantic disagreement with rendering. ADR-0083 separately permits syntax-only highlight captures
+semantic disagreement with rendering. ADR-0084 separately permits syntax-only highlight captures
 inside the LSP adapter.
 
 ### Keep the language package in a separate repository
@@ -132,4 +132,4 @@ the existing Tree-sitter, Rust, Node, Cargo, npm, CMake, and fuzz tools directly
 - ADR-0075: ZenUML Parser Technology
 - ADR-0076: Capability-Driven Feature and Package Surfaces
 - ADR-0081: Release Quality Gates
-- ADR-0083: Tree-sitter Highlighting Ownership
+- ADR-0084: Tree-sitter Highlighting Ownership
