@@ -670,6 +670,34 @@ fn upsert_node_typed(
     }
 }
 
+fn insert_generated_node_typed(
+    nodes: &mut Vec<StateDiagramRenderNode>,
+    index: &mut HashMap<String, usize>,
+    authored_states: &HashMap<String, StateRecord>,
+    node: StateDiagramRenderNode,
+    generated_kind: &str,
+    owner_id: &str,
+) -> std::result::Result<(), String> {
+    if authored_states.contains_key(&node.id) {
+        return Err(format!(
+            "Authored state id `{}` conflicts with generated {generated_kind} id for state `{owner_id}`",
+            node.id
+        ));
+    }
+
+    match index.entry(node.id.clone()) {
+        Entry::Occupied(_) => Err(format!(
+            "Generated {generated_kind} id `{}` for state `{owner_id}` conflicts with an existing render node",
+            node.id
+        )),
+        Entry::Vacant(entry) => {
+            entry.insert(nodes.len());
+            nodes.push(node);
+            Ok(())
+        }
+    }
+}
+
 fn value_as_f64(v: &Value) -> Option<f64> {
     v.as_f64()
         .or_else(|| v.as_i64().map(|n| n as f64))
@@ -905,7 +933,9 @@ fn build_layout_data_typed(
 
             let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
             let parent_base_id = format!("{item_id}{PARENT_ID}");
-            let parent_node_id = if ctx.node_index.contains_key(&parent_base_id) {
+            let parent_node_id = if ctx.node_index.contains_key(&parent_base_id)
+                || ctx.states.contains_key(&parent_base_id)
+            {
                 format!("{parent_base_id}-{}", *ctx.graph_item_count)
             } else {
                 parent_base_id
@@ -957,8 +987,22 @@ fn build_layout_data_typed(
             };
             note_node.css_compiled_styles = compiled_styles(&note_node.css_classes, classes);
 
-            upsert_node_typed(ctx.nodes, ctx.node_index, group_node);
-            upsert_node_typed(ctx.nodes, ctx.node_index, note_node);
+            insert_generated_node_typed(
+                ctx.nodes,
+                ctx.node_index,
+                ctx.states,
+                group_node,
+                "note group",
+                &item_id,
+            )?;
+            insert_generated_node_typed(
+                ctx.nodes,
+                ctx.node_index,
+                ctx.states,
+                note_node,
+                "note",
+                &item_id,
+            )?;
             upsert_node_typed(ctx.nodes, ctx.node_index, node.clone());
 
             let (mut from, mut to) = (item_id.clone(), note_id);
@@ -1159,4 +1203,34 @@ fn normalize_multiline_ws(input: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Engine, ParseOptions};
+
+    #[test]
+    fn state_note_generated_id_collision_is_rejected_independent_of_declaration_order() {
+        let engine = Engine::new();
+        let authored_state = "state \"Authored\" as A----note-0";
+        let positioned_note = "note right of A : Generated note";
+
+        for body in [
+            format!("{authored_state}\n{positioned_note}"),
+            format!("{positioned_note}\n{authored_state}"),
+        ] {
+            let input = format!("stateDiagram-v2\n{body}\n");
+            let error = engine
+                .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+                .expect_err("authored and generated state ids must not silently collide");
+            let message = error.to_string();
+
+            assert!(
+                message.contains(
+                    "Authored state id `A----note-0` conflicts with generated note id for state `A`"
+                ),
+                "unexpected collision error: {message}"
+            );
+        }
+    }
 }
