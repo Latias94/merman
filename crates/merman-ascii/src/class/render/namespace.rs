@@ -14,18 +14,109 @@ use crate::resource::ResourceContext;
 use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_blank};
 use crate::{AsciiError, Result};
 use merman_core::OperationPhase;
-use merman_core::models::class_diagram::{ClassDiagram, Namespace};
+use merman_core::models::class_diagram::{ClassDiagram, ClassInterface, Namespace};
 use std::collections::HashMap;
 
 struct NamespaceRenderContext<'model, 'render> {
     model: &'model ClassDiagram,
     settings: ClassRenderSettings<'render>,
     endpoint_index: &'render ClassEndpointIndex<'model>,
+    interface_index: &'render NamespaceInterfaceIndex<'model>,
     render_plan: &'render NamespaceRenderPlan<'model>,
     scope_index: &'render NamespaceScopeIndex<'model>,
     note_by_id: ClassNoteIndex<'model>,
     relation_labels: &'render [ClassRelationLabels],
     execution: AsciiExecution<'render>,
+}
+
+#[derive(Debug)]
+struct NamespaceInterfaceIndex<'a> {
+    by_owner: HashMap<&'a str, Vec<&'a ClassInterface>>,
+    root: Vec<&'a ClassInterface>,
+}
+
+impl<'a> NamespaceInterfaceIndex<'a> {
+    fn new(
+        model: &'a ClassDiagram,
+        endpoint_index: &ClassEndpointIndex<'a>,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        resources.transaction(|resources| {
+            checkpoint_layout(execution)?;
+            let index_work = model
+                .interfaces
+                .len()
+                .checked_mul(2)
+                .ok_or_else(|| work_overflow(resources))?;
+            resources.charge_layout_work(index_work)?;
+
+            let mut owner_counts = HashMap::new();
+            owner_counts
+                .try_reserve(model.interfaces.len())
+                .map_err(|_| layout_allocation_failed())?;
+            let mut root_count = 0usize;
+            for interface in &model.interfaces {
+                checkpoint_layout(execution)?;
+                let endpoint = endpoint_index
+                    .resolve(interface.id.as_str())
+                    .ok_or_else(inconsistent_class_namespace_ownership)?;
+                if let Some(owner) = endpoint.owner {
+                    let count = owner_counts.entry(owner).or_insert(0usize);
+                    *count = count
+                        .checked_add(1)
+                        .ok_or_else(|| work_overflow(resources))?;
+                } else {
+                    root_count = root_count
+                        .checked_add(1)
+                        .ok_or_else(|| work_overflow(resources))?;
+                }
+            }
+
+            let mut by_owner = HashMap::new();
+            by_owner
+                .try_reserve(owner_counts.len())
+                .map_err(|_| layout_allocation_failed())?;
+            for (owner, count) in owner_counts {
+                let mut interfaces = Vec::new();
+                interfaces
+                    .try_reserve_exact(count)
+                    .map_err(|_| layout_allocation_failed())?;
+                by_owner.insert(owner, interfaces);
+            }
+            let mut root = Vec::new();
+            root.try_reserve_exact(root_count)
+                .map_err(|_| layout_allocation_failed())?;
+
+            for interface in &model.interfaces {
+                checkpoint_layout(execution)?;
+                let endpoint = endpoint_index
+                    .resolve(interface.id.as_str())
+                    .ok_or_else(inconsistent_class_namespace_ownership)?;
+                if let Some(owner) = endpoint.owner {
+                    by_owner
+                        .get_mut(owner)
+                        .ok_or_else(inconsistent_class_namespace_ownership)?
+                        .push(interface);
+                } else {
+                    root.push(interface);
+                }
+            }
+
+            Ok(Self { by_owner, root })
+        })
+    }
+
+    fn for_owner(&self, owner: Option<&str>) -> &[&'a ClassInterface] {
+        match owner {
+            Some(owner) => self
+                .by_owner
+                .get(owner)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
+            None => self.root.as_slice(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -533,11 +624,14 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     checkpoint_layout(execution)?;
     let render_plan = NamespaceRenderPlan::new(model, resources, execution)?;
     let scope_index = NamespaceScopeIndex::new(model, endpoint_index, resources, execution)?;
+    let interface_index =
+        NamespaceInterfaceIndex::new(model, endpoint_index, resources, execution)?;
     let note_by_id = ClassNoteIndex::new(&model.notes, resources)?;
     let context = NamespaceRenderContext {
         model,
         settings,
         endpoint_index,
+        interface_index: &interface_index,
         render_plan: &render_plan,
         scope_index: &scope_index,
         note_by_id,
@@ -809,7 +903,7 @@ fn render_namespaced_class_boxes<'a>(
             resources,
         )?);
     }
-    for interface in &context.model.interfaces {
+    for interface in context.interface_index.for_owner(None) {
         checkpoint_layout(context.execution)?;
         boxes.push(render_interface_box(
             interface,
@@ -851,6 +945,14 @@ fn render_namespace_box<'model>(
         .class_ids
         .len()
         .checked_add(namespace.note_ids.len())
+        .and_then(|value| {
+            value.checked_add(
+                context
+                    .interface_index
+                    .for_owner(Some(namespace.id.as_str()))
+                    .len(),
+            )
+        })
         .ok_or_else(|| work_overflow(resources))?;
     direct_boxes
         .try_reserve_exact(direct_box_capacity)
@@ -871,6 +973,20 @@ fn render_namespace_box<'model>(
                 resources,
             )?);
         }
+    }
+
+    for interface in context
+        .interface_index
+        .for_owner(Some(namespace.id.as_str()))
+    {
+        checkpoint_layout(context.execution)?;
+        direct_boxes.push(render_interface_box(
+            interface,
+            context.settings.options,
+            context.settings.charset,
+            deferred_text,
+            resources,
+        )?);
     }
 
     for note_id in &namespace.note_ids {
@@ -1484,6 +1600,56 @@ mod tests {
         ));
         assert_eq!(below.layout_work_used(), checkpoint);
         assert_eq!(below.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn parser_lollipop_interface_inherits_target_namespace_for_placement_and_routing() {
+        let model = parsed_class_model(concat!(
+            "classDiagram\n",
+            "namespace Domain {\n  class Service\n}\n",
+            "IService ()-- Service",
+        ));
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
+        validate_class_namespace_ownership(&model, &mut resources)
+            .expect("parser namespace ownership should be internally consistent");
+        let endpoint_index = ClassEndpointIndex::new(&model, &mut resources)
+            .expect("class endpoint index should inherit interface ownership");
+
+        let interface = model
+            .interfaces
+            .first()
+            .expect("lollipop relation should create an interface endpoint");
+        let endpoint = endpoint_index
+            .resolve(interface.id.as_str())
+            .expect("interface endpoint should be indexed");
+        assert_eq!(endpoint.owner, Some("Domain"));
+
+        let interface_index = NamespaceInterfaceIndex::new(
+            &model,
+            &endpoint_index,
+            &resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .expect("namespace interface placement should build");
+        assert!(interface_index.for_owner(None).is_empty());
+        assert_eq!(
+            interface_index
+                .for_owner(Some("Domain"))
+                .iter()
+                .map(|interface| interface.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["interface0"]
+        );
+
+        let scope_index = NamespaceScopeIndex::new(
+            &model,
+            &endpoint_index,
+            &resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .expect("interface relation scope should build");
+        assert_eq!(scope_index.scope_for_relation(0), Some("Domain"));
     }
 
     #[test]

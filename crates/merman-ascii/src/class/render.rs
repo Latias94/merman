@@ -196,12 +196,20 @@ impl<'a> ClassEndpointIndex<'a> {
                 },
             )
         }));
-        endpoints.extend(
-            model
-                .interfaces
-                .iter()
-                .map(|interface| (interface.id.as_str(), ClassEndpointMetadata { owner: None })),
-        );
+        for interface in &model.interfaces {
+            let target = model.classes.get(interface.class_id.as_str()).ok_or(
+                AsciiError::UnsupportedFeature {
+                    diagram_type: "class",
+                    feature: "interfaces with missing target classes",
+                },
+            )?;
+            endpoints.insert(
+                interface.id.as_str(),
+                ClassEndpointMetadata {
+                    owner: target.parent.as_deref(),
+                },
+            );
+        }
         Ok(Self {
             endpoints,
             facade_aliases: &model.namespace_facade_aliases,
