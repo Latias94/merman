@@ -5,7 +5,8 @@ use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
 };
 use crate::safe_text::{
-    charge_text_layout, terminal_text_requires_normalization, visit_safe_line_graphemes,
+    charge_text_layout, grapheme_safe_trim, terminal_text_requires_normalization,
+    visit_safe_line_graphemes,
 };
 use crate::text::StyledLine;
 #[cfg(test)]
@@ -394,7 +395,7 @@ impl AxisPlan {
                     Ok(value) if value.is_finite() => {
                         (Some(range.normalized(value)), !range.contains(value))
                     }
-                    _ => (Some(0.0), !x.trim().is_empty()),
+                    _ => (Some(0.0), !grapheme_safe_trim(x).is_empty()),
                 },
             };
             return Ok((0, normalized_x, clipped));
@@ -437,7 +438,7 @@ impl AxisPlan {
                 _ => Ok((
                     fallback_index.min(slot_count - 1),
                     Some(fallback_index.min(slot_count - 1) as f64 / (slot_count - 1) as f64),
-                    !x.trim().is_empty(),
+                    !grapheme_safe_trim(x).is_empty(),
                 )),
             },
         }
@@ -1367,7 +1368,7 @@ fn build_horizontal_axis_labels<'a>(
         for datum in &series.data {
             let raw_x = datum.x.as_ref();
             charge_authored_bytes(resources, raw_x)?;
-            let x = raw_x.trim();
+            let x = grapheme_safe_trim(raw_x);
             if x.is_empty() {
                 continue;
             }
@@ -1390,9 +1391,9 @@ fn build_horizontal_axis_labels<'a>(
                     phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
                 })?;
             let x = match &datum.x {
-                Cow::Borrowed(value) => Cow::Borrowed((*value).trim()),
+                Cow::Borrowed(value) => Cow::Borrowed(grapheme_safe_trim(value)),
                 Cow::Owned(value) => {
-                    let x = value.trim();
+                    let x = grapheme_safe_trim(value);
                     charge_authored_bytes_count(resources, x.len().max(1))?;
                     resources.check_usage(0, 0)?;
                     let mut owned = String::new();

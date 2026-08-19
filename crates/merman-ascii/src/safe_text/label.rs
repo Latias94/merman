@@ -749,37 +749,24 @@ fn normalized_label_selection(
     let mut offset = 0usize;
     let mut start = None;
     let mut end = 0usize;
-    let mut scalar_iteration = 0usize;
     visit_label_tokens(raw, break_policy, checkpoint, |token, checkpoint| {
         with_token_trim_text(token, |text| {
-            for (relative, ch) in text.char_indices() {
-                if scalar_iteration.is_multiple_of(LABEL_TOKEN_CHECKPOINT_INTERVAL) {
-                    checkpoint()?;
-                }
-                scalar_iteration = scalar_iteration.wrapping_add(1);
-                if ch.is_whitespace() {
-                    continue;
-                }
-                let absolute = checked_add(
-                    resources,
-                    AsciiResourceLimitId::MaxOutputBytes,
-                    offset,
-                    relative,
-                )?;
-                start.get_or_insert(absolute);
-                end = checked_add(
-                    resources,
-                    AsciiResourceLimitId::MaxOutputBytes,
-                    absolute,
-                    ch.len_utf8(),
-                )?;
-            }
-            offset = checked_add(
+            checkpoint()?;
+            let token_end = checked_add(
                 resources,
                 AsciiResourceLimitId::MaxOutputBytes,
                 offset,
                 text.len(),
             )?;
+            let trimmable = match token {
+                LabelToken::Segment(segment) => segment.is_trim_whitespace(),
+                LabelToken::AuthoredBreak(_) => false,
+            };
+            if !trimmable {
+                start.get_or_insert(offset);
+                end = token_end;
+            }
+            offset = token_end;
             Ok::<(), AsciiError>(())
         })
     })?;
@@ -1584,6 +1571,25 @@ mod cancellation_tests {
     use super::*;
     use crate::operation::AsciiExecution;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn trimmed_label_keeps_a_complete_leading_grapheme() {
+        let policy = AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        let resources = ResourceContext::new(policy);
+        let label = try_build_normalized_label_lines(
+            " \u{301}word ",
+            TerminalWidthProfile::Unicode,
+            true,
+            None,
+            &resources,
+        )
+        .expect("grapheme-safe label trimming should succeed")
+        .expect("the non-whitespace grapheme should remain");
+
+        assert_eq!(label.into_parts(), (vec![" \u{301}word".to_string()], 5));
+    }
 
     #[test]
     fn admitted_label_materialization_checks_cancellation_inside_the_replay() {

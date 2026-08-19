@@ -33,11 +33,11 @@ pub(crate) use layout::{
     NormalizedTextPlan, NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
     try_plan_normalized_text, try_plan_normalized_trimmed_text, try_repeat_layout_char,
 };
-pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub(crate) use normalization::{
-    terminal_single_line_text_requires_normalization, terminal_text_is_blank,
+    grapheme_safe_trim, terminal_single_line_text_requires_normalization, terminal_text_is_blank,
     terminal_text_requires_normalization,
 };
+pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 #[cfg(test)]
 pub(crate) use width::SafeText;
 pub(crate) use width::{SafeLine, terminal_char_display_width, terminal_line_display_width};

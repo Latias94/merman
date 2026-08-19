@@ -270,6 +270,14 @@ pub(super) enum NormalizedSegmentKind<'a> {
 }
 
 impl NormalizedSegment<'_> {
+    pub(super) fn is_trim_whitespace(self) -> bool {
+        match self.kind {
+            NormalizedSegmentKind::Grapheme(grapheme) => grapheme_is_trim_whitespace(grapheme),
+            NormalizedSegmentKind::LineBreak => true,
+            NormalizedSegmentKind::VisibleEscape(_) => false,
+        }
+    }
+
     pub(super) fn check_grapheme_budget(self, resources: &ResourceContext) -> Result<()> {
         resources.check_grapheme_bytes(self.source_grapheme_bytes)?;
         match self.kind {
@@ -306,6 +314,30 @@ impl NormalizedSegment<'_> {
             NormalizedSegmentKind::LineBreak => "\n",
         }
     }
+}
+
+/// Applies `str::trim`-like semantics without placing a slice boundary inside a grapheme.
+pub(crate) fn grapheme_safe_trim(value: &str) -> &str {
+    let mut start = 0usize;
+    let mut end = 0usize;
+    let mut retained = false;
+
+    for (offset, grapheme) in value.grapheme_indices(true) {
+        if grapheme_is_trim_whitespace(grapheme) {
+            if !retained {
+                start = offset + grapheme.len();
+            }
+        } else {
+            retained = true;
+            end = offset + grapheme.len();
+        }
+    }
+
+    if retained { &value[start..end] } else { "" }
+}
+
+fn grapheme_is_trim_whitespace(grapheme: &str) -> bool {
+    grapheme.chars().all(char::is_whitespace)
 }
 
 pub(super) fn visit_normalized_segments<'a, E>(

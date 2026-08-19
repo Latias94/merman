@@ -18,7 +18,8 @@ use crate::resource::AsciiResourceLimitId;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
     ComposedTextPlan, DeferredTextLine, DeferredTextPart, DeferredTextRegistry, charge_text_layout,
-    terminal_single_line_text_requires_normalization, terminal_text_requires_normalization,
+    grapheme_safe_trim, terminal_single_line_text_requires_normalization,
+    terminal_text_requires_normalization,
 };
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
@@ -1085,7 +1086,7 @@ impl<'a> ClassMemberTextPlan<'a> {
         let parameters = if callable {
             resources.charge_layout_work(member.parameters.len().max(1))?;
             Some(plan_canonical_generic_types(
-                member.parameters.trim(),
+                grapheme_safe_trim(&member.parameters),
                 resources,
             )?)
         } else {
@@ -1094,7 +1095,7 @@ impl<'a> ClassMemberTextPlan<'a> {
         let return_type = if callable && !member.return_type.is_empty() {
             resources.charge_layout_work(member.return_type.len().max(1))?;
             Some(plan_canonical_generic_types(
-                member.return_type.trim(),
+                grapheme_safe_trim(&member.return_type),
                 resources,
             )?)
         } else {
@@ -1382,28 +1383,34 @@ fn external_namespace_note_summary_rows<'a>(
     let mut rows = Vec::new();
     rows.try_reserve_exact(model.notes.len())
         .map_err(|_| layout_allocation_failed())?;
-    for note in model
-        .notes
-        .iter()
-        .filter(|note| note_explicit_namespace_id(model, note, namespace_facade_aliases).is_none())
-    {
+    for (declaration_index, note) in model.notes.iter().enumerate().filter(|(_, note)| {
+        note_explicit_namespace_id(model, note, namespace_facade_aliases).is_none()
+    }) {
         let Some(target_id) = note.class_id.as_deref() else {
             continue;
         };
         let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
         if model.classes.contains_key(target_id) {
-            let source = deferred_text.try_register(
-                ComposedTextPlan::try_new(resources, 1, |push| push("note"))?,
-                width_profile,
-                resources,
-            )?;
+            let declaration_ordinal = declaration_index
+                .checked_add(1)
+                .ok_or_else(|| work_overflow(resources))?;
+            let source = deferred_text.try_register_parts(width_profile, resources, 7, |push| {
+                push(DeferredTextPart::Static("note(index="))?;
+                push(DeferredTextPart::Decimal(declaration_ordinal))?;
+                push(DeferredTextPart::Static(", text(bytes="))?;
+                push(DeferredTextPart::Decimal(note.text.len()))?;
+                push(DeferredTextPart::Static(")="))?;
+                push(DeferredTextPart::QuotedText(&note.text))?;
+                push(DeferredTextPart::Static(")"))
+            })?;
             let connector = deferred_text.try_register(
                 ComposedTextPlan::try_new(resources, 1, |push| push(".."))?,
                 width_profile,
                 resources,
             )?;
-            let target = deferred_text.try_register(
-                ComposedTextPlan::try_new(resources, 1, |push| push(target_id))?,
+            let target = deferred_text.try_register_framed_value(
+                "id(bytes=",
+                target_id,
                 width_profile,
                 resources,
             )?;

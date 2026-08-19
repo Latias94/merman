@@ -132,13 +132,9 @@ pub(crate) fn try_plan_normalized_trimmed_text<'a>(
         let text = segment.text(&mut buffer);
         resources.charge_layout_work(text.len().max(1))?;
         let segment_end = resources.checked_work_add(offset, text.len())?;
-        for (relative, ch) in text.char_indices() {
-            if ch.is_whitespace() {
-                continue;
-            }
-            let absolute = resources.checked_work_add(offset, relative)?;
-            start.get_or_insert(absolute);
-            end = resources.checked_work_add(absolute, ch.len_utf8())?;
+        if !segment.is_trim_whitespace() {
+            start.get_or_insert(offset);
+            end = segment_end;
         }
         offset = segment_end;
         Ok::<(), AsciiError>(())
@@ -276,21 +272,20 @@ fn layout_allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use crate::text::normalize_optional_text;
     use merman_core::resources::ResourceProfile;
     use merman_core::{OperationControl, OperationPhase};
 
     #[test]
-    fn normalized_trimmed_plan_matches_existing_optional_text_semantics() {
+    fn normalized_trimmed_plan_preserves_grapheme_boundaries() {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        for raw in [
-            "",
-            "   ",
-            " alpha ",
-            "\r\n alpha \r\n",
-            "\talpha\t",
-            " \u{301}word ",
-            "  边\u{7}  ",
+        for (raw, expected) in [
+            ("", None),
+            ("   ", None),
+            (" alpha ", Some("alpha")),
+            ("\r\n alpha \r\n", Some("alpha")),
+            ("\talpha\t", Some("\\u{9}alpha\\u{9}")),
+            (" \u{301}word ", Some(" \u{301}word")),
+            ("  边\u{7}  ", Some("边\\u{7}")),
         ] {
             let resources = ResourceContext::new(policy);
             let plan =
@@ -308,7 +303,7 @@ mod tests {
                 }
                 None => None,
             };
-            assert_eq!(actual, normalize_optional_text(Some(raw)), "raw={raw:?}");
+            assert_eq!(actual.as_deref(), expected, "raw={raw:?}");
         }
     }
 
