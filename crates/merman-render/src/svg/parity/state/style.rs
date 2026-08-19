@@ -69,11 +69,8 @@ pub(super) fn write_state_theme_effect_application(
     format!("url(#{scoped_filter_id})")
 }
 
-pub(super) fn state_markers(
-    out: &mut impl SvgOutput,
-    diagram_id: &str,
-    style_plan: &crate::state::StateStylePlan,
-) {
+pub(super) fn state_markers(out: &mut impl SvgOutput, diagram_id: &str, ctx: &StateRenderCtx<'_>) {
+    let style_plan = ctx.style_plan;
     let compatibility = style_plan.compatibility();
     let diagram_id = escape_xml(diagram_id);
     let transition_color = compatibility.transition_color.as_str();
@@ -99,8 +96,12 @@ pub(super) fn state_markers(
         );
     }
 
-    for edge in style_plan.edges() {
-        let (Some(ordinal), style) = (edge.marker_ordinal(), edge.marker_style_attr()) else {
+    for edge in ctx.edges {
+        let Some(edge_style) = style_plan.edge(edge.id.as_str()) else {
+            continue;
+        };
+        let (Some(ordinal), style) = (edge_style.marker_ordinal(), edge_style.marker_style_attr())
+        else {
             continue;
         };
         if style.is_empty() {
@@ -109,6 +110,7 @@ pub(super) fn state_markers(
         let marker_id = escape_attr(&state_transition_marker_id(diagram_id.as_str(), ordinal));
         let style = escape_attr(style);
         let transition_color = escape_attr(transition_color);
+        let terminal_start = out.len();
         if compatibility.is_neo() {
             let _ = write!(
                 out,
@@ -122,6 +124,11 @@ pub(super) fn state_markers(
                 marker_id, transition_color, transition_color, style
             );
         }
+        style_plan.record_edge_marker_terminal_emission(
+            &mut ctx.theme_receipt.borrow_mut(),
+            edge.id.as_str(),
+            terminal_start..out.len(),
+        );
     }
 }
 

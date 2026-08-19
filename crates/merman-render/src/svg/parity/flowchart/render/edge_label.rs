@@ -456,7 +456,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math(owner, label_text)
+                sidecar.prepared_math_for_terminal(owner, label_text)
             });
         flowchart_label_html_with_prepared_math(
             label_text,
@@ -727,7 +727,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math(owner, label_text)
+                sidecar.prepared_math_for_terminal(owner, label_text)
             });
         let label_html = flowchart_label_html_with_prepared_math(
             label_text,

@@ -6182,8 +6182,9 @@ fn require_portable_accepts_sequence_lifeline_stroke_width_after_actor_line_emis
     assert!(
         rendered
             .svg()
-            .contains("#merman .actor-line{stroke-width:2px;}")
+            .contains("#merman .actor-line{stroke:#9370DB;stroke-width:2px;}")
     );
+    assert_eq!(rendered.svg().matches("#merman .actor-line{").count(), 1);
     assert_eq!(rendered.svg().matches(r#"data-et="life-line""#).count(), 2);
     assert_eq!(
         rendered.style_report().verification(),
@@ -7019,24 +7020,24 @@ fn sequence_unsupported_message_gradient_fails_closed_after_line_emission() {
 
 #[test]
 fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
-    for (style, expected_css) in [
+    for (style, expected_declaration) in [
         (
             ThemeStylePatch::default()
                 .with_fill(CanvasPaint::solid("#ef4444").expect("valid Note fill")),
-            "#merman .note{fill:#ef4444;}",
+            "fill:#ef4444;",
         ),
         (
             ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
-            "#merman .note{fill:transparent;}",
+            "fill:transparent;",
         ),
         (
             ThemeStylePatch::default()
                 .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Note stroke")),
-            "#merman .note{stroke:#2563eb;}",
+            "stroke:#2563eb;",
         ),
         (
             ThemeStylePatch::default().with_stroke(CanvasPaint::Transparent),
-            "#merman .note{stroke:transparent;}",
+            "stroke:transparent;",
         ),
     ] {
         let theme = DiagramThemeCompiler::new()
@@ -7066,11 +7067,22 @@ fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("Sequence Note paint should be proven by the rect writer");
 
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Sequence SVG");
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Sequence stylesheet");
+        let note_rule = css
+            .split("#merman .note{")
+            .nth(1)
+            .and_then(|rest| rest.split('}').next())
+            .expect("one final Sequence Note rule");
         assert!(
-            rendered.svg().contains(expected_css),
-            "Sequence SVG should contain the typed Note paint: {}",
-            rendered.svg()
+            note_rule.contains(expected_declaration),
+            "Sequence Note rule should contain {expected_declaration:?}: {note_rule}"
         );
+        assert_eq!(css.matches("#merman .note{").count(), 1);
         assert!(
             rendered.svg().contains(r#"data-et="note" data-id="i"#),
             "Sequence SVG should contain the terminal Note rect: {}",
@@ -7681,17 +7693,18 @@ fn sequence_actor_stroke_does_not_recolor_autonumber_carrier_or_message_lines() 
         svg.contains(r#"stroke-width="0" marker-start="url(#merman-sequencenumber)""#),
         "fixture must contain the unclassified autonumber carrier: {svg}"
     );
-    let typed_rules_start = svg
-        .find("#merman .actor{stroke:#2563eb;}")
-        .expect("typed Actor stroke rule should be emitted");
-    let typed_rules_end = svg[typed_rules_start..]
-        .find("#merman g rect.rect")
-        .map(|offset| typed_rules_start + offset)
-        .expect("typed Actor stroke rules should precede the next legacy rule");
-    let typed_rules = &svg[typed_rules_start..typed_rules_end];
-    assert!(!typed_rules.contains("#merman line"), "{typed_rules}");
-    assert!(!typed_rules.contains("messageLine"), "{typed_rules}");
-    assert!(!typed_rules.contains("sequencenumber"), "{typed_rules}");
+    assert!(svg.contains("#merman .actor{stroke:#2563eb;"), "{svg}");
+    assert_eq!(svg.matches("#merman .actor{").count(), 1);
+    assert!(
+        svg.contains("#merman .messageLine0,#merman .messageLine1{stroke:#333;}"),
+        "{svg}"
+    );
+    assert!(
+        svg.contains("#merman [id$=\"-sequencenumber\"]{fill:#333;}"),
+        "{svg}"
+    );
+    assert!(!svg.contains("messageLine1{stroke:#2563eb"), "{svg}");
+    assert!(!svg.contains("sequencenumber\"]{fill:#2563eb"), "{svg}");
     assert_eq!(
         rendered.style_report().theme_applied_mechanisms(),
         &[FamilyThemeMechanismKey::Rule {
@@ -8610,9 +8623,14 @@ fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
         rendered
             .style_report()
             .theme_applied_mechanisms()
-            .contains(&FamilyThemeMechanismKey::Typography)
+            .contains(&FamilyThemeMechanismKey::Typography),
+        "State typography terminal evidence was not sealed: {:?}\n{}",
+        rendered.style_report(),
+        rendered.svg(),
     );
     assert!(rendered.style_report().theme_residuals().is_empty());
+    roxmltree::Document::parse(rendered.svg())
+        .expect("State typography output must remain well-formed XML");
     assert!(rendered.svg().contains("font-size:26px"));
     assert!(
         rendered.svg().contains("font-size:26px !important"),
@@ -10686,6 +10704,147 @@ fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
 
 #[cfg(feature = "math")]
 #[test]
+fn compiled_flowchart_math_survives_the_canonical_resvg_output_policy() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare compiled Flowchart math")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render compiled Flowchart math");
+    let pipeline = crate::svg::SvgOutputPolicy {
+        preset: SvgPipelinePreset::ResvgSafe,
+        ..crate::svg::SvgOutputPolicy::default()
+    }
+    .pipeline();
+
+    let finalized = rendered
+        .finalize_resvg(&pipeline)
+        .expect("canonical ResvgSafe policy must retain renderer-owned math evidence");
+    let svg = finalized.svg().as_str();
+
+    assert!(!svg.contains("<foreignObject"), "{svg}");
+    assert!(!svg.contains("$$x^2$$"), "{svg}");
+    assert!(svg.contains(r#"class="merman-prepared-math-native""#));
+    assert_eq!(
+        finalized
+            .svg()
+            .prepared_math_terminal_receipt()
+            .expect("canonical policy math receipt")
+            .occurrence_count(),
+        1
+    );
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare compiled Flowchart math")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render compiled Flowchart math")
+        .apply_pipeline(
+            &SvgPipeline::parity()
+                .with_postprocessor(crate::svg::RootBackgroundPostprocessor::new("#111827")),
+        )
+        .expect("draft output may carry invalidated math evidence");
+
+    let error = match rendered.finalize_resvg(&SvgPipeline::resvg_safe()) {
+        Ok(_) => panic!("native projection must not reuse invalidated prepared-math evidence"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("prepared-math evidence was invalidated"),
+        "{error}"
+    );
+}
+
+#[test]
+fn declining_math_backend_fails_closed_for_native_flowchart_and_sequence_outputs() {
+    for (diagram_type, source) in [
+        ("flowchart", "flowchart TD\nA[\"$$x$$\"] --> B[Done]\n"),
+        (
+            "sequence",
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x$$\n",
+        ),
+    ] {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"));
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_math_renderer(std::sync::Arc::new(crate::math::NoopMathRenderer))
+            .begin_session()
+            .unwrap();
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare {diagram_type} math: {error}"))
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render {diagram_type} math: {error}"));
+
+        assert!(rendered.svg().contains("$$x$$"), "{}", rendered.svg());
+        let error = match rendered.finalize_resvg(&SvgPipeline::resvg_safe()) {
+            Ok(_) => panic!("{diagram_type} declined math unexpectedly finalized for native SVG"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("native-unavailable"),
+            "{diagram_type}: {error}"
+        );
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_flowchart_unmatched_math_delimiter_remains_plain_in_resvg() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "flowchart TD\nA[\"literal $$\"] --> B[Done]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Flowchart unmatched delimiter")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Flowchart unmatched delimiter");
+
+    assert!(rendered.svg().contains("literal $$"));
+    assert!(!rendered.svg().contains(r#"class="merman-prepared-math""#));
+
+    let finalized = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("an unmatched delimiter is ordinary text, not missing native math");
+    assert!(finalized.svg().as_str().contains("literal $$"));
+    assert!(finalized.svg().prepared_math_terminal_receipt().is_none());
+}
+
+#[cfg(feature = "math")]
+#[test]
 fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(
@@ -10727,6 +10886,263 @@ fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
         "{svg}"
     );
     assert!(svg.contains("<path"), "{svg}");
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_sequence_unmatched_math_delimiter_remains_plain_in_resvg() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: literal $$\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Sequence source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence unmatched delimiter")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence unmatched delimiter");
+
+    assert!(rendered.svg().contains("literal $$"));
+    assert!(!rendered.svg().contains(r#"class="merman-prepared-math""#));
+
+    let finalized = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("an unmatched delimiter is ordinary text, not missing native math");
+    assert!(finalized.svg().as_str().contains("literal $$"));
+    assert!(finalized.svg().prepared_math_terminal_receipt().is_none());
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_sequence_mixed_math_with_unmatched_delimiter_stays_native_unavailable() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: valid $$x$$<br>literal $$\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Sequence mixed math source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence mixed math")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence mixed math");
+
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"data-merman-prepared-math-native="unavailable""#)
+    );
+    let error = match rendered.finalize_resvg(&SvgPipeline::resvg_safe()) {
+        Ok(_) => panic!("mixed prose and math has no renderer-owned native projection yet"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("native projection is unavailable"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissions() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nactor A as $$x$$\nparticipant B\nA->>B: hi\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Sequence actor-man source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare compiled Sequence actor-man math")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render compiled Sequence actor-man math");
+
+    assert_eq!(
+        rendered
+            .svg()
+            .matches(r#"data-merman-prepared-math-native="v1""#)
+            .count(),
+        2,
+        "the mirrored top and bottom actor-man labels must share one prepared occurrence"
+    );
+    assert!(!rendered.svg().contains("$$x$$"));
+
+    let finalized = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("project both actor-man math labels before removing foreignObject");
+    let svg = finalized.svg().as_str();
+
+    assert!(!svg.contains("<foreignObject"), "{svg}");
+    assert!(!svg.contains("<template"), "{svg}");
+    assert!(!svg.contains("$$x$$"), "{svg}");
+    assert_eq!(
+        svg.matches(r#"class="merman-prepared-math-native""#)
+            .count(),
+        2,
+        "{svg}"
+    );
+    assert_eq!(
+        finalized
+            .svg()
+            .prepared_math_terminal_receipt()
+            .expect("actor-man terminal math receipt")
+            .occurrence_count(),
+        1,
+        "two mirrored terminal emissions belong to one semantic actor occurrence"
+    );
+    assert!(svg.contains("<path"), "{svg}");
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_sequence_multiline_participant_math_expands_each_terminal_actor_box() {
+    let formula = "$$x$$<br>$$x$$<br>$$x$$<br>$$x$$<br>$$x$$<br>$$x$$";
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            &format!("sequenceDiagram\nparticipant A as {formula}\nparticipant B\nA->>B: hi\n"),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Sequence multiline participant source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare multiline Sequence participant math")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render multiline Sequence participant math");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("well-formed Sequence SVG");
+    let parse_length = |node: roxmltree::Node<'_, '_>, name: &str| {
+        node.attribute(name)
+            .expect("expected geometry attribute")
+            .parse::<f64>()
+            .expect("finite numeric geometry")
+    };
+    let actor_boxes = document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "rect"
+                && node.attribute("name") == Some("A")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "actor-top" || token == "actor-bottom")
+                })
+        })
+        .map(|node| {
+            let y = parse_length(node, "y");
+            (y, y + parse_length(node, "height"))
+        })
+        .collect::<Vec<_>>();
+    let math_boxes = document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "foreignObject"
+                && node.descendants().any(|descendant| {
+                    descendant.attribute("data-merman-prepared-math-occurrence")
+                        == Some("sequence/actor-label/0")
+                })
+        })
+        .map(|node| {
+            let y = parse_length(node, "y");
+            (y, y + parse_length(node, "height"))
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(actor_boxes.len(), 2);
+    assert_eq!(math_boxes.len(), 2);
+    assert!(
+        math_boxes.iter().all(|(math_top, math_bottom)| {
+            actor_boxes.iter().any(|(actor_top, actor_bottom)| {
+                *math_top >= *actor_top - 0.01 && *math_bottom <= *actor_bottom + 0.01
+            })
+        }),
+        "prepared math boxes {math_boxes:?} must fit terminal actor boxes {actor_boxes:?}"
+    );
+
+    let finalized = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("project both expanded participant labels");
+    assert!(!finalized.svg().as_str().contains("<switch"));
+    assert!(!finalized.svg().as_str().contains("$$x$$"));
+    assert_eq!(
+        finalized
+            .svg()
+            .as_str()
+            .matches(r#"class="merman-prepared-math-native""#)
+            .count(),
+        2
+    );
+    assert_eq!(
+        finalized
+            .svg()
+            .prepared_math_terminal_receipt()
+            .expect("multiline participant terminal receipt")
+            .occurrence_count(),
+        1
+    );
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_class_and_mindmap_math_fail_closed_until_their_native_projection_is_wired() {
+    for (diagram_type, source) in [
+        ("class", "classDiagram\nclass Formula[\"$$x^2$$\"]\n"),
+        (
+            "mindmap",
+            "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    formula[\"$$x^2$$\"]\n",
+        ),
+    ] {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap_or_else(|| panic!("{diagram_type} source should produce a render model"));
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_compiled_math_renderer()
+            .begin_session()
+            .unwrap();
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare {diagram_type} math: {error}"))
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render {diagram_type} math: {error}"));
+
+        assert!(rendered.svg().contains("<path"), "{}", rendered.svg());
+        assert!(
+            rendered
+                .svg()
+                .contains(crate::math::BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE),
+            "{}",
+            rendered.svg()
+        );
+        let error = match rendered.finalize_resvg(&SvgPipeline::resvg_safe()) {
+            Err(error) => error,
+            Ok(_) => panic!("{diagram_type} browser-only math unexpectedly finalized for resvg"),
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("browser-only math has no renderer-owned native projection"),
+            "{diagram_type}: {error}"
+        );
+    }
 }
 
 #[test]

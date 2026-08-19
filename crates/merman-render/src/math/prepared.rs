@@ -15,7 +15,7 @@ use std::sync::Arc;
 use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
 use merman_core::{MermaidConfig, OperationPhase};
 
-use super::{MathRenderer, PreparedMathHtmlLabel};
+use super::MathRenderer;
 use crate::resources::{
     OperationWorkError, OperationWorkMeter, RenderResourcePolicy, RenderResourceProfile,
 };
@@ -24,8 +24,70 @@ use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 pub(crate) const PREPARED_MATH_CLASS_ATTRIBUTE: &str = r#"class="merman-prepared-math""#;
 pub(crate) const PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE: &str =
     r#"data-merman-prepared-math-native="v1""#;
+pub(crate) const BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE: &str =
+    r#"data-merman-math-native="unavailable""#;
+pub(crate) const PREPARED_MATH_OCCURRENCE_ATTRIBUTE: &str = "data-merman-prepared-math-occurrence";
+pub(crate) const PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE: &str =
+    r#"data-merman-prepared-math-switch="v1""#;
 pub(crate) const PREPARED_MATH_PROJECTION_TEMPLATE_OPEN: &str =
     r#"<template data-merman-prepared-math-projection="v1">"#;
+
+#[derive(Debug)]
+struct RawPreparedMathLabel {
+    html: String,
+    metrics: TextMetrics,
+    max_line_height_px: f64,
+    max_math_height_px: Option<f64>,
+    native_svg: Option<String>,
+}
+
+impl RawPreparedMathLabel {
+    fn new(html: impl Into<String>, metrics: TextMetrics) -> Self {
+        let max_line_height_px = metrics.height / metrics.line_count.max(1) as f64;
+        Self::with_max_line_height(html, metrics, max_line_height_px, None)
+    }
+
+    fn with_max_line_height(
+        html: impl Into<String>,
+        metrics: TextMetrics,
+        max_line_height_px: f64,
+        max_math_height_px: Option<f64>,
+    ) -> Self {
+        Self {
+            html: html.into(),
+            metrics,
+            max_line_height_px,
+            max_math_height_px,
+            native_svg: None,
+        }
+    }
+
+    fn with_native_svg(
+        html: impl Into<String>,
+        metrics: TextMetrics,
+        max_line_height_px: f64,
+        max_math_height_px: f64,
+        native_svg: impl Into<String>,
+    ) -> Self {
+        Self {
+            html: html.into(),
+            metrics,
+            max_line_height_px,
+            max_math_height_px: Some(max_math_height_px),
+            native_svg: Some(native_svg.into()),
+        }
+    }
+
+    fn into_parts(self) -> (String, TextMetrics, f64, Option<f64>, Option<String>) {
+        (
+            self.html,
+            self.metrics,
+            self.max_line_height_px,
+            self.max_math_height_px,
+            self.native_svg,
+        )
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MathLabelShell {
@@ -43,6 +105,7 @@ pub(crate) struct PrepareMathLabelRequest<'a> {
     max_width_px: Option<f64>,
     wrap_mode: WrapMode,
     shell: MathLabelShell,
+    occurrence_id: Option<&'a super::PreparedMathOccurrenceId>,
     owner_retained_bytes: usize,
 }
 
@@ -64,6 +127,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
             max_width_px,
             wrap_mode,
             shell: MathLabelShell::Flowchart,
+            occurrence_id: None,
             owner_retained_bytes: 0,
         }
     }
@@ -75,6 +139,14 @@ impl<'a> PrepareMathLabelRequest<'a> {
 
     pub(crate) const fn with_owner_retained_bytes(mut self, retained_bytes: usize) -> Self {
         self.owner_retained_bytes = retained_bytes;
+        self
+    }
+
+    pub(crate) const fn with_occurrence_id(
+        mut self,
+        occurrence_id: &'a super::PreparedMathOccurrenceId,
+    ) -> Self {
+        self.occurrence_id = Some(occurrence_id);
         self
     }
 
@@ -93,6 +165,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
             max_width_px: None,
             wrap_mode: WrapMode::HtmlLike,
             shell: MathLabelShell::Sequence,
+            occurrence_id: None,
             owner_retained_bytes: 0,
         }
     }
@@ -102,7 +175,10 @@ impl<'a> PrepareMathLabelRequest<'a> {
 pub(crate) struct PreparedMathLabel {
     metrics: TextMetrics,
     max_line_height_px: f64,
+    max_math_height_px: Option<f64>,
     browser_xhtml: Arc<str>,
+    occurrence_id: Option<super::PreparedMathOccurrenceId>,
+    projection_fingerprint: Option<super::PreparedMathProjectionFingerprint>,
 }
 
 impl PreparedMathLabel {
@@ -111,7 +187,10 @@ impl PreparedMathLabel {
         Self {
             metrics,
             max_line_height_px: metrics.height,
+            max_math_height_px: None,
             browser_xhtml: Arc::from("<span/>"),
+            occurrence_id: None,
+            projection_fingerprint: None,
         }
     }
 
@@ -123,14 +202,40 @@ impl PreparedMathLabel {
         self.max_line_height_px
     }
 
+    pub(crate) const fn max_math_height_px(&self) -> Option<f64> {
+        self.max_math_height_px
+    }
+
     pub(crate) fn browser_xhtml(&self) -> &str {
         &self.browser_xhtml
+    }
+
+    pub(crate) fn expectation(
+        &self,
+        expected_emissions: usize,
+    ) -> Option<super::PreparedMathExpectation> {
+        let occurrence_id = self.occurrence_id.clone()?;
+        Some(match self.projection_fingerprint {
+            Some(fingerprint) => super::PreparedMathExpectation::available(
+                occurrence_id,
+                fingerprint,
+                expected_emissions,
+            ),
+            None => super::PreparedMathExpectation::unavailable(occurrence_id, expected_emissions),
+        })
     }
 
     /// Exact bytes owned by this artifact under the prepared-math accounting contract.
     pub(crate) fn retained_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             .checked_add(self.browser_xhtml.len())
+            .and_then(|bytes| {
+                bytes.checked_add(
+                    self.occurrence_id
+                        .as_ref()
+                        .map_or(0, |occurrence_id| occurrence_id.as_str().len()),
+                )
+            })
             .unwrap_or(usize::MAX)
     }
 }
@@ -376,24 +481,47 @@ fn prepare_external(
     // The compatibility backend returns an allocated String, so its first output allocation is
     // necessarily outside host admission. Family sidecars reserve the exact retained bytes before
     // keeping the result; final bounded SVG emission remains authoritative for serialized bytes.
-    let prepared = match request.shell {
-        MathLabelShell::Flowchart => renderer.prepare_html_label_with_resolved_style(
-            request.text,
-            request.config,
-            request.style,
-            request.foreground,
-            request.text_measurer,
-            request.max_width_px,
-            request.wrap_mode,
-        ),
-        MathLabelShell::Sequence => renderer.prepare_sequence_html_label_with_resolved_style(
-            request.text,
-            request.config,
-            request.style,
-            request.foreground,
-            request.text_measurer,
-        ),
+    let metrics = match request.shell {
+        MathLabelShell::Flowchart => renderer
+            .measure_html_label(
+                request.text,
+                request.config,
+                request.style,
+                request.max_width_px,
+                request.wrap_mode,
+            )
+            .or_else(|| {
+                request.text_measurer.map(|measurer| {
+                    measurer.measure_wrapped(
+                        request.text,
+                        request.style,
+                        request.max_width_px,
+                        request.wrap_mode,
+                    )
+                })
+            }),
+        MathLabelShell::Sequence => renderer
+            .measure_sequence_html_label_with_style(request.text, request.config, request.style)
+            .or_else(|| {
+                request.text_measurer.map(|measurer| {
+                    measurer.measure_wrapped(
+                        request.text,
+                        request.style,
+                        None,
+                        WrapMode::SvgLikeSingleRun,
+                    )
+                })
+            }),
     };
+    let html = match request.shell {
+        MathLabelShell::Flowchart => renderer.render_html_label(request.text, request.config),
+        MathLabelShell::Sequence => {
+            renderer.render_sequence_html_label(request.text, request.config)
+        }
+    };
+    let prepared = metrics
+        .zip(html)
+        .map(|(metrics, html)| RawPreparedMathLabel::new(html, metrics));
     Ok(match prepared {
         Some(prepared) => match finish_external_preparation(prepared, request, work_meter)? {
             Some(prepared) => MathPreparationOutcome::Prepared(Arc::new(prepared)),
@@ -406,15 +534,17 @@ fn prepare_external(
 }
 
 fn finish_external_preparation(
-    prepared: PreparedMathHtmlLabel,
+    prepared: RawPreparedMathLabel,
     request: PrepareMathLabelRequest<'_>,
     work_meter: &Arc<OperationWorkMeter>,
 ) -> Result<Option<PreparedMathLabel>, OperationWorkError> {
-    let (html, metrics, max_line_height_px, native_svg) = prepared.into_parts_with_native();
+    let (html, metrics, max_line_height_px, max_math_height_px, native_svg) = prepared.into_parts();
     if !valid_metrics(&metrics)
         || !max_line_height_px.is_finite()
         || max_line_height_px < 0.0
         || max_line_height_px > metrics.height
+        || max_math_height_px
+            .is_some_and(|height| !height.is_finite() || height < 0.0 || height > metrics.height)
     {
         return Ok(None);
     }
@@ -422,10 +552,16 @@ fn finish_external_preparation(
     else {
         return Ok(None);
     };
+    let projection_fingerprint = native_svg
+        .as_deref()
+        .map(super::PreparedMathProjectionFingerprint::from_projection);
     let artifact = PreparedMathLabel {
         metrics,
         max_line_height_px,
+        max_math_height_px,
         browser_xhtml: Arc::from(browser_xhtml),
+        occurrence_id: request.occurrence_id.cloned(),
+        projection_fingerprint,
     };
     work_meter.preflight_prepared_text_retained_bytes(
         request
@@ -555,6 +691,7 @@ fn browser_payload(
     const NATIVE_PREFIX: &str = r#"<template data-merman-prepared-math-projection="v1">"#;
     const NATIVE_SUFFIX: &str = "</template>";
     const SUFFIX: &str = "</span>";
+    const OCCURRENCE_PREFIX: &str = r#"" data-merman-prepared-math-occurrence=""#;
 
     let prefix = if native_svg.is_some() {
         PREFIX_AVAILABLE
@@ -583,6 +720,13 @@ fn browser_payload(
         .len()
         .checked_add(escaped_style.len())
         .and_then(|bytes| bytes.checked_add(BODY.len()))
+        .and_then(|bytes| {
+            request.occurrence_id.map_or(Some(bytes), |occurrence_id| {
+                bytes
+                    .checked_add(OCCURRENCE_PREFIX.len())
+                    .and_then(|bytes| bytes.checked_add(occurrence_id.as_str().len()))
+            })
+        })
         .and_then(|bytes| {
             native_svg.map_or(Some(bytes), |native_svg| {
                 bytes
@@ -649,6 +793,10 @@ fn browser_payload(
     };
     payload.push_str(prefix);
     payload.push_str(&escaped_style);
+    if let Some(occurrence_id) = request.occurrence_id {
+        payload.push_str(OCCURRENCE_PREFIX);
+        payload.push_str(occurrence_id.as_str());
+    }
     payload.push_str(BODY);
     payload.push_str(&rendered);
     if let Some(native_svg) = native_svg {
@@ -665,6 +813,13 @@ fn prepared_math_retained_prefix(request: PrepareMathLabelRequest<'_>) -> usize 
     request
         .owner_retained_bytes
         .checked_add(std::mem::size_of::<PreparedMathLabel>())
+        .and_then(|bytes| {
+            bytes.checked_add(
+                request
+                    .occurrence_id
+                    .map_or(0, |occurrence_id| occurrence_id.as_str().len()),
+            )
+        })
         .unwrap_or(usize::MAX)
 }
 
@@ -834,7 +989,7 @@ fn prepare_compiled_ratex_pure_html_label(
     formulas: Vec<String>,
     request: PrepareMathLabelRequest<'_>,
     work_meter: &OperationWorkMeter,
-) -> Result<Option<PreparedMathHtmlLabel>, OperationWorkError> {
+) -> Result<Option<RawPreparedMathLabel>, OperationWorkError> {
     let Some(color) = ratex_types::Color::parse(request.foreground) else {
         return Ok(None);
     };
@@ -890,9 +1045,10 @@ fn prepare_compiled_ratex_pure_html_label(
         work_meter,
         browser_html.len().saturating_add(native_svg.len()),
     )?;
-    Ok(Some(PreparedMathHtmlLabel::with_native_svg(
+    Ok(Some(RawPreparedMathLabel::with_native_svg(
         browser_html,
         metrics,
+        max_line_height_px,
         max_line_height_px,
         native_svg,
     )))
@@ -943,12 +1099,26 @@ fn native_math_projection(
 }
 
 #[cfg(feature = "math")]
+fn measure_compiled_mixed_prose(
+    request: PrepareMathLabelRequest<'_>,
+    text_measurer: &dyn TextMeasurer,
+    text: &str,
+    flowchart_max_width_px: Option<f64>,
+) -> TextMetrics {
+    let (max_width_px, wrap_mode) = match request.shell {
+        MathLabelShell::Flowchart => (flowchart_max_width_px, WrapMode::HtmlLike),
+        MathLabelShell::Sequence => (None, WrapMode::SvgLikeSingleRun),
+    };
+    text_measurer.measure_wrapped(text, request.style, max_width_px, wrap_mode)
+}
+
+#[cfg(feature = "math")]
 fn prepare_compiled_ratex_mixed_html_label(
     lines: Vec<ClassifiedMathLine>,
     request: PrepareMathLabelRequest<'_>,
     text_measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
-) -> Result<Option<PreparedMathHtmlLabel>, OperationWorkError> {
+) -> Result<Option<RawPreparedMathLabel>, OperationWorkError> {
     let Some(color) = ratex_types::Color::parse(request.foreground) else {
         return Ok(None);
     };
@@ -958,6 +1128,7 @@ fn prepare_compiled_ratex_mixed_html_label(
     let mut width_px = 0.0_f64;
     let mut height_px = 0.0_f64;
     let mut max_line_height_px = 0.0_f64;
+    let mut max_math_height_px = 0.0_f64;
     let mut line_count = 0usize;
 
     for line in lines {
@@ -974,12 +1145,8 @@ fn prepare_compiled_ratex_mixed_html_label(
                     ClassifiedMathSegment::Formula(_) => None,
                 })
                 .collect::<String>();
-            let metrics = text_measurer.measure_wrapped(
-                &text,
-                request.style,
-                request.max_width_px,
-                WrapMode::HtmlLike,
-            );
+            let metrics =
+                measure_compiled_mixed_prose(request, text_measurer, &text, request.max_width_px);
             if !valid_metrics(&metrics) {
                 return Ok(None);
             }
@@ -1012,12 +1179,8 @@ fn prepare_compiled_ratex_mixed_html_label(
             match segment {
                 ClassifiedMathSegment::Text(text) => {
                     if !text.is_empty() {
-                        let metrics = text_measurer.measure_wrapped(
-                            &text,
-                            request.style,
-                            None,
-                            WrapMode::HtmlLike,
-                        );
+                        let metrics =
+                            measure_compiled_mixed_prose(request, text_measurer, &text, None);
                         if !valid_metrics(&metrics) {
                             return Ok(None);
                         }
@@ -1039,7 +1202,9 @@ fn prepare_compiled_ratex_mixed_html_label(
                         return Ok(None);
                     };
                     line_width_px += rendered.width_em * font_size_px;
-                    line_height_px = line_height_px.max(rendered.height_em * font_size_px);
+                    let math_height_px = rendered.height_em * font_size_px;
+                    line_height_px = line_height_px.max(math_height_px);
+                    max_math_height_px = max_math_height_px.max(math_height_px);
                     preflight_raw_math_output(
                         request,
                         work_meter,
@@ -1065,10 +1230,11 @@ fn prepare_compiled_ratex_mixed_html_label(
     if !valid_metrics(&metrics) || max_line_height_px > metrics.height {
         return Ok(None);
     }
-    Ok(Some(PreparedMathHtmlLabel::with_max_line_height(
+    Ok(Some(RawPreparedMathLabel::with_max_line_height(
         browser_html,
         metrics,
         max_line_height_px,
+        Some(max_math_height_px),
     )))
 }
 
@@ -1082,41 +1248,6 @@ fn charge_formula_work(
         work_meter.charge(1usize.saturating_add(formula.len() / 64))?;
     }
     Ok(())
-}
-
-#[cfg(feature = "math")]
-pub(super) fn prepare_compiled_ratex_html_label(
-    text: &str,
-    style: &TextStyle,
-    foreground: &str,
-    text_measurer: &dyn TextMeasurer,
-    max_width_px: Option<f64>,
-    wrap_mode: WrapMode,
-) -> Option<PreparedMathHtmlLabel> {
-    if wrap_mode != WrapMode::HtmlLike {
-        return None;
-    }
-    let config = MermaidConfig::default();
-    let request = PrepareMathLabelRequest::flowchart(
-        text,
-        &config,
-        style,
-        foreground,
-        max_width_px,
-        wrap_mode,
-    )
-    .with_text_measurer(text_measurer);
-    let work_meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-    match classify_math_label(text, None).ok()? {
-        MathLabelClassification::Pure(formulas) => {
-            prepare_compiled_ratex_pure_html_label(formulas, request, &work_meter).ok()?
-        }
-        MathLabelClassification::Mixed(lines) => {
-            prepare_compiled_ratex_mixed_html_label(lines, request, text_measurer, &work_meter)
-                .ok()?
-        }
-        MathLabelClassification::NotMath => None,
-    }
 }
 
 #[cfg(feature = "math")]
@@ -1301,6 +1432,55 @@ mod tests {
         assert!(!artifact.browser_xhtml().contains("$$"));
         assert!(artifact.browser_xhtml().contains("color:#475569"));
         assert!(artifact.browser_xhtml().contains("rgba(255,0,0,1)"));
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn compiled_mixed_sequence_prose_keeps_svg_single_run_measurement_semantics() {
+        #[derive(Default)]
+        struct RecordingTextMeasurer {
+            modes: std::sync::Mutex<Vec<WrapMode>>,
+        }
+
+        impl TextMeasurer for RecordingTextMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: 13.0,
+                    height: 17.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_wrapped(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+                _max_width: Option<f64>,
+                wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                self.modes.lock().unwrap().push(wrap_mode);
+                self.measure("", &TextStyle::default())
+            }
+        }
+
+        let backend = ConfiguredMathBackend::compiled_ratex();
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let text_measurer = RecordingTextMeasurer::default();
+
+        let outcome = backend
+            .prepare(
+                PrepareMathLabelRequest::sequence("Solve: $$x$$", &config, &style, "#475569")
+                    .with_text_measurer(&text_measurer),
+                &meter(),
+            )
+            .unwrap();
+
+        assert!(outcome.prepared().is_some());
+        assert_eq!(
+            *text_measurer.modes.lock().unwrap(),
+            vec![WrapMode::SvgLikeSingleRun]
+        );
     }
 
     #[derive(Debug, Default)]

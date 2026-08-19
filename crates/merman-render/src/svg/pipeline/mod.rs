@@ -25,6 +25,7 @@ pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
 pub use standalone::{StandaloneSvgArtifact, StandaloneSvgTerminalStatus};
 
 use crate::environment::RenderSession;
+use crate::math::{PreparedMathEvidenceLease, PreparedMathTerminalReceipt};
 use crate::resources::ResourceLimitPhase;
 use crate::text::{PreparedTextEvidenceLease, PreparedTextTerminalReceipt};
 use crate::{Error, Result};
@@ -63,6 +64,9 @@ pub struct ResvgCompatibleSvg {
     prepared_text_evidence: PreparedTextEvidenceLease,
     prepared_text_terminal_receipt: Option<PreparedTextTerminalReceipt>,
     prepared_text_evidence_valid: bool,
+    prepared_math_evidence: PreparedMathEvidenceLease,
+    prepared_math_terminal_receipt: Option<PreparedMathTerminalReceipt>,
+    prepared_math_evidence_valid: bool,
     reference_plan: SvgReferencePlan,
     resource_closure: SvgResourceClosure,
     finalization_report: SvgFinalizationReport,
@@ -196,6 +200,9 @@ impl ResvgCompatibleSvg {
             prepared_text_evidence: PreparedTextEvidenceLease::default(),
             prepared_text_terminal_receipt: None,
             prepared_text_evidence_valid: true,
+            prepared_math_evidence: PreparedMathEvidenceLease::default(),
+            prepared_math_terminal_receipt: None,
+            prepared_math_evidence_valid: true,
             reference_plan,
             resource_closure,
             finalization_report,
@@ -278,6 +285,29 @@ impl ResvgCompatibleSvg {
             .unwrap_or(self.svg.as_str())
     }
 
+    pub(crate) fn attach_prepared_math_evidence(
+        mut self,
+        evidence: PreparedMathEvidenceLease,
+        evidence_valid: bool,
+    ) -> Result<Self> {
+        self.prepared_math_evidence_valid = evidence_valid;
+        self.prepared_math_evidence = if evidence_valid {
+            evidence
+        } else {
+            PreparedMathEvidenceLease::default()
+        };
+        self.prepared_math_terminal_receipt = if self.prepared_math_evidence.is_empty() {
+            None
+        } else {
+            PreparedMathTerminalReceipt::from_terminal_svg(
+                self.native_export_svg(),
+                &self.prepared_math_evidence,
+            )
+            .map_err(|message| Error::svg_postprocess("prepared-math-terminal-receipt", message))?
+        };
+        Ok(self)
+    }
+
     pub(crate) fn prepared_text_label_ledger(
         &self,
     ) -> &[crate::text::PreparedTextLabelLedgerEntry] {
@@ -292,6 +322,16 @@ impl ResvgCompatibleSvg {
 
     pub(crate) const fn prepared_text_evidence_valid(&self) -> bool {
         self.prepared_text_evidence_valid
+    }
+
+    pub(crate) const fn prepared_math_terminal_receipt(
+        &self,
+    ) -> Option<&PreparedMathTerminalReceipt> {
+        self.prepared_math_terminal_receipt.as_ref()
+    }
+
+    pub(crate) const fn prepared_math_evidence_valid(&self) -> bool {
+        self.prepared_math_evidence_valid
     }
 
     /// Projects the sealed artifact to SVG text and discards its export resources and proofs.
@@ -345,6 +385,18 @@ impl fmt::Debug for ResvgCompatibleSvg {
                 "prepared_text_terminal_receipt",
                 &self.prepared_text_terminal_receipt,
             )
+            .field(
+                "prepared_math_occurrence_count",
+                &self.prepared_math_evidence.entries().len(),
+            )
+            .field(
+                "prepared_math_evidence_valid",
+                &self.prepared_math_evidence_valid,
+            )
+            .field(
+                "prepared_math_terminal_receipt",
+                &self.prepared_math_terminal_receipt,
+            )
             .field("reference_plan", &self.reference_plan)
             .field("resource_closure", &self.resource_closure)
             .field("finalization_report", &self.finalization_report)
@@ -362,6 +414,9 @@ impl PartialEq for ResvgCompatibleSvg {
             && self.prepared_text_evidence == other.prepared_text_evidence
             && self.prepared_text_terminal_receipt == other.prepared_text_terminal_receipt
             && self.prepared_text_evidence_valid == other.prepared_text_evidence_valid
+            && self.prepared_math_evidence == other.prepared_math_evidence
+            && self.prepared_math_terminal_receipt == other.prepared_math_terminal_receipt
+            && self.prepared_math_evidence_valid == other.prepared_math_evidence_valid
             && self.reference_plan == other.reference_plan
             && self.resource_closure == other.resource_closure
             && self.finalization_report == other.finalization_report
@@ -384,6 +439,7 @@ pub struct SvgPipeline {
     preset: SvgPipelinePreset,
     postprocessors: Vec<Arc<dyn SvgPostprocessor>>,
     drop_native_duplicate_fallbacks: bool,
+    prepared_math_evidence_preserved: bool,
 }
 
 impl fmt::Debug for SvgPipeline {
@@ -400,6 +456,10 @@ impl fmt::Debug for SvgPipeline {
             .field(
                 "drop_native_duplicate_fallbacks",
                 &self.drop_native_duplicate_fallbacks,
+            )
+            .field(
+                "prepared_math_evidence_preserved",
+                &self.prepared_math_evidence_preserved,
             )
             .finish()
     }
@@ -429,6 +489,7 @@ impl SvgPipeline {
             preset,
             postprocessors: Vec::new(),
             drop_native_duplicate_fallbacks: false,
+            prepared_math_evidence_preserved: true,
         }
     }
 
@@ -445,6 +506,11 @@ impl SvgPipeline {
     /// Returns whether the pipeline can preserve renderer-owned prepared-label locators.
     pub(crate) fn preserves_prepared_text_evidence(&self) -> bool {
         self.postprocessors.is_empty()
+    }
+
+    /// Returns whether the pipeline can preserve renderer-owned prepared-math occurrences.
+    pub(crate) fn preserves_prepared_math_evidence(&self) -> bool {
+        self.prepared_math_evidence_preserved
     }
 
     pub fn preset(&self) -> SvgPipelinePreset {
@@ -471,15 +537,28 @@ impl SvgPipeline {
         P: SvgPostprocessor + 'static,
     {
         self.postprocessors.push(Arc::new(postprocessor));
+        self.prepared_math_evidence_preserved = false;
         self
     }
 
     pub fn with_shared_postprocessor(mut self, postprocessor: Arc<dyn SvgPostprocessor>) -> Self {
         self.postprocessors.push(postprocessor);
+        self.prepared_math_evidence_preserved = false;
         self
     }
 
     pub fn push_postprocessor<P>(&mut self, postprocessor: P)
+    where
+        P: SvgPostprocessor + 'static,
+    {
+        self.postprocessors.push(Arc::new(postprocessor));
+        self.prepared_math_evidence_preserved = false;
+    }
+
+    /// Registers a renderer-owned pass whose implementation is proven not to alter prepared-math
+    /// occurrence markers or native projection bytes. This is intentionally crate-private: opaque
+    /// host postprocessors remain fail-closed through the public registration methods above.
+    pub(crate) fn push_postprocessor_preserving_prepared_math<P>(&mut self, postprocessor: P)
     where
         P: SvgPostprocessor + 'static,
     {
@@ -506,8 +585,18 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<Cow<'a, str>> {
+        self.process_cow_with_metadata_and_math_evidence(svg, metadata, session, None)
+    }
+
+    fn process_cow_with_metadata_and_math_evidence<'a>(
+        &self,
+        svg: Cow<'a, str>,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+    ) -> Result<Cow<'a, str>> {
         Ok(self
-            .process_cow_with_reference_plan(svg, metadata, session)?
+            .process_cow_with_reference_plan(svg, metadata, session, prepared_math_evidence)?
             .0)
     }
 
@@ -516,6 +605,7 @@ impl SvgPipeline {
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
+        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
     ) -> Result<(
         Cow<'a, str>,
         Option<final_validation::TerminalSvgValidation>,
@@ -561,6 +651,7 @@ impl SvgPipeline {
             metadata,
             session,
             self.drop_native_duplicate_fallbacks,
+            prepared_math_evidence,
         )?;
         let finalized = crate::xml::strip_forbidden_xml_1_0_chars_cow(finalized);
         session.checkpoint(OperationPhase::Postprocess)?;
@@ -569,6 +660,18 @@ impl SvgPipeline {
             .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         let terminal = if self.preset == SvgPipelinePreset::ResvgSafe {
             session.checkpoint(OperationPhase::Postprocess)?;
+            if let Some(evidence) = prepared_math_evidence.filter(|evidence| !evidence.is_empty()) {
+                PreparedMathTerminalReceipt::from_terminal_svg(finalized.as_ref(), evidence)
+                    .map_err(|message| {
+                        Error::svg_postprocess("prepared-math-terminal-receipt", message)
+                    })?
+                    .ok_or_else(|| {
+                        Error::svg_postprocess(
+                            "prepared-math-terminal-receipt",
+                            "prepared-math evidence did not produce a terminal receipt",
+                        )
+                    })?;
+            }
             Some(final_validation::validate_resvg_compatible_svg(
                 finalized.as_ref(),
                 session.resource_policy(),
@@ -616,6 +719,23 @@ impl SvgPipeline {
             .into_owned())
     }
 
+    pub(crate) fn process_owned_to_string_with_metadata_and_math_evidence(
+        &self,
+        svg: String,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+    ) -> Result<String> {
+        Ok(self
+            .process_cow_with_metadata_and_math_evidence(
+                Cow::Owned(svg),
+                metadata,
+                session,
+                prepared_math_evidence,
+            )?
+            .into_owned())
+    }
+
     pub fn process_resvg_compatible(
         &self,
         svg: &str,
@@ -633,7 +753,7 @@ impl SvgPipeline {
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
         let (svg, terminal) =
-            self.process_cow_with_reference_plan(Cow::Borrowed(svg), metadata, session)?;
+            self.process_cow_with_reference_plan(Cow::Borrowed(svg), metadata, session, None)?;
         let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
         let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
         Ok(ResvgCompatibleSvg::finalized(
@@ -653,7 +773,32 @@ impl SvgPipeline {
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
         let (svg, terminal) =
-            self.process_cow_with_reference_plan(Cow::Owned(svg), metadata, session)?;
+            self.process_cow_with_reference_plan(Cow::Owned(svg), metadata, session, None)?;
+        let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
+        let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
+        Ok(ResvgCompatibleSvg::finalized(
+            svg.into_owned(),
+            terminal.reference_plan,
+            terminal.resource_closure,
+            finalization_report,
+            session,
+        ))
+    }
+
+    pub(crate) fn process_owned_resvg_compatible_with_metadata_and_math_evidence(
+        &self,
+        svg: String,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+    ) -> Result<ResvgCompatibleSvg> {
+        self.ensure_resvg_safe_contract()?;
+        let (svg, terminal) = self.process_cow_with_reference_plan(
+            Cow::Owned(svg),
+            metadata,
+            session,
+            prepared_math_evidence,
+        )?;
         let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
         let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
         Ok(ResvgCompatibleSvg::finalized(

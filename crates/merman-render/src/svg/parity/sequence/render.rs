@@ -345,6 +345,8 @@ fn render_sequence_diagram_svg_inner(
         &nodes_by_id,
         settings.actor_height,
         diagram_id,
+        &settings.actor_text_style,
+        prepared.math_sidecar(),
         prepared.typography().actor(),
         &typography_receipt,
     );
@@ -471,6 +473,8 @@ fn render_sequence_diagram_svg_inner(
             settings.actor_height,
             settings.label_box_height,
             diagram_id,
+            &settings.actor_text_style,
+            prepared.math_sidecar(),
             prepared.typography().actor(),
             &typography_receipt,
         );

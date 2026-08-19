@@ -6,17 +6,25 @@
 //! text. The `math` feature installs the pure-Rust RaTeX backend by default; hosts may still supply
 //! another implementation explicitly.
 
+mod evidence;
 mod prepared;
 
+pub(crate) use evidence::{
+    PREPARED_MATH_NATIVE_CLASS, PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE, PreparedMathEvidenceLease,
+    PreparedMathExpectation, PreparedMathOccurrenceId, PreparedMathProjectionFingerprint,
+    PreparedMathTerminalReceipt,
+};
 pub(crate) use prepared::{
-    ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
-    PREPARED_MATH_CLASS_ATTRIBUTE, PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE,
-    PREPARED_MATH_PROJECTION_TEMPLATE_OPEN, PrepareMathLabelRequest, PreparedMathLabel,
+    BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, ConfiguredMathBackend, MathPreparationOutcome,
+    MathPreparationUnavailable, PREPARED_MATH_CLASS_ATTRIBUTE,
+    PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE, PREPARED_MATH_OCCURRENCE_ATTRIBUTE,
+    PREPARED_MATH_PROJECTION_TEMPLATE_OPEN, PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE,
+    PrepareMathLabelRequest, PreparedMathLabel,
 };
 
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
-use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use crate::text::{TextMetrics, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,76 +33,6 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
-
-/// Browser HTML and geometry prepared together by one math-backend operation.
-///
-/// The combined result lets operation-scoped preparation avoid a cold `render` process followed
-/// by a second `measure` process. Existing backends remain source compatible because
-/// [`MathRenderer`] supplies measure-first default implementations.
-#[derive(Debug, Clone)]
-pub struct PreparedMathHtmlLabel {
-    html: String,
-    metrics: TextMetrics,
-    max_line_height_px: f64,
-    native_svg: Option<String>,
-}
-
-impl PreparedMathHtmlLabel {
-    pub fn new(html: impl Into<String>, metrics: TextMetrics) -> Self {
-        let max_line_height_px = metrics.height / metrics.line_count.max(1) as f64;
-        Self::with_max_line_height(html, metrics, max_line_height_px)
-    }
-
-    pub fn with_max_line_height(
-        html: impl Into<String>,
-        metrics: TextMetrics,
-        max_line_height_px: f64,
-    ) -> Self {
-        Self {
-            html: html.into(),
-            metrics,
-            max_line_height_px,
-            native_svg: None,
-        }
-    }
-
-    pub(crate) fn with_native_svg(
-        html: impl Into<String>,
-        metrics: TextMetrics,
-        max_line_height_px: f64,
-        native_svg: impl Into<String>,
-    ) -> Self {
-        let mut prepared = Self::with_max_line_height(html, metrics, max_line_height_px);
-        prepared.native_svg = Some(native_svg.into());
-        prepared
-    }
-
-    pub fn html(&self) -> &str {
-        &self.html
-    }
-
-    pub const fn metrics(&self) -> TextMetrics {
-        self.metrics
-    }
-
-    pub const fn max_line_height_px(&self) -> f64 {
-        self.max_line_height_px
-    }
-
-    pub fn into_parts(self) -> (String, TextMetrics, f64) {
-        let (html, metrics, max_line_height_px, _) = self.into_parts_with_native();
-        (html, metrics, max_line_height_px)
-    }
-
-    pub(crate) fn into_parts_with_native(self) -> (String, TextMetrics, f64, Option<String>) {
-        (
-            self.html,
-            self.metrics,
-            self.max_line_height_px,
-            self.native_svg,
-        )
-    }
-}
 
 /// Optional math renderer used to transform label HTML and (optionally) provide measurements.
 ///
@@ -159,84 +97,6 @@ pub trait MathRenderer: std::fmt::Debug {
         _style: &TextStyle,
     ) -> Option<TextMetrics> {
         self.measure_sequence_html_label(text, config)
-    }
-
-    /// Prepares one Flowchart browser label with its geometry.
-    ///
-    /// The compatibility default deliberately measures first. A declined measurement therefore
-    /// cannot trigger rendering work, and existing implementations need not add a new method.
-    fn prepare_html_label(
-        &self,
-        text: &str,
-        config: &MermaidConfig,
-        style: &TextStyle,
-        max_width_px: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> Option<PreparedMathHtmlLabel> {
-        let metrics = self.measure_html_label(text, config, style, max_width_px, wrap_mode)?;
-        let html = self.render_html_label(text, config)?;
-        Some(PreparedMathHtmlLabel::new(html, metrics))
-    }
-
-    /// Prepares one Flowchart label with the family-resolved terminal style and text measurer.
-    ///
-    /// The default preserves compatibility by delegating to [`Self::prepare_html_label`]. A
-    /// backend that can prepare prose and formulas together may override this hook so it does not
-    /// need a render/measure retry or a second style-resolution path.
-    #[doc(hidden)]
-    #[allow(clippy::too_many_arguments)]
-    fn prepare_html_label_with_resolved_style(
-        &self,
-        text: &str,
-        config: &MermaidConfig,
-        style: &TextStyle,
-        _foreground: &str,
-        text_measurer: Option<&dyn TextMeasurer>,
-        max_width_px: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> Option<PreparedMathHtmlLabel> {
-        if let Some(prepared) =
-            self.prepare_html_label(text, config, style, max_width_px, wrap_mode)
-        {
-            return Some(prepared);
-        }
-        let metrics = text_measurer?.measure_wrapped(text, style, max_width_px, wrap_mode);
-        let html = self.render_html_label(text, config)?;
-        Some(PreparedMathHtmlLabel::new(html, metrics))
-    }
-
-    /// Prepares one Sequence browser label with its resolved terminal text style.
-    fn prepare_sequence_html_label(
-        &self,
-        text: &str,
-        config: &MermaidConfig,
-        style: &TextStyle,
-    ) -> Option<PreparedMathHtmlLabel> {
-        let metrics = self.measure_sequence_html_label_with_style(text, config, style)?;
-        let html = self.render_sequence_html_label(text, config)?;
-        Some(PreparedMathHtmlLabel::new(html, metrics))
-    }
-
-    /// Prepares one Sequence label with the family-resolved terminal style and text measurer.
-    ///
-    /// The default preserves compatibility by delegating to
-    /// [`Self::prepare_sequence_html_label`]. Backends that prepare mixed prose and formulas may
-    /// override this hook to share the family measurer and terminal foreground with layout.
-    #[doc(hidden)]
-    fn prepare_sequence_html_label_with_resolved_style(
-        &self,
-        text: &str,
-        config: &MermaidConfig,
-        style: &TextStyle,
-        _foreground: &str,
-        text_measurer: Option<&dyn TextMeasurer>,
-    ) -> Option<PreparedMathHtmlLabel> {
-        if let Some(prepared) = self.prepare_sequence_html_label(text, config, style) {
-            return Some(prepared);
-        }
-        let metrics = text_measurer?.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-        let html = self.render_sequence_html_label(text, config)?;
-        Some(PreparedMathHtmlLabel::new(html, metrics))
     }
 }
 
@@ -431,6 +291,15 @@ pub(crate) fn render_math_html_label(
     ))
 }
 
+pub(crate) fn mark_math_html_native_unavailable(mut html: String) -> String {
+    let prefix = format!("<span {BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE}>");
+    const SUFFIX: &str = "</span>";
+    html.reserve(prefix.len().saturating_add(SUFFIX.len()));
+    html.insert_str(0, &prefix);
+    html.push_str(SUFFIX);
+    html
+}
+
 /// Pure-Rust math renderer backed by RaTeX.
 ///
 /// The first Flowchart surface is intentionally narrow: labels where each non-empty line is a
@@ -579,44 +448,6 @@ impl MathRenderer for RatexMathRenderer {
         let rendered = Self::render_math_only_label(text)?;
         Some(Self::metrics_from_em(&rendered, style.font_size))
     }
-
-    fn prepare_html_label_with_resolved_style(
-        &self,
-        text: &str,
-        _config: &MermaidConfig,
-        style: &TextStyle,
-        foreground: &str,
-        text_measurer: Option<&dyn TextMeasurer>,
-        max_width_px: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> Option<PreparedMathHtmlLabel> {
-        prepared::prepare_compiled_ratex_html_label(
-            text,
-            style,
-            foreground,
-            text_measurer?,
-            max_width_px,
-            wrap_mode,
-        )
-    }
-
-    fn prepare_sequence_html_label_with_resolved_style(
-        &self,
-        text: &str,
-        _config: &MermaidConfig,
-        style: &TextStyle,
-        foreground: &str,
-        text_measurer: Option<&dyn TextMeasurer>,
-    ) -> Option<PreparedMathHtmlLabel> {
-        prepared::prepare_compiled_ratex_html_label(
-            text,
-            style,
-            foreground,
-            text_measurer?,
-            None,
-            WrapMode::HtmlLike,
-        )
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -642,7 +473,6 @@ struct ProbeCacheValue {
     width: f64,
     height: f64,
     line_count: usize,
-    max_line_height_px: f64,
 }
 
 impl ProbeCacheValue {
@@ -651,21 +481,17 @@ impl ProbeCacheValue {
             return None;
         }
         let height = value.height.max(0.0);
-        let max_line_height_px = value
-            .max_line_height_px
-            .filter(|line_height| {
-                line_height.is_finite()
-                    && *line_height >= 0.0
-                    && (height == 0.0 || *line_height > 0.0)
-            })
-            .unwrap_or(height);
+        if value.max_line_height_px.is_some_and(|line_height| {
+            !line_height.is_finite() || line_height < 0.0 || (height > 0.0 && line_height == 0.0)
+        }) {
+            return None;
+        }
         let line_count = value.html.match_indices("<div").count().max(1);
         Some(Self {
             html: value.html,
             width: value.width.max(0.0),
             height,
             line_count,
-            max_line_height_px,
         })
     }
 }
@@ -1030,70 +856,11 @@ impl MathRenderer for NodeKatexMathRenderer {
             line_count: probed.line_count,
         })
     }
-
-    fn prepare_html_label(
-        &self,
-        text: &str,
-        config: &MermaidConfig,
-        style: &TextStyle,
-        max_width_px: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> Option<PreparedMathHtmlLabel> {
-        if wrap_mode != WrapMode::HtmlLike || !text.contains("$$") {
-            return None;
-        }
-        let probed = self.probe_cached(text, config, style, max_width_px, wrap_mode)?;
-        let metrics = TextMetrics {
-            width: probed.width,
-            height: probed.height,
-            line_count: probed.line_count,
-        };
-        Some(PreparedMathHtmlLabel::with_max_line_height(
-            probed.html,
-            metrics,
-            probed.max_line_height_px,
-        ))
-    }
-
-    fn prepare_sequence_html_label(
-        &self,
-        text: &str,
-        config: &MermaidConfig,
-        style: &TextStyle,
-    ) -> Option<PreparedMathHtmlLabel> {
-        if !text.contains("$$") {
-            return None;
-        }
-        let probed = self.sequence_probe_cached(text, config, style)?;
-        let metrics = TextMetrics {
-            width: probed.width,
-            height: probed.height,
-            line_count: probed.line_count,
-        };
-        Some(PreparedMathHtmlLabel::with_max_line_height(
-            probed.html,
-            metrics,
-            probed.max_line_height_px,
-        ))
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn legacy_combined_math_preparation_estimates_a_per_line_height() {
-        let metrics = TextMetrics {
-            width: 80.0,
-            height: 48.0,
-            line_count: 2,
-        };
-
-        let prepared = PreparedMathHtmlLabel::new("<span>x</span>", metrics);
-
-        assert_eq!(prepared.max_line_height_px(), 24.0);
-    }
 
     #[test]
     fn node_probe_rejects_a_zero_line_height_for_visible_content() {
@@ -1104,9 +871,7 @@ mod tests {
             max_line_height_px: Some(0.0),
         };
 
-        let prepared = ProbeCacheValue::from_response(response).expect("valid probe geometry");
-
-        assert_eq!(prepared.max_line_height_px, 20.0);
+        assert!(ProbeCacheValue::from_response(response).is_none());
     }
 
     #[test]
@@ -1399,7 +1164,6 @@ mod tests {
             width: 10.008,
             height: 20.008,
             line_count: 1,
-            max_line_height_px: 20.008,
         };
         let key = ProbeCacheKey {
             render: render.clone(),

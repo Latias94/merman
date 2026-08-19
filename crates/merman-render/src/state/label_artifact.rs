@@ -809,7 +809,7 @@ mod tests {
         let work_meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let (plan, evidence) = crate::state::StateStylePlan::resolve_with_evidence(
+        let (plan, _) = crate::state::StateStylePlan::resolve_with_evidence(
             &model,
             &json!({}),
             Some(&resolved),
@@ -819,6 +819,7 @@ mod tests {
             work_meter.as_ref(),
         )
         .expect("resolve transformed State style plan");
+        let evidence = plan.finish_theme_evidence_for_plan_test();
         let node = plan.node("Ready").expect("prepared State node style");
         let measurer = DeterministicTextMeasurer::default();
         let builder =

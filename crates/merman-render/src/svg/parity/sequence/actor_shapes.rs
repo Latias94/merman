@@ -1,6 +1,7 @@
 use super::super::*;
 use super::geometry::node_left_top;
 use super::math_label::sequence_katex_label;
+use crate::math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE;
 use crate::sequence::SequenceMathHeightMode;
 use merman_core::diagrams::sequence::SequenceActor;
 
@@ -347,7 +348,7 @@ fn write_actor_label(
     let rendered_label = wrapped_label.as_deref().unwrap_or(label);
 
     let prepared_math = ctx.actor_index.and_then(|actor_index| {
-        ctx.math_sidecar.get(
+        ctx.math_sidecar.terminal(
             &crate::sequence::SequenceMathOccurrence::Actor(actor_index),
             rendered_label,
         )
@@ -359,7 +360,9 @@ fn write_actor_label(
             .record_candidate(crate::sequence::SequenceTextSurface::ParticipantLabel);
         let x = cx - katex.width / 2.0;
         let y = cy - katex.height / 2.0;
-        out.push_str("<switch>");
+        out.push_str("<switch ");
+        out.push_str(PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE);
+        out.push('>');
         let _ = write!(
             out,
             r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}"><div class="actor actor-box" xmlns="http://www.w3.org/1999/xhtml" style="height: 100%; width: 100%;"><div style="text-align: center; vertical-align: middle;">{html}</div></div></foreignObject>"#,

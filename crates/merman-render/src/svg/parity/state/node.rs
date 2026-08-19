@@ -61,6 +61,7 @@ pub(super) fn render_state_node_svg(
     if ln.is_cluster {
         return Ok(());
     }
+    let terminal_start = out.len();
     let cx = ln.x - origin_x;
     let cy = ln.y - origin_y;
     let w = ln.width.max(1.0);
@@ -257,6 +258,11 @@ pub(super) fn render_state_node_svg(
                     stroke_style,
                 );
                 drop(_g_emit);
+                ctx.style_plan.record_node_terminal_emission(
+                    &mut ctx.theme_receipt.borrow_mut(),
+                    node_id,
+                    terminal_start..out.len(),
+                );
                 return Ok(());
             }
             let semantic_style = escape_xml_display(semantic_shape_style_attr);
@@ -714,7 +720,7 @@ pub(super) fn render_state_node_svg(
                     prepared_token_attr,
                     fmt_display(lw),
                     fmt_display(lh),
-                    div_style,
+                    escape_attr(&div_style),
                     label_dom
                 );
             } else {
@@ -1185,7 +1191,7 @@ pub(super) fn render_state_node_svg(
                         prepared_token_attr,
                         fmt_display(lw),
                         fmt_display(lh),
-                        div_style,
+                        escape_attr(&div_style),
                         label_dom,
                         link_close
                     );
@@ -1220,6 +1226,11 @@ pub(super) fn render_state_node_svg(
                         .record_application(effect, scoped_filter_id, *region);
                 }
                 drop(_g_emit);
+                ctx.style_plan.record_node_terminal_emission(
+                    &mut ctx.theme_receipt.borrow_mut(),
+                    node_id,
+                    terminal_start..out.len(),
+                );
                 return Ok(());
             }
 
@@ -1275,7 +1286,7 @@ pub(super) fn render_state_node_svg(
                     prepared_token_attr,
                     fmt_display(lw),
                     fmt_display(lh),
-                    div_style,
+                    escape_attr(&div_style),
                     label_dom,
                     link_close
                 );
@@ -1308,6 +1319,11 @@ pub(super) fn render_state_node_svg(
         }
     }
 
+    ctx.style_plan.record_node_terminal_emission(
+        &mut ctx.theme_receipt.borrow_mut(),
+        node_id,
+        terminal_start..out.len(),
+    );
     Ok(())
 }
 

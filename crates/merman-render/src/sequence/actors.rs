@@ -1,6 +1,6 @@
 use super::constants::{
-    sequence_actor_lifeline_start_y, sequence_actor_visual_height,
-    sequence_text_dimensions_height_px,
+    sequence_actor_lifeline_start_y, sequence_actor_prepared_math_layout_height,
+    sequence_actor_visual_height, sequence_text_dimensions_height_px,
 };
 use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
@@ -32,6 +32,7 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) actor_height: f64,
     pub(super) actor_margin: f64,
     pub(super) actor_font_size: f64,
+    pub(super) label_box_height: f64,
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
@@ -42,6 +43,7 @@ pub(super) struct SequenceActorLayoutPlan<'a> {
     pub(super) actor_widths: Vec<f64>,
     pub(super) actor_popup_widths: HashMap<String, f64>,
     pub(super) actor_base_heights: Vec<f64>,
+    pub(super) actor_has_prepared_math: Vec<bool>,
     pub(super) actor_box: Vec<Option<usize>>,
     pub(super) actor_left_x: Vec<f64>,
     pub(super) actor_centers_x: Vec<f64>,
@@ -77,7 +79,7 @@ pub(super) fn plan_sequence_actors<'a>(
     }
 
     let max_box_title_height = max_box_title_height(&ctx, has_box_titles);
-    let (actor_widths, actor_base_heights) = measure_actor_boxes(&ctx)?;
+    let (actor_widths, actor_base_heights, actor_has_prepared_math) = measure_actor_boxes(&ctx)?;
     let actor_index = actor_index(ctx.model);
     let actor_popup_widths = actor_popup_widths(&ctx, &actor_index, &actor_widths);
     let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index);
@@ -111,6 +113,7 @@ pub(super) fn plan_sequence_actors<'a>(
         actor_widths,
         actor_popup_widths,
         actor_base_heights,
+        actor_has_prepared_math,
         actor_box,
         actor_left_x,
         actor_centers_x,
@@ -174,10 +177,13 @@ fn max_box_title_height(ctx: &SequenceActorLayoutPlanContext<'_>, has_box_titles
         .fold(0.0, f64::max)
 }
 
-fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<f64>, Vec<f64>)> {
+fn measure_actor_boxes(
+    ctx: &SequenceActorLayoutPlanContext<'_>,
+) -> Result<(Vec<f64>, Vec<f64>, Vec<bool>)> {
     // Measure participant boxes.
     let mut actor_widths: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
     let mut actor_base_heights: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
+    let mut actor_has_prepared_math: Vec<bool> = Vec::with_capacity(ctx.model.actor_order.len());
     for (actor_index, id) in ctx.model.actor_order.iter().enumerate() {
         let a = ctx
             .model
@@ -215,8 +221,22 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 },
                 |(_, height)| height,
             );
-            actor_base_heights.push(ctx.actor_height.max(text_h).max(1.0));
-            actor_widths.push(ctx.actor_width_min.max(1.0));
+            let width = ctx.actor_width_min.max(1.0);
+            let has_prepared_math = prepared_math.is_some();
+            let height = if has_prepared_math {
+                sequence_actor_prepared_math_layout_height(
+                    a.actor_type.as_str(),
+                    width,
+                    ctx.actor_height,
+                    ctx.label_box_height,
+                    text_h,
+                )
+            } else {
+                ctx.actor_height.max(text_h)
+            };
+            actor_base_heights.push(height.max(1.0));
+            actor_has_prepared_math.push(has_prepared_math);
+            actor_widths.push(width);
         } else {
             let prepared_math = ctx.math_sidecar.prepare_or_get(
                 super::SequenceMathOccurrence::Actor(actor_index),
@@ -224,7 +244,7 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 ctx.typography
                     .terminal_text_style(super::SequenceTextSurface::ParticipantLabel),
             );
-            let (w0, _h0) = measure_sequence_label_for_layout_with_prepared(
+            let (w0, h0) = measure_sequence_label_for_layout_with_prepared(
                 prepared_math.as_deref(),
                 ctx.measurer,
                 &a.description,
@@ -234,11 +254,24 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 SequenceMathHeightMode::Actor,
             );
             let w = (w0 + 2.0 * ctx.wrap_padding).max(ctx.actor_width_min);
-            actor_base_heights.push(ctx.actor_height.max(1.0));
+            let has_prepared_math = prepared_math.is_some();
+            let height = if has_prepared_math {
+                sequence_actor_prepared_math_layout_height(
+                    a.actor_type.as_str(),
+                    w,
+                    ctx.actor_height,
+                    ctx.label_box_height,
+                    h0,
+                )
+            } else {
+                ctx.actor_height
+            };
+            actor_base_heights.push(height.max(1.0));
+            actor_has_prepared_math.push(has_prepared_math);
             actor_widths.push(w.max(1.0));
         }
     }
-    Ok((actor_widths, actor_base_heights))
+    Ok((actor_widths, actor_base_heights, actor_has_prepared_math))
 }
 
 fn actor_index(model: &SequenceDiagramRenderModel) -> HashMap<&str, usize> {
@@ -542,6 +575,7 @@ pub(super) struct SequenceFooterActorContext<'a, 'b> {
     pub(super) actor_widths: &'a [f64],
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_base_heights: &'a [f64],
+    pub(super) actor_has_prepared_math: &'a [bool],
     pub(super) actor_lifecycle: &'b SequenceActorLifecycle<'a>,
     pub(super) actor_top_offset_y: f64,
     pub(super) bottom_box_top_y: f64,
@@ -556,6 +590,7 @@ pub(super) struct SequenceTopActorContext<'a> {
     pub(super) actor_widths: &'a [f64],
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_base_heights: &'a [f64],
+    pub(super) actor_has_prepared_math: &'a [bool],
     pub(super) actor_top_offset_y: f64,
     pub(super) label_box_height: f64,
 }
@@ -666,12 +701,19 @@ pub(super) fn append_sequence_top_actors(
         let w = ctx.actor_widths[idx];
         let cx = ctx.actor_centers_x[idx];
         let base_h = ctx.actor_base_heights[idx];
+        let has_prepared_math = ctx.actor_has_prepared_math[idx];
         let actor_type = ctx
             .actors
             .get(id)
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, w, base_h, ctx.label_box_height);
+        let visual_h = sequence_actor_visual_height(
+            actor_type,
+            w,
+            base_h,
+            ctx.label_box_height,
+            has_prepared_math,
+        );
         let top_y = ctx.actor_top_offset_y + visual_h / 2.0;
         nodes.push(LayoutNode {
             id: format!("actor-top-{id}"),
@@ -695,12 +737,19 @@ pub(super) fn append_sequence_footer_actors(
         let w = ctx.actor_widths[idx];
         let cx = ctx.actor_centers_x[idx];
         let base_h = ctx.actor_base_heights[idx];
+        let has_prepared_math = ctx.actor_has_prepared_math[idx];
         let actor_type = ctx
             .actors
             .get(id)
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, w, base_h, ctx.label_box_height);
+        let visual_h = sequence_actor_visual_height(
+            actor_type,
+            w,
+            base_h,
+            ctx.label_box_height,
+            has_prepared_math,
+        );
         let bottom_top_y = ctx
             .actor_lifecycle
             .destroyed_bottom_top_y(id)

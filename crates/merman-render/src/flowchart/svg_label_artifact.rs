@@ -15,7 +15,8 @@ use crate::diagram_theme::{
 use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
 use crate::math::{
     ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
-    PrepareMathLabelRequest, PreparedMathLabel,
+    PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathLabel,
+    PreparedMathOccurrenceId,
 };
 use crate::resources::{
     OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
@@ -102,6 +103,46 @@ impl FlowchartSvgLabelOwner {
             Self::Node(_) | Self::EmptySubgraphNode(_) | Self::Edge(_) | Self::SubgraphTitle(_) => {
                 PreparedTextLabelFamily::Flowchart
             }
+        }
+    }
+
+    fn prepared_math_occurrence_id(self) -> PreparedMathOccurrenceId {
+        match self {
+            Self::Node(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::FLOWCHART,
+                "node-label",
+                index,
+            ),
+            Self::EmptySubgraphNode(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::FLOWCHART,
+                "empty-subgraph-node-label",
+                index,
+            ),
+            Self::Edge(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::FLOWCHART,
+                "edge-label",
+                index,
+            ),
+            Self::SubgraphTitle(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::FLOWCHART,
+                "subgraph-title",
+                index,
+            ),
+            Self::SwimlaneNode(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::SWIMLANE,
+                "node-label",
+                index,
+            ),
+            Self::SwimlaneEdgeLabel(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::SWIMLANE,
+                "edge-label",
+                index,
+            ),
+            Self::SwimlaneGroupTitle(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::SWIMLANE,
+                "group-title",
+                index,
+            ),
         }
     }
 }
@@ -731,13 +772,15 @@ struct PendingFlowchartSvgLabels {
 
 #[derive(Debug)]
 struct PreparedFlowchartMathLabel {
+    occurrence_id: PreparedMathOccurrenceId,
     source: Arc<str>,
     style: TextStyle,
     foreground: super::FlowchartTerminalForeground,
     max_width_bits: Option<u64>,
     wrap_mode: WrapMode,
     outcome: MathPreparationOutcome,
-    _retained_reservation: PreparedTextRetainedReservation,
+    expected_terminal_emissions: usize,
+    retained_reservation: RefCell<Option<PreparedTextRetainedReservation>>,
 }
 
 impl PreparedFlowchartMathLabel {
@@ -786,14 +829,46 @@ impl PreparedFlowchartMathLabel {
         style: &TextStyle,
         foreground: &super::FlowchartTerminalForeground,
         render_id: &str,
+        occurrence_id: &PreparedMathOccurrenceId,
         outcome: &MathPreparationOutcome,
     ) -> usize {
         let owner_bytes = Self::owner_retained_bytes(source, style, foreground, render_id);
-        outcome.prepared().map_or(owner_bytes, |artifact| {
-            owner_bytes
-                .checked_add(artifact.retained_bytes())
-                .unwrap_or(usize::MAX)
-        })
+        outcome.prepared().map_or_else(
+            || {
+                owner_bytes
+                    .checked_add(occurrence_id.as_str().len())
+                    .unwrap_or(usize::MAX)
+            },
+            |artifact| {
+                owner_bytes
+                    .checked_add(artifact.retained_bytes())
+                    .unwrap_or(usize::MAX)
+            },
+        )
+    }
+
+    fn terminal_expectation(&self) -> Option<crate::math::PreparedMathExpectation> {
+        let expected_emissions = self.expected_terminal_emissions;
+        if expected_emissions == 0 {
+            return None;
+        }
+        match &self.outcome {
+            MathPreparationOutcome::Prepared(prepared) => prepared.expectation(expected_emissions),
+            MathPreparationOutcome::Unavailable(MathPreparationUnavailable::NotMath) => None,
+            MathPreparationOutcome::Unavailable(_) => {
+                Some(crate::math::PreparedMathExpectation::unavailable(
+                    self.occurrence_id.clone(),
+                    expected_emissions,
+                ))
+            }
+        }
+    }
+
+    fn take_terminal_reservation(&self) -> Option<PreparedTextRetainedReservation> {
+        let expectation = self.terminal_expectation()?;
+        let mut reservation = self.retained_reservation.borrow_mut().take()?;
+        reservation.reconcile_downward(expectation.retained_bytes());
+        Some(reservation)
     }
 }
 
@@ -919,6 +994,16 @@ impl FlowchartSvgLabelSidecarBuilder {
 
     pub(crate) const fn edge_label_padding(&self) -> super::FlowchartEdgeLabelPadding {
         self.edge_label_padding
+    }
+
+    pub(crate) fn has_prepared_math(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+        raw_source: &str,
+    ) -> bool {
+        self.pending.borrow().math.get(owner).is_some_and(|entry| {
+            entry.source.as_ref() == raw_source && entry.outcome.prepared().is_some()
+        })
     }
 
     fn record_prepared_error(&self, error: TextLayoutError) {
@@ -1275,6 +1360,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             foreground,
             render_id,
         );
+        let occurrence_id = owner.prepared_math_occurrence_id();
         let outcome = match self.math_backend.as_ref() {
             Some(backend) => match backend.prepare(
                 PrepareMathLabelRequest::flowchart(
@@ -1286,6 +1372,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     request.wrap_mode,
                 )
                 .with_text_measurer(request.measurer)
+                .with_occurrence_id(&occurrence_id)
                 .with_owner_retained_bytes(owner_retained_bytes),
                 self.work_meter
                     .as_ref()
@@ -1306,6 +1393,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             metrics_style,
             foreground,
             render_id,
+            &occurrence_id,
             &outcome,
         );
         let Some(work_meter) = self.work_meter.as_ref() else {
@@ -1324,13 +1412,16 @@ impl FlowchartSvgLabelSidecarBuilder {
         pending.math.insert(
             owner,
             PreparedFlowchartMathLabel {
+                occurrence_id,
                 source: Arc::from(request.raw_label),
                 style: metrics_style.clone(),
                 foreground: foreground.clone(),
                 max_width_bits: normalized_width_bits(request.max_width_px),
                 wrap_mode: request.wrap_mode,
                 outcome,
-                _retained_reservation: reservation,
+                // One semantic Flowchart/Swimlane label owner maps to one terminal label.
+                expected_terminal_emissions: 1,
+                retained_reservation: RefCell::new(Some(reservation)),
             },
         );
         match metrics {
@@ -1805,6 +1896,20 @@ impl FlowchartSvgLabelSidecar {
             .collect()
     }
 
+    pub(crate) fn prepared_math_evidence(&self) -> PreparedMathEvidenceLease {
+        let entries = self
+            .math
+            .iter()
+            .filter_map(PreparedFlowchartMathLabel::terminal_expectation)
+            .collect();
+        let reservations = self
+            .math
+            .iter()
+            .filter_map(PreparedFlowchartMathLabel::take_terminal_reservation)
+            .collect();
+        PreparedMathEvidenceLease::new(entries, reservations)
+    }
+
     pub(crate) fn node_owner(
         &self,
         node_id: &str,
@@ -1857,6 +1962,27 @@ impl FlowchartSvgLabelSidecar {
         else {
             return FlowchartPreparedMathResolution::NotPrepared;
         };
+        Self::resolve_prepared_math(prepared)
+    }
+
+    pub(crate) fn prepared_math_for_terminal(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+        raw_source: &str,
+    ) -> FlowchartPreparedMathResolution<'_> {
+        let Some(prepared) = self
+            .math
+            .get(owner)
+            .filter(|prepared| prepared.source.as_ref() == raw_source)
+        else {
+            return FlowchartPreparedMathResolution::NotPrepared;
+        };
+        Self::resolve_prepared_math(prepared)
+    }
+
+    fn resolve_prepared_math(
+        prepared: &PreparedFlowchartMathLabel,
+    ) -> FlowchartPreparedMathResolution<'_> {
         match &prepared.outcome {
             MathPreparationOutcome::Prepared(artifact) => {
                 FlowchartPreparedMathResolution::Prepared(artifact)
@@ -2309,6 +2435,56 @@ mod tests {
         assert!(prepared.browser_xhtml().contains("font-size:24px"));
         assert_eq!(render_calls.load(Ordering::SeqCst), 1);
         assert_eq!(measure_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn declined_flowchart_math_terminal_is_retained_as_native_unavailable_evidence() {
+        let backend = ConfiguredMathBackend::external(Arc::new(crate::math::NoopMathRenderer));
+        let config = MermaidConfig::default();
+        let builder =
+            FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
+        let work_meter = Arc::clone(
+            builder
+                .work_meter
+                .as_ref()
+                .expect("math sidecar operation work meter"),
+        );
+        let style = TextStyle::default();
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let owner = FlowchartSvgLabelOwner::Node(0);
+
+        builder.measure_for_layout(
+            owner,
+            "node-a",
+            FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label: "$$x$$",
+                label_type: "text",
+                style: &style,
+                max_width_px: Some(200.0),
+                wrap_mode: WrapMode::HtmlLike,
+                config: &config,
+                math_renderer: None,
+            },
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+
+        let sidecar = builder.finish();
+        assert!(matches!(
+            sidecar.prepared_math(owner, "$$x$$"),
+            FlowchartPreparedMathResolution::Unavailable(
+                MathPreparationUnavailable::BackendDeclined
+            )
+        ));
+        let evidence = sidecar.prepared_math_evidence();
+        assert_eq!(evidence.entries().len(), 1);
+        assert_eq!(evidence.entries()[0].expected_emissions(), 1);
+        assert!(evidence.entries()[0].projection_fingerprint().is_none());
+        drop(sidecar);
+        assert!(work_meter.prepared_text_retained_bytes() > 0);
+        drop(evidence);
+        assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
     }
 
     #[test]
@@ -2815,11 +2991,13 @@ mod tests {
         );
         let outcome =
             MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined);
+        let occurrence_id = FlowchartSvgLabelOwner::Node(0).prepared_math_occurrence_id();
         let short = PreparedFlowchartMathLabel::retained_bytes_without_reservation(
             "$$x$$",
             &style,
             &foreground,
             "n",
+            &occurrence_id,
             &outcome,
         );
         let long_id = "node-".repeat(256);
@@ -2828,6 +3006,7 @@ mod tests {
             &style,
             &foreground,
             &long_id,
+            &occurrence_id,
             &outcome,
         );
 
@@ -2840,6 +3019,7 @@ mod tests {
                     + "$$x$$".len()
                     + "Catalog Sans".len()
                     + foreground.value().len()
+                    + occurrence_id.as_str().len()
                     + 1
         );
     }

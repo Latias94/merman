@@ -2121,8 +2121,9 @@ end"##,
         "expected actor lifeline theme color in Sequence CSS: {svg}"
     );
     assert!(
-        svg.contains(r#".messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:#555555;}"#),
-        "expected signal color in Sequence CSS: {svg}"
+        svg.contains(r#".messageLine0{stroke-width:1.5;stroke-dasharray:none;}"#)
+            && svg.contains(r#".messageLine0,#merman .messageLine1{stroke:#555555;}"#),
+        "expected signal color in the single final Sequence writer rule: {svg}"
     );
     assert!(
         svg.contains(r#".messageText{fill:#777777;stroke:none;}"#),
@@ -2230,8 +2231,7 @@ end"#;
             format!(
                 "#{diagram_id} .loopText,#{diagram_id} .loopText>tspan,#{diagram_id} .sectionTitle,#{diagram_id} .sectionTitle>tspan,#{diagram_id} .labelText,#{diagram_id} .labelText>tspan{{fill:{fill_css};}}"
             ),
-            format!("#{diagram_id} .labelBox{{fill:{fill_css};}}"),
-            format!("#{diagram_id} .labelBox{{stroke:{stroke_css};}}"),
+            format!("#{diagram_id} .labelBox{{stroke:{stroke_css};fill:{fill_css};filter:none;}}"),
         ] {
             assert!(
                 css.contains(&terminal_rule),
@@ -4117,19 +4117,15 @@ Bob-->>Alice: Second"#;
             .find(|node| node.has_tag_name("style"))
             .and_then(|node| node.text())
             .expect("Sequence stylesheet");
-        let baseline = css
-            .find(&format!("#{diagram_id} .sequenceNumber{{fill:"))
-            .expect("Mermaid Sequence number baseline");
         let terminal_rule = format!(
             "#{diagram_id} .sequenceNumber,#{diagram_id} .sequenceNumber>tspan{{fill:{expected_css};}}"
         );
-        let typed = css
-            .find(&terminal_rule)
-            .unwrap_or_else(|| panic!("missing typed Sequence number rule: {css}"));
         assert!(
-            baseline < typed,
-            "typed Sequence number CSS must win by order"
+            css.contains(&terminal_rule),
+            "missing final Sequence number writer rule: {css}"
         );
+        assert_eq!(css.matches(&terminal_rule).count(), 1);
+        assert!(!css.contains(&format!("#{diagram_id} .sequenceNumber{{fill:")));
         let numbers = document
             .descendants()
             .filter(|node| {

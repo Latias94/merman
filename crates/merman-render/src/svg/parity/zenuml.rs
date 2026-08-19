@@ -41,13 +41,10 @@ pub(super) fn render_zenuml_diagram_svg_model(
             .write_open(&mut out, root_spec, chrome)?;
 
     out.push_str("<defs><style>");
-    out.push_str(zenuml_css());
-    if let Some(fill_css) = title_theme.fill_css() {
-        let _ = write!(
-            &mut out,
-            "{ZENUML_FRAME_TITLE_SELECTOR}{{fill:{fill_css};}}"
-        );
-    }
+    write_zenuml_css(
+        &mut out,
+        title_theme.fill_css().unwrap_or(ZENUML_DEFAULT_TITLE_FILL),
+    );
     out.push_str("</style></defs>");
     out.checkpoint()?;
     if let (Some(receipt), Some(fill_css)) = (title_theme_receipt.as_mut(), title_theme.fill_css())
@@ -1037,10 +1034,50 @@ fn zenuml_css() -> &'static str {
 "#
 }
 
+const ZENUML_DEFAULT_TITLE_FILL: &str = "#222";
+
+fn write_zenuml_css(out: &mut impl SvgOutput, title_fill: &str) {
+    const TITLE_RULE_OPEN: &str = ".frame-title{";
+    const DEFAULT_FILL_SUFFIX: &str = "fill:#222";
+
+    let (prefix, title_rule_and_suffix) = zenuml_css()
+        .split_once(TITLE_RULE_OPEN)
+        .expect("ZenUML CSS must contain the frame-title rule");
+    let (title_rule, suffix) = title_rule_and_suffix
+        .split_once('}')
+        .expect("ZenUML frame-title rule must be closed");
+    let title_rule = title_rule
+        .strip_suffix(DEFAULT_FILL_SUFFIX)
+        .expect("ZenUML frame-title rule must end with its default fill");
+
+    out.push_str(prefix);
+    out.push_str(TITLE_RULE_OPEN);
+    out.push_str(title_rule);
+    out.push_str("fill:");
+    out.push_str(title_fill);
+    out.push('}');
+    out.push_str(suffix);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn zenuml_css_has_one_final_frame_title_fill_owner() {
+        let mut baseline = String::new();
+        write_zenuml_css(&mut baseline, ZENUML_DEFAULT_TITLE_FILL);
+        assert_eq!(baseline, zenuml_css());
+
+        let mut themed = String::new();
+        write_zenuml_css(&mut themed, "transparent");
+        assert!(themed.contains(
+            ".frame-title{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:transparent}"
+        ));
+        assert_eq!(themed.matches(".frame-title{").count(), 1);
+        assert!(!themed.contains(".frame-title{fill:"));
+    }
 
     #[test]
     fn zenuml_polyline_propagates_the_bounded_svg_sink_failure() {

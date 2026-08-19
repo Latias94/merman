@@ -121,7 +121,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math(owner, label.text)
+                sidecar.prepared_math_for_terminal(owner, label.text)
             });
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
             flowchart_label_html_with_prepared_math(
@@ -311,7 +311,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math(owner, label.text)
+                sidecar.prepared_math_for_terminal(owner, label.text)
             });
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
             flowchart_label_html_with_prepared_math(

@@ -15,6 +15,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemePortabilityRequirement, ThemeRecipeFingerprint,
 };
 use crate::environment::{RenderSession, RenderSessionReport};
+use crate::math::PreparedMathEvidenceLease;
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
@@ -527,6 +528,34 @@ impl FamilyStyleReport {
         }
     }
 
+    fn ensure_portable_before_terminal_evidence(&self) -> Result<()> {
+        if self.output_mutated {
+            return Err(Error::UnverifiedFamilyOutputMutation {
+                family_id: self.family_id,
+            });
+        }
+        self.ensure_compatibility_portable()?;
+        match self.verification() {
+            FamilyStyleVerification::NotApplicable
+            | FamilyStyleVerification::Verified
+            | FamilyStyleVerification::Incomplete
+            | FamilyStyleVerification::Unadapted => Ok(()),
+            FamilyStyleVerification::Unverified => {
+                if !self.theme_residuals.is_empty() {
+                    return Err(Error::UnverifiedFamilyTheme {
+                        family_id: self.family_id,
+                        residual_count: self.theme_residuals.len(),
+                    });
+                }
+                debug_assert!(!self.residuals.is_empty());
+                Err(Error::UnverifiedFamilyStyle {
+                    family_id: self.family_id,
+                    residual_count: self.residuals.len(),
+                })
+            }
+        }
+    }
+
     fn ensure_compatibility_portable(&self) -> Result<()> {
         if self.compatibility_residual_count != 0 {
             return Err(Error::LegacyFamilyThemeCompatibility {
@@ -986,6 +1015,16 @@ impl ResolvedFamilyStylePlan {
         self.theme_evidence.mark_effect_emission_unverified();
     }
 
+    fn reconcile_state_terminal_evidence(&mut self) {
+        debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
+        let evidence = self
+            .state()
+            .map(crate::state::StateStylePlan::finish_theme_evidence);
+        if let Some(evidence) = evidence {
+            self.theme_evidence = evidence;
+        }
+    }
+
     fn observe_output_visibility(&mut self, debug: &SvgDebugOptions) {
         if self.family_id == DiagramFamilyId::STATE {
             self.theme_evidence
@@ -1013,7 +1052,8 @@ impl ResolvedFamilyStylePlan {
         }
         let waits_for_svg_evidence = matches!(
             self.family_id,
-            DiagramFamilyId::FLOWCHART
+            DiagramFamilyId::STATE
+                | DiagramFamilyId::FLOWCHART
                 | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::MINDMAP
                 | DiagramFamilyId::SEQUENCE
@@ -1051,7 +1091,7 @@ impl ResolvedFamilyStylePlan {
             .is_some_and(ResolvedDiagramTheme::has_family_mechanism_routes);
         let report = FamilyStyleReport::freeze(self);
         if waits_for_svg_evidence {
-            report.ensure_compatibility_portable()
+            report.ensure_portable_before_terminal_evidence()
         } else {
             report.ensure_portable()
         }
@@ -1203,6 +1243,10 @@ impl FamilyRenderContext {
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
     ) {
         self.style_plan.reconcile_state_effect_evidence(emitted);
+    }
+
+    fn reconcile_state_terminal_evidence(&mut self) {
+        self.style_plan.reconcile_state_terminal_evidence();
     }
 
     fn invalidate_for_output_mutation(&mut self) {
@@ -2111,6 +2155,15 @@ impl BuiltinFamilyArtifact {
         PreparedTextEvidenceLease::new(entries, retained_reservations)
     }
 
+    fn prepared_math_evidence(&self) -> PreparedMathEvidenceLease {
+        match self {
+            Self::Flowchart(artifact) => artifact.svg_label_sidecar().prepared_math_evidence(),
+            Self::Swimlane(artifact) => artifact.svg_label_sidecar().prepared_math_evidence(),
+            Self::Sequence(artifact) => artifact.layout.math_sidecar().prepared_math_evidence(),
+            _ => PreparedMathEvidenceLease::default(),
+        }
+    }
+
     fn flowchart_theme_evidence(
         &self,
         theme: Option<&ResolvedDiagramTheme>,
@@ -2561,6 +2614,8 @@ pub struct RenderedFamilySvg {
     prepared_text_svg: Option<String>,
     prepared_text_ledger: PreparedTextEvidenceLease,
     prepared_text_evidence_valid: bool,
+    prepared_math_evidence: PreparedMathEvidenceLease,
+    prepared_math_evidence_valid: bool,
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
     metadata: ParseMetadata,
@@ -2635,6 +2690,8 @@ impl RenderedFamilySvg {
         let output_metadata = self.output_metadata();
         let preserves_prepared_text =
             self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
+        let preserves_prepared_math =
+            self.prepared_math_evidence_valid && pipeline.preserves_prepared_math_evidence();
         let source_svg = if preserves_prepared_text {
             self.prepared_text_svg
                 .take()
@@ -2645,10 +2702,11 @@ impl RenderedFamilySvg {
             self.prepared_text_ledger = PreparedTextEvidenceLease::default();
             std::mem::take(&mut self.svg)
         };
-        let processed_svg = pipeline.process_owned_to_string_with_metadata(
+        let processed_svg = pipeline.process_owned_to_string_with_metadata_and_math_evidence(
             source_svg,
             &output_metadata,
             &self.session,
+            preserves_prepared_math.then_some(&self.prepared_math_evidence),
         )?;
         if preserves_prepared_text && !self.prepared_text_ledger.is_empty() {
             let (public_svg, prepared_text_svg) = crate::svg::partition_prepared_text_label_ids(
@@ -2659,6 +2717,9 @@ impl RenderedFamilySvg {
             self.prepared_text_svg = prepared_text_svg;
         } else {
             self.svg = processed_svg;
+        }
+        if !preserves_prepared_math {
+            self.prepared_math_evidence_valid = false;
         }
         self.session
             .resource_policy()
@@ -2712,17 +2773,32 @@ impl RenderedFamilySvg {
         } else {
             PreparedTextEvidenceLease::default()
         };
+        let prepared_math_evidence_valid =
+            self.prepared_math_evidence_valid && pipeline.preserves_prepared_math_evidence();
+        if !self.prepared_math_evidence.is_empty() && !prepared_math_evidence_valid {
+            return Err(Error::svg_postprocess(
+                "prepared-math-terminal-receipt",
+                "renderer-owned prepared-math evidence was invalidated before native projection",
+            ));
+        }
+        let prepared_math_evidence = if prepared_math_evidence_valid {
+            self.prepared_math_evidence
+        } else {
+            PreparedMathEvidenceLease::default()
+        };
         let svg = pipeline
-            .process_owned_resvg_compatible_with_metadata(
+            .process_owned_resvg_compatible_with_metadata_and_math_evidence(
                 source_svg,
                 &output_metadata,
                 &self.session,
+                prepared_math_evidence_valid.then_some(&prepared_math_evidence),
             )?
             .attach_prepared_text_evidence(
                 prepared_text_ledger,
                 prepared_text_evidence_valid,
                 self.session.resource_policy(),
-            )?;
+            )?
+            .attach_prepared_math_evidence(prepared_math_evidence, prepared_math_evidence_valid)?;
         self.session
             .resource_policy()
             .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
@@ -2807,6 +2883,8 @@ impl RenderedFamilySvg {
             prepared_text_svg: _,
             prepared_text_ledger: _,
             prepared_text_evidence_valid: _,
+            prepared_math_evidence: _,
+            prepared_math_evidence_valid: _,
             root_theme,
             style_report,
             session,
@@ -3044,6 +3122,7 @@ impl FamilyRenderArtifact {
             _ => None,
         };
         let prepared_text_ledger = self.family.prepared_text_label_ledger();
+        let prepared_math_evidence = self.family.prepared_math_evidence();
         let Self {
             metadata,
             compatibility_projection: _,
@@ -3147,6 +3226,9 @@ impl FamilyRenderArtifact {
         if let Some(evidence) = architecture_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::ARCHITECTURE, evidence);
         }
+        if context.family_id() == DiagramFamilyId::STATE {
+            context.reconcile_state_terminal_evidence();
+        }
         context.observe_output_visibility(debug);
         if let Some(emitted) = state_filter_receipt {
             context.reconcile_state_effect_evidence(emitted);
@@ -3174,6 +3256,8 @@ impl FamilyRenderArtifact {
             prepared_text_svg,
             prepared_text_ledger,
             prepared_text_evidence_valid: true,
+            prepared_math_evidence,
+            prepared_math_evidence_valid: true,
             root_theme,
             style_report,
             metadata,

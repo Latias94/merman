@@ -42,20 +42,28 @@ fn emitted_attribute_matches(
         .is_some_and(|(value, _)| value == expected_value)
 }
 
-fn write_verified_pie_stroke_rule(
-    out: &mut impl SvgOutput,
-    diagram_id: &str,
-    class_name: &str,
-    stroke: &str,
-) -> Result<bool> {
-    let rule = format!(
-        "#{} .{class_name}{{stroke:{stroke};}}",
+fn pie_stroke_rule_matches(css: &str, diagram_id: &str, class_name: &str, stroke: &str) -> bool {
+    let marker = format!(
+        "#{} .{class_name}{{",
         crate::svg::escape_css_identifier(diagram_id)
     );
-    let rule_start = out.len();
-    out.push_str(&rule);
-    out.checkpoint()?;
-    Ok(out.as_str().get(rule_start..) == Some(rule.as_str()))
+    let mut bodies = css.match_indices(&marker).filter_map(|(start, _)| {
+        let body_start = start.checked_add(marker.len())?;
+        let body = css.get(body_start..)?;
+        let body_end = body.find('}')?;
+        body.get(..body_end)
+    });
+    let Some(body) = bodies.next() else {
+        return false;
+    };
+    if bodies.next().is_some() {
+        return false;
+    }
+    body.split(';').any(|declaration| {
+        declaration
+            .split_once(':')
+            .is_some_and(|(property, value)| property.trim() == "stroke" && value.trim() == stroke)
+    })
 }
 
 fn empty_pie_root_viewport_fallback(
@@ -287,34 +295,44 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
         paint_plan.begin_terminal_receipt(layout.slices.iter().map(|slice| slice.label.as_str()));
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = pie_css(diagram_id, effective_config);
+    let slice_stroke = (!layout.slices.is_empty())
+        .then(|| paint_plan.slice_stroke_css())
+        .flatten();
+    let outer_stroke = (!layout.slices.is_empty())
+        .then(|| paint_plan.outer_stroke_css())
+        .flatten();
+    let css =
+        pie_css_with_stroke_overrides(diagram_id, effective_config, slice_stroke, outer_stroke);
+    let css_start = out.len();
     out.push_str(&css);
-    drop(css);
     out.checkpoint()?;
-    if !layout.slices.is_empty() {
-        if let Some(stroke) = paint_plan.slice_stroke_css() {
-            let emitted =
-                write_verified_pie_stroke_rule(&mut out, diagram_id, "pieCircle", stroke)?;
-            if let Some(receipt) = paint_receipt.as_mut() {
-                receipt.record_slice_stroke_stylesheet(
-                    paint_plan,
-                    "pieCircle",
-                    emitted.then_some(stroke),
-                );
-            }
-        }
-        if let Some(stroke) = paint_plan.outer_stroke_css() {
-            let emitted =
-                write_verified_pie_stroke_rule(&mut out, diagram_id, "pieOuterCircle", stroke)?;
-            if let Some(receipt) = paint_receipt.as_mut() {
-                receipt.record_outer_stroke_stylesheet(
-                    paint_plan,
-                    "pieOuterCircle",
-                    emitted.then_some(stroke),
-                );
-            }
+    let emitted_css = css_start
+        .checked_add(css.len())
+        .and_then(|css_end| out.as_str().get(css_start..css_end))
+        .filter(|emitted| *emitted == css);
+    if let Some(stroke) = slice_stroke {
+        let emitted = emitted_css
+            .is_some_and(|css| pie_stroke_rule_matches(css, diagram_id, "pieCircle", stroke));
+        if let Some(receipt) = paint_receipt.as_mut() {
+            receipt.record_slice_stroke_stylesheet(
+                paint_plan,
+                "pieCircle",
+                emitted.then_some(stroke),
+            );
         }
     }
+    if let Some(stroke) = outer_stroke {
+        let emitted = emitted_css
+            .is_some_and(|css| pie_stroke_rule_matches(css, diagram_id, "pieOuterCircle", stroke));
+        if let Some(receipt) = paint_receipt.as_mut() {
+            receipt.record_outer_stroke_stylesheet(
+                paint_plan,
+                "pieOuterCircle",
+                emitted.then_some(stroke),
+            );
+        }
+    }
+    drop(css);
     out.push_str(r#"</style><g/>"#);
     out.checkpoint()?;
 

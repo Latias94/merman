@@ -193,9 +193,25 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let node_border = theme.node_border.as_str();
     let label_box_filter = theme.label_box_filter.as_str();
     let note_font_weight = theme.note_font_weight.as_str();
+    let final_actor_fill = typed.actor_fill.unwrap_or(actor_fill);
+    let final_actor_stroke = typed.actor_stroke.unwrap_or(actor_border);
+    let final_lifeline_stroke = typed.lifeline_stroke.unwrap_or(actor_line);
+    let final_message_stroke = typed.message_stroke.unwrap_or(signal_color);
+    let final_sequence_number_fill = typed.sequence_number_fill.unwrap_or(sequence_number);
+    let final_loop_fill = typed.loop_fill.unwrap_or(label_box_fill);
+    let final_loop_stroke = typed.loop_stroke.unwrap_or(label_box_border);
+    let final_note_fill = typed.note_fill.unwrap_or(note_fill);
+    let final_note_stroke = typed.note_stroke.unwrap_or(note_border);
+    let legacy_surface_fill = |surface, fill: &str| {
+        typography_for_surface(&typed, surface)
+            .and_then(|typography| typography.typed_fill_for(surface))
+            .is_none()
+            .then(|| format!("fill:{fill};"))
+            .unwrap_or_default()
+    };
     let mut emission = SequenceThemeCssEmission {
-        sequence_number_fill: sequence_number.to_owned(),
-        typed_sequence_number_fill: None,
+        sequence_number_fill: final_sequence_number_fill.to_owned(),
+        typed_sequence_number_fill: typed.sequence_number_fill.map(str::to_owned),
         text_surfaces: crate::sequence::SequenceTextSurface::ALL.map(|surface| {
             SequenceTextSurfaceCssEmission {
                 final_fill: match surface {
@@ -211,23 +227,41 @@ pub(super) fn write_sequence_css_with_theme_adapter(
                 typed_fill: None,
             }
         }),
-        loop_fill: label_box_fill.to_owned(),
-        typed_loop_fill: None,
-        loop_stroke: label_box_border.to_owned(),
-        typed_loop_stroke: None,
+        loop_fill: final_loop_fill.to_owned(),
+        typed_loop_fill: typed.loop_fill.map(str::to_owned),
+        loop_stroke: final_loop_stroke.to_owned(),
+        typed_loop_stroke: typed.loop_stroke.map(str::to_owned),
     };
 
     let _ = write!(
         &mut out,
         r#"#{} .actor{{stroke:{};fill:{};stroke-width:{};}}"#,
-        id, actor_border, actor_fill, stroke_width
+        id, final_actor_stroke, final_actor_fill, stroke_width
+    );
+    let actor_text_fill = legacy_surface_fill(
+        crate::sequence::SequenceTextSurface::ParticipantLabel,
+        actor_text,
     );
     let _ = write!(
         &mut out,
-        r#"#{} text.actor>tspan{{fill:{};stroke:none;}}"#,
-        id, actor_text
+        r#"#{} text.actor>tspan{{{}stroke:none;}}"#,
+        id, actor_text_fill
     );
-    let _ = write!(&mut out, r#"#{} .actor-line{{stroke:{};}}"#, id, actor_line);
+    if let Some(width) = typed.lifeline_stroke_width {
+        let _ = write!(
+            &mut out,
+            r#"#{} .actor-line{{stroke:{};stroke-width:{}px;}}"#,
+            id,
+            final_lifeline_stroke,
+            fmt(f64::from(width))
+        );
+    } else {
+        let _ = write!(
+            &mut out,
+            r#"#{} .actor-line{{stroke:{};}}"#,
+            id, final_lifeline_stroke
+        );
+    }
     let _ = write!(
         &mut out,
         r#"#{} .innerArc{{stroke-width:1.5;stroke-dasharray:none;}}"#,
@@ -235,58 +269,74 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .messageLine0{{stroke-width:1.5;stroke-dasharray:none;stroke:{};}}"#,
-        id, signal_color
+        r#"#{} .messageLine0{{stroke-width:1.5;stroke-dasharray:none;}}"#,
+        id
     );
     let _ = write!(
         &mut out,
-        r#"#{} .messageLine1{{stroke-width:1.5;stroke-dasharray:2,2;stroke:{};}}"#,
-        id, signal_color
+        r#"#{} .messageLine1{{stroke-width:1.5;stroke-dasharray:2,2;}}"#,
+        id
     );
     let _ = write!(
         &mut out,
-        r#"#{} [id$="-arrowhead"] path{{fill:{};stroke:{};}}"#,
-        id, signal_color, signal_color
+        r#"#{} .messageLine0,#{} .messageLine1{{stroke:{};}}"#,
+        id, id, final_message_stroke
     );
     let _ = write!(
         &mut out,
-        r#"#{} .sequenceNumber{{fill:{};}}"#,
-        id, sequence_number
+        r#"#{} [id$="-arrowhead"] path,#{} [id$="-crosshead"] path,#{} [id$="-filled-head"] path,#{} [id$="-solidTopArrowHead"] path,#{} [id$="-solidBottomArrowHead"] path{{fill:{};stroke:{};}}"#,
+        id, id, id, id, id, final_message_stroke, final_message_stroke
     );
     let _ = write!(
         &mut out,
-        r#"#{} [id$="-sequencenumber"]{{fill:{};}}"#,
-        id, signal_color
+        r#"#{} [id$="-stickTopArrowHead"] path,#{} [id$="-stickBottomArrowHead"] path{{stroke:{};}}#{} [id$="-sequencenumber"]{{fill:{};}}"#,
+        id, id, final_message_stroke, id, final_message_stroke
     );
     let _ = write!(
         &mut out,
-        r#"#{} [id$="-crosshead"] path{{fill:{};stroke:{};}}"#,
-        id, signal_color, signal_color
+        r#"#{} .sequenceNumber,#{} .sequenceNumber>tspan{{fill:{};}}"#,
+        id, id, final_sequence_number_fill
+    );
+    let message_text_fill = legacy_surface_fill(
+        crate::sequence::SequenceTextSurface::MessageLabel,
+        signal_text,
     );
     let _ = write!(
         &mut out,
-        r#"#{} .messageText{{fill:{};stroke:none;}}"#,
-        id, signal_text
+        r#"#{} .messageText{{{}stroke:none;}}"#,
+        id, message_text_fill
     );
     let _ = write!(
         &mut out,
         r#"#{} .labelBox{{stroke:{};fill:{};filter:{};}}"#,
-        id, label_box_border, label_box_fill, label_box_filter
+        id, final_loop_stroke, final_loop_fill, label_box_filter
+    );
+    let label_text_fill = legacy_surface_fill(
+        crate::sequence::SequenceTextSurface::ControlKeyword,
+        label_text,
     );
     let _ = write!(
         &mut out,
-        r#"#{} .labelText,#{} .labelText>tspan{{fill:{};stroke:none;}}"#,
-        id, id, label_text
+        r#"#{} .labelText,#{} .labelText>tspan{{{}stroke:none;}}"#,
+        id, id, label_text_fill
+    );
+    let loop_text_fill = legacy_surface_fill(
+        crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
+        loop_text,
     );
     let _ = write!(
         &mut out,
-        r#"#{} .loopText,#{} .loopText>tspan{{fill:{};stroke:none;}}"#,
-        id, id, loop_text
+        r#"#{} .loopText,#{} .loopText>tspan{{{}stroke:none;}}"#,
+        id, id, loop_text_fill
+    );
+    let section_title_fill = legacy_surface_fill(
+        crate::sequence::SequenceTextSurface::ControlSectionTitle,
+        loop_text,
     );
     let _ = write!(
         &mut out,
-        r#"#{} .sectionTitle,#{} .sectionTitle>tspan{{fill:{};stroke:none;}}"#,
-        id, id, loop_text
+        r#"#{} .sectionTitle,#{} .sectionTitle>tspan{{{}stroke:none;}}"#,
+        id, id, section_title_fill
     );
     let _ = write!(
         &mut out,
@@ -296,12 +346,14 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let _ = write!(
         &mut out,
         r#"#{} .note{{stroke:{};fill:{};}}"#,
-        id, note_border, note_fill
+        id, final_note_stroke, final_note_fill
     );
+    let note_text_fill =
+        legacy_surface_fill(crate::sequence::SequenceTextSurface::NoteLabel, note_text);
     let _ = write!(
         &mut out,
-        r#"#{} .noteText,#{} .noteText>tspan{{fill:{};stroke:none;{}}}"#,
-        id, id, note_text, note_font_weight
+        r#"#{} .noteText,#{} .noteText>tspan{{{}stroke:none;{}}}"#,
+        id, id, note_text_fill, note_font_weight
     );
     let _ = write!(
         &mut out,
@@ -335,90 +387,15 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     if let Some(typed_actor_fill) = typed.actor_fill {
         let _ = write!(
             &mut out,
-            r#"#{} .actor{{fill:{};}}#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{fill:{};}}"#,
-            id, typed_actor_fill, id, id, id, id, typed_actor_fill
+            r#"#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{fill:{};}}"#,
+            id, id, id, id, typed_actor_fill
         );
     }
     if let Some(typed_actor_stroke) = typed.actor_stroke {
         let _ = write!(
             &mut out,
-            r#"#{} .actor{{stroke:{};}}#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{stroke:{};}}"#,
-            id, typed_actor_stroke, id, id, id, id, typed_actor_stroke
-        );
-    }
-    if let Some(typed_lifeline_stroke) = typed.lifeline_stroke {
-        let _ = write!(
-            &mut out,
-            r#"#{} .actor-line{{stroke:{};}}"#,
-            id, typed_lifeline_stroke
-        );
-    }
-    if let Some(typed_lifeline_stroke_width) = typed.lifeline_stroke_width {
-        let _ = write!(
-            &mut out,
-            r#"#{} .actor-line{{stroke-width:{}px;}}"#,
-            id,
-            fmt(f64::from(typed_lifeline_stroke_width))
-        );
-    }
-    if let Some(typed_message_stroke) = typed.message_stroke {
-        let _ = write!(
-            &mut out,
-            r#"#{} .messageLine0,#{} .messageLine1{{stroke:{};}}"#,
-            id, id, typed_message_stroke
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} [id$="-arrowhead"] path,#{} [id$="-crosshead"] path,#{} [id$="-filled-head"] path,#{} [id$="-solidTopArrowHead"] path,#{} [id$="-solidBottomArrowHead"] path{{fill:{};stroke:{};}}"#,
-            id, id, id, id, id, typed_message_stroke, typed_message_stroke
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} [id$="-stickTopArrowHead"] path,#{} [id$="-stickBottomArrowHead"] path{{stroke:{};}}#{} [id$="-sequencenumber"]{{fill:{};}}"#,
-            id, id, typed_message_stroke, id, typed_message_stroke
-        );
-    }
-    if let Some(typed_sequence_number_fill) = typed.sequence_number_fill {
-        let _ = write!(
-            &mut out,
-            r#"#{} .sequenceNumber,#{} .sequenceNumber>tspan{{fill:{};}}"#,
-            id, id, typed_sequence_number_fill
-        );
-        emission.sequence_number_fill = typed_sequence_number_fill.to_owned();
-        emission.typed_sequence_number_fill = Some(typed_sequence_number_fill.to_owned());
-    }
-    if let Some(typed_loop_fill) = typed.loop_fill {
-        if write!(
-            &mut out,
-            r#"#{} .labelBox{{fill:{};}}"#,
-            id, typed_loop_fill
-        )
-        .is_ok()
-        {
-            emission.loop_fill = typed_loop_fill.to_owned();
-            emission.typed_loop_fill = Some(typed_loop_fill.to_owned());
-        }
-    }
-    if let Some(typed_loop_stroke) = typed.loop_stroke {
-        if write!(
-            &mut out,
-            r#"#{} .labelBox{{stroke:{};}}"#,
-            id, typed_loop_stroke
-        )
-        .is_ok()
-        {
-            emission.loop_stroke = typed_loop_stroke.to_owned();
-            emission.typed_loop_stroke = Some(typed_loop_stroke.to_owned());
-        }
-    }
-    if let Some(typed_note_fill) = typed.note_fill {
-        let _ = write!(&mut out, r#"#{} .note{{fill:{};}}"#, id, typed_note_fill);
-    }
-    if let Some(typed_note_stroke) = typed.note_stroke {
-        let _ = write!(
-            &mut out,
-            r#"#{} .note{{stroke:{};}}"#,
-            id, typed_note_stroke
+            r#"#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{stroke:{};}}"#,
+            id, id, id, id, typed_actor_stroke
         );
     }
     if let Some(typed_activation_fill) = typed.activation_fill {
@@ -631,10 +608,9 @@ mod tests {
         assert!(css.contains(r#"#seq .actor{stroke:#220000;fill:#330000;stroke-width:2;}"#));
         assert!(css.contains(r#"#seq text.actor>tspan{fill:#fafafa;stroke:none;}"#));
         assert!(css.contains(r#"#seq .actor-line{stroke:#444444;}"#));
-        assert!(css.contains(
-            r#"#seq .messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:#555555;}"#
-        ));
-        assert!(css.contains(r#"#seq .sequenceNumber{fill:#666666;}"#));
+        assert!(css.contains(r#"#seq .messageLine0{stroke-width:1.5;stroke-dasharray:none;}"#));
+        assert!(css.contains(r#"#seq .messageLine0,#seq .messageLine1{stroke:#555555;}"#));
+        assert!(css.contains(r#"#seq .sequenceNumber,#seq .sequenceNumber>tspan{fill:#666666;}"#));
         assert!(css.contains(r#"#seq .messageText{fill:#777777;stroke:none;}"#));
         assert!(css.contains(r#"#seq .labelBox{stroke:#888888;fill:#999999;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));}"#));
         assert!(
@@ -664,10 +640,11 @@ mod tests {
             },
         );
 
-        assert!(css.contains(r#"#seq .actor-man circle,#seq line{stroke:#220000;"#));
+        assert!(css.contains(r#"#seq .actor{stroke:#2563eb;"#));
         assert!(css.contains(
-            r#"#seq .actor{stroke:#2563eb;}#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{stroke:#2563eb;}"#
+            r#"#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{stroke:#2563eb;}"#
         ));
+        assert_eq!(css.matches("#seq .actor{").count(), 1);
         assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq line{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
@@ -686,10 +663,11 @@ mod tests {
             },
         );
 
-        assert!(css.contains(r#"#seq .actor-man circle,#seq line{stroke:#9370DB;fill:#330000;"#));
+        assert!(css.contains(r#"#seq .actor{stroke:#9370DB;fill:#dc2626;"#));
         assert!(css.contains(
-            r#"#seq .actor{fill:#dc2626;}#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{fill:#dc2626;}"#
+            r#"#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{fill:#dc2626;}"#
         ));
+        assert_eq!(css.matches("#seq .actor{").count(), 1);
         assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#9370DB;fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq line{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageLine0{fill:#dc2626;"#));
@@ -715,12 +693,13 @@ mod tests {
         assert!(css.contains(
             r#"#seq [id$="-stickTopArrowHead"] path,#seq [id$="-stickBottomArrowHead"] path{stroke:#2563eb;}#seq [id$="-sequencenumber"]{fill:#2563eb;}"#
         ));
+        assert_eq!(css.matches(r#"#seq [id$="-sequencenumber"]{"#).count(), 1);
         assert!(!css.contains(r#"#seq .note{stroke:#2563eb;}"#));
         assert!(!css.contains(r#"#seq .activation0{stroke:#2563eb;}"#));
     }
 
     #[test]
-    fn sequence_number_label_css_records_the_final_cascade_winner() {
+    fn sequence_number_label_css_has_one_final_writer_owner() {
         let mut css = String::new();
         let emission = write_sequence_css_with_theme_adapter(
             &mut css,
@@ -733,16 +712,10 @@ mod tests {
             },
         );
 
-        let baseline = css
-            .find(r#"#seq\:prod .sequenceNumber{fill:#fedcba;}"#)
-            .expect("configured Sequence number baseline");
-        let typed = css
-            .find(r#"#seq\:prod .sequenceNumber,#seq\:prod .sequenceNumber>tspan{fill:#123456;}"#)
-            .expect("typed Sequence number terminal owner");
-        assert!(
-            baseline < typed,
-            "typed Sequence number CSS must win by order"
-        );
+        let owner = r#"#seq\:prod .sequenceNumber,#seq\:prod .sequenceNumber>tspan{fill:#123456;}"#;
+        assert!(css.contains(owner));
+        assert_eq!(css.matches(owner).count(), 1);
+        assert!(!css.contains(r#"#seq\:prod .sequenceNumber{fill:#fedcba;}"#));
         assert_eq!(emission.sequence_number_fill(), "#123456");
         assert_eq!(emission.typed_sequence_number_fill(), Some("#123456"));
     }
@@ -760,9 +733,9 @@ mod tests {
             },
         );
 
-        assert!(css.contains(r#"#seq .actor-line{stroke:#444444;}"#));
-        assert!(css.contains(r#"#seq .actor-line{stroke:#2563eb;}"#));
-        assert!(css.contains(r#"#seq .actor-line{stroke-width:2px;}"#));
+        assert!(css.contains(r#"#seq .actor-line{stroke:#2563eb;stroke-width:2px;}"#));
+        assert_eq!(css.matches("#seq .actor-line{").count(), 1);
+        assert!(!css.contains(r#"#seq .actor-line{stroke:#444444;"#));
         assert!(!css.contains(r#"#seq .actor{stroke:#2563eb;}"#));
         assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;}"#));
         assert!(!css.contains(r#"#seq .note{stroke:#2563eb;}"#));
@@ -786,8 +759,9 @@ mod tests {
             },
         );
 
-        assert!(css.contains(r#"#seq .note{stroke:#cccccc;fill:#dddddd;}"#));
-        assert!(css.contains(r#"#seq .note{fill:#dc2626;}#seq .note{stroke:#2563eb;}"#));
+        assert!(css.contains(r#"#seq .note{stroke:#2563eb;fill:#dc2626;}"#));
+        assert_eq!(css.matches("#seq .note{").count(), 1);
+        assert!(!css.contains(r#"#seq .note{stroke:#cccccc;fill:#dddddd;}"#));
         assert!(!css.contains(r#"#seq .noteText{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageText{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq .activation0{fill:#dc2626;"#));
@@ -817,5 +791,28 @@ mod tests {
         ));
         assert!(!css.contains(r#"#seq .note{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
+    }
+
+    #[test]
+    fn sequence_loop_box_paint_has_one_terminal_writer_owner() {
+        let css = sequence_css_with_theme_adapter(
+            "seq",
+            16.0,
+            &json!({
+                "themeVariables": {
+                    "labelBoxBkgColor": "#dddddd",
+                    "labelBoxBorderColor": "#cccccc"
+                }
+            }),
+            SequenceThemeCssAdapter {
+                loop_fill: Some("#dc2626"),
+                loop_stroke: Some("#2563eb"),
+                ..SequenceThemeCssAdapter::default()
+            },
+        );
+
+        assert!(css.contains(r#"#seq .labelBox{stroke:#2563eb;fill:#dc2626;"#));
+        assert_eq!(css.matches("#seq .labelBox{").count(), 1);
+        assert!(!css.contains(r#"#seq .labelBox{stroke:#cccccc;fill:#dddddd;"#));
     }
 }

@@ -86,6 +86,31 @@ pub(crate) enum SequenceMathHeightMode {
     Draw,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SequenceMathTerminalGeometry {
+    layout_width: f64,
+    layout_height: f64,
+    browser_width: f64,
+    browser_height: f64,
+    projection_width: f64,
+    projection_height: f64,
+}
+
+impl SequenceMathTerminalGeometry {
+    pub(crate) const fn layout_size(self) -> (f64, f64) {
+        (self.layout_width, self.layout_height)
+    }
+
+    pub(crate) const fn browser_box_size(self) -> (f64, f64) {
+        (self.browser_width, self.browser_height)
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn native_projection_size(self) -> (f64, f64) {
+        (self.projection_width, self.projection_height)
+    }
+}
+
 fn sequence_math_chunks(text: &str) -> Vec<&str> {
     let mut chunks = Vec::new();
     let mut search_from = 0usize;
@@ -236,15 +261,22 @@ pub(crate) fn measure_sequence_math_label(
     Some((full_metrics.width.round().max(1.0), height))
 }
 
-pub(crate) fn measure_prepared_sequence_math_label(
+pub(crate) fn prepared_sequence_math_terminal_geometry(
     prepared: Option<&crate::math::PreparedMathLabel>,
     style: &TextStyle,
     mode: SequenceMathHeightMode,
-) -> Option<(f64, f64)> {
+) -> Option<SequenceMathTerminalGeometry> {
     let prepared = prepared?;
     let metrics = prepared.metrics();
-    let height = match mode {
-        SequenceMathHeightMode::Actor => metrics.height.round().max(1.0),
+    let projection_width = metrics.width.max(0.0);
+    let projection_height = metrics.height.max(0.0);
+    let layout_height = match mode {
+        SequenceMathHeightMode::Actor => if metrics.line_count > 1 {
+            projection_height.ceil()
+        } else {
+            projection_height.round()
+        }
+        .max(1.0),
         SequenceMathHeightMode::Bound | SequenceMathHeightMode::Draw => {
             let line_step = sequence_text_line_step_px(style.font_size).round().max(1.0);
             let base = if mode == SequenceMathHeightMode::Draw {
@@ -254,11 +286,41 @@ pub(crate) fn measure_prepared_sequence_math_label(
                     .max(sequence_text_dimensions_height_px(style.font_size))
                     .max(1.0)
             };
-            let math_line_height = prepared.max_line_height_px().round() + 2.0;
-            base.max(math_line_height).round().max(1.0)
+            let math_line_height = prepared
+                .max_math_height_px()
+                .unwrap_or_else(|| prepared.max_line_height_px())
+                .round()
+                + 2.0;
+            let projected_layout_height = if metrics.line_count > 1 {
+                projection_height.ceil()
+            } else {
+                projection_height.round()
+            };
+            base.max(math_line_height)
+                .max(projected_layout_height)
+                .max(1.0)
         }
     };
-    Some((metrics.width.round().max(1.0), height))
+    let layout_width = projection_width.round().max(1.0);
+    let browser_width = layout_width.max(projection_width.ceil()).max(1.0);
+    let browser_height = layout_height.max(projection_height.ceil()).max(1.0);
+    Some(SequenceMathTerminalGeometry {
+        layout_width,
+        layout_height,
+        browser_width,
+        browser_height,
+        projection_width,
+        projection_height,
+    })
+}
+
+pub(crate) fn measure_prepared_sequence_math_label(
+    prepared: Option<&crate::math::PreparedMathLabel>,
+    style: &TextStyle,
+    mode: SequenceMathHeightMode,
+) -> Option<(f64, f64)> {
+    prepared_sequence_math_terminal_geometry(prepared, style, mode)
+        .map(SequenceMathTerminalGeometry::layout_size)
 }
 
 pub(super) fn measure_sequence_label_for_layout_with_prepared(
@@ -450,6 +512,31 @@ mod tests {
         assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
     }
 
+    #[test]
+    fn prepared_sequence_math_separates_mermaid_layout_from_native_projection_bounds() {
+        let prepared = crate::math::PreparedMathLabel::for_test(TextMetrics {
+            width: 9.14448,
+            height: 18.28896,
+            line_count: 2,
+        });
+        let style = TextStyle::default();
+
+        let geometry = super::prepared_sequence_math_terminal_geometry(
+            Some(&prepared),
+            &style,
+            super::SequenceMathHeightMode::Draw,
+        )
+        .expect("prepared Sequence math bounds");
+
+        assert_eq!(geometry.layout_size().0, 9.0);
+        assert_eq!(geometry.browser_box_size().0, 10.0);
+        assert_eq!(
+            geometry.native_projection_size(),
+            (prepared.metrics().width, prepared.metrics().height)
+        );
+        assert!(geometry.browser_box_size().1 >= prepared.metrics().height.ceil());
+    }
+
     #[cfg(feature = "math")]
     #[test]
     fn prepared_sequence_math_uses_the_resolved_role_font_size() {
@@ -493,6 +580,56 @@ mod tests {
         assert!(role.metrics().width > default.metrics().width);
         assert!(role.metrics().height > default.metrics().height);
         assert!((role.metrics().width / default.metrics().width - 28.0 / 16.0).abs() < 1e-12);
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn prepared_sequence_math_preserves_mermaid_shell_height_semantics() {
+        use std::sync::Arc;
+
+        use crate::math::{ConfiguredMathBackend, PrepareMathLabelRequest, RatexMathRenderer};
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+
+        let config = merman_core::MermaidConfig::default();
+        let style = TextStyle::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let renderer = RatexMathRenderer;
+        let backend = ConfiguredMathBackend::compiled_ratex();
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+
+        for text in ["Solve: $$\\sqrt{2+2}$$", "$$\\sqrt{2+2}=\\sqrt{4}=2$$"] {
+            let legacy = super::measure_sequence_math_label(
+                &measurer,
+                text,
+                &style,
+                &config,
+                Some(&renderer),
+                super::SequenceMathHeightMode::Draw,
+            );
+            let prepared = backend
+                .prepare(
+                    PrepareMathLabelRequest::sequence(text, &config, &style, "#333333")
+                        .with_text_measurer(&measurer),
+                    &meter,
+                )
+                .expect("prepare diagnostic math")
+                .prepared()
+                .and_then(|prepared| {
+                    super::measure_prepared_sequence_math_label(
+                        Some(prepared),
+                        &style,
+                        super::SequenceMathHeightMode::Draw,
+                    )
+                });
+
+            assert_eq!(
+                prepared.map(|(_, height)| height),
+                legacy.map(|(_, height)| height),
+                "prepared math must preserve Sequence's Mermaid-compatible shell height for {text:?}"
+            );
+        }
     }
 
     #[cfg(feature = "math")]

@@ -147,7 +147,7 @@ fn lane_label_metrics(
         .and_then(|sidecar| {
             sidecar
                 .swimlane_group_title_owner(cluster_id)
-                .map(|owner| sidecar.prepared_math(owner, render_title))
+                .map(|owner| sidecar.prepared_math_for_terminal(owner, render_title))
         })
         .unwrap_or_default();
     if let crate::flowchart::FlowchartPreparedMathResolution::Prepared(prepared) = prepared_math {
@@ -337,7 +337,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             .and_then(|sidecar| {
                 sidecar
                     .swimlane_group_title_owner(cluster.id.as_str())
-                    .map(|owner| sidecar.prepared_math(owner, render_title))
+                    .map(|owner| sidecar.prepared_math_for_terminal(owner, render_title))
             })
             .unwrap_or_default();
         let title_html = flowchart_label_html_with_prepared_math(

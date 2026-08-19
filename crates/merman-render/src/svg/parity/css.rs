@@ -703,6 +703,15 @@ fn pie_theme_option(
 }
 
 pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    pie_css_with_stroke_overrides(diagram_id, effective_config, None, None)
+}
+
+pub(super) fn pie_css_with_stroke_overrides(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    slice_stroke: Option<&str>,
+    outer_stroke: Option<&str>,
+) -> String {
     // Mirrors Mermaid@11.16.0 `diagrams/pie/pieStyles.ts`. Keep `:root` last to match the
     // config-aware CSS emitters used by the other diagram families.
     let id = crate::svg::escape_css_identifier(diagram_id);
@@ -711,10 +720,14 @@ pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) ->
     let font = parts.font_family;
     let theme = SvgTheme::new(effective_config);
     let task_text_dark_color = theme.color("taskTextDarkColor", "black");
-    let pie_stroke_color = pie_theme_option(effective_config, "pieStrokeColor", "black");
+    let pie_stroke_color = slice_stroke
+        .map(str::to_owned)
+        .unwrap_or_else(|| pie_theme_option(effective_config, "pieStrokeColor", "black"));
     let pie_stroke_width = pie_theme_option(effective_config, "pieStrokeWidth", "2px");
     let pie_opacity = pie_theme_option(effective_config, "pieOpacity", "0.7");
-    let pie_outer_stroke_color = pie_theme_option(effective_config, "pieOuterStrokeColor", "black");
+    let pie_outer_stroke_color = outer_stroke
+        .map(str::to_owned)
+        .unwrap_or_else(|| pie_theme_option(effective_config, "pieOuterStrokeColor", "black"));
     let pie_outer_stroke_width = pie_theme_option(effective_config, "pieOuterStrokeWidth", "2px");
     let pie_title_text_size = pie_theme_option(effective_config, "pieTitleTextSize", "25px");
     let pie_title_text_color = theme.color("pieTitleTextColor", task_text_dark_color.as_str());

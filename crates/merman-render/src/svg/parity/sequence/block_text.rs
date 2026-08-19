@@ -41,7 +41,7 @@ impl<'a> LoopTextRenderContext<'a> {
         &self,
         occurrence_id: &str,
     ) -> Option<super::math_label::SequenceKatexLabel<'_>> {
-        let prepared = self.math_sidecar.get_for_occurrence(
+        let prepared = self.math_sidecar.terminal_for_occurrence(
             &crate::sequence::SequenceMathOccurrence::BlockLabel(occurrence_id.to_owned()),
         );
         sequence_katex_label(prepared, self.style, SequenceMathHeightMode::Draw)

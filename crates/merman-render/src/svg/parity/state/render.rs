@@ -141,6 +141,10 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         label_sidecar,
         effect_evidence,
         style_plan,
+        theme_receipt: std::cell::RefCell::new(style_plan.begin_terminal_theme_receipt(
+            options.debug.include_nodes,
+            options.debug.include_edges,
+        )),
         rough_cache,
         #[cfg(test)]
         rough_lifecycle_probe,
@@ -339,7 +343,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
-    state_markers(&mut out, diagram_id, style_plan);
+    state_markers(&mut out, diagram_id, &ctx);
 
     // `svg.getBBox()` does not include `<style>` and typically excludes non-rendered `<defs>`
     // content from the rendered bbox. Scan only the rendered graph payload to reduce overhead
@@ -414,17 +418,22 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         viewport_padding,
     );
 
+    let document_len_before_root_finalize = out.len();
     let root_document = root_context.finish_document(
         &mut out,
         root_document,
         root_svg::RootViewportSpec::responsive(root_bounds)
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
+    ctx.theme_receipt
+        .borrow_mut()
+        .shift_emissions_after_prefix_rewrite(document_len_before_root_finalize, out.len());
 
     drop(_g_viewbox);
     let _g_finalize = timing.section(&mut timings.finalize_svg);
 
     if let Some((title, title_x, title_y)) = title_emission {
+        let terminal_start = out.len();
         let _ = write!(
             &mut out,
             r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText""#,
@@ -440,9 +449,17 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         }
         let _ = write!(&mut out, ">{}</text>", escape_xml_display(title));
         out.checkpoint()?;
+        style_plan.record_title_terminal_emission(
+            &mut ctx.theme_receipt.borrow_mut(),
+            terminal_start..out.len(),
+        );
     }
     out.push_str("</svg>\n");
     let out = out.finish()?;
+
+    ctx.theme_receipt.borrow_mut().observe_svg(&out);
+    let terminal_theme_receipt = ctx.theme_receipt.borrow().clone();
+    let _ = style_plan.record_terminal_theme_receipt(terminal_theme_receipt);
 
     drop(_g_finalize);
     timings.total = total_timer
@@ -842,6 +859,7 @@ fn render_state_cluster(
     let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
         return;
     };
+    let terminal_start = out.len();
 
     let data_look = state_data_look(ctx);
 
@@ -968,6 +986,11 @@ fn render_state_cluster(
                 fmt(stroke_width),
                 escape_attr(&stroke_style),
             );
+            ctx.style_plan.record_node_terminal_emission(
+                &mut ctx.theme_receipt.borrow_mut(),
+                cluster_id,
+                terminal_start..out.len(),
+            );
             return;
         }
         let _ = write!(
@@ -983,6 +1006,11 @@ fn render_state_cluster(
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
+        );
+        ctx.style_plan.record_node_terminal_emission(
+            &mut ctx.theme_receipt.borrow_mut(),
+            cluster_id,
+            terminal_start..out.len(),
         );
         return;
     }
@@ -1149,4 +1177,9 @@ fn render_state_cluster(
             inner_shape,
         );
     }
+    ctx.style_plan.record_node_terminal_emission(
+        &mut ctx.theme_receipt.borrow_mut(),
+        cluster_id,
+        terminal_start..out.len(),
+    );
 }

@@ -12,6 +12,7 @@ pub(super) fn class_math_html_label(
         return None;
     };
     crate::math::render_math_html_label(text, config, Some(renderer))
+        .map(crate::math::mark_math_html_native_unavailable)
 }
 
 pub(super) struct ClassInlineStyles<'a> {

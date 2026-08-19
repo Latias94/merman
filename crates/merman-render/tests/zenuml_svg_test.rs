@@ -201,9 +201,12 @@ fn zenuml_title_fill_reaches_frame_title_and_family_evidence() {
             .and_then(|node| node.text())
             .expect("ZenUML stylesheet");
         assert!(
-            stylesheet.contains(&format!(".frame-title{{fill:{expected_fill};}}")),
+            stylesheet.contains(&format!(
+                ".frame-title{{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:{expected_fill}}}"
+            )),
             "typed Title.fill must own text.frame-title: {stylesheet}"
         );
+        assert_eq!(stylesheet.matches(".frame-title{").count(), 1);
 
         drop(document);
         let completion = rendered.into_completion();

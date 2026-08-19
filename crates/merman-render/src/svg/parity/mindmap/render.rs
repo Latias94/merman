@@ -697,7 +697,13 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             fmt_into(out, max_node_width_px);
             out.push_str("px; text-align: center;");
         }
-        out.push_str(r#""><span class="nodeLabel markdown-node-label">"#);
+        let has_math = crate::math::contains_delimited_math(text);
+        out.push_str(r#""><span class="nodeLabel markdown-node-label""#);
+        if has_math {
+            out.push(' ');
+            out.push_str(crate::math::BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE);
+        }
+        out.push('>');
         out.checkpoint()?;
 
         fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
@@ -719,7 +725,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             crate::xml::normalize_html_entities_for_xml(raw).into_owned()
         }
 
-        if crate::math::contains_delimited_math(text) {
+        if has_math {
             let html = math_renderer
                 .and_then(|renderer| renderer.render_html_label(text, config))
                 .ok_or_else(|| Error::MissingCapability {

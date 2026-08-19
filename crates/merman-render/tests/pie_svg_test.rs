@@ -718,7 +718,7 @@ fn pie_ordinal_stroke_rules_fail_closed_for_matching_slice_occurrences() {
         assert!(
             !rendered
                 .svg()
-                .contains("#merman .pieCircle{stroke:#7c3aed;}"),
+                .contains("#merman .pieCircle{stroke:#7c3aed;"),
             "unsupported {case} ordinal stroke must not claim a terminal Pie rule"
         );
         let completion = rendered.into_completion();
@@ -770,15 +770,19 @@ fn pie_static_stroke_is_verified_from_slice_and_outer_circle_css() {
             .expect("Pie stylesheet");
 
         assert!(
-            stylesheet.contains(&format!("#merman .pieCircle{{stroke:{expected_css};}}")),
+            stylesheet.contains(&format!(
+                "#merman .pieCircle{{stroke:{expected_css};stroke-width:"
+            )),
             "typed Pie slice stroke must be emitted by the terminal writer: {stylesheet}"
         );
         assert!(
             stylesheet.contains(&format!(
-                "#merman .pieOuterCircle{{stroke:{expected_css};}}"
+                "#merman .pieOuterCircle{{stroke:{expected_css};stroke-width:"
             )),
             "typed Pie outer stroke must be emitted by the terminal writer: {stylesheet}"
         );
+        assert_eq!(stylesheet.matches("#merman .pieCircle{").count(), 1);
+        assert_eq!(stylesheet.matches("#merman .pieOuterCircle{").count(), 1);
         assert_eq!(
             document
                 .descendants()
@@ -823,15 +827,15 @@ fn pie_static_stroke_respects_per_site_mermaid_ownership() {
             "pieStrokeColor",
             "#0f172a",
             "#merman .pieCircle{stroke:#0f172a;stroke-width:",
-            "#merman .pieOuterCircle{stroke:#7c3aed;}",
-            "#merman .pieCircle{stroke:#7c3aed;}",
+            "#merman .pieOuterCircle{stroke:#7c3aed;stroke-width:",
+            "#merman .pieCircle{stroke:#7c3aed;",
         ),
         (
             "pieOuterStrokeColor",
             "#1e293b",
             "#merman .pieOuterCircle{stroke:#1e293b;stroke-width:",
-            "#merman .pieCircle{stroke:#7c3aed;}",
-            "#merman .pieOuterCircle{stroke:#7c3aed;}",
+            "#merman .pieCircle{stroke:#7c3aed;stroke-width:",
+            "#merman .pieOuterCircle{stroke:#7c3aed;",
         ),
     ] {
         let source = format!(
@@ -858,6 +862,8 @@ fn pie_static_stroke_respects_per_site_mermaid_ownership() {
             stylesheet.contains(typed_rule),
             "typed Pie stroke must still own the independent site for {owned_key}: {stylesheet}"
         );
+        assert_eq!(stylesheet.matches("#merman .pieCircle{").count(), 1);
+        assert_eq!(stylesheet.matches("#merman .pieOuterCircle{").count(), 1);
 
         drop(document);
         let completion = rendered.into_completion();
@@ -892,8 +898,8 @@ pie
 
     assert!(stylesheet.contains("#merman .pieCircle{stroke:#0f172a;stroke-width:"));
     assert!(stylesheet.contains("#merman .pieOuterCircle{stroke:#1e293b;stroke-width:"));
-    assert!(!stylesheet.contains("#merman .pieCircle{stroke:#7c3aed;}"));
-    assert!(!stylesheet.contains("#merman .pieOuterCircle{stroke:#7c3aed;}"));
+    assert!(!stylesheet.contains("#merman .pieCircle{stroke:#7c3aed;"));
+    assert!(!stylesheet.contains("#merman .pieOuterCircle{stroke:#7c3aed;"));
 
     drop(document);
     let completion = rendered.into_completion();

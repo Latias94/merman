@@ -11,7 +11,10 @@ use super::builtin::{
 use super::context::SvgPostprocessMetadata;
 use crate::Result;
 use crate::environment::{RenderSession, TextMeasurementPhase};
-use crate::math::PREPARED_MATH_CLASS_ATTRIBUTE;
+use crate::math::{
+    BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, PREPARED_MATH_CLASS_ATTRIBUTE,
+    PreparedMathEvidenceLease,
+};
 use merman_core::OperationPhase;
 use std::borrow::Cow;
 
@@ -52,13 +55,20 @@ impl BuiltinSvgStage {
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
+        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
     ) -> Result<Cow<'a, str>> {
         Ok(match self {
             Self::PreparedMathProjection => {
-                if !svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE) {
+                if !svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
+                    && !svg.contains(BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE)
+                {
                     return Ok(svg);
                 }
-                Cow::Owned(project_prepared_math(&svg, metadata.family_id())?)
+                Cow::Owned(project_prepared_math(
+                    &svg,
+                    metadata.family_id(),
+                    prepared_math_evidence,
+                )?)
             }
             Self::ForeignObjectFallback => {
                 if !svg.contains("<foreignObject") {
@@ -115,10 +125,11 @@ pub(crate) fn apply_preset_cow<'a>(
     metadata: &SvgPostprocessMetadata,
     session: &RenderSession,
     drop_native_duplicates: bool,
+    prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
 ) -> Result<Cow<'a, str>> {
     for stage in builtin_stages_for_preset(preset) {
         session.checkpoint(OperationPhase::Postprocess)?;
-        current = stage.apply(current, metadata, session)?;
+        current = stage.apply(current, metadata, session, prepared_math_evidence)?;
         session.checkpoint(OperationPhase::Postprocess)?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
             current = Cow::Owned(drop_native_duplicate_fallbacks(&current));
@@ -167,6 +178,7 @@ mod tests {
             &SvgPostprocessMetadata::from_svg(svg),
             &session,
             false,
+            None,
         )
         .unwrap();
 
@@ -175,19 +187,44 @@ mod tests {
 
     #[test]
     fn resvg_safe_rejects_browser_only_prepared_math_before_foreign_object_fallback() {
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml"><span class="merman-prepared-math" data-merman-prepared-math-native="unavailable"><svg><path d="M0 0h1v1z"/></svg></span></div></foreignObject></svg>"#;
+        let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(
+            crate::DiagramFamilyId::FLOWCHART,
+            "node-label",
+            0,
+        );
+        let evidence = PreparedMathEvidenceLease::new(
+            vec![crate::math::PreparedMathExpectation::unavailable(
+                occurrence_id.clone(),
+                1,
+            )],
+            Vec::new(),
+        );
+        let svg = format!(
+            concat!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+                r#"<foreignObject width="10" height="10">"#,
+                r#"<div xmlns="http://www.w3.org/1999/xhtml">"#,
+                r#"<span class="merman-prepared-math" "#,
+                r#"data-merman-prepared-math-native="unavailable" "#,
+                r#"data-merman-prepared-math-occurrence="{}">"#,
+                r#"<svg><path d="M0 0h1v1z"/></svg></span></div>"#,
+                r#"</foreignObject></svg>"#,
+            ),
+            occurrence_id.as_str(),
+        );
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        let metadata =
-            SvgPostprocessMetadata::from_svg(svg).with_family_id(crate::DiagramFamilyId::FLOWCHART);
+        let metadata = SvgPostprocessMetadata::from_svg(&svg)
+            .with_family_id(crate::DiagramFamilyId::FLOWCHART);
 
         let error = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
-            Cow::Borrowed(svg),
+            Cow::Borrowed(&svg),
             &metadata,
             &session,
             false,
+            Some(&evidence),
         )
         .expect_err("browser-only prepared math must not disappear from ResvgSafe output");
 
@@ -198,7 +235,7 @@ mod tests {
                     && message.contains("native projection is unavailable")
         ));
 
-        let error = super::super::finalize_resvg_svg(svg, &session)
+        let error = super::super::finalize_resvg_svg(&svg, &session)
             .expect_err("raw SVG must not mint a renderer-owned math projection");
         assert!(matches!(
             error,
@@ -238,6 +275,7 @@ mod tests {
             &metadata,
             &session,
             false,
+            None,
         )
         .unwrap();
 
@@ -281,6 +319,7 @@ mod tests {
             &metadata,
             &session,
             false,
+            None,
         )
         .unwrap();
 

@@ -7,7 +7,8 @@ use rustc_hash::FxHashMap;
 
 use crate::math::{
     ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
-    PrepareMathLabelRequest, PreparedMathLabel,
+    PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathLabel,
+    PreparedMathOccurrenceId,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::TextMeasurer;
@@ -29,14 +30,41 @@ impl SequenceMathOccurrence {
             Self::Actor(_) | Self::Message(_) | Self::Note(_) => 0,
         })
     }
+
+    fn prepared_math_occurrence_id(&self) -> PreparedMathOccurrenceId {
+        match self {
+            Self::Actor(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::SEQUENCE,
+                "actor-label",
+                *index,
+            ),
+            Self::Message(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::SEQUENCE,
+                "message-label",
+                *index,
+            ),
+            Self::Note(index) => PreparedMathOccurrenceId::indexed(
+                crate::DiagramFamilyId::SEQUENCE,
+                "note-label",
+                *index,
+            ),
+            Self::BlockLabel(key) => PreparedMathOccurrenceId::keyed(
+                crate::DiagramFamilyId::SEQUENCE,
+                "block-label",
+                key,
+            ),
+        }
+    }
 }
 
 #[derive(Debug)]
 struct SequencePreparedMathEntry {
+    occurrence_id: PreparedMathOccurrenceId,
     source: Arc<str>,
     foreground_provenance: super::SequenceTerminalForegroundProvenance,
     outcome: MathPreparationOutcome,
-    _retained_reservation: PreparedTextRetainedReservation,
+    expected_terminal_emissions: usize,
+    retained_reservation: RefCell<Option<PreparedTextRetainedReservation>>,
 }
 
 impl SequencePreparedMathEntry {
@@ -49,15 +77,47 @@ impl SequencePreparedMathEntry {
 
     fn retained_bytes_without_reservation(
         occurrence: &SequenceMathOccurrence,
+        occurrence_id: &PreparedMathOccurrenceId,
         source: &str,
         outcome: &MathPreparationOutcome,
     ) -> usize {
         let owner_bytes = Self::owner_retained_bytes(occurrence, source);
-        outcome.prepared().map_or(owner_bytes, |artifact| {
-            owner_bytes
-                .checked_add(artifact.retained_bytes())
-                .unwrap_or(usize::MAX)
-        })
+        outcome.prepared().map_or_else(
+            || {
+                owner_bytes
+                    .checked_add(occurrence_id.as_str().len())
+                    .unwrap_or(usize::MAX)
+            },
+            |artifact| {
+                owner_bytes
+                    .checked_add(artifact.retained_bytes())
+                    .unwrap_or(usize::MAX)
+            },
+        )
+    }
+
+    fn terminal_expectation(&self) -> Option<crate::math::PreparedMathExpectation> {
+        let expected_emissions = self.expected_terminal_emissions;
+        if expected_emissions == 0 {
+            return None;
+        }
+        match &self.outcome {
+            MathPreparationOutcome::Prepared(prepared) => prepared.expectation(expected_emissions),
+            MathPreparationOutcome::Unavailable(MathPreparationUnavailable::NotMath) => None,
+            MathPreparationOutcome::Unavailable(_) => {
+                Some(crate::math::PreparedMathExpectation::unavailable(
+                    self.occurrence_id.clone(),
+                    expected_emissions,
+                ))
+            }
+        }
+    }
+
+    fn take_terminal_reservation(&self) -> Option<PreparedTextRetainedReservation> {
+        let expectation = self.terminal_expectation()?;
+        let mut reservation = self.retained_reservation.borrow_mut().take()?;
+        reservation.reconcile_downward(expectation.retained_bytes());
+        Some(reservation)
     }
 }
 
@@ -85,6 +145,42 @@ impl SequenceMathSidecar {
             .get(occurrence)
             .filter(|entry| entry.source.as_ref() == source)
             .and_then(|entry| entry.outcome.prepared())
+    }
+
+    pub(crate) fn terminal_for_occurrence(
+        &self,
+        occurrence: &SequenceMathOccurrence,
+    ) -> Option<&PreparedMathLabel> {
+        let entry = self.entries.get(occurrence)?;
+        let artifact = entry.outcome.prepared()?;
+        Some(artifact)
+    }
+
+    pub(crate) fn terminal(
+        &self,
+        occurrence: &SequenceMathOccurrence,
+        source: &str,
+    ) -> Option<&PreparedMathLabel> {
+        let entry = self
+            .entries
+            .get(occurrence)
+            .filter(|entry| entry.source.as_ref() == source)?;
+        let artifact = entry.outcome.prepared()?;
+        Some(artifact)
+    }
+
+    pub(crate) fn prepared_math_evidence(&self) -> PreparedMathEvidenceLease {
+        let entries = self
+            .entries
+            .values()
+            .filter_map(SequencePreparedMathEntry::terminal_expectation)
+            .collect();
+        let reservations = self
+            .entries
+            .values()
+            .filter_map(SequencePreparedMathEntry::take_terminal_reservation)
+            .collect();
+        PreparedMathEvidenceLease::new(entries, reservations)
     }
 
     #[cfg(test)]
@@ -156,6 +252,7 @@ pub(crate) struct SequenceMathSidecarBuilder<'a> {
     config: merman_core::MermaidConfig,
     text_measurer: &'a dyn TextMeasurer,
     work_meter: Arc<OperationWorkMeter>,
+    actor_terminal_emissions: usize,
     entries: RefCell<FxHashMap<SequenceMathOccurrence, SequencePreparedMathEntry>>,
     error: RefCell<Option<OperationWorkError>>,
 }
@@ -172,9 +269,16 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
             config: config.clone(),
             text_measurer,
             work_meter,
+            actor_terminal_emissions: 1,
             entries: RefCell::new(FxHashMap::default()),
             error: RefCell::new(None),
         }
+    }
+
+    pub(crate) fn with_actor_terminal_emissions(mut self, expected_emissions: usize) -> Self {
+        debug_assert!(expected_emissions > 0);
+        self.actor_terminal_emissions = expected_emissions;
+        self
     }
 
     pub(crate) fn prepare(
@@ -201,6 +305,7 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
 
         let owner_retained_bytes =
             SequencePreparedMathEntry::owner_retained_bytes(&occurrence, source);
+        let occurrence_id = occurrence.prepared_math_occurrence_id();
         let outcome = match self.backend.as_ref() {
             Some(backend) => match backend.prepare(
                 PrepareMathLabelRequest::sequence(
@@ -210,6 +315,7 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
                     terminal.foreground,
                 )
                 .with_text_measurer(self.text_measurer)
+                .with_occurrence_id(&occurrence_id)
                 .with_owner_retained_bytes(owner_retained_bytes),
                 &self.work_meter,
             ) {
@@ -225,6 +331,7 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
         };
         let retained_bytes = SequencePreparedMathEntry::retained_bytes_without_reservation(
             &occurrence,
+            &occurrence_id,
             source,
             &outcome,
         );
@@ -242,13 +349,23 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
             MathPreparationOutcome::Prepared(artifact) => Some(Arc::clone(artifact)),
             MathPreparationOutcome::Unavailable(_) => None,
         };
+        // Freeze semantic terminal cardinality during preparation. Terminal writers may only emit
+        // the occurrence marker; they must not be able to manufacture their own expectation.
+        let expected_terminal_emissions = match &occurrence {
+            SequenceMathOccurrence::Actor(_) => self.actor_terminal_emissions,
+            SequenceMathOccurrence::Message(_)
+            | SequenceMathOccurrence::Note(_)
+            | SequenceMathOccurrence::BlockLabel(_) => 1,
+        };
         self.entries.borrow_mut().insert(
             occurrence,
             SequencePreparedMathEntry {
+                occurrence_id,
                 source: Arc::from(source),
                 foreground_provenance: terminal.foreground_provenance,
                 outcome,
-                _retained_reservation: reservation,
+                expected_terminal_emissions,
+                retained_reservation: RefCell::new(Some(reservation)),
             },
         );
         prepared
@@ -290,7 +407,13 @@ impl<'a> SequenceMathSidecarBuilder<'a> {
         self.entries
             .borrow()
             .values()
-            .map(|entry| entry._retained_reservation.retained_bytes())
+            .filter_map(|entry| {
+                entry
+                    .retained_reservation
+                    .borrow()
+                    .as_ref()
+                    .map(PreparedTextRetainedReservation::retained_bytes)
+            })
             .sum()
     }
 }
@@ -310,7 +433,7 @@ impl SequenceMathArtifactStore for SequenceMathSidecarBuilder<'_> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::math::{MathRenderer, PreparedMathHtmlLabel};
+    use crate::math::MathRenderer;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use crate::text::{DeterministicTextMeasurer, TextMetrics, TextStyle};
 
@@ -324,28 +447,24 @@ mod tests {
     impl MathRenderer for CountingSequenceMathRenderer {
         fn render_html_label(
             &self,
-            _text: &str,
-            _config: &merman_core::MermaidConfig,
-        ) -> Option<String> {
-            panic!("combined Sequence preparation must be used")
-        }
-
-        fn prepare_sequence_html_label(
-            &self,
             text: &str,
             _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            Some(format!("<span>{text}</span>"))
+        }
+
+        fn measure_sequence_html_label_with_style(
+            &self,
+            _text: &str,
+            _config: &merman_core::MermaidConfig,
             _style: &TextStyle,
-        ) -> Option<PreparedMathHtmlLabel> {
+        ) -> Option<TextMetrics> {
             self.prepare_calls.fetch_add(1, Ordering::SeqCst);
-            Some(PreparedMathHtmlLabel::with_max_line_height(
-                format!("<span>{text}</span>"),
-                TextMetrics {
-                    width: 42.0,
-                    height: 53.0,
-                    line_count: 2,
-                },
-                41.0,
-            ))
+            Some(TextMetrics {
+                width: 42.0,
+                height: 53.0,
+                line_count: 2,
+            })
         }
     }
 
@@ -388,7 +507,7 @@ mod tests {
             .unwrap();
         assert!(Arc::ptr_eq(&layout, &repeated));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(layout.max_line_height_px(), 41.0);
+        assert_eq!(layout.max_line_height_px(), 26.5);
         assert_eq!(
             builder
                 .entries
@@ -408,8 +527,8 @@ mod tests {
             )
             .expect("prepared multiline math dimensions")
             .1,
-            43.0,
-            "the tallest row must win over total-height averaging"
+            53.0,
+            "the terminal bound must contain the complete multiline native projection"
         );
 
         let sidecar = builder.finish().unwrap();
@@ -566,7 +685,47 @@ mod tests {
                 .get_for_occurrence(&SequenceMathOccurrence::Message(0))
                 .is_none()
         );
+        let evidence = sidecar.prepared_math_evidence();
+        assert_eq!(evidence.entries().len(), 1);
+        assert_eq!(evidence.entries()[0].expected_emissions(), 1);
+        assert!(evidence.entries()[0].projection_fingerprint().is_none());
         drop(sidecar);
+        assert!(meter.prepared_text_retained_bytes() > 0);
+        drop(evidence);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn mirrored_actor_expectation_is_owned_by_preparation_not_writer_reentry() {
+        let backend = ConfiguredMathBackend::external(Arc::new(crate::math::NoopMathRenderer));
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let text_measurer = DeterministicTextMeasurer::default();
+        let builder = SequenceMathSidecarBuilder::new(
+            Some(&backend),
+            &merman_core::MermaidConfig::default(),
+            &text_measurer,
+            Arc::clone(&meter),
+        )
+        .with_actor_terminal_emissions(2);
+
+        assert!(
+            builder
+                .prepare(
+                    SequenceMathOccurrence::Actor(0),
+                    "$$x$$",
+                    terminal(&TextStyle::default()),
+                )
+                .is_none()
+        );
+
+        let sidecar = builder.finish().expect("declined mirrored actor sidecar");
+        let evidence = sidecar.prepared_math_evidence();
+        assert_eq!(evidence.entries().len(), 1);
+        assert_eq!(evidence.entries()[0].expected_emissions(), 2);
+        drop(sidecar);
+        drop(evidence);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 }

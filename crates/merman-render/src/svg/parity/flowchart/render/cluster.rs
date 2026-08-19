@@ -335,7 +335,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         .svg_label_sidecar
         .zip(owner)
         .map_or(Default::default(), |(sidecar, owner)| {
-            sidecar.prepared_math(owner, render_title)
+            sidecar.prepared_math_for_terminal(owner, render_title)
         });
     let title_html = flowchart_label_html_with_prepared_math(
         render_title,

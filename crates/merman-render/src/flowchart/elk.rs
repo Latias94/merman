@@ -1687,6 +1687,7 @@ fn subgraph_label(
 ) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let title = ctx.model.subgraph_title_for_render(semantic_index, sg);
+    let owner = FlowchartSvgLabelOwner::SubgraphTitle(semantic_index);
     let text_style = flowchart_effective_text_style_for_classes_with_provenance(
         ctx.cluster_label_base_style,
         &ctx.model.class_defs,
@@ -1697,7 +1698,7 @@ fn subgraph_label(
     // backend for emission would allow the terminal XHTML to diverge from the measured geometry.
     let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
-        Some(FlowchartSvgLabelOwner::SubgraphTitle(semantic_index)),
+        Some(owner),
         Some(sg.id.as_str()),
         FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
@@ -1713,9 +1714,17 @@ fn subgraph_label(
             .with_terminal_foreground(text_style.terminal_foreground()),
         FlowchartSvgWidthMode::Bbox,
     );
+    let height = if ctx
+        .svg_label_sidecar
+        .is_some_and(|sidecar| sidecar.has_prepared_math(owner, title))
+    {
+        metrics.height.max(1.0)
+    } else {
+        (metrics.height - 2.0).max(1.0)
+    };
     Some(elk::Label {
         width: metrics.width.max(1.0),
-        height: (metrics.height - 2.0).max(1.0),
+        height,
     })
 }
 
@@ -1953,6 +1962,30 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct FixedPreparedMathRenderer;
+
+    impl MathRenderer for FixedPreparedMathRenderer {
+        fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+            Some("<svg><path d=\"M0 0h1\"/></svg>".to_owned())
+        }
+
+        fn measure_html_label(
+            &self,
+            _text: &str,
+            _config: &MermaidConfig,
+            _style: &TextStyle,
+            _max_width_px: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> Option<crate::text::TextMetrics> {
+            Some(crate::text::TextMetrics {
+                width: 31.5,
+                height: 23.75,
+                line_count: 1,
+            })
+        }
+    }
+
     #[test]
     fn elk_preserves_operation_computed_length_precision() {
         let parsed = Engine::new()
@@ -1973,6 +2006,55 @@ mod tests {
             .expect("node A label");
 
         assert_eq!(label.width, NON_LATTICE_COMPUTED_LENGTH_PX);
+    }
+
+    #[test]
+    fn elk_cluster_title_keeps_complete_prepared_math_height() {
+        let mut model = model(vec![node("A", Some("alpha"), None)], Vec::new());
+        let mut group = subgraph("Group".to_owned(), vec!["A".to_owned()]);
+        group.title = "$$x$$".to_owned();
+        model.subgraphs.push(group);
+        let config = MermaidConfig::from_value(json!({
+            "htmlLabels": true,
+            "flowchart": {"htmlLabels": true, "wrappingWidth": 96}
+        }));
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("deterministic session");
+        let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
+        let backend = crate::math::ConfiguredMathBackend::external(std::sync::Arc::new(
+            FixedPreparedMathRenderer,
+        ));
+        let builder =
+            FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            &model,
+            &config,
+            false,
+            session.work_meter().as_ref(),
+        )
+        .expect("prepare edge styles");
+
+        let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
+            &model,
+            &FlowchartRenderLabelSources::default(),
+            &config,
+            &measurer,
+            None,
+            Some(&builder),
+            &edge_style_plan,
+            None,
+        )
+        .expect("build ELK graph");
+        let label = graph
+            .nodes
+            .iter()
+            .find(|node| node.id == "Group")
+            .and_then(|node| node.label)
+            .expect("prepared cluster title label");
+
+        assert_eq!(label.height, 23.75);
+        assert!(builder.has_prepared_math(FlowchartSvgLabelOwner::SubgraphTitle(0), "$$x$$"));
     }
 
     #[test]

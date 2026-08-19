@@ -51,8 +51,10 @@ pub(crate) use math_artifact::{
     SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
     SequenceMathSidecarBuilder,
 };
+#[cfg(test)]
+pub(crate) use metrics::measure_prepared_sequence_math_label;
 pub(crate) use metrics::{
-    SequenceMathHeightMode, measure_prepared_sequence_math_label,
+    SequenceMathHeightMode, prepared_sequence_math_terminal_geometry,
     wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
@@ -308,7 +310,8 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         effective_config,
         measurer,
         Arc::clone(&work_meter),
-    );
+    )
+    .with_actor_terminal_emissions(if settings.mirror_actors { 2 } else { 1 });
     let block_label_box_metrics = SequenceBlockLabelBoxMetrics::resolve(
         model,
         settings.label_box_width,
@@ -323,6 +326,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_widths,
         actor_popup_widths,
         actor_base_heights,
+        actor_has_prepared_math,
         actor_box,
         actor_left_x,
         actor_centers_x,
@@ -344,6 +348,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_height: settings.actor_height,
         actor_margin: settings.actor_margin,
         actor_font_size: settings.actor_text_style.font_size,
+        label_box_height: settings.label_box_height,
         box_margin: settings.box_margin,
         box_text_margin: settings.box_text_margin,
         wrap_padding: settings.wrap_padding,
@@ -365,6 +370,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_centers_x: &actor_centers_x,
         actor_widths: &actor_widths,
         actor_base_heights: &actor_base_heights,
+        actor_has_prepared_math: &actor_has_prepared_math,
         actor_top_offset_y,
         max_actor_layout_height,
         sequence_default_width: settings.sequence_default_width,

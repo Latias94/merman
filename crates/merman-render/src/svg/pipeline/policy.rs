@@ -40,7 +40,9 @@ impl SvgOutputPolicy {
             pipeline.with_drop_native_duplicate_fallbacks(self.drop_native_duplicate_fallbacks);
 
         if matches!(self.preset, SvgPipelinePreset::ResvgSafe) {
-            pipeline.push_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
+            pipeline.push_postprocessor_preserving_prepared_math(
+                GitGraphBranchLabelBaselinePostprocessor,
+            );
         }
 
         if let Some(color) = self
@@ -48,7 +50,9 @@ impl SvgOutputPolicy {
             .as_deref()
             .filter(|color| !color.trim().is_empty())
         {
-            pipeline.push_postprocessor(RootBackgroundPostprocessor::new(color.trim()));
+            pipeline.push_postprocessor_preserving_prepared_math(RootBackgroundPostprocessor::new(
+                color.trim(),
+            ));
         }
 
         if let Some(css) = self
@@ -63,5 +67,34 @@ impl SvgOutputPolicy {
         }
 
         pipeline
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_resvg_passes_preserve_renderer_owned_math_evidence() {
+        let pipeline = SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            root_background_color: Some("#111827".to_owned()),
+            ..SvgOutputPolicy::default()
+        }
+        .pipeline();
+
+        assert!(pipeline.preserves_prepared_math_evidence());
+    }
+
+    #[test]
+    fn caller_supplied_css_still_invalidates_renderer_owned_math_evidence() {
+        let pipeline = SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            scoped_css: Some(".merman-prepared-math-native { opacity: 0; }".to_owned()),
+            ..SvgOutputPolicy::default()
+        }
+        .pipeline();
+
+        assert!(!pipeline.preserves_prepared_math_evidence());
     }
 }

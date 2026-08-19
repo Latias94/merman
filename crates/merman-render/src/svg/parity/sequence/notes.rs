@@ -52,7 +52,7 @@ pub(super) fn render_sequence_note(
     theme_receipt.record_rect_emission();
     let prepared_math =
         ctx.math_sidecar
-            .get_for_occurrence(&crate::sequence::SequenceMathOccurrence::Note(
+            .terminal_for_occurrence(&crate::sequence::SequenceMathOccurrence::Note(
                 message_index,
             ));
     if let Some(katex) = sequence_katex_label(

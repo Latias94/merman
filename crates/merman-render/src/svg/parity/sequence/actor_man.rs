@@ -3,6 +3,7 @@ use super::actor_man_glyphs::{
     ActorManBottomGlyphMetrics, write_actor_man_bottom_glyph, write_actor_man_top_glyph,
 };
 use super::actor_shapes::is_actor_man_variant;
+use super::math_label::sequence_katex_label;
 use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
 
@@ -12,6 +13,8 @@ pub(super) fn render_sequence_actor_man_tops(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,
     diagram_id: &str,
+    actor_text_style: &TextStyle,
+    math_sidecar: &crate::sequence::SequenceMathSidecar,
     typography: &crate::sequence::SequenceResolvedTypography,
     typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
@@ -28,6 +31,13 @@ pub(super) fn render_sequence_actor_man_tops(
         let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
             continue;
         };
+        let prepared_math = math_sidecar
+            .terminal_for_occurrence(&crate::sequence::SequenceMathOccurrence::Actor(actor_idx));
+        let math_label = sequence_katex_label(
+            prepared_math,
+            actor_text_style,
+            crate::sequence::SequenceMathHeightMode::Actor,
+        );
         write_actor_man_top_glyph(
             out,
             actor_type,
@@ -37,6 +47,7 @@ pub(super) fn render_sequence_actor_man_tops(
             actor_idx,
             actor_height,
             diagram_id,
+            math_label,
             typography,
             typography_receipt,
         );
@@ -50,6 +61,8 @@ pub(super) fn render_sequence_actor_man_bottoms(
     actor_height: f64,
     label_box_height: f64,
     diagram_id: &str,
+    actor_text_style: &TextStyle,
+    math_sidecar: &crate::sequence::SequenceMathSidecar,
     typography: &crate::sequence::SequenceResolvedTypography,
     typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
 ) {
@@ -58,7 +71,8 @@ pub(super) fn render_sequence_actor_man_bottoms(
     let mut footer_actors = model
         .actor_order
         .iter()
-        .filter_map(|actor_id| {
+        .enumerate()
+        .filter_map(|(actor_index, actor_id)| {
             let actor = model.actors.get(actor_id)?;
             let actor_type = actor.actor_type.as_str();
             if !is_actor_man_variant(actor_type) {
@@ -66,12 +80,25 @@ pub(super) fn render_sequence_actor_man_bottoms(
             }
             let node_id = format!("actor-bottom-{actor_id}");
             let n = nodes_by_id.get(node_id.as_str()).copied()?;
-            Some((actor_id, actor_type, actor.description.as_str(), n))
+            Some((
+                actor_index,
+                actor_id,
+                actor_type,
+                actor.description.as_str(),
+                n,
+            ))
         })
         .collect::<Vec<_>>();
-    footer_actors.sort_by(|a, b| b.3.x.total_cmp(&a.3.x));
+    footer_actors.sort_by(|a, b| b.4.x.total_cmp(&a.4.x));
 
-    for (actor_id, actor_type, label, n) in footer_actors {
+    for (actor_index, actor_id, actor_type, label, n) in footer_actors {
+        let prepared_math = math_sidecar
+            .terminal_for_occurrence(&crate::sequence::SequenceMathOccurrence::Actor(actor_index));
+        let math_label = sequence_katex_label(
+            prepared_math,
+            actor_text_style,
+            crate::sequence::SequenceMathHeightMode::Actor,
+        );
         write_actor_man_bottom_glyph(
             out,
             actor_type,
@@ -84,6 +111,7 @@ pub(super) fn render_sequence_actor_man_bottoms(
                 label_box_height,
             },
             diagram_id,
+            math_label,
             typography,
             typography_receipt,
         );

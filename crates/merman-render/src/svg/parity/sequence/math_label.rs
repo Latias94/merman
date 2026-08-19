@@ -1,6 +1,7 @@
 use super::super::*;
-use crate::sequence::{SequenceMathHeightMode, measure_prepared_sequence_math_label};
+use crate::sequence::{SequenceMathHeightMode, prepared_sequence_math_terminal_geometry};
 
+#[derive(Clone, Copy)]
 pub(super) struct SequenceKatexLabel<'a> {
     pub(super) html: &'a str,
     pub(super) width: f64,
@@ -13,7 +14,9 @@ pub(super) fn sequence_katex_label<'a>(
     height_mode: SequenceMathHeightMode,
 ) -> Option<SequenceKatexLabel<'a>> {
     let prepared = prepared?;
-    let (width, height) = measure_prepared_sequence_math_label(Some(prepared), style, height_mode)?;
+    let (width, height) =
+        prepared_sequence_math_terminal_geometry(Some(prepared), style, height_mode)?
+            .browser_box_size();
     Some(SequenceKatexLabel {
         html: prepared.browser_xhtml(),
         width,

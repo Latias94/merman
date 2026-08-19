@@ -67,9 +67,9 @@ mod xychart;
 mod zenuml;
 use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_font_family,
-    info_css_parts_with_theme_font_size_only, info_css_with_config, pie_css, push_xychart_css,
-    requirement_css, sankey_css, write_info_css_with_font_family,
-    write_mermaid_default_base_css_prefix,
+    info_css_parts_with_theme_font_size_only, info_css_with_config, pie_css,
+    pie_css_with_stroke_overrides, push_xychart_css, requirement_css, sankey_css,
+    write_info_css_with_font_family, write_mermaid_default_base_css_prefix,
 };
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};

@@ -1,5 +1,6 @@
 use super::*;
 use rustc_hash::FxHashMap;
+use std::cell::RefCell;
 use std::rc::Rc;
 mod context;
 mod edge;
@@ -70,6 +71,7 @@ struct StateRenderCtx<'a> {
     label_sidecar: &'a crate::state::StateLabelSidecar,
     effect_evidence: &'a crate::state::StateSvgEffectEvidenceRecorder,
     style_plan: &'a crate::state::StateStylePlan,
+    theme_receipt: RefCell<crate::state::StateThemeTerminalReceipt>,
     rough_cache: StateRoughCache,
     // Keep this field after the operation cache. Rust drops fields in declaration order, so the
     // test-only probe observes retained global/TLS state after operation-owned entries release.

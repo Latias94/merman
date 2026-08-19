@@ -73,6 +73,7 @@ mod effect_evidence;
 mod effect_plan;
 mod layout;
 mod style_plan;
+mod theme_evidence;
 
 pub(crate) use compatibility::{
     StateCompatibilityPlan, StateTerminalPaintProperty, StateTerminalSurface,
@@ -84,6 +85,10 @@ pub(crate) use effect_plan::{
 };
 pub(crate) use style_plan::{
     ResolvedLabelTypography, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
+};
+pub(crate) use theme_evidence::{
+    StatePendingTerminalMechanism, StateThemeTerminalExpectation, StateThemeTerminalOccurrence,
+    StateThemeTerminalPlan, StateThemeTerminalReceipt,
 };
 
 /// Coarse static support projected from State's existing terminal consumers.

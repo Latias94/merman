@@ -376,7 +376,7 @@ pub(super) fn render_sequence_messages(
                 "left" => (label_start_x + ctx.wrap_padding, "start"),
                 _ => (lbl.x, "middle"),
             };
-            let prepared_math = ctx.math_sidecar.get_for_occurrence(
+            let prepared_math = ctx.math_sidecar.terminal_for_occurrence(
                 &crate::sequence::SequenceMathOccurrence::Message(message_index),
             );
             if let Some(katex) = sequence_katex_label(

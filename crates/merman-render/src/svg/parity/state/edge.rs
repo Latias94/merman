@@ -491,6 +491,7 @@ fn write_state_edge_path(
     if le.points.len() < 2 {
         return;
     }
+    let terminal_start = out.len();
 
     let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
     let data_points = base64::engine::general_purpose::STANDARD
@@ -517,6 +518,11 @@ fn write_state_edge_path(
         let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(marker_end));
     }
     out.push_str("/>");
+    ctx.style_plan.record_edge_path_terminal_emission(
+        &mut ctx.theme_receipt.borrow_mut(),
+        edge_id,
+        terminal_start..out.len(),
+    );
 }
 
 pub(super) fn render_state_edge_path(
@@ -622,7 +628,7 @@ pub(super) fn render_state_edge_label(
                 r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject{} width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
                 escape_attr(id),
                 fallback_background_metadata_attr,
-                html_style
+                escape_attr(html_style)
             );
         } else {
             let _ = write!(
@@ -805,6 +811,7 @@ pub(super) fn render_state_edge_label(
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
+    let terminal_start = out.len();
     write_visible_edge_label(
         out,
         &edge.id,
@@ -821,6 +828,11 @@ pub(super) fn render_state_edge_label(
         html_background_style,
         fallback_background_fill,
         svg_background_style,
+    );
+    ctx.style_plan.record_edge_label_terminal_emission(
+        &mut ctx.theme_receipt.borrow_mut(),
+        edge.id.as_str(),
+        terminal_start..out.len(),
     );
 }
 
