@@ -202,6 +202,7 @@ pub(crate) struct StateEdgeStylePlan {
     label_div_style_prefix: String,
     label_background_style_attr: String,
     label_background_div_style_prefix: String,
+    label_background_fallback_fill: Option<String>,
     label_typography: ResolvedLabelTypography,
 }
 
@@ -242,6 +243,10 @@ impl StateEdgeStylePlan {
 
     pub(crate) fn label_background_div_style_prefix(&self) -> &str {
         &self.label_background_div_style_prefix
+    }
+
+    pub(crate) fn label_background_fallback_fill(&self) -> Option<&str> {
+        self.label_background_fallback_fill.as_deref()
     }
 
     pub(crate) const fn text_style(&self) -> &TextStyle {
@@ -394,6 +399,7 @@ pub(crate) struct StateStylePlan {
     transition_marker_style_attr: String,
     transition_label_background_style_attr: String,
     transition_label_background_div_style_prefix: String,
+    transition_label_background_fallback_fill: Option<String>,
     classes: IndexMap<String, StateClassStylePlan>,
     nodes: BTreeMap<String, StateNodeStylePlan>,
     edges: BTreeMap<String, StateEdgeStylePlan>,
@@ -853,10 +859,12 @@ impl StateStylePlan {
                 false,
                 false,
             );
-        let transition_label_background_div_style_prefix = semantic_html_background_style(
+        let transition_label_background_fallback_fill = semantic_html_background_fill(
             semantic_transition_label_background.as_ref(),
             transition_label_background_fill_owned,
         );
+        let transition_label_background_div_style_prefix =
+            html_background_style(transition_label_background_fallback_fill.as_deref());
         let hidden_prefixes = hidden_state_prefixes(model);
         let shadowed_self_loops = shadowed_self_loop_edge_indices(model, &hidden_prefixes);
         let mut target_ordinals = BTreeMap::<ThemeTarget, usize>::new();
@@ -960,6 +968,7 @@ impl StateStylePlan {
             transition_marker_style_attr,
             transition_label_background_style_attr,
             transition_label_background_div_style_prefix,
+            transition_label_background_fallback_fill,
             classes,
             nodes,
             edges,
@@ -1011,6 +1020,10 @@ impl StateStylePlan {
 
     pub(crate) fn transition_label_background_div_style_prefix(&self) -> &str {
         &self.transition_label_background_div_style_prefix
+    }
+
+    pub(crate) fn transition_label_background_fallback_fill(&self) -> Option<&str> {
+        self.transition_label_background_fallback_fill.as_deref()
     }
 
     pub(crate) fn classes(&self) -> impl Iterator<Item = &StateClassStylePlan> {
@@ -2645,10 +2658,12 @@ fn prepare_edge(
             theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Fill);
         }
     }
-    let label_background_div_style_prefix = semantic_html_background_style(
+    let label_background_fallback_fill = semantic_html_background_fill(
         semantic_label_background.as_ref(),
         label_background_fill_owned,
     );
+    let label_background_div_style_prefix =
+        html_background_style(label_background_fallback_fill.as_deref());
     let semantic_label = resolve_theme_text_style(
         resolved_theme,
         ThemeTarget::TransitionLabel,
@@ -2708,6 +2723,7 @@ fn prepare_edge(
         label_div_style_prefix: div_style_prefix(&label_emission),
         label_background_style_attr,
         label_background_div_style_prefix,
+        label_background_fallback_fill,
         label_typography,
     })
 }
@@ -2735,21 +2751,24 @@ fn semantic_shape_style_attr_with_suppressed_paints(
     compact_style_attr(&emission)
 }
 
-fn semantic_html_background_style(
+fn semantic_html_background_fill(
     style: Option<&ResolvedThemeStyle>,
     suppress_fill: bool,
-) -> String {
+) -> Option<String> {
     if suppress_fill {
-        return String::new();
+        return None;
     }
-    let Some(style) = style else {
-        return String::new();
-    };
+    let style = style?;
     match shape_paint_value(style.fill_resolution()).as_deref() {
-        Some("none") => "background-color: transparent !important; ".to_string(),
-        Some(value) => format!("background-color: {value} !important; "),
-        None => String::new(),
+        Some("none") => Some("transparent".to_string()),
+        Some(value) => Some(value.to_string()),
+        None => None,
     }
+}
+
+fn html_background_style(fill: Option<&str>) -> String {
+    fill.map(|fill| format!("background-color: {fill} !important; "))
+        .unwrap_or_default()
 }
 
 fn resolve_theme_style(

@@ -3000,6 +3000,105 @@ fn state_transition_label_background_uses_distinct_native_and_html_terminal_owne
 }
 
 #[test]
+fn state_transition_label_background_ordinals_survive_resvg_fallback_per_occurrence() {
+    const FIRST_BACKGROUND: &str = "#dc2626";
+    const SECOND_BACKGROUND: &str = "#16a34a";
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": true}}%%
+stateDiagram-v2
+First --> Second: first transition
+Second --> Third: second transition
+"#;
+
+    let styles = ThemeRuleSet::default()
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::TransitionLabelBackground,
+                ThemeStylePatch::default().with_fill(
+                    CanvasPaint::solid(FIRST_BACKGROUND).expect("valid first background"),
+                ),
+            )
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid first ordinal")),
+        )
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::TransitionLabelBackground,
+                ThemeStylePatch::default().with_fill(
+                    CanvasPaint::solid(SECOND_BACKGROUND).expect("valid second background"),
+                ),
+            )
+            .with_ordinal(OrdinalSelector::exact(2).expect("valid second ordinal")),
+        );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile ordinal State transition-label backgrounds");
+    let (parity_svg, native_svg, _, _) =
+        render_state_public_and_native_svg_from_text_with_theme_in_environment(
+            SOURCE,
+            &theme,
+            &RenderEnvironment::deterministic(),
+        );
+
+    let parity = roxmltree::Document::parse(&parity_svg).expect("valid parity State SVG XML");
+    let native = roxmltree::Document::parse(&native_svg).expect("valid ResvgSafe State SVG XML");
+    for (edge_id, fill) in [("edge0", FIRST_BACKGROUND), ("edge1", SECOND_BACKGROUND)] {
+        let occurrence = format!("state-transition-label-background:{edge_id}");
+        let foreign_object = parity
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("foreignObject")
+                    && node.attribute("data-merman-fallback-occurrence")
+                        == Some(occurrence.as_str())
+            })
+            .unwrap_or_else(|| panic!("missing parity occurrence {occurrence}: {parity_svg}"));
+        assert_eq!(
+            foreign_object.attribute("data-merman-fallback-background-fill"),
+            Some(fill),
+            "Parity SVG must bind the terminal background to {occurrence}: {parity_svg}"
+        );
+        let parity_background = foreign_object
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("div")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "labelBkg")
+                    })
+            })
+            .and_then(|node| node.attribute("style"))
+            .unwrap_or_else(|| {
+                panic!("missing Parity labelBkg style for {occurrence}: {parity_svg}")
+            });
+        assert!(
+            parity_background.contains(&format!("background-color: {fill} !important")),
+            "Parity SVG must apply {fill} to {occurrence}: {parity_svg}"
+        );
+
+        let fallback_group = native
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("data-merman-fallback-occurrence")
+                        == Some(occurrence.as_str())
+            })
+            .unwrap_or_else(|| panic!("missing ResvgSafe occurrence {occurrence}: {native_svg}"));
+        let fallback_rect = fallback_group
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap_or_else(|| panic!("missing ResvgSafe rect for {occurrence}: {native_svg}"));
+        assert_eq!(fallback_rect.attribute("fill"), Some(fill));
+        let expected_style = format!("fill:{fill} !important");
+        assert_eq!(
+            fallback_rect.attribute("style"),
+            Some(expected_style.as_str()),
+            "legacy edge-label CSS must not override {occurrence}: {native_svg}"
+        );
+        assert_eq!(
+            fallback_rect.attribute("data-merman-fallback-occurrence"),
+            Some(occurrence.as_str())
+        );
+    }
+}
+
+#[test]
 fn state_transition_stroke_yields_to_extended_theme_background_ownership() {
     const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Finish\n";
     const TYPED_COLOR: &str = "#ec4899";

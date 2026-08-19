@@ -26,6 +26,10 @@ use html::{
 use xml::{escape_xml_attr, escape_xml_text};
 
 pub(crate) const PREPARED_TEXT_LABEL_DATA_ATTR: &str = "data-merman-prepared-text-label";
+/// Writer-owned terminal fill for a single fallback background occurrence.
+pub(crate) const FALLBACK_BACKGROUND_FILL_DATA_ATTR: &str = "data-merman-fallback-background-fill";
+/// Stable occurrence identity paired with [`FALLBACK_BACKGROUND_FILL_DATA_ATTR`].
+pub(crate) const FALLBACK_OCCURRENCE_DATA_ATTR: &str = "data-merman-fallback-occurrence";
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -121,27 +125,53 @@ pub fn foreign_object_label_fallback_svg_text(
 
                 let raw_lines = htmlish_to_text_lines(inner);
                 if !raw_lines.is_empty() {
+                    let wants_label_bkg = inner.contains("labelBkg");
+                    let writer_background = wants_label_bkg
+                        .then(|| writer_owned_fallback_background(tag))
+                        .flatten();
                     let source_attr = if from_switch {
                         r#" data-merman-foreignobject-source="switch-native-fallback""#
                     } else {
                         ""
                     };
+                    let occurrence_attr = writer_background
+                        .map(|(occurrence, _)| {
+                            format!(
+                                r#" {FALLBACK_OCCURRENCE_DATA_ATTR}="{}""#,
+                                escape_xml_attr(occurrence)
+                            )
+                        })
+                        .unwrap_or_default();
                     overlays.push_str(&format!(
-                        r#"<g data-merman-foreignobject="fallback"{source} class="{cls}">"#,
+                        r#"<g data-merman-foreignobject="fallback"{source}{occurrence} class="{cls}">"#,
                         source = source_attr,
+                        occurrence = occurrence_attr,
                         cls = class_attr_tokens(&g_stack, inner, "merman-foreignobject-fallback")
                     ));
 
-                    let wants_label_bkg = inner.contains("labelBkg");
                     if wants_label_bkg {
-                        overlays.push_str(&format!(
-                            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
-                            abs_x,
-                            abs_y,
-                            width,
-                            height,
-                            escape_xml_attr(&label_bkg)
-                        ));
+                        if let Some((occurrence, fill)) = writer_background {
+                            let fill = escape_xml_attr(fill);
+                            overlays.push_str(&format!(
+                                r#"<rect x="{}" y="{}" width="{}" height="{}" {FALLBACK_OCCURRENCE_DATA_ATTR}="{}" fill="{}" style="fill:{} !important"/>"#,
+                                abs_x,
+                                abs_y,
+                                width,
+                                height,
+                                escape_xml_attr(occurrence),
+                                fill,
+                                fill,
+                            ));
+                        } else {
+                            overlays.push_str(&format!(
+                                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+                                abs_x,
+                                abs_y,
+                                width,
+                                height,
+                                escape_xml_attr(&label_bkg)
+                            ));
+                        }
                     }
 
                     let font_size_value = extract_inline_html_style_property(inner, "font-size")
@@ -253,6 +283,16 @@ pub fn foreign_object_label_fallback_svg_text(
     }
 }
 
+fn writer_owned_fallback_background(tag: &str) -> Option<(&str, &str)> {
+    let occurrence = parse_attr_str(tag, FALLBACK_OCCURRENCE_DATA_ATTR)?;
+    let fill = parse_attr_str(tag, FALLBACK_BACKGROUND_FILL_DATA_ATTR)?;
+    if occurrence.is_empty() || fill.is_empty() {
+        return None;
+    }
+    crate::diagram_theme::ThemeColorValue::parse(fill).ok()?;
+    Some((occurrence, fill))
+}
+
 fn is_foreign_object_switch_native_fallback(
     svg: &str,
     foreign_object_start: usize,
@@ -353,6 +393,41 @@ mod tests {
             out.contains(r#"<rect x="10" y="20" width="30" height="24""#),
             "expected rect with foreignObject bounds"
         );
+    }
+
+    #[test]
+    fn foreign_object_overlay_preserves_writer_owned_occurrence_backgrounds() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{background-color:#64748b}.edgeLabel rect{fill:#0f172a !important}</style><g class="edgeLabel"><foreignObject data-merman-fallback-occurrence="state-transition-label-background:edge0" data-merman-fallback-background-fill="#dc2626" x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>First</p></div></foreignObject></g><g class="edgeLabel"><foreignObject data-merman-fallback-occurrence="state-transition-label-background:edge1" data-merman-fallback-background-fill="#16a34a" x="50" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Second</p></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        for (occurrence, fill) in [
+            ("state-transition-label-background:edge0", "#dc2626"),
+            ("state-transition-label-background:edge1", "#16a34a"),
+        ] {
+            let document = roxmltree::Document::parse(&out).expect("valid fallback SVG XML");
+            let group = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-merman-fallback-occurrence") == Some(occurrence)
+                })
+                .unwrap_or_else(|| panic!("missing fallback occurrence {occurrence}: {out}"));
+            let rect = group
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap_or_else(|| panic!("missing fallback rect for {occurrence}: {out}"));
+            assert_eq!(
+                rect.attribute("data-merman-fallback-occurrence"),
+                Some(occurrence)
+            );
+            assert_eq!(rect.attribute("fill"), Some(fill));
+            let expected_style = format!("fill:{fill} !important");
+            assert_eq!(
+                rect.attribute("style"),
+                Some(expected_style.as_str()),
+                "the writer-owned terminal fill must outrank legacy .edgeLabel rect CSS: {out}"
+            );
+        }
     }
 
     #[test]

@@ -574,6 +574,19 @@ pub(super) fn render_state_edge_label(
     origin_x: f64,
     origin_y: f64,
 ) {
+    fn fallback_background_metadata_attr(id: &str, fill: Option<&str>) -> String {
+        let Some(fill) = fill else {
+            return String::new();
+        };
+        format!(
+            r#" {}="state-transition-label-background:{}" {}="{}""#,
+            crate::svg::fallback::FALLBACK_OCCURRENCE_DATA_ATTR,
+            escape_attr(id),
+            crate::svg::fallback::FALLBACK_BACKGROUND_FILL_DATA_ATTR,
+            escape_attr(fill),
+        )
+    }
+
     fn edge_label_div_style(label_w: f64, prefix: &str, background: &str) -> String {
         // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
         // `<div>` container to wrapping mode when the label reaches the max width.
@@ -601,12 +614,14 @@ pub(super) fn render_state_edge_label(
         id: &str,
         html_labels: bool,
         html_style: &str,
+        fallback_background_metadata_attr: &str,
     ) {
         if html_labels {
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject{} width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
                 escape_attr(id),
+                fallback_background_metadata_attr,
                 html_style
             );
         } else {
@@ -631,6 +646,7 @@ pub(super) fn render_state_edge_label(
         label_style: &str,
         label_div_prefix: &str,
         html_background_style: &str,
+        fallback_background_fill: Option<&str>,
         svg_background_style: &str,
     ) {
         let w = w.max(0.0);
@@ -654,15 +670,18 @@ pub(super) fn render_state_edge_label(
         };
         if html_labels {
             let prepared_token_attr = state_prepared_html_label_token_attr(prepared);
+            let fallback_background_metadata_attr =
+                fallback_background_metadata_attr(id, fallback_background_fill);
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{}{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
                 fmt_display(label_pos.x),
                 fmt_display(label_pos.y),
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
                 prepared_token_attr,
+                fallback_background_metadata_attr,
                 fmt_display(w),
                 fmt_display(h),
                 escape_attr(&edge_label_div_style(
@@ -738,11 +757,16 @@ pub(super) fn render_state_edge_label(
             ctx.style_plan
                 .transition_label_background_div_style_prefix()
         });
+    let fallback_background_fill = edge_style
+        .and_then(crate::state::StateEdgeStylePlan::label_background_fallback_fill)
+        .or_else(|| ctx.style_plan.transition_label_background_fallback_fill());
     let svg_background_style = edge_style
         .map(crate::state::StateEdgeStylePlan::label_background_style_attr)
         .filter(|style| !style.is_empty())
         .unwrap_or_else(|| ctx.style_plan.transition_label_background_style_attr());
     let empty_edge_label_style = edge_label_div_style(0.0, label_div_prefix, html_background_style);
+    let empty_fallback_background_metadata_attr =
+        fallback_background_metadata_attr(&edge.id, fallback_background_fill);
     let label_text = edge.label.trim();
     if label_text.is_empty() {
         write_empty_edge_label(
@@ -750,6 +774,7 @@ pub(super) fn render_state_edge_label(
             &edge.id,
             ctx.html_labels,
             empty_edge_label_style.as_str(),
+            empty_fallback_background_metadata_attr.as_str(),
         );
         return;
     }
@@ -794,6 +819,7 @@ pub(super) fn render_state_edge_label(
         label_style,
         label_div_prefix,
         html_background_style,
+        fallback_background_fill,
         svg_background_style,
     );
 }
