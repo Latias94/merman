@@ -5,13 +5,15 @@ use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
+#[cfg(test)]
+use crate::relation_graph::RelationGraphHorizontalDirection;
 use crate::relation_graph::{
     HorizontalRelationEndpoint, HorizontalRelationMarker, HorizontalRelationStyle,
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
-    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLabelBatchPlan,
-    RelationGraphLabelPlan, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationRegionPlan,
-    RelationSelfLoopMetrics, RelationStackPlan, RelationSummaryPaintPlan,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationDirection,
+    RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLabelBatchPlan, RelationGraphLabelPlan,
+    RelationGraphLine, RelationGraphSummaryRow, RelationLineChars, RelationOverlay,
+    RelationParallelPlan, RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics,
+    RelationStackPlan, RelationSummaryPaintPlan,
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -118,7 +120,7 @@ type RenderedClassBox = RelationGraphBox;
 struct ClassRenderSettings<'a> {
     options: &'a AsciiRenderOptions,
     charset: ClassCharset,
-    direction: ClassDirection,
+    direction: RelationDirection,
 }
 
 #[derive(Debug)]
@@ -319,51 +321,6 @@ impl EndpointLabelRole {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClassDirection {
-    TopDown,
-    BottomUp,
-    LeftRight,
-    RightLeft,
-}
-
-impl ClassDirection {
-    fn try_from_model(raw: &str) -> Result<Self> {
-        let raw = raw.trim();
-        if raw.is_empty() || raw.eq_ignore_ascii_case("TB") || raw.eq_ignore_ascii_case("TD") {
-            Ok(Self::TopDown)
-        } else if raw.eq_ignore_ascii_case("BT") {
-            Ok(Self::BottomUp)
-        } else if raw.eq_ignore_ascii_case("LR") {
-            Ok(Self::LeftRight)
-        } else if raw.eq_ignore_ascii_case("RL") {
-            Ok(Self::RightLeft)
-        } else {
-            Err(AsciiError::UnsupportedFeature {
-                diagram_type: "class",
-                feature: "unknown class diagram directions",
-            })
-        }
-    }
-
-    fn is_horizontal(self) -> bool {
-        matches!(self, Self::LeftRight | Self::RightLeft)
-    }
-
-    fn is_reversed(self) -> bool {
-        matches!(self, Self::BottomUp | Self::RightLeft)
-    }
-
-    fn horizontal_direction(self) -> RelationGraphHorizontalDirection {
-        match self {
-            Self::RightLeft => RelationGraphHorizontalDirection::RightLeft,
-            Self::TopDown | Self::BottomUp | Self::LeftRight => {
-                RelationGraphHorizontalDirection::LeftRight
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RelationLine {
     Solid,
     Dotted,
@@ -415,8 +372,8 @@ impl<'a> RelationEndpoint<'a> {
 }
 
 impl<'a> RelationLayout<'a> {
-    fn apply_direction(&mut self, direction: ClassDirection) {
-        if direction != ClassDirection::BottomUp {
+    fn apply_direction(&mut self, direction: RelationDirection) {
+        if direction != RelationDirection::BottomUp {
             return;
         }
         std::mem::swap(&mut self.top, &mut self.bottom);
@@ -589,7 +546,11 @@ fn render_class_diagram_impl(
     let mut resources =
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
     resources.charge_layout_work(model.direction.len().max(1))?;
-    let direction = ClassDirection::try_from_model(&model.direction);
+    let direction = RelationDirection::try_from_model(
+        &model.direction,
+        "class",
+        "unknown class diagram directions",
+    );
     resources.checkpoint()?;
     let direction = direction?;
     preflight_class_text(model, &mut resources)?;
@@ -3053,7 +3014,7 @@ mod tests {
         let settings = ClassRenderSettings {
             options: &options,
             charset: ClassCharset::for_options(&options),
-            direction: ClassDirection::TopDown,
+            direction: RelationDirection::TopDown,
         };
         let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
@@ -3169,8 +3130,12 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let execution = AsciiExecution::for_test(&policy);
         let charset = ClassCharset::for_options(options);
-        let direction = ClassDirection::try_from_model(&model.direction)
-            .expect("class summary direction should be valid");
+        let direction = RelationDirection::try_from_model(
+            &model.direction,
+            "class",
+            "unknown class diagram directions",
+        )
+        .expect("class summary direction should be valid");
         let settings = ClassRenderSettings {
             options,
             charset,

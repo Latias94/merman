@@ -9,6 +9,7 @@ use crate::{AsciiError, Result};
 use merman_core::OperationPhase;
 #[cfg(test)]
 use std::rc::Rc;
+mod direction;
 mod document;
 mod encode;
 mod horizontal;
@@ -79,6 +80,7 @@ impl RelationResourceCheckpointCursor {
     }
 }
 
+pub(crate) use self::direction::RelationDirection;
 #[cfg(test)]
 pub(crate) use self::document::RelationDocumentPlan;
 #[cfg(test)]

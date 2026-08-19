@@ -1,6 +1,6 @@
 use super::{
-    CLASS_LEVEL_HORIZONTAL_GAP, ClassDirection, ClassEndpointIndex, ClassNoteIndex,
-    ClassRelationLabels, ClassRenderSettings, RenderedClassBox, RenderedClassBoxIndex,
+    CLASS_LEVEL_HORIZONTAL_GAP, ClassEndpointIndex, ClassNoteIndex, ClassRelationLabels,
+    ClassRenderSettings, RelationDirection, RenderedClassBox, RenderedClassBoxIndex,
     authored_display_projection_is_lossy, external_namespace_note_summary_rows, grid_overflow,
     layout_allocation_failed, nesting_overflow, note_relation_layouts_for_notes, relation_layout,
     render_class_box, render_class_component_lines, render_class_document_lines_with_execution,
@@ -1132,7 +1132,7 @@ pub(super) fn render_namespace_container_box<'a>(
         )?;
         children.clear();
         children.push(contents);
-    } else if settings.direction == ClassDirection::BottomUp {
+    } else if settings.direction == RelationDirection::BottomUp {
         children.reverse();
     }
 

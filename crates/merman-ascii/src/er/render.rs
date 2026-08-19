@@ -3,13 +3,15 @@ use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
+#[cfg(test)]
+use crate::relation_graph::RelationGraphHorizontalDirection;
 use crate::relation_graph::{
     HorizontalRelationEndpoint, HorizontalRelationMarker, HorizontalRelationStyle,
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
-    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLabelBatchPlan,
-    RelationGraphLabelPlan, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationRegionPlan,
-    RelationSelfLoopMetrics, RelationStackPlan, RelationSummaryPaintPlan,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationDirection,
+    RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLabelBatchPlan, RelationGraphLabelPlan,
+    RelationGraphLine, RelationGraphSummaryRow, RelationLineChars, RelationOverlay,
+    RelationParallelPlan, RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics,
+    RelationStackPlan, RelationSummaryPaintPlan,
 };
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
@@ -87,61 +89,16 @@ impl ErCharset {
 
 type RenderedEntityBox = RelationGraphBox;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ErDirection {
-    TopDown,
-    BottomUp,
-    LeftRight,
-    RightLeft,
-}
-
-impl ErDirection {
-    fn try_from_model(raw: &str) -> Result<Self> {
-        let raw = raw.trim();
-        if raw.is_empty() || raw.eq_ignore_ascii_case("TB") || raw.eq_ignore_ascii_case("TD") {
-            Ok(Self::TopDown)
-        } else if raw.eq_ignore_ascii_case("BT") {
-            Ok(Self::BottomUp)
-        } else if raw.eq_ignore_ascii_case("LR") {
-            Ok(Self::LeftRight)
-        } else if raw.eq_ignore_ascii_case("RL") {
-            Ok(Self::RightLeft)
-        } else {
-            Err(AsciiError::UnsupportedFeature {
-                diagram_type: "er",
-                feature: "unknown ER diagram directions",
-            })
-        }
-    }
-
-    fn is_horizontal(self) -> bool {
-        matches!(self, Self::LeftRight | Self::RightLeft)
-    }
-
-    fn is_reversed(self) -> bool {
-        matches!(self, Self::BottomUp | Self::RightLeft)
-    }
-
-    fn horizontal_direction(self) -> RelationGraphHorizontalDirection {
-        match self {
-            Self::RightLeft => RelationGraphHorizontalDirection::RightLeft,
-            Self::TopDown | Self::BottomUp | Self::LeftRight => {
-                RelationGraphHorizontalDirection::LeftRight
-            }
-        }
-    }
-}
-
 struct ErRelationComponentAdapter {
     charset: ErCharset,
     width_profile: TerminalWidthProfile,
-    direction: ErDirection,
+    direction: RelationDirection,
 }
 
 struct ErRenderContext<'render> {
     options: &'render AsciiRenderOptions,
     charset: ErCharset,
-    direction: ErDirection,
+    direction: RelationDirection,
 }
 
 struct ErRelationLayout<'a> {
@@ -156,8 +113,8 @@ struct ErRelationLayout<'a> {
 }
 
 impl ErRelationLayout<'_> {
-    fn apply_direction(&mut self, direction: ErDirection) {
-        if direction != ErDirection::BottomUp {
+    fn apply_direction(&mut self, direction: RelationDirection) {
+        if direction != RelationDirection::BottomUp {
             return;
         }
         std::mem::swap(&mut self.top_id, &mut self.bottom_id);
@@ -184,7 +141,8 @@ fn render_er_diagram_impl(
     let mut resources =
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
     resources.charge_layout_work(model.direction.len().max(1))?;
-    let direction = ErDirection::try_from_model(&model.direction);
+    let direction =
+        RelationDirection::try_from_model(&model.direction, "er", "unknown ER diagram directions");
     resources.checkpoint()?;
     let direction = direction?;
     if model.entities.is_empty() {
@@ -1658,8 +1616,12 @@ mod tests {
     ) -> (Result<String>, (usize, usize), (usize, usize)) {
         let mut resources = ResourceContext::new(policy);
         let charset = ErCharset::for_options(options);
-        let direction = ErDirection::try_from_model(&model.direction)
-            .expect("ER summary direction should be valid");
+        let direction = RelationDirection::try_from_model(
+            &model.direction,
+            "er",
+            "unknown ER diagram directions",
+        )
+        .expect("ER summary direction should be valid");
         let mut deferred = DeferredTextRegistry::new();
         let mut boxes = Vec::new();
         boxes
@@ -1958,8 +1920,12 @@ mod tests {
         let model = horizontal_control_model();
         let options = AsciiRenderOptions::ascii();
         let charset = ErCharset::for_options(&options);
-        let direction = ErDirection::try_from_model(&model.direction)
-            .expect("horizontal ER direction should be valid");
+        let direction = RelationDirection::try_from_model(
+            &model.direction,
+            "er",
+            "unknown ER diagram directions",
+        )
+        .expect("horizontal ER direction should be valid");
         let mut resources = ResourceContext::new(policy);
         let mut deferred_text = DeferredTextRegistry::new();
         let mut boxes = Vec::new();
