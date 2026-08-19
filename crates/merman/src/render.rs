@@ -424,7 +424,13 @@ impl ResourceLimitExceeded {
             phase: details.phase,
             actual: details.actual,
             maximum: details.max,
-            cause: ResourceLimitCause::Ceiling,
+            cause: match details.cause {
+                merman_export::ExportResourceLimitCause::Ceiling => ResourceLimitCause::Ceiling,
+                merman_export::ExportResourceLimitCause::ArithmeticOverflow => {
+                    ResourceLimitCause::ArithmeticOverflow
+                }
+                _ => ResourceLimitCause::Ceiling,
+            },
         }
     }
 }

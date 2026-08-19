@@ -420,6 +420,24 @@ fn export_backend_errors_use_canonical_render_error_classification() {
                 && limit.actual == 2
                 && limit.maximum == 1
     ));
+
+    let error = RenderError::from(
+        merman::svg::export::ExportError::ResourceArithmeticOverflow {
+            limit_id: "max_export_bytes",
+            phase: "export",
+            actual: u64::MAX,
+            max: 1024,
+        },
+    );
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_export_bytes"
+                && limit.phase == "export"
+                && limit.actual == u64::MAX
+                && limit.maximum == 1024
+                && limit.cause == merman::ResourceLimitCause::ArithmeticOverflow
+    ));
 }
 
 #[cfg(feature = "ascii")]
