@@ -15,6 +15,7 @@ use merman_core::OperationPhase;
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
 };
+use std::borrow::Cow;
 
 const BAND_GAP: usize = 1;
 const BAND_GAP_LABEL: &str = " ";
@@ -444,7 +445,7 @@ impl AxisPlan {
 
     fn sample_column(
         &self,
-        datum: &SeriesDatum,
+        datum: &SeriesDatum<'_>,
         slot_count: usize,
         plot_width: usize,
         plot_area: XyChartPlotArea,
@@ -475,8 +476,8 @@ impl AxisPlan {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SeriesDatum {
-    pub(super) x: String,
+pub(super) struct SeriesDatum<'a> {
+    pub(super) x: Cow<'a, str>,
     pub(super) value: Option<f64>,
     pub(super) has_point_label: bool,
     authored_x: bool,
@@ -486,24 +487,90 @@ pub(super) struct SeriesDatum {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SeriesPlan {
+pub(super) struct SeriesPlan<'a> {
     pub(super) series_index: usize,
     pub(super) plot_type: XyChartPlotType,
-    pub(super) title: Option<String>,
-    pub(super) data: Vec<SeriesDatum>,
+    pub(super) title: Option<&'a str>,
+    pub(super) data: Vec<SeriesDatum<'a>>,
     pub(super) has_orphan_point_labels: bool,
     pub(super) bar_lane: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct TerminalChartPlan {
+pub(super) enum HorizontalAxisLabelPlan<'a> {
+    Single(Cow<'a, str>),
+    JoinedFragments {
+        fragments: Vec<Cow<'a, str>>,
+        materialized_bytes: usize,
+    },
+}
+
+impl<'a> HorizontalAxisLabelPlan<'a> {
+    pub(super) fn single_text(&self) -> Option<&str> {
+        match self {
+            Self::Single(value) => Some(value.as_ref()),
+            Self::JoinedFragments { .. } => None,
+        }
+    }
+
+    pub(super) fn try_visit_fragments(
+        &self,
+        mut visit: impl FnMut(&str) -> Result<()>,
+    ) -> Result<()> {
+        match self {
+            Self::Single(value) => visit(value.as_ref()),
+            Self::JoinedFragments { fragments, .. } => {
+                for (index, fragment) in fragments.iter().enumerate() {
+                    if index > 0 {
+                        visit(" / ")?;
+                    }
+                    visit(fragment.as_ref())?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn materialize<'plan>(&'plan self, resources: &ResourceContext) -> Result<Cow<'plan, str>> {
+        match self {
+            Self::Single(value) => Ok(Cow::Borrowed(value.as_ref())),
+            Self::JoinedFragments {
+                fragments,
+                materialized_bytes,
+            } => {
+                resources.check(AsciiResourceLimitId::MaxOutputBytes, *materialized_bytes)?;
+                charge_authored_bytes_count(resources, (*materialized_bytes).max(1))?;
+                resources.check_usage(0, 0)?;
+                let mut label = String::new();
+                label.try_reserve_exact(*materialized_bytes).map_err(|_| {
+                    AsciiError::AllocationFailed {
+                        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                    }
+                })?;
+                for (index, fragment) in fragments.iter().enumerate() {
+                    resources.check_usage(0, 0)?;
+                    if index > 0 {
+                        label.push_str(" / ");
+                    }
+                    label.push_str(fragment.as_ref());
+                    resources.check_usage(0, 0)?;
+                }
+                debug_assert_eq!(label.len(), *materialized_bytes);
+                Ok(Cow::Owned(label))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct TerminalChartPlan<'a> {
     pub(super) x_axis: AxisPlan,
     pub(super) x_linear_domain: Option<LinearDomainPlan>,
     pub(super) y_range: ValueRange,
     pub(super) y_linear_domain: LinearDomainPlan,
-    pub(super) series: Vec<SeriesPlan>,
+    pub(super) series: Vec<SeriesPlan<'a>>,
     pub(super) category_labels: Vec<String>,
-    pub(super) horizontal_axis_labels: Vec<String>,
+    pub(super) horizontal_axis_labels: Vec<HorizontalAxisLabelPlan<'a>>,
     pub(super) slot_count: usize,
     pub(super) bar_series_count: usize,
     pub(super) line_series_count: usize,
@@ -528,37 +595,71 @@ impl TerminalDisclosurePlan {
 pub(super) struct TerminalChartCardinality {
     max_data_count: usize,
     slot_count: usize,
+    bar_series_count: usize,
+    line_series_count: usize,
 }
 
 impl TerminalChartCardinality {
-    pub(super) const fn is_empty(self) -> bool {
-        self.slot_count == 0
-    }
-}
-
-impl TerminalChartPlan {
-    pub(super) fn measure_cardinality(
+    pub(super) fn measure(
         model: &XyChartDiagramRenderModel,
         resources: &mut ResourceContext,
-    ) -> Result<TerminalChartCardinality> {
+    ) -> Result<Self> {
         let mut max_data_count = 0;
+        let mut bar_series_count = 0;
+        let mut line_series_count = 0;
         for plot in &model.plots {
             resources.charge_layout_work(1)?;
             max_data_count = max_data_count.max(effective_sample_count(plot));
+            match plot.plot_type {
+                XyChartPlotType::Bar => {
+                    bar_series_count = resources.checked_grid_add(bar_series_count, 1)?;
+                }
+                XyChartPlotType::Line => {
+                    line_series_count = resources.checked_grid_add(line_series_count, 1)?;
+                }
+            }
         }
         let category_count = match &model.x_axis {
             XyChartAxisRenderModel::Band { categories, .. } => categories.len(),
             XyChartAxisRenderModel::Linear { .. } => 0,
         };
-        Ok(TerminalChartCardinality {
+        Ok(Self {
             max_data_count,
             slot_count: category_count.max(max_data_count),
+            bar_series_count,
+            line_series_count,
         })
     }
 
+    pub(super) const fn is_empty(self) -> bool {
+        self.slot_count == 0
+    }
+
+    pub(super) fn horizontal_row_count(self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_grid_mul(
+            self.slot_count,
+            horizontal_rows_per_slot(self.bar_series_count, self.line_series_count),
+        )
+    }
+
+    pub(super) const fn slot_count(self) -> usize {
+        self.slot_count
+    }
+}
+
+fn horizontal_rows_per_slot(bar_series_count: usize, line_series_count: usize) -> usize {
+    if bar_series_count <= 1 {
+        1
+    } else {
+        bar_series_count + usize::from(line_series_count > 0)
+    }
+}
+
+impl<'a> TerminalChartPlan<'a> {
     pub(super) fn build(
-        model: &XyChartDiagramRenderModel,
+        model: &'a XyChartDiagramRenderModel,
         cardinality: TerminalChartCardinality,
+        horizontal: bool,
         resources: &mut ResourceContext,
     ) -> Result<Self> {
         let x_axis = build_axis_plan(
@@ -596,6 +697,9 @@ impl TerminalChartPlan {
         let mut has_authored_x = false;
         for (series_index, plot) in model.plots.iter().enumerate() {
             resources.charge_layout_work(1)?;
+            if let Some(title) = plot.title.as_deref() {
+                charge_authored_bytes(resources, title)?;
+            }
             has_authored_x |= !plot.data.is_empty();
             let lane = if plot.plot_type == XyChartPlotType::Bar {
                 let lane = bar_lane;
@@ -615,13 +719,11 @@ impl TerminalChartPlan {
                 resources,
             )?);
         }
-        let horizontal_axis_labels = build_horizontal_axis_labels(
-            &x_axis,
-            &category_labels,
-            slot_count,
-            &series,
-            resources,
-        )?;
+        let horizontal_axis_labels = if horizontal {
+            build_horizontal_axis_labels(&x_axis, &category_labels, slot_count, &series, resources)?
+        } else {
+            Vec::new()
+        };
 
         let y_range = build_value_range(&model.y_axis, &series, resources)?;
         let XyChartAxisRenderModel::Linear {
@@ -655,24 +757,37 @@ impl TerminalChartPlan {
     }
 
     pub(super) fn horizontal_rows_per_slot(&self) -> usize {
-        if self.bar_series_count <= 1 {
-            1
-        } else {
-            self.bar_series_count + usize::from(self.line_series_count > 0)
+        horizontal_rows_per_slot(self.bar_series_count, self.line_series_count)
+    }
+
+    pub(super) fn materialize_horizontal_axis_labels<'plan>(
+        &'plan self,
+        resources: &ResourceContext,
+    ) -> Result<Vec<Cow<'plan, str>>> {
+        resources.charge_layout_work(self.horizontal_axis_labels.len())?;
+        let mut labels = Vec::new();
+        labels
+            .try_reserve_exact(self.horizontal_axis_labels.len())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        for label in &self.horizontal_axis_labels {
+            labels.push(label.materialize(resources)?);
         }
+        Ok(labels)
     }
 
     pub(super) fn horizontal_row_count(&self, resources: &ResourceContext) -> Result<usize> {
         resources.checked_grid_mul(self.slot_count, self.horizontal_rows_per_slot())
     }
 
-    pub(super) fn sample_slot(&self, datum: &SeriesDatum) -> usize {
+    pub(super) fn sample_slot(&self, datum: &SeriesDatum<'_>) -> usize {
         datum.slot
     }
 
     pub(super) fn sample_vertical_column(
         &self,
-        datum: &SeriesDatum,
+        datum: &SeriesDatum<'_>,
         plot_width: usize,
         plot_area: XyChartPlotArea,
         resources: &ResourceContext,
@@ -707,10 +822,10 @@ impl TerminalChartPlan {
             !horizontal && self.bar_series_count > plot_area.category_band_width;
         let values_are_ambiguous = self.series.len() > 1 || grouped_bars_do_not_fit;
 
-        let axis_labels = if horizontal {
-            &self.horizontal_axis_labels
+        let axis_label_count = if horizontal {
+            self.horizontal_axis_labels.len()
         } else {
-            &self.category_labels
+            self.category_labels.len()
         };
         let authored_band_categories = match &self.x_axis {
             AxisPlan::Band {
@@ -738,8 +853,23 @@ impl TerminalChartPlan {
         if has_linear_x_domain && (values_are_ambiguous || self.has_authored_x) {
             return Ok(disclosure(true, false));
         }
-        for (index, category) in axis_labels.iter().enumerate() {
+        for index in 0..axis_label_count {
             resources.charge_layout_work(1)?;
+            let category = if horizontal {
+                let label = self
+                    .horizontal_axis_labels
+                    .get(index)
+                    .ok_or_else(|| resources.grid_overflow())?;
+                let Some(category) = label.single_text() else {
+                    return Ok(disclosure(true, has_band_domain));
+                };
+                category
+            } else {
+                self.category_labels
+                    .get(index)
+                    .map(String::as_str)
+                    .ok_or_else(|| resources.grid_overflow())?
+            };
             let category_loses_geometry = if horizontal {
                 false
             } else {
@@ -760,9 +890,23 @@ impl TerminalChartPlan {
             if category_changes_during_normalization {
                 return Ok(disclosure(true, has_band_domain));
             }
-            for previous in &axis_labels[..index] {
-                resources.charge_layout_work(1)?;
-                if category == previous {
+            for previous_index in 0..index {
+                let previous = if horizontal {
+                    let label = self
+                        .horizontal_axis_labels
+                        .get(previous_index)
+                        .ok_or_else(|| resources.grid_overflow())?;
+                    let Some(previous) = label.single_text() else {
+                        return Ok(disclosure(true, has_band_domain));
+                    };
+                    previous
+                } else {
+                    self.category_labels
+                        .get(previous_index)
+                        .map(String::as_str)
+                        .ok_or_else(|| resources.grid_overflow())?
+                };
+                if controlled_text_eq(category, previous, resources)? {
                     return Ok(disclosure(true, has_band_domain));
                 }
             }
@@ -774,9 +918,16 @@ impl TerminalChartPlan {
         // same field. Keep the complete framed domain whenever that channel is not injective.
         let band_domain_disclosure = match authored_band_categories {
             Some(_) if !show_x_axis_labels => true,
+            Some(categories) if horizontal => band_label_projection_loses_identity(
+                categories,
+                &self.category_labels,
+                plot_area,
+                horizontal,
+                resources,
+            )?,
             Some(categories) => band_label_projection_loses_identity(
                 categories,
-                axis_labels,
+                &self.category_labels,
                 plot_area,
                 horizontal,
                 resources,
@@ -899,8 +1050,8 @@ impl TerminalChartPlan {
 
     fn datum_projection_loses_identity(
         &self,
-        series: &SeriesPlan,
-        datum: &SeriesDatum,
+        series: &SeriesPlan<'_>,
+        datum: &SeriesDatum<'_>,
         plot_area: XyChartPlotArea,
         horizontal: bool,
         resources: &ResourceContext,
@@ -954,7 +1105,7 @@ impl TerminalChartPlan {
 
     fn projected_point(
         &self,
-        datum: &SeriesDatum,
+        datum: &SeriesDatum<'_>,
         plot_area: XyChartPlotArea,
         horizontal: bool,
         resources: &ResourceContext,
@@ -985,9 +1136,9 @@ impl TerminalChartPlan {
 
     fn vertical_bars_overlap(
         &self,
-        series: &SeriesPlan,
-        datum: &SeriesDatum,
-        previous: &SeriesDatum,
+        series: &SeriesPlan<'_>,
+        datum: &SeriesDatum<'_>,
+        previous: &SeriesDatum<'_>,
         plot_area: XyChartPlotArea,
         resources: &ResourceContext,
     ) -> Result<bool> {
@@ -1016,7 +1167,7 @@ impl TerminalChartPlan {
 
 fn band_label_projection_loses_identity(
     authored_labels: &[String],
-    displayed_labels: &[String],
+    displayed_labels: &[impl AsRef<str>],
     plot_area: XyChartPlotArea,
     horizontal: bool,
     resources: &mut ResourceContext,
@@ -1027,6 +1178,7 @@ fn band_label_projection_loses_identity(
     if horizontal {
         let mut projected_width = None;
         for (authored, displayed) in authored_labels.iter().zip(displayed_labels) {
+            let displayed = displayed.as_ref();
             let metrics = visit_fitted_safe_line(
                 displayed,
                 usize::MAX,
@@ -1045,6 +1197,7 @@ fn band_label_projection_loses_identity(
         return Ok(false);
     }
     for (index, (authored, displayed)) in authored_labels.iter().zip(displayed_labels).enumerate() {
+        let displayed = displayed.as_ref();
         let metrics = visit_fitted_safe_line(
             displayed,
             plot_area.category_band_width,
@@ -1084,7 +1237,7 @@ fn build_axis_plan(
             for plot in plots {
                 resources.charge_layout_work(1)?;
                 for (x, _) in &plot.data {
-                    resources.charge_layout_work(1)?;
+                    charge_authored_bytes(resources, x)?;
                     if let Ok(value) = x.parse::<f64>()
                         && value.is_finite()
                     {
@@ -1175,20 +1328,26 @@ fn axis_labels(
     }
 }
 
-fn build_horizontal_axis_labels(
+fn build_horizontal_axis_labels<'a>(
     axis: &AxisPlan,
     fallback_labels: &[String],
     slot_count: usize,
-    series: &[SeriesPlan],
+    series: &[SeriesPlan<'a>],
     resources: &mut ResourceContext,
-) -> Result<Vec<String>> {
+) -> Result<Vec<HorizontalAxisLabelPlan<'a>>> {
     let mut labels = Vec::new();
     labels
         .try_reserve_exact(fallback_labels.len())
         .map_err(|_| AsciiError::AllocationFailed {
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
-    labels.extend(fallback_labels.iter().cloned());
+    labels.extend(
+        fallback_labels
+            .iter()
+            .cloned()
+            .map(Cow::Owned)
+            .map(HorizontalAxisLabelPlan::Single),
+    );
     if !matches!(axis, AxisPlan::Linear { .. }) {
         return Ok(labels);
     }
@@ -1200,14 +1359,15 @@ fn build_horizontal_axis_labels(
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
     for _ in 0..slot_count {
-        authored_x_by_slot.push(Vec::<&str>::new());
+        authored_x_by_slot.push(Vec::<Cow<'a, str>>::new());
     }
 
     for series in series {
         resources.charge_layout_work(1)?;
         for datum in &series.data {
-            resources.charge_layout_work(1)?;
-            let x = datum.x.trim();
+            let raw_x = datum.x.as_ref();
+            charge_authored_bytes(resources, raw_x)?;
+            let x = raw_x.trim();
             if x.is_empty() {
                 continue;
             }
@@ -1215,9 +1375,8 @@ fn build_horizontal_axis_labels(
                 return Err(resources.grid_overflow());
             };
             let mut duplicate = false;
-            for existing in slot_values.iter().copied() {
-                resources.charge_layout_work(1)?;
-                if existing == x {
+            for existing in slot_values.iter() {
+                if controlled_text_eq(existing.as_ref(), x, resources)? {
                     duplicate = true;
                     break;
                 }
@@ -1230,47 +1389,65 @@ fn build_horizontal_axis_labels(
                 .map_err(|_| AsciiError::AllocationFailed {
                     phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
                 })?;
+            let x = match &datum.x {
+                Cow::Borrowed(value) => Cow::Borrowed((*value).trim()),
+                Cow::Owned(value) => {
+                    let x = value.trim();
+                    charge_authored_bytes_count(resources, x.len().max(1))?;
+                    resources.check_usage(0, 0)?;
+                    let mut owned = String::new();
+                    owned
+                        .try_reserve_exact(x.len())
+                        .map_err(|_| AsciiError::AllocationFailed {
+                            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                        })?;
+                    owned.push_str(x);
+                    resources.check_usage(0, 0)?;
+                    Cow::Owned(owned)
+                }
+            };
             slot_values.push(x);
         }
     }
 
-    for (slot, authored_values) in authored_x_by_slot.into_iter().enumerate() {
-        if authored_values.is_empty() {
+    for (slot, mut slot_values) in authored_x_by_slot.into_iter().enumerate() {
+        if slot_values.is_empty() {
             continue;
-        }
-        let mut label = String::new();
-        for (index, x) in authored_values.into_iter().enumerate() {
-            resources.charge_layout_work(1)?;
-            let separator = if index == 0 { "" } else { " / " };
-            let additional = separator
-                .len()
-                .checked_add(x.len())
-                .ok_or_else(|| resources.work_overflow())?;
-            label
-                .try_reserve_exact(additional)
-                .map_err(|_| AsciiError::AllocationFailed {
-                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-                })?;
-            label.push_str(separator);
-            label.push_str(x);
         }
         let Some(target) = labels.get_mut(slot) else {
             return Err(resources.grid_overflow());
         };
-        *target = label;
+        if slot_values.len() == 1 {
+            let value = slot_values.pop().ok_or_else(|| resources.grid_overflow())?;
+            *target = HorizontalAxisLabelPlan::Single(value);
+            continue;
+        }
+
+        let mut materialized_bytes = 0usize;
+        for (index, x) in slot_values.iter().enumerate() {
+            let separator = if index == 0 { "" } else { " / " };
+            materialized_bytes = materialized_bytes
+                .checked_add(separator.len())
+                .and_then(|bytes| bytes.checked_add(x.len()))
+                .ok_or_else(|| resources.work_overflow())?;
+        }
+        *target = HorizontalAxisLabelPlan::JoinedFragments {
+            fragments: slot_values,
+            materialized_bytes,
+        };
     }
     Ok(labels)
 }
 
-fn build_series_plan(
-    plot: &XyChartPlotRenderModel,
+fn build_series_plan<'a>(
+    plot: &'a XyChartPlotRenderModel,
     series_index: usize,
     bar_lane: Option<usize>,
     x_axis: &AxisPlan,
     category_labels: &[String],
     slot_count: usize,
     resources: &mut ResourceContext,
-) -> Result<SeriesPlan> {
+) -> Result<SeriesPlan<'a>> {
     let data_len = effective_sample_count(plot);
     let mut data = Vec::new();
     data.try_reserve_exact(data_len)
@@ -1290,7 +1467,7 @@ fn build_series_plan(
                 resources,
             )?;
             data.push(SeriesDatum {
-                x,
+                x: Cow::Owned(x),
                 value: Some(value),
                 has_point_label: plot.point_labels.get(index).is_some(),
                 authored_x: false,
@@ -1301,11 +1478,11 @@ fn build_series_plan(
         }
     } else {
         for (index, (x, value)) in plot.data.iter().enumerate() {
-            resources.charge_layout_work(1)?;
+            charge_authored_bytes(resources, x)?;
             let (slot, normalized_x, x_clipped) =
                 x_axis.resolve_sample_position(category_labels, x, index, slot_count, resources)?;
             data.push(SeriesDatum {
-                x: x.clone(),
+                x: Cow::Borrowed(x.as_str()),
                 value: *value,
                 has_point_label: plot.point_labels.get(index).is_some(),
                 authored_x: true,
@@ -1321,7 +1498,7 @@ fn build_series_plan(
     Ok(SeriesPlan {
         series_index,
         plot_type: plot.plot_type,
-        title: plot.title.clone(),
+        title: plot.title.as_deref(),
         data,
         has_orphan_point_labels,
         bar_lane,
@@ -1334,6 +1511,51 @@ pub(super) const fn effective_sample_count(plot: &XyChartPlotRenderModel) -> usi
     } else {
         plot.data.len()
     }
+}
+
+const AUTHORED_TEXT_WORK_CHUNK_BYTES: usize = 4 * 1024;
+const TEXT_COMPARISON_WORK_CHUNK_BYTES: usize = 4 * 1024;
+
+fn charge_authored_bytes(resources: &ResourceContext, value: &str) -> Result<()> {
+    charge_authored_bytes_count(resources, value.len().max(1))
+}
+
+fn charge_authored_bytes_count(resources: &ResourceContext, bytes: usize) -> Result<()> {
+    let mut remaining = bytes;
+    while remaining > 0 {
+        let chunk = remaining.min(AUTHORED_TEXT_WORK_CHUNK_BYTES);
+        resources.charge_layout_work(chunk)?;
+        remaining -= chunk;
+    }
+    Ok(())
+}
+
+fn controlled_text_eq(left: &str, right: &str, resources: &ResourceContext) -> Result<bool> {
+    resources.check_usage(0, 0)?;
+    if left.len() != right.len() {
+        resources.charge_layout_work(1)?;
+        resources.check_usage(0, 0)?;
+        return Ok(false);
+    }
+    if left.is_empty() {
+        resources.charge_layout_work(1)?;
+        resources.check_usage(0, 0)?;
+        return Ok(true);
+    }
+
+    for (left_chunk, right_chunk) in left
+        .as_bytes()
+        .chunks(TEXT_COMPARISON_WORK_CHUNK_BYTES)
+        .zip(right.as_bytes().chunks(TEXT_COMPARISON_WORK_CHUNK_BYTES))
+    {
+        resources.charge_layout_work(left_chunk.len())?;
+        let equal = left_chunk == right_chunk;
+        resources.check_usage(0, 0)?;
+        if !equal {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 pub(super) const fn plot_type_name(plot_type: XyChartPlotType) -> &'static str {
@@ -1367,7 +1589,7 @@ fn fallback_x_label(
 
 fn build_value_range(
     axis: &XyChartAxisRenderModel,
-    series: &[SeriesPlan],
+    series: &[SeriesPlan<'_>],
     resources: &mut ResourceContext,
 ) -> Result<ValueRange> {
     let mut data_min = f64::INFINITY;
@@ -1675,7 +1897,7 @@ impl OrthogonalConnection {
 }
 
 pub(super) fn plan_horizontal_plot_admission(
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     plot_area: XyChartPlotArea,
     row_count: usize,
     resources: &mut ResourceContext,
@@ -1777,7 +1999,7 @@ pub(super) fn plan_horizontal_plot_admission(
 }
 
 pub(super) fn plan_vertical_plot_admission(
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
     compact_inside_labels: bool,
@@ -2195,7 +2417,7 @@ impl LineTopology {
 }
 
 pub(super) fn build_vertical_plot(
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
@@ -2250,7 +2472,7 @@ pub(super) fn build_vertical_plot(
 }
 
 pub(super) fn build_horizontal_plot_rows(
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
@@ -2372,7 +2594,7 @@ pub(super) fn build_horizontal_plot_rows(
 
 pub(super) fn apply_vertical_bar_data_labels(
     plot: &mut VerticalPlot,
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     plot_area: XyChartPlotArea,
     resources: &mut ResourceContext,
     checkpoints: &mut XyChartCheckpointCursor<'_>,
@@ -2417,8 +2639,8 @@ pub(super) fn apply_vertical_bar_data_labels(
 #[allow(clippy::too_many_arguments)]
 fn draw_vertical_bar_plot(
     rows: &mut [StyledLine],
-    series: &SeriesPlan,
-    plan: &TerminalChartPlan,
+    series: &SeriesPlan<'_>,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_width: usize,
@@ -2462,8 +2684,8 @@ fn draw_vertical_bar_plot(
 #[allow(clippy::too_many_arguments)]
 fn draw_vertical_line_plot(
     rows: &mut [StyledLine],
-    series: &SeriesPlan,
-    plan: &TerminalChartPlan,
+    series: &SeriesPlan<'_>,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_width: usize,
@@ -2495,9 +2717,9 @@ fn draw_vertical_line_plot(
 }
 
 fn vertical_bar_span(
-    plan: &TerminalChartPlan,
-    series: &SeriesPlan,
-    datum: &SeriesDatum,
+    plan: &TerminalChartPlan<'_>,
+    series: &SeriesPlan<'_>,
+    datum: &SeriesDatum<'_>,
     plot_width: usize,
     plot_area: XyChartPlotArea,
     resources: &ResourceContext,
@@ -2807,7 +3029,7 @@ mod tests {
             .vertical_plot_width(2, &resources)
             .expect("two linear slots should fit");
         let datum = |normalized_x| SeriesDatum {
-            x: String::new(),
+            x: Cow::Owned(String::new()),
             value: Some(0.0),
             has_point_label: false,
             authored_x: false,
@@ -2982,6 +3204,36 @@ mod tests {
                     && cancelled.reason == CancelReason::Requested
         ));
         assert_eq!(resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn long_common_prefix_comparison_obeys_exact_work_admission() {
+        let prefix = "x".repeat(8_191);
+        let left = format!("{prefix}a");
+        let right = format!("{prefix}b");
+
+        let exact_policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, left.len())
+            .expect("the exact comparison work limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        assert!(
+            !controlled_text_eq(&left, &right, &exact_resources)
+                .expect("the exact comparison work should fit")
+        );
+        assert_eq!(exact_resources.layout_work_used(), left.len());
+
+        let below_policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, left.len() - 1)
+            .expect("the N-1 comparison work limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        let error = controlled_text_eq(&left, &right, &below_resources)
+            .expect_err("N-1 must reject the long common-prefix comparison");
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, left.len());
+        assert_eq!(details.max, left.len() - 1);
     }
 
     #[test]

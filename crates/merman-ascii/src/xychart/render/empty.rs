@@ -133,7 +133,7 @@ mod tests {
     use super::*;
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use crate::xychart::plot::TerminalChartPlan;
+    use crate::xychart::plot::TerminalChartCardinality;
     use merman_core::diagrams::xychart::{XyChartDisplayPolicy, XyChartPlotType};
     use merman_core::resources::ResourceProfile;
 
@@ -169,7 +169,7 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let meter = resources.clone();
         assert!(
-            TerminalChartPlan::measure_cardinality(model, &mut resources)
+            TerminalChartCardinality::measure(model, &mut resources)
                 .expect("zero-slot probe should fit the configured work budget")
                 .is_empty()
         );

@@ -99,19 +99,25 @@ fn render_sequence_diagram_transactional(
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
+    let row_output_plan = row_plan.output_plan();
+    let row_materialized_cells = row_output_plan
+        .extent()
+        .materialized_cells(&layout_resources)?;
     let document = prepare_sequence_document(
         diagram,
         title,
-        row_plan.output_extent(),
+        row_output_plan,
         &layout,
         &mut layout_resources,
         &mut layout_checkpoints,
     )?;
+    let mut row_materialization_resources =
+        layout_resources.scoped_after_document_admission(row_materialized_cells)?;
     let row_document = row_plan.materialize(
         diagram,
         &layout,
         &chars,
-        &mut layout_resources,
+        &mut row_materialization_resources,
         &mut layout_checkpoints,
     )?;
     row_document.render(
@@ -198,33 +204,38 @@ mod tests {
     }
 
     #[test]
-    fn sequence_title_grid_admission_precedes_row_planning() {
+    fn blank_title_uses_the_final_retained_grid_extent() {
         let diagram = single_participant_diagram();
         let options = AsciiRenderOptions::ascii();
+        let title = " ".repeat(31);
+        let measured = prepare_document_without_materializing(
+            &diagram,
+            &title,
+            &options,
+            AsciiResourcePolicy::default(),
+        )
+        .expect("the blank title should have a measurable final extent");
+        let exact_cells = measured
+            .width()
+            .checked_mul(measured.height())
+            .expect("the final sequence grid should fit usize");
+        assert_eq!(exact_cells, 30);
+
         let policy = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxGridCells, 3)
-            .expect("three grid cells should be a valid limit");
+            .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells)
+            .expect("the exact final grid limit should be valid");
         let mut resources = ResourceContext::new(policy);
         let control = merman_core::OperationControl::new();
 
-        let error = render_sequence_diagram_with_execution(
+        let rendered = render_sequence_diagram_with_execution(
             &diagram,
-            Some("Wide"),
+            Some(&title),
             &options,
             &mut resources,
             AsciiExecution::new(&control, &policy),
         )
-        .expect_err("the title must be admitted before row planning");
-
-        assert!(matches!(
-            error,
-            AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxGridCells
-                    && details.actual == 4
-                    && details.max == 3
-        ));
-        assert_eq!(resources.layout_work_used(), 0);
-        assert_eq!(resources.document_cells_used(), 0);
+        .expect("the blank title must not be rejected by its discarded alignment width");
+        assert_eq!(rendered.lines().next(), Some(""));
     }
 
     #[test]
@@ -364,7 +375,7 @@ mod tests {
         let document = prepare_sequence_document(
             diagram,
             title,
-            rows.output_extent(),
+            rows.output_plan(),
             &layout,
             &mut layout_resources,
             &mut checkpoints,

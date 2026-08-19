@@ -936,11 +936,11 @@ pub(crate) fn truncate_display_width_with_profile(
     value: &str,
     width: usize,
     width_profile: TerminalWidthProfile,
-) -> String {
+) -> Result<String> {
     let mut out = String::new();
     let mut used = 0;
 
-    let value = SafeLine::new(value);
+    let value = SafeLine::try_new(value)?;
     for grapheme in value.graphemes(width_profile) {
         if used + grapheme.width() > width {
             break;
@@ -949,7 +949,7 @@ pub(crate) fn truncate_display_width_with_profile(
         used += grapheme.width();
     }
 
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1525,11 +1525,13 @@ mod tests {
             4
         );
         assert_eq!(
-            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Unicode),
+            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
             "A·"
         );
         assert_eq!(
-            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Cjk),
+            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Cjk)
+                .expect("test text should truncate"),
             "A"
         );
         assert_eq!(
@@ -1541,19 +1543,23 @@ mod tests {
     #[test]
     fn truncate_display_width_preserves_terminal_cell_boundaries() {
         assert_eq!(
-            truncate_display_width_with_profile("中国A", 1, TerminalWidthProfile::Unicode),
+            truncate_display_width_with_profile("中国A", 1, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
             ""
         );
         assert_eq!(
-            truncate_display_width_with_profile("中国A", 2, TerminalWidthProfile::Unicode),
+            truncate_display_width_with_profile("中国A", 2, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
             "中"
         );
         assert_eq!(
-            truncate_display_width_with_profile("中国A", 4, TerminalWidthProfile::Unicode),
+            truncate_display_width_with_profile("中国A", 4, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
             "中国"
         );
         assert_eq!(
-            truncate_display_width_with_profile("中国A", 5, TerminalWidthProfile::Unicode),
+            truncate_display_width_with_profile("中国A", 5, TerminalWidthProfile::Unicode)
+                .expect("test text should truncate"),
             "中国A"
         );
     }

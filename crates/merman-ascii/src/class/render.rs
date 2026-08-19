@@ -883,16 +883,14 @@ fn render_note_box<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
-    let label = deferred_text.try_register_label_lines_with_authored_disclosure(
+    let label = deferred_text.try_register_present_label_lines_with_authored_disclosure(
         &note.text,
         "authored(bytes=",
         options.terminal_width_profile,
         resources,
     )?;
     let capacity = label
-        .as_ref()
-        .map(Vec::len)
-        .unwrap_or(0)
+        .len()
         .checked_add(1)
         .ok_or_else(|| work_overflow(resources))?;
     let mut lines = Vec::new();
@@ -904,9 +902,7 @@ fn render_note_box<'a>(
         options.terminal_width_profile,
         resources,
     )?);
-    if let Some(label) = label {
-        lines.extend(label);
-    }
+    lines.extend(label);
 
     let mut sections = Vec::new();
     sections
@@ -1431,21 +1427,7 @@ fn relation_endpoint_label<'a>(
     let Some(label) = label else {
         return Ok(None);
     };
-    if !label.is_empty() {
-        return RelationGraphLabel::try_new(label, width_profile, deferred_text, resources);
-    }
-
-    let line = deferred_text.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(""))?,
-        width_profile,
-        resources,
-    )?;
-    let mut lines = Vec::new();
-    lines
-        .try_reserve_exact(1)
-        .map_err(|_| layout_allocation_failed())?;
-    lines.push(line);
-    RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
+    RelationGraphLabel::try_new_present(label, width_profile, deferred_text, resources).map(Some)
 }
 
 fn plan_vertical_relation<'plan>(
@@ -1929,15 +1911,17 @@ fn class_relation_summary_row<'a>(
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
 ) -> Result<RelationGraphSummaryRow> {
-    let source = deferred_text.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(layout.top_id))?,
+    let source = deferred_text.try_register_framed_value(
+        "id(bytes=",
+        layout.top_id,
         width_profile,
         resources,
     )?;
     let connector =
         class_relation_summary_connector(layout, width_profile, resources, deferred_text)?;
-    let target = deferred_text.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(layout.bottom_id))?,
+    let target = deferred_text.try_register_framed_value(
+        "id(bytes=",
+        layout.bottom_id,
         width_profile,
         resources,
     )?;
@@ -2790,10 +2774,14 @@ mod tests {
     }
 
     fn render_namespace_label(label: &str) -> String {
+        render_namespace_identity("Scope", label)
+    }
+
+    fn render_namespace_identity(id: &str, label: &str) -> String {
         let namespace = merman_core::models::class_diagram::Namespace {
-            id: "Scope".to_string(),
+            id: id.to_string(),
             label: label.to_string(),
-            dom_id: "Scope".to_string(),
+            dom_id: "namespace0".to_string(),
             class_ids: Vec::new(),
             note_ids: Vec::new(),
             parent: None,
@@ -2863,6 +2851,20 @@ mod tests {
         for absent_label in ["", "   "] {
             let namespace = render_namespace_label(absent_label);
             assert!(!namespace.contains("namespaceLabel(bytes="), "{namespace}");
+        }
+
+        for fallback_label in ["", "   "] {
+            for (authored_id, visible_id, expected_identity) in [
+                ("\u{1b}", r"\u{1B}", r#"namespaceId(bytes=1)="\u{1B}""#),
+                ("&amp;", "&", r#"namespaceId(bytes=5)="&amp;""#),
+            ] {
+                let authored_namespace = render_namespace_identity(authored_id, fallback_label);
+                let visible_namespace = render_namespace_identity(visible_id, fallback_label);
+                assert_ne!(authored_namespace, visible_namespace);
+                assert!(authored_namespace.contains(expected_identity));
+                assert!(!authored_namespace.contains("namespaceLabel(bytes="));
+                assert!(!visible_namespace.contains("namespaceId(bytes="));
+            }
         }
     }
 
@@ -2996,6 +2998,32 @@ mod tests {
         assert_eq!(authored_routed.matches(DISCLOSURE).count(), 3);
         assert!(!visible_routed.contains("authored(bytes="));
 
+        let html_break_routed = routed("left<br>right");
+        let mermaid_break_routed = routed(r"left\nright");
+        let line_break_routed = routed("left\nright");
+        assert_ne!(html_break_routed, mermaid_break_routed);
+        assert_ne!(html_break_routed, line_break_routed);
+        assert_ne!(mermaid_break_routed, line_break_routed);
+        assert_eq!(
+            html_break_routed
+                .matches(r#"authored(bytes=13)="left<br>right""#)
+                .count(),
+            3
+        );
+        assert!(mermaid_break_routed.contains(r#"authored(bytes=11)="left\\nright""#));
+        assert!(line_break_routed.contains(r#"authored(bytes=10)="left\nright""#));
+
+        let trimmed_routed = routed(" label ");
+        let untrimmed_routed = routed("label");
+        assert_ne!(trimmed_routed, untrimmed_routed);
+        assert_eq!(
+            trimmed_routed
+                .matches(r#"authored(bytes=7)=" label ""#)
+                .count(),
+            3
+        );
+        assert!(!untrimmed_routed.contains("authored(bytes="));
+
         let spoofed_routed = routed(r#"\u{1B}<br>authored(bytes=1)="\u{1B}""#);
         assert_ne!(authored_routed, spoofed_routed);
         assert!(
@@ -3029,6 +3057,104 @@ mod tests {
         assert_ne!(authored_summary, visible_summary);
         assert!(authored_summary.contains(DISCLOSURE));
         assert!(!visible_summary.contains("authored(bytes="));
+
+        let html_break_summary = summary("left<br>right");
+        let mermaid_break_summary = summary(r"left\nright");
+        let line_break_summary = summary("left\nright");
+        assert_ne!(html_break_summary, mermaid_break_summary);
+        assert_ne!(html_break_summary, line_break_summary);
+        assert_ne!(mermaid_break_summary, line_break_summary);
+        assert!(html_break_summary.contains(r#"authored(bytes=13)="left<br>right""#));
+        assert!(mermaid_break_summary.contains(r#"authored(bytes=11)="left\\nright""#));
+        assert!(line_break_summary.contains(r#"authored(bytes=10)="left\nright""#));
+
+        let endpoint = |value: Option<&str>| {
+            let mut model = parsed_class_model("classDiagram\nclass A\nclass B\nA --> B");
+            let relation = model
+                .relations
+                .first_mut()
+                .expect("endpoint identity fixture should contain a relation");
+            relation.relation_title_1 = value.map(str::to_string);
+            render_class_identity_fixture(&model)
+        };
+        let absent_endpoint = endpoint(None);
+        let empty_endpoint = endpoint(Some(""));
+        let blank_endpoint = endpoint(Some(" "));
+        assert_ne!(absent_endpoint, empty_endpoint);
+        assert_ne!(empty_endpoint, blank_endpoint);
+        assert!(empty_endpoint.contains(r#"authored(bytes=0)="""#));
+        assert!(blank_endpoint.contains(r#"authored(bytes=1)=" ""#));
+    }
+
+    #[test]
+    fn class_summary_frames_swapped_control_and_literal_escape_endpoint_ids_injectively() {
+        let summary = |first_id: &str, second_id: &str| {
+            let mut model = class_summary_model();
+            let mut first = model
+                .classes
+                .shift_remove("Source<&中")
+                .expect("source should exist");
+            first.id = first_id.to_string();
+            first.dom_id.clone_from(&first.id);
+            first.text.clone_from(&first.id);
+            let mut second = model
+                .classes
+                .shift_remove("Target<&中")
+                .expect("target should exist");
+            second.id = second_id.to_string();
+            second.dom_id.clone_from(&second.id);
+            second.text.clone_from(&second.id);
+            model.classes.insert(first.id.clone(), first);
+            model.classes.insert(second.id.clone(), second);
+            for relation in &mut model.relations {
+                for endpoint in [&mut relation.id1, &mut relation.id2] {
+                    if endpoint.as_str() == "Source<&中" {
+                        *endpoint = first_id.to_string();
+                    } else if endpoint.as_str() == "Target<&中" {
+                        *endpoint = second_id.to_string();
+                    }
+                }
+            }
+            model.relations[0].title = "self".to_string();
+            model.relations[1].title = "ab".to_string();
+
+            let rendered = render_class_summary_fixture(
+                &model,
+                &AsciiRenderOptions::ascii(),
+                unbounded_policy(),
+                &Cell::new(false),
+            )
+            .0
+            .expect("class summary identity fixture should render");
+            rendered
+                .split_once("relations:\n")
+                .expect("bidirectional relations should use summary fallback")
+                .1
+                .to_string()
+        };
+
+        let control_first = summary("\u{1b}", r"\u{1B}");
+        let literal_escape_first = summary(r"\u{1B}", "\u{1b}");
+        let control_first_ab = control_first
+            .lines()
+            .find(|line| line.ends_with(": ab"))
+            .expect("control-first summary should retain the ab relation");
+        let literal_escape_first_ab = literal_escape_first
+            .lines()
+            .find(|line| line.ends_with(": ab"))
+            .expect("literal-first summary should retain the ab relation");
+
+        assert!(
+            control_first_ab.starts_with(r#"id(bytes=1)="\u{1B}""#)
+                && control_first_ab.contains(r#"id(bytes=6)="\\u{1B}""#),
+            "control-first endpoint identity must remain injective:\n{control_first}"
+        );
+        assert!(
+            literal_escape_first_ab.starts_with(r#"id(bytes=6)="\\u{1B}""#)
+                && literal_escape_first_ab.contains(r#"id(bytes=1)="\u{1B}""#),
+            "literal-first endpoint identity must remain injective:\n{literal_escape_first}"
+        );
+        assert_ne!(control_first, literal_escape_first);
     }
 
     #[test]
@@ -3055,7 +3181,9 @@ mod tests {
             } else {
                 assert!(expected.contains("Source<&中"), "mode={mode:?}");
                 assert!(expected.contains("self<&中"), "mode={mode:?}");
-                assert!(expected.contains("endpoint1=[bytes=6 \"a<&中\", bytes=1 \"b\"]"));
+                assert!(expected.contains(
+                    r#"endpoint1=[bytes=6 "a<&中", bytes=1 "b", bytes=32 "authored(bytes=11)=\"a<&中<br>b\""]"#,
+                ));
             }
 
             let exact_policy = base_policy

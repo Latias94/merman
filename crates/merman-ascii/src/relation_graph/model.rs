@@ -68,6 +68,21 @@ impl RelationGraphLabel {
         Self::try_from_lines(lines, width_profile, resources).map(Some)
     }
 
+    pub(crate) fn try_new_present<'a>(
+        raw: &'a str,
+        width_profile: TerminalWidthProfile,
+        deferred: &mut DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let lines = deferred.try_register_present_label_lines_with_authored_disclosure(
+            raw,
+            "authored(bytes=",
+            width_profile,
+            resources,
+        )?;
+        Self::try_from_lines(lines, width_profile, resources)
+    }
+
     #[cfg(test)]
     pub(crate) fn new<'a>(
         raw: &'a str,

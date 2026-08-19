@@ -4,19 +4,19 @@ use super::{
 };
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 use crate::text::{display_width_with_profile, truncate_display_width_with_profile};
 
 use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
-#[cfg(test)]
-use super::text::blank_line;
 use super::text::{
-    SequenceBatchExtent, SequenceDocumentExtent, SequenceExtentLedger, SequenceLine,
-    blank_line_with_checkpoints, trim_right,
+    SequenceBatchExtent, SequenceDocumentExtent, SequenceDocumentPlan, SequenceExtentLedger,
+    SequenceLine, blank_line_with_checkpoints, trim_right,
 };
+#[cfg(test)]
+use super::text::{SequenceRetainedRowRun, SequenceRetainedRows, blank_line};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SequenceGroupBoxBounds {
@@ -64,6 +64,7 @@ struct SequenceBoxCanvasPlan {
     width: usize,
     retained_width: usize,
     height: usize,
+    document_cells: usize,
 }
 
 #[derive(Debug)]
@@ -75,7 +76,15 @@ pub(super) struct PreparedSequenceBoxes<'a> {
 
 impl PreparedSequenceBoxes<'_> {
     pub(super) const fn output_extent(&self) -> SequenceDocumentExtent {
-        SequenceDocumentExtent::new(self.canvas_plan.retained_width, self.canvas_plan.height)
+        SequenceDocumentExtent::new(
+            self.canvas_plan.retained_width,
+            self.canvas_plan.height,
+            self.canvas_plan.document_cells,
+        )
+    }
+
+    pub(super) fn materialized_cells(&self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_grid_mul(self.canvas_plan.width, self.canvas_plan.height)
     }
 
     pub(super) fn materialize(
@@ -93,7 +102,7 @@ impl PreparedSequenceBoxes<'_> {
 pub(super) fn prepare_sequence_boxes<'a>(
     diagram: &'a AsciiSequenceDiagram,
     layout: &SequenceLayout,
-    input_extent: SequenceDocumentExtent,
+    input_plan: SequenceDocumentPlan<'_>,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Option<PreparedSequenceBoxes<'a>>> {
@@ -102,7 +111,7 @@ pub(super) fn prepare_sequence_boxes<'a>(
     }
     let transaction = resources.clone();
     transaction.transaction(|_| {
-        prepare_sequence_boxes_transactional(diagram, layout, input_extent, resources, checkpoints)
+        prepare_sequence_boxes_transactional(diagram, layout, input_plan, resources, checkpoints)
             .map(Some)
     })
 }
@@ -110,10 +119,11 @@ pub(super) fn prepare_sequence_boxes<'a>(
 fn prepare_sequence_boxes_transactional<'a>(
     diagram: &'a AsciiSequenceDiagram,
     layout: &SequenceLayout,
-    input_extent: SequenceDocumentExtent,
+    input_plan: SequenceDocumentPlan<'_>,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedSequenceBoxes<'a>> {
+    let input_extent = input_plan.extent();
     let horizontal_padding = resources.checked_grid_mul(2, SEQUENCE_BOX_CONTENT_OFFSET)?;
     let content_width = resources.checked_grid_add(input_extent.width(), horizontal_padding)?;
 
@@ -135,7 +145,7 @@ fn prepare_sequence_boxes_transactional<'a>(
         )?);
     }
     let canvas_plan =
-        plan_sequence_box_canvas(input_extent, &boxes, content_width, resources, checkpoints)?;
+        plan_sequence_box_canvas(input_plan, &boxes, content_width, resources, checkpoints)?;
     Ok(PreparedSequenceBoxes {
         boxes,
         input_extent,
@@ -159,9 +169,31 @@ pub(super) fn render_sequence_boxes(
             checkpoints.tick()?;
             input_width = input_width.max(line.len());
         }
-        let input_extent = SequenceDocumentExtent::new(input_width, lines.len());
+        let document_cells = lines.iter().try_fold(0usize, |total, line| {
+            total
+                .checked_add(line.len())
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))
+        })?;
+        let mut box_input_width = 0usize;
+        let mut box_input_document_cells = 0usize;
+        let mut runs = Vec::new();
+        runs.try_reserve_exact(lines.len())
+            .map_err(|_| allocation_failed())?;
+        for line in &lines {
+            let width = line.trimmed_len(false);
+            box_input_width = box_input_width.max(width);
+            box_input_document_cells = box_input_document_cells
+                .checked_add(width)
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            runs.push(SequenceRetainedRowRun::new(width, 1));
+        }
+        let input_plan = SequenceDocumentPlan::with_box_input(
+            SequenceDocumentExtent::new(input_width, lines.len(), document_cells),
+            SequenceDocumentExtent::new(box_input_width, lines.len(), box_input_document_cells),
+            SequenceRetainedRows::Runs(&runs),
+        );
         let Some(prepared) =
-            prepare_sequence_boxes(diagram, layout, input_extent, resources, checkpoints)?
+            prepare_sequence_boxes(diagram, layout, input_plan, resources, checkpoints)?
         else {
             return Ok(lines);
         };
@@ -198,6 +230,7 @@ fn materialize_sequence_boxes(
     )?;
     if output_batch.retained_width() != canvas_plan.retained_width
         || output_batch.height() != canvas_plan.height
+        || output_batch.document_cells() != canvas_plan.document_cells
     {
         return Err(invalid_box_geometry());
     }
@@ -266,12 +299,20 @@ fn materialize_sequence_boxes(
 }
 
 fn plan_sequence_box_canvas(
-    input_extent: SequenceDocumentExtent,
+    input_plan: SequenceDocumentPlan<'_>,
     boxes: &[PreparedSequenceGroupBox<'_>],
     content_width: usize,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceBoxCanvasPlan> {
+    let input_extent = input_plan.extent();
+    let box_input_extent = input_plan.box_input_extent();
+    if box_input_extent.height() != input_extent.height()
+        || box_input_extent.width() > input_extent.width()
+        || box_input_extent.document_cells() > input_extent.document_cells()
+    {
+        return Err(invalid_box_geometry());
+    }
     let mut label_extra_rows = 0usize;
     let mut box_width = 0;
     for sequence_box in boxes {
@@ -281,7 +322,7 @@ fn plan_sequence_box_canvas(
     }
     let width = content_width.max(box_width);
     let retained_content_width =
-        resources.checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, input_extent.width())?;
+        resources.checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, box_input_extent.width())?;
     let retained_width = box_width.max(retained_content_width);
     let height = resources.checked_grid_add(
         resources.checked_grid_add(input_extent.height(), label_extra_rows)?,
@@ -290,12 +331,46 @@ fn plan_sequence_box_canvas(
     resources.grid_extent(width, height)?;
     checkpoints.before_charge()?;
     charge_work_product(resources, width, height)?;
+    let top_and_bottom_rows = resources.checked_grid_add(label_extra_rows, 2)?;
+    let mut document_cells = box_width
+        .checked_mul(top_and_bottom_rows)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+    let mut input_height = 0usize;
+    let mut input_width = 0usize;
+    let mut input_document_cells = 0usize;
+    input_plan.box_input_rows().try_visit(checkpoints, |run| {
+        input_height = resources.checked_grid_add(input_height, run.count())?;
+        input_width = input_width.max(run.width());
+        let source_cells = run
+            .width()
+            .checked_mul(run.count())
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        input_document_cells = input_document_cells
+            .checked_add(source_cells)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        let content_width = resources.checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, run.width())?;
+        let retained = box_width.max(content_width);
+        let retained_cells = retained
+            .checked_mul(run.count())
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        document_cells = document_cells
+            .checked_add(retained_cells)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        Ok(())
+    })?;
+    if input_height != box_input_extent.height()
+        || input_width != box_input_extent.width()
+        || input_document_cells != box_input_extent.document_cells()
+    {
+        return Err(invalid_box_geometry());
+    }
     Ok(SequenceBoxCanvasPlan {
         label_extra_rows,
         box_width,
         width,
         retained_width,
         height,
+        document_cells,
     })
 }
 
@@ -583,7 +658,7 @@ fn draw_sequence_box_label(
     let label = padded_box_label(label, resources)?;
     let index = resources.checked_grid_add(bounds.left, SEQUENCE_BOX_LABEL_MARGIN)?;
     let available = bounds.right.saturating_sub(index);
-    let label = truncate_display_width_with_profile(&label, available, row.width_profile());
+    let label = truncate_display_width_with_profile(&label, available, row.width_profile())?;
     row.try_write_text_role_with_checkpoint(index, &label, AsciiColorRole::Text, resources, || {
         checkpoints.tick()
     })
@@ -744,8 +819,12 @@ mod tests {
             &mut checkpoints,
         )?;
         let boxes = vec![prepared];
+        let retained_rows = [SequenceRetainedRowRun::new(4, 1)];
         let canvas_plan = plan_sequence_box_canvas(
-            SequenceDocumentExtent::new(4, 1),
+            SequenceDocumentPlan::new(
+                SequenceDocumentExtent::new(4, 1, 4),
+                SequenceRetainedRows::Runs(&retained_rows),
+            ),
             &boxes,
             content_width,
             &mut resources,

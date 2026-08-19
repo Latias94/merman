@@ -12,9 +12,9 @@ use super::model::{
 };
 use super::notes::{PreparedNoteRows, ensure_note_actors_known, prepare_note_rows, render_note};
 use super::text::{
-    SequenceBatchExtent, SequenceDocumentExtent, SequenceExtentLedger, SequenceLine,
-    SequenceRowFootprint, blank_line_with_checkpoints, padded_line_with_checkpoints, trim_right,
-    validate_batch_lines_with_checkpoints,
+    SequenceBatchExtent, SequenceDocumentPlan, SequenceExtentLedger, SequenceLine,
+    SequenceRetainedRows, SequenceRowFootprint, blank_line_with_checkpoints,
+    padded_line_with_checkpoints, trim_right, validate_batch_lines_with_checkpoints,
 };
 use super::{SequenceActorRenderState, SequenceCheckpointCursor};
 use crate::color::AsciiColorRole;
@@ -164,8 +164,11 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         &self.footprints
     }
 
-    pub(super) const fn output_extent(&self) -> SequenceDocumentExtent {
-        self.extent.output_extent()
+    pub(super) fn output_plan(&self) -> SequenceDocumentPlan<'_> {
+        SequenceDocumentPlan::new(
+            self.extent.output_extent(),
+            SequenceRetainedRows::Footprints(&self.footprints),
+        )
     }
 
     pub(super) fn prepare_step(

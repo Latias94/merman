@@ -1,7 +1,8 @@
 use super::width::grapheme_display_width;
 use crate::Result;
+use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
-use crate::resource::ResourceContext;
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use std::borrow::Cow;
 use std::convert::Infallible;
 use unicode_segmentation::UnicodeSegmentation;
@@ -10,7 +11,9 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 const MAX_DIAGNOSTIC_GRAPHEMES: usize = 256;
 const MAX_DIAGNOSTIC_INPUT_BYTES: usize = 16 * 1024;
 const MAX_DIAGNOSTIC_BYTES: usize = 4 * 1024;
+const MAX_DIAGNOSTIC_NORMALIZED_BYTES: usize = MAX_DIAGNOSTIC_INPUT_BYTES * 10;
 const DIAGNOSTIC_ELLIPSIS: &str = "...";
+const NORMALIZATION_FAILURE_PLACEHOLDER: &str = "[terminal text unavailable]";
 
 /// Normalizes untrusted authored text for terminal display without changing printable text.
 ///
@@ -18,25 +21,98 @@ const DIAGNOSTIC_ELLIPSIS: &str = "...";
 /// bidirectional formatting control is rendered as an uppercase `\u{HEX}` escape. Standalone
 /// zero-width graphemes are escaped scalar by scalar, while joiners and variation selectors remain
 /// intact when they belong to a positive-width grapheme. Applying this function twice is
-/// idempotent.
+/// idempotent. The exact normalized byte length is checked before allocation; capacity overflow
+/// or allocation failure returns a fixed terminal-safe placeholder and never exposes the authored
+/// controls.
 pub fn normalize_terminal_text(value: &str) -> Cow<'_, str> {
-    if !needs_normalization(value) {
-        return Cow::Borrowed(value);
+    normalize_terminal_text_with_capacity(value, usize::MAX)
+}
+
+fn normalize_terminal_text_with_capacity(value: &str, maximum_capacity: usize) -> Cow<'_, str> {
+    try_normalize_terminal_text_with_options(value, maximum_capacity, false)
+        .unwrap_or(Cow::Borrowed(NORMALIZATION_FAILURE_PLACEHOLDER))
+}
+
+pub(super) fn try_normalize_terminal_line_text(value: &str) -> Result<Cow<'_, str>> {
+    try_normalize_terminal_text_with_options(value, usize::MAX, true)
+        .map_err(|()| AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str()))
+}
+
+fn try_normalize_terminal_text_with_options(
+    value: &str,
+    maximum_capacity: usize,
+    escape_line_feed: bool,
+) -> std::result::Result<Cow<'_, str>, ()> {
+    let Some(plan) = terminal_normalization_plan(value, escape_line_feed) else {
+        return Err(());
+    };
+    if !plan.changed {
+        return Ok(Cow::Borrowed(value));
+    }
+    if plan.output_bytes > maximum_capacity {
+        return Err(());
     }
 
-    let mut output = String::with_capacity(value.len());
+    let mut output = String::new();
+    if output.try_reserve_exact(plan.output_bytes).is_err() {
+        return Err(());
+    }
     let normalized = visit_normalized_segments(value, |segment| {
         match segment.kind {
             NormalizedSegmentKind::Grapheme(grapheme) => output.push_str(grapheme),
             NormalizedSegmentKind::VisibleEscape(ch) => push_visible_escape(&mut output, ch),
+            NormalizedSegmentKind::LineBreak if escape_line_feed => {
+                push_visible_escape(&mut output, '\n')
+            }
             NormalizedSegmentKind::LineBreak => output.push('\n'),
         }
         Ok::<(), Infallible>(())
     });
     match normalized {
-        Ok(()) => Cow::Owned(output),
+        Ok(()) => {
+            debug_assert_eq!(output.len(), plan.output_bytes);
+            Ok(Cow::Owned(output))
+        }
         Err(never) => match never {},
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TerminalNormalizationPlan {
+    output_bytes: usize,
+    changed: bool,
+}
+
+fn terminal_normalization_plan(
+    value: &str,
+    escape_line_feed: bool,
+) -> Option<TerminalNormalizationPlan> {
+    let mut output_bytes = 0usize;
+    let mut changed = false;
+    let planned = visit_normalized_segments(value, |segment| {
+        let segment_bytes = match segment.kind {
+            NormalizedSegmentKind::Grapheme(grapheme) => grapheme.len(),
+            NormalizedSegmentKind::VisibleEscape(ch) => {
+                changed = true;
+                visible_escape_len(ch)
+            }
+            NormalizedSegmentKind::LineBreak => {
+                if escape_line_feed {
+                    changed = true;
+                    visible_escape_len('\n')
+                } else {
+                    changed |= segment.source_grapheme_bytes != 1;
+                    1
+                }
+            }
+        };
+        output_bytes = output_bytes.checked_add(segment_bytes).ok_or(())?;
+        Ok::<(), ()>(())
+    });
+    planned.ok().map(|()| TerminalNormalizationPlan {
+        output_bytes,
+        changed,
+    })
 }
 
 /// Reports whether terminal-safe normalization changes the authored text without materializing
@@ -102,31 +178,76 @@ pub(crate) fn terminal_text_is_blank(value: &str, resources: &ResourceContext) -
 /// This is the display boundary for errors that may contain authored identifiers or parser text.
 /// Structured codes and spans should remain separate fields at binding boundaries.
 pub fn normalize_terminal_diagnostic(value: &str) -> String {
-    let mut raw_prefix = String::with_capacity(value.len().min(MAX_DIAGNOSTIC_INPUT_BYTES));
-    let mut input_truncated = false;
-    for grapheme in value.graphemes(true) {
-        if raw_prefix.len().saturating_add(grapheme.len()) > MAX_DIAGNOSTIC_INPUT_BYTES {
-            input_truncated = true;
+    normalize_terminal_diagnostic_with_capacity(value, MAX_DIAGNOSTIC_BYTES)
+}
+
+fn normalize_terminal_diagnostic_with_capacity(value: &str, maximum_capacity: usize) -> String {
+    let (raw_prefix, input_truncated) = bounded_grapheme_prefix(value);
+    let safe = match try_normalize_terminal_text_with_options(
+        raw_prefix,
+        MAX_DIAGNOSTIC_NORMALIZED_BYTES,
+        false,
+    ) {
+        Ok(safe) => safe,
+        Err(()) => return owned_normalization_failure_placeholder(String::new()),
+    };
+    let content_byte_limit = MAX_DIAGNOSTIC_BYTES - DIAGNOSTIC_ELLIPSIS.len();
+    let mut output = String::new();
+    let mut truncated = input_truncated;
+    let mut completed = true;
+    for (index, grapheme) in safe.graphemes(true).enumerate() {
+        let Some(next_bytes) = output.len().checked_add(grapheme.len()) else {
+            return owned_normalization_failure_placeholder(output);
+        };
+        if index == MAX_DIAGNOSTIC_GRAPHEMES || next_bytes > content_byte_limit {
+            truncated = true;
+            completed = false;
             break;
         }
-        raw_prefix.push_str(grapheme);
-    }
-
-    let safe = normalize_terminal_text(&raw_prefix);
-    let content_byte_limit = MAX_DIAGNOSTIC_BYTES - DIAGNOSTIC_ELLIPSIS.len();
-    let mut output = String::with_capacity(safe.len().min(MAX_DIAGNOSTIC_BYTES));
-    let mut output_truncated = input_truncated;
-    for (index, grapheme) in safe.graphemes(true).enumerate() {
-        if index == MAX_DIAGNOSTIC_GRAPHEMES
-            || output.len().saturating_add(grapheme.len()) > content_byte_limit
-        {
-            output_truncated = true;
-            break;
+        if next_bytes > maximum_capacity || output.try_reserve(grapheme.len()).is_err() {
+            return owned_normalization_failure_placeholder(output);
         }
         output.push_str(grapheme);
     }
-    if output_truncated {
+    truncated |= !completed;
+    if truncated {
+        let Some(final_bytes) = output.len().checked_add(DIAGNOSTIC_ELLIPSIS.len()) else {
+            return owned_normalization_failure_placeholder(output);
+        };
+        if final_bytes > maximum_capacity || output.try_reserve(DIAGNOSTIC_ELLIPSIS.len()).is_err()
+        {
+            return owned_normalization_failure_placeholder(output);
+        }
         output.push_str(DIAGNOSTIC_ELLIPSIS);
+    }
+    output
+}
+
+fn bounded_grapheme_prefix(value: &str) -> (&str, bool) {
+    if value.len() <= MAX_DIAGNOSTIC_INPUT_BYTES {
+        return (value, false);
+    }
+
+    let mut byte_end = MAX_DIAGNOSTIC_INPUT_BYTES;
+    while !value.is_char_boundary(byte_end) {
+        byte_end -= 1;
+    }
+    let window = &value[..byte_end];
+    let mut last_grapheme_start = 0usize;
+    for (start, _) in window.grapheme_indices(true) {
+        last_grapheme_start = start;
+    }
+    (&window[..last_grapheme_start], true)
+}
+
+fn owned_normalization_failure_placeholder(mut output: String) -> String {
+    output.clear();
+    if output.capacity() >= NORMALIZATION_FAILURE_PLACEHOLDER.len()
+        || output
+            .try_reserve_exact(NORMALIZATION_FAILURE_PLACEHOLDER.len())
+            .is_ok()
+    {
+        output.push_str(NORMALIZATION_FAILURE_PLACEHOLDER);
     }
     output
 }
@@ -303,10 +424,6 @@ pub(super) fn visible_escape(ch: char, buffer: &mut [u8; 10]) -> &str {
     std::str::from_utf8(&buffer[..4 + digits]).expect("visible escapes contain only ASCII")
 }
 
-fn needs_normalization(value: &str) -> bool {
-    value.graphemes(true).any(grapheme_needs_normalization)
-}
-
 fn grapheme_needs_normalization(grapheme: &str) -> bool {
     grapheme == "\r\n"
         || (grapheme != "\n"
@@ -352,4 +469,52 @@ pub(super) const fn diagnostic_limits() -> (usize, usize, usize, &'static str) {
         MAX_DIAGNOSTIC_BYTES,
         DIAGNOSTIC_ELLIPSIS,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalization_capacity_failure_returns_a_safe_static_placeholder() {
+        let input = "\u{1b}".repeat(16);
+        let normalized =
+            normalize_terminal_text_with_capacity(&input, NORMALIZATION_FAILURE_PLACEHOLDER.len());
+
+        assert!(matches!(normalized, Cow::Borrowed(_)));
+        assert_eq!(normalized, NORMALIZATION_FAILURE_PLACEHOLDER);
+        assert!(!normalized.contains('\u{1b}'));
+        assert_eq!(normalize_terminal_text(&normalized), normalized);
+    }
+
+    #[test]
+    fn diagnostic_capacity_failure_returns_a_safe_placeholder() {
+        let input = "\u{1b}".repeat(64);
+        let normalized = normalize_terminal_diagnostic_with_capacity(
+            &input,
+            NORMALIZATION_FAILURE_PLACEHOLDER.len(),
+        );
+
+        assert_eq!(normalized, NORMALIZATION_FAILURE_PLACEHOLDER);
+        assert!(!normalized.contains('\u{1b}'));
+    }
+
+    #[test]
+    fn diagnostic_prefix_bounds_one_oversized_grapheme_before_segmentation() {
+        let input = format!("a{}b", "\u{301}".repeat(MAX_DIAGNOSTIC_INPUT_BYTES));
+        let (prefix, truncated) = bounded_grapheme_prefix(&input);
+
+        assert!(prefix.len() <= MAX_DIAGNOSTIC_INPUT_BYTES);
+        assert!(truncated);
+        assert_eq!(normalize_terminal_diagnostic(&input), "...");
+    }
+
+    #[test]
+    fn diagnostic_counts_graphemes_after_visible_escape_projection() {
+        let input = format!("{}\u{1b}\u{0903}", "a".repeat(250));
+        let normalized = normalize_terminal_diagnostic(&input);
+
+        assert!(!normalized.ends_with(DIAGNOSTIC_ELLIPSIS));
+        assert_eq!(normalized.graphemes(true).count(), 256);
+    }
 }

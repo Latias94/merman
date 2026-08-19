@@ -1051,8 +1051,9 @@ pub(super) fn render_namespace_container_box<'a>(
 
     let (raw_title, has_authored_title) = namespace_title(namespace, resources)?;
     let title_plan = ComposedTextPlan::try_new_html_decoded(raw_title, resources)?;
-    let disclose_label = has_authored_title
-        && authored_display_projection_is_lossy(&title_plan, &namespace.label, resources)?;
+    let title_projection_is_lossy =
+        authored_display_projection_is_lossy(&title_plan, raw_title, resources)?;
+    let disclose_label = has_authored_title && title_projection_is_lossy;
     let title = deferred_text.try_register(
         title_plan,
         settings.options.terminal_width_profile,
@@ -1068,16 +1069,20 @@ pub(super) fn render_namespace_container_box<'a>(
             )
         })
         .transpose()?;
-    let identity = namespace_authored_identity(namespace, raw_title)
-        .map(|id| {
-            deferred_text.try_register_framed_value(
-                "namespaceId(bytes=",
-                id,
-                settings.options.terminal_width_profile,
-                resources,
-            )
-        })
-        .transpose()?;
+    let identity = namespace_authored_identity(
+        namespace,
+        raw_title,
+        !has_authored_title && title_projection_is_lossy,
+    )
+    .map(|id| {
+        deferred_text.try_register_framed_value(
+            "namespaceId(bytes=",
+            id,
+            settings.options.terminal_width_profile,
+            resources,
+        )
+    })
+    .transpose()?;
     let header_width = authored_label
         .as_ref()
         .map_or(title.width(), |label| title.width().max(label.width()));
@@ -1307,14 +1312,16 @@ fn namespace_title<'a>(
 
 fn namespace_authored_identity<'a>(
     namespace: &'a Namespace,
-    visible_title: &str,
+    raw_title: &str,
+    fallback_projection_is_lossy: bool,
 ) -> Option<&'a str> {
     let leaf_id = namespace
         .id
         .rsplit('.')
         .next()
         .unwrap_or(namespace.id.as_str());
-    (visible_title != namespace.id.as_str() && namespace.label.as_str() != leaf_id)
+    (fallback_projection_is_lossy
+        || (raw_title != namespace.id.as_str() && namespace.label.as_str() != leaf_id))
         .then_some(namespace.id.as_str())
 }
 

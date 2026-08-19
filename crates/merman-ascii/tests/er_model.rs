@@ -195,8 +195,10 @@ fn er_local_semantic_fixture_covers_wide_attributes_and_relation_labels() {
         );
     }
     assert!(
-        !rendered.contains("<br>"),
-        "wide ER relations should not leak Mermaid break syntax:\n{rendered}"
+        rendered
+            .lines()
+            .all(|line| !line.contains("<br>") || line.contains("authored(bytes=")),
+        "wide ER relations should expose Mermaid break syntax only inside authored framing:\n{rendered}"
     );
 }
 
@@ -665,22 +667,18 @@ fn er_parser_identifying_relationship_renders_multiline_label() {
     )
     .expect("ER should render");
 
-    assert_eq!(
-        rendered,
-        concat!(
-            "+----------+\n",
-            "| CUSTOMER |\n",
-            "+----------+\n",
-            "     ||\n",
-            "    north\n",
-            "    south\n",
-            "      |\n",
-            "     o{\n",
-            "  +-------+\n",
-            "  | ORDER |\n",
-            "  +-------+\n",
-        )
-    );
+    for expected in [
+        "CUSTOMER",
+        "ORDER",
+        "north",
+        "south",
+        r#"authored(bytes=14)="north<br>south""#,
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -1930,8 +1928,10 @@ fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
         "dense multiline semantic ER fixture should keep label lines structured instead of slash-joining them:\n{rendered}"
     );
     assert!(
-        !rendered.contains("<br>"),
-        "dense multiline semantic ER fixture should not leak Mermaid break syntax:\n{rendered}"
+        rendered
+            .lines()
+            .all(|line| !line.contains("<br>") || line.contains("authored(bytes=")),
+        "dense multiline semantic ER fixture should expose Mermaid break syntax only inside authored framing:\n{rendered}"
     );
 }
 

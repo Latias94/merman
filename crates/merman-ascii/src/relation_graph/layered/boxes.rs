@@ -1349,6 +1349,7 @@ fn place_layered_boxes<'a>(
     )?;
     let global_center = content_width / 2;
 
+    let gap_heights = precompute_layered_relation_gap_heights(edges, levels, max_level, resources)?;
     let height = level_groups.iter().enumerate().try_fold(
         0usize,
         |height, (level, group)| -> Result<usize, LayeredRelationPlanningError> {
@@ -1359,10 +1360,7 @@ fn place_layered_boxes<'a>(
                 .unwrap_or(0);
             let height = resources.checked_grid_add(height, row_height)?;
             if level < max_level {
-                Ok(resources.checked_grid_add(
-                    height,
-                    layered_relation_gap_height(edges, levels, level, resources)?,
-                )?)
+                Ok(resources.checked_grid_add(height, gap_heights[level])?)
             } else {
                 Ok(height)
             }
@@ -1408,10 +1406,7 @@ fn place_layered_boxes<'a>(
             .unwrap_or(0);
         y = resources.checked_grid_add(y, row_height)?;
         if level < max_level {
-            y = resources.checked_grid_add(
-                y,
-                layered_relation_gap_height(edges, levels, level, resources)?,
-            )?;
+            y = resources.checked_grid_add(y, gap_heights[level])?;
         }
     }
 
@@ -1524,36 +1519,68 @@ fn spanning_lane_margin(
     )?)
 }
 
-fn layered_relation_gap_height(
+fn precompute_layered_relation_gap_heights(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
-    level: usize,
+    gap_count: usize,
     resources: &ResourceContext,
-) -> Result<usize, LayeredRelationPlanningError> {
-    let max_label_lines = edges
-        .iter()
-        .filter(|edge| relation_edge_crosses_level_gap(edge, levels, level))
-        .map(|edge| edge.label_line_count)
-        .max()
-        .unwrap_or(0);
-    if max_label_lines > 0 {
-        Ok(resources.checked_grid_add(max_label_lines, 3)?)
-    } else {
-        Ok(3)
+) -> Result<Vec<usize>, LayeredRelationPlanningError> {
+    if gap_count == 0 {
+        return Ok(Vec::new());
     }
-}
 
-fn relation_edge_crosses_level_gap(
-    edge: &LayeredRelationEdge,
-    levels: &HashMap<String, usize>,
-    level: usize,
-) -> bool {
-    let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
-    let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
-    let min_level = from_level.min(to_level);
-    let max_level = from_level.max(to_level);
+    resources.transaction(
+        |resources| -> Result<Vec<usize>, LayeredRelationPlanningError> {
+            // First measure the exact number of crossed-gap updates without allocating the table.
+            // The measurement pass itself is real work, so admit it before scanning the edges.
+            resources.charge_layout_work(edges.len())?;
+            let mut crossed_gap_visits = 0usize;
+            let mut measurement_checkpoints = RelationResourceCheckpointCursor::new();
+            for edge in edges {
+                measurement_checkpoints.tick(resources)?;
+                let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
+                let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
+                let min_level = from_level.min(to_level);
+                let end = from_level.max(to_level).min(gap_count);
+                crossed_gap_visits = resources
+                    .checked_work_add(crossed_gap_visits, end.saturating_sub(min_level))?;
+            }
 
-    min_level <= level && level < max_level
+            // Admit table initialization, the second edge pass, and every actual crossed-gap
+            // update before allocating. This avoids the previous levels×edges overcharge while
+            // still rejecting a tight budget before the reusable table exists.
+            let fill_work = resources.checked_work_add(
+                gap_count,
+                resources.checked_work_add(edges.len(), crossed_gap_visits)?,
+            )?;
+            resources.charge_layout_work(fill_work)?;
+
+            let mut gap_heights = Vec::new();
+            gap_heights
+                .try_reserve_exact(gap_count)
+                .map_err(|_| layout_allocation_failed())?;
+            gap_heights.resize(gap_count, 3);
+
+            let mut fill_checkpoints = RelationResourceCheckpointCursor::new();
+            for edge in edges {
+                fill_checkpoints.tick(resources)?;
+                let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
+                let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
+                let min_level = from_level.min(to_level);
+                let end = from_level.max(to_level).min(gap_count);
+                if min_level >= end {
+                    continue;
+                }
+                let edge_gap_height = resources.checked_grid_add(edge.label_line_count, 3)?;
+                for height in gap_heights[min_level..end].iter_mut() {
+                    fill_checkpoints.tick(resources)?;
+                    *height = (*height).max(edge_gap_height);
+                }
+            }
+
+            Ok(gap_heights)
+        },
+    )
 }
 
 fn grid_overflow(resources: &ResourceContext) -> AsciiError {
@@ -1698,6 +1725,53 @@ mod tests {
                 if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
         ));
         assert_eq!(resources.layout_work_used(), groups.len());
+    }
+
+    #[test]
+    fn layered_gap_height_prepass_obeys_exact_work_admission() {
+        const GAP_COUNT: usize = 3;
+        const EDGE_COUNT: usize = 4;
+        const CROSSED_GAP_VISITS: usize = 8;
+        const EXPECTED_WORK: usize = EDGE_COUNT + GAP_COUNT + EDGE_COUNT + CROSSED_GAP_VISITS;
+
+        let levels = HashMap::from([
+            ("a".to_string(), 0),
+            ("b".to_string(), 1),
+            ("c".to_string(), 2),
+            ("d".to_string(), 3),
+        ]);
+        let edges = vec![
+            LayeredRelationEdge::new("a", "d", 0, 2),
+            LayeredRelationEdge::new("b", "c", 0, 4),
+            LayeredRelationEdge::new("d", "a", 0, 1),
+            LayeredRelationEdge::new("a", "b", 0, 0),
+        ];
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK)
+            .expect("exact gap-prepass work limit should be valid");
+        let exact = ResourceContext::new(exact_policy);
+        let gap_heights =
+            precompute_layered_relation_gap_heights(&edges, &levels, GAP_COUNT, &exact)
+                .expect("exact gap-prepass work should succeed");
+        assert_eq!(gap_heights, vec![5, 7, 5]);
+        assert_eq!(exact.layout_work_used(), EXPECTED_WORK);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK - 1)
+            .expect("below gap-prepass work limit should be valid");
+        let below = ResourceContext::new(below_policy);
+        let error = precompute_layered_relation_gap_heights(&edges, &levels, GAP_COUNT, &below)
+            .expect_err("below gap-prepass work must fail before allocation");
+        assert!(matches!(
+            error,
+            LayeredRelationPlanningError::Resource(AsciiError::ResourceLimitExceeded(details))
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == EXPECTED_WORK
+                    && details.max == EXPECTED_WORK - 1
+        ));
+        assert_eq!(below.layout_work_used(), 0);
     }
 
     #[test]

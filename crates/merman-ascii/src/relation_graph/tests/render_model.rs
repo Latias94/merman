@@ -266,9 +266,12 @@ fn relation_graph_label_splits_breaks_and_tracks_line_count() {
         &deferred,
     )
     .expect("deferred label should encode");
-    assert_eq!(rendered, "north\nsouth\n");
-    assert_eq!(label.half_width(), 2);
-    assert_eq!(label.line_count(), 2);
+    assert_eq!(
+        rendered,
+        "north\nsouth\nauthored(bytes=14)=\"north<br>south\"\n"
+    );
+    assert_eq!(label.half_width(), 17);
+    assert_eq!(label.line_count(), 3);
 }
 
 #[test]
@@ -284,9 +287,10 @@ fn write_centered_relation_label_draws_each_line() {
     )
     .expect("label should fit the selected resource policy")
     .expect("label should be present");
-    let mut canvas = Canvas::new(3, 3);
+    let center_x = label.width() / 2;
+    let mut canvas = Canvas::new(label.width(), label.line_count());
 
-    write_centered_relation_label(&mut canvas, 1, 1, &label, AsciiColorRole::EdgeLabel)
+    write_centered_relation_label(&mut canvas, center_x, 0, &label, AsciiColorRole::EdgeLabel)
         .expect("test relation label should fit");
 
     let lines = canvas
@@ -301,9 +305,14 @@ fn write_centered_relation_label_draws_each_line() {
         &deferred,
     )
     .expect("deferred canvas should encode");
-    assert_eq!(rendered, "   \n A \n B \n");
-    assert_eq!(
-        lines[1].surface_cells()[1].raw_style().foreground,
-        Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
-    );
+    let rendered_lines = rendered.lines().collect::<Vec<_>>();
+    assert_eq!(rendered_lines[0].trim(), "A");
+    assert_eq!(rendered_lines[1].trim(), "B");
+    assert!(rendered.contains(r#"authored(bytes=6)="A<br>B""#));
+    for (row, column) in [(0, center_x), (1, center_x), (2, 0)] {
+        assert_eq!(
+            lines[row].surface_cells()[column].raw_style().foreground,
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
+        );
+    }
 }

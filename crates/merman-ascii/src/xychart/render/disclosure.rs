@@ -14,7 +14,7 @@ use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 pub(super) fn push_value_disclosure_lines(
     out: &mut ChartDocument,
     model: &XyChartDiagramRenderModel,
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     disclosure: TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
@@ -115,8 +115,8 @@ fn write_title_display_line(
 
 pub(super) fn value_disclosure_line_width(
     model: &XyChartDiagramRenderModel,
-    series: &SeriesPlan,
-    plan: &TerminalChartPlan,
+    series: &SeriesPlan<'_>,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
@@ -131,8 +131,8 @@ pub(super) fn value_disclosure_line_width(
 
 fn value_disclosure_line(
     model: &XyChartDiagramRenderModel,
-    series: &SeriesPlan,
-    plan: &TerminalChartPlan,
+    series: &SeriesPlan<'_>,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
@@ -152,7 +152,7 @@ fn value_disclosure_line(
 
 pub(super) fn band_domain_disclosure_line_width(
     model: &XyChartDiagramRenderModel,
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     disclosure: TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
@@ -171,7 +171,7 @@ pub(super) fn band_domain_disclosure_line_width(
 
 fn band_domain_disclosure_line(
     model: &XyChartDiagramRenderModel,
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<ChartLine> {
@@ -201,7 +201,7 @@ impl LinearDomainOwner {
 }
 
 pub(super) fn linear_domain_disclosure_line_widths(
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     disclosure: TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
@@ -299,7 +299,7 @@ fn push_optional_data_number(
 fn write_band_domain_disclosure_line(
     line: &mut impl DisclosureLine,
     model: &XyChartDiagramRenderModel,
-    plan: &TerminalChartPlan,
+    plan: &TerminalChartPlan<'_>,
     resources: &mut ResourceContext,
 ) -> Result<()> {
     let crate::xychart::plot::AxisPlan::Band { .. } = &plan.x_axis else {
@@ -403,8 +403,8 @@ impl DisclosureLine for MeasuredDisclosureLine {
 fn write_value_disclosure_line(
     line: &mut impl DisclosureLine,
     model: &XyChartDiagramRenderModel,
-    series: &SeriesPlan,
-    plan: &TerminalChartPlan,
+    series: &SeriesPlan<'_>,
+    plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     resources: &mut ResourceContext,
 ) -> Result<()> {
@@ -426,7 +426,7 @@ fn write_value_disclosure_line(
         AsciiColorRole::Text,
         resources,
     )?;
-    match series.title.as_deref() {
+    match series.title {
         Some(title) => {
             line.push_char(' ', AsciiColorRole::Text, resources)?;
             push_disclosure_field(line, "title", title, resources)?;

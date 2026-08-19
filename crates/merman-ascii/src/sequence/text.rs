@@ -10,11 +10,16 @@ pub(super) type SequenceLine = StyledLine;
 pub(super) struct SequenceDocumentExtent {
     width: usize,
     height: usize,
+    document_cells: usize,
 }
 
 impl SequenceDocumentExtent {
-    pub(super) const fn new(width: usize, height: usize) -> Self {
-        Self { width, height }
+    pub(super) const fn new(width: usize, height: usize, document_cells: usize) -> Self {
+        Self {
+            width,
+            height,
+            document_cells,
+        }
     }
 
     pub(super) const fn width(self) -> usize {
@@ -23,6 +28,108 @@ impl SequenceDocumentExtent {
 
     pub(super) const fn height(self) -> usize {
         self.height
+    }
+
+    pub(super) const fn document_cells(self) -> usize {
+        self.document_cells
+    }
+
+    pub(super) fn materialized_cells(self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_grid_mul(self.width, self.height)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SequenceRetainedRowRun {
+    width: usize,
+    count: usize,
+}
+
+impl SequenceRetainedRowRun {
+    pub(super) const fn new(width: usize, count: usize) -> Self {
+        Self { width, count }
+    }
+
+    pub(super) const fn width(self) -> usize {
+        self.width
+    }
+
+    pub(super) const fn count(self) -> usize {
+        self.count
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum SequenceRetainedRows<'a> {
+    Footprints(&'a [SequenceRowFootprint]),
+    Runs(&'a [SequenceRetainedRowRun]),
+}
+
+impl SequenceRetainedRows<'_> {
+    pub(super) fn try_visit(
+        self,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+        mut visit: impl FnMut(SequenceRetainedRowRun) -> Result<()>,
+    ) -> Result<()> {
+        match self {
+            Self::Footprints(footprints) => {
+                for footprint in footprints {
+                    checkpoints.tick()?;
+                    visit(SequenceRetainedRowRun::new(footprint.retained_width(), 1))?;
+                }
+            }
+            Self::Runs(runs) => {
+                for run in runs {
+                    checkpoints.tick()?;
+                    visit(*run)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct SequenceDocumentPlan<'a> {
+    extent: SequenceDocumentExtent,
+    box_input_extent: SequenceDocumentExtent,
+    box_input_rows: SequenceRetainedRows<'a>,
+}
+
+impl<'a> SequenceDocumentPlan<'a> {
+    pub(super) const fn new(
+        extent: SequenceDocumentExtent,
+        box_input_rows: SequenceRetainedRows<'a>,
+    ) -> Self {
+        Self {
+            extent,
+            box_input_extent: extent,
+            box_input_rows,
+        }
+    }
+
+    pub(super) const fn with_box_input(
+        extent: SequenceDocumentExtent,
+        box_input_extent: SequenceDocumentExtent,
+        box_input_rows: SequenceRetainedRows<'a>,
+    ) -> Self {
+        Self {
+            extent,
+            box_input_extent,
+            box_input_rows,
+        }
+    }
+
+    pub(super) const fn extent(self) -> SequenceDocumentExtent {
+        self.extent
+    }
+
+    pub(super) const fn box_input_extent(self) -> SequenceDocumentExtent {
+        self.box_input_extent
+    }
+
+    pub(super) const fn box_input_rows(self) -> SequenceRetainedRows<'a> {
+        self.box_input_rows
     }
 }
 
@@ -181,6 +288,10 @@ impl SequenceBatchExtent {
         self.retained_width
     }
 
+    pub(super) const fn document_cells(self) -> usize {
+        self.document_cells
+    }
+
     #[cfg(test)]
     pub(super) const fn materialized_width(self) -> usize {
         self.materialized_width
@@ -229,7 +340,7 @@ impl SequenceExtentLedger {
     }
 
     pub(super) const fn output_extent(self) -> SequenceDocumentExtent {
-        SequenceDocumentExtent::new(self.retained_width, self.height)
+        SequenceDocumentExtent::new(self.retained_width, self.height, self.document_cells)
     }
 
     #[cfg(test)]
@@ -353,9 +464,10 @@ pub(super) fn blank_line_with_checkpoints(
     checkpoints: &SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
     let line_base = ResourceContext::new(resources.policy());
-    let line_resources = checkpoints
-        .execution()
-        .resource_context(&line_base, merman_core::OperationPhase::Layout);
+    let line_resources = line_base.controlled(
+        checkpoints.execution().cloned_control(),
+        merman_core::OperationPhase::Layout,
+    );
     SequenceLine::try_blank_with_resources_and_checkpoint(
         width,
         width_profile,

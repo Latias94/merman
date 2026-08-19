@@ -54,7 +54,24 @@ pub(crate) fn try_build_normalized_label_lines(
 #[derive(Debug, Clone, Copy)]
 enum LabelSelection {
     All,
-    Range { start: usize, end: usize },
+    Range {
+        start: usize,
+        end: usize,
+        source_len: usize,
+    },
+}
+
+impl LabelSelection {
+    const fn discards_authored_text(self) -> bool {
+        match self {
+            Self::All => false,
+            Self::Range {
+                start,
+                end,
+                source_len,
+            } => start != 0 || end != source_len,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -263,6 +280,7 @@ pub(crate) struct NormalizedLabelPlan {
     source_metrics: NormalizedLabelMetrics,
     output_metrics: NormalizedLabelMetrics,
     terminal_projection_lossy: bool,
+    structural_projection_lossy: bool,
     width_profile: TerminalWidthProfile,
     wrap_width: Option<usize>,
     break_policy: LabelBreakPolicy,
@@ -279,9 +297,11 @@ impl NormalizedLabelPlan {
         self.replay_work_units
     }
 
-    /// Returns true when terminal normalization replaced authored scalars with visible escapes.
-    pub(crate) const fn terminal_projection_is_lossy(self) -> bool {
-        self.terminal_projection_lossy
+    /// Returns true when trimming, structural breaks, or terminal escaping changed authored text.
+    pub(crate) const fn authored_projection_is_lossy(self) -> bool {
+        self.selection.discards_authored_text()
+            || self.structural_projection_lossy
+            || self.terminal_projection_lossy
     }
 
     pub(crate) fn check_materialization_limits(self, resources: &ResourceContext) -> Result<()> {
@@ -653,6 +673,7 @@ fn try_plan_normalized_label_lines_with_policy_transactional(
         source_metrics,
         output_metrics,
         terminal_projection_lossy: source_preflight.terminal_projection_lossy,
+        structural_projection_lossy: source_preflight.structural_projection_lossy,
         width_profile,
         wrap_width,
         break_policy,
@@ -710,6 +731,7 @@ fn try_measure_normalized_label_lines_transactional(
 struct NormalizedLabelPreflight {
     metrics: NormalizedLabelMetrics,
     terminal_projection_lossy: bool,
+    structural_projection_lossy: bool,
 }
 
 fn normalized_label_selection(
@@ -762,7 +784,11 @@ fn normalized_label_selection(
         })
     })?;
 
-    Ok(start.map(|start| LabelSelection::Range { start, end }))
+    Ok(start.map(|start| LabelSelection::Range {
+        start,
+        end,
+        source_len: offset,
+    }))
 }
 
 fn preflight_label(
@@ -780,6 +806,7 @@ fn preflight_label(
     let mut line_width = 0usize;
     let mut max_width = 0usize;
     let mut terminal_projection_lossy = false;
+    let mut structural_projection_lossy = false;
     let policy = resources.policy();
 
     visit_selected_label_output_with_checkpoint(
@@ -796,6 +823,7 @@ fn preflight_label(
 
             match output {
                 LabelOutputSegment::LineBreak => {
+                    structural_projection_lossy = true;
                     resources.charge_layout_work(1)?;
                     line_count = checked_add(
                         resources,
@@ -847,6 +875,7 @@ fn preflight_label(
             max_width,
         },
         terminal_projection_lossy,
+        structural_projection_lossy,
     })
 }
 
@@ -1389,7 +1418,11 @@ fn visit_selected_label_output_with_checkpoint(
             offset = token_end;
             let selected = match selection {
                 LabelSelection::All => 0..trim_text.len(),
-                LabelSelection::Range { start, end } => {
+                LabelSelection::Range {
+                    start,
+                    end,
+                    source_len: _,
+                } => {
                     let kept_start = start.max(token_start);
                     let kept_end = end.min(token_end);
                     if kept_start >= kept_end {

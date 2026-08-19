@@ -1,6 +1,13 @@
-use super::normalization::{normalize_terminal_text, visible_escape};
+#[cfg(test)]
+use super::normalization::normalize_terminal_text;
+use super::normalization::{
+    NormalizedSegmentKind, try_normalize_terminal_line_text, visible_escape_len,
+    visit_normalized_segments,
+};
+use crate::Result;
 use crate::options::TerminalWidthProfile;
 use std::borrow::Cow;
+use std::convert::Infallible;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -52,15 +59,15 @@ impl<'a> SafeText<'a> {
 }
 
 impl<'a> SafeLine<'a> {
+    pub(crate) fn try_new(value: &'a str) -> Result<Self> {
+        Ok(Self {
+            value: try_normalize_terminal_line_text(value)?,
+        })
+    }
+
+    #[cfg(test)]
     pub(crate) fn new(value: &'a str) -> Self {
-        let normalized = normalize_terminal_text(value);
-        let value = if normalized.contains('\n') {
-            let mut buffer = [0u8; 10];
-            Cow::Owned(normalized.replace('\n', visible_escape('\n', &mut buffer)))
-        } else {
-            normalized
-        };
-        Self { value }
+        Self::try_new(value).expect("test text should fit in memory")
     }
 
     pub(crate) fn graphemes(
@@ -72,10 +79,19 @@ impl<'a> SafeLine<'a> {
 }
 
 pub(crate) fn terminal_line_display_width(value: &str, profile: TerminalWidthProfile) -> usize {
-    SafeLine::new(value)
-        .graphemes(profile)
-        .map(MeasuredGrapheme::width)
-        .sum()
+    let mut width = 0usize;
+    let measured = visit_normalized_segments(value, |segment| {
+        let segment_width = match segment.kind {
+            NormalizedSegmentKind::LineBreak => visible_escape_len('\n'),
+            _ => segment.display_width(profile),
+        };
+        width = width.saturating_add(segment_width);
+        Ok::<(), Infallible>(())
+    });
+    match measured {
+        Ok(()) => width,
+        Err(never) => match never {},
+    }
 }
 
 pub(crate) fn grapheme_display_width(grapheme: &str, profile: TerminalWidthProfile) -> usize {
@@ -102,4 +118,17 @@ pub(super) fn measured_graphemes(
         text,
         width: grapheme_display_width(text, profile),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_line_width_matches_visible_control_projection() {
+        assert_eq!(
+            terminal_line_display_width("a\u{1b}\nb", TerminalWidthProfile::Unicode),
+            "a\\u{1B}\\u{A}b".len()
+        );
+    }
 }

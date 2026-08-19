@@ -14,7 +14,9 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 const MAX_DIAGNOSTIC_GRAPHEMES: usize = 256;
 const MAX_DIAGNOSTIC_INPUT_BYTES: usize = 16 * 1024;
 const MAX_DIAGNOSTIC_BYTES: usize = 4 * 1024;
+const MAX_DIAGNOSTIC_NORMALIZED_BYTES: usize = MAX_DIAGNOSTIC_INPUT_BYTES * 10;
 const DIAGNOSTIC_ELLIPSIS: &str = "...";
+const NORMALIZATION_FAILURE_PLACEHOLDER: &str = "[terminal text unavailable]";
 
 /// Machine-readable context for a terminal-safe parser diagnostic.
 ///
@@ -152,26 +154,84 @@ impl From<merman_core::runtime::RuntimePolicyError> for TerminalRuntimePolicyErr
 /// bidirectional formatting control is rendered as an uppercase `\u{HEX}` escape. Standalone
 /// zero-width graphemes are escaped scalar by scalar, while joiners and variation selectors remain
 /// intact when they belong to a positive-width grapheme. Applying this function twice is
-/// idempotent.
+/// idempotent. The exact normalized byte length is checked before allocation; capacity overflow
+/// or allocation failure returns a fixed terminal-safe placeholder and never exposes the authored
+/// controls.
 #[must_use]
 pub fn normalize_terminal_text(value: &str) -> Cow<'_, str> {
-    if !needs_normalization(value) {
-        return Cow::Borrowed(value);
+    normalize_terminal_text_with_capacity(value, usize::MAX)
+}
+
+fn normalize_terminal_text_with_capacity(value: &str, maximum_capacity: usize) -> Cow<'_, str> {
+    try_normalize_terminal_text_with_capacity(value, maximum_capacity)
+        .unwrap_or(Cow::Borrowed(NORMALIZATION_FAILURE_PLACEHOLDER))
+}
+
+fn try_normalize_terminal_text_with_capacity(
+    value: &str,
+    maximum_capacity: usize,
+) -> std::result::Result<Cow<'_, str>, ()> {
+    let Some(plan) = terminal_normalization_plan(value) else {
+        return Err(());
+    };
+    if !plan.changed {
+        return Ok(Cow::Borrowed(value));
+    }
+    if plan.output_bytes > maximum_capacity {
+        return Err(());
     }
 
-    let mut output = String::with_capacity(value.len());
+    let mut output = String::new();
+    if output.try_reserve_exact(plan.output_bytes).is_err() {
+        return Err(());
+    }
     let normalized = visit_normalized_segments(value, |segment| {
         match segment {
             NormalizedSegment::Grapheme(grapheme) => output.push_str(grapheme),
             NormalizedSegment::VisibleEscape(ch) => push_visible_escape(&mut output, ch),
-            NormalizedSegment::LineBreak => output.push('\n'),
+            NormalizedSegment::LineBreak { .. } => output.push('\n'),
         }
         Ok::<(), Infallible>(())
     });
     match normalized {
-        Ok(()) => Cow::Owned(output),
+        Ok(()) => {
+            debug_assert_eq!(output.len(), plan.output_bytes);
+            Ok(Cow::Owned(output))
+        }
         Err(never) => match never {},
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TerminalNormalizationPlan {
+    output_bytes: usize,
+    changed: bool,
+}
+
+fn terminal_normalization_plan(value: &str) -> Option<TerminalNormalizationPlan> {
+    let mut output_bytes = 0usize;
+    let mut changed = false;
+    let planned = visit_normalized_segments(value, |segment| {
+        let segment_bytes = match segment {
+            NormalizedSegment::Grapheme(grapheme) => grapheme.len(),
+            NormalizedSegment::VisibleEscape(ch) => {
+                changed = true;
+                visible_escape_len(ch)
+            }
+            NormalizedSegment::LineBreak {
+                changed: line_break_changed,
+            } => {
+                changed |= line_break_changed;
+                1
+            }
+        };
+        output_bytes = output_bytes.checked_add(segment_bytes).ok_or(())?;
+        Ok::<(), ()>(())
+    });
+    planned.ok().map(|()| TerminalNormalizationPlan {
+        output_bytes,
+        changed,
+    })
 }
 
 /// Produces a bounded, terminal-safe human-readable diagnostic.
@@ -181,21 +241,36 @@ pub fn normalize_terminal_text(value: &str) -> Cow<'_, str> {
 #[must_use]
 pub fn normalize_terminal_diagnostic(value: &str) -> String {
     let (raw_prefix, input_truncated) = bounded_grapheme_prefix(value);
-
-    let safe = normalize_terminal_text(raw_prefix);
+    let safe = match try_normalize_terminal_text_with_capacity(
+        raw_prefix,
+        MAX_DIAGNOSTIC_NORMALIZED_BYTES,
+    ) {
+        Ok(safe) => safe,
+        Err(()) => return owned_normalization_failure_placeholder(String::new()),
+    };
     let content_byte_limit = MAX_DIAGNOSTIC_BYTES - DIAGNOSTIC_ELLIPSIS.len();
-    let mut output = String::with_capacity(safe.len().min(MAX_DIAGNOSTIC_BYTES));
-    let mut output_truncated = input_truncated;
+    let mut output = String::new();
+    let mut truncated = input_truncated;
+    let mut completed = true;
     for (index, grapheme) in safe.graphemes(true).enumerate() {
-        if index == MAX_DIAGNOSTIC_GRAPHEMES
-            || output.len().saturating_add(grapheme.len()) > content_byte_limit
-        {
-            output_truncated = true;
+        let Some(next_bytes) = output.len().checked_add(grapheme.len()) else {
+            return owned_normalization_failure_placeholder(output);
+        };
+        if index == MAX_DIAGNOSTIC_GRAPHEMES || next_bytes > content_byte_limit {
+            truncated = true;
+            completed = false;
             break;
+        }
+        if output.try_reserve(grapheme.len()).is_err() {
+            return owned_normalization_failure_placeholder(output);
         }
         output.push_str(grapheme);
     }
-    if output_truncated {
+    truncated |= !completed;
+    if truncated {
+        if output.try_reserve(DIAGNOSTIC_ELLIPSIS.len()).is_err() {
+            return owned_normalization_failure_placeholder(output);
+        }
         output.push_str(DIAGNOSTIC_ELLIPSIS);
     }
     output
@@ -210,12 +285,12 @@ fn bounded_grapheme_prefix(value: &str) -> (&str, bool) {
     while !value.is_char_boundary(byte_end) {
         byte_end -= 1;
     }
-    let byte_prefix = &value[..byte_end];
-    let trailing_grapheme_start = byte_prefix
-        .grapheme_indices(true)
-        .next_back()
-        .map_or(0, |(start, _)| start);
-    (&byte_prefix[..trailing_grapheme_start], true)
+    let window = &value[..byte_end];
+    let mut last_grapheme_start = 0usize;
+    for (start, _) in window.grapheme_indices(true) {
+        last_grapheme_start = start;
+    }
+    (&window[..last_grapheme_start], true)
 }
 
 fn safe_parse_error(error: &merman_core::Error) -> String {
@@ -345,7 +420,7 @@ fn bounded_two_field_message(prefix: &str, first: &str, separator: &str, second:
 enum NormalizedSegment<'a> {
     Grapheme(&'a str),
     VisibleEscape(char),
-    LineBreak,
+    LineBreak { changed: bool },
 }
 
 fn visit_normalized_segments<'a, E>(
@@ -354,14 +429,16 @@ fn visit_normalized_segments<'a, E>(
 ) -> Result<(), E> {
     for grapheme in value.graphemes(true) {
         if grapheme == "\r\n" || grapheme == "\n" {
-            visit(NormalizedSegment::LineBreak)?;
+            visit(NormalizedSegment::LineBreak {
+                changed: grapheme != "\n",
+            })?;
             continue;
         }
 
         if grapheme.chars().any(needs_control_escape) {
             for (offset, ch) in grapheme.char_indices() {
                 let segment = if ch == '\n' {
-                    NormalizedSegment::LineBreak
+                    NormalizedSegment::LineBreak { changed: false }
                 } else if needs_control_escape(ch) || UnicodeWidthChar::width(ch).unwrap_or(0) == 0
                 {
                     NormalizedSegment::VisibleEscape(ch)
@@ -384,15 +461,16 @@ fn visit_normalized_segments<'a, E>(
     Ok(())
 }
 
-fn needs_normalization(value: &str) -> bool {
-    value.graphemes(true).any(grapheme_needs_normalization)
-}
-
-fn grapheme_needs_normalization(grapheme: &str) -> bool {
-    grapheme == "\r\n"
-        || (grapheme != "\n"
-            && (grapheme.chars().any(needs_control_escape)
-                || UnicodeWidthStr::width(grapheme) == 0))
+fn owned_normalization_failure_placeholder(mut output: String) -> String {
+    output.clear();
+    if output.capacity() >= NORMALIZATION_FAILURE_PLACEHOLDER.len()
+        || output
+            .try_reserve_exact(NORMALIZATION_FAILURE_PLACEHOLDER.len())
+            .is_ok()
+    {
+        output.push_str(NORMALIZATION_FAILURE_PLACEHOLDER);
+    }
+    output
 }
 
 fn needs_control_escape(ch: char) -> bool {
@@ -462,6 +540,18 @@ mod tests {
     }
 
     #[test]
+    fn terminal_text_capacity_failure_returns_a_safe_static_placeholder() {
+        let input = "\u{1b}".repeat(16);
+        let normalized =
+            normalize_terminal_text_with_capacity(&input, NORMALIZATION_FAILURE_PLACEHOLDER.len());
+
+        assert!(matches!(normalized, Cow::Borrowed(_)));
+        assert_eq!(normalized, NORMALIZATION_FAILURE_PLACEHOLDER);
+        assert!(!normalized.contains('\u{1b}'));
+        assert_eq!(normalize_terminal_text(&normalized), normalized);
+    }
+
+    #[test]
     fn terminal_diagnostic_is_bounded_without_splitting_graphemes() {
         let input = "👩‍💻".repeat(MAX_DIAGNOSTIC_GRAPHEMES + 1);
         let normalized = normalize_terminal_diagnostic(&input);
@@ -480,6 +570,24 @@ mod tests {
         let normalized = normalize_terminal_diagnostic(&input);
 
         assert_eq!(normalized, DIAGNOSTIC_ELLIPSIS);
+    }
+
+    #[test]
+    fn terminal_diagnostic_prefix_bounds_one_oversized_grapheme() {
+        let input = format!("a{}b", "\u{301}".repeat(MAX_DIAGNOSTIC_INPUT_BYTES));
+        let (prefix, truncated) = bounded_grapheme_prefix(&input);
+
+        assert!(prefix.len() <= MAX_DIAGNOSTIC_INPUT_BYTES);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn terminal_diagnostic_counts_graphemes_after_visible_escape_projection() {
+        let input = format!("{}\u{1b}\u{0903}", "a".repeat(250));
+        let normalized = normalize_terminal_diagnostic(&input);
+
+        assert!(!normalized.ends_with(DIAGNOSTIC_ELLIPSIS));
+        assert_eq!(normalized.graphemes(true).count(), 256);
     }
 
     #[test]

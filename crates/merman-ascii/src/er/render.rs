@@ -1735,6 +1735,18 @@ mod tests {
         assert!(authored_routed.contains(DISCLOSURE));
         assert!(!visible_routed.contains("authored(bytes="));
 
+        let html_break_routed = routed("owns<br>items");
+        let line_break_routed = routed("owns\nitems");
+        assert_ne!(html_break_routed, line_break_routed);
+        assert!(html_break_routed.contains(r#"authored(bytes=13)="owns<br>items""#));
+        assert!(line_break_routed.contains(r#"authored(bytes=10)="owns\nitems""#));
+
+        let trimmed_routed = routed(" owns ");
+        let untrimmed_routed = routed("owns");
+        assert_ne!(trimmed_routed, untrimmed_routed);
+        assert!(trimmed_routed.contains(r#"authored(bytes=6)=" owns ""#));
+        assert!(!untrimmed_routed.contains("authored(bytes="));
+
         let summary = |value: &str| {
             let mut model = er_summary_model();
             for relationship in &mut model.relationships {
@@ -1755,6 +1767,12 @@ mod tests {
         assert_ne!(authored_summary, visible_summary);
         assert!(authored_summary.contains(DISCLOSURE));
         assert!(!visible_summary.contains("authored(bytes="));
+
+        let html_break_summary = summary("owns<br>items");
+        let line_break_summary = summary("owns\nitems");
+        assert_ne!(html_break_summary, line_break_summary);
+        assert!(html_break_summary.contains(r#"authored(bytes=13)="owns<br>items""#));
+        assert!(line_break_summary.contains(r#"authored(bytes=10)="owns\nitems""#));
     }
 
     #[test]

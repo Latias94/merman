@@ -236,16 +236,51 @@ impl<'a> DeferredTextRegistry<'a> {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<Option<Vec<DeferredTextLine>>> {
+        self.try_register_label_lines_with_authored_disclosure_mode(
+            raw,
+            disclosure_prefix,
+            width_profile,
+            false,
+            resources,
+        )
+    }
+
+    pub(crate) fn try_register_present_label_lines_with_authored_disclosure(
+        &mut self,
+        raw: &'a str,
+        disclosure_prefix: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Vec<DeferredTextLine>> {
+        self.try_register_label_lines_with_authored_disclosure_mode(
+            raw,
+            disclosure_prefix,
+            width_profile,
+            true,
+            resources,
+        )?
+        .ok_or_else(layout_allocation_failed)
+    }
+
+    fn try_register_label_lines_with_authored_disclosure_mode(
+        &mut self,
+        raw: &'a str,
+        disclosure_prefix: &'static str,
+        width_profile: TerminalWidthProfile,
+        preserve_empty_authored: bool,
+        resources: &ResourceContext,
+    ) -> Result<Option<Vec<DeferredTextLine>>> {
         let registry_checkpoint = (
             self.entries.len(),
             self.plans.len(),
             self.quoted_lines.len(),
         );
         let result = resources.transaction(|resources| {
-            self.try_register_label_lines_transactional(
+            self.try_register_label_lines_transactional_with_presence(
                 raw,
                 width_profile,
                 Some(disclosure_prefix),
+                preserve_empty_authored,
                 resources,
             )
         });
@@ -257,30 +292,40 @@ impl<'a> DeferredTextRegistry<'a> {
         result
     }
 
-    fn try_register_label_lines_transactional(
+    fn try_register_label_lines_transactional_with_presence(
         &mut self,
         raw: &'a str,
         width_profile: TerminalWidthProfile,
         disclosure_prefix: Option<&'static str>,
+        preserve_empty_authored: bool,
         resources: &ResourceContext,
     ) -> Result<Option<Vec<DeferredTextLine>>> {
         let Some(plan) =
             try_plan_normalized_label_lines(raw, width_profile, true, None, resources)?
         else {
+            if let Some(prefix) = disclosure_prefix
+                && (preserve_empty_authored || !raw.is_empty())
+            {
+                let mut lines = Vec::new();
+                lines
+                    .try_reserve_exact(2)
+                    .map_err(|_| layout_allocation_failed())?;
+                lines.push(
+                    self.try_register_parts(width_profile, resources, 1, |push| {
+                        push(DeferredTextPart::Static(""))
+                    })?,
+                );
+                lines.push(self.try_register_framed_value(
+                    prefix,
+                    raw,
+                    width_profile,
+                    resources,
+                )?);
+                return Ok(Some(lines));
+            }
             return Ok(None);
         };
-        let disclose_authored = match disclosure_prefix {
-            Some(_) if plan.terminal_projection_is_lossy() => true,
-            Some(prefix) if plan.metrics().line_count > 1 => {
-                contains_with_resources(raw, prefix, resources)?
-            }
-            Some(_) | None => false,
-        };
-        let disclosure_prefix = if disclose_authored {
-            disclosure_prefix
-        } else {
-            None
-        };
+        let disclosure_prefix = disclosure_prefix.filter(|_| plan.authored_projection_is_lossy());
         self.try_register_label_plan(raw, plan, disclosure_prefix, width_profile, resources)
             .map(Some)
     }
@@ -805,33 +850,6 @@ fn text_metrics(
     })
 }
 
-fn contains_with_resources(value: &str, needle: &str, resources: &ResourceContext) -> Result<bool> {
-    if needle.is_empty() {
-        return Ok(true);
-    }
-    let Some(last_start) = value.len().checked_sub(needle.len()) else {
-        return Ok(false);
-    };
-    let value = value.as_bytes();
-    let needle = needle.as_bytes();
-    let mut batch_start = 0usize;
-    while batch_start <= last_start {
-        resources.checkpoint()?;
-        let batch_end = batch_start
-            .saturating_add(DEFERRED_REPLAY_CHECKPOINT_INTERVAL)
-            .min(last_start + 1);
-        resources.charge_layout_work(batch_end - batch_start)?;
-        for start in batch_start..batch_end {
-            if &value[start..start + needle.len()] == needle {
-                return Ok(true);
-            }
-        }
-        batch_start = batch_end;
-    }
-    resources.checkpoint()?;
-    Ok(false)
-}
-
 fn quoted_text_metrics_and_charge(
     text: &str,
     width_profile: TerminalWidthProfile,
@@ -1125,10 +1143,11 @@ mod tests {
         let baseline_resources = ResourceContext::new(AsciiResourcePolicy::default());
         let mut baseline = DeferredTextRegistry::new();
         baseline
-            .try_register_label_lines_transactional(
+            .try_register_label_lines_transactional_with_presence(
                 RAW,
                 TerminalWidthProfile::Unicode,
                 None,
+                false,
                 &baseline_resources,
             )
             .expect("the base label should plan")

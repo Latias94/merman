@@ -323,8 +323,10 @@ mod tests {
                     "relations:\n",
                     "Gateway --> Service : receives\n",
                     "{}request\n",
+                    "{}authored(bytes=19)=\"receives<br>request\"\n",
                     "Svc     --> Repo\n",
                 ),
+                " ".repeat(22),
                 " ".repeat(22),
             )
         );
@@ -367,8 +369,10 @@ mod tests {
                     "relations:\n",
                     "服务 --> Repo : 处理🚀\n",
                     "{}完成\n",
+                    "{}authored(bytes=20)=\"处理🚀<br>完成\"\n",
                     "API  --> 数据\n",
                 ),
+                " ".repeat(16),
                 " ".repeat(16),
             )
         );

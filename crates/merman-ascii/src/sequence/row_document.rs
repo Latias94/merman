@@ -3,12 +3,14 @@ use super::boxes::{PreparedSequenceBoxes, prepare_sequence_boxes};
 use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::model::AsciiSequenceDiagram;
-use super::text::SequenceDocumentExtent;
-use super::text::{SequenceLine, blank_line_with_checkpoints, trim_right};
+use super::text::{SequenceDocumentExtent, SequenceDocumentPlan};
+use super::text::{SequenceLine, blank_line_with_checkpoints};
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, ResourceContext};
+use crate::resource::{
+    AsciiResourceLimitId, AsciiResourceLimitPhase, CheckedOutput, ResourceContext,
+};
 use crate::safe_text::visit_safe_line_graphemes;
 use crate::terminal::{SurfaceCellCheckpoints, TerminalCellText, primary_width_with_checkpoints};
 use merman_core::OperationPhase;
@@ -21,8 +23,15 @@ pub(super) struct SequenceRowDocument {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PreparedSequenceTitle<'a> {
     text: &'a str,
-    width: usize,
+    alignment_width: usize,
+    retained_width: usize,
     width_profile: TerminalWidthProfile,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SequenceTitleWidths {
+    alignment: usize,
+    retained: usize,
 }
 
 #[derive(Debug)]
@@ -34,6 +43,11 @@ pub(super) struct PreparedSequenceDocument<'a> {
 }
 
 impl PreparedSequenceDocument<'_> {
+    #[cfg(test)]
+    pub(super) const fn content_extent(&self) -> SequenceDocumentExtent {
+        self.content_extent
+    }
+
     #[cfg(test)]
     pub(super) const fn output_extent(&self) -> SequenceDocumentExtent {
         self.output_extent
@@ -56,7 +70,16 @@ impl SequenceRowDocument {
     ) -> Result<String> {
         let mut lines = self.lines;
         if let Some(boxes) = document.boxes {
-            lines = boxes.materialize(lines, layout, chars, resources, layout_checkpoints)?;
+            let materialized_cells = boxes.materialized_cells(resources)?;
+            let mut materialization_resources =
+                resources.scoped_after_document_admission(materialized_cells)?;
+            lines = boxes.materialize(
+                lines,
+                layout,
+                chars,
+                &mut materialization_resources,
+                layout_checkpoints,
+            )?;
         }
         validate_lines_extent(
             &lines,
@@ -81,9 +104,7 @@ impl SequenceRowDocument {
         )?;
         // Box/title geometry, extent admission, and canvas construction are layout work. Only
         // after those complete do we bind the shared ledger to Emit for byte/document emission.
-        let mut emit_resources = layout_checkpoints
-            .execution()
-            .resource_context(resources, OperationPhase::Emit);
+        let mut emit_resources = resources.with_operation_phase(OperationPhase::Emit);
         let mut emit_checkpoints = layout_checkpoints.next_phase(OperationPhase::Emit);
         finish_sequence_lines(lines, options, &mut emit_resources, &mut emit_checkpoints)
     }
@@ -92,7 +113,7 @@ impl SequenceRowDocument {
 pub(super) fn prepare_sequence_document<'a>(
     diagram: &'a AsciiSequenceDiagram,
     title: Option<PreparedSequenceTitle<'a>>,
-    body_extent: SequenceDocumentExtent,
+    body_plan: SequenceDocumentPlan<'_>,
     layout: &SequenceLayout,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
@@ -102,7 +123,7 @@ pub(super) fn prepare_sequence_document<'a>(
         prepare_sequence_document_transactional(
             diagram,
             title,
-            body_extent,
+            body_plan,
             layout,
             resources,
             checkpoints,
@@ -113,23 +134,37 @@ pub(super) fn prepare_sequence_document<'a>(
 fn prepare_sequence_document_transactional<'a>(
     diagram: &'a AsciiSequenceDiagram,
     title: Option<PreparedSequenceTitle<'a>>,
-    body_extent: SequenceDocumentExtent,
+    body_plan: SequenceDocumentPlan<'_>,
     layout: &SequenceLayout,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedSequenceDocument<'a>> {
-    let boxes = prepare_sequence_boxes(diagram, layout, body_extent, resources, checkpoints)?;
+    let body_extent = body_plan.extent();
+    let boxes = prepare_sequence_boxes(diagram, layout, body_plan, resources, checkpoints)?;
     let content_extent = boxes
         .as_ref()
         .map_or(body_extent, PreparedSequenceBoxes::output_extent);
     let output_extent = match title {
-        Some(title) => SequenceDocumentExtent::new(
-            content_extent.width().max(title.width),
-            resources.checked_grid_add(content_extent.height(), 1)?,
-        ),
+        Some(title) => {
+            let title_cells =
+                planned_title_retained_width(title, content_extent.width(), resources)?;
+            let document_cells = content_extent
+                .document_cells()
+                .checked_add(title_cells)
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            SequenceDocumentExtent::new(
+                content_extent.width().max(title_cells),
+                resources.checked_grid_add(content_extent.height(), 1)?,
+                document_cells,
+            )
+        }
         None => content_extent,
     };
     resources.grid_extent(output_extent.width(), output_extent.height())?;
+    resources.check(
+        AsciiResourceLimitId::MaxDocumentCells,
+        output_extent.document_cells(),
+    )?;
     Ok(PreparedSequenceDocument {
         title,
         boxes,
@@ -147,11 +182,11 @@ pub(super) fn prepare_sequence_title<'a>(
     let Some(title) = title.filter(|title| !title.is_empty()) else {
         return Ok(None);
     };
-    let width = measure_title_width(title, width_profile, resources, checkpoints)?;
-    resources.grid_extent(width, 1)?;
+    let widths = measure_title_widths(title, width_profile, resources, checkpoints)?;
     Ok(Some(PreparedSequenceTitle {
         text: title,
-        width,
+        alignment_width: widths.alignment,
+        retained_width: widths.retained,
         width_profile,
     }))
 }
@@ -230,13 +265,14 @@ fn prepend_title_line(
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
     checkpoints.before_charge()?;
-    resources.charge_layout_work(title.width.max(1))?;
+    resources.charge_layout_work(title.alignment_width.max(1))?;
     lines.try_reserve(1).map_err(|_| allocation_failed())?;
     lines.insert(
         0,
         render_title_line(
             title.text,
-            title.width,
+            title.alignment_width,
+            title.retained_width,
             content_width,
             title.width_profile,
             resources,
@@ -246,6 +282,20 @@ fn prepend_title_line(
     Ok(())
 }
 
+fn planned_title_retained_width(
+    title: PreparedSequenceTitle<'_>,
+    content_width: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    if title.retained_width == 0 {
+        return Ok(0);
+    }
+    resources.checked_grid_add(
+        content_width.saturating_sub(title.alignment_width) / 2,
+        title.retained_width,
+    )
+}
+
 fn validate_lines_extent(
     lines: &[SequenceLine],
     expected: SequenceDocumentExtent,
@@ -253,11 +303,18 @@ fn validate_lines_extent(
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
     let mut width = 0usize;
+    let mut document_cells = 0usize;
     for line in lines {
         checkpoints.tick()?;
         width = width.max(line.len());
+        document_cells = document_cells
+            .checked_add(line.len())
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
     }
-    if width != expected.width() || lines.len() != expected.height() {
+    if width != expected.width()
+        || lines.len() != expected.height()
+        || document_cells != expected.document_cells()
+    {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "document extent planning",
@@ -267,43 +324,81 @@ fn validate_lines_extent(
     Ok(())
 }
 
-fn measure_title_width(
+fn measure_title_widths(
     title: &str,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<usize> {
-    let mut width = 0usize;
+) -> Result<SequenceTitleWidths> {
+    let mut widths = SequenceTitleWidths {
+        alignment: 0,
+        retained: 0,
+    };
     let mut overflowed = false;
-    visit_safe_line_graphemes(resources, title, width_profile, |_, grapheme_width| {
-        checkpoints.tick()?;
-        let Some(next_width) = width.checked_add(grapheme_width) else {
-            overflowed = true;
-            return Ok(false);
-        };
-        width = next_width;
-        Ok(true)
-    })?;
+    visit_safe_line_graphemes(
+        resources,
+        title,
+        width_profile,
+        |grapheme, grapheme_width| {
+            checkpoints.tick()?;
+            let Some(next_width) = widths.alignment.checked_add(grapheme_width) else {
+                overflowed = true;
+                return Ok(false);
+            };
+            widths.alignment = next_width;
+            if grapheme != " " {
+                widths.retained = next_width;
+            }
+            Ok(true)
+        },
+    )?;
     if overflowed {
-        return resources.checked_grid_add(usize::MAX, 1);
+        return resources.checked_grid_add(usize::MAX, 1).map(|_| widths);
     }
-    Ok(width)
+    Ok(widths)
 }
 
 fn render_title_line(
     title: &str,
     title_width: usize,
+    retained_width: usize,
     width: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
+    if retained_width == 0 {
+        return blank_line_with_checkpoints(0, width_profile, resources, checkpoints);
+    }
     let left = width.saturating_sub(title_width) / 2;
     let mut line = blank_line_with_checkpoints(left, width_profile, resources, checkpoints)?;
-    line.try_push_role_text_with_checkpoint(title, AsciiColorRole::Text, resources, || {
-        checkpoints.tick()
-    })?;
-    trim_right(line)
+    let mut written = 0usize;
+    visit_safe_line_graphemes(
+        &mut resources.clone(),
+        title,
+        width_profile,
+        |grapheme, grapheme_width| {
+            checkpoints.tick()?;
+            if written >= retained_width {
+                return Ok(false);
+            }
+            line.try_push_role_text_with_checkpoint(
+                grapheme,
+                AsciiColorRole::Text,
+                resources,
+                || checkpoints.tick(),
+            )?;
+            written = resources.checked_grid_add(written, grapheme_width)?;
+            Ok(true)
+        },
+    )?;
+    if written != retained_width {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "title extent planning",
+        });
+    }
+    Ok(line)
 }
 
 fn allocation_failed() -> AsciiError {

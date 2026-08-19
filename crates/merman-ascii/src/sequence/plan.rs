@@ -1,14 +1,15 @@
 use super::chars::SequenceChars;
 use super::control::{
-    PreparedSequenceControlFrames, SequenceControlBoundaryState, SequenceControlFrame,
+    PreparedSequenceControlFrames, SequenceControlBoundary, SequenceControlFrame,
     SequenceControlFrameForest, SequenceControlFrameNode, SequenceControlFrameSeparator,
     SequenceControlFrameTree, prepare_sequence_control_frames,
 };
 use super::layout::{LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at};
+use super::lifeline::retained_lifeline_width;
 use super::model::{AsciiSequenceDiagram, SequenceEvent};
 use super::prepared_body::{SequencePreparedBody, SequenceRowStep};
 use super::row_document::SequenceRowDocument;
-use super::text::SequenceDocumentExtent;
+use super::text::SequenceDocumentPlan;
 #[cfg(test)]
 use super::text::blank_line;
 use super::tree::{SequenceControl, SequenceVisit};
@@ -165,6 +166,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
         control: &'diagram SequenceControl,
         depth: usize,
         current_row: usize,
+        boundary_width: usize,
         resources: &mut ResourceContext,
         checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -196,7 +198,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
                 .try_reserve(1)
                 .map_err(|_| allocation_failed())?;
         }
-        let start_boundary = self.capture_boundary(resources, checkpoints)?;
+        let start_boundary = self.capture_boundary(boundary_width, resources, checkpoints)?;
         self.control_frames.push(SequenceControlFrame {
             kind: control.kind,
             label: &control.label,
@@ -229,6 +231,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
         control: &'diagram SequenceControl,
         section_index: usize,
         current_row: usize,
+        boundary_width: usize,
         resources: &mut ResourceContext,
         checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -253,9 +256,10 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
             .get(section_index)
             .and_then(|section| section.separator.as_ref())
             .ok_or_else(|| unsupported("control tree"))?;
-        let boundary = SequenceControlBoundaryState::try_capture(
+        let boundary = SequenceControlBoundary::try_capture(
             &self.active_counts,
             &self.visible_actors,
+            boundary_width,
             resources,
             checkpoints,
         )?;
@@ -274,6 +278,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
     fn exit_control(
         &mut self,
         current_row: usize,
+        boundary_width: usize,
         resources: &mut ResourceContext,
         checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -287,7 +292,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
             .get(node_index)
             .ok_or_else(|| unsupported("control tree"))?
             .frame_index;
-        let boundary = self.capture_boundary(resources, checkpoints)?;
+        let boundary = self.capture_boundary(boundary_width, resources, checkpoints)?;
         let frame = self
             .control_frames
             .get_mut(frame_index)
@@ -312,12 +317,14 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
 
     fn capture_boundary(
         &self,
+        retained_width: usize,
         resources: &mut ResourceContext,
         checkpoints: &SequenceCheckpointCursor<'_>,
-    ) -> Result<SequenceControlBoundaryState> {
-        SequenceControlBoundaryState::try_capture(
+    ) -> Result<SequenceControlBoundary> {
+        SequenceControlBoundary::try_capture(
             &self.active_counts,
             &self.visible_actors,
+            retained_width,
             resources,
             checkpoints,
         )
@@ -340,10 +347,10 @@ pub(super) struct PreparedSequenceRowPlan<'diagram> {
 }
 
 impl PreparedSequenceRowPlan<'_> {
-    pub(super) fn output_extent(&self) -> SequenceDocumentExtent {
+    pub(super) fn output_plan(&self) -> SequenceDocumentPlan<'_> {
         self.controls.as_ref().map_or_else(
-            || self.body.output_extent(),
-            |controls| controls.output_extent(),
+            || self.body.output_plan(),
+            |controls| controls.output_plan(),
         )
     }
 
@@ -438,10 +445,17 @@ fn prepare_sequence_row_plan<'diagram>(
                     }
                 }
                 SequenceVisit::EnterControl { control, depth } => {
+                    let boundary_width = retained_lifeline_width(
+                        layout,
+                        planner.visible_actors(),
+                        resources,
+                        checkpoints,
+                    )?;
                     planner.enter_control(
                         control,
                         depth,
                         prepared.current_row(),
+                        boundary_width,
                         resources,
                         checkpoints,
                     )?;
@@ -459,10 +473,21 @@ fn prepare_sequence_row_plan<'diagram>(
                             checkpoints,
                         )?;
                     }
+                    let boundary_width = if section_index == 0 {
+                        0
+                    } else {
+                        retained_lifeline_width(
+                            layout,
+                            planner.visible_actors(),
+                            resources,
+                            checkpoints,
+                        )?
+                    };
                     planner.enter_section(
                         control,
                         section_index,
                         prepared.current_row(),
+                        boundary_width,
                         resources,
                         checkpoints,
                     )?;
@@ -477,7 +502,18 @@ fn prepare_sequence_row_plan<'diagram>(
                             checkpoints,
                         )?;
                     }
-                    planner.exit_control(prepared.current_row(), resources, checkpoints)?;
+                    let boundary_width = retained_lifeline_width(
+                        layout,
+                        planner.visible_actors(),
+                        resources,
+                        checkpoints,
+                    )?;
+                    planner.exit_control(
+                        prepared.current_row(),
+                        boundary_width,
+                        resources,
+                        checkpoints,
+                    )?;
                 }
             }
             Ok(())
@@ -586,12 +622,15 @@ mod tests {
         SequenceEvent, SequenceGroupBox, SequenceLineStyle, SequenceMessage,
         SequenceMessageDirection, SequenceParticipant, SequenceParticipantLabel,
     };
+    use crate::sequence::notes::apply_note_gutters;
     use crate::sequence::prepared_body::{lifeline_batch_extent, participant_box_batch_extent};
+    use crate::sequence::render::render_sequence_diagram_with_execution;
     use crate::sequence::row_document::{
         PreparedSequenceDocument, PreparedSequenceTitle, prepare_sequence_document,
     };
     use crate::sequence::text::{
-        SequenceBatchExtent, SequenceDocumentExtent, SequenceExtentLedger,
+        SequenceBatchExtent, SequenceDocumentExtent, SequenceDocumentPlan, SequenceExtentLedger,
+        SequenceRetainedRowRun, SequenceRetainedRows,
     };
     use merman_core::{OperationControl, OperationPhase};
 
@@ -615,7 +654,7 @@ mod tests {
         let document = prepare_sequence_document(
             diagram,
             title,
-            prepared.output_extent(),
+            prepared.output_plan(),
             layout,
             resources,
             checkpoints,
@@ -926,6 +965,125 @@ mod tests {
         }
     }
 
+    #[test]
+    fn final_document_cells_are_admitted_before_row_materialization() {
+        let options = AsciiRenderOptions::ascii();
+        let mut boxed = diagram(1);
+        boxed.boxes.push(SequenceGroupBox {
+            actor_indices: vec![0],
+            label: Some("group".to_string()),
+            background: None,
+            wrap: false,
+        });
+        let control_box = local_control_box_diagram();
+        let cases = [
+            ("body", diagram(1), "Timeline"),
+            ("control", nested_control_diagram(), "Timeline"),
+            ("box", boxed, "Timeline"),
+            ("control+box", control_box, "Timeline"),
+            ("trailing-space title", diagram(1), "Timeline   "),
+        ];
+
+        for (name, diagram, title) in cases {
+            let (content, output) = prepare_document_extents_without_materialization(
+                &diagram,
+                title,
+                &options,
+                AsciiResourcePolicy::default(),
+            )
+            .unwrap_or_else(|error| panic!("{name} plan should fit the default policy: {error}"));
+            let exact = output.document_cells();
+            let title_cells = exact
+                .checked_sub(content.document_cells())
+                .expect("the title must add retained document cells");
+            assert!(title_cells > 0, "{name} title should retain visible cells");
+            assert!(
+                content.document_cells() < exact,
+                "{name} body/control/box should fit the combined limit minus one"
+            );
+            assert!(
+                title_cells < exact,
+                "{name} title should fit the combined limit minus one"
+            );
+
+            let exact_policy = AsciiResourcePolicy::default()
+                .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact)
+                .expect("the exact document-cell limit should be valid");
+            let admitted = prepare_document_extents_without_materialization(
+                &diagram,
+                title,
+                &options,
+                exact_policy,
+            )
+            .unwrap_or_else(|error| panic!("{name} exact document plan should pass: {error}"));
+            assert_eq!(admitted.1, output);
+
+            let below_policy = AsciiResourcePolicy::default()
+                .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact - 1)
+                .expect("the limit below the final document should be valid");
+            let error = prepare_document_extents_without_materialization(
+                &diagram,
+                title,
+                &options,
+                below_policy,
+            )
+            .expect_err("the combined document must reject before row materialization is called");
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == AsciiResourceLimitId::MaxDocumentCells
+                        && details.actual == exact
+                        && details.max == exact - 1
+            ));
+        }
+    }
+
+    #[test]
+    fn title_and_control_box_plans_match_public_materialization() {
+        let options = AsciiRenderOptions::ascii();
+        let cases = [
+            ("trailing-space title", diagram(1), "Timeline   "),
+            ("blank title", diagram(1), "   "),
+            ("control+box", local_control_box_diagram(), "Timeline"),
+        ];
+
+        for (name, diagram, title) in cases {
+            let (_, planned) = prepare_document_extents_without_materialization(
+                &diagram,
+                title,
+                &options,
+                AsciiResourcePolicy::default(),
+            )
+            .unwrap_or_else(|error| panic!("{name} plan should fit: {error}"));
+            let exact_policy = AsciiResourcePolicy::default()
+                .with_limit(
+                    AsciiResourceLimitId::MaxDocumentCells,
+                    planned.document_cells(),
+                )
+                .expect("the exact document-cell limit should be valid");
+            let mut resources = ResourceContext::new(exact_policy);
+            let rendered = render_sequence_diagram_with_execution(
+                &diagram,
+                Some(title),
+                &options,
+                &mut resources,
+                AsciiExecution::for_test(&exact_policy),
+            )
+            .unwrap_or_else(|error| {
+                panic!("{name} should materialize at the exact limit: {error}")
+            });
+            let actual_cells = rendered.lines().map(str::len).sum::<usize>();
+            assert_eq!(actual_cells, planned.document_cells(), "{name}");
+
+            let first_line = rendered.lines().next().unwrap_or_default();
+            if title.trim().is_empty() {
+                assert!(first_line.is_empty(), "{name}");
+            } else {
+                assert_eq!(first_line.trim_end(), first_line, "{name}");
+            }
+        }
+    }
+
     fn build_row_plan_with_grid_limit(
         diagram: &AsciiSequenceDiagram,
         options: &AsciiRenderOptions,
@@ -950,6 +1108,54 @@ mod tests {
             || materialized.set(true),
         )?;
         Ok(())
+    }
+
+    fn prepare_document_extents_without_materialization(
+        diagram: &AsciiSequenceDiagram,
+        title: &str,
+        options: &AsciiRenderOptions,
+        policy: AsciiResourcePolicy,
+    ) -> Result<(SequenceDocumentExtent, SequenceDocumentExtent)> {
+        let resources = ResourceContext::new(policy);
+        let execution = AsciiExecution::for_test(&policy);
+        let mut layout_resources = execution.resource_context(&resources, OperationPhase::Layout);
+        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+        let title = crate::sequence::row_document::prepare_sequence_title(
+            Some(title),
+            options.terminal_width_profile,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        let mut layout = calculate_layout_with_resources(
+            diagram,
+            options,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        apply_note_gutters(
+            diagram,
+            &mut layout,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        let chars = ascii_chars();
+        let rows = prepare_sequence_row_document(
+            diagram,
+            &layout,
+            &chars,
+            options.sequence_mirror_actors,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        let document = prepare_sequence_document(
+            diagram,
+            title,
+            rows.output_plan(),
+            &layout,
+            &mut layout_resources,
+            &mut checkpoints,
+        )?;
+        Ok((document.content_extent(), document.output_extent()))
     }
 
     fn build_row_plan_with_limit(
@@ -1047,6 +1253,69 @@ mod tests {
             .unwrap();
         body.end_control(4, SequenceControlKind::Loop, &resources, execution)
             .unwrap();
+        diagram.body = body.finish().unwrap();
+        diagram
+    }
+
+    fn local_control_box_diagram() -> AsciiSequenceDiagram {
+        let mut diagram = diagram(2);
+        diagram.lifecycles[1].created_at = Some(3);
+        diagram.boxes.push(SequenceGroupBox {
+            actor_indices: vec![0],
+            label: Some("local".to_string()),
+            background: None,
+            wrap: false,
+        });
+        let resources = test_resources();
+        let policy = resources.policy();
+        let execution = AsciiExecution::for_test(&policy);
+        let mut body =
+            crate::sequence::tree::SequenceTreeBuilder::new(3, &resources, execution).unwrap();
+        body.start_control(
+            0,
+            SequenceControlKind::Loop,
+            "local".to_string(),
+            None,
+            &resources,
+            execution,
+        )
+        .unwrap();
+        body.push_event(
+            SequenceEvent::Message(SequenceMessage {
+                model_index: 1,
+                from: 0,
+                to: 0,
+                label: "work".to_string(),
+                wrap: false,
+                style: SequenceLineStyle::Solid,
+                source_marker: SequenceArrowHead::None,
+                target_marker: SequenceArrowHead::Filled,
+                direction: SequenceMessageDirection::Forward,
+                central_decoration: SequenceCentralDecoration::None,
+            }),
+            &resources,
+            execution,
+        )
+        .unwrap();
+        body.end_control(2, SequenceControlKind::Loop, &resources, execution)
+            .unwrap();
+        body.push_event(
+            SequenceEvent::Message(SequenceMessage {
+                model_index: 3,
+                from: 0,
+                to: 1,
+                label: "create".to_string(),
+                wrap: false,
+                style: SequenceLineStyle::Solid,
+                source_marker: SequenceArrowHead::None,
+                target_marker: SequenceArrowHead::Filled,
+                direction: SequenceMessageDirection::Forward,
+                central_decoration: SequenceCentralDecoration::None,
+            }),
+            &resources,
+            execution,
+        )
+        .unwrap();
         diagram.body = body.finish().unwrap();
         diagram
     }
@@ -1282,10 +1551,14 @@ mod tests {
             execution.resource_context(&base_resources, OperationPhase::Layout);
         let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
 
+        let retained_rows = [SequenceRetainedRowRun::new(layout.total_width + 1, 1)];
         let error = prepare_sequence_document(
             &diagram,
             None,
-            SequenceDocumentExtent::new(layout.total_width + 1, 1),
+            SequenceDocumentPlan::new(
+                SequenceDocumentExtent::new(layout.total_width + 1, 1, layout.total_width + 1),
+                SequenceRetainedRows::Runs(&retained_rows),
+            ),
             &layout,
             &mut layout_resources,
             &mut checkpoints,

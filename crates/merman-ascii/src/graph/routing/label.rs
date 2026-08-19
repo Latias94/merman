@@ -468,7 +468,7 @@ fn write_label_overlay(
     color: CanvasColor,
 ) -> Result<()> {
     let mut offset = 0;
-    let label = SafeLine::new(label);
+    let label = SafeLine::try_new(label)?;
     for grapheme in label.graphemes(width_profile) {
         match color {
             CanvasColor::Role(role) => {

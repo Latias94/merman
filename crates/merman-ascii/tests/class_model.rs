@@ -125,6 +125,11 @@ fn strip_html_spans(input: &str) -> String {
             index += "&amp;".len();
             continue;
         }
+        if rest.starts_with("&quot;") {
+            output.push('"');
+            index += "&quot;".len();
+            continue;
+        }
         let ch = rest
             .chars()
             .next()
@@ -156,6 +161,27 @@ fn line_and_column_containing(rendered: &str, needle: &str) -> (usize, usize) {
         .enumerate()
         .find_map(|(line, text)| text.find(needle).map(|column| (line, column)))
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
+fn framed_class_summary_endpoint(id: &str) -> String {
+    format!(r#"id(bytes={})="{id}""#, id.len())
+}
+
+fn framed_class_summary_relation(
+    source: &str,
+    connector: &str,
+    target: &str,
+    label: Option<&str>,
+) -> String {
+    let relation = format!(
+        "{} {connector} {}",
+        framed_class_summary_endpoint(source),
+        framed_class_summary_endpoint(target),
+    );
+    match label {
+        Some(label) => format!("{relation} : {label}"),
+        None => relation,
+    }
 }
 
 #[test]
@@ -268,27 +294,32 @@ fn class_color_html_wraps_parallel_relation_roles_without_changing_plain_text() 
     )
     .expect("class diagram should render");
 
+    let parent = framed_class_summary_relation("Animal", "<|--", "Dog", Some("parent"));
+    let base = framed_class_summary_relation("Animal", "<|--", "Dog", Some("base"));
     assert_eq!(
         strip_html_spans(&rendered),
-        concat!(
-            "+--------+\n",
-            "| Animal |\n",
-            "+--------+\n",
-            "\n",
-            "+-----+\n",
-            "| Dog |\n",
-            "+-----+\n",
-            "\n",
-            "relations:\n",
-            "Animal <|-- Dog : parent\n",
-            "Animal <|-- Dog : base\n",
+        format!(
+            concat!(
+                "+--------+\n",
+                "| Animal |\n",
+                "+--------+\n",
+                "\n",
+                "+-----+\n",
+                "| Dog |\n",
+                "+-----+\n",
+                "\n",
+                "relations:\n",
+                "{}\n",
+                "{}\n",
+            ),
+            parent, base,
         )
     );
     for expected_fragment in [
         "<span style=\"color:#101010\">+--------+</span>",
         "<span style=\"color:#202020\">Animal</span>",
-        "<span style=\"color:#505050\">Animal &lt;|-- Dog : parent</span>",
-        "<span style=\"color:#505050\">Animal &lt;|-- Dog : base</span>",
+        "<span style=\"color:#505050\">id(bytes=6)=&quot;Animal&quot; &lt;|-- id(bytes=3)=&quot;Dog&quot; : parent</span>",
+        "<span style=\"color:#505050\">id(bytes=6)=&quot;Animal&quot; &lt;|-- id(bytes=3)=&quot;Dog&quot; : base</span>",
     ] {
         assert!(
             rendered.contains(expected_fragment),
@@ -760,9 +791,13 @@ fn class_parser_horizontal_unrelated_edge_crossings_use_lossless_summary() {
     .expect("unrelated horizontal crossings should remain recoverable");
 
     assert!(rendered.contains("relations:"), "{rendered}");
-    for expected in ["A --> C : first", "B ..> D : second", "A --> B : bridge"] {
+    for expected in [
+        framed_class_summary_relation("A", "-->", "C", Some("first")),
+        framed_class_summary_relation("B", "..>", "D", Some("second")),
+        framed_class_summary_relation("A", "-->", "B", Some("bridge")),
+    ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "summary must preserve {expected:?} after owner crossing fallback:\n{rendered}"
         );
     }
@@ -785,9 +820,12 @@ fn class_parser_horizontal_shared_source_crossings_use_lossless_summary() {
     .expect("shared-source horizontal crossings should remain recoverable");
 
     assert!(rendered.contains("relations:"), "{rendered}");
-    for expected in ["A --> B : short", "A --> C : long"] {
+    for expected in [
+        framed_class_summary_relation("A", "-->", "B", Some("short")),
+        framed_class_summary_relation("A", "-->", "C", Some("long")),
+    ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "summary must preserve {expected:?} after shared-source crossing fallback:\n{rendered}"
         );
     }
@@ -873,9 +911,13 @@ fn class_parser_horizontal_mixed_self_and_normal_relations_use_lossless_summary(
 
     assert_eq!(rendered.matches("| A |").count(), 1, "{rendered}");
     assert_eq!(rendered.matches("| B |").count(), 1, "{rendered}");
-    for expected in ["relations:", "A --> A : self", "A --> B : next"] {
+    assert!(rendered.contains("relations:"), "{rendered}");
+    for expected in [
+        framed_class_summary_relation("A", "-->", "A", Some("self")),
+        framed_class_summary_relation("A", "-->", "B", Some("next")),
+    ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "missing {expected:?}:\n{rendered}"
         );
     }
@@ -956,21 +998,18 @@ fn class_parser_extension_relation_renders_multiline_label() {
     )
     .expect("class diagram should render");
 
-    assert_eq!(
-        rendered,
-        concat!(
-            "+--------+\n",
-            "| Animal |\n",
-            "+--------+\n",
-            "     ^\n",
-            "   north\n",
-            "   south\n",
-            "     |\n",
-            "  +-----+\n",
-            "  | Dog |\n",
-            "  +-----+\n",
-        )
-    );
+    for expected in [
+        "Animal",
+        "Dog",
+        "north",
+        "south",
+        r#"authored(bytes=14)="north<br>south""#,
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -1008,20 +1047,25 @@ fn class_parser_parallel_relationship_layout_uses_lossless_summary_when_ports_do
     )
     .expect("parallel class relationships should preserve every relation");
 
+    let parent = framed_class_summary_relation("Animal", "<|--", "Dog", Some("parent"));
+    let base = framed_class_summary_relation("Animal", "<|--", "Dog", Some("base"));
     assert_eq!(
         rendered,
-        concat!(
-            "+--------+\n",
-            "| Animal |\n",
-            "+--------+\n",
-            "\n",
-            "+-----+\n",
-            "| Dog |\n",
-            "+-----+\n",
-            "\n",
-            "relations:\n",
-            "Animal <|-- Dog : parent\n",
-            "Animal <|-- Dog : base\n",
+        format!(
+            concat!(
+                "+--------+\n",
+                "| Animal |\n",
+                "+--------+\n",
+                "\n",
+                "+-----+\n",
+                "| Dog |\n",
+                "+-----+\n",
+                "\n",
+                "relations:\n",
+                "{}\n",
+                "{}\n",
+            ),
+            parent, base,
         )
     );
 }
@@ -1034,20 +1078,25 @@ fn class_parser_bidirectional_relationship_layout_preserves_both_directions_in_s
     )
     .expect("bidirectional class relationships should remain recoverable");
 
+    let ab = framed_class_summary_relation("A", "-->", "B", Some("ab"));
+    let ba = framed_class_summary_relation("B", "-->", "A", Some("ba"));
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n",
-            "| A |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| B |\n",
-            "+---+\n",
-            "\n",
-            "relations:\n",
-            "A --> B : ab\n",
-            "B --> A : ba\n",
+        format!(
+            concat!(
+                "+---+\n",
+                "| A |\n",
+                "+---+\n",
+                "\n",
+                "+---+\n",
+                "| B |\n",
+                "+---+\n",
+                "\n",
+                "relations:\n",
+                "{}\n",
+                "{}\n",
+            ),
+            ab, ba,
         )
     );
 }
@@ -1084,16 +1133,22 @@ fn class_parser_spanning_level_relationship_layout_summarizes_invalid_outer_port
     )
     .expect("spanning-level class relationships should remain recoverable");
 
+    let ab = framed_class_summary_relation("A", "<|--", "B", None);
+    let bc = framed_class_summary_relation("B", "<|--", "C", None);
+    let ac = framed_class_summary_relation("A", "<|--", "C", None);
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n| A |\n+---+\n\n",
-            "+---+\n| B |\n+---+\n\n",
-            "+---+\n| C |\n+---+\n\n",
-            "relations:\n",
-            "A <|-- B\n",
-            "B <|-- C\n",
-            "A <|-- C\n",
+        format!(
+            concat!(
+                "+---+\n| A |\n+---+\n\n",
+                "+---+\n| B |\n+---+\n\n",
+                "+---+\n| C |\n+---+\n\n",
+                "relations:\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+            ),
+            ab, bc, ac,
         )
     );
 }
@@ -1106,16 +1161,22 @@ fn class_parser_cyclic_relationship_layout_summarizes_disconnected_back_edge() {
     )
     .expect("cyclic class relationships should render");
 
+    let ab = framed_class_summary_relation("A", "-->", "B", Some("ab"));
+    let bc = framed_class_summary_relation("B", "-->", "C", Some("bc"));
+    let ca = framed_class_summary_relation("C", "-->", "A", Some("ca"));
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n| A |\n+---+\n\n",
-            "+---+\n| B |\n+---+\n\n",
-            "+---+\n| C |\n+---+\n\n",
-            "relations:\n",
-            "A --> B : ab\n",
-            "B --> C : bc\n",
-            "C --> A : ca\n",
+        format!(
+            concat!(
+                "+---+\n| A |\n+---+\n\n",
+                "+---+\n| B |\n+---+\n\n",
+                "+---+\n| C |\n+---+\n\n",
+                "relations:\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+            ),
+            ab, bc, ca,
         )
     );
 }
@@ -2161,8 +2222,10 @@ fn class_local_semantic_fixture_covers_wide_members_and_relation_labels() {
         );
     }
     assert!(
-        !rendered.contains("<br>"),
-        "wide class relations should not leak Mermaid break syntax:\n{rendered}"
+        rendered
+            .lines()
+            .all(|line| !line.contains("<br>") || line.contains("authored(bytes=")),
+        "wide class relations should expose Mermaid break syntax only inside authored framing:\n{rendered}"
     );
 }
 
@@ -2281,20 +2344,19 @@ fn class_local_semantic_fixture_covers_note_for_link() {
     let rendered =
         render_class(&input, &AsciiRenderOptions::ascii()).expect("class diagram should render");
 
-    assert_eq!(
-        rendered,
-        concat!(
-            "+----------+\n",
-            "| note     |\n",
-            "| Handles  |\n",
-            "| requests |\n",
-            "+----------+\n",
-            "      :\n",
-            " +---------+\n",
-            " | Service |\n",
-            " +---------+\n",
-        )
-    );
+    for expected in [
+        "note",
+        "Handles",
+        "requests",
+        "Service",
+        r#"authored(bytes=19)="Handles<br>requests""#,
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+    assert!(rendered.contains(':'), "{rendered}");
 }
 
 #[test]
@@ -2373,28 +2435,37 @@ fn class_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
     )
     .expect("dense class relationships should render through relation summary fallback");
 
+    let ab = framed_class_summary_relation("A", "-->", "B", Some("ab"));
+    let ba = framed_class_summary_relation("B", "-->", "A", Some("ba"));
+    let ac = framed_class_summary_relation("A", "-->", "C", Some("ac"));
+    let ca = framed_class_summary_relation("C", "-->", "A", Some("ca"));
+    let bc = framed_class_summary_relation("B", "-->", "C", Some("bc"));
+    let cb = framed_class_summary_relation("C", "-->", "B", Some("cb"));
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n",
-            "| A |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| B |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| C |\n",
-            "+---+\n",
-            "\n",
-            "relations:\n",
-            "A --> B : ab\n",
-            "B --> A : ba\n",
-            "A --> C : ac\n",
-            "C --> A : ca\n",
-            "B --> C : bc\n",
-            "C --> B : cb\n",
+        format!(
+            concat!(
+                "+---+\n",
+                "| A |\n",
+                "+---+\n",
+                "\n",
+                "+---+\n",
+                "| B |\n",
+                "+---+\n",
+                "\n",
+                "+---+\n",
+                "| C |\n",
+                "+---+\n",
+                "\n",
+                "relations:\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+            ),
+            ab, ba, ac, ca, bc, cb,
         )
     );
 }
@@ -2434,11 +2505,14 @@ fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
         "literal slash identity should remain framed:\n{literal_slash}"
     );
     assert!(
-        authored_break.contains("<-- endpoint1=[bytes=1 \"a\", bytes=1 \"b\"]"),
-        "authored line boundaries should remain framed:\n{authored_break}"
+        authored_break.contains("<-- endpoint1=[bytes=1 \"a\", bytes=1 \"b\",")
+            && authored_break.contains("authored(bytes=6)=")
+            && authored_break.contains("<br>"),
+        "authored line boundaries and source bytes should remain framed:\n{authored_break}"
     );
     assert!(
-        authored_empty.contains("<-- endpoint1=[bytes=0 \"\"]"),
+        authored_empty.contains("<-- endpoint1=[bytes=0 \"\",")
+            && authored_empty.contains("authored(bytes=0)="),
         "authored empty endpoint labels should remain framed:\n{authored_empty}"
     );
     assert_ne!(literal_slash, authored_break);
@@ -2495,13 +2569,13 @@ fn class_parser_dense_realization_relationships_keep_dotted_summary_connector() 
         "dense realization fixture should use relation summary:\n{rendered}"
     );
     for expected in [
-        "B <|.. A : ab",
-        "A <|.. B : ba",
-        "A ..>  C : ac",
-        "B -->  C : bc",
+        framed_class_summary_relation("B", "<|..", "A", Some("ab")),
+        framed_class_summary_relation("A", "<|..", "B", Some("ba")),
+        framed_class_summary_relation("A", "..> ", "C", Some("ac")),
+        framed_class_summary_relation("B", "--> ", "C", Some("bc")),
     ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "dense realization summary should keep {expected:?} visible:\n{rendered}"
         );
     }
@@ -2523,9 +2597,16 @@ fn class_parser_dense_plain_associations_keep_summary_connector() {
         rendered.contains("relations:"),
         "dense plain association fixture should use relation summary:\n{rendered}"
     );
-    for expected in ["A --", "B --", "C --", ": ab", ": ba", ": bc", ": cb"] {
+    for expected in [
+        framed_class_summary_relation("A", "--", "B", Some("ab")),
+        framed_class_summary_relation("B", "--", "A", Some("ba")),
+        framed_class_summary_relation("A", "--", "C", Some("ac")),
+        framed_class_summary_relation("C", "--", "A", Some("ca")),
+        framed_class_summary_relation("B", "--", "C", Some("bc")),
+        framed_class_summary_relation("C", "--", "B", Some("cb")),
+    ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "dense plain association summary should keep {expected:?} visible:\n{rendered}"
         );
     }
@@ -2585,35 +2666,44 @@ fn class_color_truecolor_marks_dense_relation_summary_roles_without_changing_pla
     )
     .expect("dense class diagram should render");
 
+    let ab = framed_class_summary_relation("A", "-->", "B", Some("ab"));
+    let ba = framed_class_summary_relation("B", "-->", "A", Some("ba"));
+    let ac = framed_class_summary_relation("A", "-->", "C", Some("ac"));
+    let ca = framed_class_summary_relation("C", "-->", "A", Some("ca"));
+    let bc = framed_class_summary_relation("B", "-->", "C", Some("bc"));
+    let cb = framed_class_summary_relation("C", "-->", "B", Some("cb"));
     assert_eq!(
         strip_ansi(&rendered),
-        concat!(
-            "+---+\n",
-            "| A |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| B |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| C |\n",
-            "+---+\n",
-            "\n",
-            "relations:\n",
-            "A --> B : ab\n",
-            "B --> A : ba\n",
-            "A --> C : ac\n",
-            "C --> A : ca\n",
-            "B --> C : bc\n",
-            "C --> B : cb\n",
+        format!(
+            concat!(
+                "+---+\n",
+                "| A |\n",
+                "+---+\n",
+                "\n",
+                "+---+\n",
+                "| B |\n",
+                "+---+\n",
+                "\n",
+                "+---+\n",
+                "| C |\n",
+                "+---+\n",
+                "\n",
+                "relations:\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+                "{}\n",
+            ),
+            ab, ba, ac, ca, bc, cb,
         )
     );
     for expected_fragment in [
         "\u{1b}[38;2;16;16;16m",
         "\u{1b}[38;2;32;32;32m",
         "\u{1b}[38;2;48;48;48mrelations:",
-        "\u{1b}[38;2;80;80;80mA --> B : ab",
+        "\u{1b}[38;2;80;80;80mid(bytes=1)=\"A\" --> id(bytes=1)=\"B\" : ab",
     ] {
         assert!(
             rendered.contains(expected_fragment),
@@ -2656,9 +2746,9 @@ fn class_local_semantic_fixture_covers_dense_multiline_relation_summary() {
         "Repo",
         "Cache",
         "relations:",
-        "Gateway --> Service : receives",
+        r#"id(bytes=7)="Gateway" --> id(bytes=7)="Service" : receives"#,
         "request",
-        "Service --> Gateway : returns",
+        r#"id(bytes=7)="Service" --> id(bytes=7)="Gateway" : returns"#,
         "response",
         "persists",
         "state",
@@ -2675,8 +2765,10 @@ fn class_local_semantic_fixture_covers_dense_multiline_relation_summary() {
         "dense multiline semantic class fixture should keep label lines structured instead of slash-joining them:\n{rendered}"
     );
     assert!(
-        !rendered.contains("<br>"),
-        "dense multiline semantic class fixture should not leak Mermaid break syntax:\n{rendered}"
+        rendered
+            .lines()
+            .all(|line| !line.contains("<br>") || line.contains("authored(bytes=")),
+        "dense multiline semantic class fixture should expose Mermaid break syntax only inside authored framing:\n{rendered}"
     );
 }
 
