@@ -80,7 +80,7 @@
     "node-gyp-build": "4.8.4"
   },
   "devDependencies": {
-    "node-gyp": "12.1.0",
+    "node-gyp": "13.0.1",
     "prebuildify": "6.0.1",
     "tree-sitter": "0.25.1",
     "tree-sitter-cli": "0.26.12",

@@ -17,8 +17,11 @@ import { registerBrowserMermaidLanguage } from "@/src/lib/mermaid-language-brows
 import { useAppStore } from "@/src/store";
 
 interface CodeEditorProps {
-  className?: string;
+  readonly className?: string;
+  readonly waitForLanguageActivation?: () => Promise<unknown>;
 }
+
+const waitForImmediateLanguageActivation = () => Promise.resolve();
 
 type LanguageState =
   | { readonly status: "initializing" }
@@ -27,7 +30,10 @@ type LanguageState =
   | { readonly status: "reconnecting" }
   | { readonly status: "unavailable"; readonly error: Error };
 
-export function CodeEditor({ className }: CodeEditorProps) {
+export function CodeEditor({
+  className,
+  waitForLanguageActivation = waitForImmediateLanguageActivation,
+}: CodeEditorProps) {
   const { t } = useTranslation();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const layoutBindingRef = useRef<IDisposable | null>(null);
@@ -112,30 +118,37 @@ export function CodeEditor({ className }: CodeEditorProps) {
     let active = true;
     let registration: MermaidLanguageRegistration | null = null;
     languageFailureRef.current = null;
-    void registerBrowserMermaidLanguage(localMonaco, {
-      onRequestRejected: (rejection) => {
-        if (languageGenerationRef.current !== generation) return;
-        setRequestRejection(rejection);
-      },
-      onSemanticUnavailable: (error) =>
-        markLanguageDegraded(error, generation),
-      onSyntaxUnavailable: (error) =>
-        markLanguageDegraded(error, generation),
-    })
-      .then((nextRegistration) => {
-        if (!active || languageGenerationRef.current !== generation) {
-          nextRegistration.dispose();
-          return;
-        }
-        registration = nextRegistration;
-        registrationRef.current = registration;
-        const model = editorRef.current?.getModel();
-        if (model) void bindLanguageService(registration, model, generation);
-      })
-      .catch((error: unknown) => {
-        if (!active || languageGenerationRef.current !== generation) return;
-        markLanguageUnavailable(error, generation);
-      });
+    void (async () => {
+      await waitForLanguageActivation();
+      if (!active || languageGenerationRef.current !== generation) return;
+
+      const nextRegistration = await registerBrowserMermaidLanguage(
+        localMonaco,
+        {
+          onRequestRejected: (rejection) => {
+            if (languageGenerationRef.current !== generation) return;
+            setRequestRejection(rejection);
+          },
+          onSemanticUnavailable: (error) =>
+            markLanguageDegraded(error, generation),
+          onSyntaxUnavailable: (error) =>
+            markLanguageDegraded(error, generation),
+        },
+      );
+
+      if (!active || languageGenerationRef.current !== generation) {
+        nextRegistration.dispose();
+        return;
+      }
+
+      registration = nextRegistration;
+      registrationRef.current = registration;
+      const model = editorRef.current?.getModel();
+      if (model) void bindLanguageService(registration, model, generation);
+    })().catch((error: unknown) => {
+      if (!active || languageGenerationRef.current !== generation) return;
+      markLanguageUnavailable(error, generation);
+    });
 
     return () => {
       active = false;
@@ -154,6 +167,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
     languageAttempt,
     markLanguageDegraded,
     markLanguageUnavailable,
+    waitForLanguageActivation,
   ]);
 
   useEffect(

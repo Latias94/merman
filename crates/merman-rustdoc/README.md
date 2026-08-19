@@ -150,7 +150,7 @@ All attribute options use string literals:
     all(doc, feature = "doc-diagrams"),
     merman_rustdoc::merman(
         scope = "item",
-        pipeline = "readable",
+        pipeline = "parity",
         fail = "error",
         source = "hide",
         sanitize = "strict",
@@ -167,13 +167,19 @@ pub fn configured() {}
 | Option | Values | Default | Meaning |
 | --- | --- | --- | --- |
 | `scope` | `item`, `tree` | `item` | Rewrite only the annotated item or recurse through an inline item tree. |
-| `pipeline` | `readable`, `parity`, `resvg-safe` | `readable` | Select the SVG output pipeline. |
+| `pipeline` | `parity`, `readable`, `resvg-safe` | `parity` | Select the SVG output pipeline. |
 | `fail` | `error`, `keep-source` | `error` | Fail documentation or preserve the Mermaid source after an error. |
 | `source` | `hide`, `details` | `hide` | Optionally add the source in a collapsed details block. |
 | `sanitize` | `strict`, `off` | `strict` | Reject scripts, event attributes, unsafe URLs, and remote resources before insertion. |
 | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme | `rustdoc` | Follow rustdoc, source-level Mermaid config, or one fixed theme. |
 
 `theme = "rustdoc"` renders light and dark SVG variants and switches between them with rustdoc's existing page theme state. No Mermaid runtime is loaded in the browser. `theme = "mermaid"` emits one SVG controlled by Mermaid source config, while a value such as `theme = "dark"` selects one fixed Merman theme. Source-level Mermaid config still takes precedence.
+
+`parity` is the default because rustdoc pages target browsers, which render Mermaid's native
+`<foreignObject>` labels directly. `readable` deliberately adds SVG `<text>` fallbacks alongside
+those labels and can display both representations in consumers that support each one. Use it only
+when the host selects one representation. `resvg-safe` removes `<foreignObject>` labels and keeps
+the SVG text fallback for rasterizers and other compatible consumers.
 
 Use `scope = "tree"` when one attribute should process children inside an inline module, trait, impl block, struct, or enum:
 

@@ -3,7 +3,9 @@ import { MERMAID_SYNTAX_WORKER_PROTOCOL } from "../src/editor/syntax-protocol";
 import {
   monitorBrowserErrors,
   openPlayground,
+  previewSvgText,
   replaceEditorSource,
+  waitForPreviewSvg,
 } from "./helpers/playground";
 
 test("Monaco starts local semantic and Tree-sitter workers with staged WASM", async ({
@@ -29,7 +31,7 @@ test("Monaco starts local semantic and Tree-sitter workers with staged WASM", as
         super(scriptURL, options);
         if (
           options?.name === "merman-editor-language" ||
-          options?.name === "mermaid-tree-sitter"
+          options?.name === "mermaid-tree-sitter-syntax"
         ) {
           timeline.workers.push({
             at: performance.now(),
@@ -122,12 +124,13 @@ test("Monaco starts local semantic and Tree-sitter workers with staged WASM", as
   errors.assertNone();
 });
 
-test("editor intent can activate language workers before a blocked preview", async ({
+test("editor shell is usable before a blocked preview and intent starts language workers", async ({
   page,
 }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("merman-language", "en");
   });
+  const errors = monitorBrowserErrors(page);
   let releaseWasm: () => void = () => undefined;
   const wasmBlocked = new Promise<void>((resolve) => {
     releaseWasm = resolve;
@@ -143,20 +146,30 @@ test("editor intent can activate language workers before a blocked preview", asy
 
   try {
     await page.goto("./", { waitUntil: "domcontentloaded" });
-    const activation = page.getByTestId("editor-activation");
-    await expect(activation).toBeVisible();
-    expect(workers.filter((url) => /merman-language|mermaid-syntax/i.test(url))).toEqual([]);
-    expect(
-      requests.filter((url) =>
-        /monaco|floatingMenu|contribution-[\w-]+\.js|codicon|editor\.worker/i.test(
-          url,
-        ),
-      ),
-    ).toEqual([]);
-
-    await activation.focus();
     const editor = page.getByRole("textbox", { name: "Mermaid source" });
     await expect(editor).toBeVisible();
+    expect(workers.filter((url) => /merman-language|mermaid-syntax/i.test(url))).toEqual([]);
+    await expect
+      .poll(() =>
+        requests.some((url) =>
+          /monaco|floatingMenu|contribution-[\w-]+\.js|codicon|editor\.worker/i.test(
+            url,
+          ),
+        ),
+      )
+      .toBe(true);
+    expect(
+      await page.evaluate(
+        () =>
+          performance.getEntriesByName("merman:initial-preview-presented")
+            .length,
+      ),
+    ).toBe(0);
+
+    await replaceEditorSource(
+      page,
+      "flowchart LR\n  early[Early editor] --> latest[Latest source]",
+    );
     await expect
       .poll(() => workers.some((url) => /merman-language\.worker/i.test(url)))
       .toBe(true);
@@ -183,9 +196,12 @@ test("editor intent can activate language workers before a blocked preview", asy
       ),
     )
     .toBe(1);
+  await waitForPreviewSvg(page);
+  await expect.poll(() => previewSvgText(page)).toContain("Latest source");
   await expect(
     page.getByText("Language tools initializing", { exact: true }),
   ).toBeHidden();
+  errors.assertNone();
 });
 
 test("Tree-sitter worker returns version-bound tokens for incomplete emoji input", async ({

@@ -30,8 +30,9 @@ evidence, but they are not browser-visible evidence. Browser-visible claims requ
 Typical choices:
 
 - Use a default `SvgRequest` when the caller wants the closest Mermaid-compatible SVG string.
-- Set `SvgRequest.pipeline = Some(SvgPipeline::readable())` for browser previews that can keep
-  `<foreignObject>` but should also expose SVG text fallbacks.
+- Set `SvgRequest.pipeline = Some(SvgPipeline::readable())` only when the output deliberately needs
+  both native `<foreignObject>` labels and SVG text fallbacks. A browser host must select or hide
+  one representation or both may be visible.
 - Set `SvgRequest.pipeline = Some(SvgPipeline::resvg_safe())`, select a typed PNG/JPEG/PDF target,
   or use `SvgPipeline::process_resvg_compatible()` before calling low-level encoders.
 - Use `merman-cli render --svg-pipeline resvg-safe` when you want the CLI to write export-safe SVG
@@ -47,7 +48,7 @@ Typical choices:
 | Preset | Behavior |
 | --- | --- |
 | `SvgPipeline::parity()` | No post-processing. This preserves the exact SVG string produced by the parity renderer. |
-| `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays for labels emitted via `<foreignObject>`. |
+| `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays while retaining `<foreignObject>` labels. Consumers that render both representations may display duplicate text. |
 | `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards. Structural references are limited to same-document fragments; ordinary image resources require an approved inline PNG/JPEG/GIF/WebP data URL whose encoding is syntactically decodable; `feImage` accepts either form. `<a>` navigation links remain metadata outside the raster-resource contract. |
 
 For Mermaid 11.16 Quadrant, parity output intentionally retains upstream's invalid
