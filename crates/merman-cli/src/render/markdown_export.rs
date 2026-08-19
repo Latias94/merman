@@ -87,17 +87,18 @@ fn render_chart(
     url: String,
     chart_index: u64,
 ) -> Result<MarkdownImage, CliError> {
+    let chart_control = context.control.child();
     let rendered = (|| {
-        crate::operation::checkpoint(context.control, merman::OperationPhase::Layout)?;
+        crate::operation::checkpoint(&chart_control, merman::OperationPhase::Layout)?;
         let artifact = execute_graphical(
             context.renderer,
             chart.definition(),
-            context.control,
+            &chart_control,
             context.stderr,
         )?;
-        crate::operation::checkpoint(context.control, merman::OperationPhase::Emit)?;
+        crate::operation::checkpoint(&chart_control, merman::OperationPhase::Emit)?;
         let ExecutedMetadata { title, desc } =
-            artifact.stage_into(slot, context.staged_bytes, context.control)?;
+            artifact.stage_into(slot, context.staged_bytes, &chart_control)?;
         Ok(MarkdownImage {
             url,
             title,
