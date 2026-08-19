@@ -60,6 +60,7 @@ pub(crate) struct RelationGraphLabelPlan<'a> {
     disclosure_prefix: &'static str,
     preserve_empty_authored: bool,
     disclose_authored: bool,
+    materialization_work_units: usize,
     metrics: RelationGraphLabelMetrics,
     width_profile: TerminalWidthProfile,
 }
@@ -232,6 +233,25 @@ impl<'a> RelationGraphLabelPlan<'a> {
                     )
                 })
                 .transpose()?;
+            let normalized_materialization_work = normalized
+                .map(NormalizedLabelPlan::materialization_work_units)
+                .unwrap_or_default();
+            let disclosure_materialization_work = disclosure
+                .map(|metrics| metrics.materialization_work_units)
+                .unwrap_or_default();
+            // Preserved empty labels register one empty static part in two producer/replay passes.
+            let empty_line_materialization_work = if normalized.is_none() {
+                resources.checked_work_mul(2, 2)?
+            } else {
+                0
+            };
+            let materialization_work_units = resources.checked_work_add(
+                normalized_materialization_work,
+                resources.checked_work_add(
+                    disclosure_materialization_work,
+                    empty_line_materialization_work,
+                )?,
+            )?;
             let metrics = if let Some(plan) = normalized {
                 RelationGraphLabelMetrics::try_from_normalized(
                     raw,
@@ -247,6 +267,7 @@ impl<'a> RelationGraphLabelPlan<'a> {
                         width: 0,
                         plain_bytes: 0,
                         html_bytes: 0,
+                        materialization_work_units: 0,
                     },
                     resources,
                 )?;
@@ -265,6 +286,7 @@ impl<'a> RelationGraphLabelPlan<'a> {
                 disclosure_prefix,
                 preserve_empty_authored,
                 disclose_authored,
+                materialization_work_units,
                 metrics,
                 width_profile,
             }))
@@ -300,6 +322,7 @@ impl<'a> RelationGraphLabelPlan<'a> {
 pub(crate) struct RelationGraphLabelBatchPlan<'a> {
     labels: Vec<Option<RelationGraphLabelPlan<'a>>>,
     grid_cells: usize,
+    materialization_work_units: usize,
     document_cells: usize,
     plain_bytes: usize,
     html_bytes: usize,
@@ -310,13 +333,24 @@ impl<'a> RelationGraphLabelBatchPlan<'a> {
         labels: Vec<Option<RelationGraphLabelPlan<'a>>>,
         resources: &ResourceContext,
     ) -> Result<Self> {
-        let (grid_cells, document_cells, plain_bytes, html_bytes) =
+        let (grid_cells, materialization_work_units, document_cells, plain_bytes, html_bytes) =
             labels.iter().flatten().try_fold(
-                (0usize, 0usize, 0usize, 0usize),
-                |(grid_cells, document_cells, plain_bytes, html_bytes), label| {
+                (0usize, 0usize, 0usize, 0usize, 0usize),
+                |(
+                    grid_cells,
+                    materialization_work_units,
+                    document_cells,
+                    plain_bytes,
+                    html_bytes,
+                ),
+                 label| {
                     let metrics = label.metrics();
                     Ok::<_, crate::AsciiError>((
                         grid_cells.max(metrics.grid_cells()),
+                        resources.checked_work_add(
+                            materialization_work_units,
+                            label.materialization_work_units,
+                        )?,
                         document_cells
                             .checked_add(metrics.document_cells())
                             .ok_or_else(|| {
@@ -338,6 +372,7 @@ impl<'a> RelationGraphLabelBatchPlan<'a> {
         Ok(Self {
             labels,
             grid_cells,
+            materialization_work_units,
             document_cells,
             plain_bytes,
             html_bytes,
@@ -352,7 +387,7 @@ impl<'a> RelationGraphLabelBatchPlan<'a> {
     ) -> Result<Vec<Option<RelationGraphLabel>>> {
         resources.transaction(|resources| {
             resources.check(AsciiResourceLimitId::MaxGridCells, self.grid_cells)?;
-            resources.check_usage(0, self.document_cells)?;
+            resources.check_usage(self.materialization_work_units, self.document_cells)?;
             resources.check(
                 AsciiResourceLimitId::MaxOutputBytes,
                 if html {

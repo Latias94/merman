@@ -1,6 +1,21 @@
 use super::*;
 use crate::resource::LogicalExtent;
 
+fn plan_relation_label_batch<'a>(
+    raw_labels: &[&'a str],
+    deferred: &DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<RelationGraphLabelBatchPlan<'a>> {
+    let labels = raw_labels
+        .iter()
+        .copied()
+        .map(|raw| {
+            RelationGraphLabelPlan::try_new(raw, TerminalWidthProfile::Unicode, deferred, resources)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    RelationGraphLabelBatchPlan::try_new(labels, resources)
+}
+
 fn aggregate_test_regions<'a>(
     wide_top: &'a RelationGraphBox,
     wide_bottom: &'a RelationGraphBox,
@@ -112,6 +127,82 @@ fn render_plan_rejects_aggregate_n_minus_one_before_materializing_regions() -> R
     assert_grid_limit(error, 30, 29);
     assert!(!first_called.get());
     assert!(!second_called.get());
+    Ok(())
+}
+
+#[test]
+fn relation_label_batch_admits_exact_replay_work_and_rolls_back_n_minus_one() -> Result<()> {
+    const PRIOR_WORK: usize = 7;
+    const PRIOR_DOCUMENT: usize = 11;
+    let raw_labels = ["plain", " north<br>south ", "\u{1b}right", "   "];
+    let unbounded = AsciiResourcePolicy::for_profile(
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+    );
+
+    let measured_resources = ResourceContext::new(unbounded);
+    let mut measured_registry = DeferredTextRegistry::new();
+    let measured_plan =
+        plan_relation_label_batch(&raw_labels, &measured_registry, &measured_resources)?;
+    let planning_work = measured_resources.layout_work_used();
+    let measured = measured_plan.materialize(false, &mut measured_registry, &measured_resources)?;
+    let materialization_work = measured_resources
+        .layout_work_used()
+        .checked_sub(planning_work)
+        .expect("materialization work should extend planning work");
+    assert_eq!(measured.iter().flatten().count(), raw_labels.len());
+    assert!(materialization_work > 1);
+
+    let exact_total = PRIOR_WORK + planning_work + materialization_work;
+    let exact_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_total)
+        .expect("the exact aggregate replay-work limit should be valid");
+    let exact_resources = ResourceContext::new(exact_policy);
+    exact_resources.charge_usage(PRIOR_WORK, PRIOR_DOCUMENT)?;
+    let mut exact_registry = DeferredTextRegistry::new();
+    let exact_plan = plan_relation_label_batch(&raw_labels, &exact_registry, &exact_resources)?;
+    assert_eq!(
+        exact_resources.layout_work_used(),
+        PRIOR_WORK + planning_work,
+    );
+    let exact = exact_plan.materialize(false, &mut exact_registry, &exact_resources)?;
+    assert_eq!(exact.iter().flatten().count(), raw_labels.len());
+    assert_eq!(exact_resources.layout_work_used(), exact_total);
+    assert_eq!(exact_resources.document_cells_used(), PRIOR_DOCUMENT);
+
+    let below_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_total - 1)
+        .expect("the aggregate N-1 replay-work limit should be valid");
+    let below_resources = ResourceContext::new(below_policy);
+    below_resources.charge_usage(PRIOR_WORK, PRIOR_DOCUMENT)?;
+    let mut below_registry = DeferredTextRegistry::new();
+    let below_plan = plan_relation_label_batch(&raw_labels, &below_registry, &below_resources)?;
+    assert_eq!(
+        below_resources.layout_work_used(),
+        PRIOR_WORK + planning_work,
+    );
+    let before = (
+        below_resources.layout_work_used(),
+        below_resources.document_cells_used(),
+        below_registry.entry_count(),
+    );
+    let error = below_plan
+        .materialize(false, &mut below_registry, &below_resources)
+        .expect_err("the aggregate N-1 replay-work budget must reject the whole batch");
+    assert!(matches!(
+        error,
+        AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                && details.actual == exact_total
+                && details.max == exact_total - 1
+    ));
+    assert_eq!(
+        (
+            below_resources.layout_work_used(),
+            below_resources.document_cells_used(),
+            below_registry.entry_count(),
+        ),
+        before,
+    );
     Ok(())
 }
 

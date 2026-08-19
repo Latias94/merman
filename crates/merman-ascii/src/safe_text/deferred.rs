@@ -486,6 +486,12 @@ impl<'a> DeferredTextRegistry<'a> {
                 width_profile,
                 resources,
             )?;
+            let replay_work_units = resources.checked_work_add(
+                resources.checked_work_add(prefix.replay_work_units, decimal.replay_work_units)?,
+                resources.checked_work_add(suffix.replay_work_units, value.replay_work_units)?,
+            )?;
+            let materialization_work_units =
+                resources.checked_work_mul(resources.checked_work_add(4, replay_work_units)?, 2)?;
             let width = resources.checked_grid_add(
                 resources.checked_grid_add(prefix.width, decimal.width)?,
                 resources.checked_grid_add(suffix.width, value.width)?,
@@ -510,6 +516,7 @@ impl<'a> DeferredTextRegistry<'a> {
                 width,
                 plain_bytes,
                 html_bytes,
+                materialization_work_units,
             })
         })
     }
@@ -947,6 +954,7 @@ pub(crate) struct DeferredTextLineMetrics {
     pub(crate) width: usize,
     pub(crate) plain_bytes: usize,
     pub(crate) html_bytes: usize,
+    pub(crate) materialization_work_units: usize,
 }
 
 fn text_metrics(
