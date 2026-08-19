@@ -102,7 +102,11 @@ function claimDirectoryLock(lockDirectory, { processId }) {
       { flag: "wx" },
     );
   } catch (error) {
-    rmSync(lockDirectory, { recursive: true, force: true });
+    try {
+      retireLockDirectory(lockDirectory);
+    } catch {
+      // Preserve the claim failure; the canonical path has already been retired when rename won.
+    }
     throw error;
   }
 
@@ -131,7 +135,8 @@ function recoverStaleLock(lockDirectory, { now, processAlive }) {
     return false;
   }
 
-  return retireLockDirectory(lockDirectory);
+  retireLockDirectory(lockDirectory);
+  return true;
 }
 
 function releaseDirectoryLock(lockDirectory, token) {
