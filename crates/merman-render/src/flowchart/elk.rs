@@ -1693,9 +1693,8 @@ fn subgraph_label(
         &sg.classes,
         &sg.styles,
     );
-    // ELK sizes a temporary group label with Flowchart wrappingWidth, while the final cluster SVG
-    // uses an unbounded createLabel call. Those are different layout operations, so only the
-    // shared source projection can be reused once the render-side binding matches.
+    // The layout and writer share this occurrence-scoped artifact. Re-entering a width-sensitive
+    // backend for emission would allow the terminal XHTML to diverge from the measured geometry.
     let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
         Some(FlowchartSvgLabelOwner::SubgraphTitle(semantic_index)),
@@ -1710,28 +1709,10 @@ fn subgraph_label(
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
         },
-        FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
+        FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides)
+            .with_terminal_foreground(text_style.terminal_foreground()),
         FlowchartSvgWidthMode::Bbox,
     );
-    if let Some(sidecar) = ctx.svg_label_sidecar {
-        sidecar.prepare_for_emission_with_typography_overrides(
-            FlowchartSvgLabelOwner::SubgraphTitle(semantic_index),
-            sg.id.as_str(),
-            FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: title,
-                label_type,
-                style: text_style.as_ref(),
-                max_width_px: None,
-                wrap_mode: ctx.cluster_wrap_mode,
-                config: ctx.effective_config,
-                math_renderer: ctx.math_renderer,
-            },
-            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
-            true,
-            FlowchartSvgWidthMode::Bbox,
-        );
-    }
     Some(elk::Label {
         width: metrics.width.max(1.0),
         height: (metrics.height - 2.0).max(1.0),
@@ -1771,7 +1752,8 @@ fn node_dimensions_and_label(
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
         },
-        FlowchartLabelTypographyOverrides::same(&node_text_style.prepared_text_overrides),
+        FlowchartLabelTypographyOverrides::same(&node_text_style.prepared_text_overrides)
+            .with_terminal_foreground(node_text_style.terminal_foreground()),
         svg_width_mode,
     );
     if ctx.node_wrap_mode == WrapMode::HtmlLike && ctx.class_html_labels {
@@ -1851,7 +1833,8 @@ fn edge_label(
             edge_text_style.as_ref(),
             FlowchartLabelTypographyOverrides::metrics_only(
                 &edge_text_style.prepared_text_overrides,
-            ),
+            )
+            .with_terminal_foreground(edge_text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         )
     } else {
@@ -1869,7 +1852,8 @@ fn edge_label(
                 config: ctx.effective_config,
                 math_renderer: ctx.math_renderer,
             },
-            FlowchartLabelTypographyOverrides::same(&edge_text_style.prepared_text_overrides),
+            FlowchartLabelTypographyOverrides::same(&edge_text_style.prepared_text_overrides)
+                .with_terminal_foreground(edge_text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         )
     };

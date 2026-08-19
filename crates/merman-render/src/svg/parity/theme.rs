@@ -89,6 +89,26 @@ pub(super) struct SequenceDiagramTheme {
     pub(super) label_box_filter: String,
 }
 
+pub(crate) fn sequence_text_surface_fills(
+    effective_config: &serde_json::Value,
+) -> [String; crate::sequence::SequenceTextSurface::COUNT] {
+    let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
+    [
+        theme.actor_text,
+        theme.common.text_color,
+        theme.signal_text,
+        theme.note_text,
+        theme.label_text,
+        theme.loop_text.clone(),
+        theme.loop_text,
+    ]
+}
+
+pub(crate) fn flowchart_text_surface_fills(effective_config: &Value) -> [String; 2] {
+    let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
+    [theme.node_text_color, theme.title_color]
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,

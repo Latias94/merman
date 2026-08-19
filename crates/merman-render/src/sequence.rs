@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::math::MathRenderer;
 use crate::model::{LayoutCluster, SequenceDiagramLayout};
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
@@ -22,6 +21,7 @@ mod block_geometry;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
+mod math_artifact;
 mod message_metrics;
 mod messages;
 mod metrics;
@@ -47,8 +47,13 @@ pub(crate) use constants::{
     sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
     sequence_text_line_step_px,
 };
+pub(crate) use math_artifact::{
+    SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
+    SequenceMathSidecarBuilder,
+};
 pub(crate) use metrics::{
-    SequenceMathHeightMode, measure_sequence_math_label, wrap_sequence_label_like_mermaid_lines,
+    SequenceMathHeightMode, measure_prepared_sequence_math_label,
+    wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 pub(crate) use text_artifact::SequenceTextSidecar;
@@ -68,7 +73,8 @@ pub(crate) use theme_evidence::{
     SequenceTypographyThemeReceipt,
 };
 pub(crate) use typography::{
-    SequenceResolvedTypography, SequenceTextSurface, SequenceTypographyPlan, SequenceTypographyRole,
+    SequenceResolvedTypography, SequenceTerminalForegroundProvenance, SequenceTerminalTextStyle,
+    SequenceTextSurface, SequenceTypographyPlan, SequenceTypographyRole,
 };
 
 /// Private Sequence render artifact that keeps operation-owned measurements attached to layout.
@@ -81,6 +87,7 @@ pub(crate) struct SequencePreparedArtifact {
     actor_popup_widths: HashMap<String, f64>,
     message_metrics: SequenceMessageMetricSidecar,
     text_sidecar: SequenceTextSidecar,
+    math_sidecar: SequenceMathSidecar,
     theme_evidence: SequenceThemeEvidenceRecorder,
     typography: Arc<SequenceTypographyPlan>,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
@@ -97,6 +104,10 @@ impl SequencePreparedArtifact {
 
     pub(crate) const fn text_sidecar(&self) -> &SequenceTextSidecar {
         &self.text_sidecar
+    }
+
+    pub(crate) const fn math_sidecar(&self) -> &SequenceMathSidecar {
+        &self.math_sidecar
     }
 
     pub(crate) fn typography(&self) -> &SequenceTypographyPlan {
@@ -203,7 +214,6 @@ pub(crate) fn sequence_block_widths_for_render(
     prepared: &SequencePreparedArtifact,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> FxHashMap<String, f64> {
     let layout = prepared.layout();
     let mut settings = SequenceLayoutSettings::from_effective_config(effective_config.as_value());
@@ -256,7 +266,10 @@ pub(crate) fn sequence_block_widths_for_render(
         note_text_style: &settings.note_text_style,
         loop_text_style: &settings.loop_text_style,
         math_config: effective_config,
-        math_renderer,
+        math_terminal_style: prepared
+            .typography()
+            .terminal_text_style(SequenceTextSurface::ControlPrimaryTitle),
+        math_sidecar: prepared.math_sidecar(),
         message_metrics,
     })
     .into_iter()
@@ -271,7 +284,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     resolved_theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
     prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
     measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    math_backend: Option<&crate::math::ConfiguredMathBackend>,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SequencePreparedArtifact> {
     work_meter.policy().check_sequence_complexity(model)?;
@@ -280,7 +293,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     work_meter.charge(work_units)?;
 
     let effective_config_value = effective_config.as_value();
-    let math_config = effective_config.clone();
     let mut settings = SequenceLayoutSettings::from_effective_config(effective_config_value);
     let typography = Arc::new(SequenceTypographyPlan::resolve(
         effective_config,
@@ -291,6 +303,12 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         settings.note_text_style.clone(),
     )?);
     settings.apply_typography_plan(typography.as_ref());
+    let math_sidecar_builder = SequenceMathSidecarBuilder::new(
+        math_backend,
+        effective_config,
+        measurer,
+        Arc::clone(&work_meter),
+    );
     let block_label_box_metrics = SequenceBlockLabelBoxMetrics::resolve(
         model,
         settings.label_box_width,
@@ -319,8 +337,9 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_text_style: &settings.actor_text_style,
         note_text_style: &settings.note_text_style,
         msg_text_style: &settings.msg_text_style,
-        math_config: &math_config,
-        math_renderer,
+        math_config: effective_config,
+        typography: typography.as_ref(),
+        math_sidecar: &math_sidecar_builder,
         actor_width_min: settings.sequence_default_width,
         actor_height: settings.actor_height,
         actor_margin: settings.actor_margin,
@@ -368,8 +387,9 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         note_text_style: &settings.note_text_style,
         note_terminal_text_style: typography.note().terminal_text_style(),
         loop_text_style: &settings.loop_text_style,
-        math_config: &math_config,
-        math_renderer,
+        math_config: effective_config,
+        typography: typography.as_ref(),
+        math_sidecar: &math_sidecar_builder,
         message_metrics: message_metric_view,
     });
 
@@ -421,11 +441,13 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         mirror_actors: settings.mirror_actors,
         measurer,
         msg_text_style: &settings.msg_text_style,
-        math_config: &math_config,
-        math_renderer,
+        math_config: effective_config,
+        math_sidecar: &math_sidecar_builder,
         message_metrics: message_metric_view,
         block_label_box_metrics,
     }));
+
+    let math_sidecar = math_sidecar_builder.finish()?;
 
     Ok(SequencePreparedArtifact {
         layout: SequenceDiagramLayout {
@@ -443,6 +465,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
             Arc::clone(&typography),
             Arc::clone(&work_meter),
         ),
+        math_sidecar,
         theme_evidence: SequenceThemeEvidenceRecorder::default(),
         typography,
         block_label_box_metrics,

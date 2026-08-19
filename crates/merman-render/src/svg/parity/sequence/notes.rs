@@ -16,12 +16,12 @@ pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) note_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
 }
 
 pub(super) fn render_sequence_note(
     out: &mut impl SvgOutput,
+    message_index: usize,
     msg: &SequenceMessage,
     ctx: &SequenceNoteRenderContext<'_>,
     theme_receipt: &mut SequenceStaticRectThemeReceipt,
@@ -50,12 +50,14 @@ pub(super) fn render_sequence_note(
         h = fmt(n.height)
     );
     theme_receipt.record_rect_emission();
+    let prepared_math =
+        ctx.math_sidecar
+            .get_for_occurrence(&crate::sequence::SequenceMathOccurrence::Note(
+                message_index,
+            ));
     if let Some(katex) = sequence_katex_label(
-        raw,
-        ctx.measurer,
+        prepared_math,
         ctx.note_text_style,
-        ctx.sanitize_config,
-        ctx.math_renderer,
         SequenceMathHeightMode::Draw,
     ) {
         ctx.typography_receipt

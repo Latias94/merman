@@ -14,6 +14,8 @@ fn prepare_flowchart_artifact<L>(
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
     resolved_theme: Option<&ResolvedDiagramTheme>,
+    math_backend: Option<&crate::math::ConfiguredMathBackend>,
+    effective_config: &merman_core::MermaidConfig,
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
@@ -31,6 +33,7 @@ fn prepare_flowchart_artifact<L>(
         resolved_theme,
         work_meter,
     )
+    .with_math_backend(math_backend, effective_config)
     .with_typography_config_ownership(typography_config_ownership)
     .with_edge_label_padding(edge_theme.edge_label_padding());
     let layout = layout(
@@ -40,6 +43,9 @@ fn prepare_flowchart_artifact<L>(
         &edge_style_plan,
     )?;
     let svg_label_sidecar = svg_label_sidecar.finish();
+    if let Some(error) = svg_label_sidecar.prepared_work_error().cloned() {
+        return Err(error.into());
+    }
     if let Some(error) = svg_label_sidecar.prepared_resource_error().cloned() {
         return Err(error.into());
     }
@@ -315,6 +321,8 @@ fn prepare_flowchart_family(
                 label_sources,
                 execution.prepared_text_layout(),
                 execution.resolved_theme(),
+                execution.math_backend(),
+                &meta.effective_config,
                 crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                 execution.work_meter(),
                 edge_style_plan,
@@ -345,6 +353,8 @@ fn prepare_flowchart_family(
                     label_sources,
                     execution.prepared_text_layout(),
                     execution.resolved_theme(),
+                    execution.math_backend(),
+                    &meta.effective_config,
                     crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                     execution.work_meter(),
                     edge_style_plan,
@@ -938,7 +948,6 @@ pub(super) fn prepare_non_class_render(
     let (meta, model, render_context) = parsed.into_render_parts();
     let flowchart_label_sources = render_context.into_flowchart_label_sources();
     let diagram_type = meta.diagram_type.as_str();
-    let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();
     context.observe_compatibility(&meta);
     if let RenderSemanticModel::State(model) = &model {
@@ -959,7 +968,7 @@ pub(super) fn prepare_non_class_render(
                     execution.resolved_theme(),
                     execution.prepared_text_layout(),
                     execution.text_measurer(),
-                    execution.math_renderer(),
+                    execution.math_backend(),
                     execution.work_meter(),
                 )
             })?)

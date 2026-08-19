@@ -6,10 +6,10 @@ use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
 };
 use super::metrics::{
-    SequenceMathHeightMode, measure_sequence_label_for_layout, measure_sequence_math_label,
+    SequenceMathHeightMode, measure_prepared_sequence_math_label,
+    measure_sequence_label_for_layout, measure_sequence_label_for_layout_with_prepared,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
-use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
 use crate::{Error, Result};
@@ -26,7 +26,8 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) typography: &'a super::SequenceTypographyPlan,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) actor_width_min: f64,
     pub(super) actor_height: f64,
     pub(super) actor_margin: f64,
@@ -177,7 +178,7 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
     // Measure participant boxes.
     let mut actor_widths: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
     let mut actor_base_heights: Vec<f64> = Vec::with_capacity(ctx.model.actor_order.len());
-    for id in &ctx.model.actor_order {
+    for (actor_index, id) in ctx.model.actor_order.iter().enumerate() {
         let a = ctx
             .model
             .actors
@@ -196,12 +197,15 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
                 wrap_w,
             );
             let wrapped_label = wrapped_lines.join("<br>");
-            let text_h = measure_sequence_math_label(
-                ctx.measurer,
+            let prepared_math = ctx.math_sidecar.prepare_or_get(
+                super::SequenceMathOccurrence::Actor(actor_index),
                 &wrapped_label,
+                ctx.typography
+                    .terminal_text_style(super::SequenceTextSurface::ParticipantLabel),
+            );
+            let text_h = measure_prepared_sequence_math_label(
+                prepared_math.as_deref(),
                 ctx.actor_text_style,
-                ctx.math_config,
-                ctx.math_renderer,
                 SequenceMathHeightMode::Actor,
             )
             .map_or_else(
@@ -214,12 +218,19 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
             actor_base_heights.push(ctx.actor_height.max(text_h).max(1.0));
             actor_widths.push(ctx.actor_width_min.max(1.0));
         } else {
-            let (w0, _h0) = measure_sequence_label_for_layout(
+            let prepared_math = ctx.math_sidecar.prepare_or_get(
+                super::SequenceMathOccurrence::Actor(actor_index),
+                &a.description,
+                ctx.typography
+                    .terminal_text_style(super::SequenceTextSurface::ParticipantLabel),
+            );
+            let (w0, _h0) = measure_sequence_label_for_layout_with_prepared(
+                prepared_math.as_deref(),
                 ctx.measurer,
                 &a.description,
                 ctx.actor_text_style,
                 ctx.math_config,
-                ctx.math_renderer,
+                None,
                 SequenceMathHeightMode::Actor,
             );
             let w = (w0 + 2.0 * ctx.wrap_padding).max(ctx.actor_width_min);
@@ -279,15 +290,25 @@ fn actor_message_widths(
         }
 
         let is_math = text.contains("$$");
-        let (w0, h0) = if is_math {
-            measure_sequence_label_for_layout(
+        let (w0, h0) = if is_math && is_message {
+            let prepared_math = ctx.math_sidecar.prepare_or_get(
+                super::SequenceMathOccurrence::Message(message_index),
+                text,
+                ctx.typography
+                    .terminal_text_style(super::SequenceTextSurface::MessageLabel),
+            );
+            measure_sequence_label_for_layout_with_prepared(
+                prepared_math.as_deref(),
                 ctx.measurer,
                 text,
                 style,
                 ctx.math_config,
-                ctx.math_renderer,
+                None,
                 SequenceMathHeightMode::Bound,
             )
+        } else if is_math {
+            // Wrapped notes bind prepared math only after their final effective source is known.
+            measure_svg_like_with_html_br(ctx.measurer, text, style)
         } else {
             let measured_text = if msg.wrap {
                 // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when
@@ -408,7 +429,7 @@ fn box_margins(
             name,
             ctx.actor_text_style,
             ctx.math_config,
-            ctx.math_renderer,
+            None,
             SequenceMathHeightMode::Bound,
         );
         let min_width = total_width.max(text_w + 2.0 * ctx.wrap_padding);

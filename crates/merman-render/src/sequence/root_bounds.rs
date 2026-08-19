@@ -4,8 +4,7 @@ use super::block_geometry::{
 };
 use super::constants::sequence_actor_popup_panel_height;
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
-use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
-use crate::math::MathRenderer;
+use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
 use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
@@ -40,7 +39,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) math_sidecar: &'a super::SequenceMathSidecarBuilder<'a>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
     pub(super) block_label_box_metrics: super::SequenceBlockLabelBoxMetrics,
 }
@@ -273,12 +272,16 @@ fn include_self_message_bounds(
         } else if let Some(metrics) = premeasured_bound {
             (metrics.width(), 0.0)
         } else {
-            measure_sequence_label_for_layout(
+            let prepared_math = ctx
+                .math_sidecar
+                .get(&super::SequenceMathOccurrence::Message(message_index), text);
+            measure_sequence_label_for_layout_with_prepared(
+                prepared_math.as_deref(),
                 ctx.measurer,
                 text,
                 ctx.msg_text_style,
                 ctx.math_config,
-                ctx.math_renderer,
+                None,
                 SequenceMathHeightMode::Bound,
             )
         };

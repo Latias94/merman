@@ -23,8 +23,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) loop_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) loop_theme_receipt: &'a crate::sequence::SequenceLoopThemeReceipt,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
 }
 
 pub(super) struct SimpleSequenceBlock<'a> {
@@ -43,8 +42,7 @@ impl<'a> SequenceBlockRenderContext<'a> {
             self.loop_text_style,
             self.loop_typography,
             self.typography_receipt,
-            self.sanitize_config,
-            self.math_renderer,
+            self.math_sidecar,
         )
     }
 
@@ -197,6 +195,7 @@ pub(super) fn render_simple_sequence_block(
             max_width: max_w,
             use_tspan: true,
         },
+        block.label_id,
         &label,
     );
     out.push_str("</g>");
@@ -298,6 +297,7 @@ pub(super) fn render_sectioned_sequence_block(
                     max_width: max_w,
                     use_tspan: true,
                 },
+                sec.label_id,
                 &label_text,
             );
             continue;
@@ -311,6 +311,7 @@ pub(super) fn render_sectioned_sequence_block(
             y,
             sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
+            sec.label_id,
             &label_text,
         );
     }
@@ -404,6 +405,7 @@ pub(super) fn render_critical_sequence_block(
                     max_width: max_w,
                     use_tspan: true,
                 },
+                sec.label_id,
                 &label_text,
             );
             continue;
@@ -417,6 +419,7 @@ pub(super) fn render_critical_sequence_block(
             y,
             sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
+            sec.label_id,
             &label_text,
         );
     }

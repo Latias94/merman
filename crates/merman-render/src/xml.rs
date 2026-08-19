@@ -2,6 +2,64 @@ use std::borrow::Cow;
 
 use crate::svg::scanner::find_tag_end;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum XmlOutputError {
+    Limit { attempted: usize, max: usize },
+    Allocation,
+}
+
+struct BoundedXmlString {
+    value: String,
+    max: usize,
+}
+
+impl BoundedXmlString {
+    fn with_capacity(max: usize, capacity: usize) -> Result<Self, XmlOutputError> {
+        if capacity > max {
+            return Err(XmlOutputError::Limit {
+                attempted: capacity,
+                max,
+            });
+        }
+        let mut value = String::new();
+        value
+            .try_reserve_exact(capacity)
+            .map_err(|_| XmlOutputError::Allocation)?;
+        Ok(Self { value, max })
+    }
+
+    fn push_str(&mut self, value: &str) -> Result<(), XmlOutputError> {
+        let attempted = self
+            .value
+            .len()
+            .checked_add(value.len())
+            .ok_or(XmlOutputError::Limit {
+                attempted: usize::MAX,
+                max: self.max,
+            })?;
+        if attempted > self.max {
+            return Err(XmlOutputError::Limit {
+                attempted,
+                max: self.max,
+            });
+        }
+        self.value
+            .try_reserve(value.len())
+            .map_err(|_| XmlOutputError::Allocation)?;
+        self.value.push_str(value);
+        Ok(())
+    }
+
+    fn push(&mut self, value: char) -> Result<(), XmlOutputError> {
+        let mut encoded = [0; 4];
+        self.push_str(value.encode_utf8(&mut encoded))
+    }
+
+    fn into_string(self) -> String {
+        self.value
+    }
+}
+
 pub(crate) fn is_xml_1_0_char(ch: char) -> bool {
     matches!(ch, '\u{9}' | '\u{A}' | '\u{D}')
         || matches!(
@@ -146,17 +204,73 @@ pub(crate) fn normalize_html_entities_for_xml(value: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+fn normalize_html_entities_for_xml_bounded(
+    value: &str,
+    max_output_bytes: usize,
+) -> Result<Cow<'_, str>, XmlOutputError> {
+    let value = strip_forbidden_xml_1_0_chars(value);
+    if !value.as_bytes().contains(&b'&') {
+        if value.len() > max_output_bytes {
+            return Err(XmlOutputError::Limit {
+                attempted: value.len(),
+                max: max_output_bytes,
+            });
+        }
+        return Ok(value);
+    }
+
+    let value = value.as_ref();
+    let mut out = BoundedXmlString::with_capacity(max_output_bytes, value.len())?;
+    let mut cursor = 0usize;
+    while let Some(relative_amp) = value[cursor..].find('&') {
+        let amp = cursor + relative_amp;
+        out.push_str(&value[cursor..amp])?;
+        let Some(semicolon) = html_entity_reference_end(value, amp) else {
+            out.push_str("&amp;")?;
+            cursor = amp + 1;
+            continue;
+        };
+        let entity = &value[amp + 1..semicolon];
+        if is_valid_xml_entity_reference(entity) {
+            out.push_str(&value[amp..=semicolon])?;
+            cursor = semicolon + 1;
+            continue;
+        }
+
+        let reference = &value[amp..=semicolon];
+        let decoded = merman_core::entities::decode_html_entities_to_unicode(reference);
+        if decoded.as_ref() != reference {
+            for character in decoded.chars().filter(|ch| is_xml_1_0_char(*ch)) {
+                match character {
+                    '&' => out.push_str("&amp;")?,
+                    '\'' => out.push_str("&apos;")?,
+                    '>' => out.push_str("&gt;")?,
+                    '<' => out.push_str("&lt;")?,
+                    '"' => out.push_str("&quot;")?,
+                    _ => out.push(character)?,
+                }
+            }
+        } else {
+            out.push_str("&amp;")?;
+            out.push_str(entity)?;
+            out.push(';')?;
+        }
+        cursor = semicolon + 1;
+    }
+    out.push_str(&value[cursor..])?;
+    Ok(Cow::Owned(out.into_string()))
+}
+
 /// Normalizes sanitized browser HTML into a fragment that can be embedded in SVG XML.
 pub(crate) fn normalize_html_fragment_for_xhtml(input: &str) -> String {
-    let input = input
-        .replace("<br>", "<br />")
-        .replace("<br/>", "<br />")
-        .replace("<br >", "<br />")
-        .replace("</br>", "<br />")
-        .replace("</br/>", "<br />")
-        .replace("</br />", "<br />")
-        .replace("</br >", "<br />");
-    let input = normalize_html_entities_for_xml(&input);
+    normalize_html_fragment_for_xhtml_bounded(input, usize::MAX).unwrap_or_default()
+}
+
+pub(crate) fn normalize_html_fragment_for_xhtml_bounded(
+    input: &str,
+    max_output_bytes: usize,
+) -> Result<String, XmlOutputError> {
+    let input = normalize_html_entities_for_xml_bounded(input, max_output_bytes)?;
 
     fn is_xhtml_void_tag(name: &str) -> bool {
         matches!(
@@ -177,28 +291,22 @@ pub(crate) fn normalize_html_fragment_for_xhtml(input: &str) -> String {
         )
     }
 
-    fn self_close_xhtml_void_tag(tag: &str) -> String {
+    fn push_self_closed_xhtml_void_tag(
+        out: &mut BoundedXmlString,
+        tag: &str,
+    ) -> Result<(), XmlOutputError> {
         if !tag.ends_with('>') {
-            return tag.to_string();
+            return out.push_str(tag);
         }
-        let mut inner = tag[..tag.len() - 1].to_string();
-        while inner.ends_with(|character: char| character.is_whitespace()) {
-            inner.pop();
-        }
-        if inner.ends_with('/') {
-            while inner.ends_with('/') {
-                inner.pop();
-            }
-            while inner.ends_with(|character: char| character.is_whitespace()) {
-                inner.pop();
-            }
-        }
-        inner.push_str(" /");
-        inner.push('>');
-        inner
+        let inner = tag[..tag.len() - 1]
+            .trim_end()
+            .trim_end_matches('/')
+            .trim_end();
+        out.push_str(inner)?;
+        out.push_str(" />")
     }
 
-    let mut out = String::with_capacity(input.len());
+    let mut out = BoundedXmlString::with_capacity(max_output_bytes, input.len())?;
     let mut characters = input.char_indices().peekable();
 
     while let Some((offset, character)) = characters.next() {
@@ -209,12 +317,12 @@ pub(crate) fn normalize_html_fragment_for_xhtml(input: &str) -> String {
                     next,
                     Some(next) if next.is_ascii_alphabetic() || matches!(next, '/' | '!' | '?')
                 ) {
-                    out.push_str("&lt;");
+                    out.push_str("&lt;")?;
                     continue;
                 }
 
                 let Some(end) = find_tag_end(input.as_ref(), offset + character.len_utf8()) else {
-                    out.push_str("&lt;");
+                    out.push_str("&lt;")?;
                     continue;
                 };
                 while characters
@@ -235,13 +343,15 @@ pub(crate) fn normalize_html_fragment_for_xhtml(input: &str) -> String {
                     .next()
                     .unwrap_or("")
                     .to_ascii_lowercase();
-                if !is_closing && is_xhtml_void_tag(&name) {
-                    out.push_str(&self_close_xhtml_void_tag(tag));
+                if is_closing && name == "br" {
+                    out.push_str("<br />")?;
+                } else if !is_closing && is_xhtml_void_tag(&name) {
+                    push_self_closed_xhtml_void_tag(&mut out, tag)?;
                 } else {
-                    out.push_str(tag);
+                    out.push_str(tag)?;
                 }
             }
-            '>' => out.push_str("&gt;"),
+            '>' => out.push_str("&gt;")?,
             '&' => {
                 let mut tail = String::new();
                 let mut valid_terminator = false;
@@ -265,18 +375,18 @@ pub(crate) fn normalize_html_fragment_for_xhtml(input: &str) -> String {
                 }
                 let entity = tail.strip_suffix(';').unwrap_or(&tail);
                 if valid_terminator && is_valid_xml_entity_reference(entity) {
-                    out.push('&');
-                    out.push_str(&tail);
+                    out.push('&')?;
+                    out.push_str(&tail)?;
                 } else {
-                    out.push_str("&amp;");
-                    out.push_str(&tail);
+                    out.push_str("&amp;")?;
+                    out.push_str(&tail)?;
                 }
             }
-            _ => out.push(character),
+            _ => out.push(character)?,
         }
     }
 
-    out
+    Ok(out.into_string())
 }
 
 #[cfg(test)]
@@ -330,6 +440,20 @@ mod tests {
             normalize_html_fragment_for_xhtml("<p>A<br><img src=\"x\"> 1 < 2 &amp;</p>"),
             "<p>A<br /><img src=\"x\" /> 1 &lt; 2 &amp;</p>"
         );
+    }
+
+    #[test]
+    fn bounded_xhtml_normalization_accepts_exact_output_and_rejects_one_byte_short() {
+        let input = "<p>A<br>&unknown;</p>";
+        let expected = normalize_html_fragment_for_xhtml(input);
+        assert_eq!(
+            normalize_html_fragment_for_xhtml_bounded(input, expected.len()).unwrap(),
+            expected
+        );
+        assert!(matches!(
+            normalize_html_fragment_for_xhtml_bounded(input, expected.len() - 1),
+            Err(XmlOutputError::Limit { .. })
+        ));
     }
 
     #[test]

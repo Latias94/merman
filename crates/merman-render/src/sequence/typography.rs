@@ -113,6 +113,7 @@ impl SequenceTextSurface {
         Self::ControlPrimaryTitle,
         Self::ControlSectionTitle,
     ];
+    pub(crate) const COUNT: usize = Self::ALL.len();
 
     pub(crate) const fn role(self) -> SequenceTypographyRole {
         match self {
@@ -374,6 +375,22 @@ pub(crate) struct SequenceTypographyPlan {
     message: SequenceResolvedTypography,
     note: SequenceResolvedTypography,
     loop_label: SequenceResolvedTypography,
+    terminal_foregrounds: [String; SequenceTextSurface::COUNT],
+    terminal_foreground_provenance:
+        [SequenceTerminalForegroundProvenance; SequenceTextSurface::COUNT],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SequenceTerminalForegroundProvenance {
+    MermaidConfig,
+    TypedTheme,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SequenceTerminalTextStyle<'a> {
+    pub(crate) text_style: &'a TextStyle,
+    pub(crate) foreground: &'a str,
+    pub(crate) foreground_provenance: SequenceTerminalForegroundProvenance,
 }
 
 impl SequenceTypographyPlan {
@@ -399,40 +416,63 @@ impl SequenceTypographyPlan {
         let inherited_font_stack = parse_css_font_stack(&inherited_font_family)
             .expect("normalized Mermaid font-family CSS must remain parseable");
         let loop_label = message.clone();
+        let actor = SequenceResolvedTypography::resolve(
+            SequenceTypographyRole::Actor,
+            actor,
+            effective_config,
+            resolved_theme,
+            work_meter,
+            &inherited_font_family,
+        )?;
+        let message = SequenceResolvedTypography::resolve(
+            SequenceTypographyRole::Message,
+            message,
+            effective_config,
+            resolved_theme,
+            work_meter,
+            &inherited_font_family,
+        )?;
+        let note = SequenceResolvedTypography::resolve(
+            SequenceTypographyRole::Note,
+            note,
+            effective_config,
+            resolved_theme,
+            work_meter,
+            &inherited_font_family,
+        )?;
+        let loop_label = SequenceResolvedTypography::resolve(
+            SequenceTypographyRole::Loop,
+            loop_label,
+            effective_config,
+            resolved_theme,
+            work_meter,
+            &inherited_font_family,
+        )?;
+        let mut terminal_foregrounds =
+            crate::svg::render_theme::sequence_text_surface_fills(effective_config.as_value());
+        let mut terminal_foreground_provenance =
+            [SequenceTerminalForegroundProvenance::MermaidConfig; SequenceTextSurface::COUNT];
+        for surface in SequenceTextSurface::ALL {
+            let typography = match surface.role() {
+                SequenceTypographyRole::Actor => &actor,
+                SequenceTypographyRole::Message => &message,
+                SequenceTypographyRole::Note => &note,
+                SequenceTypographyRole::Loop => &loop_label,
+            };
+            if let Some(fill) = typography.typed_fill_for(surface) {
+                terminal_foregrounds[surface.index()] = fill.to_owned();
+                terminal_foreground_provenance[surface.index()] =
+                    SequenceTerminalForegroundProvenance::TypedTheme;
+            }
+        }
         Ok(Self {
             inherited_font_stack,
-            actor: SequenceResolvedTypography::resolve(
-                SequenceTypographyRole::Actor,
-                actor,
-                effective_config,
-                resolved_theme,
-                work_meter,
-                &inherited_font_family,
-            )?,
-            message: SequenceResolvedTypography::resolve(
-                SequenceTypographyRole::Message,
-                message,
-                effective_config,
-                resolved_theme,
-                work_meter,
-                &inherited_font_family,
-            )?,
-            note: SequenceResolvedTypography::resolve(
-                SequenceTypographyRole::Note,
-                note,
-                effective_config,
-                resolved_theme,
-                work_meter,
-                &inherited_font_family,
-            )?,
-            loop_label: SequenceResolvedTypography::resolve(
-                SequenceTypographyRole::Loop,
-                loop_label,
-                effective_config,
-                resolved_theme,
-                work_meter,
-                &inherited_font_family,
-            )?,
+            actor,
+            message,
+            note,
+            loop_label,
+            terminal_foregrounds,
+            terminal_foreground_provenance,
         })
     }
 
@@ -463,6 +503,17 @@ impl SequenceTypographyPlan {
 
     pub(crate) const fn loop_label(&self) -> &SequenceResolvedTypography {
         &self.loop_label
+    }
+
+    pub(crate) fn terminal_text_style(
+        &self,
+        surface: SequenceTextSurface,
+    ) -> SequenceTerminalTextStyle<'_> {
+        SequenceTerminalTextStyle {
+            text_style: self.role(surface.role()).terminal_text_style(),
+            foreground: &self.terminal_foregrounds[surface.index()],
+            foreground_provenance: self.terminal_foreground_provenance[surface.index()],
+        }
     }
 }
 

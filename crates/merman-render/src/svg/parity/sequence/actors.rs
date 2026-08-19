@@ -13,8 +13,7 @@ pub(super) struct SequenceActorRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) actor_wrap_width: f64,
     pub(super) actor_height: f64,
     pub(super) label_box_height: f64,
@@ -34,12 +33,12 @@ pub(super) fn render_sequence_bottom_actors(
         ctx.actor_text_style,
         ctx.actor_typography,
         ctx.typography_receipt,
-        ctx.sanitize_config,
-        ctx.math_renderer,
+        ctx.math_sidecar,
     );
 
     // Mermaid draws bottom actors first (reverse DOM order).
-    for actor_id in ctx.model.actor_order.iter().rev() {
+    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate().rev() {
+        let label_ctx = label_ctx.for_actor(actor_index);
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
@@ -89,11 +88,11 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
         ctx.actor_text_style,
         ctx.actor_typography,
         ctx.typography_receipt,
-        ctx.sanitize_config,
-        ctx.math_renderer,
+        ctx.math_sidecar,
     );
 
     for (idx, actor_id) in ctx.model.actor_order.iter().enumerate().rev() {
+        let label_ctx = label_ctx.for_actor(idx);
         theme_receipt.record_line_candidate();
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;

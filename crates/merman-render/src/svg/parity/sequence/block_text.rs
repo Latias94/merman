@@ -9,8 +9,7 @@ pub(super) struct LoopTextRenderContext<'a> {
     pub(super) style: &'a TextStyle,
     typography: &'a crate::sequence::SequenceResolvedTypography,
     typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-    config: &'a merman_core::MermaidConfig,
-    math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    math_sidecar: &'a crate::sequence::SequenceMathSidecar,
 }
 
 pub(super) struct LoopTextPlacement {
@@ -27,28 +26,25 @@ impl<'a> LoopTextRenderContext<'a> {
         style: &'a TextStyle,
         typography: &'a crate::sequence::SequenceResolvedTypography,
         typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-        config: &'a merman_core::MermaidConfig,
-        math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+        math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     ) -> Self {
         Self {
             measurer,
             style,
             typography,
             typography_receipt,
-            config,
-            math_renderer,
+            math_sidecar,
         }
     }
 
-    fn katex_label(&self, text: &str) -> Option<super::math_label::SequenceKatexLabel> {
-        sequence_katex_label(
-            text,
-            self.measurer,
-            self.style,
-            self.config,
-            self.math_renderer,
-            SequenceMathHeightMode::Draw,
-        )
+    fn katex_label(
+        &self,
+        occurrence_id: &str,
+    ) -> Option<super::math_label::SequenceKatexLabel<'_>> {
+        let prepared = self.math_sidecar.get_for_occurrence(
+            &crate::sequence::SequenceMathOccurrence::BlockLabel(occurrence_id.to_owned()),
+        );
+        sequence_katex_label(prepared, self.style, SequenceMathHeightMode::Draw)
     }
 }
 
@@ -95,9 +91,10 @@ pub(super) fn write_loop_text_lines(
     out: &mut impl SvgOutput,
     ctx: &LoopTextRenderContext<'_>,
     placement: LoopTextPlacement,
+    occurrence_id: &str,
     text: &str,
 ) {
-    if let Some(katex) = ctx.katex_label(text) {
+    if let Some(katex) = ctx.katex_label(occurrence_id) {
         ctx.typography_receipt
             .record_candidate(crate::sequence::SequenceTextSurface::ControlPrimaryTitle);
         let x = (placement.x - katex.width / 2.0).round();
@@ -145,9 +142,10 @@ pub(super) fn write_section_title_lines(
     y0: f64,
     section_start_y: f64,
     max_width: Option<f64>,
+    occurrence_id: &str,
     text: &str,
 ) {
-    if let Some(katex) = ctx.katex_label(text) {
+    if let Some(katex) = ctx.katex_label(occurrence_id) {
         ctx.typography_receipt
             .record_candidate(crate::sequence::SequenceTextSurface::ControlSectionTitle);
         let x = (x - katex.width / 2.0).round();

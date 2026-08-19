@@ -5,14 +5,13 @@ use super::messages::{
     sequence_message_horizontal_model,
 };
 use super::metrics::{
-    SequenceMathHeightMode, measure_sequence_math_label, measure_svg_like_with_html_br,
+    SequenceMathHeightMode, measure_prepared_sequence_math_label, measure_svg_like_with_html_br,
 };
 use super::notes::{SequenceNoteHorizontalContext, sequence_note_horizontal_model};
 use super::{
     bracketize_sequence_block_label, sequence_block_label_wrap_width,
     wrap_sequence_label_like_mermaid_lines,
 };
-use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
@@ -131,7 +130,8 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
 }
 
@@ -152,12 +152,13 @@ pub(super) fn plan_sequence_blocks(ctx: BlockStepPlanContext<'_>) -> SequenceBlo
         .model
         .messages
         .iter()
-        .filter(|msg| is_block_label_directive(msg.message_type))
-        .map(|msg| {
+        .enumerate()
+        .filter(|(_, msg)| is_block_label_directive(msg.message_type))
+        .map(|(_message_index, msg)| {
             let frame_width = widths_by_id.get(&msg.id).copied();
             (
                 msg.id.clone(),
-                block_label_step(msg.message_text(), frame_width, frame_ctx, step_ctx),
+                block_label_step(msg, frame_width, frame_ctx, step_ctx),
             )
         })
         .collect();
@@ -191,22 +192,25 @@ fn is_block_label_directive(message_type: i32) -> bool {
 }
 
 fn block_label_step(
-    raw_label: &str,
+    message: &SequenceMessage,
     frame_width: Option<f64>,
     frame_ctx: BlockFrameWidthContext<'_>,
     step_ctx: BlockStepContext,
 ) -> f64 {
+    let raw_label = message.message_text();
     if raw_label.trim().is_empty() {
         return step_ctx.block_base_step_empty;
     }
 
     let label = bracketize_sequence_block_label(raw_label);
-    if let Some((_, height)) = measure_sequence_math_label(
-        frame_ctx.measurer,
+    let prepared_math = frame_ctx.math_sidecar.prepare_or_get(
+        super::SequenceMathOccurrence::BlockLabel(message.id.clone()),
         &label,
+        frame_ctx.math_terminal_style,
+    );
+    if let Some((_, height)) = measure_prepared_sequence_math_label(
+        prepared_math.as_deref(),
         frame_ctx.loop_text_style,
-        frame_ctx.math_config,
-        frame_ctx.math_renderer,
         SequenceMathHeightMode::Bound,
     ) {
         return step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height);
@@ -247,7 +251,8 @@ struct BlockFrameWidthContext<'a> {
     note_text_style: &'a TextStyle,
     loop_text_style: &'a TextStyle,
     math_config: &'a MermaidConfig,
-    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     message_metrics: SequenceMessageMetricView<'a>,
 }
 
@@ -276,7 +281,8 @@ impl<'a> BlockStepPlanContext<'a> {
             note_text_style: self.note_text_style,
             loop_text_style: self.loop_text_style,
             math_config: self.math_config,
-            math_renderer: self.math_renderer,
+            math_terminal_style: self.math_terminal_style,
+            math_sidecar: self.math_sidecar,
             message_metrics: self.message_metrics,
         }
     }
@@ -486,7 +492,9 @@ fn calculate_sequence_block_bounds(
                     measurer: ctx.measurer,
                     note_text_style: ctx.note_text_style,
                     math_config: ctx.math_config,
-                    math_renderer: ctx.math_renderer,
+                    math_terminal_style: ctx.math_terminal_style,
+                    math_sidecar: ctx.math_sidecar,
+                    message_index,
                 },
             ) else {
                 continue;
@@ -531,6 +539,7 @@ mod tests {
         BlockBoundsSummary, BlockFrameWidthContext, BlockHorizontalBounds, BlockStepContext,
         SequenceMessageMetricView, block_label_step, calculate_sequence_block_bounds,
     };
+    use crate::sequence::SequenceMathSidecar;
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::MermaidConfig;
     use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
@@ -577,6 +586,7 @@ mod tests {
         let msg_style = TextStyle::default();
         let note_style = TextStyle::default();
         let math_config = MermaidConfig::default();
+        let math_sidecar = SequenceMathSidecar::default();
 
         calculate_sequence_block_bounds(
             messages,
@@ -596,7 +606,13 @@ mod tests {
                 note_text_style: &note_style,
                 loop_text_style: &msg_style,
                 math_config: &math_config,
-                math_renderer: None,
+                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &msg_style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),
             },
         )
@@ -740,9 +756,11 @@ mod tests {
         let measurer = ExpectedBlockLabelMeasurer;
         let text_style = TextStyle::default();
         let math_config = MermaidConfig::default();
+        let math_sidecar = SequenceMathSidecar::default();
 
+        let block_message = message("title", 10, None, None, "[Action 1]");
         let step = block_label_step(
-            "[Action 1]",
+            &block_message,
             None,
             BlockFrameWidthContext {
                 actor_index: &actor_index,
@@ -760,7 +778,13 @@ mod tests {
                 note_text_style: &text_style,
                 loop_text_style: &text_style,
                 math_config: &math_config,
-                math_renderer: None,
+                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &text_style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),
             },
             BlockStepContext {

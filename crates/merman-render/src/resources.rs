@@ -961,6 +961,38 @@ impl OperationWorkMeter {
         }
     }
 
+    /// Checks whether additional prepared-artifact bytes fit without retaining them.
+    ///
+    /// Prepared producers use this before invoking or copying an opaque backend result. The
+    /// owning sidecar still performs the atomic reservation once the exact artifact exists.
+    pub(crate) fn preflight_prepared_text_retained_bytes(
+        &self,
+        additional_bytes: usize,
+    ) -> Result<(), OperationWorkError> {
+        self.checkpoint(OperationPhase::Layout)?;
+        let current = self
+            .prepared_text_retained_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let next = current.checked_add(additional_bytes).ok_or_else(|| {
+            OperationWorkError::ResourceLimitExceeded(accumulation_overflow(
+                self.policy,
+                ResourceLimitPhase::LayoutModel,
+                RenderResourceLimitId::MaxPreparedTextRetainedBytes,
+            ))
+        })?;
+        self.policy
+            .check_prepared_text_retained_bytes(next)
+            .map_err(OperationWorkError::ResourceLimitExceeded)
+    }
+
+    /// Returns the currently unreserved prepared-artifact budget for bounded policies.
+    pub(crate) fn remaining_prepared_text_retained_bytes(&self) -> Option<usize> {
+        let maximum = self
+            .policy
+            .value(ResourceLimitId::MaxPreparedTextRetainedBytes)?;
+        Some(maximum.saturating_sub(self.prepared_text_retained_bytes()))
+    }
+
     fn release_prepared_text_retained_bytes(&self, released_bytes: usize) {
         if released_bytes == 0 {
             return;
@@ -1581,6 +1613,30 @@ mod tests {
         assert_eq!(error.max, 10);
         assert_eq!(meter.prepared_text_retained_bytes(), 8);
         assert_eq!(meter.prepared_text_retained_bytes_peak(), 8);
+
+        drop(reservation);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn operation_prepared_text_preflight_observes_existing_reservations_without_advancing() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 10)
+            .unwrap();
+        let meter = std::sync::Arc::new(OperationWorkMeter::new(policy));
+        let reservation = meter.reserve_prepared_text_retained_bytes(6).unwrap();
+
+        assert_eq!(meter.remaining_prepared_text_retained_bytes(), Some(4));
+        meter.preflight_prepared_text_retained_bytes(4).unwrap();
+        assert_eq!(meter.prepared_text_retained_bytes(), 6);
+
+        let error = meter.preflight_prepared_text_retained_bytes(5).unwrap_err();
+        let OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("expected prepared-text resource limit")
+        };
+        assert_eq!(error.actual, 11);
+        assert_eq!(error.max, 10);
+        assert_eq!(meter.prepared_text_retained_bytes(), 6);
 
         drop(reservation);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);

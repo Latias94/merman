@@ -232,8 +232,7 @@ fn render_sequence_diagram_svg_inner(
         model,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
-        sanitize_config,
-        math_renderer: options.math_renderer(),
+        math_sidecar: prepared.math_sidecar(),
         actor_wrap_width: settings.actor_wrap_width,
         actor_height: settings.actor_height,
         label_box_height: settings.label_box_height,
@@ -356,7 +355,6 @@ fn render_sequence_diagram_svg_inner(
         prepared,
         sanitize_config,
         measurer,
-        options.math_renderer(),
     );
 
     let interaction_ctx = SequenceInteractionRenderContext {
@@ -365,8 +363,7 @@ fn render_sequence_diagram_svg_inner(
         block_layouts_by_id: &layout.block_layouts_by_id,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
-        sanitize_config,
-        math_renderer: options.math_renderer(),
+        math_sidecar: prepared.math_sidecar(),
         settings: &settings,
         typography: prepared.typography(),
         block_label_box_metrics: prepared.block_label_box_metrics(),
@@ -416,8 +413,7 @@ fn render_sequence_diagram_svg_inner(
         model,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
-        sanitize_config,
-        math_renderer: options.math_renderer(),
+        math_sidecar: prepared.math_sidecar(),
         measurer,
         message_align: settings.message_align.as_str(),
         diagram_id,

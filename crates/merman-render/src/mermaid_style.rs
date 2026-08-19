@@ -207,6 +207,36 @@ pub(crate) fn is_supported_css_color_value(value: &str) -> bool {
     merman_core::theme_color::ThemeColor::parse(value.trim()).is_ok()
 }
 
+pub(crate) fn is_safe_browser_css_color_value(value: &str) -> bool {
+    if is_supported_css_color_value(value) {
+        return true;
+    }
+
+    let value = value.trim();
+    if [
+        "currentcolor",
+        "inherit",
+        "initial",
+        "unset",
+        "revert",
+        "revert-layer",
+    ]
+    .into_iter()
+    .any(|keyword| value.eq_ignore_ascii_case(keyword))
+    {
+        return true;
+    }
+
+    if !value
+        .get(..4)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("var("))
+    {
+        return false;
+    }
+    parse_style_declaration(&format!("color:{value}"))
+        .is_some_and(|declaration| declaration.property() == "color" && !declaration.important())
+}
+
 pub(crate) fn is_supported_css_text_decoration_value(value: &str) -> bool {
     if value.trim().eq_ignore_ascii_case("none") {
         return true;
@@ -693,6 +723,27 @@ mod tests {
             None
         );
         assert_eq!(parse_style_declaration("fill: red !foo"), None);
+    }
+
+    #[test]
+    fn browser_color_values_accept_host_variables_without_admitting_css_injection() {
+        for value in [
+            "#123456",
+            "currentColor",
+            "inherit",
+            "var(--message-color)",
+            "var(--message-color, rgb(15 23 42))",
+        ] {
+            assert!(is_safe_browser_css_color_value(value), "value={value}");
+        }
+        for value in [
+            "var(--message-color);background:red",
+            "url(https://example.test/paint.svg)",
+            "expression(alert(1))",
+            "calc(1px + 2px)",
+        ] {
+            assert!(!is_safe_browser_css_color_value(value), "value={value}");
+        }
     }
 
     #[test]

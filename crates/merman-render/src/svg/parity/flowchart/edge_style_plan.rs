@@ -454,6 +454,18 @@ mod tests {
             &plan.edges.get("e1").expect("first edge").artifact,
             &plan.edges.get("e2").expect("second edge").artifact,
         ));
+        let base = crate::text::TextStyle::default();
+        let resolution = plan
+            .edge_label_text_style_for(crate::flowchart::FlowchartEdgeKey::new(0), &base)
+            .expect("compiled edge label style");
+        let foreground = resolution
+            .terminal_foreground()
+            .expect("compiled class color winner");
+        assert_eq!(foreground.value(), "#fff");
+        assert_eq!(
+            foreground.provenance(),
+            crate::flowchart::FlowchartTerminalForegroundProvenance::AssignedClass
+        );
     }
 
     #[test]

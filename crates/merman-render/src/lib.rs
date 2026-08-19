@@ -744,6 +744,10 @@ impl<'a> LayoutExecution<'a> {
         self.family.session().math_renderer()
     }
 
+    pub(crate) fn math_backend(&self) -> Option<&crate::math::ConfiguredMathBackend> {
+        self.family.session().math_backend()
+    }
+
     pub(crate) const fn resource_policy(&self) -> RenderResourcePolicy {
         self.family.session().resource_policy()
     }

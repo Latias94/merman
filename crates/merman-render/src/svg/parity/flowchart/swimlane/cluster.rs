@@ -120,6 +120,7 @@ fn write_swimlane_rect(
 
 fn lane_label_metrics(
     ctx: &FlowchartRenderCtx<'_>,
+    cluster_id: &str,
     lane: &SwimlaneLaneLayout,
     render_title: &str,
 ) -> crate::text::TextMetrics {
@@ -141,6 +142,23 @@ fn lane_label_metrics(
     } else {
         WrapMode::SvgLike
     };
+    let prepared_math = ctx
+        .svg_label_sidecar
+        .and_then(|sidecar| {
+            sidecar
+                .swimlane_group_title_owner(cluster_id)
+                .map(|owner| sidecar.prepared_math(owner, render_title))
+        })
+        .unwrap_or_default();
+    if let crate::flowchart::FlowchartPreparedMathResolution::Prepared(prepared) = prepared_math {
+        return prepared.metrics();
+    }
+    let math_renderer = matches!(
+        prepared_math,
+        crate::flowchart::FlowchartPreparedMathResolution::NotPrepared
+    )
+    .then_some(ctx.math_renderer)
+    .flatten();
     flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
         measurer: ctx.measurer,
         raw_label: render_title,
@@ -151,7 +169,7 @@ fn lane_label_metrics(
         max_width_px: Some(lane.width.max(1.0)),
         wrap_mode,
         config: ctx.config,
-        math_renderer: ctx.math_renderer,
+        math_renderer,
     })
 }
 
@@ -178,7 +196,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             )
         })
         .unwrap_or(lane.title.as_str());
-    let label_metrics = lane_label_metrics(ctx, lane, render_title);
+    let label_metrics = lane_label_metrics(ctx, cluster.id.as_str(), lane, render_title);
     let label_width = label_metrics.width.max(0.0);
     let label_height = label_metrics.height.max(0.0);
 
@@ -314,8 +332,21 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     );
 
     if ctx.swimlane_title_html_labels {
-        let title_html =
-            flowchart_label_html(render_title, "markdown", ctx.config, ctx.math_renderer);
+        let prepared_math = ctx
+            .svg_label_sidecar
+            .and_then(|sidecar| {
+                sidecar
+                    .swimlane_group_title_owner(cluster.id.as_str())
+                    .map(|owner| sidecar.prepared_math(owner, render_title))
+            })
+            .unwrap_or_default();
+        let title_html = flowchart_label_html_with_prepared_math(
+            render_title,
+            "markdown",
+            ctx.config,
+            ctx.math_renderer,
+            prepared_math,
+        );
         let transform = if is_lr {
             label_transform
         } else {

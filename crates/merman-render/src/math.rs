@@ -6,9 +6,17 @@
 //! text. The `math` feature installs the pure-Rust RaTeX backend by default; hosts may still supply
 //! another implementation explicitly.
 
+mod prepared;
+
+pub(crate) use prepared::{
+    ConfiguredMathBackend, MathPreparationOutcome, MathPreparationUnavailable,
+    PREPARED_MATH_CLASS_ATTRIBUTE, PREPARED_MATH_NATIVE_AVAILABLE_ATTRIBUTE,
+    PREPARED_MATH_PROJECTION_TEMPLATE_OPEN, PrepareMathLabelRequest, PreparedMathLabel,
+};
+
 #[cfg(feature = "math")]
 use crate::text::split_html_br_lines;
-use crate::text::{TextMetrics, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -17,6 +25,76 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+
+/// Browser HTML and geometry prepared together by one math-backend operation.
+///
+/// The combined result lets operation-scoped preparation avoid a cold `render` process followed
+/// by a second `measure` process. Existing backends remain source compatible because
+/// [`MathRenderer`] supplies measure-first default implementations.
+#[derive(Debug, Clone)]
+pub struct PreparedMathHtmlLabel {
+    html: String,
+    metrics: TextMetrics,
+    max_line_height_px: f64,
+    native_svg: Option<String>,
+}
+
+impl PreparedMathHtmlLabel {
+    pub fn new(html: impl Into<String>, metrics: TextMetrics) -> Self {
+        let max_line_height_px = metrics.height / metrics.line_count.max(1) as f64;
+        Self::with_max_line_height(html, metrics, max_line_height_px)
+    }
+
+    pub fn with_max_line_height(
+        html: impl Into<String>,
+        metrics: TextMetrics,
+        max_line_height_px: f64,
+    ) -> Self {
+        Self {
+            html: html.into(),
+            metrics,
+            max_line_height_px,
+            native_svg: None,
+        }
+    }
+
+    pub(crate) fn with_native_svg(
+        html: impl Into<String>,
+        metrics: TextMetrics,
+        max_line_height_px: f64,
+        native_svg: impl Into<String>,
+    ) -> Self {
+        let mut prepared = Self::with_max_line_height(html, metrics, max_line_height_px);
+        prepared.native_svg = Some(native_svg.into());
+        prepared
+    }
+
+    pub fn html(&self) -> &str {
+        &self.html
+    }
+
+    pub const fn metrics(&self) -> TextMetrics {
+        self.metrics
+    }
+
+    pub const fn max_line_height_px(&self) -> f64 {
+        self.max_line_height_px
+    }
+
+    pub fn into_parts(self) -> (String, TextMetrics, f64) {
+        let (html, metrics, max_line_height_px, _) = self.into_parts_with_native();
+        (html, metrics, max_line_height_px)
+    }
+
+    pub(crate) fn into_parts_with_native(self) -> (String, TextMetrics, f64, Option<String>) {
+        (
+            self.html,
+            self.metrics,
+            self.max_line_height_px,
+            self.native_svg,
+        )
+    }
+}
 
 /// Optional math renderer used to transform label HTML and (optionally) provide measurements.
 ///
@@ -67,6 +145,98 @@ pub trait MathRenderer: std::fmt::Debug {
         _config: &MermaidConfig,
     ) -> Option<TextMetrics> {
         None
+    }
+
+    /// Optionally measures a Sequence math label under its resolved terminal text style.
+    ///
+    /// This default preserves source compatibility for existing host backends. Implementations
+    /// that can honor the resolved role font size may override it; older implementations retain
+    /// their existing Sequence-specific measurement behavior.
+    fn measure_sequence_html_label_with_style(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        _style: &TextStyle,
+    ) -> Option<TextMetrics> {
+        self.measure_sequence_html_label(text, config)
+    }
+
+    /// Prepares one Flowchart browser label with its geometry.
+    ///
+    /// The compatibility default deliberately measures first. A declined measurement therefore
+    /// cannot trigger rendering work, and existing implementations need not add a new method.
+    fn prepare_html_label(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+        max_width_px: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> Option<PreparedMathHtmlLabel> {
+        let metrics = self.measure_html_label(text, config, style, max_width_px, wrap_mode)?;
+        let html = self.render_html_label(text, config)?;
+        Some(PreparedMathHtmlLabel::new(html, metrics))
+    }
+
+    /// Prepares one Flowchart label with the family-resolved terminal style and text measurer.
+    ///
+    /// The default preserves compatibility by delegating to [`Self::prepare_html_label`]. A
+    /// backend that can prepare prose and formulas together may override this hook so it does not
+    /// need a render/measure retry or a second style-resolution path.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_html_label_with_resolved_style(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+        _foreground: &str,
+        text_measurer: Option<&dyn TextMeasurer>,
+        max_width_px: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> Option<PreparedMathHtmlLabel> {
+        if let Some(prepared) =
+            self.prepare_html_label(text, config, style, max_width_px, wrap_mode)
+        {
+            return Some(prepared);
+        }
+        let metrics = text_measurer?.measure_wrapped(text, style, max_width_px, wrap_mode);
+        let html = self.render_html_label(text, config)?;
+        Some(PreparedMathHtmlLabel::new(html, metrics))
+    }
+
+    /// Prepares one Sequence browser label with its resolved terminal text style.
+    fn prepare_sequence_html_label(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+    ) -> Option<PreparedMathHtmlLabel> {
+        let metrics = self.measure_sequence_html_label_with_style(text, config, style)?;
+        let html = self.render_sequence_html_label(text, config)?;
+        Some(PreparedMathHtmlLabel::new(html, metrics))
+    }
+
+    /// Prepares one Sequence label with the family-resolved terminal style and text measurer.
+    ///
+    /// The default preserves compatibility by delegating to
+    /// [`Self::prepare_sequence_html_label`]. Backends that prepare mixed prose and formulas may
+    /// override this hook to share the family measurer and terminal foreground with layout.
+    #[doc(hidden)]
+    fn prepare_sequence_html_label_with_resolved_style(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+        _foreground: &str,
+        text_measurer: Option<&dyn TextMeasurer>,
+    ) -> Option<PreparedMathHtmlLabel> {
+        if let Some(prepared) = self.prepare_sequence_html_label(text, config, style) {
+            return Some(prepared);
+        }
+        let metrics = text_measurer?.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+        let html = self.render_sequence_html_label(text, config)?;
+        Some(PreparedMathHtmlLabel::new(html, metrics))
     }
 }
 
@@ -280,72 +450,22 @@ struct RatexRenderedMath {
 
 #[cfg(feature = "math")]
 impl RatexMathRenderer {
-    fn normalized_text(text: &str) -> String {
+    pub(super) fn normalized_text(text: &str) -> String {
         text.replace("\\\\", "\\")
     }
 
     fn math_only_lines(text: &str) -> Option<Vec<String>> {
-        let normalized = Self::normalized_text(text);
-        let mut formulas = Vec::new();
-        for raw_line in split_html_br_lines(&normalized) {
-            let line = raw_line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let inner = line.strip_prefix("$$")?.strip_suffix("$$")?;
-            if inner.contains("$$") {
-                return None;
-            }
-            formulas.push(inner.to_string());
-        }
-        if formulas.is_empty() {
-            None
-        } else {
-            Some(formulas)
-        }
+        prepared::compiled_ratex_math_only_lines(text).map(|lines| {
+            lines
+                .into_iter()
+                .map(|(_source_line_index, formula)| formula)
+                .collect()
+        })
     }
 
     fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
-        let ast = ratex_parser::parse(latex).ok()?;
-        let layout_options = ratex_layout::LayoutOptions::default()
-            .with_style(ratex_types::MathStyle::Display)
-            .with_color(ratex_types::Color::BLACK);
-        let layout_box = ratex_layout::layout(&ast, &layout_options);
-        let display_list = ratex_layout::to_display_list(&layout_box);
-        let width_em = Self::emitted_em_dimension(display_list.width.max(0.0));
-        let height_em = Self::emitted_em_dimension(display_list.total_height().max(0.0));
-        let svg = ratex_svg::render_to_svg(
-            &display_list,
-            &ratex_svg::SvgOptions {
-                font_size: 1.0,
-                padding: 0.0,
-                stroke_width: 0.04,
-                embed_glyphs: true,
-                font_dir: String::new(),
-            },
-        );
-        Some((
-            Self::svg_with_em_size(svg, width_em, height_em),
-            width_em,
-            height_em,
-        ))
-    }
-
-    fn svg_with_em_size(svg: String, width_em: f64, height_em: f64) -> String {
-        let Some(open_end) = svg.find('>') else {
-            return svg;
-        };
-        let Some(body_with_close) = svg.get(open_end + 1..) else {
-            return svg;
-        };
-        let Some(body) = body_with_close.strip_suffix("</svg>") else {
-            return svg;
-        };
-        let width = Self::fmt_num(width_em);
-        let height = Self::fmt_num(height_em);
-        format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
-        )
+        let rendered = prepared::render_compiled_ratex_formula(latex, "#000000")?;
+        Some((rendered.svg, rendered.width_em, rendered.height_em))
     }
 
     fn render_math_only_label(text: &str) -> Option<RatexRenderedMath> {
@@ -409,20 +529,6 @@ impl RatexMathRenderer {
             line_count: rendered.line_count,
         }
     }
-
-    fn emitted_em_dimension(value: f64) -> f64 {
-        Self::fmt_num(value).parse().unwrap_or(0.0)
-    }
-
-    fn fmt_num(n: f64) -> String {
-        let s = format!("{n:.6}");
-        let s = s.trim_end_matches('0').trim_end_matches('.');
-        if s.is_empty() || s == "-" {
-            "0".to_string()
-        } else {
-            s.to_string()
-        }
-    }
 }
 
 #[cfg(feature = "math")]
@@ -456,16 +562,60 @@ impl MathRenderer for RatexMathRenderer {
     fn measure_sequence_html_label(
         &self,
         text: &str,
+        config: &MermaidConfig,
+    ) -> Option<TextMetrics> {
+        self.measure_sequence_html_label_with_style(text, config, &TextStyle::default())
+    }
+
+    fn measure_sequence_html_label_with_style(
+        &self,
+        text: &str,
         _config: &MermaidConfig,
+        style: &TextStyle,
     ) -> Option<TextMetrics> {
         if !text.contains("$$") {
             return None;
         }
         let rendered = Self::render_math_only_label(text)?;
-        Some(Self::metrics_from_em(
-            &rendered,
-            TextStyle::default().font_size,
-        ))
+        Some(Self::metrics_from_em(&rendered, style.font_size))
+    }
+
+    fn prepare_html_label_with_resolved_style(
+        &self,
+        text: &str,
+        _config: &MermaidConfig,
+        style: &TextStyle,
+        foreground: &str,
+        text_measurer: Option<&dyn TextMeasurer>,
+        max_width_px: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> Option<PreparedMathHtmlLabel> {
+        prepared::prepare_compiled_ratex_html_label(
+            text,
+            style,
+            foreground,
+            text_measurer?,
+            max_width_px,
+            wrap_mode,
+        )
+    }
+
+    fn prepare_sequence_html_label_with_resolved_style(
+        &self,
+        text: &str,
+        _config: &MermaidConfig,
+        style: &TextStyle,
+        foreground: &str,
+        text_measurer: Option<&dyn TextMeasurer>,
+    ) -> Option<PreparedMathHtmlLabel> {
+        prepared::prepare_compiled_ratex_html_label(
+            text,
+            style,
+            foreground,
+            text_measurer?,
+            None,
+            WrapMode::HtmlLike,
+        )
     }
 }
 
@@ -482,6 +632,7 @@ struct ProbeCacheKey {
     font_family: Option<String>,
     font_size_bits: u64,
     font_weight: Option<String>,
+    font_style: Option<String>,
     max_width_bits: u64,
 }
 
@@ -491,6 +642,32 @@ struct ProbeCacheValue {
     width: f64,
     height: f64,
     line_count: usize,
+    max_line_height_px: f64,
+}
+
+impl ProbeCacheValue {
+    fn from_response(value: NodeProbeResponse) -> Option<Self> {
+        if !value.width.is_finite() || !value.height.is_finite() {
+            return None;
+        }
+        let height = value.height.max(0.0);
+        let max_line_height_px = value
+            .max_line_height_px
+            .filter(|line_height| {
+                line_height.is_finite()
+                    && *line_height >= 0.0
+                    && (height == 0.0 || *line_height > 0.0)
+            })
+            .unwrap_or(height);
+        let line_count = value.html.match_indices("<div").count().max(1);
+        Some(Self {
+            html: value.html,
+            width: value.width.max(0.0),
+            height,
+            line_count,
+            max_line_height_px,
+        })
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -527,6 +704,8 @@ struct NodeProbeResponse {
     html: String,
     width: f64,
     height: f64,
+    #[serde(rename = "maxLineHeightPx")]
+    max_line_height_px: Option<f64>,
 }
 
 /// Optional KaTeX backend that shells out to a local Node.js toolchain.
@@ -544,7 +723,7 @@ pub struct NodeKatexMathRenderer {
     node_command: PathBuf,
     render_cache: Mutex<HashMap<RenderCacheKey, Option<String>>>,
     probe_cache: Mutex<HashMap<ProbeCacheKey, Option<ProbeCacheValue>>>,
-    sequence_probe_cache: Mutex<HashMap<RenderCacheKey, Option<ProbeCacheValue>>>,
+    sequence_probe_cache: Mutex<HashMap<ProbeCacheKey, Option<ProbeCacheValue>>>,
 }
 
 impl NodeKatexMathRenderer {
@@ -610,6 +789,11 @@ impl NodeKatexMathRenderer {
             && !font_weight.trim().is_empty()
         {
             let _ = write!(&mut out, "font-weight: {};", font_weight.trim());
+        }
+        if let Some(font_style) = style.font_style.as_deref()
+            && !font_style.trim().is_empty()
+        {
+            let _ = write!(&mut out, "font-style: {};", font_style.trim());
         }
         out
     }
@@ -693,6 +877,7 @@ impl NodeKatexMathRenderer {
             font_family: style.font_family.clone(),
             font_size_bits: style.font_size.to_bits(),
             font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
             max_width_bits: max_width.to_bits(),
         };
         if let Some(cached) = self
@@ -717,18 +902,7 @@ impl NodeKatexMathRenderer {
                 max_width_px: max_width,
             },
         );
-        let probed = response.and_then(|value| {
-            if !value.width.is_finite() || !value.height.is_finite() {
-                return None;
-            }
-            let line_count = value.html.match_indices("<div").count().max(1);
-            Some(ProbeCacheValue {
-                html: value.html,
-                width: value.width.max(0.0),
-                height: value.height.max(0.0),
-                line_count,
-            })
-        });
+        let probed = response.and_then(ProbeCacheValue::from_response);
 
         if let Some(probed_value) = probed.clone()
             && let Ok(mut render_cache) = self.render_cache.lock()
@@ -744,8 +918,21 @@ impl NodeKatexMathRenderer {
         probed
     }
 
-    fn sequence_probe_cached(&self, text: &str, config: &MermaidConfig) -> Option<ProbeCacheValue> {
-        let key = Self::render_key(text, config);
+    fn sequence_probe_cached(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+    ) -> Option<ProbeCacheValue> {
+        let render = Self::render_key(text, config);
+        let key = ProbeCacheKey {
+            render: render.clone(),
+            font_family: style.font_family.clone(),
+            font_size_bits: style.font_size.to_bits(),
+            font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
+            max_width_bits: 0,
+        };
         if let Some(cached) = self
             .sequence_probe_cache
             .lock()
@@ -757,32 +944,23 @@ impl NodeKatexMathRenderer {
 
         let response: Option<NodeProbeResponse> = self.run_node_request(
             "probe-sequence",
-            &NodeRenderRequest {
-                text: key.text.clone(),
+            &NodeProbeRequest {
+                text: render.text.clone(),
                 config: NodeMathConfig {
-                    legacy_mathml: key.legacy_mathml,
-                    force_legacy_mathml: key.force_legacy_mathml,
+                    legacy_mathml: render.legacy_mathml,
+                    force_legacy_mathml: render.force_legacy_mathml,
                 },
+                style_css: Self::style_css(style),
+                max_width_px: 0.0,
             },
         );
-        let probed = response.and_then(|value| {
-            if !value.width.is_finite() || !value.height.is_finite() {
-                return None;
-            }
-            let line_count = value.html.match_indices("<div").count().max(1);
-            Some(ProbeCacheValue {
-                html: value.html,
-                width: value.width.max(0.0),
-                height: value.height.max(0.0),
-                line_count,
-            })
-        });
+        let probed = response.and_then(ProbeCacheValue::from_response);
 
         if let Some(probed_value) = probed.clone()
             && let Ok(mut render_cache) = self.render_cache.lock()
         {
             render_cache
-                .entry(key.clone())
+                .entry(render)
                 .or_insert_with(|| Some(probed_value.html.clone()));
         }
         if let Ok(mut cache) = self.sequence_probe_cache.lock() {
@@ -828,18 +1006,131 @@ impl MathRenderer for NodeKatexMathRenderer {
         if !text.contains("$$") {
             return None;
         }
-        let probed = self.sequence_probe_cached(text, config)?;
+        let probed = self.sequence_probe_cached(text, config, &TextStyle::default())?;
         Some(TextMetrics {
             width: probed.width,
             height: probed.height,
             line_count: probed.line_count,
         })
     }
+
+    fn measure_sequence_html_label_with_style(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+    ) -> Option<TextMetrics> {
+        if !text.contains("$$") {
+            return None;
+        }
+        let probed = self.sequence_probe_cached(text, config, style)?;
+        Some(TextMetrics {
+            width: probed.width,
+            height: probed.height,
+            line_count: probed.line_count,
+        })
+    }
+
+    fn prepare_html_label(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+        max_width_px: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> Option<PreparedMathHtmlLabel> {
+        if wrap_mode != WrapMode::HtmlLike || !text.contains("$$") {
+            return None;
+        }
+        let probed = self.probe_cached(text, config, style, max_width_px, wrap_mode)?;
+        let metrics = TextMetrics {
+            width: probed.width,
+            height: probed.height,
+            line_count: probed.line_count,
+        };
+        Some(PreparedMathHtmlLabel::with_max_line_height(
+            probed.html,
+            metrics,
+            probed.max_line_height_px,
+        ))
+    }
+
+    fn prepare_sequence_html_label(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+        style: &TextStyle,
+    ) -> Option<PreparedMathHtmlLabel> {
+        if !text.contains("$$") {
+            return None;
+        }
+        let probed = self.sequence_probe_cached(text, config, style)?;
+        let metrics = TextMetrics {
+            width: probed.width,
+            height: probed.height,
+            line_count: probed.line_count,
+        };
+        Some(PreparedMathHtmlLabel::with_max_line_height(
+            probed.html,
+            metrics,
+            probed.max_line_height_px,
+        ))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_combined_math_preparation_estimates_a_per_line_height() {
+        let metrics = TextMetrics {
+            width: 80.0,
+            height: 48.0,
+            line_count: 2,
+        };
+
+        let prepared = PreparedMathHtmlLabel::new("<span>x</span>", metrics);
+
+        assert_eq!(prepared.max_line_height_px(), 24.0);
+    }
+
+    #[test]
+    fn node_probe_rejects_a_zero_line_height_for_visible_content() {
+        let response = NodeProbeResponse {
+            html: "<div>x</div>".to_string(),
+            width: 12.0,
+            height: 20.0,
+            max_line_height_px: Some(0.0),
+        };
+
+        let prepared = ProbeCacheValue::from_response(response).expect("valid probe geometry");
+
+        assert_eq!(prepared.max_line_height_px, 20.0);
+    }
+
+    #[test]
+    fn node_probe_style_and_cache_identity_include_font_style() {
+        let config = MermaidConfig::default();
+        let render = NodeKatexMathRenderer::render_key("$$x$$", &config);
+        let normal = TextStyle::default();
+        let italic = TextStyle {
+            font_style: Some("italic".to_string()),
+            ..normal.clone()
+        };
+        let key = |style: &TextStyle| ProbeCacheKey {
+            render: render.clone(),
+            font_family: style.font_family.clone(),
+            font_size_bits: style.font_size.to_bits(),
+            font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
+            max_width_bits: 200.0_f64.to_bits(),
+        };
+
+        assert_ne!(key(&normal), key(&italic));
+        assert!(!NodeKatexMathRenderer::style_css(&normal).contains("font-style"));
+        assert!(NodeKatexMathRenderer::style_css(&italic).contains("font-style: italic;"));
+    }
 
     #[test]
     fn delimited_math_detection_requires_a_complete_pair_on_one_label_line() {
@@ -1026,17 +1317,11 @@ mod tests {
         let (svg, width_em, height_em) = RatexMathRenderer::render_formula_svg_em("x^2")
             .expect("ratex should emit the formula SVG");
         assert!(
-            svg.contains(&format!(
-                "width=\"{}em\"",
-                RatexMathRenderer::fmt_num(width_em)
-            )),
+            svg.contains(&format!("width=\"{}em\"", prepared::fmt_num(width_em))),
             "unexpected emitted SVG width: {svg}"
         );
         assert!(
-            svg.contains(&format!(
-                "height=\"{}em\"",
-                RatexMathRenderer::fmt_num(height_em)
-            )),
+            svg.contains(&format!("height=\"{}em\"", prepared::fmt_num(height_em))),
             "unexpected emitted SVG height: {svg}"
         );
 
@@ -1114,12 +1399,14 @@ mod tests {
             width: 10.008,
             height: 20.008,
             line_count: 1,
+            max_line_height_px: 20.008,
         };
         let key = ProbeCacheKey {
             render: render.clone(),
             font_family: style.font_family.clone(),
             font_size_bits: style.font_size.to_bits(),
             font_weight: style.font_weight.clone(),
+            font_style: style.font_style.clone(),
             max_width_bits: 200.0_f64.to_bits(),
         };
         renderer
@@ -1127,11 +1414,17 @@ mod tests {
             .lock()
             .unwrap()
             .insert(key, Some(probe.clone()));
-        renderer
-            .sequence_probe_cache
-            .lock()
-            .unwrap()
-            .insert(render, Some(probe));
+        renderer.sequence_probe_cache.lock().unwrap().insert(
+            ProbeCacheKey {
+                render,
+                font_family: style.font_family.clone(),
+                font_size_bits: style.font_size.to_bits(),
+                font_weight: style.font_weight.clone(),
+                font_style: style.font_style.clone(),
+                max_width_bits: 0,
+            },
+            Some(probe),
+        );
 
         let flowchart = renderer
             .measure_html_label("$$x$$", &config, &style, Some(200.0), WrapMode::HtmlLike)

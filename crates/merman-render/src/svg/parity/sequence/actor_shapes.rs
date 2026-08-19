@@ -4,14 +4,15 @@ use super::math_label::sequence_katex_label;
 use crate::sequence::SequenceMathHeightMode;
 use merman_core::diagrams::sequence::SequenceActor;
 
+#[derive(Clone, Copy)]
 pub(super) struct ActorLabelContext<'a> {
     wrap_width_px: f64,
     measurer: &'a dyn TextMeasurer,
     style: &'a TextStyle,
     typography: &'a crate::sequence::SequenceResolvedTypography,
     typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-    config: &'a merman_core::MermaidConfig,
-    math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    actor_index: Option<usize>,
 }
 
 impl<'a> ActorLabelContext<'a> {
@@ -21,8 +22,7 @@ impl<'a> ActorLabelContext<'a> {
         style: &'a TextStyle,
         typography: &'a crate::sequence::SequenceResolvedTypography,
         typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-        config: &'a merman_core::MermaidConfig,
-        math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+        math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     ) -> Self {
         Self {
             wrap_width_px,
@@ -30,8 +30,15 @@ impl<'a> ActorLabelContext<'a> {
             style,
             typography,
             typography_receipt,
-            config,
-            math_renderer,
+            math_sidecar,
+            actor_index: None,
+        }
+    }
+
+    pub(super) fn for_actor(&self, actor_index: usize) -> Self {
+        Self {
+            actor_index: Some(actor_index),
+            ..*self
         }
     }
 
@@ -339,14 +346,15 @@ fn write_actor_label(
     });
     let rendered_label = wrapped_label.as_deref().unwrap_or(label);
 
-    if let Some(katex) = sequence_katex_label(
-        rendered_label,
-        ctx.measurer,
-        ctx.style,
-        ctx.config,
-        ctx.math_renderer,
-        SequenceMathHeightMode::Actor,
-    ) {
+    let prepared_math = ctx.actor_index.and_then(|actor_index| {
+        ctx.math_sidecar.get(
+            &crate::sequence::SequenceMathOccurrence::Actor(actor_index),
+            rendered_label,
+        )
+    });
+    if let Some(katex) =
+        sequence_katex_label(prepared_math, ctx.style, SequenceMathHeightMode::Actor)
+    {
         ctx.typography_receipt
             .record_candidate(crate::sequence::SequenceTextSurface::ParticipantLabel);
         let x = cx - katex.width / 2.0;

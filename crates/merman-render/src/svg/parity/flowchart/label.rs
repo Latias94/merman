@@ -102,6 +102,26 @@ pub(in crate::svg::parity) fn flowchart_label_html(
     flowchart_label_html_impl(label, label_type, config, math_renderer)
 }
 
+pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_math<'a>(
+    label: &'a str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    prepared_math: crate::flowchart::FlowchartPreparedMathResolution<'a>,
+) -> std::borrow::Cow<'a, str> {
+    match prepared_math {
+        crate::flowchart::FlowchartPreparedMathResolution::Prepared(prepared) => {
+            std::borrow::Cow::Borrowed(prepared.browser_xhtml())
+        }
+        crate::flowchart::FlowchartPreparedMathResolution::Unavailable(_reason) => {
+            std::borrow::Cow::Owned(flowchart_label_html_impl(label, label_type, config, None))
+        }
+        crate::flowchart::FlowchartPreparedMathResolution::NotPrepared => std::borrow::Cow::Owned(
+            flowchart_label_html_impl(label, label_type, config, math_renderer),
+        ),
+    }
+}
+
 fn flowchart_label_html_impl(
     label: &str,
     label_type: &str,
@@ -554,10 +574,44 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
 #[cfg(test)]
 mod tests {
     use super::{
-        flowchart_label_html_impl, is_single_img_label, normalize_flowchart_img_tags,
-        starts_with_ascii_case_insensitive, wrap_flowchart_svg_source_word_lines,
-        write_flowchart_svg_source_word_lines,
+        flowchart_label_html_impl, flowchart_label_html_with_prepared_math, is_single_img_label,
+        normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
+        wrap_flowchart_svg_source_word_lines, write_flowchart_svg_source_word_lines,
     };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug)]
+    struct ReentryProbe<'a>(&'a AtomicUsize);
+
+    impl crate::math::MathRenderer for ReentryProbe<'_> {
+        fn render_html_label(
+            &self,
+            _text: &str,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Some("unexpected backend reentry".to_string())
+        }
+    }
+
+    #[test]
+    fn unavailable_prepared_math_reason_prevents_writer_backend_reentry() {
+        let calls = AtomicUsize::new(0);
+        let renderer = ReentryProbe(&calls);
+        let html = flowchart_label_html_with_prepared_math(
+            "value $$x$$",
+            "text",
+            &merman_core::MermaidConfig::default(),
+            Some(&renderer),
+            crate::flowchart::FlowchartPreparedMathResolution::Unavailable(
+                crate::math::MathPreparationUnavailable::BackendDeclined,
+            ),
+        );
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(!html.contains("unexpected backend reentry"));
+        assert!(html.contains("$$x$$"));
+    }
 
     #[test]
     fn flowchart_img_normalization_matches_ascii_case_without_touching_non_img_tags() {

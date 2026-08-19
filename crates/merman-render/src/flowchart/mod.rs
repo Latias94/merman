@@ -116,6 +116,7 @@ pub(crate) use shapes::{
 #[cfg(test)]
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
+    FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,
     FlowchartTextStyleResolution, flowchart_apply_html_node_class_box_metrics,
     flowchart_apply_text_style_decl, flowchart_effective_node_class_names,
     flowchart_effective_text_style_for_classes,
@@ -125,8 +126,8 @@ pub(crate) use style::{
     flowchart_is_source_spelled_label_style_key, flowchart_split_mermaid_style_decls,
 };
 pub(crate) use svg_label_artifact::{
-    FlowchartLabelTypographyOverrides, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,
-    FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
+    FlowchartLabelTypographyOverrides, FlowchartPreparedMathResolution, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
     measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
     measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };

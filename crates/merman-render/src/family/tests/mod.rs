@@ -10160,6 +10160,71 @@ end
     ));
 }
 
+#[derive(Debug)]
+struct SwimlanePreparedMathRenderer;
+
+impl crate::math::MathRenderer for SwimlanePreparedMathRenderer {
+    fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
+        Some(r#"<span class="external-math">rendered</span>"#.to_owned())
+    }
+
+    fn measure_html_label(
+        &self,
+        _text: &str,
+        _config: &MermaidConfig,
+        _style: &crate::text::TextStyle,
+        _max_width_px: Option<f64>,
+        _wrap_mode: WrapMode,
+    ) -> Option<TextMetrics> {
+        Some(TextMetrics {
+            width: 42.0,
+            height: 18.0,
+            line_count: 1,
+        })
+    }
+}
+
+#[test]
+fn swimlane_group_title_reuses_prepared_math_for_terminal_emission() {
+    let source = r#"swimlane-beta LR
+subgraph Lane["$$x^2$$"]
+  A[Node]
+end
+"#;
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Swimlane")
+        .expect("detect Swimlane");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_math_renderer(std::sync::Arc::new(SwimlanePreparedMathRenderer))
+        .begin_session()
+        .expect("begin Swimlane math session");
+    let artifact =
+        prepare(parsed, &LayoutOptions::default(), session).expect("prepare Swimlane math title");
+
+    let BuiltinFamilyArtifact::Swimlane(swimlane) = &artifact.family else {
+        panic!("expected Swimlane family artifact");
+    };
+    let owner = swimlane
+        .svg_label_sidecar()
+        .swimlane_group_title_owner("Lane")
+        .expect("Swimlane group-title owner");
+    assert!(matches!(
+        swimlane.svg_label_sidecar().prepared_math(owner, "$$x^2$$"),
+        crate::flowchart::FlowchartPreparedMathResolution::Prepared(_)
+    ));
+
+    let svg = render_family_artifact_svg(
+        &artifact,
+        &SvgRenderOptions::default(),
+        &SvgDebugOptions::default(),
+    )
+    .expect("render Swimlane math title");
+    assert!(svg.contains(r#"class="merman-prepared-math""#), "{svg}");
+    assert!(svg.contains(r#"class="external-math""#), "{svg}");
+    assert!(!svg.contains(">$$x^2$$<"), "{svg}");
+}
+
 #[test]
 fn flowchart_special_shape_intersections_reuse_layout_label_metrics() {
     let parsed = Engine::new()
@@ -10520,6 +10585,148 @@ fn flowchart_math_capability_uses_parser_owned_render_spelling() {
     let plan = plan_render(&parsed, &session).unwrap();
     assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
     assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
+}
+
+#[derive(Debug)]
+struct CountingMathRenderer {
+    calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl crate::math::MathRenderer for CountingMathRenderer {
+    fn render_html_label(
+        &self,
+        text: &str,
+        _config: &merman_core::MermaidConfig,
+    ) -> Option<String> {
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        text.contains("$$")
+            .then(|| "<span>rendered</span>".to_string())
+    }
+}
+
+#[test]
+fn constrained_profile_rejects_math_before_invoking_an_opaque_backend() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync("flowchart TD\nA[\"$$x$$\"]\n", ParseOptions::strict())
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_math_renderer(std::sync::Arc::new(CountingMathRenderer {
+            calls: std::sync::Arc::clone(&calls),
+        }))
+        .with_resource_policy(crate::resources::RenderResourcePolicy::constrained())
+        .begin_session()
+        .unwrap();
+
+    let plan = plan_render(&parsed, &session).unwrap();
+    assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+    assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
+    let error = match prepare(parsed, &LayoutOptions::default(), session) {
+        Err(error) => error,
+        Ok(_) => panic!("constrained math unexpectedly reached opaque backend dispatch"),
+    };
+    assert!(matches!(
+        error,
+        Error::MissingCapability {
+            capability: RenderCapability::Math,
+            ref diagram_type,
+        } if diagram_type == "flowchart-v2"
+    ));
+    assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_flowchart_math_projects_to_nonempty_resvg_geometry() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare compiled Flowchart math")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render compiled Flowchart math");
+
+    assert!(rendered.svg().contains("<foreignObject"));
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"data-merman-prepared-math-native="v1""#)
+    );
+    assert!(
+        rendered
+            .svg()
+            .contains(r#"<template data-merman-prepared-math-projection="v1">"#)
+    );
+    assert!(!rendered.svg().contains("$$x^2$$"));
+
+    let finalized = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("project compiled math before removing foreignObject");
+    let svg = finalized.svg().as_str();
+
+    assert!(!svg.contains("<foreignObject"), "{svg}");
+    assert!(!svg.contains("<template"), "{svg}");
+    assert!(!svg.contains("$$x^2$$"), "{svg}");
+    assert!(
+        svg.contains(r#"class="merman-prepared-math-native""#),
+        "{svg}"
+    );
+    assert!(svg.contains("<path"), "{svg}");
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn compiled_sequence_math_projects_to_nonempty_resvg_geometry() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x^2$$\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("Sequence source should produce a render model");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_compiled_math_renderer()
+        .begin_session()
+        .unwrap();
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare compiled Sequence math")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render compiled Sequence math");
+
+    assert_eq!(
+        rendered
+            .svg()
+            .matches(r#"data-merman-prepared-math-native="v1""#)
+            .count(),
+        1
+    );
+    assert!(!rendered.svg().contains("$$x^2$$"));
+
+    let finalized = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("project compiled Sequence math before removing foreignObject");
+    let svg = finalized.svg().as_str();
+
+    assert!(!svg.contains("<foreignObject"), "{svg}");
+    assert!(!svg.contains("<template"), "{svg}");
+    assert!(!svg.contains("$$x^2$$"), "{svg}");
+    assert_eq!(
+        svg.matches(r#"class="merman-prepared-math-native""#)
+            .count(),
+        1,
+        "{svg}"
+    );
+    assert!(svg.contains("<path"), "{svg}");
 }
 
 #[test]

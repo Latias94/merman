@@ -107,6 +107,19 @@ impl PendingSourceProvenance {
             Self::Inline { .. } => None,
         }
     }
+
+    fn terminal_foreground_provenance(
+        &self,
+    ) -> crate::flowchart::FlowchartTerminalForegroundProvenance {
+        match self {
+            Self::AssignedClass { .. } => {
+                crate::flowchart::FlowchartTerminalForegroundProvenance::AssignedClass
+            }
+            Self::Inline { .. } => {
+                crate::flowchart::FlowchartTerminalForegroundProvenance::InlineStyle
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -432,6 +445,7 @@ impl FlowchartCompiledStyles {
         let mut style = std::borrow::Cow::Borrowed(base);
         let mut prepared_text_overrides =
             crate::text::PreparedTextCssTypographyOverrides::default();
+        let mut terminal_foreground = None;
         for declaration in &self.label_sources {
             crate::flowchart::flowchart_apply_text_style_decl(
                 &mut style,
@@ -442,10 +456,17 @@ impl FlowchartCompiledStyles {
                 declaration.prepared.property(),
                 declaration.prepared.value(),
             );
+            if declaration.prepared.property().trim() == "color" {
+                terminal_foreground = Some(crate::flowchart::FlowchartTerminalForeground::new(
+                    declaration.prepared.value(),
+                    declaration.provenance.terminal_foreground_provenance(),
+                ));
+            }
         }
         crate::flowchart::FlowchartTextStyleResolution {
             style,
             prepared_text_overrides,
+            terminal_foreground,
         }
     }
 

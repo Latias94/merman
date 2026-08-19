@@ -2,7 +2,9 @@
 
 use std::fmt::Write as _;
 
-use crate::svg::parity::flowchart::label::{flowchart_label_html, flowchart_label_plain_text};
+use crate::svg::parity::flowchart::label::{
+    flowchart_label_html_with_prepared_math, flowchart_label_plain_text,
+};
 use crate::svg::parity::flowchart::style::{
     FlowchartCompiledStyles, flowchart_label_div_style_prefix,
 };
@@ -92,11 +94,11 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         height: f64,
     ) -> super::emission::FlowchartNodeLabelEmissionReceipt {
         let text_style = self.text_style(ctx);
+        let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
+            sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
+        });
         let prepared_svg_label =
             (!ctx.node_html_labels && label.label_type != "markdown").then(|| {
-                let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
-                    sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
-                });
                 crate::flowchart::FlowchartSvgLabelRenderPlan::new(
                     ctx.svg_label_sidecar,
                     owner,
@@ -115,8 +117,20 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             });
         let final_style = self.final_style(prepared_svg_label.as_ref());
         let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
+        let prepared_math = ctx
+            .svg_label_sidecar
+            .zip(owner)
+            .map_or(Default::default(), |(sidecar, owner)| {
+                sidecar.prepared_math(owner, label.text)
+            });
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
-            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+            flowchart_label_html_with_prepared_math(
+                label.text,
+                label.label_type,
+                ctx.config,
+                ctx.math_renderer,
+                prepared_math,
+            )
         });
         let mut div_style = final_style.clone();
         if !div_style.is_empty() {
@@ -163,10 +177,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     details: &mut FlowchartRenderDetails,
 ) -> super::emission::FlowchartNodeLabelEmissionReceipt {
     let node_text_style = common.label_emission.text_style(ctx);
+    let owner = ctx
+        .svg_label_sidecar
+        .and_then(|sidecar| sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some()));
     let prepared_svg_label = (!ctx.node_html_labels && label.label_type != "markdown").then(|| {
-        let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
-            sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
-        });
         crate::flowchart::FlowchartSvgLabelRenderPlan::new(
             ctx.svg_label_sidecar,
             owner,
@@ -293,14 +307,29 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         out.push_str("</g></g></g>");
     } else {
+        let prepared_math = ctx
+            .svg_label_sidecar
+            .zip(owner)
+            .map_or(Default::default(), |(sidecar, owner)| {
+                sidecar.prepared_math(owner, label.text)
+            });
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
-            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+            flowchart_label_html_with_prepared_math(
+                label.text,
+                label.label_type,
+                ctx.config,
+                ctx.math_renderer,
+                prepared_math,
+            )
         });
         let final_style = common.label_emission.final_style(None);
         let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
         let is_math_html_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
             && label.text.contains("$$")
-            && ctx.math_renderer.is_some();
+            && (matches!(
+                prepared_math,
+                crate::flowchart::FlowchartPreparedMathResolution::Prepared(_)
+            ) || ctx.math_renderer.is_some());
 
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
             if is_math_html_label {

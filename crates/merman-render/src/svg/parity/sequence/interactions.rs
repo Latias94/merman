@@ -19,8 +19,7 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) block_layouts_by_id: &'a FxHashMap<String, crate::model::SequenceBlockLayout>,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) settings: &'a SequenceRenderSettings,
     pub(super) typography: &'a crate::sequence::SequenceTypographyPlan,
     pub(super) block_label_box_metrics: crate::sequence::SequenceBlockLabelBoxMetrics,
@@ -71,8 +70,7 @@ pub(super) fn render_sequence_interaction_overlays(
         loop_typography: ctx.typography.loop_label(),
         typography_receipt: ctx.typography_receipt,
         loop_theme_receipt,
-        sanitize_config: ctx.sanitize_config,
-        math_renderer: ctx.math_renderer,
+        math_sidecar: ctx.math_sidecar,
     };
     let note_ctx = SequenceNoteRenderContext {
         nodes_by_id: ctx.nodes_by_id,
@@ -82,13 +80,12 @@ pub(super) fn render_sequence_interaction_overlays(
         note_text_style: &ctx.settings.note_text_style,
         note_typography: ctx.typography.note(),
         typography_receipt: ctx.typography_receipt,
-        sanitize_config: ctx.sanitize_config,
-        math_renderer: ctx.math_renderer,
+        math_sidecar: ctx.math_sidecar,
     };
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         render_sequence_activation_group(out, activation_plan, &msg.id, activation_theme_receipt);
-        render_sequence_note(out, msg, &note_ctx, note_theme_receipt);
+        render_sequence_note(out, message_index, msg, &note_ctx, note_theme_receipt);
 
         let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {
             continue;

@@ -210,10 +210,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         } else {
             Cow::Borrowed(compiled_label_styles.label_style.as_str())
         };
+    let owner = Some(crate::flowchart::FlowchartSvgLabelOwner::Edge(
+        key.semantic_index(),
+    ));
     let prepared_svg_label = (!ctx.edge_html_labels && label_type != "markdown").then(|| {
-        let owner = Some(crate::flowchart::FlowchartSvgLabelOwner::Edge(
-            key.semantic_index(),
-        ));
         crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_metrics_style(
             ctx.svg_label_sidecar,
             owner,
@@ -450,9 +450,21 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     }
 
     let label_html = if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
-        String::new()
+        std::borrow::Cow::Borrowed("")
     } else {
-        flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer)
+        let prepared_math = ctx
+            .svg_label_sidecar
+            .zip(owner)
+            .map_or(Default::default(), |(sidecar, owner)| {
+                sidecar.prepared_math(owner, label_text)
+            });
+        flowchart_label_html_with_prepared_math(
+            label_text,
+            label_type,
+            ctx.config,
+            ctx.math_renderer,
+            prepared_math,
+        )
     };
 
     if let Some(le) = ctx.layout_edges_by_key.get(&key) {
@@ -708,8 +720,22 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     );
 
     if ctx.node_html_labels {
-        let label_html =
-            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
+        let owner = Some(crate::flowchart::FlowchartSvgLabelOwner::SwimlaneEdgeLabel(
+            key.semantic_index(),
+        ));
+        let prepared_math = ctx
+            .svg_label_sidecar
+            .zip(owner)
+            .map_or(Default::default(), |(sidecar, owner)| {
+                sidecar.prepared_math(owner, label_text)
+            });
+        let label_html = flowchart_label_html_with_prepared_math(
+            label_text,
+            label_type,
+            ctx.config,
+            ctx.math_renderer,
+            prepared_math,
+        );
         // `createText` maps only the first literal `fill:` occurrence to `color:` before applying
         // the copied label style to the HTML span and div. Later fixed declarations override the
         // corresponding inline properties exactly as Mermaid's chained D3 `.style()` calls do.

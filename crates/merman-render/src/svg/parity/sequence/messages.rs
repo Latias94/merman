@@ -36,8 +36,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
     pub(super) diagram_id: &'a str,
@@ -318,7 +317,7 @@ pub(super) fn render_sequence_messages(
         out.checkpoint()?;
     }
 
-    for msg in &ctx.model.messages {
+    for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         out.checkpoint()?;
         match msg.message_type {
             LINETYPE_AUTONUMBER => {
@@ -377,12 +376,12 @@ pub(super) fn render_sequence_messages(
                 "left" => (label_start_x + ctx.wrap_padding, "start"),
                 _ => (lbl.x, "middle"),
             };
+            let prepared_math = ctx.math_sidecar.get_for_occurrence(
+                &crate::sequence::SequenceMathOccurrence::Message(message_index),
+            );
             if let Some(katex) = sequence_katex_label(
-                text,
-                ctx.measurer,
+                prepared_math,
                 ctx.message_text_style,
-                ctx.sanitize_config,
-                ctx.math_renderer,
                 SequenceMathHeightMode::Draw,
             ) {
                 ctx.typography_receipt
@@ -747,14 +746,14 @@ mod tests {
         let sanitize_config = merman_core::MermaidConfig::default();
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let message_text_style = TextStyle::default();
+        let math_sidecar = crate::sequence::SequenceMathSidecar::default();
         let (typography, typography_receipt) =
             default_sequence_typography(&sanitize_config, &message_text_style);
         let ctx = SequenceMessageRenderContext {
             model: &model,
             nodes_by_id: &nodes_by_id,
             edges_by_id: &edges_by_id,
-            sanitize_config: &sanitize_config,
-            math_renderer: None,
+            math_sidecar: &math_sidecar,
             measurer: &measurer,
             message_align: "center",
             diagram_id: "sequence-sink-failure",
@@ -854,14 +853,14 @@ mod tests {
             let sanitize_config = merman_core::MermaidConfig::default();
             let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
             let message_text_style = TextStyle::default();
+            let math_sidecar = crate::sequence::SequenceMathSidecar::default();
             let (typography, typography_receipt) =
                 default_sequence_typography(&sanitize_config, &message_text_style);
             let ctx = SequenceMessageRenderContext {
                 model: &model,
                 nodes_by_id: &nodes_by_id,
                 edges_by_id: &edges_by_id,
-                sanitize_config: &sanitize_config,
-                math_renderer: None,
+                math_sidecar: &math_sidecar,
                 measurer: &measurer,
                 message_align: "center",
                 diagram_id: "sequence-incomplete-layout",

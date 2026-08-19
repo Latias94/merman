@@ -2,9 +2,9 @@ use crate::text::{PreparedTextCssTypographyOverrides, TextMetrics, TextStyle};
 use indexmap::IndexMap;
 use std::borrow::Cow;
 
-fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
+fn parse_style_decl(s: &str) -> Option<(&str, &str, bool)> {
     let parsed = crate::mermaid_style::parse_style_declaration(s)?;
-    Some((parsed.property_source(), parsed.value()))
+    Some((parsed.property_source(), parsed.value(), parsed.important()))
 }
 
 fn normalize_css_font_family(font_family: &str) -> String {
@@ -110,6 +110,61 @@ pub(crate) struct FlowchartTextStyleResolution<'a> {
     /// Source-owned typography declarations whose final values must be admitted together for
     /// prepared measurement and SVG emission.
     pub(crate) prepared_text_overrides: PreparedTextCssTypographyOverrides,
+    pub(crate) terminal_foreground: Option<FlowchartTerminalForeground>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FlowchartTerminalForegroundProvenance {
+    ThemeNode,
+    ThemeTitle,
+    AssignedClass,
+    InlineStyle,
+    EdgeLabelStyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FlowchartTerminalForeground {
+    value: String,
+    provenance: FlowchartTerminalForegroundProvenance,
+    important: bool,
+}
+
+impl FlowchartTerminalForeground {
+    pub(crate) fn new(value: &str, provenance: FlowchartTerminalForegroundProvenance) -> Self {
+        Self {
+            value: value.trim().to_string(),
+            provenance,
+            important: false,
+        }
+    }
+
+    fn observe(
+        target: &mut Option<Self>,
+        value: &str,
+        provenance: FlowchartTerminalForegroundProvenance,
+        important: bool,
+    ) {
+        if target
+            .as_ref()
+            .is_some_and(|current| current.important && !important)
+        {
+            return;
+        }
+        *target = Some(Self {
+            value: value.trim().to_string(),
+            provenance,
+            important,
+        });
+    }
+
+    pub(crate) fn value(&self) -> &str {
+        &self.value
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn provenance(&self) -> FlowchartTerminalForegroundProvenance {
+        self.provenance
+    }
 }
 
 impl AsRef<TextStyle> for FlowchartTextStyleResolution<'_> {
@@ -123,7 +178,12 @@ impl<'a> FlowchartTextStyleResolution<'a> {
         Self {
             style: Cow::Borrowed(style),
             prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
+            terminal_foreground: None,
         }
+    }
+
+    pub(crate) fn terminal_foreground(&self) -> Option<&FlowchartTerminalForeground> {
+        self.terminal_foreground.as_ref()
     }
 }
 
@@ -140,12 +200,18 @@ fn apply_text_style_decl_with_provenance(
     key: &str,
     value: &str,
     prepared_text_overrides: &mut PreparedTextCssTypographyOverrides,
+    terminal_foreground: &mut Option<FlowchartTerminalForeground>,
+    provenance: FlowchartTerminalForegroundProvenance,
+    important: bool,
 ) {
     if !flowchart_is_source_spelled_label_style_key(key) {
         return;
     }
     flowchart_apply_text_style_decl(style, key, value);
     prepared_text_overrides.observe_declaration(key, value);
+    if key.trim() == "color" {
+        FlowchartTerminalForeground::observe(terminal_foreground, value, provenance, important);
+    }
 }
 
 fn flowchart_effective_text_style_for_class_names_with_provenance<'a, 'b>(
@@ -156,6 +222,7 @@ fn flowchart_effective_text_style_for_class_names_with_provenance<'a, 'b>(
 ) -> FlowchartTextStyleResolution<'a> {
     let mut style = Cow::Borrowed(base);
     let mut prepared_text_overrides = PreparedTextCssTypographyOverrides::default();
+    let mut terminal_foreground = None;
 
     for class in class_names {
         let Some(decls) = class_defs.get(class) else {
@@ -163,7 +230,7 @@ fn flowchart_effective_text_style_for_class_names_with_provenance<'a, 'b>(
         };
         for d in decls {
             for d in flowchart_split_mermaid_style_decls(d) {
-                let Some((k, v)) = parse_style_decl(d) else {
+                let Some((k, v, important)) = parse_style_decl(d) else {
                     continue;
                 };
                 apply_text_style_decl_with_provenance(
@@ -171,6 +238,9 @@ fn flowchart_effective_text_style_for_class_names_with_provenance<'a, 'b>(
                     k,
                     v,
                     &mut prepared_text_overrides,
+                    &mut terminal_foreground,
+                    FlowchartTerminalForegroundProvenance::AssignedClass,
+                    important,
                 );
             }
         }
@@ -178,16 +248,25 @@ fn flowchart_effective_text_style_for_class_names_with_provenance<'a, 'b>(
 
     for d in inline_styles {
         for d in flowchart_split_mermaid_style_decls(d) {
-            let Some((k, v)) = parse_style_decl(d) else {
+            let Some((k, v, important)) = parse_style_decl(d) else {
                 continue;
             };
-            apply_text_style_decl_with_provenance(&mut style, k, v, &mut prepared_text_overrides);
+            apply_text_style_decl_with_provenance(
+                &mut style,
+                k,
+                v,
+                &mut prepared_text_overrides,
+                &mut terminal_foreground,
+                FlowchartTerminalForegroundProvenance::InlineStyle,
+                important,
+            );
         }
     }
 
     FlowchartTextStyleResolution {
         style,
         prepared_text_overrides,
+        terminal_foreground,
     }
 }
 
@@ -232,6 +311,7 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes_with_provenance<'a
         return FlowchartTextStyleResolution {
             style: Cow::Borrowed(base),
             prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
+            terminal_foreground: None,
         };
     }
     flowchart_effective_text_style_for_class_names_with_provenance(
@@ -267,6 +347,7 @@ pub(crate) fn flowchart_effective_text_style_for_classes_with_provenance<'a>(
         return FlowchartTextStyleResolution {
             style: Cow::Borrowed(base),
             prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
+            terminal_foreground: None,
         };
     }
 
@@ -311,6 +392,7 @@ pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
         return FlowchartTextStyleResolution {
             style: Cow::Borrowed(base),
             prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
+            terminal_foreground: None,
         };
     }
 
@@ -322,7 +404,7 @@ pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
     );
     for declaration in default_edge_styles.iter().chain(edge_styles) {
         for declaration in flowchart_split_mermaid_style_decls(declaration) {
-            let Some((key, value)) = parse_style_decl(declaration) else {
+            let Some((key, value, important)) = parse_style_decl(declaration) else {
                 continue;
             };
             apply_text_style_decl_with_provenance(
@@ -330,6 +412,9 @@ pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
                 key,
                 value,
                 &mut resolution.prepared_text_overrides,
+                &mut resolution.terminal_foreground,
+                FlowchartTerminalForegroundProvenance::EdgeLabelStyle,
+                important,
             );
         }
     }
@@ -359,20 +444,31 @@ pub(crate) fn flowchart_swimlane_label_rect_text_style_with_provenance<'a>(
         return FlowchartTextStyleResolution {
             style: Cow::Borrowed(base),
             prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
+            terminal_foreground: None,
         };
     };
 
     let mut style = Cow::Borrowed(base);
     let mut prepared_text_overrides = PreparedTextCssTypographyOverrides::default();
+    let mut terminal_foreground = None;
     for declaration in flowchart_split_mermaid_style_decls(first_style) {
-        let Some((key, value)) = parse_style_decl(declaration) else {
+        let Some((key, value, important)) = parse_style_decl(declaration) else {
             continue;
         };
-        apply_text_style_decl_with_provenance(&mut style, key, value, &mut prepared_text_overrides);
+        apply_text_style_decl_with_provenance(
+            &mut style,
+            key,
+            value,
+            &mut prepared_text_overrides,
+            &mut terminal_foreground,
+            FlowchartTerminalForegroundProvenance::EdgeLabelStyle,
+            important,
+        );
     }
     FlowchartTextStyleResolution {
         style,
         prepared_text_overrides,
+        terminal_foreground,
     }
 }
 
@@ -717,7 +813,7 @@ fn flowchart_html_span_box_style(
         }
         for declaration in declarations {
             for declaration in flowchart_split_mermaid_style_decls(declaration) {
-                let Some((property, value)) = parse_style_decl(declaration) else {
+                let Some((property, value, _important)) = parse_style_decl(declaration) else {
                     continue;
                 };
                 apply_html_span_box_decl(&mut style, property, value, font_size);
@@ -831,6 +927,60 @@ mod tests {
         assert_eq!(style.font_size, 12.0);
         assert_eq!(style.font_weight.as_deref(), Some("bold"));
         assert_eq!(style.font_style.as_deref(), Some("normal"));
+    }
+
+    #[test]
+    fn terminal_foreground_tracks_class_inline_and_edge_label_winners() {
+        let base = TextStyle::default();
+        let class_defs =
+            IndexMap::from([("accent".to_string(), vec!["color:#0f172a".to_string()])]);
+        let classes = vec!["accent".to_string()];
+        let inline = vec!["color:#f43f5e".to_string()];
+        let node = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &inline,
+        );
+        let node_foreground = node.terminal_foreground().expect("node color winner");
+        assert_eq!(node_foreground.value(), "#f43f5e");
+        assert_eq!(
+            node_foreground.provenance(),
+            FlowchartTerminalForegroundProvenance::InlineStyle
+        );
+
+        let edge = flowchart_effective_edge_label_text_style_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &["color:#2563eb".to_string()],
+            &["color:#16a34a".to_string()],
+        );
+        let edge_foreground = edge.terminal_foreground().expect("edge color winner");
+        assert_eq!(edge_foreground.value(), "#16a34a");
+        assert_eq!(
+            edge_foreground.provenance(),
+            FlowchartTerminalForegroundProvenance::EdgeLabelStyle
+        );
+
+        let important_classes = IndexMap::from([(
+            "important".to_string(),
+            vec!["color:#7c3aed !important".to_string()],
+        )]);
+        let important = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &important_classes,
+            &["important".to_string()],
+            &["color:#f97316".to_string()],
+        );
+        let important_foreground = important
+            .terminal_foreground()
+            .expect("important class color winner");
+        assert_eq!(important_foreground.value(), "#7c3aed");
+        assert_eq!(
+            important_foreground.provenance(),
+            FlowchartTerminalForegroundProvenance::AssignedClass
+        );
     }
 
     #[test]

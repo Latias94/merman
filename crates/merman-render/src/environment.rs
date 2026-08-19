@@ -7,7 +7,7 @@ use crate::diagram_theme::{
     ThemeRecipeFingerprint, ThemeRecipeReport, ThemeResourceLimitExceeded, ThemeResourcePolicy,
     TrustedThemeLane, TrustedThemeLanes,
 };
-use crate::math::MathRenderer;
+use crate::math::{ConfiguredMathBackend, MathRenderer};
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 use crate::text::{
@@ -1496,12 +1496,12 @@ fn valid_extents(left: f64, right: f64) -> bool {
 }
 
 #[cfg(feature = "math")]
-fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
-    Some(Arc::new(crate::math::RatexMathRenderer))
+fn default_math_backend() -> Option<ConfiguredMathBackend> {
+    Some(ConfiguredMathBackend::compiled_ratex())
 }
 
 #[cfg(not(feature = "math"))]
-fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
+fn default_math_backend() -> Option<ConfiguredMathBackend> {
     None
 }
 
@@ -1520,7 +1520,7 @@ pub struct RenderEnvironment {
     text_measurement: TextMeasurementPolicy,
     text_layout_backend: ConfiguredTextLayoutBackend,
     capability_policy: RenderCapabilityPolicy,
-    math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
+    math_backend: Option<ConfiguredMathBackend>,
     icon_registry: Option<IconRegistry>,
     runtime_policy: RuntimePolicy,
     resource_policy: RenderResourcePolicy,
@@ -1587,7 +1587,7 @@ impl fmt::Debug for RenderEnvironment {
             .field(
                 "has_math_renderer",
                 &(self.capability_policy.allows(RenderCapability::Math)
-                    && self.math_renderer.is_some()),
+                    && self.math_backend.is_some()),
             )
             .field("has_icon_registry", &self.icon_registry.is_some())
             .field("runtime_policy", &self.runtime_policy)
@@ -1618,7 +1618,7 @@ impl RenderEnvironment {
                 NativeTextLayoutBackend::default(),
             ),
             capability_policy: RenderCapabilityPolicy::unrestricted(),
-            math_renderer: default_math_renderer(),
+            math_backend: default_math_backend(),
             icon_registry: None,
             runtime_policy: RuntimePolicy::deterministic(),
             resource_policy: RenderResourcePolicy::interactive(),
@@ -1666,17 +1666,17 @@ impl RenderEnvironment {
     /// Facades use this to select the canonical compiled capability instead of duplicating Cargo
     /// feature checks in each transport layer.
     pub fn with_compiled_math_renderer(mut self) -> Self {
-        self.math_renderer = default_math_renderer();
+        self.math_backend = default_math_backend();
         self
     }
 
     pub fn with_math_renderer(mut self, renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
-        self.math_renderer = Some(renderer);
+        self.math_backend = Some(ConfiguredMathBackend::external(renderer));
         self
     }
 
     pub fn without_math_renderer(mut self) -> Self {
-        self.math_renderer = None;
+        self.math_backend = None;
         self
     }
 
@@ -1912,7 +1912,7 @@ impl RenderEnvironment {
             text_layout_error,
             measurement_recorder: Box::default(),
             capability_policy: self.capability_policy,
-            math_renderer: self.math_renderer.clone(),
+            math_backend: self.math_backend.clone(),
             icon_registry: self.icon_registry.clone(),
             operation_context,
             resource_policy: self.resource_policy,
@@ -2176,7 +2176,7 @@ pub struct RenderSession {
     // Keep movable family artifacts compact for bounded worker stacks.
     measurement_recorder: Box<TextMeasurementRecorder>,
     capability_policy: RenderCapabilityPolicy,
-    math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
+    math_backend: Option<ConfiguredMathBackend>,
     icon_registry: Option<IconRegistry>,
     operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
@@ -2323,7 +2323,10 @@ impl RenderSession {
         match capability {
             RenderCapability::LayoutCytoscape => crate::layout_cytoscape_available(),
             RenderCapability::LayoutElk => crate::layout_elk_available(),
-            RenderCapability::Math => self.math_renderer.is_some(),
+            RenderCapability::Math => self
+                .math_backend
+                .as_ref()
+                .is_some_and(|backend| backend.supports_resource_policy(self.resource_policy)),
         }
     }
 
@@ -2338,10 +2341,19 @@ impl RenderSession {
 
     pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
         if self.supports_capability(RenderCapability::Math) {
-            self.math_renderer.as_deref()
+            self.math_backend
+                .as_ref()
+                .map(ConfiguredMathBackend::renderer)
         } else {
             None
         }
+    }
+
+    /// Returns the operation-selected math backend, retaining whether it is native-capable.
+    pub(crate) fn math_backend(&self) -> Option<&ConfiguredMathBackend> {
+        self.supports_capability(RenderCapability::Math)
+            .then_some(())
+            .and(self.math_backend.as_ref())
     }
 
     pub fn icon_registry(&self) -> Option<&IconRegistry> {
@@ -4669,5 +4681,32 @@ mod tests {
             .expect("begin render session");
         assert!(session.supports_capability(RenderCapability::Math));
         assert!(session.math_renderer().is_some());
+    }
+
+    #[test]
+    fn constrained_resource_profile_masks_monolithic_math_backends() {
+        let constrained = RenderEnvironment::deterministic()
+            .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
+            .with_resource_policy(RenderResourcePolicy::constrained())
+            .begin_session()
+            .expect("begin constrained render session");
+        assert!(!constrained.supports_capability(RenderCapability::Math));
+        assert!(constrained.math_renderer().is_none());
+        assert!(constrained.math_backend().is_none());
+
+        for policy in [
+            RenderResourcePolicy::interactive(),
+            RenderResourcePolicy::trusted_native(),
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ] {
+            let trusted = RenderEnvironment::deterministic()
+                .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
+                .with_resource_policy(policy)
+                .begin_session()
+                .expect("begin trusted render session");
+            assert!(trusted.supports_capability(RenderCapability::Math));
+            assert!(trusted.math_renderer().is_some());
+            assert!(trusted.math_backend().is_some());
+        }
     }
 }

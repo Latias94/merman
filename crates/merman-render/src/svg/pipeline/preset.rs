@@ -5,11 +5,13 @@ use super::builtin::{
         drop_native_duplicate_fallbacks, drop_switch_native_fallbacks, foreign_object_fallback_svg,
         strip_foreign_objects,
     },
+    prepared_math::project_prepared_math,
     presentation_fallback::resolve_resvg_presentation_fallbacks,
 };
 use super::context::SvgPostprocessMetadata;
 use crate::Result;
 use crate::environment::{RenderSession, TextMeasurementPhase};
+use crate::math::PREPARED_MATH_CLASS_ATTRIBUTE;
 use merman_core::OperationPhase;
 use std::borrow::Cow;
 
@@ -35,6 +37,7 @@ pub enum SvgPipelinePreset {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuiltinSvgStage {
+    PreparedMathProjection,
     ForeignObjectFallback,
     StripForeignObject,
     DropSwitchNativeFallbacks,
@@ -49,30 +52,36 @@ impl BuiltinSvgStage {
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
-    ) -> Cow<'a, str> {
-        match self {
+    ) -> Result<Cow<'a, str>> {
+        Ok(match self {
+            Self::PreparedMathProjection => {
+                if !svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE) {
+                    return Ok(svg);
+                }
+                Cow::Owned(project_prepared_math(&svg, metadata.family_id())?)
+            }
             Self::ForeignObjectFallback => {
                 if !svg.contains("<foreignObject") {
-                    return svg;
+                    return Ok(svg);
                 }
                 let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
                 Cow::Owned(foreign_object_fallback_svg(&svg, &measurer))
             }
             Self::StripForeignObject => {
                 if !svg.contains("<foreignObject") {
-                    return svg;
+                    return Ok(svg);
                 }
                 Cow::Owned(strip_foreign_objects(&svg))
             }
             Self::DropSwitchNativeFallbacks => {
                 if !svg.contains(r#"data-merman-foreignobject-source="switch-native-fallback""#) {
-                    return svg;
+                    return Ok(svg);
                 }
                 Cow::Owned(drop_switch_native_fallbacks(&svg))
             }
             Self::SanitizeCss => {
                 if !svg.contains("<style") {
-                    return svg;
+                    return Ok(svg);
                 }
                 Cow::Owned(sanitize_style_elements(&svg))
             }
@@ -80,7 +89,7 @@ impl BuiltinSvgStage {
                 resolve_resvg_presentation_fallbacks(svg, metadata)
             }
             Self::SanitizeAttributes => sanitize_element_attributes_cow(svg),
-        }
+        })
     }
 }
 
@@ -89,6 +98,7 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
         SvgPipelinePreset::Parity => &[],
         SvgPipelinePreset::Readable => &[BuiltinSvgStage::ForeignObjectFallback],
         SvgPipelinePreset::ResvgSafe => &[
+            BuiltinSvgStage::PreparedMathProjection,
             BuiltinSvgStage::ForeignObjectFallback,
             BuiltinSvgStage::StripForeignObject,
             BuiltinSvgStage::DropSwitchNativeFallbacks,
@@ -108,7 +118,7 @@ pub(crate) fn apply_preset_cow<'a>(
 ) -> Result<Cow<'a, str>> {
     for stage in builtin_stages_for_preset(preset) {
         session.checkpoint(OperationPhase::Postprocess)?;
-        current = stage.apply(current, metadata, session);
+        current = stage.apply(current, metadata, session)?;
         session.checkpoint(OperationPhase::Postprocess)?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
             current = Cow::Owned(drop_native_duplicate_fallbacks(&current));
@@ -132,6 +142,7 @@ mod tests {
         assert_eq!(
             builtin_stages_for_preset(SvgPipelinePreset::ResvgSafe),
             &[
+                BuiltinSvgStage::PreparedMathProjection,
                 BuiltinSvgStage::ForeignObjectFallback,
                 BuiltinSvgStage::StripForeignObject,
                 BuiltinSvgStage::DropSwitchNativeFallbacks,
@@ -160,6 +171,41 @@ mod tests {
         .unwrap();
 
         assert_eq!(output.as_str(), expected.as_ref());
+    }
+
+    #[test]
+    fn resvg_safe_rejects_browser_only_prepared_math_before_foreign_object_fallback() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml"><span class="merman-prepared-math" data-merman-prepared-math-native="unavailable"><svg><path d="M0 0h1v1z"/></svg></span></div></foreignObject></svg>"#;
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let metadata =
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(crate::DiagramFamilyId::FLOWCHART);
+
+        let error = apply_preset_cow(
+            SvgPipelinePreset::ResvgSafe,
+            Cow::Borrowed(svg),
+            &metadata,
+            &session,
+            false,
+        )
+        .expect_err("browser-only prepared math must not disappear from ResvgSafe output");
+
+        assert!(matches!(
+            error,
+            crate::Error::SvgPostprocess { ref pass, ref message }
+                if pass == "prepared-math-projection"
+                    && message.contains("native projection is unavailable")
+        ));
+
+        let error = super::super::finalize_resvg_svg(svg, &session)
+            .expect_err("raw SVG must not mint a renderer-owned math projection");
+        assert!(matches!(
+            error,
+            crate::Error::SvgPostprocess { ref pass, ref message }
+                if pass == "prepared-math-projection"
+                    && message.contains("renderer-owned family metadata")
+        ));
     }
 
     #[test]

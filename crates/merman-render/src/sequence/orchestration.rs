@@ -13,7 +13,6 @@ use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
-use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
@@ -49,7 +48,8 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) note_terminal_text_style: &'a TextStyle,
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) typography: &'a super::SequenceTypographyPlan,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
 }
 
@@ -268,6 +268,7 @@ fn handle_sequence_rect(
 
 fn handle_sequence_note(
     msg: &SequenceMessage,
+    message_index: usize,
     state: &mut SequenceLayoutLoopState<'_>,
     ctx: &SequenceLayoutGraphContext<'_>,
     nodes: &mut Vec<LayoutNode>,
@@ -292,7 +293,11 @@ fn handle_sequence_note(
             note_text_style: ctx.note_text_style,
             note_terminal_text_style: ctx.note_terminal_text_style,
             math_config: ctx.math_config,
-            math_renderer: ctx.math_renderer,
+            math_terminal_style: ctx
+                .typography
+                .terminal_text_style(super::SequenceTextSurface::NoteLabel),
+            math_sidecar: ctx.math_sidecar,
+            message_index,
         },
     ) else {
         return true;
@@ -343,7 +348,10 @@ fn handle_sequence_message(
             msg_text_style: ctx.msg_text_style,
             msg_terminal_text_style: ctx.msg_terminal_text_style,
             math_config: ctx.math_config,
-            math_renderer: ctx.math_renderer,
+            math_terminal_style: ctx
+                .typography
+                .terminal_text_style(super::SequenceTextSurface::MessageLabel),
+            math_sidecar: ctx.math_sidecar,
             premeasured_bound: ctx
                 .message_metrics
                 .get(SequenceMessageOwner::from_model_index(msg_idx), msg),
@@ -431,7 +439,10 @@ pub(super) fn build_sequence_layout_graph(
         note_text_style: ctx.note_text_style,
         loop_text_style: ctx.loop_text_style,
         math_config: ctx.math_config,
-        math_renderer: ctx.math_renderer,
+        math_terminal_style: ctx
+            .typography
+            .terminal_text_style(super::SequenceTextSurface::ControlPrimaryTitle),
+        math_sidecar: ctx.math_sidecar,
         message_metrics: ctx.message_metrics,
     });
 
@@ -457,7 +468,7 @@ pub(super) fn build_sequence_layout_graph(
             continue;
         }
 
-        if handle_sequence_note(msg, &mut state, &ctx, &mut nodes) {
+        if handle_sequence_note(msg, msg_idx, &mut state, &ctx, &mut nodes) {
             continue;
         }
 

@@ -1758,7 +1758,8 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
-            FlowchartLabelTypographyOverrides::same(&node_text_style.prepared_text_overrides),
+            FlowchartLabelTypographyOverrides::same(&node_text_style.prepared_text_overrides)
+                .with_terminal_foreground(node_text_style.terminal_foreground()),
             svg_width_mode,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -1825,7 +1826,8 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
-            FlowchartLabelTypographyOverrides::same(&sg_text_style.prepared_text_overrides),
+            FlowchartLabelTypographyOverrides::same(&sg_text_style.prepared_text_overrides)
+                .with_terminal_foreground(sg_text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -2108,7 +2110,8 @@ fn layout_flowchart_with_model(
                     edge_text_style.as_ref(),
                     FlowchartLabelTypographyOverrides::metrics_only(
                         &edge_text_style.prepared_text_overrides,
-                    ),
+                    )
+                    .with_terminal_foreground(edge_text_style.terminal_foreground()),
                     FlowchartSvgWidthMode::Bbox,
                 )
             } else {
@@ -2128,7 +2131,8 @@ fn layout_flowchart_with_model(
                     },
                     FlowchartLabelTypographyOverrides::same(
                         &edge_text_style.prepared_text_overrides,
-                    ),
+                    )
+                    .with_terminal_foreground(edge_text_style.terminal_foreground()),
                     FlowchartSvgWidthMode::Bbox,
                 )
             };
@@ -2315,7 +2319,8 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
-            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
+            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides)
+                .with_terminal_foreground(text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
@@ -3431,7 +3436,8 @@ fn layout_flowchart_with_model(
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
                 },
-                FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
+                FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides)
+                    .with_terminal_foreground(text_style.terminal_foreground()),
                 FlowchartSvgWidthMode::Bbox,
             );
             let mut rect = if let Some(r) = content {
@@ -3548,7 +3554,8 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
-            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
+            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides)
+                .with_terminal_foreground(text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_w = title_metrics.width.max(1.0);
@@ -3691,7 +3698,8 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
-            FlowchartLabelTypographyOverrides::same(&title_text_style.prepared_text_overrides),
+            FlowchartLabelTypographyOverrides::same(&title_text_style.prepared_text_overrides)
+                .with_terminal_foreground(title_text_style.terminal_foreground()),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_label = LayoutLabel {

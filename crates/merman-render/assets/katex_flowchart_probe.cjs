@@ -205,10 +205,15 @@ async function measureHtml(html, styleCss, maxWidthPx) {
           fo.setAttribute('height', `${bbox.height}`);
         }
 
+        const rowHeights = Array.from(
+          span.children,
+          (child) => child.getBoundingClientRect().height
+        );
         return {
           html: sanitizedHtml,
           width: bbox.width,
           height: bbox.height,
+          maxLineHeightPx: rowHeights.length ? Math.max(...rowHeights) : bbox.height,
         };
       },
       {
@@ -222,7 +227,7 @@ async function measureHtml(html, styleCss, maxWidthPx) {
   }
 }
 
-async function measureSequenceHtml(html) {
+async function measureSequenceHtml(html, styleCss) {
   const puppeteer = requireFromCwd('puppeteer');
   const mermaidCliIndexHtml = path.join(
     process.cwd(),
@@ -266,6 +271,9 @@ async function measureSequenceHtml(html) {
 
       const div = document.createElementNS(XHTML_NS, 'div');
       div.setAttribute('style', 'width: fit-content;');
+      if (payload.styleCss) {
+        div.setAttribute('style', `width: fit-content;${payload.styleCss}`);
+      }
       div.setAttribute('xmlns', XHTML_NS);
       div.innerHTML = payload.html;
       foreignObject.appendChild(div);
@@ -273,14 +281,18 @@ async function measureSequenceHtml(html) {
       document.body.appendChild(svg);
       await document.fonts.ready;
       const bbox = div.getBoundingClientRect();
+      const rowHeights = Array.from(
+        div.children,
+        (child) => child.getBoundingClientRect().height
+      );
       svg.remove();
-
       return {
         html: payload.html,
         width: bbox.width,
         height: bbox.height,
+        maxLineHeightPx: rowHeights.length ? Math.max(...rowHeights) : bbox.height,
       };
-    }, { html });
+    }, { html, styleCss });
   } finally {
     await browser.close();
   }
@@ -308,7 +320,7 @@ async function main() {
   }
 
   if (mode === 'probe-sequence') {
-    const result = await measureSequenceHtml(html);
+    const result = await measureSequenceHtml(html, payload.styleCss || '');
     process.stdout.write(JSON.stringify({ html, ...result }));
     return;
   }

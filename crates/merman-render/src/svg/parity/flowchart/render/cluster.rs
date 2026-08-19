@@ -328,7 +328,22 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         return Ok(());
     }
 
-    let title_html = flowchart_label_html(render_title, label_type, ctx.config, ctx.math_renderer);
+    let owner = ctx
+        .svg_label_sidecar
+        .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
+    let prepared_math = ctx
+        .svg_label_sidecar
+        .zip(owner)
+        .map_or(Default::default(), |(sidecar, owner)| {
+            sidecar.prepared_math(owner, render_title)
+        });
+    let title_html = flowchart_label_html_with_prepared_math(
+        render_title,
+        label_type,
+        ctx.config,
+        ctx.math_renderer,
+        prepared_math,
+    );
     let label_w = cluster.title_label.width.max(0.0);
     let label_h = cluster.title_label.height.max(0.0);
     let label_left = left + rect_w / 2.0 - label_w / 2.0;

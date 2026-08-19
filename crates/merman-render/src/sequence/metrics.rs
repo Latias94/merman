@@ -128,7 +128,7 @@ fn measure_sequence_mixed_math_line(
         }
 
         let math_metrics = math_renderer
-            .measure_sequence_html_label(fragment.delimited, config)
+            .measure_sequence_html_label_with_style(fragment.delimited, config, style)
             .or_else(|| {
                 math_renderer.measure_html_label(
                     fragment.delimited,
@@ -204,7 +204,9 @@ fn sequence_math_height_px(
             };
             let math_h = sequence_math_chunks(text)
                 .into_iter()
-                .filter_map(|chunk| math_renderer.measure_sequence_html_label(chunk, config))
+                .filter_map(|chunk| {
+                    math_renderer.measure_sequence_html_label_with_style(chunk, config, style)
+                })
                 .map(|m| m.height.round() + 2.0)
                 .fold(base, f64::max);
             math_h.round().max(1.0)
@@ -225,13 +227,55 @@ pub(crate) fn measure_sequence_math_label(
     }
     let renderer = math_renderer?;
     let full_metrics = renderer
-        .measure_sequence_html_label(text, config)
+        .measure_sequence_html_label_with_style(text, config, style)
         .or_else(|| measure_sequence_mixed_math_label(measurer, text, style, config, renderer))
         .or_else(|| {
             renderer.measure_html_label(text, config, style, Some(10_000.0), WrapMode::HtmlLike)
         })?;
     let height = sequence_math_height_px(text, style, config, renderer, mode, &full_metrics);
     Some((full_metrics.width.round().max(1.0), height))
+}
+
+pub(crate) fn measure_prepared_sequence_math_label(
+    prepared: Option<&crate::math::PreparedMathLabel>,
+    style: &TextStyle,
+    mode: SequenceMathHeightMode,
+) -> Option<(f64, f64)> {
+    let prepared = prepared?;
+    let metrics = prepared.metrics();
+    let height = match mode {
+        SequenceMathHeightMode::Actor => metrics.height.round().max(1.0),
+        SequenceMathHeightMode::Bound | SequenceMathHeightMode::Draw => {
+            let line_step = sequence_text_line_step_px(style.font_size).round().max(1.0);
+            let base = if mode == SequenceMathHeightMode::Draw {
+                line_step
+            } else {
+                (line_step - 1.0)
+                    .max(sequence_text_dimensions_height_px(style.font_size))
+                    .max(1.0)
+            };
+            let math_line_height = prepared.max_line_height_px().round() + 2.0;
+            base.max(math_line_height).round().max(1.0)
+        }
+    };
+    Some((metrics.width.round().max(1.0), height))
+}
+
+pub(super) fn measure_sequence_label_for_layout_with_prepared(
+    prepared: Option<&crate::math::PreparedMathLabel>,
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    mode: SequenceMathHeightMode,
+) -> (f64, f64) {
+    if text.contains("$$") {
+        return measure_prepared_sequence_math_label(prepared, style, mode)
+            .unwrap_or_else(|| measure_svg_like_with_html_br(measurer, text, style));
+    }
+    measure_sequence_math_label(measurer, text, style, config, math_renderer, mode)
+        .unwrap_or_else(|| measure_svg_like_with_html_br(measurer, text, style))
 }
 
 pub(super) fn measure_sequence_label_for_layout(
@@ -242,8 +286,15 @@ pub(super) fn measure_sequence_label_for_layout(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     mode: SequenceMathHeightMode,
 ) -> (f64, f64) {
-    measure_sequence_math_label(measurer, text, style, config, math_renderer, mode)
-        .unwrap_or_else(|| measure_svg_like_with_html_br(measurer, text, style))
+    measure_sequence_label_for_layout_with_prepared(
+        None,
+        measurer,
+        text,
+        style,
+        config,
+        math_renderer,
+        mode,
+    )
 }
 
 #[cfg(test)]
@@ -397,6 +448,51 @@ mod tests {
 
         assert!((metrics.width - 12.01).abs() < 1e-12, "{metrics:?}");
         assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn prepared_sequence_math_uses_the_resolved_role_font_size() {
+        let backend = crate::math::ConfiguredMathBackend::compiled_ratex();
+        let config = merman_core::MermaidConfig::default();
+        let default_style = TextStyle::default();
+        let role_style = TextStyle {
+            font_size: 28.0,
+            ..TextStyle::default()
+        };
+
+        let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let default = backend
+            .prepare(
+                crate::math::PrepareMathLabelRequest::sequence(
+                    "$$x^2$$",
+                    &config,
+                    &default_style,
+                    "#e5e7eb",
+                ),
+                &meter,
+            )
+            .unwrap();
+        let role = backend
+            .prepare(
+                crate::math::PrepareMathLabelRequest::sequence(
+                    "$$x^2$$",
+                    &config,
+                    &role_style,
+                    "#e5e7eb",
+                ),
+                &meter,
+            )
+            .unwrap();
+        let default = default.prepared().expect("default prepared math");
+        let role = role.prepared().expect("role prepared math");
+
+        assert!(role.browser_xhtml().contains("font-size:28px"));
+        assert!(role.metrics().width > default.metrics().width);
+        assert!(role.metrics().height > default.metrics().height);
+        assert!((role.metrics().width / default.metrics().width - 28.0 / 16.0).abs() < 1e-12);
     }
 
     #[cfg(feature = "math")]

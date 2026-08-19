@@ -3,10 +3,9 @@ use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
     FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides,
     FlowchartRenderModelRef, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
-    FlowchartSvgWidthMode, NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes_with_provenance,
-    flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
-    flowchart_node_svg_width_mode,
+    FlowchartSvgWidthMode, NodeLayoutDimensionsRequest,
+    flowchart_effective_text_style_for_classes_with_provenance,
+    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
     measure_flowchart_svg_label_for_layout_with_typography_overrides, node_layout_dimensions,
 };
 use crate::math::MathRenderer;
@@ -88,7 +87,8 @@ fn measure_content_node(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides),
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
+            .with_terminal_foreground(style.terminal_foreground()),
         svg_width_mode,
     );
 
@@ -174,7 +174,8 @@ fn measure_edge_label(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides),
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
+            .with_terminal_foreground(style.terminal_foreground()),
         FlowchartSvgWidthMode::Bbox,
     );
     let (label_width, label_height) = ctx
@@ -219,17 +220,11 @@ fn working_edge(edge: &FlowEdge, transport_id: &str) -> WorkingEdge {
 }
 
 fn measure_group_title(
+    subgraph_index: usize,
     subgraph: &FlowSubgraph,
     render_title: &str,
     ctx: &MeasureContext<'_>,
 ) -> (f64, f64) {
-    if !flowchart_label_is_empty_for_render(render_title)
-        && ctx
-            .svg_label_sidecar
-            .is_some_and(|sidecar| sidecar.reject_unsupported_prepared_path("swimlane_group_title"))
-    {
-        return (0.0, 0.0);
-    }
     // The dedicated Mermaid Swimlane cluster renderer reads `flowchart.htmlLabels` directly.
     // This deliberately differs from ordinary Flowchart clusters, which use the effective
     // root-first compatibility setting.
@@ -243,7 +238,7 @@ fn measure_group_title(
     } else {
         &ctx.settings.text_style
     };
-    let style = flowchart_effective_text_style_for_classes(
+    let style = flowchart_effective_text_style_for_classes_with_provenance(
         base_style,
         &ctx.model.class_defs,
         &subgraph.classes,
@@ -252,16 +247,24 @@ fn measure_group_title(
     // Mermaid 11.16's dedicated Swimlane renderer omits createText's `markdown` option, so the
     // default `true` applies independently of FlowDB's public subgraph labelType.
     let render_label_type = "markdown";
-    let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-        measurer: ctx.measurer,
-        raw_label: render_title,
-        label_type: render_label_type,
-        style: style.as_ref(),
-        max_width_px: Some(ctx.settings.cluster_title_wrapping_width),
-        wrap_mode,
-        config: ctx.config,
-        math_renderer: ctx.math_renderer,
-    });
+    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
+        ctx.svg_label_sidecar,
+        Some(FlowchartSvgLabelOwner::SwimlaneGroupTitle(subgraph_index)),
+        Some(subgraph.id.as_str()),
+        FlowchartLabelMetricsRequest {
+            measurer: ctx.measurer,
+            raw_label: render_title,
+            label_type: render_label_type,
+            style: style.as_ref(),
+            max_width_px: Some(ctx.settings.cluster_title_wrapping_width),
+            wrap_mode,
+            config: ctx.config,
+            math_renderer: ctx.math_renderer,
+        },
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides)
+            .with_terminal_foreground(style.terminal_foreground()),
+        FlowchartSvgWidthMode::Bbox,
+    );
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
@@ -308,7 +311,8 @@ pub(super) fn prepare(
     let mut nodes = IndexMap::new();
     for (subgraph_index, subgraph) in model.subgraphs.iter().enumerate().rev() {
         let render_title = model.subgraph_title_for_render(subgraph_index, subgraph);
-        let (label_width, label_height) = measure_group_title(subgraph, render_title, &measure_ctx);
+        let (label_width, label_height) =
+            measure_group_title(subgraph_index, subgraph, render_title, &measure_ctx);
         nodes.insert(
             subgraph.id.clone(),
             WorkingNode {
