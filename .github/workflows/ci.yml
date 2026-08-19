@@ -532,11 +532,32 @@ jobs:
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features "$features" --cargo-quiet
 
-      - name: Check UniFFI no-render feature sets
+      - name: Check public ASCII feature closure
         if: matrix.parity
         run: |
           cargo check -p merman-uniffi --no-default-features
-          cargo check -p merman-uniffi --no-default-features --features ascii
+          cargo check --locked --no-default-features --lib \
+            -p merman -p merman-bindings-core -p merman-uniffi -p merman-wasm \
+            --features merman/ascii,merman-bindings-core/ascii,merman-uniffi/ascii,merman-wasm/ascii
+
+      - name: Test representative ASCII public contracts
+        if: matrix.parity
+        run: |
+          cargo nextest run --locked -p merman --no-default-features --features ascii \
+            --test ascii_api -E 'test(renderer_renders_ascii_flowchart_from_mermaid_text)' \
+            --cargo-quiet
+          cargo nextest run --locked -p merman-bindings-core --no-default-features \
+            --features ascii --lib \
+            -E 'test(every_ascii_resource_limit_round_trips_exact_public_boundaries) | test(ascii_request_propagates_caller_control_into_the_canonical_renderer)' \
+            --cargo-quiet
+          cargo nextest run --locked -p merman-uniffi --no-default-features \
+            --features ascii --lib \
+            -E 'test(uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
+            --cargo-quiet
+          cargo nextest run --locked -p merman-wasm --no-default-features \
+            --features ascii --lib \
+            -E 'test(wasm_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
+            --cargo-quiet
 
       - name: SVG DOM comparison suite
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
