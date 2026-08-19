@@ -283,6 +283,12 @@ impl OperationControl {
         while let Some(current) = state {
             let terminal = if let Some(error) = current.terminal.get() {
                 match error {
+                    OperationLedgerError::Cancelled(error) if inherited => {
+                        Some(OperationCancelled {
+                            phase,
+                            reason: error.reason,
+                        })
+                    }
                     OperationLedgerError::Cancelled(error) => Some(*error),
                     OperationLedgerError::ResourceLimitExceeded(_)
                     | OperationLedgerError::ArithmeticOverflow { .. }
@@ -568,6 +574,59 @@ mod tests {
                 .unwrap_err()
                 .reason,
             CancelReason::Requested
+        );
+    }
+
+    #[test]
+    fn child_rebinds_an_observed_parent_cancellation_to_its_checkpoint_phase() {
+        let parent = OperationControl::new();
+        parent.cancel();
+        let parent_error = parent
+            .checkpoint_at(OperationPhase::Parse)
+            .expect_err("the parent cancellation must be observed");
+        let child = parent.child();
+
+        let child_error = child
+            .checkpoint_at(OperationPhase::Layout)
+            .expect_err("the child must observe the parent cancellation");
+
+        assert_eq!(parent_error.reason, CancelReason::Requested);
+        assert_eq!(parent_error.phase, OperationPhase::Parse);
+        assert_eq!(child_error.reason, parent_error.reason);
+        assert_eq!(child_error.phase, OperationPhase::Layout);
+        assert_eq!(
+            parent.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            parent_error
+        );
+        assert_eq!(
+            child.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            child_error
+        );
+    }
+
+    #[test]
+    fn child_rebinds_an_observed_parent_deadline_to_its_checkpoint_phase() {
+        let parent = OperationControl::new().with_deadline(Duration::ZERO);
+        let parent_error = parent
+            .checkpoint_at(OperationPhase::Parse)
+            .expect_err("the parent deadline must be observed");
+        let child = parent.child();
+
+        let child_error = child
+            .checkpoint_at(OperationPhase::Layout)
+            .expect_err("the child must observe the parent deadline");
+
+        assert_eq!(parent_error.reason, CancelReason::DeadlineExceeded);
+        assert_eq!(parent_error.phase, OperationPhase::Parse);
+        assert_eq!(child_error.reason, parent_error.reason);
+        assert_eq!(child_error.phase, OperationPhase::Layout);
+        assert_eq!(
+            parent.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            parent_error
+        );
+        assert_eq!(
+            child.checkpoint_at(OperationPhase::Emit).unwrap_err(),
+            child_error
         );
     }
 
