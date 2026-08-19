@@ -647,8 +647,8 @@ fn sequence_root_id_is_safe_for_direct_css_selectors() {
 }
 
 #[test]
-fn sequence_large_diagram_id_preflight_accepts_exact_and_rejects_n_minus_one() {
-    fn render_error(diagram_id: &str, maximum: usize) -> Error {
+fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
+    fn render_error(text: &str, diagram_id: &str, maximum: usize) -> Error {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
             .unwrap();
@@ -656,10 +656,7 @@ fn sequence_large_diagram_id_preflight_accepts_exact_and_rejects_n_minus_one() {
             .with_resource_policy(policy)
             .begin_session()
             .unwrap();
-        let parsed = parse_sequence_for_render(
-            &Engine::new(),
-            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
-        );
+        let parsed = parse_sequence_for_render(&Engine::new(), text);
         let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
             .expect("prepare Sequence artifact");
         match artifact.render_svg(
@@ -675,13 +672,30 @@ fn sequence_large_diagram_id_preflight_accepts_exact_and_rejects_n_minus_one() {
     }
 
     let diagram_id = "diagram".repeat(128);
-    let Error::ResourceLimitExceeded(initial) = render_error(&diagram_id, 1) else {
+    let base = "sequenceDiagram\nparticipant A\nparticipant B\n";
+    let Error::ResourceLimitExceeded(base_error) = render_error(base, &diagram_id, 1) else {
+        panic!("expected base SVG byte projection error");
+    };
+
+    let message_count = 96usize;
+    let mut messages = String::from(base);
+    messages.push_str("autonumber\n");
+    for _ in 0..message_count {
+        messages.push_str("A->>B: hello\n");
+    }
+    let Error::ResourceLimitExceeded(initial) = render_error(&messages, &diagram_id, 1) else {
         panic!("expected initial SVG byte projection error");
     };
     let projected = initial.actual;
-    assert!(projected > 1);
+    assert_eq!(
+        projected,
+        base_error.actual + 2 * message_count * diagram_id.len(),
+        "every message contributes one arrow marker and one autonumber marker"
+    );
 
-    let Error::ResourceLimitExceeded(n_minus_one) = render_error(&diagram_id, projected - 1) else {
+    let Error::ResourceLimitExceeded(n_minus_one) =
+        render_error(&messages, &diagram_id, projected - 1)
+    else {
         panic!("expected N-1 SVG byte projection error");
     };
     assert_eq!(n_minus_one.cause, ResourceLimitCause::Ceiling);
@@ -690,13 +704,14 @@ fn sequence_large_diagram_id_preflight_accepts_exact_and_rejects_n_minus_one() {
     assert_eq!(n_minus_one.actual, projected);
     assert_eq!(n_minus_one.max, projected - 1);
 
-    let Error::ResourceLimitExceeded(exact) = render_error(&diagram_id, projected) else {
+    let Error::ResourceLimitExceeded(exact) = render_error(&messages, &diagram_id, projected)
+    else {
         panic!("expected final whole-document SVG byte error");
     };
     assert_eq!(exact.max, projected);
     assert!(
         exact.actual > projected,
-        "the exact static projection must pass early admission and reach final output admission"
+        "the exact diagram-id projection must pass early admission and reach final output admission"
     );
 }
 
