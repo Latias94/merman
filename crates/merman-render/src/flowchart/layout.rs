@@ -1628,7 +1628,10 @@ fn layout_flowchart_with_model(
         inherit_dir,
         text_style,
         html_label_text_style,
-    } = FlowchartConfigView::new(effective_config_value).layout_settings();
+    } = svg_label_sidecar.map_or_else(
+        || FlowchartConfigView::new(effective_config_value).layout_settings(),
+        |sidecar| sidecar.layout_settings(effective_config_value),
+    );
     let edge_label_padding = svg_label_sidecar.map_or_else(
         super::FlowchartEdgeLabelPadding::default,
         FlowchartSvgLabelSidecarBuilder::edge_label_padding,

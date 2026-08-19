@@ -258,6 +258,7 @@ fn render_sequence_diagram_svg_inner(
         settings.actor_label_font_size,
         effective_config,
         SequenceThemeCssAdapter {
+            base_font_family: Some(prepared.typography().base_font_family_css()),
             actor_fill: actor_theme.typed_fill.as_deref(),
             actor_stroke: actor_theme.typed_stroke.as_deref(),
             lifeline_stroke: lifeline_theme.typed_stroke.as_deref(),
@@ -481,10 +482,6 @@ fn render_sequence_diagram_svg_inner(
         out.checkpoint()?;
     }
 
-    prepared
-        .theme_evidence()
-        .record_typography_emission(typography_receipt);
-
     if let Some(title) = effective_title {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.
         // Mermaid positions the title using the inner (content) box width:
@@ -502,6 +499,10 @@ fn render_sequence_diagram_svg_inner(
 
     out.push_str("</svg>\n");
     let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
+    typography_receipt.record_terminal_svg(&svg, diagram_id);
+    prepared
+        .theme_evidence()
+        .record_typography_emission(typography_receipt);
     root_metrics.document.complete(svg)
 }
 

@@ -779,7 +779,10 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
         text_style,
         html_label_text_style,
         ..
-    } = FlowchartConfigView::new(effective_config_value).layout_settings();
+    } = svg_label_sidecar.map_or_else(
+        || FlowchartConfigView::new(effective_config_value).layout_settings(),
+        |sidecar| sidecar.layout_settings(effective_config_value),
+    );
 
     let diagram_direction = model
         .direction

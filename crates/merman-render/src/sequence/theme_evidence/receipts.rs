@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 
 use crate::diagram_theme::{
     FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedStyleProperty, ResolvedThemeStyle,
-    ThemeVariant,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::resolved_style_property_for_facet as style_property_for_facet;
 
@@ -744,6 +744,60 @@ struct SequenceTextSurfaceReceipt {
     emitted_labels: Cell<usize>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(super) struct SequenceBaseTypographyReceipt {
+    expected_font_family: String,
+    expected_font_size_bits: u64,
+    typed_properties: BTreeSet<ThemeTypographyProperty>,
+    terminal_svg_observed: bool,
+    stylesheet_verified: bool,
+    inherited_font_stack_occurrences: usize,
+    inherited_font_size_occurrences: usize,
+}
+
+impl SequenceBaseTypographyReceipt {
+    fn from_plan(plan: &crate::sequence::SequenceTypographyPlan) -> Self {
+        Self {
+            expected_font_family: plan.base_font_family_css().to_owned(),
+            expected_font_size_bits: plan.base_font_size_px().to_bits(),
+            typed_properties: plan.base_typed_properties().clone(),
+            terminal_svg_observed: false,
+            stylesheet_verified: false,
+            inherited_font_stack_occurrences: 0,
+            inherited_font_size_occurrences: 0,
+        }
+    }
+
+    pub(super) const fn terminal_svg_observed(&self) -> bool {
+        self.terminal_svg_observed
+    }
+
+    pub(super) const fn stylesheet_verified(&self) -> bool {
+        self.stylesheet_verified
+    }
+
+    pub(super) const fn inherited_occurrences(&self, property: ThemeTypographyProperty) -> usize {
+        match property {
+            ThemeTypographyProperty::FontStack => self.inherited_font_stack_occurrences,
+            ThemeTypographyProperty::FontSize => self.inherited_font_size_occurrences,
+            ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => 0,
+        }
+    }
+
+    pub(super) fn has_typed_property(&self, property: ThemeTypographyProperty) -> bool {
+        self.typed_properties.contains(&property)
+    }
+}
+
 impl SequenceTextSurfaceReceipt {
     fn record_stylesheet_emission(&mut self, final_fill: &str, typed_fill: Option<&str>) {
         if typed_fill.is_some() {
@@ -794,6 +848,7 @@ pub(super) struct SequenceRoleFillSummary {
 pub(super) struct SequenceRoleTypographyReceipt {
     pub(super) static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     pub(super) config_overrides: BTreeSet<crate::diagram_theme::ThemeTypographyProperty>,
+    base_typed_properties: BTreeSet<ThemeTypographyProperty>,
     text_surfaces: [SequenceTextSurfaceReceipt; 7],
 }
 
@@ -809,6 +864,7 @@ impl SequenceRoleTypographyReceipt {
         let mut receipt = Self {
             static_winners,
             config_overrides: typography.config_overrides().clone(),
+            base_typed_properties: typography.base_typed_properties().clone(),
             ..Self::default()
         };
         for surface in crate::sequence::SequenceTextSurface::ALL {
@@ -850,6 +906,22 @@ impl SequenceRoleTypographyReceipt {
     pub(super) fn complete(&self) -> bool {
         let candidates = self.label_candidate_count();
         candidates != 0 && candidates == self.emitted_label_count()
+    }
+
+    pub(super) fn base_property_reached_complete_terminal(
+        &self,
+        property: ThemeTypographyProperty,
+    ) -> bool {
+        self.base_typed_properties.contains(&property) && self.complete()
+    }
+
+    pub(super) fn base_property_terminal_incomplete(
+        &self,
+        property: ThemeTypographyProperty,
+    ) -> bool {
+        self.base_typed_properties.contains(&property)
+            && self.label_candidate_count() != 0
+            && !self.complete()
     }
 
     pub(super) fn label_candidate_count(&self) -> usize {
@@ -897,6 +969,7 @@ impl SequenceRoleTypographyReceipt {
 /// One operation-local receipt shared by every Sequence role-label terminal writer.
 #[derive(Debug, Clone)]
 pub(crate) struct SequenceTypographyThemeReceipt {
+    pub(super) base: SequenceBaseTypographyReceipt,
     pub(super) actor: SequenceRoleTypographyReceipt,
     pub(super) message: SequenceRoleTypographyReceipt,
     pub(super) note: SequenceRoleTypographyReceipt,
@@ -906,6 +979,7 @@ pub(crate) struct SequenceTypographyThemeReceipt {
 impl SequenceTypographyThemeReceipt {
     pub(crate) fn from_plan(plan: &crate::sequence::SequenceTypographyPlan) -> Self {
         Self {
+            base: SequenceBaseTypographyReceipt::from_plan(plan),
             actor: SequenceRoleTypographyReceipt::from_resolved(
                 crate::sequence::SequenceTypographyRole::Actor,
                 plan.actor(),
@@ -923,6 +997,88 @@ impl SequenceTypographyThemeReceipt {
                 plan.loop_label(),
             ),
         }
+    }
+
+    pub(crate) fn record_terminal_svg(&mut self, svg: &str, diagram_id: &str) {
+        let Ok(document) = roxmltree::Document::parse(svg) else {
+            return;
+        };
+        let root = document.root_element();
+        if !root.has_tag_name(("http://www.w3.org/2000/svg", "svg"))
+            || root.attribute("id") != Some(diagram_id)
+        {
+            return;
+        }
+        let mut styles = document
+            .descendants()
+            .filter(|node| node.has_tag_name(("http://www.w3.org/2000/svg", "style")));
+        let stylesheet = styles
+            .next()
+            .and_then(|style| style.text())
+            .unwrap_or_default();
+        let id = crate::svg::escape_css_identifier(diagram_id);
+        let unique_stylesheet = styles.next().is_none();
+        self.base.terminal_svg_observed = unique_stylesheet;
+        self.base.stylesheet_verified = unique_stylesheet
+            && typography_rule_matches(
+                stylesheet,
+                &format!("#{id}"),
+                &self.base.expected_font_family,
+                self.base.expected_font_size_bits,
+            )
+            && typography_rule_matches(
+                stylesheet,
+                &format!("#{id} svg"),
+                &self.base.expected_font_family,
+                self.base.expected_font_size_bits,
+            )
+            && font_family_variable_rule_matches(
+                stylesheet,
+                &format!("#{id} :root"),
+                &self.base.expected_font_family,
+            );
+        for text in document.descendants().filter(is_base_inherited_text) {
+            if terminal_text_inherits_property(text, ThemeTypographyProperty::FontStack) {
+                self.base.inherited_font_stack_occurrences =
+                    self.base.inherited_font_stack_occurrences.saturating_add(1);
+            }
+            if terminal_text_inherits_property(text, ThemeTypographyProperty::FontSize) {
+                self.base.inherited_font_size_occurrences =
+                    self.base.inherited_font_size_occurrences.saturating_add(1);
+            }
+        }
+    }
+
+    pub(super) fn base_property_applied(&self, property: ThemeTypographyProperty) -> bool {
+        if !self.base.has_typed_property(property) {
+            return false;
+        }
+        let roles = [&self.actor, &self.message, &self.note, &self.loop_label];
+        if roles
+            .iter()
+            .any(|role| role.base_property_reached_complete_terminal(property))
+        {
+            return true;
+        }
+        self.base.inherited_occurrences(property) != 0
+    }
+
+    pub(super) fn base_property_incomplete(&self, property: ThemeTypographyProperty) -> bool {
+        [&self.actor, &self.message, &self.note, &self.loop_label]
+            .iter()
+            .any(|role| role.base_property_terminal_incomplete(property))
+    }
+
+    pub(super) fn base_relevant_occurrences(&self) -> usize {
+        let role_candidates = [&self.actor, &self.message, &self.note, &self.loop_label]
+            .iter()
+            .map(|role| role.label_candidate_count())
+            .sum::<usize>();
+        role_candidates.saturating_add(
+            self.base
+                .inherited_font_stack_occurrences
+                .max(self.base.inherited_font_size_occurrences),
+        )
     }
 
     pub(super) fn role(
@@ -964,6 +1120,127 @@ impl SequenceTypographyThemeReceipt {
         }
         .record_stylesheet_emission(surface, final_fill, typed_fill);
     }
+}
+
+fn typography_rule_matches(
+    stylesheet: &str,
+    selector: &str,
+    expected_font_family: &str,
+    expected_font_size_bits: u64,
+) -> bool {
+    let Some(body) = unique_rule_body(stylesheet, selector) else {
+        return false;
+    };
+    let mut font_family_count = 0usize;
+    let mut font_size_count = 0usize;
+    for declaration in body.split_terminator(';') {
+        let Some((property, value)) = declaration.split_once(':') else {
+            return false;
+        };
+        match property {
+            "font-family" => {
+                font_family_count = font_family_count.saturating_add(1);
+                if value != expected_font_family {
+                    return false;
+                }
+            }
+            "font-size" => {
+                font_size_count = font_size_count.saturating_add(1);
+                let Some(value) = value.strip_suffix("px") else {
+                    return false;
+                };
+                let Ok(value) = value.parse::<f64>() else {
+                    return false;
+                };
+                if value.to_bits() != expected_font_size_bits {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    font_family_count == 1 && font_size_count == 1
+}
+
+fn font_family_variable_rule_matches(
+    stylesheet: &str,
+    selector: &str,
+    expected_font_family: &str,
+) -> bool {
+    let Some(body) = unique_rule_body(stylesheet, selector) else {
+        return false;
+    };
+    let mut declaration_count = 0usize;
+    for declaration in body.split_terminator(';') {
+        let Some((property, value)) = declaration.split_once(':') else {
+            return false;
+        };
+        if property == "--mermaid-font-family" {
+            declaration_count = declaration_count.saturating_add(1);
+            if value != expected_font_family {
+                return false;
+            }
+        }
+    }
+    declaration_count == 1
+}
+
+fn is_base_inherited_text(node: &roxmltree::Node<'_, '_>) -> bool {
+    node.has_tag_name(("http://www.w3.org/2000/svg", "text"))
+        && node
+            .attribute("class")
+            .is_none_or(|classes| classes.trim().is_empty())
+        && !node
+            .ancestors()
+            .skip(1)
+            .any(|ancestor| ancestor.has_tag_name(("http://www.w3.org/2000/svg", "foreignObject")))
+        && node
+            .descendants()
+            .filter_map(|descendant| descendant.text())
+            .any(|text| !text.trim().is_empty())
+}
+
+fn terminal_text_inherits_property(
+    text: roxmltree::Node<'_, '_>,
+    property: ThemeTypographyProperty,
+) -> bool {
+    let property_name = match property {
+        ThemeTypographyProperty::FontStack => "font-family",
+        ThemeTypographyProperty::FontSize => "font-size",
+        ThemeTypographyProperty::FontWeight
+        | ThemeTypographyProperty::FontStyle
+        | ThemeTypographyProperty::LineHeight
+        | ThemeTypographyProperty::LetterSpacing
+        | ThemeTypographyProperty::WordSpacing
+        | ThemeTypographyProperty::Transform
+        | ThemeTypographyProperty::Decoration
+        | ThemeTypographyProperty::TextAlign
+        | ThemeTypographyProperty::WhiteSpace
+        | ThemeTypographyProperty::Wrap => return false,
+    };
+    if text.attribute(property_name).is_some() {
+        return false;
+    }
+    !text
+        .attribute("style")
+        .unwrap_or_default()
+        .split(';')
+        .filter_map(crate::mermaid_style::parse_style_declaration)
+        .any(|declaration| {
+            declaration.property().eq_ignore_ascii_case(property_name)
+                || declaration.property().eq_ignore_ascii_case("font")
+        })
+}
+
+fn unique_rule_body<'a>(stylesheet: &'a str, selector: &str) -> Option<&'a str> {
+    let prefix = format!("{selector}{{");
+    let mut matches = stylesheet.match_indices(&prefix);
+    let (offset, _) = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    let body = &stylesheet[offset.saturating_add(prefix.len())..];
+    Some(&body[..body.find('}')?])
 }
 
 pub(super) fn record_style_winners(

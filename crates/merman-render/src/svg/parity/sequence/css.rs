@@ -2,6 +2,7 @@ use super::super::*;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct SequenceThemeCssAdapter<'a> {
+    pub(super) base_font_family: Option<&'a str>,
     pub(super) actor_fill: Option<&'a str>,
     pub(super) actor_stroke: Option<&'a str>,
     pub(super) lifeline_stroke: Option<&'a str>,
@@ -126,7 +127,9 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     // Keep `:root` last (matches upstream fixtures).
     let id = crate::svg::escape_css_identifier(diagram_id);
     let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
-    let font = theme.common.font_family_css.as_str();
+    let font = typed
+        .base_font_family
+        .unwrap_or(theme.common.font_family_css.as_str());
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();

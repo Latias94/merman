@@ -746,6 +746,7 @@ impl PreparedFlowchartSvgLabel {
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartSvgLabelSidecarBuilder {
     pending: RefCell<PendingFlowchartSvgLabels>,
+    base_typography: Option<super::FlowchartBaseTypographyPlan>,
     math_backend: Option<ConfiguredMathBackend>,
     prepared_text_layout: Option<PreparedTextLayout>,
     work_meter: Option<Arc<OperationWorkMeter>>,
@@ -967,6 +968,21 @@ impl FlowchartSvgLabelSidecarBuilder {
     ) -> Self {
         self.typography_config_ownership = ownership;
         self
+    }
+
+    pub(crate) fn with_base_typography(mut self, plan: super::FlowchartBaseTypographyPlan) -> Self {
+        self.base_typography = Some(plan);
+        self
+    }
+
+    pub(crate) fn layout_settings(
+        &self,
+        effective_config: &serde_json::Value,
+    ) -> super::FlowchartLayoutSettings {
+        self.base_typography.as_ref().map_or_else(
+            || super::FlowchartConfigView::new(effective_config).layout_settings(),
+            |plan| plan.layout_settings(effective_config),
+        )
     }
 
     pub(crate) fn with_math_backend(
@@ -1563,6 +1579,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             pending.prepared,
             pending.math,
             pending.render_ids,
+            self.base_typography,
             self.edge_label_padding,
             self.prepared_error.into_inner(),
             self.prepared_resource_error.into_inner(),
@@ -1769,6 +1786,7 @@ pub(crate) struct FlowchartSvgLabelSidecar {
     sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
     prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
     math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
+    base_typography: Option<super::FlowchartBaseTypographyPlan>,
     node_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     empty_subgraph_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     edge_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
@@ -1792,6 +1810,7 @@ impl FlowchartSvgLabelSidecar {
         mut prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
         math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
         render_ids: FlowchartSvgLabelSlots<Box<str>>,
+        base_typography: Option<super::FlowchartBaseTypographyPlan>,
         edge_label_padding: super::FlowchartEdgeLabelPadding,
         mut prepared_error: Option<TextLayoutError>,
         prepared_resource_error: Option<ResourceLimitExceeded>,
@@ -1818,6 +1837,7 @@ impl FlowchartSvgLabelSidecar {
             sources,
             prepared,
             math,
+            base_typography,
             edge_label_padding,
             prepared_error,
             prepared_resource_error,
@@ -1877,6 +1897,10 @@ impl FlowchartSvgLabelSidecar {
 
     pub(crate) const fn edge_label_padding(&self) -> super::FlowchartEdgeLabelPadding {
         self.edge_label_padding
+    }
+
+    pub(crate) fn base_typography(&self) -> Option<&super::FlowchartBaseTypographyPlan> {
+        self.base_typography.as_ref()
     }
 
     pub(crate) fn prepared_text_label_ledger(

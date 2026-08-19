@@ -870,6 +870,26 @@ fn classify_base_typography(
             | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
         };
     }
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::SEQUENCE
+    ) {
+        return match property {
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize => {
+                FamilyThemeDisposition::TypedAdapter
+            }
+            ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
+    }
     if family == DiagramFamilyId::ZENUML {
         return FamilyThemeDisposition::Unsupported;
     }
@@ -2691,7 +2711,7 @@ mod tests {
         assert!(base_routes.iter().any(|route| {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
         }));
         assert!(base_routes.iter().any(|route| {
             route.mechanism()
@@ -4013,25 +4033,39 @@ mod tests {
     }
 
     #[test]
-    fn only_font_stack_and_size_are_legacy_base_typography() {
+    fn sequence_directly_owns_only_base_font_stack_and_size() {
         let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("monospace")
+                    .expect("valid Sequence base font stack"),
+            )
             .with_font_size_px(18.0)
             .expect("valid font size")
             .with_font_weight(700)
             .expect("valid font weight");
         let routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &typography);
 
-        assert_eq!(routes.len(), 2);
+        assert_eq!(routes.len(), 3);
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        }));
         assert!(routes.iter().any(|route| {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
         }));
         assert!(routes.iter().any(|route| {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
                 && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
+        assert!(
+            routes
+                .iter()
+                .all(|route| route.disposition() != FamilyThemeDisposition::LegacyCompatibility)
+        );
     }
 
     #[test]
@@ -4206,7 +4240,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_base_typography_remains_legacy_until_shared_layout_plan() {
+    fn flowchart_and_swimlane_base_typography_is_owned_by_the_shared_layout_plan() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::single("Excalifont").expect("valid fixture font stack"),
@@ -4222,12 +4256,12 @@ mod tests {
             assert!(routes.iter().any(|route| {
                 route.mechanism()
                     == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
-                    && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
             }));
             assert!(routes.iter().any(|route| {
                 route.mechanism()
                     == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                    && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
             }));
             assert!(routes.iter().any(|route| {
                 route.mechanism()
@@ -4238,7 +4272,7 @@ mod tests {
     }
 
     #[test]
-    fn oversized_font_stack_is_unsupported_without_shadowing_font_size() {
+    fn oversized_legacy_font_stack_is_unsupported_without_shadowing_font_size() {
         let families = (0..32)
             .map(|index| format!("font-{index}-{}", "x".repeat(180)))
             .collect::<Vec<_>>();
@@ -4246,7 +4280,7 @@ mod tests {
             .with_font_stack(super::super::FontStack::new(families).expect("valid font stack"))
             .with_font_size_px(18.0)
             .expect("valid font size");
-        let routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &typography);
+        let routes = compile_base_typography_routes(DiagramFamilyId::CLASS, &typography);
 
         assert_eq!(routes.len(), 2);
         assert!(routes.iter().any(|route| {
@@ -4259,5 +4293,28 @@ mod tests {
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
                 && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
         }));
+    }
+
+    #[test]
+    fn sequence_oversized_font_stack_and_size_remain_direct() {
+        let families = (0..32)
+            .map(|index| format!("font-{index}-{}", "x".repeat(180)))
+            .collect::<Vec<_>>();
+        let typography = TextStyle::default()
+            .with_font_stack(super::super::FontStack::new(families).expect("valid font stack"))
+            .with_font_size_px(18.0)
+            .expect("valid font size");
+        let routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &typography);
+
+        assert_eq!(routes.len(), 2);
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ] {
+            assert!(routes.iter().any(|route| {
+                route.mechanism() == FamilyThemeMechanism::BaseTypography(property)
+                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            }));
+        }
     }
 }

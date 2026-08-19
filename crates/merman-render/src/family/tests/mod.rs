@@ -188,6 +188,35 @@ fn flowchart_node_label_font_stack_theme(family: DiagramFamilyId) -> DiagramThem
     flowchart_node_label_font_stack_theme_with_base(family, None)
 }
 
+fn base_typography_theme(family: DiagramFamilyId) -> DiagramTheme {
+    let latin = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let cjk = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Xiaolai-Regular-CJK-Test.woff2"
+    ));
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("Excalifont").expect("valid fixture font stack"))
+        .with_font_size_px(23.0)
+        .expect("valid fixture font size");
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(family, typography))
+                .with_assets(
+                    crate::diagram_theme::ThemeAssets::default().with_font_catalog(
+                        crate::diagram_theme::FontCatalogSpec::new([
+                            crate::diagram_theme::FontAssetSpec::new("excalifont", latin),
+                            crate::diagram_theme::FontAssetSpec::new("xiaolai", cjk),
+                        ]),
+                    ),
+                ),
+        )
+        .expect("compile Flowchart base typography theme")
+}
+
 fn flowchart_node_label_font_stack_theme_with_base(
     family: DiagramFamilyId,
     base_font_stack: Option<FontStack>,
@@ -2242,6 +2271,546 @@ A[Alpha]
             ]
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+}
+
+#[test]
+fn require_portable_accepts_flowchart_and_swimlane_base_typography_after_terminal_svg() {
+    for (family, source) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A[Alpha] -->|message| B[Beta]
+"#,
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            r#"---
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TD
+A[Alpha] -->|message| B[Beta]
+"#,
+        ),
+    ] {
+        let theme = base_typography_theme(family);
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart-family source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict base typography session"),
+        )
+        .expect("prepare direct base typography")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("terminal SVG must prove direct base typography");
+
+        assert_eq!(rendered.family_id(), family);
+        assert!(
+            rendered.svg().contains("font-family:Excalifont"),
+            "{}",
+            rendered.svg()
+        );
+        assert!(
+            rendered.svg().contains("font-size:23px"),
+            "{}",
+            rendered.svg()
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Typography]
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_not_applicable_mechanisms()
+                .is_empty()
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+    }
+}
+
+#[test]
+fn explicit_site_and_source_base_typography_outranks_flowchart_and_swimlane_typed_values() {
+    const FLOWCHART_SOURCE: &str = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A[测试] -->|测试| B[测试]
+"#;
+    const SWIMLANE_SOURCE: &str = r#"---
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TD
+A[测试] -->|测试| B[测试]
+"#;
+
+    for (family, base_source) in [
+        (DiagramFamilyId::FLOWCHART, FLOWCHART_SOURCE),
+        (DiagramFamilyId::SWIMLANE, SWIMLANE_SOURCE),
+    ] {
+        let theme = base_typography_theme(family);
+        for (origin, engine, source, expected_font, expected_size) in [
+            (
+                "site",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "themeVariables": {
+                        "fontFamily": "Xiaolai SC",
+                        "fontSize": "19px"
+                    }
+                }))),
+                base_source.to_string(),
+                "Xiaolai SC",
+                "19px",
+            ),
+            (
+                "source",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+                base_source.replacen(
+                    "---\nflowchart",
+                    concat!(
+                        "---\n",
+                        "%%{init: {\"themeVariables\": {\"fontFamily\": \"Xiaolai SC\", ",
+                        "\"fontSize\": \"21px\"}}}%%\n",
+                        "flowchart"
+                    ),
+                    1,
+                ),
+                "Xiaolai SC",
+                "21px",
+            ),
+        ] {
+            let parsed = theme
+                .install_parse_compatibility(engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} {family} base typography source: {error}")
+                })
+                .unwrap_or_else(|| panic!("detect {origin} {family} base typography source"));
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .unwrap_or_else(|error| {
+                        panic!("begin {origin} {family} base typography session: {error}")
+                    }),
+            )
+            .unwrap_or_else(|error| panic!("prepare {origin} {family} base typography: {error}"))
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render {origin} {family} base typography: {error}"));
+
+            assert!(
+                rendered
+                    .svg()
+                    .contains(&format!("font-family:{expected_font}")),
+                "{}",
+                rendered.svg()
+            );
+            assert!(
+                rendered
+                    .svg()
+                    .contains(&format!("font-size:{expected_size}")),
+                "{}",
+                rendered.svg()
+            );
+            assert!(!rendered.svg().contains("font-family:Excalifont"));
+            assert!(!rendered.svg().contains("font-size:23px"));
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .is_empty()
+            );
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Typography]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+            assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+        }
+    }
+}
+
+#[test]
+fn require_portable_accepts_sequence_base_typography_after_terminal_svg() {
+    const SOURCE: &str = r#"sequenceDiagram
+box Team
+participant A as Alpha
+participant B as Beta
+end
+A->>B: Message
+Note over A,B: Note
+loop Repeat
+B-->>A: Reply
+end
+"#;
+
+    let theme = base_typography_theme(DiagramFamilyId::SEQUENCE);
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+        .expect("parse Sequence base typography source")
+        .expect("detect Sequence base typography source");
+    let rendered = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Sequence base typography session"),
+    )
+    .expect("prepare direct Sequence base typography")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("terminal Sequence SVG must prove direct base typography");
+
+    assert!(rendered.svg().contains("font-family:Excalifont"));
+    assert!(rendered.svg().contains("font-size:23px"));
+    assert_eq!(
+        rendered.style_report().theme_applied_mechanisms(),
+        &[FamilyThemeMechanismKey::Typography]
+    );
+    assert!(
+        rendered
+            .style_report()
+            .theme_not_applicable_mechanisms()
+            .is_empty()
+    );
+    assert!(rendered.style_report().theme_residuals().is_empty());
+    assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
+    assert_eq!(
+        rendered.style_report().verification(),
+        FamilyStyleVerification::Verified
+    );
+}
+
+#[test]
+fn explicit_site_and_source_base_typography_outranks_sequence_typed_values() {
+    const SOURCE: &str = r#"sequenceDiagram
+autonumber
+participant A as 测试
+participant B as 测试
+A->>B: 测试
+Note over A,B: 测试
+loop 测试
+B-->>A: 测试
+end
+"#;
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("Excalifont").expect("valid typed base font stack"))
+        .with_font_size_px(23.0)
+        .expect("valid typed base font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::SEQUENCE, typography),
+        ))
+        .expect("compile Sequence role-local font owner theme");
+
+    for (origin, engine, source, expected_size) in [
+        (
+            "site",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "fontSize": 19,
+                "themeVariables": {
+                    "fontFamily": "Excalifont,Xiaolai SC"
+                }
+            }))),
+            SOURCE.to_string(),
+            "19px",
+        ),
+        (
+            "source",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+            format!(
+                "%%{{init: {{\"fontSize\": 21, \"themeVariables\": {{\"fontFamily\": \"Excalifont,Xiaolai SC\"}}}}}}%%\n{SOURCE}"
+            ),
+            "21px",
+        ),
+    ] {
+        let parsed = theme
+            .install_parse_compatibility(engine)
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse {origin} Sequence base typography: {error}"))
+            .unwrap_or_else(|| panic!("detect {origin} Sequence base typography"));
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence base typography session: {error}")
+                }),
+        )
+        .unwrap_or_else(|error| panic!("prepare {origin} Sequence base typography: {error}"))
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap_or_else(|error| panic!("render {origin} Sequence base typography: {error}"));
+
+        assert!(rendered.svg().contains("font-family:Excalifont,Xiaolai SC"));
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!("font-size:{expected_size}"))
+        );
+        assert!(!rendered.svg().contains("font-size:23px"));
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Typography]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sequence_role_local_font_owner_does_not_fall_back_to_the_typed_family_stack() {
+    const SOURCE: &str = r#"sequenceDiagram
+participant A as Config Actor
+participant B as Base Actor
+A->>B: Base Message
+"#;
+    let latin = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let cjk = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Xiaolai-Regular-CJK-Test.woff2"
+    ));
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::new(["Xiaolai SC", "Excalifont"]).expect("valid fixture font stack"),
+        )
+        .with_font_size_px(23.0)
+        .expect("valid fixture font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default()
+                        .with_family_style(DiagramFamilyId::SEQUENCE, typography),
+                )
+                .with_assets(
+                    crate::diagram_theme::ThemeAssets::default().with_font_catalog(
+                        crate::diagram_theme::FontCatalogSpec::new([
+                            crate::diagram_theme::FontAssetSpec::new("excalifont", latin),
+                            crate::diagram_theme::FontAssetSpec::new("xiaolai", cjk),
+                        ])
+                        .with_alias("trebuchet ms", "Excalifont")
+                        .with_alias("verdana", "Excalifont")
+                        .with_alias("arial", "Excalifont")
+                        .with_alias("Courier New", "Excalifont")
+                        .with_generic_family(
+                            crate::diagram_theme::GenericFontFamily::SansSerif,
+                            "Excalifont",
+                        ),
+                    ),
+                ),
+        )
+        .expect("compile Sequence role-local font owner theme");
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "sequence": {"actorFontFamily": "Courier New"}
+    })));
+    let parsed = theme
+        .install_parse_compatibility(engine)
+        .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+        .expect("parse Sequence role-local font owner source")
+        .expect("detect Sequence role-local font owner source");
+    let rendered = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Sequence role-local font owner session"),
+    )
+    .expect("prepare Sequence role-local font owner")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("terminal Sequence SVG must keep the role-local owner isolated from typed base");
+    let document = roxmltree::Document::parse(rendered.svg())
+        .expect("valid Sequence role-local font owner SVG");
+    let actor_style = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "actor-box")
+                })
+                && node.descendants().any(|descendant| {
+                    descendant
+                        .text()
+                        .is_some_and(|text| text.contains("Config Actor"))
+                })
+        })
+        .and_then(|node| node.attribute("style"))
+        .expect("Config Actor terminal style");
+
+    assert!(
+        actor_style.contains("font-family:"),
+        "the config-owned role must receive an explicit CSSOM-safe fallback: {actor_style}"
+    );
+    assert!(
+        actor_style.contains("Excalifont") && !actor_style.contains("Xiaolai"),
+        "the typed family stack must not leak through a role-local config owner: {actor_style}"
+    );
+    assert_eq!(
+        rendered.style_report().theme_applied_mechanisms(),
+        &[FamilyThemeMechanismKey::Typography]
+    );
+    assert!(rendered.style_report().theme_residuals().is_empty());
+}
+
+#[test]
+fn sequence_oversized_base_font_stack_remains_direct_through_the_terminal_writer() {
+    let font_stack =
+        FontStack::new((0..32).map(|index| format!("font-{index}-{}", "x".repeat(180))))
+            .expect("valid oversized Sequence font stack");
+    let expected_css = font_stack.as_css();
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(font_stack)
+        .with_font_size_px(18.0)
+        .expect("valid Sequence base font size");
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::SEQUENCE, typography),
+        ))
+        .expect("compile oversized Sequence base typography theme");
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse oversized Sequence base typography source")
+        .expect("detect oversized Sequence base typography source");
+    let rendered = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict oversized Sequence base typography session"),
+    )
+    .expect("prepare oversized Sequence base typography")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("oversized Sequence base typography must remain direct and portable");
+
+    assert!(
+        rendered
+            .svg()
+            .contains(&format!("font-family:{expected_css}"))
+    );
+    assert!(rendered.svg().contains("font-size:18px"));
+    assert_eq!(
+        rendered.style_report().theme_applied_mechanisms(),
+        &[FamilyThemeMechanismKey::Typography]
+    );
+    assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
+    assert!(rendered.style_report().theme_residuals().is_empty());
+}
+
+#[test]
+fn sequence_theme_variable_font_size_is_not_promoted_to_a_runtime_owner() {
+    const SOURCE: &str = r#"sequenceDiagram
+participant A as Alpha
+participant B as Beta
+A->>B: Message
+Note over A,B: Note
+"#;
+    let theme = base_typography_theme(DiagramFamilyId::SEQUENCE);
+
+    for (origin, engine, source) in [
+        (
+            "site",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": {"fontSize": "41px"}
+            }))),
+            SOURCE.to_string(),
+        ),
+        (
+            "source",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+            format!("%%{{init: {{\"themeVariables\": {{\"fontSize\": \"41px\"}}}}}}%%\n{SOURCE}"),
+        ),
+    ] {
+        let parsed = theme
+            .install_parse_compatibility(engine)
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse {origin} Sequence font-size source: {error}"))
+            .unwrap_or_else(|| panic!("detect {origin} Sequence font-size source"));
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence font-size session: {error}")
+                }),
+        )
+        .unwrap_or_else(|error| panic!("prepare {origin} Sequence font-size theme: {error}"))
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap_or_else(|error| panic!("render {origin} Sequence font-size theme: {error}"));
+
+        assert!(rendered.svg().contains("font-size:23px"), "{origin}");
+        assert!(!rendered.svg().contains("font-size:41px"), "{origin}");
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Typography],
+            "{origin}"
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_not_applicable_mechanisms()
+                .is_empty(),
+            "{origin}"
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
     }
 }
 

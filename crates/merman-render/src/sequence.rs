@@ -467,7 +467,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         message_metrics,
         text_sidecar: SequenceTextSidecar::new(
             prepared_text_layout,
-            effective_config_value,
             Arc::clone(&typography),
             Arc::clone(&work_meter),
         ),

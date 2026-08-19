@@ -28,11 +28,14 @@ fn prepare_flowchart_artifact<L>(
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
     let edge_theme =
         crate::flowchart::FlowchartEdgeThemeStyle::resolve(resolved_theme, work_meter.as_ref())?;
+    let base_typography =
+        crate::flowchart::FlowchartBaseTypographyPlan::resolve(resolved_theme, effective_config);
     let svg_label_sidecar = crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
         prepared_text_layout,
         resolved_theme,
         work_meter,
     )
+    .with_base_typography(base_typography)
     .with_math_backend(math_backend, effective_config)
     .with_typography_config_ownership(typography_config_ownership)
     .with_edge_label_padding(edge_theme.edge_label_padding());

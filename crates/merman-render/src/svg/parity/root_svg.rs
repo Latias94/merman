@@ -758,6 +758,10 @@ impl<'a> RootViewportContext<'a> {
 }
 
 impl RootedSvg {
+    pub(super) fn as_str(&self) -> &str {
+        &self.svg
+    }
+
     pub(super) fn apply_root_theme(
         mut self,
         plan: Option<&RootThemePlan>,

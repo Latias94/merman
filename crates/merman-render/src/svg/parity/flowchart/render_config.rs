@@ -44,12 +44,32 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
+    base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
     edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
 ) -> FlowchartRenderConfig {
     let effective_config_value = effective_config.as_value();
     let config = FlowchartConfigView::new(effective_config_value);
-    let font_family = config.font_family();
-    let font_size = config.render_font_size();
+    let typography = base_typography.map_or_else(
+        || {
+            let font_family = config.font_family();
+            let font_size = config.render_font_size();
+            let text_style = config.render_text_style(&font_family, font_size);
+            let html_label_text_style = config.html_label_measurement_base_style(&text_style);
+            crate::flowchart::FlowchartBaseTypographyStyles {
+                font_family,
+                font_size,
+                text_style,
+                html_label_text_style,
+            }
+        },
+        |plan| plan.render_styles(effective_config_value),
+    );
+    let crate::flowchart::FlowchartBaseTypographyStyles {
+        font_family,
+        font_size,
+        text_style,
+        html_label_text_style,
+    } = typography;
     let wrapping_width = config.render_wrapping_width();
     let node_html_labels = config.node_html_labels();
     let edge_html_labels = config.effective_html_labels();
@@ -60,9 +80,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let use_max_width = config.render_use_max_width();
     let title_top_margin = config.render_title_top_margin();
     let node_padding = config.render_node_padding();
-    let text_style = config.render_text_style(&font_family, font_size);
-    let html_label_text_style = config.html_label_measurement_base_style(&text_style);
-
     let is_elk_layout = diagram_type == "flowchart-elk"
         || effective_config_value
             .get("layout")

@@ -185,6 +185,7 @@ mod tests {
 
             let recorder = SequenceThemeEvidenceRecorder::default();
             recorder.record_typography_emission(SequenceTypographyThemeReceipt {
+                base: Default::default(),
                 actor: SequenceRoleTypographyReceipt::default(),
                 message,
                 note: SequenceRoleTypographyReceipt::default(),
@@ -238,6 +239,7 @@ mod tests {
             );
             let recorder = SequenceThemeEvidenceRecorder::default();
             recorder.record_typography_emission(SequenceTypographyThemeReceipt {
+                base: Default::default(),
                 actor: SequenceRoleTypographyReceipt::default(),
                 message,
                 note: SequenceRoleTypographyReceipt::default(),

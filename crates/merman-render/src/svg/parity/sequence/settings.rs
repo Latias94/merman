@@ -101,6 +101,7 @@ impl SequenceRenderSettings {
         &mut self,
         typography: &crate::sequence::SequenceTypographyPlan,
     ) {
+        self.actor_label_font_size = typography.base_font_size_px();
         self.actor_text_style = typography.actor().measurement_style().clone();
         self.message_text_style = typography.message().measurement_style().clone();
         self.loop_text_style = typography.loop_label().measurement_style().clone();

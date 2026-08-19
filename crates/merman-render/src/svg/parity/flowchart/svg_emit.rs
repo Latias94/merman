@@ -139,6 +139,7 @@ pub(super) fn render_flowchart_svg_model(
         model,
         effective_config,
         diagram_type,
+        svg_label_sidecar.base_typography(),
         svg_label_sidecar.edge_label_padding(),
     );
 
@@ -532,7 +533,11 @@ pub(super) fn render_flowchart_svg_model(
             detail.nested_roots,
         );
     }
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if let Some(base_typography) = svg_label_sidecar.base_typography() {
+        let _ = base_typography.record_terminal_svg(rooted.as_str(), diagram_id);
+    }
+    Ok(rooted)
 }
 
 fn flowchart_node_theme_ordinals<'a>(

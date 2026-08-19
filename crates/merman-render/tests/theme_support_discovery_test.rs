@@ -479,6 +479,60 @@ fn ascii_has_a_separate_non_visual_theme_contract() {
 fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
     for (family, property, expected_state, expected_reasons) in [
         (
+            DiagramFamilyId::FLOWCHART,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
             DiagramFamilyId::PACKET,
             ThemeSupportBaseTypographyPropertyV2::FontStack,
             ThemeSupportStateV1::Conditional,

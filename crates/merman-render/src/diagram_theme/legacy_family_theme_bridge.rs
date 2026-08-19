@@ -1744,34 +1744,31 @@ mod tests {
 
     #[test]
     fn family_typography_is_local_and_preserves_the_patch_shape() {
-        let sequence_typography = TextStyle::default()
+        let class_typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::new(["Inter", "sans-serif"]).expect("valid font stack"),
             )
             .with_font_size_px(18.0)
             .expect("valid font size");
         let spec = DiagramThemeSpec::new().with_typography(
-            TypographySpec::default()
-                .with_family_style(DiagramFamilyId::SEQUENCE, sequence_typography),
+            TypographySpec::default().with_family_style(DiagramFamilyId::CLASS, class_typography),
         );
 
-        let sequence = parse(&spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
+        let class = parse(&spec, "classDiagram\nclass Alpha\n");
         let flowchart = parse(&spec, "flowchart LR\nA --> B\n");
 
-        assert_eq!(fallback_contribution_count(&sequence), 1);
-        assert_ne!(sequence.effective_config.get_str("theme"), Some("base"));
+        assert_eq!(fallback_contribution_count(&class), 1);
+        assert_ne!(class.effective_config.get_str("theme"), Some("base"));
         assert_eq!(
-            sequence.effective_config.get_str("fontFamily"),
+            class.effective_config.get_str("fontFamily"),
             Some("Inter, sans-serif")
         );
         assert_eq!(
-            sequence
-                .effective_config
-                .get_str("themeVariables.fontFamily"),
+            class.effective_config.get_str("themeVariables.fontFamily"),
             Some("Inter, sans-serif")
         );
         assert_eq!(
-            sequence.effective_config.get_str("themeVariables.fontSize"),
+            class.effective_config.get_str("themeVariables.fontSize"),
             Some("18px")
         );
         assert_eq!(fallback_contribution_count(&flowchart), 0);
@@ -1844,6 +1841,88 @@ mod tests {
             parsed.effective_config.get_str("themeVariables.textColor"),
             Some("#334155")
         );
+    }
+
+    #[test]
+    fn flowchart_and_swimlane_font_stack_and_size_retire_the_legacy_typography_projection() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::new(["Inter", "sans-serif"])
+                    .expect("valid Flowchart-family font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Flowchart-family font size");
+
+        for (family, source) in [
+            (DiagramFamilyId::FLOWCHART, "flowchart LR\nA --> B\n"),
+            (
+                DiagramFamilyId::SWIMLANE,
+                "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA --> B\n",
+            ),
+        ] {
+            let spec = DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(family, typography.clone()),
+            );
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(family);
+            let contribution_id = format!(
+                "merman.legacy-family-theme.v1.{}.typography",
+                family.as_str()
+            );
+
+            assert!(!artifact.contribution_ids.contains(&contribution_id));
+            assert!(!bridge.owns_contribution_id(&contribution_id));
+            assert!(artifact.overlay.is_empty());
+
+            let parsed = parse(&spec, source);
+            let baseline = parse(&DiagramThemeSpec::default(), source);
+            for path in [
+                "fontFamily",
+                "themeVariables.fontFamily",
+                "themeVariables.fontSize",
+            ] {
+                assert_eq!(
+                    parsed.effective_config.get_str(path),
+                    baseline.effective_config.get_str(path),
+                    "typed {family} base typography must not write legacy `{path}`"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sequence_font_stack_and_size_retire_the_legacy_typography_projection() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::new(["Inter", "sans-serif"])
+                    .expect("valid Sequence font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid Sequence font size");
+        let spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::SEQUENCE, typography),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.sequence.typography"));
+
+        let source = "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello\n";
+        let parsed = parse(&spec, source);
+        let baseline = parse(&DiagramThemeSpec::default(), source);
+        for path in [
+            "fontFamily",
+            "themeVariables.fontFamily",
+            "themeVariables.fontSize",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Sequence base typography must not write legacy `{path}`"
+            );
+        }
     }
 
     #[test]
@@ -2049,13 +2128,10 @@ mod tests {
             .with_font_size_px(18.0)
             .expect("valid font size");
         let spec = DiagramThemeSpec::new().with_typography(
-            TypographySpec::default().with_family_style(DiagramFamilyId::SEQUENCE, typography),
+            TypographySpec::default().with_family_style(DiagramFamilyId::CLASS, typography),
         );
-        let parsed = parse(&spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
-        let baseline = parse(
-            &DiagramThemeSpec::default(),
-            "sequenceDiagram\nAlice->>Bob: Hello\n",
-        );
+        let parsed = parse(&spec, "classDiagram\nclass Alpha\n");
+        let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
 
         assert_eq!(fallback_contribution_count(&parsed), 1);
         assert_eq!(

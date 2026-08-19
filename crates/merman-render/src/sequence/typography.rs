@@ -87,6 +87,114 @@ impl SequenceTypographyRole {
     }
 }
 
+#[derive(Debug)]
+struct SequenceBaseTypography {
+    configured_font_family_css: String,
+    font_family_css: String,
+    font_stack: ParsedCssFontStack,
+    font_size_px: f64,
+    typed_properties: BTreeSet<ThemeTypographyProperty>,
+}
+
+impl SequenceBaseTypography {
+    fn resolve(
+        effective_config: &MermaidConfig,
+        resolved_theme: Option<&ResolvedDiagramTheme>,
+    ) -> Self {
+        let mut config_overrides = BTreeSet::new();
+        for (property, paths) in [
+            (
+                ThemeTypographyProperty::FontStack,
+                &["fontFamily", "themeVariables.fontFamily"][..],
+            ),
+            (ThemeTypographyProperty::FontSize, &["fontSize"][..]),
+        ] {
+            if paths.iter().any(|path| {
+                merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+            }) {
+                config_overrides.insert(property);
+            }
+        }
+
+        let configured_font_family =
+            crate::config::config_font_family_css(effective_config.as_value());
+        let config = super::config::SequenceConfigView::new(effective_config.as_value());
+        let configured_font_size = config
+            .root_json_number("fontSize")
+            .or_else(|| config.sequence_json_number("messageFontSize"))
+            .unwrap_or(16.0)
+            .max(1.0);
+        let mut font_family_css = configured_font_family.clone();
+        let mut font_size_px = configured_font_size;
+        let mut typed_properties = BTreeSet::new();
+
+        if let Some(theme) = resolved_theme {
+            for route in theme.family_mechanism_routes().iter().copied() {
+                let FamilyThemeMechanism::BaseTypography(property) = route.mechanism() else {
+                    continue;
+                };
+                if route.disposition() != FamilyThemeDisposition::TypedAdapter
+                    || config_overrides.contains(&property)
+                {
+                    continue;
+                }
+                match property {
+                    ThemeTypographyProperty::FontStack => {
+                        font_family_css = theme.typography().font_stack().as_css();
+                        typed_properties.insert(property);
+                    }
+                    ThemeTypographyProperty::FontSize => {
+                        font_size_px = f64::from(theme.typography().font_size_px());
+                        typed_properties.insert(property);
+                    }
+                    ThemeTypographyProperty::FontWeight
+                    | ThemeTypographyProperty::FontStyle
+                    | ThemeTypographyProperty::LineHeight
+                    | ThemeTypographyProperty::LetterSpacing
+                    | ThemeTypographyProperty::WordSpacing
+                    | ThemeTypographyProperty::Transform
+                    | ThemeTypographyProperty::Decoration
+                    | ThemeTypographyProperty::TextAlign
+                    | ThemeTypographyProperty::WhiteSpace
+                    | ThemeTypographyProperty::Wrap => {}
+                }
+            }
+        }
+
+        let font_stack = parse_css_font_stack(&font_family_css)
+            .expect("normalized Sequence font-family CSS must remain parseable");
+        Self {
+            configured_font_family_css: configured_font_family,
+            font_family_css,
+            font_stack,
+            font_size_px,
+            typed_properties,
+        }
+    }
+
+    fn apply_to_role(
+        &self,
+        role: SequenceTypographyRole,
+        effective_config: &MermaidConfig,
+        text_style: &mut TextStyle,
+    ) -> BTreeSet<ThemeTypographyProperty> {
+        let mut applied = BTreeSet::new();
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ] {
+            let overridden = role.config_paths(property).iter().any(|path| {
+                merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+            });
+            if self.typed_properties.contains(&property) && !overridden {
+                apply_base_property(text_style, self, property);
+                applied.insert(property);
+            }
+        }
+        applied
+    }
+}
+
 /// Private terminal text surfaces that share public Sequence typography targets.
 ///
 /// Public theme targets intentionally remain role-oriented. This internal seam keeps terminal
@@ -171,6 +279,7 @@ pub(crate) struct SequenceResolvedTypography {
     font_stack: ParsedCssFontStack,
     resolved_style: Option<ResolvedThemeStyle>,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
+    base_typed_properties: BTreeSet<ThemeTypographyProperty>,
     config_overrides: BTreeSet<ThemeTypographyProperty>,
     typed_fill: Option<String>,
     fill_overrides: BTreeSet<SequenceTextSurface>,
@@ -183,7 +292,7 @@ impl SequenceResolvedTypography {
         effective_config: &MermaidConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
-        inherited_font_family: &str,
+        base_typography: &SequenceBaseTypography,
     ) -> Result<Self, OperationWorkError> {
         let config_overrides = DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES
             .into_iter()
@@ -206,6 +315,8 @@ impl SequenceResolvedTypography {
                 )
             })
             .collect::<BTreeSet<_>>();
+        let mut base_typed_properties =
+            base_typography.apply_to_role(role, effective_config, &mut text_style);
         let resolved_style = resolved_theme
             .filter(|theme| {
                 theme.family_mechanism_routes().iter().any(|route| {
@@ -235,12 +346,19 @@ impl SequenceResolvedTypography {
                 }
                 apply_direct_property(&mut text_style, style, property);
                 typed_properties.insert(property);
+                base_typed_properties.remove(&property);
             }
         }
         let typed_fill = resolved_theme
             .zip(resolved_style.as_ref())
             .and_then(|(theme, style)| typed_static_fill(theme, style));
         let measurement_style = text_style;
+        let inherited_font_family =
+            if config_overrides.contains(&ThemeTypographyProperty::FontStack) {
+                &base_typography.configured_font_family_css
+            } else {
+                &base_typography.font_family_css
+            };
         let (terminal_text_style, font_stack) =
             cssom_effective_text_style(&measurement_style, inherited_font_family);
         let prepared_typography = prepared_typography(&terminal_text_style, &font_stack);
@@ -252,6 +370,7 @@ impl SequenceResolvedTypography {
             font_stack,
             resolved_style,
             typed_properties,
+            base_typed_properties,
             config_overrides,
             typed_fill,
             fill_overrides,
@@ -282,6 +401,10 @@ impl SequenceResolvedTypography {
         &self.config_overrides
     }
 
+    pub(crate) const fn base_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
+        &self.base_typed_properties
+    }
+
     pub(crate) fn typed_fill_for(&self, surface: SequenceTextSurface) -> Option<&str> {
         debug_assert_eq!(surface.role(), self.role);
         (!self.fill_overrides.contains(&surface))
@@ -299,7 +422,9 @@ impl SequenceResolvedTypography {
     }
 
     pub(crate) fn requires_resolved_emission(&self) -> bool {
-        self.has_typed_emission() || !self.config_overrides.is_empty()
+        self.has_typed_emission()
+            || !self.base_typed_properties.is_empty()
+            || !self.config_overrides.is_empty()
     }
 
     pub(crate) fn inline_style(&self, base: &str) -> String {
@@ -370,7 +495,7 @@ fn typed_static_fill(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -
 
 #[derive(Debug)]
 pub(crate) struct SequenceTypographyPlan {
-    inherited_font_stack: ParsedCssFontStack,
+    base_typography: SequenceBaseTypography,
     actor: SequenceResolvedTypography,
     message: SequenceResolvedTypography,
     note: SequenceResolvedTypography,
@@ -411,18 +536,15 @@ impl SequenceTypographyPlan {
         {
             note.font_weight = Some(weight);
         }
-        let inherited_font_family =
-            crate::config::config_font_family_css(effective_config.as_value());
-        let inherited_font_stack = parse_css_font_stack(&inherited_font_family)
-            .expect("normalized Mermaid font-family CSS must remain parseable");
         let loop_label = message.clone();
+        let base_typography = SequenceBaseTypography::resolve(effective_config, resolved_theme);
         let actor = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Actor,
             actor,
             effective_config,
             resolved_theme,
             work_meter,
-            &inherited_font_family,
+            &base_typography,
         )?;
         let message = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Message,
@@ -430,7 +552,7 @@ impl SequenceTypographyPlan {
             effective_config,
             resolved_theme,
             work_meter,
-            &inherited_font_family,
+            &base_typography,
         )?;
         let note = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Note,
@@ -438,7 +560,7 @@ impl SequenceTypographyPlan {
             effective_config,
             resolved_theme,
             work_meter,
-            &inherited_font_family,
+            &base_typography,
         )?;
         let loop_label = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Loop,
@@ -446,7 +568,7 @@ impl SequenceTypographyPlan {
             effective_config,
             resolved_theme,
             work_meter,
-            &inherited_font_family,
+            &base_typography,
         )?;
         let mut terminal_foregrounds =
             crate::svg::render_theme::sequence_text_surface_fills(effective_config.as_value());
@@ -466,7 +588,7 @@ impl SequenceTypographyPlan {
             }
         }
         Ok(Self {
-            inherited_font_stack,
+            base_typography,
             actor,
             message,
             note,
@@ -477,7 +599,26 @@ impl SequenceTypographyPlan {
     }
 
     pub(crate) const fn inherited_font_stack(&self) -> &ParsedCssFontStack {
-        &self.inherited_font_stack
+        &self.base_typography.font_stack
+    }
+
+    pub(crate) fn base_font_family_css(&self) -> &str {
+        &self.base_typography.font_family_css
+    }
+
+    pub(crate) const fn base_font_size_px(&self) -> f64 {
+        self.base_typography.font_size_px
+    }
+
+    pub(crate) fn base_prepared_typography(&self) -> ThemeTextStyle {
+        ThemeTextStyle::default()
+            .with_font_stack(self.base_typography.font_stack.font_stack().clone())
+            .with_font_size_px(self.base_typography.font_size_px as f32)
+            .expect("resolved Sequence base font size remains positive and finite")
+    }
+
+    pub(crate) const fn base_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
+        &self.base_typography.typed_properties
     }
 
     pub(crate) const fn role(&self, role: SequenceTypographyRole) -> &SequenceResolvedTypography {
@@ -514,6 +655,31 @@ impl SequenceTypographyPlan {
             foreground: &self.terminal_foregrounds[surface.index()],
             foreground_provenance: self.terminal_foreground_provenance[surface.index()],
         }
+    }
+}
+
+fn apply_base_property(
+    text_style: &mut TextStyle,
+    base: &SequenceBaseTypography,
+    property: ThemeTypographyProperty,
+) {
+    match property {
+        ThemeTypographyProperty::FontStack => {
+            text_style.font_family = Some(base.font_family_css.clone());
+        }
+        ThemeTypographyProperty::FontSize => {
+            text_style.font_size = base.font_size_px;
+        }
+        ThemeTypographyProperty::FontWeight
+        | ThemeTypographyProperty::FontStyle
+        | ThemeTypographyProperty::LineHeight
+        | ThemeTypographyProperty::LetterSpacing
+        | ThemeTypographyProperty::WordSpacing
+        | ThemeTypographyProperty::Transform
+        | ThemeTypographyProperty::Decoration
+        | ThemeTypographyProperty::TextAlign
+        | ThemeTypographyProperty::WhiteSpace
+        | ThemeTypographyProperty::Wrap => {}
     }
 }
 

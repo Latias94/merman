@@ -1371,6 +1371,17 @@ impl<L> FlowchartFamilyArtifact<L> {
     }
 }
 
+fn flowchart_artifact_theme_evidence<L>(
+    artifact: &FlowchartFamilyArtifact<L>,
+    theme: Option<&ResolvedDiagramTheme>,
+) -> (FamilyThemeEvidence, Vec<SourceStyleResidual>) {
+    let (mut evidence, source_residuals) = artifact.theme_evidence().finish(theme);
+    if let Some(base_typography) = artifact.svg_label_sidecar().base_typography() {
+        evidence.merge_accounted_from(base_typography.finish_evidence(theme));
+    }
+    (evidence, source_residuals)
+}
+
 #[derive(Debug)]
 pub(crate) struct ClassFamilyArtifact {
     pair: FamilyPair<ClassDiagram, ClassDiagramLayout>,
@@ -2169,8 +2180,8 @@ impl BuiltinFamilyArtifact {
         theme: Option<&ResolvedDiagramTheme>,
     ) -> Option<(FamilyThemeEvidence, Vec<SourceStyleResidual>)> {
         match self {
-            Self::Flowchart(artifact) => Some(artifact.theme_evidence().finish(theme)),
-            Self::Swimlane(artifact) => Some(artifact.theme_evidence().finish(theme)),
+            Self::Flowchart(artifact) => Some(flowchart_artifact_theme_evidence(artifact, theme)),
+            Self::Swimlane(artifact) => Some(flowchart_artifact_theme_evidence(artifact, theme)),
             _ => None,
         }
     }

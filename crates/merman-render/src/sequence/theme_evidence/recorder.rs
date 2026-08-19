@@ -14,6 +14,7 @@ use super::receipts::{
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
+    ThemeTypographyProperty,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -135,6 +136,17 @@ impl SequenceThemeEvidenceRecorder {
         let mut activation_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut typography_rules =
             BTreeMap::<ThemeTarget, BTreeMap<usize, SequenceRuleObservation>>::new();
+        let base_typography_routes = theme
+            .family_mechanism_routes()
+            .iter()
+            .copied()
+            .filter_map(|route| match route.mechanism() {
+                FamilyThemeMechanism::BaseTypography(property) => {
+                    Some((property, route.disposition()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
 
         // Seed every Actor rule plus every static unqualified Message signal paint and directly
         // owned Note/Activation rule before checking winners.
@@ -221,26 +233,7 @@ impl SequenceThemeEvidenceRecorder {
 
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
-                FamilyThemeMechanism::BaseTypography(_) => {
-                    let key = theme.family_mechanism_key(route);
-                    match route.disposition() {
-                        FamilyThemeDisposition::Unsupported => {
-                            if state.actor_count == 0 {
-                                evidence.mark_not_applicable(key);
-                            } else {
-                                evidence.mark_residual(
-                                    key,
-                                    FamilyThemeResidualReason::UnsupportedTypography,
-                                );
-                            }
-                        }
-                        FamilyThemeDisposition::TypedAdapter => {
-                            // No Sequence base-typography route is direct yet. Leaving a future
-                            // route unaccounted fails closed instead of guessing consumption.
-                        }
-                        FamilyThemeDisposition::LegacyCompatibility => {}
-                    }
-                }
+                FamilyThemeMechanism::BaseTypography(_) => {}
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
                     target:
@@ -546,9 +539,68 @@ impl SequenceThemeEvidenceRecorder {
             &state.activation,
             activation_rules,
         );
+        finish_base_typography(
+            &mut evidence,
+            state.typography.as_ref(),
+            &base_typography_routes,
+        );
         finish_typography_rules(&mut evidence, state.typography.as_ref(), typography_rules);
         evidence
     }
+}
+
+fn finish_base_typography(
+    evidence: &mut FamilyThemeEvidence,
+    receipt: Option<&SequenceTypographyThemeReceipt>,
+    routes: &[(ThemeTypographyProperty, FamilyThemeDisposition)],
+) {
+    if routes.is_empty() {
+        return;
+    }
+    let key = crate::diagram_theme::FamilyThemeMechanismKey::Typography;
+    let Some(receipt) = receipt else {
+        return;
+    };
+    if !receipt.base.terminal_svg_observed() {
+        return;
+    }
+    if receipt.base_relevant_occurrences() == 0 {
+        evidence.mark_not_applicable(key);
+        return;
+    }
+    if routes
+        .iter()
+        .any(|(_, disposition)| *disposition == FamilyThemeDisposition::Unsupported)
+    {
+        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+        return;
+    }
+
+    let typed_properties = routes
+        .iter()
+        .filter_map(|(property, disposition)| {
+            (*disposition == FamilyThemeDisposition::TypedAdapter).then_some(*property)
+        })
+        .collect::<Vec<_>>();
+    if typed_properties.is_empty() {
+        return;
+    }
+    if typed_properties
+        .iter()
+        .any(|property| receipt.base_property_incomplete(*property))
+    {
+        return;
+    }
+    if typed_properties
+        .iter()
+        .any(|property| receipt.base_property_applied(*property))
+    {
+        if receipt.base.stylesheet_verified() {
+            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+        }
+        return;
+    }
+    evidence.mark_not_applicable(key);
 }
 
 fn finish_typography_rules(

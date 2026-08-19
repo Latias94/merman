@@ -3469,6 +3469,155 @@ end"#;
 }
 
 #[test]
+fn sequence_role_typography_overrides_base_without_shadowing_other_roles() {
+    let latin = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let cjk = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Xiaolai-Regular-CJK-Test.woff2"
+    ));
+    let base = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("Excalifont").expect("valid base font stack"))
+        .with_font_size_px(23.0)
+        .expect("valid base font size");
+    let message_stack =
+        FontStack::new(["Xiaolai SC", "Excalifont"]).expect("valid message font stack");
+    let message_stack_css = message_stack.as_css();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(DiagramFamilyId::SEQUENCE, base),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::MessageLabel,
+                            ThemeStylePatch {
+                                typography: ThemeTextStylePatch {
+                                    font_stack: Specified::Value(message_stack),
+                                    font_size_px: Specified::Value(31.0),
+                                    ..ThemeTextStylePatch::default()
+                                },
+                                ..ThemeStylePatch::default()
+                            },
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                )
+                .with_assets(
+                    ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
+                        FontAssetSpec::new("excalifont", latin),
+                        FontAssetSpec::new("xiaolai", cjk),
+                    ])),
+                ),
+        )
+        .expect("compile Sequence base plus role typography theme");
+    let source = r#"sequenceDiagram
+participant Alice as Base Actor
+participant Bob as Base Peer
+Alice->>Bob: 测试
+Note over Alice,Bob: Base Note
+loop Base Loop
+Bob-->>Alice: Base Reply
+end"#;
+
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let measurement_policy = TextMeasurementPolicy::host_display(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("sequence-base-role-typography")
+                .expect("valid measurement profile id"),
+            "1",
+        )
+        .expect("valid measurement profile identity"),
+        host.clone(),
+        TextMeasurementPhase::ALL,
+    );
+    let measurement_parsed =
+        merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse measured Sequence base plus role source")
+            .expect("detect measured Sequence base plus role source");
+    family::prepare(
+        measurement_parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .with_text_measurement_policy(measurement_policy)
+            .begin_session_with_theme(&theme)
+            .expect("begin Sequence base plus role measurement session"),
+    )
+    .expect("prepare measured Sequence base plus role artifact");
+    let requests = host.snapshot();
+    assert!(requests.iter().any(|exchange| {
+        exchange.request.text.contains("测试")
+            && exchange.request.font_family.as_deref() == Some(message_stack_css.as_str())
+            && exchange.request.font_size_bits == 31.0_f64.to_bits()
+    }));
+    assert!(requests.iter().any(|exchange| {
+        exchange.request.text.contains("Base Actor")
+            && exchange.request.font_family.as_deref() == Some("Excalifont")
+            && exchange.request.font_size_bits == 23.0_f64.to_bits()
+    }));
+
+    let render_parsed =
+        merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse portable Sequence base plus role source")
+            .expect("detect portable Sequence base plus role source");
+    let rendered = family::prepare(
+        render_parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin portable Sequence base plus role session"),
+    )
+    .expect("prepare portable Sequence base plus role artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("base and role Sequence typography must both seal terminal evidence");
+    let document = roxmltree::Document::parse(rendered.svg())
+        .expect("valid Sequence base plus role typography SVG");
+    let style_for = |class_name: &str, text_fragment: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == class_name)
+                    })
+                    && node
+                        .descendants()
+                        .filter_map(|descendant| descendant.text())
+                        .any(|text| text.contains(text_fragment))
+            })
+            .and_then(|node| node.attribute("style"))
+            .unwrap_or_else(|| panic!("missing {class_name} style for {text_fragment:?}"))
+    };
+    let message = style_for("messageText", "测试");
+    assert!(
+        message.contains(r#"font-family:"Xiaolai SC", "Excalifont""#),
+        "terminal MessageLabel must preserve the role-specific admitted stack: {message}"
+    );
+    assert_eq!(inline_style_value(message, "font-size"), Some("31px"));
+    let actor = style_for("actor-box", "Base Actor");
+    assert_eq!(inline_style_value(actor, "font-family"), Some("Excalifont"));
+    assert_eq!(inline_style_value(actor, "font-size"), Some("23px"));
+    drop(document);
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn sequence_role_font_stacks_yield_to_explicit_theme_variable_font_family() {
     const SOURCE: &str = r#"sequenceDiagram
 participant Alice as Config Actor

@@ -27,20 +27,10 @@ pub(crate) struct SequenceTextSidecar {
 impl SequenceTextSidecar {
     pub(crate) fn new(
         prepared_text_layout: Option<&PreparedTextLayout>,
-        effective_config: &serde_json::Value,
         role_typography: Arc<super::typography::SequenceTypographyPlan>,
         work_meter: Arc<OperationWorkMeter>,
     ) -> Self {
-        let config = super::config::SequenceConfigView::new(effective_config);
-        let font_size = config
-            .root_json_number("fontSize")
-            .or_else(|| config.sequence_json_number("messageFontSize"))
-            .unwrap_or(16.0)
-            .max(1.0) as f32;
-        let base_typography = ThemeTextStyle::default()
-            .with_font_stack(role_typography.inherited_font_stack().font_stack().clone())
-            .with_font_size_px(font_size)
-            .expect("Sequence font size is normalized to a positive finite value");
+        let base_typography = role_typography.base_prepared_typography();
         Self {
             prepared_text_layout: prepared_text_layout.cloned(),
             base_typography,

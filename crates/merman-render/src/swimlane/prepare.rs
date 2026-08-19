@@ -282,7 +282,10 @@ pub(super) fn prepare(
     let direction = normalize_direction(model.direction.as_deref());
     let config_view = FlowchartConfigView::new(effective_config.as_value());
     let swimlane_title_html_labels = config_view.swimlane_title_html_labels();
-    let settings = config_view.layout_settings();
+    let settings = svg_label_sidecar.map_or_else(
+        || config_view.layout_settings(),
+        |sidecar| sidecar.layout_settings(effective_config.as_value()),
+    );
     let edge_label_padding = svg_label_sidecar.map_or_else(
         crate::flowchart::FlowchartEdgeLabelPadding::default,
         FlowchartSvgLabelSidecarBuilder::edge_label_padding,

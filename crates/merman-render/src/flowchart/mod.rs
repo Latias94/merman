@@ -1,3 +1,4 @@
+mod base_typography;
 mod config;
 mod edge_label_padding;
 mod edge_occurrence;
@@ -91,6 +92,7 @@ impl Deref for FlowchartRenderModelRef<'_> {
 
 pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter;
 
+pub(crate) use base_typography::{FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles};
 pub(crate) use config::{
     FlowchartConfigView, FlowchartLayoutSettings, FlowchartTypographyConfigOwnership,
     flowchart_typography_config_ownership,
