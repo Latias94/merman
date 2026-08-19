@@ -198,6 +198,27 @@ test("browser computed style owns Sequence role cascade resolution", async ({
   expect(observation.finalTextPaint).not.toEqual([0xf8, 0xfa, 0xfc]);
 });
 
+test("missing production Sequence role capability fails instead of skipping", async ({
+  page,
+}) => {
+  const svgWithoutMessageRole = renderSequenceRoleSvg().replaceAll(
+    "messageText",
+    "removedMessageText",
+  );
+
+  await expect(
+    observeThemeTextSurfaces(page, svgWithoutMessageRole, [
+      {
+        role: "message-label",
+        occurrenceId: "message-0",
+        textSelector: "text.messageText",
+        surfaceSelector: ":scope",
+        surfacePaintProperty: "background-color",
+      },
+    ]),
+  ).rejects.toThrow("Expected one terminal text");
+});
+
 test("terminal observation sees a higher-specificity compatibility CSS winner", async ({
   page,
 }) => {

@@ -17,6 +17,13 @@ const CELL_MECHANISMS: [ReferenceThemeMechanism; 3] = [
     ReferenceThemeMechanism::RoundedCorners,
     ReferenceThemeMechanism::StrokeStyling,
 ];
+// Every listed mechanism is independently covered by the raster checks below: all ordinal node
+// fills, one rounded corner, and the first node's terminal stroke color and width.
+const PNG_MECHANISMS: [ReferenceThemeMechanism; 3] = [
+    ReferenceThemeMechanism::NthChildSelector,
+    ReferenceThemeMechanism::RoundedCorners,
+    ReferenceThemeMechanism::StrokeStyling,
+];
 const MIN_FILL_COVERAGE: f64 = 0.86;
 const MIN_CORNER_COVERAGE: f64 = 0.75;
 const PNG_COLOR_TOLERANCE: u8 = 10;
@@ -31,12 +38,6 @@ pub(crate) struct BrutalistFlowchartSvgProof {
 }
 
 impl BrutalistFlowchartSvgProof {
-    pub(crate) fn mechanisms(
-        &self,
-    ) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-        self.mechanisms.clone()
-    }
-
     pub(crate) fn target_proof(&self) -> C6BoundTargetProof {
         self.target_proof.clone()
     }
@@ -162,10 +163,9 @@ pub(crate) fn prove_brutalist_flowchart_png(
     artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
 ) -> C6ProofResult<C6BoundTargetProof> {
-    let (_, target_proof) = artifact.check_with(
-        "brutalist-flowchart-png-v1",
-        svg_proof.mechanisms(),
-        |bytes| {
+    let mechanisms = brutalist_flowchart_png_mechanisms(&svg_proof.mechanisms)?;
+    let (_, target_proof) =
+        artifact.check_with("brutalist-flowchart-png-v1", mechanisms, |bytes| {
             let raster = decode_bounded_png_artifact(bytes, plan)?;
             for (ordinal, node) in svg_proof.nodes.iter().enumerate() {
                 raster.prove_opaque_color_coverage_in_svg_rect(
@@ -226,9 +226,34 @@ pub(crate) fn prove_brutalist_flowchart_png(
                 coverage.outside_ratio()
             );
             Ok(())
-        },
-    )?;
+        })?;
     Ok(target_proof)
+}
+
+fn brutalist_flowchart_png_mechanisms(
+    svg_mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+) -> C6ProofResult<BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>> {
+    PNG_MECHANISMS
+        .into_iter()
+        .map(|mechanism| {
+            let disposition = svg_mechanisms.get(&mechanism).copied().ok_or_else(|| {
+                C6ProofError::new(
+                    "brutalist-flowchart-png-mechanisms",
+                    format!(
+                        "Brutalist Flowchart PNG proof lacks SVG mechanism `{}`",
+                        mechanism.id()
+                    ),
+                )
+            })?;
+            c6_ensure!(
+                "brutalist-flowchart-png-mechanisms",
+                disposition == C6ObservedMechanismDisposition::Applied,
+                "Brutalist Flowchart PNG cannot report `{}` from a non-Applied SVG mechanism",
+                mechanism.id()
+            );
+            Ok((mechanism, disposition))
+        })
+        .collect()
 }
 
 fn applied_cell_mechanisms() -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
@@ -367,6 +392,25 @@ mod tests {
     const TEST_WIDTH: u32 = 60;
     const TEST_HEIGHT: u32 = 40;
     const TEST_COLOR: [u8; 3] = [0x11, 0x11, 0x11];
+
+    #[test]
+    fn brutalist_flowchart_png_scope_requires_each_raster_observed_mechanism() {
+        let complete = applied_cell_mechanisms();
+        assert_eq!(
+            brutalist_flowchart_png_mechanisms(&complete).unwrap(),
+            complete
+        );
+
+        for mechanism in PNG_MECHANISMS {
+            let mut missing = complete.clone();
+            missing.remove(&mechanism);
+            assert!(brutalist_flowchart_png_mechanisms(&missing).is_err());
+
+            let mut non_applied = complete.clone();
+            non_applied.insert(mechanism, C6ObservedMechanismDisposition::Residual);
+            assert!(brutalist_flowchart_png_mechanisms(&non_applied).is_err());
+        }
+    }
 
     #[test]
     fn partial_fill_cannot_satisfy_the_old_fixed_pixel_floor() {

@@ -326,8 +326,8 @@ pub(super) fn prove_flowchart_markers_svg(
     prove_flowchart_edge_profile(&edges, profile)?;
 
     let marker_selector = format!("#{root_id} .marker");
-    let fill = last_stylesheet_property(&document, &marker_selector, "fill")?.to_owned();
-    let stroke = last_stylesheet_property(&document, &marker_selector, "stroke")?.to_owned();
+    let fill = stylesheet_property(&document, &marker_selector, "fill")?.to_owned();
+    let stroke = stylesheet_property(&document, &marker_selector, "stroke")?.to_owned();
     c6_ensure!(
         "route-marker-svg",
         fill == DEFAULT_MARKER.css && stroke == DEFAULT_MARKER.css,
@@ -572,31 +572,24 @@ fn canonical_marker_kind(marker_id: &str) -> Option<(&'static str, bool)> {
     .map(|kind| (kind, margin))
 }
 
-fn last_stylesheet_property<'a>(
-    document: &'a roxmltree::Document<'a>,
-    selector: &str,
-    property: &str,
-) -> C6ProofResult<&'a str> {
-    stylesheet_property(document, selector, property)
-}
-
 fn stylesheet_property<'a>(
     document: &'a roxmltree::Document<'a>,
     selector: &str,
     property: &str,
 ) -> C6ProofResult<&'a str> {
-    document
+    let values = document
         .descendants()
         .filter(|node| node.has_tag_name("style"))
         .filter_map(|node| node.text())
-        .filter_map(|css| css_last_property(css, selector, property))
-        .next_back()
-        .ok_or_else(|| {
-            C6ProofError::new(
-                "route-svg-proof",
-                format!("stylesheet lacks {selector} {property}"),
-            )
-        })
+        .flat_map(|css| exact_writer_css_properties(css, selector, property))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        values.len() == 1,
+        "stylesheet expected one exact writer declaration for `{selector}` {property}, found {}",
+        values.len()
+    );
+    Ok(values[0])
 }
 
 fn parse_css_rgb(raw: &str) -> C6ProofResult<[u8; 3]> {
@@ -1591,5 +1584,28 @@ mod tests {
             [241, 245, 249]
         );
         assert!(parse_css_rgb("rgba(241,245,249,0.5)").is_err());
+    }
+
+    #[test]
+    fn stylesheet_observer_does_not_reimplement_browser_cascade() {
+        let document = roxmltree::Document::parse(
+            r##"<svg><style>#fixture .node{fill:#dc2626;}</style><style>#fixture [class~="node"]{fill:#000!important;}</style></svg>"##,
+        )
+        .expect("parse fixed writer stylesheet");
+
+        assert_eq!(
+            stylesheet_property(&document, "#fixture .node", "fill").unwrap(),
+            "#dc2626"
+        );
+    }
+
+    #[test]
+    fn stylesheet_observer_rejects_duplicate_writer_declarations() {
+        let document = roxmltree::Document::parse(
+            r##"<svg><style>#fixture .node{fill:#dc2626;}</style><style>#fixture .node{fill:#dc2626;}</style></svg>"##,
+        )
+        .expect("parse duplicate writer stylesheet");
+
+        assert!(stylesheet_property(&document, "#fixture .node", "fill").is_err());
     }
 }

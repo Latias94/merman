@@ -215,11 +215,7 @@
       "expectation": {
         "mechanismRequirements": {
           "canvas-gradient": "must-apply",
-          "canvas-pattern": "must-apply",
-          "dash-array": "must-apply",
-          "font-stack": "must-apply",
-          "rounded-corners": "must-apply",
-          "stroke-styling": "must-apply"
+          "canvas-pattern": "must-apply"
         },
         "expectedResidualIds": [],
         "semanticAssertionId": "spotless-flowchart-png-v1"
@@ -331,11 +327,7 @@
       "target": "png",
       "expectation": {
         "mechanismRequirements": {
-          "canvas-blend": "must-apply",
-          "canvas-gradient": "must-apply",
-          "canvas-layering": "must-apply",
-          "canvas-pattern": "must-apply",
-          "stroke-styling": "must-apply"
+          "canvas-layering": "must-apply"
         },
         "expectedResidualIds": [],
         "semanticAssertionId": "cyberpunk-flowchart-png-v1"

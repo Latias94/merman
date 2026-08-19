@@ -20,6 +20,10 @@ const CELL_MECHANISMS: [ReferenceThemeMechanism; 5] = [
     ReferenceThemeMechanism::CanvasPattern,
     ReferenceThemeMechanism::StrokeStyling,
 ];
+// The bounded PNG ROI proves that at least one non-base canvas layer survives rasterization. It
+// does not distinguish the exact blend, gradient, or tiled-pattern implementation, and it does
+// not cover node strokes.
+const PNG_MECHANISMS: [ReferenceThemeMechanism; 1] = [ReferenceThemeMechanism::CanvasLayering];
 const MIN_CANVAS_DIFFERENCE: u8 = 6;
 const MIN_CANVAS_DIFFERENCE_COVERAGE: f64 = 0.25;
 
@@ -45,12 +49,6 @@ pub(crate) struct CyberpunkFlowchartSvgProof {
 }
 
 impl CyberpunkFlowchartSvgProof {
-    pub(crate) fn mechanisms(
-        &self,
-    ) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-        self.mechanisms.clone()
-    }
-
     pub(crate) fn target_proof(&self) -> C6BoundTargetProof {
         self.target_proof.clone()
     }
@@ -117,10 +115,9 @@ pub(crate) fn prove_cyberpunk_flowchart_png(
     artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
 ) -> C6ProofResult<C6BoundTargetProof> {
-    let (_, target_proof) = artifact.check_with(
-        "cyberpunk-flowchart-png-v1",
-        svg_proof.mechanisms(),
-        |bytes| {
+    let mechanisms = cyberpunk_flowchart_png_mechanisms(&svg_proof.mechanisms)?;
+    let (_, target_proof) =
+        artifact.check_with("cyberpunk-flowchart-png-v1", mechanisms, |bytes| {
             let raster = decode_bounded_png_artifact(bytes, plan)?;
             prove_canvas_visibility(
                 &raster,
@@ -128,9 +125,34 @@ pub(crate) fn prove_cyberpunk_flowchart_png(
                 svg_proof.canvas_region,
                 parse_c6_hex_rgb(contract.canvas)?,
             )
-        },
-    )?;
+        })?;
     Ok(target_proof)
+}
+
+fn cyberpunk_flowchart_png_mechanisms(
+    svg_mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+) -> C6ProofResult<BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>> {
+    PNG_MECHANISMS
+        .into_iter()
+        .map(|mechanism| {
+            let disposition = svg_mechanisms.get(&mechanism).copied().ok_or_else(|| {
+                C6ProofError::new(
+                    "cyberpunk-flowchart-png-mechanisms",
+                    format!(
+                        "Cyberpunk Flowchart PNG layer proof lacks SVG mechanism `{}`",
+                        mechanism.id()
+                    ),
+                )
+            })?;
+            c6_ensure!(
+                "cyberpunk-flowchart-png-mechanisms",
+                disposition == C6ObservedMechanismDisposition::Applied,
+                "Cyberpunk Flowchart PNG cannot report `{}` from a non-Applied SVG mechanism",
+                mechanism.id()
+            );
+            Ok((mechanism, disposition))
+        })
+        .collect()
 }
 
 fn prove_terminal_canvas(
@@ -506,6 +528,32 @@ fn approx_eq(left: f64, right: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cyberpunk_flowchart_png_scope_reports_only_visible_layering() {
+        let svg_mechanisms = CELL_MECHANISMS
+            .into_iter()
+            .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            cyberpunk_flowchart_png_mechanisms(&svg_mechanisms).unwrap(),
+            BTreeMap::from([(
+                ReferenceThemeMechanism::CanvasLayering,
+                C6ObservedMechanismDisposition::Applied,
+            )])
+        );
+
+        let mut missing = svg_mechanisms.clone();
+        missing.remove(&ReferenceThemeMechanism::CanvasLayering);
+        assert!(cyberpunk_flowchart_png_mechanisms(&missing).is_err());
+
+        let mut non_applied = svg_mechanisms;
+        non_applied.insert(
+            ReferenceThemeMechanism::CanvasLayering,
+            C6ObservedMechanismDisposition::Residual,
+        );
+        assert!(cyberpunk_flowchart_png_mechanisms(&non_applied).is_err());
+    }
 
     fn contract() -> CyberpunkFlowchartProofContract<'static> {
         CyberpunkFlowchartProofContract {

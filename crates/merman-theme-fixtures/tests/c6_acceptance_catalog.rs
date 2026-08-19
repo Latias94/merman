@@ -63,6 +63,17 @@ fn expected_mechanisms(
     use ReferenceThemeMechanism as Mechanism;
 
     let mechanisms: &[Mechanism] = match (theme, family, target) {
+        (C6ProofTheme::Brutalist, C6ProofFamily::Flowchart, ExpectedOutputTarget::Png) => &[
+            Mechanism::NthChildSelector,
+            Mechanism::RoundedCorners,
+            Mechanism::StrokeStyling,
+        ],
+        (C6ProofTheme::Spotless, C6ProofFamily::Flowchart, ExpectedOutputTarget::Png) => {
+            &[Mechanism::CanvasGradient, Mechanism::CanvasPattern]
+        }
+        (C6ProofTheme::Cyberpunk, C6ProofFamily::Flowchart, ExpectedOutputTarget::Png) => {
+            &[Mechanism::CanvasLayering]
+        }
         (C6ProofTheme::Spotless, C6ProofFamily::State, ExpectedOutputTarget::Png) => &[
             Mechanism::CanvasGradient,
             Mechanism::CanvasLayering,
@@ -185,7 +196,7 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
     assert_eq!(
         encode_hex(catalog.manifest_digest()),
-        "4dce825a78de601c7f631eb645a937e3e6321e03d2edaa6be2b8458d1e749286"
+        "1f91b5cc216d08544c19f7be79db1562c9c4cd0304c842ed6062bad3ed920bde"
     );
     assert_eq!(
         encode_hex(catalog.previous_manifest_digest()),
@@ -690,4 +701,66 @@ fn mechanism_requirements_remain_target_specific_data() {
             ),
         ])
     );
+}
+
+#[test]
+fn flowchart_png_mechanisms_are_limited_to_raster_observations() {
+    let source_catalog = source_catalog();
+    let catalog =
+        C6AcceptanceCatalog::load(&source_catalog).expect("load committed C6 acceptance catalog");
+
+    for (theme, expected) in [
+        (
+            C6ProofTheme::Brutalist,
+            BTreeSet::from([
+                ReferenceThemeMechanism::NthChildSelector,
+                ReferenceThemeMechanism::RoundedCorners,
+                ReferenceThemeMechanism::StrokeStyling,
+            ]),
+        ),
+        (
+            C6ProofTheme::Spotless,
+            BTreeSet::from([
+                ReferenceThemeMechanism::CanvasGradient,
+                ReferenceThemeMechanism::CanvasPattern,
+            ]),
+        ),
+        (
+            C6ProofTheme::Cyberpunk,
+            BTreeSet::from([ReferenceThemeMechanism::CanvasLayering]),
+        ),
+    ] {
+        let svg = catalog
+            .cell(C6CellKey::new(
+                theme,
+                C6ProofFamily::Flowchart,
+                ExpectedOutputTarget::StandaloneSvg,
+            ))
+            .expect("Flowchart SVG cell");
+        let png = catalog
+            .cell(C6CellKey::new(
+                theme,
+                C6ProofFamily::Flowchart,
+                ExpectedOutputTarget::Png,
+            ))
+            .expect("Flowchart PNG cell");
+        let png_mechanisms = png
+            .expectation()
+            .mechanism_requirements()
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(png_mechanisms, expected);
+        assert!(
+            png_mechanisms.is_subset(
+                &svg.expectation()
+                    .mechanism_requirements()
+                    .keys()
+                    .copied()
+                    .collect::<BTreeSet<_>>()
+            ),
+            "PNG must not claim a mechanism absent from the SVG proof"
+        );
+    }
 }

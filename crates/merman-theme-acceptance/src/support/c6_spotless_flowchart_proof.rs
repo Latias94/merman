@@ -20,6 +20,12 @@ const CELL_MECHANISMS: [ReferenceThemeMechanism; 6] = [
     ReferenceThemeMechanism::RoundedCorners,
     ReferenceThemeMechanism::StrokeStyling,
 ];
+// The PNG proof observes only the repeating two-color canvas paint. Typography, node geometry,
+// dash, and stroke mechanisms remain SVG-only evidence for this cell.
+const PNG_MECHANISMS: [ReferenceThemeMechanism; 2] = [
+    ReferenceThemeMechanism::CanvasGradient,
+    ReferenceThemeMechanism::CanvasPattern,
+];
 const COLOR_TOLERANCE: u8 = 10;
 const MIN_STRIPE_COVERAGE: f64 = 0.08;
 
@@ -54,12 +60,6 @@ pub(crate) struct SpotlessFlowchartSvgProof {
 }
 
 impl SpotlessFlowchartSvgProof {
-    pub(crate) fn mechanisms(
-        &self,
-    ) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-        self.mechanisms.clone()
-    }
-
     pub(crate) fn target_proof(&self) -> C6BoundTargetProof {
         self.target_proof.clone()
     }
@@ -127,10 +127,9 @@ pub(crate) fn prove_spotless_flowchart_png(
     artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
 ) -> C6ProofResult<C6BoundTargetProof> {
-    let (_, target_proof) = artifact.check_with(
-        "spotless-flowchart-png-v1",
-        svg_proof.mechanisms(),
-        |bytes| {
+    let mechanisms = spotless_flowchart_png_mechanisms(&svg_proof.mechanisms)?;
+    let (_, target_proof) =
+        artifact.check_with("spotless-flowchart-png-v1", mechanisms, |bytes| {
             let raster = decode_bounded_png_artifact(bytes, plan)?;
             for color in contract.stripe_colors {
                 raster.prove_opaque_color_coverage_in_svg_rect(
@@ -144,9 +143,34 @@ pub(crate) fn prove_spotless_flowchart_png(
                 )?;
             }
             Ok(())
-        },
-    )?;
+        })?;
     Ok(target_proof)
+}
+
+fn spotless_flowchart_png_mechanisms(
+    svg_mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+) -> C6ProofResult<BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>> {
+    PNG_MECHANISMS
+        .into_iter()
+        .map(|mechanism| {
+            let disposition = svg_mechanisms.get(&mechanism).copied().ok_or_else(|| {
+                C6ProofError::new(
+                    "spotless-flowchart-png-mechanisms",
+                    format!(
+                        "Spotless Flowchart PNG stripe proof lacks SVG mechanism `{}`",
+                        mechanism.id()
+                    ),
+                )
+            })?;
+            c6_ensure!(
+                "spotless-flowchart-png-mechanisms",
+                disposition == C6ObservedMechanismDisposition::Applied,
+                "Spotless Flowchart PNG cannot report `{}` from a non-Applied SVG mechanism",
+                mechanism.id()
+            );
+            Ok((mechanism, disposition))
+        })
+        .collect()
 }
 
 fn prove_repeating_canvas(
@@ -358,6 +382,31 @@ mod tests {
             dash_pattern: &[6, 4],
             radius: 4.0,
             font_family: "Excalifont",
+        }
+    }
+
+    #[test]
+    fn spotless_flowchart_png_scope_excludes_svg_only_mechanisms() {
+        let svg_mechanisms = CELL_MECHANISMS
+            .into_iter()
+            .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            spotless_flowchart_png_mechanisms(&svg_mechanisms).unwrap(),
+            PNG_MECHANISMS
+                .into_iter()
+                .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
+                .collect()
+        );
+
+        for mechanism in PNG_MECHANISMS {
+            let mut missing = svg_mechanisms.clone();
+            missing.remove(&mechanism);
+            assert!(spotless_flowchart_png_mechanisms(&missing).is_err());
+
+            let mut non_applied = svg_mechanisms.clone();
+            non_applied.insert(mechanism, C6ObservedMechanismDisposition::Residual);
+            assert!(spotless_flowchart_png_mechanisms(&non_applied).is_err());
         }
     }
 

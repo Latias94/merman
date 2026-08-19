@@ -1337,32 +1337,41 @@ fn facet_property(facet: ThemeRouteCutoverFacet) -> &'static str {
     }
 }
 
-fn css_last_property<'a>(css: &'a str, selector: &str, property: &str) -> Option<&'a str> {
+fn exact_writer_css_properties<'a>(css: &'a str, selector: &str, property: &str) -> Vec<&'a str> {
     let marker = format!("{selector}{{");
     let mut cursor = 0;
-    let mut winner = None;
-    while let Some(relative_start) = css.get(cursor..)?.find(&marker) {
-        let body_start = cursor
-            .checked_add(relative_start)?
-            .checked_add(marker.len())?;
-        let relative_end = css.get(body_start..)?.find('}')?;
-        let body_end = body_start.checked_add(relative_end)?;
-        winner = css
-            .get(body_start..body_end)?
-            .split(';')
-            .fold(winner, |winner, declaration| {
-                let Some((name, value)) = declaration.split_once(':') else {
-                    return winner;
-                };
-                if name.trim() == property {
-                    Some(value.trim())
-                } else {
-                    winner
-                }
-            });
-        cursor = body_end.checked_add(1)?;
+    let mut values = Vec::new();
+    while let Some(relative_start) = css
+        .get(cursor..)
+        .and_then(|remaining| remaining.find(&marker))
+    {
+        let Some(body_start) = cursor
+            .checked_add(relative_start)
+            .and_then(|start| start.checked_add(marker.len()))
+        else {
+            break;
+        };
+        let Some(relative_end) = css
+            .get(body_start..)
+            .and_then(|remaining| remaining.find('}'))
+        else {
+            break;
+        };
+        let Some(body_end) = body_start.checked_add(relative_end) else {
+            break;
+        };
+        if let Some(body) = css.get(body_start..body_end) {
+            values.extend(body.split(';').filter_map(|declaration| {
+                let (name, value) = declaration.split_once(':')?;
+                (name.trim() == property).then(|| value.trim())
+            }));
+        }
+        let Some(next_cursor) = body_end.checked_add(1) else {
+            break;
+        };
+        cursor = next_cursor;
     }
-    winner
+    values
 }
 
 fn route_label(route: ThemeRouteCutoverDescriptor) -> String {

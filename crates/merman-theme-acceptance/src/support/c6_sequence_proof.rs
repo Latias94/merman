@@ -532,12 +532,7 @@ fn require_stylesheet_property(
     property: &str,
     expected: &str,
 ) -> C6ProofResult<()> {
-    let actual = stylesheet_property(document, selector, property).ok_or_else(|| {
-        C6ProofError::new(
-            "sequence-svg-stylesheet",
-            format!("Sequence stylesheet lacks `{selector}` {property}"),
-        )
-    })?;
+    let actual = exact_writer_stylesheet_property(document, selector, property)?;
     c6_ensure!(
         "sequence-svg-stylesheet",
         actual == expected,
@@ -552,13 +547,12 @@ fn require_stylesheet_number(
     property: &str,
     expected: f64,
 ) -> C6ProofResult<()> {
-    let actual = stylesheet_property(document, selector, property).and_then(|value| {
-        value
-            .strip_suffix("px")
-            .unwrap_or(value)
-            .parse::<f64>()
-            .ok()
-    });
+    let value = exact_writer_stylesheet_property(document, selector, property)?;
+    let actual = value
+        .strip_suffix("px")
+        .unwrap_or(value)
+        .parse::<f64>()
+        .ok();
     c6_ensure!(
         "sequence-svg-stylesheet",
         actual.is_some_and(|actual| (actual - expected).abs() <= 1e-6),
@@ -567,41 +561,61 @@ fn require_stylesheet_number(
     Ok(())
 }
 
-fn stylesheet_property<'input>(
+fn exact_writer_stylesheet_property<'input>(
     document: &'input roxmltree::Document<'input>,
     selector: &str,
     property: &str,
-) -> Option<&'input str> {
-    document
+) -> C6ProofResult<&'input str> {
+    let values = document
         .descendants()
         .filter(|node| node.has_tag_name("style"))
         .filter_map(|node| node.text())
-        .filter_map(|css| css_last_property(css, selector, property))
-        .next_back()
+        .flat_map(|css| exact_writer_css_properties(css, selector, property))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "sequence-svg-stylesheet",
+        values.len() == 1,
+        "Sequence stylesheet expected one exact writer declaration for `{selector}` {property}, found {}",
+        values.len()
+    );
+    Ok(values[0])
 }
 
-fn css_last_property<'a>(css: &'a str, selector: &str, property: &str) -> Option<&'a str> {
+fn exact_writer_css_properties<'a>(css: &'a str, selector: &str, property: &str) -> Vec<&'a str> {
     let marker = format!("{selector}{{");
     let mut cursor = 0;
-    let mut winner = None;
-    while let Some(relative_start) = css.get(cursor..)?.find(&marker) {
-        let body_start = cursor
-            .checked_add(relative_start)?
-            .checked_add(marker.len())?;
-        let relative_end = css.get(body_start..)?.find('}')?;
-        let body_end = body_start.checked_add(relative_end)?;
-        winner = css
-            .get(body_start..body_end)?
-            .split(';')
-            .fold(winner, |winner, declaration| {
-                let Some((name, value)) = declaration.split_once(':') else {
-                    return winner;
-                };
-                (name.trim() == property).then(|| value.trim()).or(winner)
-            });
-        cursor = body_end.checked_add(1)?;
+    let mut values = Vec::new();
+    while let Some(relative_start) = css
+        .get(cursor..)
+        .and_then(|remaining| remaining.find(&marker))
+    {
+        let Some(body_start) = cursor
+            .checked_add(relative_start)
+            .and_then(|start| start.checked_add(marker.len()))
+        else {
+            break;
+        };
+        let Some(relative_end) = css
+            .get(body_start..)
+            .and_then(|remaining| remaining.find('}'))
+        else {
+            break;
+        };
+        let Some(body_end) = body_start.checked_add(relative_end) else {
+            break;
+        };
+        if let Some(body) = css.get(body_start..body_end) {
+            values.extend(body.split(';').filter_map(|declaration| {
+                let (name, value) = declaration.split_once(':')?;
+                (name.trim() == property).then(|| value.trim())
+            }));
+        }
+        let Some(next_cursor) = body_end.checked_add(1) else {
+            break;
+        };
+        cursor = next_cursor;
     }
-    winner
+    values
 }
 
 fn corner_fill_region(node: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
@@ -773,6 +787,28 @@ mod tests {
     fn spotless_sequence_terminal_contract_accepts_complete_svg() {
         let svg = spotless_proof_svg();
         assert!(check_sequence_svg(SPOTLESS_CONTRACT, svg.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn spotless_sequence_native_contract_does_not_reimplement_browser_cascade() {
+        let svg = spotless_proof_svg().replacen(
+            "</svg>",
+            "<style>#seq [class~='actor-line']{stroke:#000!important;}</style></svg>",
+            1,
+        );
+
+        assert!(check_sequence_svg(SPOTLESS_CONTRACT, svg.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn spotless_sequence_terminal_contract_rejects_duplicate_writer_declaration() {
+        let svg = spotless_proof_svg().replacen(
+            "</svg>",
+            "<style>#seq .actor-line{stroke:#2c2416;}</style></svg>",
+            1,
+        );
+
+        assert!(check_sequence_svg(SPOTLESS_CONTRACT, svg.as_bytes()).is_err());
     }
 
     #[test]

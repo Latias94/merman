@@ -1299,17 +1299,11 @@ fn require_typed_writer_property(
     property: &str,
     expected: &str,
 ) -> C6ProofResult<()> {
-    let marker = format!("{selector}{{{property}:{expected};}}");
-    let owner_count = document
-        .descendants()
-        .filter(|node| node.has_tag_name("style"))
-        .filter_map(|node| node.text())
-        .map(|css| css.match_indices(&marker).count())
-        .sum::<usize>();
+    let actual = sequence_writer_property(document, selector, property)?;
     c6_ensure!(
         "route-svg-proof",
-        owner_count == 1,
-        "Sequence production writer declaration `{selector}` `{property}:{expected}` must occur exactly once, found {owner_count}"
+        actual == expected,
+        "Sequence production writer declaration `{selector}` emitted `{property}:{actual}` instead of `{property}:{expected}`"
     );
     Ok(())
 }

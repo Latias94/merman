@@ -217,18 +217,19 @@ fn stylesheet_property<'a>(
     selector: &str,
     property: &str,
 ) -> C6ProofResult<&'a str> {
-    document
+    let values = document
         .descendants()
         .filter(|node| node.has_tag_name("style"))
         .filter_map(|node| node.text())
-        .filter_map(|css| css_last_property(css, selector, property))
-        .next_back()
-        .ok_or_else(|| {
-            C6ProofError::new(
-                "route-svg-proof",
-                format!("Sequence stylesheet lacks {selector} {property}"),
-            )
-        })
+        .flat_map(|css| exact_writer_css_properties(css, selector, property))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        values.len() == 1,
+        "Sequence stylesheet expected one exact writer declaration for `{selector}` {property}, found {}",
+        values.len()
+    );
+    Ok(values[0])
 }
 
 fn marker_reference(
@@ -336,4 +337,34 @@ fn parse_view_box(raw: &str) -> C6ProofResult<[f64; 4]> {
         "Sequence SVG viewBox is invalid: `{raw}`"
     );
     Ok([values[0], values[1], values[2], values[3]])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LINE_SELECTOR: &str = "#seq .messageLine0,#seq .messageLine1";
+
+    #[test]
+    fn sequence_message_native_contract_ignores_browser_cascade_rules() {
+        let document = roxmltree::Document::parse(
+            r##"<svg><style>#seq .messageLine0,#seq .messageLine1{stroke:#dc2626;}</style><style>#seq [class~="messageLine0"]{stroke:#000!important;}</style></svg>"##,
+        )
+        .expect("parse Sequence proof SVG");
+
+        assert_eq!(
+            stylesheet_property(&document, LINE_SELECTOR, "stroke").unwrap(),
+            "#dc2626"
+        );
+    }
+
+    #[test]
+    fn sequence_message_native_contract_rejects_duplicate_writer_rules() {
+        let document = roxmltree::Document::parse(
+            r##"<svg><style>#seq .messageLine0,#seq .messageLine1{stroke:#dc2626;}</style><style>#seq .messageLine0,#seq .messageLine1{stroke:#dc2626;}</style></svg>"##,
+        )
+        .expect("parse Sequence proof SVG");
+
+        assert!(stylesheet_property(&document, LINE_SELECTOR, "stroke").is_err());
+    }
 }
