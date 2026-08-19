@@ -69,8 +69,9 @@ mod wardley;
 mod xychart;
 mod zenuml;
 use css::{
-    er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_theme_font_size_only,
-    info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
+    PieCss, er_css, gantt_css, info_css_parts_with_config,
+    info_css_parts_with_theme_font_size_only, info_css_with_config, push_xychart_css,
+    requirement_css, sankey_css, treemap_css,
 };
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
@@ -317,6 +318,23 @@ pub(crate) struct SvgExecution<'a> {
     pub(crate) debug: &'a SvgDebugOptions,
 }
 
+#[derive(Default)]
+struct SvgComponentByteCounter {
+    bytes: usize,
+    overflowed: bool,
+}
+
+impl std::fmt::Write for SvgComponentByteCounter {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        let Some(bytes) = self.bytes.checked_add(value.len()) else {
+            self.overflowed = true;
+            return Err(std::fmt::Error);
+        };
+        self.bytes = bytes;
+        Ok(())
+    }
+}
+
 impl<'a> SvgExecution<'a> {
     fn new(
         request: &'a SvgRenderOptions,
@@ -395,6 +413,74 @@ impl<'a> SvgExecution<'a> {
 
     pub(crate) fn work_meter(&self) -> &crate::resources::OperationWorkMeter {
         self.session.work_meter().as_ref()
+    }
+
+    /// Counts a retained SVG component through its production writer, admits the exact byte count,
+    /// and only then allocates and materializes it.
+    ///
+    /// The counting pass owns no output buffer, so authored/config-sized content is not cloned just
+    /// to establish the bound. The final whole-document check remains the authoritative
+    /// `MaxSvgBytes` admission; this earlier absolute preflight prevents one amplified component
+    /// from allocating beyond the same ceiling and is not accumulated a second time.
+    fn materialize_counted_svg_component(
+        &self,
+        component_name: &'static str,
+        write_component: impl Fn(&mut dyn std::fmt::Write) -> std::fmt::Result,
+    ) -> Result<String> {
+        if self
+            .work_meter()
+            .policy()
+            .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+            .is_none()
+        {
+            let mut output = String::new();
+            write_component(&mut output).map_err(|_| Error::InvalidModel {
+                message: format!("failed to materialize {component_name}"),
+            })?;
+            return Ok(output);
+        }
+
+        let mut counter = SvgComponentByteCounter::default();
+        let projection = write_component(&mut counter);
+        if counter.overflowed {
+            return Err(self
+                .work_meter()
+                .terminate_svg_byte_count_overflow(
+                    crate::resources::ResourceLimitPhase::SvgOutput,
+                    OperationPhase::Emit,
+                )
+                .into());
+        }
+        projection.map_err(|_| Error::InvalidModel {
+            message: format!("failed to count {component_name}"),
+        })?;
+        let projected_bytes = counter.bytes;
+        self.work_meter()
+            .preflight_svg_byte_count(
+                projected_bytes,
+                crate::resources::ResourceLimitPhase::SvgOutput,
+                OperationPhase::Emit,
+            )
+            .map_err(Error::from)?;
+
+        let mut output = String::new();
+        output
+            .try_reserve_exact(projected_bytes)
+            .map_err(|error| Error::InvalidModel {
+                message: format!("failed to allocate {component_name}: {error}"),
+            })?;
+        write_component(&mut output).map_err(|_| Error::InvalidModel {
+            message: format!("failed to materialize {component_name}"),
+        })?;
+        if output.len() != projected_bytes {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "{component_name} byte projection drifted: projected {projected_bytes} bytes but materialized {}",
+                    output.len()
+                ),
+            });
+        }
+        Ok(output)
     }
 }
 

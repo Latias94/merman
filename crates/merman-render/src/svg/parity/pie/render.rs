@@ -61,6 +61,10 @@ pub(crate) fn render_pie_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let css_plan = PieCss::new(effective_config);
+    let css = options.materialize_counted_svg_component("Pie stylesheet", |out| {
+        css_plan.write_for_normalized_id(out, diagram_id)
+    })?;
     let diagram_id_esc = escape_xml(diagram_id);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -132,7 +136,6 @@ pub(crate) fn render_pie_diagram_svg_model(
         );
     }
 
-    let css = pie_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
 
