@@ -144,10 +144,15 @@ Before publishing, run focused checks:
 
 ```bash
 python3 tools/publish.py --list-crates-io-packages
+cargo semver-checks check-release -p roughr-merman --color always
 cargo check -p merman-ffi
 cargo check -p merman-uniffi
 cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
 ```
+
+The `roughr-merman` check uses the latest published compatible registry version as its baseline.
+For later `0.12.x` patches, `0.12.3` is the established compatibility floor; the release workflows
+pin `cargo-semver-checks` so the result does not depend on a maintainer's local tool version.
 
 For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The
 release workflow packages every member of a topological batch first and records the exact `.crate`

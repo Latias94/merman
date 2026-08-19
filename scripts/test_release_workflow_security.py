@@ -244,6 +244,31 @@ jobs:
         self.assertNotIn("cargo yank", text)
         self.assertNotIn("--token \"$CARGO_REGISTRY_TOKEN\"", text)
 
+    def test_roughr_semver_gate_is_pinned_before_publication(self) -> None:
+        workflows = {
+            WORKFLOW_ROOT / "release-preflight.yml": (
+                "cargo semver-checks check-release -p roughr-merman --color always",
+                "python3 scripts/crates_io_release.py preflight-initial",
+            ),
+            WORKFLOW_ROOT / "release-crates.yml": (
+                "cargo semver-checks check-release -p roughr-merman --color always",
+                "trusted/scripts/crates_io_release.py publish-receipted",
+            ),
+            WORKFLOW_ROOT / "release-independent-crate.yml": (
+                'cargo semver-checks check-release -p "$PACKAGE" --color always',
+                'env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE"',
+            ),
+        }
+        for path, (semver_command, publication_command) in workflows.items():
+            text = read(path)
+            with self.subTest(workflow=path.name):
+                self.assertIn("tool: cargo-semver-checks@0.50.0", text)
+                self.assertIn(semver_command, text)
+                self.assertLess(
+                    text.index("cargo semver-checks check-release"),
+                    text.index(publication_command),
+                )
+
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
             ROOT / ".npmrc",

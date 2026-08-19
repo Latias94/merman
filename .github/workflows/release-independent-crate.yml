@@ -80,7 +80,11 @@ jobs:
           echo "Verified source commit: $source_sha"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
-      - name: Verify and dry-run independent crate
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@v2.86.1
+        with:
+          tool: cargo-semver-checks@0.50.0
+      - name: Verify independent crate release metadata
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -108,6 +112,16 @@ jobs:
               raise SystemExit(f"{package} is not listed as an independent package")
           PY
 
+      - name: Verify public Rust API compatibility
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+        run: cargo semver-checks check-release -p "$PACKAGE" --color always
+
+      - name: Dry-run independent crate publication
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+        run: |
+          set -euo pipefail
           env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE" --locked --dry-run --registry crates-io
 
   publish:
