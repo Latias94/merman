@@ -142,6 +142,32 @@ impl<'a> DeferredTextRegistry<'a> {
         Self::default()
     }
 
+    /// Restores the append-only registry when a multi-label materialization fails partway.
+    pub(crate) fn transaction<T>(
+        &mut self,
+        operation: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        let checkpoint = (
+            self.entries.len(),
+            self.plans.len(),
+            self.quoted_lines.len(),
+        );
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.entries.truncate(checkpoint.0);
+                self.plans.truncate(checkpoint.1);
+                self.quoted_lines.truncate(checkpoint.2);
+                Err(error)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
     pub(crate) fn try_register(
         &mut self,
         plan: ComposedTextPlan<'a>,
@@ -227,22 +253,6 @@ impl<'a> DeferredTextRegistry<'a> {
             plain_bytes,
             html_bytes,
         })
-    }
-
-    pub(crate) fn try_register_label_lines_with_authored_disclosure(
-        &mut self,
-        raw: &'a str,
-        disclosure_prefix: &'static str,
-        width_profile: TerminalWidthProfile,
-        resources: &ResourceContext,
-    ) -> Result<Option<Vec<DeferredTextLine>>> {
-        self.try_register_label_lines_with_authored_disclosure_mode(
-            raw,
-            disclosure_prefix,
-            width_profile,
-            false,
-            resources,
-        )
     }
 
     pub(crate) fn try_register_present_label_lines_with_authored_disclosure(
@@ -406,6 +416,102 @@ impl<'a> DeferredTextRegistry<'a> {
             lines.push(self.try_register_framed_value(prefix, raw, width_profile, resources)?);
         }
         Ok(lines)
+    }
+
+    pub(crate) fn try_register_preplanned_label_lines(
+        &mut self,
+        raw: &'a str,
+        plan: Option<NormalizedLabelPlan>,
+        disclosure_prefix: Option<&'static str>,
+        preserve_empty_authored: bool,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Vec<DeferredTextLine>> {
+        match plan {
+            Some(plan) => {
+                self.try_register_label_plan(raw, plan, disclosure_prefix, width_profile, resources)
+            }
+            None => {
+                let prefix =
+                    disclosure_prefix.filter(|_| preserve_empty_authored || !raw.is_empty());
+                let Some(prefix) = prefix else {
+                    return Ok(Vec::new());
+                };
+                let mut lines = Vec::new();
+                lines
+                    .try_reserve_exact(2)
+                    .map_err(|_| layout_allocation_failed())?;
+                lines.push(
+                    self.try_register_parts(width_profile, resources, 1, |push| {
+                        push(DeferredTextPart::Static(""))
+                    })?,
+                );
+                lines.push(self.try_register_framed_value(
+                    prefix,
+                    raw,
+                    width_profile,
+                    resources,
+                )?);
+                Ok(lines)
+            }
+        }
+    }
+
+    pub(crate) fn try_measure_framed_value(
+        &self,
+        prefix: &'static str,
+        value: &'a str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<DeferredTextLineMetrics> {
+        resources.transaction(|resources| {
+            resources.charge_layout_work(4)?;
+            let prefix = self.deferred_part_metrics_and_charge(
+                DeferredTextPart::Static(prefix),
+                width_profile,
+                resources,
+            )?;
+            let decimal = self.deferred_part_metrics_and_charge(
+                DeferredTextPart::Decimal(value.len()),
+                width_profile,
+                resources,
+            )?;
+            let suffix = self.deferred_part_metrics_and_charge(
+                DeferredTextPart::Static(")="),
+                width_profile,
+                resources,
+            )?;
+            let value = self.deferred_part_metrics_and_charge(
+                DeferredTextPart::QuotedText(value),
+                width_profile,
+                resources,
+            )?;
+            let width = resources.checked_grid_add(
+                resources.checked_grid_add(prefix.width, decimal.width)?,
+                resources.checked_grid_add(suffix.width, value.width)?,
+            )?;
+            let plain_bytes = prefix
+                .plain_bytes
+                .checked_add(decimal.plain_bytes)
+                .and_then(|total| total.checked_add(suffix.plain_bytes))
+                .and_then(|total| total.checked_add(value.plain_bytes))
+                .ok_or_else(|| {
+                    resources.overflow(crate::resource::AsciiResourceLimitId::MaxOutputBytes)
+                })?;
+            let html_bytes = prefix
+                .html_bytes
+                .checked_add(decimal.html_bytes)
+                .and_then(|total| total.checked_add(suffix.html_bytes))
+                .and_then(|total| total.checked_add(value.html_bytes))
+                .ok_or_else(|| {
+                    resources.overflow(crate::resource::AsciiResourceLimitId::MaxOutputBytes)
+                })?;
+            Ok(DeferredTextLineMetrics {
+                width,
+                plain_bytes,
+                html_bytes,
+            })
+        })
     }
 
     pub(crate) fn try_register_quoted_text(
@@ -836,6 +942,13 @@ struct DeferredPartMetrics {
     html_bytes: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeferredTextLineMetrics {
+    pub(crate) width: usize,
+    pub(crate) plain_bytes: usize,
+    pub(crate) html_bytes: usize,
+}
+
 fn text_metrics(
     text: &str,
     width_profile: TerminalWidthProfile,
@@ -1135,54 +1248,6 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 0);
         assert!(deferred.entries.is_empty());
-    }
-
-    #[test]
-    fn authored_disclosure_failure_rolls_back_the_registry_and_ledger() {
-        const RAW: &str = "\u{1b}";
-        let baseline_resources = ResourceContext::new(AsciiResourcePolicy::default());
-        let mut baseline = DeferredTextRegistry::new();
-        baseline
-            .try_register_label_lines_transactional_with_presence(
-                RAW,
-                TerminalWidthProfile::Unicode,
-                None,
-                false,
-                &baseline_resources,
-            )
-            .expect("the base label should plan")
-            .expect("the base label should remain visible");
-        let base_work = baseline_resources.layout_work_used();
-
-        let policy = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, base_work)
-            .expect("the measured work limit should be valid");
-        let resources = ResourceContext::new(policy);
-        let mut deferred = DeferredTextRegistry::new();
-        let error = deferred
-            .try_register_label_lines_with_authored_disclosure(
-                RAW,
-                "authored(bytes=",
-                TerminalWidthProfile::Unicode,
-                &resources,
-            )
-            .expect_err("the authored disclosure should exceed the base-only work limit");
-
-        assert!(matches!(
-            error,
-            AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
-        ));
-        assert_eq!(resources.layout_work_used(), 0);
-        assert!(deferred.entries.is_empty());
-        assert!(deferred.plans.is_empty());
-        assert!(deferred.quoted_lines.is_empty());
-
-        let retry_resources = ResourceContext::new(AsciiResourcePolicy::default());
-        let retry = deferred
-            .try_register_quoted_text("A", TerminalWidthProfile::Unicode, &retry_resources)
-            .expect("the rolled-back registry should remain reusable");
-        assert_eq!(retry.glyphs()[0].id().index(), 0);
     }
 
     #[test]

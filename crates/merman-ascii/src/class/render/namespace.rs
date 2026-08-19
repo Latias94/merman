@@ -1,6 +1,6 @@
 use super::{
     CLASS_LEVEL_HORIZONTAL_GAP, ClassDirection, ClassEndpointIndex, ClassNoteIndex,
-    ClassRenderSettings, RenderedClassBox, RenderedClassBoxIndex,
+    ClassRelationLabels, ClassRenderSettings, RenderedClassBox, RenderedClassBoxIndex,
     authored_display_projection_is_lossy, external_namespace_note_summary_rows, grid_overflow,
     layout_allocation_failed, nesting_overflow, note_relation_layouts_for_notes, relation_layout,
     render_class_box, render_class_component_lines, render_class_document_lines_with_execution,
@@ -24,6 +24,7 @@ struct NamespaceRenderContext<'model, 'render> {
     render_plan: &'render NamespaceRenderPlan<'model>,
     scope_index: &'render NamespaceScopeIndex<'model>,
     note_by_id: ClassNoteIndex<'model>,
+    relation_labels: &'render [ClassRelationLabels],
     execution: AsciiExecution<'render>,
 }
 
@@ -524,6 +525,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     model: &'a ClassDiagram,
     settings: ClassRenderSettings<'_>,
     endpoint_index: &ClassEndpointIndex<'a>,
+    relation_labels: &[ClassRelationLabels],
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -539,6 +541,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
         render_plan: &render_plan,
         scope_index: &scope_index,
         note_by_id,
+        relation_labels,
         execution,
     };
     let boxes = render_namespaced_class_boxes(&context, deferred_text, resources)?;
@@ -555,9 +558,10 @@ pub(super) fn render_namespaced_class_diagram<'a>(
             model,
             relation,
             endpoint_index,
-            settings.options.terminal_width_profile,
-            deferred_text,
-            resources,
+            relation_labels
+                .get(relation_index)
+                .cloned()
+                .ok_or_else(layout_allocation_failed)?,
         )?;
         external_layouts.push(route_layout_for_scope(
             layout,
@@ -900,9 +904,11 @@ fn render_namespace_box<'model>(
             context.model,
             relation,
             context.endpoint_index,
-            context.settings.options.terminal_width_profile,
-            deferred_text,
-            resources,
+            context
+                .relation_labels
+                .get(relation_index)
+                .cloned()
+                .ok_or_else(layout_allocation_failed)?,
         )?;
         direct_layouts.push(route_layout_for_scope(
             layout,

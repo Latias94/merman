@@ -311,6 +311,59 @@ impl NormalizedLabelPlan {
         )
     }
 
+    /// Counts the retained label bytes for one terminal encoding without allocating rows.
+    ///
+    /// Relation renderers use this alongside [`Self::metrics`] to admit a complete batch of
+    /// authored labels before any deferred registry entries are created.
+    pub(crate) fn try_encoded_bytes(
+        self,
+        raw: &str,
+        html: bool,
+        resources: &ResourceContext,
+    ) -> Result<usize> {
+        resources.transaction(|resources| {
+            if self.wrap_width.is_some() {
+                return Err(invalid_label_extent_plan());
+            }
+            resources.charge_layout_work(self.replay_work_units)?;
+            let mut encoded_bytes = 0usize;
+            visit_selected_label_output_with_checkpoint(
+                raw,
+                self.selection,
+                self.break_policy,
+                self.policy,
+                &mut || checkpoint_resources(resources),
+                |_source, output| {
+                    let LabelOutputSegment::Segment(segment) = output else {
+                        return Ok(());
+                    };
+                    let mut buffer = [0u8; 10];
+                    let text = segment.text(&mut buffer);
+                    if html {
+                        super::encode::visit_html_escaped_text(text, |fragment| {
+                            encoded_bytes = checked_add_with_policy(
+                                self.policy,
+                                AsciiResourceLimitId::MaxOutputBytes,
+                                encoded_bytes,
+                                fragment.len(),
+                            )?;
+                            Ok(())
+                        })?;
+                    } else {
+                        encoded_bytes = checked_add_with_policy(
+                            self.policy,
+                            AsciiResourceLimitId::MaxOutputBytes,
+                            encoded_bytes,
+                            text.len(),
+                        )?;
+                    }
+                    Ok(())
+                },
+            )?;
+            Ok(encoded_bytes)
+        })
+    }
+
     #[cfg(test)]
     pub(crate) fn try_visit_line_widths(
         self,

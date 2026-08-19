@@ -8,10 +8,10 @@ use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     HorizontalRelationEndpoint, HorizontalRelationMarker, HorizontalRelationStyle,
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
-    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLine,
-    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
-    RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
-    RelationSummaryPaintPlan,
+    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLabelBatchPlan,
+    RelationGraphLabelPlan, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationRegionPlan,
+    RelationSelfLoopMetrics, RelationStackPlan, RelationSummaryPaintPlan,
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -375,6 +375,13 @@ struct RelationLayout<'a> {
     bottom_endpoint_role: EndpointLabelRole,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ClassRelationLabels {
+    label: Option<RelationGraphLabel>,
+    left_endpoint: Option<RelationGraphLabel>,
+    right_endpoint: Option<RelationGraphLabel>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct RelationEndpoint<'a> {
     authored_id: &'a str,
@@ -531,18 +538,28 @@ fn join_endpoint_label_with_authored_ref<'a>(
         width_profile,
         resources,
     )?;
-    let first = label
-        .lines()
-        .first()
-        .map(|line| DeferredTextLine::try_concat(&[&framed, &separator, line], resources))
-        .transpose()?
-        .unwrap_or(framed);
     let mut lines = Vec::new();
     lines
         .try_reserve_exact(label.line_count().max(1))
         .map_err(|_| layout_allocation_failed())?;
-    lines.push(first);
-    lines.extend(label.lines().iter().skip(1).cloned());
+    for (line_index, line) in label.lines().iter().enumerate() {
+        let typed_label =
+            deferred_text.try_register_parts(width_profile, resources, 5, |push| {
+                push(DeferredTextPart::Static("endpointLabel=[bytes="))?;
+                push(DeferredTextPart::Decimal(line.plain_bytes()))?;
+                push(DeferredTextPart::Static(" "))?;
+                push(DeferredTextPart::QuotedLine(line))?;
+                push(DeferredTextPart::Static("]"))
+            })?;
+        if line_index == 0 {
+            lines.push(DeferredTextLine::try_concat(
+                &[&framed, &separator, &typed_label],
+                resources,
+            )?);
+        } else {
+            lines.push(typed_label);
+        }
+    }
     RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
 }
 
@@ -582,11 +599,14 @@ fn render_class_diagram_impl(
     resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
     let endpoint_index = ClassEndpointIndex::new(model, &mut resources)?;
     validate_class_references(model, &endpoint_index, &mut resources)?;
+    let relation_labels =
+        prepare_class_relation_labels(model, options, &mut deferred_text, &resources)?;
     if has_renderable_namespaces(model) {
         let rendered = render_namespaced_class_diagram(
             model,
             settings,
             &endpoint_index,
+            &relation_labels,
             &mut deferred_text,
             &mut resources,
             execution,
@@ -629,15 +649,16 @@ fn render_class_diagram_impl(
     layouts
         .try_reserve_exact(layout_capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for relation in &model.relations {
+    for (relation_index, relation) in model.relations.iter().enumerate() {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         layouts.push(relation_layout(
             model,
             relation,
             &endpoint_index,
-            options.terminal_width_profile,
-            &mut deferred_text,
-            &resources,
+            relation_labels
+                .get(relation_index)
+                .cloned()
+                .ok_or_else(layout_allocation_failed)?,
         )?);
     }
     layouts.extend(note_relation_layouts(
@@ -1308,9 +1329,7 @@ fn relation_layout<'a>(
     model: &'a ClassDiagram,
     relation: &'a ClassRelation,
     endpoint_index: &ClassEndpointIndex<'a>,
-    width_profile: TerminalWidthProfile,
-    deferred_text: &mut DeferredTextRegistry<'a>,
-    resources: &ResourceContext,
+    labels: ClassRelationLabels,
 ) -> Result<RelationLayout<'a>> {
     let left_endpoint =
         endpoint_index
@@ -1349,20 +1368,11 @@ fn relation_layout<'a>(
         });
     }
 
-    let label =
-        RelationGraphLabel::try_new(&relation.title, width_profile, deferred_text, resources)?;
-    let left_endpoint_label = relation_endpoint_label(
-        relation.relation_title_1.as_deref(),
-        width_profile,
-        deferred_text,
-        resources,
-    )?;
-    let right_endpoint_label = relation_endpoint_label(
-        relation.relation_title_2.as_deref(),
-        width_profile,
-        deferred_text,
-        resources,
-    )?;
+    let ClassRelationLabels {
+        label,
+        left_endpoint: left_endpoint_label,
+        right_endpoint: right_endpoint_label,
+    } = labels;
 
     if left_marker == Some(RelationMarker::Extension) && right_marker.is_none() {
         return Ok(RelationLayout {
@@ -1405,6 +1415,82 @@ fn relation_layout<'a>(
         bottom_endpoint_label: right_endpoint_label,
         top_endpoint_role: EndpointLabelRole::First,
         bottom_endpoint_role: EndpointLabelRole::Second,
+    })
+}
+
+fn prepare_class_relation_labels<'a>(
+    model: &'a ClassDiagram,
+    options: &AsciiRenderOptions,
+    deferred_text: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<Vec<ClassRelationLabels>> {
+    resources.transaction(|resources| {
+        let capacity = model
+            .relations
+            .len()
+            .checked_mul(3)
+            .ok_or_else(|| work_overflow(resources))?;
+        let mut plans = Vec::new();
+        plans
+            .try_reserve_exact(capacity)
+            .map_err(|_| layout_allocation_failed())?;
+        for relation in &model.relations {
+            plans.push(RelationGraphLabelPlan::try_new(
+                &relation.title,
+                options.terminal_width_profile,
+                deferred_text,
+                resources,
+            )?);
+            plans.push(
+                relation
+                    .relation_title_1
+                    .as_deref()
+                    .map(|label| {
+                        RelationGraphLabelPlan::try_new_present(
+                            label,
+                            options.terminal_width_profile,
+                            deferred_text,
+                            resources,
+                        )
+                    })
+                    .transpose()?,
+            );
+            plans.push(
+                relation
+                    .relation_title_2
+                    .as_deref()
+                    .map(|label| {
+                        RelationGraphLabelPlan::try_new_present(
+                            label,
+                            options.terminal_width_profile,
+                            deferred_text,
+                            resources,
+                        )
+                    })
+                    .transpose()?,
+            );
+        }
+        let labels = RelationGraphLabelBatchPlan::try_new(plans, resources)?.materialize(
+            options.color_mode == crate::color::AsciiColorMode::Html,
+            deferred_text,
+            resources,
+        )?;
+        let mut labels = labels.into_iter();
+        let mut prepared = Vec::new();
+        prepared
+            .try_reserve_exact(model.relations.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for _ in &model.relations {
+            prepared.push(ClassRelationLabels {
+                label: labels.next().ok_or_else(layout_allocation_failed)?,
+                left_endpoint: labels.next().ok_or_else(layout_allocation_failed)?,
+                right_endpoint: labels.next().ok_or_else(layout_allocation_failed)?,
+            });
+        }
+        if labels.next().is_some() {
+            return Err(layout_allocation_failed());
+        }
+        Ok(prepared)
     })
 }
 
@@ -1594,18 +1680,6 @@ fn external_namespace_note_summary_rows<'a>(
         ));
     }
     Ok(rows)
-}
-
-fn relation_endpoint_label<'a>(
-    label: Option<&'a str>,
-    width_profile: TerminalWidthProfile,
-    deferred_text: &mut DeferredTextRegistry<'a>,
-    resources: &ResourceContext,
-) -> Result<Option<RelationGraphLabel>> {
-    let Some(label) = label else {
-        return Ok(None);
-    };
-    RelationGraphLabel::try_new_present(label, width_profile, deferred_text, resources).map(Some)
 }
 
 fn plan_vertical_relation<'plan>(
@@ -3106,19 +3180,20 @@ mod tests {
             execution,
         )
         .expect("class summary boxes should plan");
+        let relation_labels =
+            prepare_class_relation_labels(model, options, &mut deferred, &resources)
+                .expect("class summary labels should plan as one batch");
         let mut layouts = Vec::new();
         layouts
             .try_reserve_exact(model.relations.len())
             .expect("class summary layout allocation should succeed");
-        for relation in &model.relations {
+        for (relation_index, relation) in model.relations.iter().enumerate() {
             layouts.push(
                 relation_layout(
                     model,
                     relation,
                     &endpoint_index,
-                    options.terminal_width_profile,
-                    &mut deferred,
-                    &resources,
+                    relation_labels[relation_index].clone(),
                 )
                 .expect("class summary relation should plan"),
             );
@@ -3263,6 +3338,70 @@ mod tests {
         assert_ne!(empty_endpoint, blank_endpoint);
         assert!(empty_endpoint.contains(r#"authored(bytes=0)="""#));
         assert!(blank_endpoint.contains(r#"authored(bytes=1)=" ""#));
+    }
+
+    #[test]
+    fn authored_endpoint_label_cannot_spoof_generated_endpoint_provenance() {
+        const AUTHORED_REF: &str = "Domain.T";
+        const SPOOF: &str = r#"endpointRef(bytes=8)="Domain.T""#;
+
+        let mut model = parsed_class_model("classDiagram\nclass A\nclass B\nA --> B");
+        model.relations[0].relation_title_1 = Some(SPOOF.to_string());
+        let options = AsciiRenderOptions::ascii();
+        let policy = unbounded_policy();
+        let resources = ResourceContext::new(policy);
+        let mut deferred = DeferredTextRegistry::new();
+        let mut labels = prepare_class_relation_labels(&model, &options, &mut deferred, &resources)
+            .expect("the authored endpoint label should plan");
+        let authored = join_endpoint_label_with_authored_ref(
+            Some(AUTHORED_REF),
+            labels[0].left_endpoint.take(),
+            options.terminal_width_profile,
+            &mut deferred,
+            &resources,
+        )
+        .expect("authored endpoint label plus provenance should plan")
+        .expect("authored endpoint label plus provenance should remain present");
+        let generated = join_endpoint_label_with_authored_ref(
+            Some(AUTHORED_REF),
+            None,
+            options.terminal_width_profile,
+            &mut deferred,
+            &resources,
+        )
+        .expect("generated endpoint provenance should plan")
+        .expect("generated endpoint provenance should be present");
+
+        let authored_lines =
+            relation_graph::label_lines_with_role(&authored, AsciiColorRole::EdgeLabel, &resources)
+                .expect("authored endpoint label rows should materialize");
+        let generated_lines = relation_graph::label_lines_with_role(
+            &generated,
+            AsciiColorRole::EdgeLabel,
+            &resources,
+        )
+        .expect("generated endpoint provenance rows should materialize");
+        let mut authored_resources = ResourceContext::new(policy);
+        let authored_output = relation_graph::render_lines_with_deferred_options(
+            &authored_lines,
+            &options,
+            &mut authored_resources,
+            &deferred,
+        )
+        .expect("authored endpoint label should render");
+        let mut generated_resources = ResourceContext::new(policy);
+        let generated_output = relation_graph::render_lines_with_deferred_options(
+            &generated_lines,
+            &options,
+            &mut generated_resources,
+            &deferred,
+        )
+        .expect("generated endpoint provenance should render");
+
+        assert_ne!(authored_output, generated_output);
+        assert!(authored_output.contains(SPOOF));
+        assert!(authored_output.contains(r#"endpointLabel=[bytes=31 "endpointRef"#));
+        assert_eq!(generated_output, format!("{SPOOF}\n"));
     }
 
     #[test]

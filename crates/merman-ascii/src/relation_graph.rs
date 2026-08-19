@@ -117,7 +117,8 @@ use self::layered::{
     RelationGraphComponent, plan_layered_relation_component_ref_result, relation_components,
 };
 pub(crate) use self::model::{
-    RelationGraphBox, RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLine,
+    RelationGraphBox, RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLabelBatchPlan,
+    RelationGraphLabelPlan, RelationGraphLine,
 };
 pub(crate) use self::self_loop::{
     RelationSelfLoopMetrics, RelationSelfLoopPlan, RelationSelfLoopRows,

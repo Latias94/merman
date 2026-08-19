@@ -1,7 +1,7 @@
 use super::LayeredRelationSummaryReason;
 use super::RelationGraphLine;
 #[cfg(test)]
-use super::{RelationGraphBox, RelationGraphLabel, stacked_box_extent};
+use super::{RelationGraphBox, RelationGraphLabel, RelationGraphLabelPlan, stacked_box_extent};
 use crate::color::AsciiColorRole;
 use crate::options::AsciiRenderOptions;
 #[cfg(test)]
@@ -291,12 +291,17 @@ mod tests {
         let options = AsciiRenderOptions::ascii();
         let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
-        let label = RelationGraphLabel::new(
+        let label_plan = RelationGraphLabelPlan::try_new(
             "receives<br>request",
             TerminalWidthProfile::Unicode,
-            &mut deferred,
+            &deferred,
             &resources,
-        );
+        )
+        .expect("label should plan");
+        let label = label_plan
+            .map(|plan| plan.materialize(&mut deferred, &resources))
+            .transpose()
+            .expect("label should materialize");
         let rows = rows_with_label(
             &[
                 ("Gateway", "-->", "Service", label.as_ref()),
@@ -337,12 +342,17 @@ mod tests {
         let options = AsciiRenderOptions::ascii();
         let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
-        let label = RelationGraphLabel::new(
+        let label_plan = RelationGraphLabelPlan::try_new(
             "处理🚀<br>完成",
             TerminalWidthProfile::Unicode,
-            &mut deferred,
+            &deferred,
             &resources,
-        );
+        )
+        .expect("label should plan");
+        let label = label_plan
+            .map(|plan| plan.materialize(&mut deferred, &resources))
+            .transpose()
+            .expect("label should materialize");
         let rows = rows_with_label(
             &[
                 ("服务", "-->", "Repo", label.as_ref()),
@@ -389,12 +399,17 @@ mod tests {
             .with_color_theme(theme);
         let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
-        let label = RelationGraphLabel::new(
+        let label_plan = RelationGraphLabelPlan::try_new(
             "one<br>two",
             TerminalWidthProfile::Unicode,
-            &mut deferred,
+            &deferred,
             &resources,
-        );
+        )
+        .expect("label should plan");
+        let label = label_plan
+            .map(|plan| plan.materialize(&mut deferred, &resources))
+            .transpose()
+            .expect("label should materialize");
         let rows = rows_with_label(
             &[("A", "-->", "B", label.as_ref())],
             &options,

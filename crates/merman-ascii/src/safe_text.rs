@@ -10,7 +10,9 @@ mod width;
 mod wrapped;
 
 pub(crate) use composed::ComposedTextPlan;
-pub(crate) use deferred::{DeferredTextLine, DeferredTextPart, DeferredTextRegistry};
+pub(crate) use deferred::{
+    DeferredTextLine, DeferredTextLineMetrics, DeferredTextPart, DeferredTextRegistry,
+};
 #[cfg(test)]
 use document::encode_text_lines;
 pub(crate) use document::{
@@ -22,13 +24,14 @@ pub(crate) use framing::{
     push_optional_document_field, push_wrapped_field, push_wrapped_list,
     visit_quoted_terminal_text,
 };
+#[cfg(test)]
+pub(crate) use label::try_build_normalized_label_lines;
 pub(crate) use label::{
     LabelBreakPolicy, NormalizedLabelMetrics, NormalizedLabelPlan,
-    try_measure_normalized_label_lines, try_plan_normalized_label_lines_with_policy,
+    try_measure_normalized_label_lines, try_plan_normalized_label_lines,
+    try_plan_normalized_label_lines_with_policy,
     try_plan_normalized_label_lines_with_policy_and_checkpoint,
 };
-#[cfg(test)]
-pub(crate) use label::{try_build_normalized_label_lines, try_plan_normalized_label_lines};
 pub(crate) use layout::{
     NormalizedTextPlan, NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
     try_plan_normalized_text, try_plan_normalized_trimmed_text, try_repeat_layout_char,

@@ -239,14 +239,17 @@ fn relation_graph_label_splits_breaks_and_tracks_line_count() {
     let options = AsciiRenderOptions::ascii();
     let resources = test_resources(AsciiResourcePolicy::default());
     let mut deferred = DeferredTextRegistry::new();
-    let label = RelationGraphLabel::try_new(
+    let label_plan = RelationGraphLabelPlan::try_new(
         "north<br>south",
         TerminalWidthProfile::Unicode,
-        &mut deferred,
+        &deferred,
         &resources,
     )
     .expect("label should fit the selected resource policy")
     .expect("label should be present");
+    let label = label_plan
+        .materialize(&mut deferred, &resources)
+        .expect("label should materialize");
 
     let mut lines = Vec::new();
     for line in label.lines() {
@@ -279,14 +282,17 @@ fn write_centered_relation_label_draws_each_line() {
     let options = AsciiRenderOptions::ascii();
     let resources = test_resources(AsciiResourcePolicy::default());
     let mut deferred = DeferredTextRegistry::new();
-    let label = RelationGraphLabel::try_new(
+    let label_plan = RelationGraphLabelPlan::try_new(
         "A<br>B",
         TerminalWidthProfile::Unicode,
-        &mut deferred,
+        &deferred,
         &resources,
     )
     .expect("label should fit the selected resource policy")
     .expect("label should be present");
+    let label = label_plan
+        .materialize(&mut deferred, &resources)
+        .expect("label should materialize");
     let center_x = label.width() / 2;
     let mut canvas = Canvas::new(label.width(), label.line_count());
 

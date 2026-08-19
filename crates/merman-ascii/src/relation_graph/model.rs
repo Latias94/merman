@@ -3,8 +3,11 @@ use crate::Result;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::TerminalWidthProfile;
-use crate::resource::ResourceContext;
-use crate::safe_text::{DeferredTextLine, DeferredTextRegistry};
+use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use crate::safe_text::{
+    DeferredTextLine, DeferredTextLineMetrics, DeferredTextRegistry, NormalizedLabelMetrics,
+    NormalizedLabelPlan, try_plan_normalized_label_lines,
+};
 use crate::text::StyledLine;
 #[cfg(test)]
 use crate::text::display_width_with_profile;
@@ -49,51 +52,334 @@ pub(crate) struct RelationGraphLabel {
     width: usize,
     width_profile: TerminalWidthProfile,
 }
-impl RelationGraphLabel {
-    pub(crate) fn try_new<'a>(
-        raw: &'a str,
-        width_profile: TerminalWidthProfile,
-        deferred: &mut DeferredTextRegistry<'a>,
-        resources: &ResourceContext,
-    ) -> Result<Option<Self>> {
-        let Some(lines) = deferred.try_register_label_lines_with_authored_disclosure(
-            raw,
-            "authored(bytes=",
-            width_profile,
-            resources,
-        )?
-        else {
-            return Ok(None);
-        };
-        Self::try_from_lines(lines, width_profile, resources).map(Some)
-    }
 
-    pub(crate) fn try_new_present<'a>(
-        raw: &'a str,
-        width_profile: TerminalWidthProfile,
-        deferred: &mut DeferredTextRegistry<'a>,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RelationGraphLabelPlan<'a> {
+    raw: &'a str,
+    normalized: Option<NormalizedLabelPlan>,
+    disclosure_prefix: &'static str,
+    preserve_empty_authored: bool,
+    disclose_authored: bool,
+    metrics: RelationGraphLabelMetrics,
+    width_profile: TerminalWidthProfile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RelationGraphLabelMetrics {
+    grid_cells: usize,
+    document_cells: usize,
+    plain_bytes: usize,
+    html_bytes: usize,
+    line_count: usize,
+    width: usize,
+}
+
+impl RelationGraphLabelMetrics {
+    const EMPTY: Self = Self {
+        grid_cells: 0,
+        document_cells: 0,
+        plain_bytes: 0,
+        html_bytes: 0,
+        line_count: 0,
+        width: 0,
+    };
+
+    fn try_from_normalized(
+        raw: &str,
+        plan: NormalizedLabelPlan,
+        html_bytes: usize,
+        disclosure: Option<DeferredTextLineMetrics>,
         resources: &ResourceContext,
     ) -> Result<Self> {
-        let lines = deferred.try_register_present_label_lines_with_authored_disclosure(
-            raw,
-            "authored(bytes=",
-            width_profile,
-            resources,
-        )?;
-        Self::try_from_lines(lines, width_profile, resources)
+        let NormalizedLabelMetrics {
+            materialized_bytes,
+            document_cells,
+            line_count,
+            max_width,
+        } = plan.metrics();
+        let mut metrics = Self {
+            grid_cells: 0,
+            document_cells,
+            plain_bytes: materialized_bytes,
+            html_bytes,
+            line_count,
+            width: max_width,
+        };
+        if let Some(disclosure) = disclosure {
+            metrics.try_include_line(disclosure, resources)?;
+        }
+        metrics.grid_cells =
+            resources.checked_grid_mul(metrics.width.max(1), metrics.line_count.max(1))?;
+        debug_assert!(!raw.is_empty() || line_count > 0);
+        Ok(metrics)
     }
 
-    #[cfg(test)]
-    pub(crate) fn new<'a>(
+    fn try_include_line(
+        &mut self,
+        line: DeferredTextLineMetrics,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.document_cells = self
+            .document_cells
+            .checked_add(line.width)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        self.plain_bytes = self
+            .plain_bytes
+            .checked_add(line.plain_bytes)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        self.html_bytes = self
+            .html_bytes
+            .checked_add(line.html_bytes)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        self.line_count = resources.checked_grid_add(self.line_count, 1)?;
+        self.width = self.width.max(line.width);
+        Ok(())
+    }
+
+    const fn document_cells(self) -> usize {
+        self.document_cells
+    }
+
+    const fn grid_cells(self) -> usize {
+        self.grid_cells
+    }
+
+    const fn encoded_bytes(self, html: bool) -> usize {
+        if html {
+            self.html_bytes
+        } else {
+            self.plain_bytes
+        }
+    }
+
+    const fn line_count(self) -> usize {
+        self.line_count
+    }
+
+    const fn width(self) -> usize {
+        self.width
+    }
+}
+
+impl<'a> RelationGraphLabelPlan<'a> {
+    pub(crate) fn try_new(
         raw: &'a str,
         width_profile: TerminalWidthProfile,
-        deferred: &mut DeferredTextRegistry<'a>,
+        deferred: &DeferredTextRegistry<'a>,
         resources: &ResourceContext,
-    ) -> Option<Self> {
-        Self::try_new(raw, width_profile, deferred, resources)
-            .expect("test relation label should plan")
+    ) -> Result<Option<Self>> {
+        Self::try_new_with_presence(raw, width_profile, deferred, false, resources)
     }
 
+    pub(crate) fn try_new_present(
+        raw: &'a str,
+        width_profile: TerminalWidthProfile,
+        deferred: &DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        Self::try_new_with_disclosure(
+            raw,
+            "authored(bytes=",
+            true,
+            width_profile,
+            deferred,
+            resources,
+        )?
+        .ok_or_else(layout_allocation_failed)
+    }
+
+    fn try_new_with_presence(
+        raw: &'a str,
+        width_profile: TerminalWidthProfile,
+        deferred: &DeferredTextRegistry<'a>,
+        preserve_empty_authored: bool,
+        resources: &ResourceContext,
+    ) -> Result<Option<Self>> {
+        Self::try_new_with_disclosure(
+            raw,
+            "authored(bytes=",
+            preserve_empty_authored,
+            width_profile,
+            deferred,
+            resources,
+        )
+    }
+
+    fn try_new_with_disclosure(
+        raw: &'a str,
+        disclosure_prefix: &'static str,
+        preserve_empty_authored: bool,
+        width_profile: TerminalWidthProfile,
+        deferred: &DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Result<Option<Self>> {
+        resources.transaction(|resources| {
+            let normalized =
+                try_plan_normalized_label_lines(raw, width_profile, true, None, resources)?;
+            let disclose_authored = normalized
+                .map(NormalizedLabelPlan::authored_projection_is_lossy)
+                .unwrap_or(preserve_empty_authored || !raw.is_empty());
+            if normalized.is_none() && !disclose_authored {
+                return Ok(None);
+            }
+            let disclosure = disclose_authored
+                .then(|| {
+                    deferred.try_measure_framed_value(
+                        disclosure_prefix,
+                        raw,
+                        width_profile,
+                        resources,
+                    )
+                })
+                .transpose()?;
+            let metrics = if let Some(plan) = normalized {
+                RelationGraphLabelMetrics::try_from_normalized(
+                    raw,
+                    plan,
+                    plan.try_encoded_bytes(raw, true, resources)?,
+                    disclosure,
+                    resources,
+                )?
+            } else {
+                let mut metrics = RelationGraphLabelMetrics::EMPTY;
+                metrics.try_include_line(
+                    DeferredTextLineMetrics {
+                        width: 0,
+                        plain_bytes: 0,
+                        html_bytes: 0,
+                    },
+                    resources,
+                )?;
+                metrics.try_include_line(
+                    disclosure.ok_or_else(layout_allocation_failed)?,
+                    resources,
+                )?;
+                metrics.grid_cells =
+                    resources.checked_grid_mul(metrics.width.max(1), metrics.line_count.max(1))?;
+                metrics
+            };
+            resources.grid_extent(metrics.width().max(1), metrics.line_count().max(1))?;
+            Ok(Some(Self {
+                raw,
+                normalized,
+                disclosure_prefix,
+                preserve_empty_authored,
+                disclose_authored,
+                metrics,
+                width_profile,
+            }))
+        })
+    }
+
+    const fn metrics(self) -> RelationGraphLabelMetrics {
+        self.metrics
+    }
+
+    pub(crate) fn materialize(
+        self,
+        deferred: &mut DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Result<RelationGraphLabel> {
+        let lines = deferred.try_register_preplanned_label_lines(
+            self.raw,
+            self.normalized,
+            self.disclose_authored.then_some(self.disclosure_prefix),
+            self.preserve_empty_authored,
+            self.width_profile,
+            resources,
+        )?;
+        let label = RelationGraphLabel::try_from_lines(lines, self.width_profile, resources)?;
+        if label.width() != self.metrics.width() || label.line_count() != self.metrics.line_count()
+        {
+            return Err(grid_overflow(resources));
+        }
+        Ok(label)
+    }
+}
+
+pub(crate) struct RelationGraphLabelBatchPlan<'a> {
+    labels: Vec<Option<RelationGraphLabelPlan<'a>>>,
+    grid_cells: usize,
+    document_cells: usize,
+    plain_bytes: usize,
+    html_bytes: usize,
+}
+
+impl<'a> RelationGraphLabelBatchPlan<'a> {
+    pub(crate) fn try_new(
+        labels: Vec<Option<RelationGraphLabelPlan<'a>>>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let (grid_cells, document_cells, plain_bytes, html_bytes) =
+            labels.iter().flatten().try_fold(
+                (0usize, 0usize, 0usize, 0usize),
+                |(grid_cells, document_cells, plain_bytes, html_bytes), label| {
+                    let metrics = label.metrics();
+                    Ok::<_, crate::AsciiError>((
+                        grid_cells.max(metrics.grid_cells()),
+                        document_cells
+                            .checked_add(metrics.document_cells())
+                            .ok_or_else(|| {
+                                resources.overflow(AsciiResourceLimitId::MaxDocumentCells)
+                            })?,
+                        plain_bytes
+                            .checked_add(metrics.encoded_bytes(false))
+                            .ok_or_else(|| {
+                                resources.overflow(AsciiResourceLimitId::MaxOutputBytes)
+                            })?,
+                        html_bytes
+                            .checked_add(metrics.encoded_bytes(true))
+                            .ok_or_else(|| {
+                                resources.overflow(AsciiResourceLimitId::MaxOutputBytes)
+                            })?,
+                    ))
+                },
+            )?;
+        Ok(Self {
+            labels,
+            grid_cells,
+            document_cells,
+            plain_bytes,
+            html_bytes,
+        })
+    }
+
+    pub(crate) fn materialize(
+        self,
+        html: bool,
+        deferred: &mut DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Result<Vec<Option<RelationGraphLabel>>> {
+        resources.transaction(|resources| {
+            resources.check(AsciiResourceLimitId::MaxGridCells, self.grid_cells)?;
+            resources.check_usage(0, self.document_cells)?;
+            resources.check(
+                AsciiResourceLimitId::MaxOutputBytes,
+                if html {
+                    self.html_bytes
+                } else {
+                    self.plain_bytes
+                },
+            )?;
+            deferred.transaction(|deferred| {
+                let mut labels = Vec::new();
+                labels
+                    .try_reserve_exact(self.labels.len())
+                    .map_err(|_| layout_allocation_failed())?;
+                for label in self.labels {
+                    labels.push(
+                        label
+                            .map(|label| label.materialize(deferred, resources))
+                            .transpose()?,
+                    );
+                }
+                Ok(labels)
+            })
+        })
+    }
+}
+
+impl RelationGraphLabel {
     pub(crate) fn try_from_lines(
         lines: Vec<DeferredTextLine>,
         width_profile: TerminalWidthProfile,

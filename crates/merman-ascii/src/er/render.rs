@@ -6,10 +6,10 @@ use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     HorizontalRelationEndpoint, HorizontalRelationMarker, HorizontalRelationStyle,
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
-    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLine,
-    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
-    RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
-    RelationSummaryPaintPlan,
+    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLabelBatchPlan,
+    RelationGraphLabelPlan, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationRegionPlan,
+    RelationSelfLoopMetrics, RelationStackPlan, RelationSummaryPaintPlan,
 };
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
@@ -328,11 +328,13 @@ fn render_er_components<'model>(
     deferred_text: &mut DeferredTextRegistry<'model>,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    let labels =
+        prepare_er_relation_labels(relationships, context.options, deferred_text, resources)?;
     let mut layouts = Vec::new();
     layouts
         .try_reserve_exact(relationships.len())
         .map_err(|_| layout_allocation_failed())?;
-    for relationship in relationships {
+    for (relationship, label) in relationships.iter().zip(labels) {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         let mut layout = ErRelationLayout {
             relationship,
@@ -348,12 +350,7 @@ fn render_er_components<'model>(
             )?,
             top_cardinality: relationship.rel_spec.card_b.as_str(),
             bottom_cardinality: relationship.rel_spec.card_a.as_str(),
-            label: RelationGraphLabel::try_new(
-                &relationship.role_a,
-                context.options.terminal_width_profile,
-                deferred_text,
-                resources,
-            )?,
+            label,
         };
         layout.apply_direction(context.direction);
         layouts.push(layout);
@@ -390,6 +387,33 @@ fn render_er_components<'model>(
         deferred_text,
         execution,
     )
+}
+
+fn prepare_er_relation_labels<'model>(
+    relationships: &'model [ErRelationshipRenderModel],
+    options: &AsciiRenderOptions,
+    deferred_text: &mut DeferredTextRegistry<'model>,
+    resources: &ResourceContext,
+) -> Result<Vec<Option<RelationGraphLabel>>> {
+    resources.transaction(|resources| {
+        let mut plans = Vec::new();
+        plans
+            .try_reserve_exact(relationships.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for relationship in relationships {
+            plans.push(RelationGraphLabelPlan::try_new(
+                &relationship.role_a,
+                options.terminal_width_profile,
+                deferred_text,
+                resources,
+            )?);
+        }
+        RelationGraphLabelBatchPlan::try_new(plans, resources)?.materialize(
+            options.color_mode == crate::color::AsciiColorMode::Html,
+            deferred_text,
+            resources,
+        )
+    })
 }
 
 fn render_entity_box<'a>(
@@ -1661,6 +1685,17 @@ mod tests {
             .try_reserve_exact(model.relationships.len())
             .expect("ER summary layout allocation should succeed");
         for relationship in &model.relationships {
+            let label_plan = RelationGraphLabelPlan::try_new(
+                &relationship.role_a,
+                options.terminal_width_profile,
+                &deferred,
+                &resources,
+            )
+            .expect("ER summary label should plan");
+            let label = label_plan
+                .map(|plan| plan.materialize(&mut deferred, &resources))
+                .transpose()
+                .expect("ER summary label should materialize");
             layouts.push(ErRelationLayout {
                 relationship,
                 top_id: relationship.entity_a.as_str(),
@@ -1677,13 +1712,7 @@ mod tests {
                 .expect("ER summary target identity should exist"),
                 top_cardinality: relationship.rel_spec.card_b.as_str(),
                 bottom_cardinality: relationship.rel_spec.card_a.as_str(),
-                label: RelationGraphLabel::try_new(
-                    &relationship.role_a,
-                    options.terminal_width_profile,
-                    &mut deferred,
-                    &resources,
-                )
-                .expect("ER summary label should plan"),
+                label,
             });
         }
         let adapter = ErRelationComponentAdapter {
@@ -1776,6 +1805,150 @@ mod tests {
     }
 
     #[test]
+    fn er_relation_label_batch_admits_aggregate_limits_before_registry_materialization() {
+        let mut model = er_summary_model();
+        model.relationships[0].role_a = "left<&".repeat(128);
+        model.relationships[1].role_a = "right<&".repeat(128);
+        let options = AsciiRenderOptions::ascii();
+
+        let measured_resources = ResourceContext::new(unbounded_policy());
+        let mut measured_registry = DeferredTextRegistry::new();
+        let measured = prepare_er_relation_labels(
+            &model.relationships,
+            &options,
+            &mut measured_registry,
+            &measured_resources,
+        )
+        .expect("the aggregate relation-label batch should materialize without limits");
+        assert_eq!(measured.iter().flatten().count(), 2);
+        let aggregate_bytes = measured
+            .iter()
+            .flatten()
+            .flat_map(RelationGraphLabel::lines)
+            .map(DeferredTextLine::plain_bytes)
+            .sum::<usize>();
+        let aggregate_document_cells = measured
+            .iter()
+            .flatten()
+            .flat_map(RelationGraphLabel::lines)
+            .map(DeferredTextLine::width)
+            .sum::<usize>();
+        let aggregate_grid_cells = measured
+            .iter()
+            .flatten()
+            .map(|label| label.width() * label.line_count())
+            .max()
+            .unwrap_or(0);
+        assert!(aggregate_bytes > model.relationships[0].role_a.len());
+        assert!(aggregate_document_cells > model.relationships[0].role_a.len());
+
+        const PRIOR_WORK: usize = 7;
+        const PRIOR_DOCUMENT: usize = 11;
+        for (limit, actual) in [
+            (AsciiResourceLimitId::MaxGridCells, aggregate_grid_cells),
+            (
+                AsciiResourceLimitId::MaxDocumentCells,
+                PRIOR_DOCUMENT + aggregate_document_cells,
+            ),
+            (AsciiResourceLimitId::MaxOutputBytes, aggregate_bytes),
+        ] {
+            let exact_policy = unbounded_policy()
+                .with_limit(limit, actual)
+                .expect("the exact aggregate relation-label limit should be valid");
+            let exact_resources = ResourceContext::new(exact_policy);
+            exact_resources
+                .charge_usage(PRIOR_WORK, PRIOR_DOCUMENT)
+                .expect("the exact fixture checkpoint should fit");
+            let mut exact_registry = DeferredTextRegistry::new();
+            prepare_er_relation_labels(
+                &model.relationships,
+                &options,
+                &mut exact_registry,
+                &exact_resources,
+            )
+            .unwrap_or_else(|error| {
+                panic!("the exact aggregate {limit:?} budget should materialize: {error:?}")
+            });
+            assert!(exact_registry.entry_count() > 0, "limit={limit:?}");
+            assert_eq!(
+                exact_resources.document_cells_used(),
+                PRIOR_DOCUMENT,
+                "limit={limit:?}",
+            );
+
+            let below_policy = unbounded_policy()
+                .with_limit(limit, actual - 1)
+                .expect("the aggregate N-1 relation-label limit should be valid");
+            let below_resources = ResourceContext::new(below_policy);
+            below_resources
+                .charge_usage(PRIOR_WORK, PRIOR_DOCUMENT)
+                .expect("the N-1 fixture checkpoint should fit");
+            let before = (
+                below_resources.layout_work_used(),
+                below_resources.document_cells_used(),
+            );
+            let mut below_registry = DeferredTextRegistry::new();
+            let error = prepare_er_relation_labels(
+                &model.relationships,
+                &options,
+                &mut below_registry,
+                &below_resources,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit
+                        && details.actual == actual
+                        && details.max == actual - 1
+            ));
+            assert_eq!(below_registry.entry_count(), 0, "limit={limit:?}");
+            assert_eq!(
+                (
+                    below_resources.layout_work_used(),
+                    below_resources.document_cells_used(),
+                ),
+                before,
+                "limit={limit:?}",
+            );
+        }
+
+        let rendered = render_er_diagram_with_execution(
+            &model,
+            &options,
+            AsciiExecution::for_test(&unbounded_policy()),
+        )
+        .expect("the public ER renderer should accept the multi-label fixture");
+        let exact_policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
+            .expect("the public exact output limit should be valid");
+        let exact = render_er_diagram_with_execution(
+            &model,
+            &options,
+            AsciiExecution::for_test(&exact_policy),
+        )
+        .expect("the public ER renderer should accept the exact aggregate output budget");
+        assert_eq!(exact, rendered);
+
+        let below_policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
+            .expect("the public aggregate N-1 output limit should be valid");
+        let error = render_er_diagram_with_execution(
+            &model,
+            &options,
+            AsciiExecution::for_test(&below_policy),
+        )
+        .expect_err("the public ER renderer must reject aggregate output N-1");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual == rendered.len()
+                    && details.max == rendered.len() - 1
+        ));
+    }
+
+    #[test]
     fn horizontal_er_cancellation_wins_before_shared_work_ledger_mutation() {
         const WORK_LIMIT: usize = 10_000;
 
@@ -1807,6 +1980,17 @@ mod tests {
             .expect("horizontal ER identities should plan");
         let mut layouts = Vec::new();
         for relationship in &model.relationships {
+            let label_plan = RelationGraphLabelPlan::try_new(
+                &relationship.role_a,
+                options.terminal_width_profile,
+                &deferred_text,
+                &resources,
+            )
+            .expect("horizontal ER label should plan");
+            let label = label_plan
+                .map(|plan| plan.materialize(&mut deferred_text, &resources))
+                .transpose()
+                .expect("horizontal ER label should materialize");
             layouts.push(ErRelationLayout {
                 relationship,
                 top_id: relationship.entity_a.as_str(),
@@ -1823,13 +2007,7 @@ mod tests {
                 .expect("horizontal ER target identity should exist"),
                 top_cardinality: relationship.rel_spec.card_b.as_str(),
                 bottom_cardinality: relationship.rel_spec.card_a.as_str(),
-                label: RelationGraphLabel::try_new(
-                    &relationship.role_a,
-                    options.terminal_width_profile,
-                    &mut deferred_text,
-                    &resources,
-                )
-                .expect("horizontal ER label should plan"),
+                label,
             });
         }
         let adapter = ErRelationComponentAdapter {
