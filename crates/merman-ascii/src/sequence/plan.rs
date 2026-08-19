@@ -603,7 +603,8 @@ mod tests {
         PreparedSequenceDocument, PreparedSequenceTitle, prepare_sequence_document,
     };
     use crate::sequence::text::{
-        SequenceDocumentExtent, SequenceDocumentPlan, SequenceRetainedRowRun, SequenceRetainedRows,
+        SequenceDocumentExtent, SequenceDocumentPlan, SequenceExtentLedger, SequenceRetainedRowRun,
+        SequenceRetainedRows,
     };
     use merman_core::{OperationControl, OperationPhase};
 
@@ -781,6 +782,66 @@ mod tests {
                     && details.actual == aggregate_cells
                     && details.max == aggregate_cells - 1
         ));
+    }
+
+    #[test]
+    fn hidden_lifeline_work_admission_counts_materialized_cells_and_participant_scan() {
+        const MATERIALIZED_WIDTH: usize = 101;
+        const PARTICIPANT_COUNT: usize = 2;
+        const EXACT_WORK: usize = MATERIALIZED_WIDTH + PARTICIPANT_COUNT;
+
+        let layout = SequenceLayout {
+            participant_widths: vec![3, 3],
+            participant_centers: vec![2, 98],
+            total_width: MATERIALIZED_WIDTH - 1,
+            message_spacing: 1,
+            self_message_width: 5,
+            width_profile: TerminalWidthProfile::Unicode,
+        };
+        let visible_actors = [true, false];
+
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXACT_WORK)
+            .expect("the exact lifeline work limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        let mut exact_checkpoints = layout_checkpoints(&exact_policy);
+        let exact_extent = lifeline_batch_extent(
+            &layout,
+            &visible_actors,
+            &exact_resources,
+            &mut exact_checkpoints,
+        )
+        .expect("the hidden-participant lifeline extent should fit");
+        assert_eq!(exact_extent.materialized_width(), MATERIALIZED_WIDTH);
+        assert_eq!(exact_extent.retained_width(), 3);
+        SequenceExtentLedger::default()
+            .reserve(exact_extent, &mut exact_resources, &exact_checkpoints)
+            .expect("materialized cells plus the participant scan should fit exactly");
+        assert_eq!(exact_resources.layout_work_used(), EXACT_WORK);
+
+        let below_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXACT_WORK - 1)
+            .expect("the lifeline work limit minus one should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let mut below_checkpoints = layout_checkpoints(&below_policy);
+        let below_extent = lifeline_batch_extent(
+            &layout,
+            &visible_actors,
+            &below_resources,
+            &mut below_checkpoints,
+        )
+        .expect("extent planning should precede aggregate work admission");
+        let error = SequenceExtentLedger::default()
+            .reserve(below_extent, &mut below_resources, &below_checkpoints)
+            .expect_err("the materialization work limit minus one must reject before painting");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == EXACT_WORK
+                    && details.max == EXACT_WORK - 1
+        ));
+        assert_eq!(below_resources.layout_work_used(), 0);
     }
 
     #[test]

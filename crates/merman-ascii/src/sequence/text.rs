@@ -222,7 +222,10 @@ pub(super) struct SequenceBatchExtent {
     materialized_width: usize,
     retained_width: usize,
     document_cells: usize,
-    work_units: usize,
+    // Retained-row work is replayed to validate the planned output extent.
+    retained_work_units: usize,
+    // Admission work may additionally cover discarded cells and participant scans.
+    admission_work_units: usize,
 }
 
 impl SequenceBatchExtent {
@@ -232,7 +235,8 @@ impl SequenceBatchExtent {
             height: 0,
             retained_width: 0,
             document_cells: 0,
-            work_units: 0,
+            retained_work_units: 0,
+            admission_work_units: 0,
         }
     }
 
@@ -284,7 +288,9 @@ impl SequenceBatchExtent {
             .document_cells
             .checked_add(length)
             .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
-        self.work_units = resources.checked_work_add(self.work_units, length.max(1))?;
+        self.retained_work_units =
+            resources.checked_work_add(self.retained_work_units, length.max(1))?;
+        self.admission_work_units = self.retained_work_units;
         Ok(())
     }
 
@@ -297,14 +303,28 @@ impl SequenceBatchExtent {
         let document_cells = retained_width
             .checked_mul(height)
             .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
-        let work_units = resources.checked_work_mul(retained_width.max(1), height)?;
+        let retained_work_units = resources.checked_work_mul(retained_width.max(1), height)?;
         Ok(Self {
             height,
             materialized_width: materialized_width.max(retained_width),
             retained_width,
             document_cells,
-            work_units,
+            retained_work_units,
+            admission_work_units: retained_work_units,
         })
+    }
+
+    pub(super) fn with_lifeline_materialization_work(
+        mut self,
+        participant_count: usize,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let materialized_cells =
+            resources.checked_work_mul(self.materialized_width, self.height)?;
+        let participant_scans = resources.checked_work_mul(participant_count, self.height)?;
+        self.admission_work_units =
+            resources.checked_work_add(materialized_cells, participant_scans)?;
+        Ok(self)
     }
 
     pub(super) const fn height(self) -> usize {
@@ -349,7 +369,7 @@ impl SequenceExtentLedger {
             .checked_add(batch.document_cells)
             .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         resources.check(AsciiResourceLimitId::MaxDocumentCells, document_cells)?;
-        resources.charge_layout_work(batch.work_units)?;
+        resources.charge_layout_work(batch.admission_work_units)?;
 
         Ok(SequenceExtentReservation {
             batch,
@@ -461,7 +481,7 @@ fn validate_batch_extent(expected: SequenceBatchExtent, actual: SequenceBatchExt
     if actual.height != expected.height
         || actual.retained_width != expected.retained_width
         || actual.document_cells != expected.document_cells
-        || actual.work_units != expected.work_units
+        || actual.retained_work_units != expected.retained_work_units
     {
         return Err(invalid_extent_plan());
     }

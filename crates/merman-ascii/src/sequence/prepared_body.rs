@@ -43,6 +43,7 @@ impl<'a> SequenceParticipantRenderModel<'a> {
 #[derive(Debug)]
 pub(super) struct SequencePreparedBody<'diagram> {
     participant_labels: Vec<PreparedSequenceParticipantLabel<'diagram>>,
+    participant_count: usize,
     batches: Vec<SequencePreparedBatch<'diagram>>,
     footprints: Vec<SequenceRowFootprint>,
     extent: SequenceExtentLedger,
@@ -174,6 +175,7 @@ impl<'diagram> SequencePreparedBody<'diagram> {
 
         let mut prepared = Self {
             participant_labels,
+            participant_count: layout.participant_centers.len(),
             batches: Vec::new(),
             footprints: Vec::new(),
             extent: SequenceExtentLedger::default(),
@@ -449,6 +451,8 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         let previous_extent = self.extent;
         let transaction = resources.clone();
         let result = transaction.transaction(|_| {
+            let extent =
+                pending.with_materialization_work(extent, self.participant_count, resources)?;
             let reservation = self.extent.reserve(extent, resources, checkpoints)?;
             self.batches
                 .try_reserve(1)
@@ -539,6 +543,24 @@ impl<'diagram> SequencePreparedBody<'diagram> {
 }
 
 impl<'diagram, 'state> SequencePendingBatchKind<'diagram, 'state> {
+    fn with_materialization_work(
+        &self,
+        extent: SequenceBatchExtent,
+        participant_count: usize,
+        resources: &ResourceContext,
+    ) -> Result<SequenceBatchExtent> {
+        match self {
+            Self::ParticipantBoxes { .. } => Ok(extent),
+            Self::Lifeline { .. }
+            | Self::LifecycleParticipants { .. }
+            | Self::Message { .. }
+            | Self::SelfMessage { .. }
+            | Self::Note { .. } => {
+                extent.with_lifeline_materialization_work(participant_count, resources)
+            }
+        }
+    }
+
     fn append_footprints(
         &self,
         extent: SequenceBatchExtent,
@@ -802,7 +824,8 @@ pub(super) fn lifeline_batch_extent(
 ) -> Result<SequenceBatchExtent> {
     let materialized_width = resources.checked_grid_add(layout.total_width, 1)?;
     let retained_width = retained_lifeline_width(layout, visible_actors, resources, checkpoints)?;
-    SequenceBatchExtent::uniform(1, materialized_width, retained_width, resources)
+    SequenceBatchExtent::uniform(1, materialized_width, retained_width, resources)?
+        .with_lifeline_materialization_work(layout.participant_centers.len(), resources)
 }
 
 pub(super) fn participant_box_batch_extent(
