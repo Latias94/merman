@@ -142,13 +142,26 @@ mod tests {
 
     #[test]
     fn sequence_grid_extent_accepts_exact_limit_and_rejects_limit_minus_one() {
-        let diagram = single_participant_diagram();
+        let mut diagram = single_participant_diagram();
+        diagram.participants[0].label = SequenceParticipantLabel::from_raw(
+            "first<br>second",
+            false,
+            TerminalWidthProfile::Unicode,
+        );
         let options = AsciiRenderOptions::ascii();
         let renders_with_limit = |limit| {
             let policy = AsciiResourcePolicy::default()
                 .with_limit(AsciiResourceLimitId::MaxGridCells, limit)
                 .expect("valid grid limit");
-            render_sequence_diagram(&diagram, &options, &policy)
+            let mut resources = ResourceContext::new(policy);
+            let control = merman_core::OperationControl::new();
+            render_sequence_diagram_with_execution(
+                &diagram,
+                None,
+                &options,
+                &mut resources,
+                AsciiExecution::new(&control, &policy),
+            )
         };
 
         let mut upper = 1usize;
@@ -166,15 +179,30 @@ mod tests {
         }
         let exact_cells = lower;
 
-        let exact = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells)
-            .unwrap();
-        assert!(render_sequence_diagram(&diagram, &options, &exact).is_ok());
+        let rendered = renders_with_limit(exact_cells)
+            .expect("the exact aggregate grid should materialize the multi-line participant");
+        assert!(rendered.lines().any(|line| line.contains("first")));
+        assert!(rendered.lines().any(|line| line.contains("second")));
 
         let below = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells - 1)
             .unwrap();
-        let error = render_sequence_diagram(&diagram, &options, &below).unwrap_err();
+        let mut resources = ResourceContext::new(below);
+        resources
+            .charge_layout_work(5)
+            .expect("the pre-existing work debit should fit");
+        resources
+            .charge_document_cells(3)
+            .expect("the pre-existing document debit should fit");
+        let control = merman_core::OperationControl::new();
+        let error = render_sequence_diagram_with_execution(
+            &diagram,
+            None,
+            &options,
+            &mut resources,
+            AsciiExecution::new(&control, &below),
+        )
+        .unwrap_err();
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
@@ -182,6 +210,8 @@ mod tests {
                     && details.actual == exact_cells
                     && details.max == exact_cells - 1
         ));
+        assert_eq!(resources.layout_work_used(), 5);
+        assert_eq!(resources.document_cells_used(), 3);
     }
 
     #[test]

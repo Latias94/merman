@@ -10,8 +10,6 @@ use super::model::{AsciiSequenceDiagram, SequenceEvent};
 use super::prepared_body::{SequencePreparedBody, SequenceRowStep};
 use super::row_document::SequenceRowDocument;
 use super::text::SequenceDocumentPlan;
-#[cfg(test)]
-use super::text::blank_line;
 use super::tree::{SequenceControl, SequenceVisit};
 use super::{SequenceActorRenderState, SequenceCheckpointCursor};
 use crate::error::{AsciiError, Result};
@@ -24,6 +22,13 @@ struct SequenceRowPlanner<'diagram> {
     control_frames: Vec<SequenceControlFrame<'diagram>>,
     control_forest: SequenceControlFrameForest,
     active_control_nodes: Vec<usize>,
+}
+
+#[derive(Debug)]
+struct SequenceRowTransition<'diagram> {
+    event: &'diagram SequenceEvent,
+    created_actors: Vec<usize>,
+    destroyed_actors: Vec<usize>,
 }
 
 impl<'diagram> SequenceRowPlanner<'diagram> {
@@ -72,7 +77,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
         event: &'diagram SequenceEvent,
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
-    ) -> Result<Option<SequenceRowStep<'diagram>>> {
+    ) -> Result<Option<SequenceRowTransition<'diagram>>> {
         checkpoints.before_charge()?;
         resources.charge_layout_work(1)?;
         match event {
@@ -116,19 +121,11 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
                     resources,
                     checkpoints,
                 )?;
-                checkpoints.before_charge()?;
-                resources.charge_layout_work(self.active_counts.len())?;
-                checkpoints.before_charge()?;
-                resources.charge_layout_work(self.visible_actors.len())?;
-                let step = SequenceRowStep {
+                Ok(Some(SequenceRowTransition {
                     event,
-                    active_counts: try_clone_slice(&self.active_counts)?,
-                    visible_actors: try_clone_slice(&self.visible_actors)?,
                     created_actors,
                     destroyed_actors,
-                };
-                self.record_destroyed_actor_visibility(&step.destroyed_actors, checkpoints)?;
-                Ok(Some(step))
+                }))
             }
         }
     }
@@ -384,31 +381,6 @@ pub(super) fn prepare_sequence_row_document<'diagram>(
     )
 }
 
-#[cfg(test)]
-fn build_sequence_row_document_with_materialization_probe(
-    diagram: &AsciiSequenceDiagram,
-    layout: &SequenceLayout,
-    chars: &SequenceChars,
-    mirror_actors: bool,
-    resources: &mut ResourceContext,
-    checkpoints: &mut SequenceCheckpointCursor<'_>,
-    before_materialize: impl FnOnce(),
-) -> Result<SequenceRowDocument> {
-    let transaction = resources.clone();
-    transaction.transaction(|_| {
-        let prepared = prepare_sequence_row_plan(
-            diagram,
-            layout,
-            chars,
-            mirror_actors,
-            resources,
-            checkpoints,
-        )?;
-        before_materialize();
-        materialize_sequence_row_plan(prepared, diagram, layout, chars, resources, checkpoints)
-    })
-}
-
 fn prepare_sequence_row_plan<'diagram>(
     diagram: &'diagram AsciiSequenceDiagram,
     layout: &SequenceLayout,
@@ -433,13 +405,25 @@ fn prepare_sequence_row_plan<'diagram>(
             checkpoints.tick()?;
             match visit {
                 SequenceVisit::Event(event) => {
-                    if let Some(step) = planner.advance(diagram, event, resources, checkpoints)? {
+                    if let Some(transition) =
+                        planner.advance(diagram, event, resources, checkpoints)?
+                    {
                         prepared.prepare_step(
                             diagram,
-                            step,
+                            SequenceRowStep {
+                                event: transition.event,
+                                active_counts: planner.active_counts(),
+                                visible_actors: planner.visible_actors(),
+                                created_actors: &transition.created_actors,
+                                destroyed_actors: &transition.destroyed_actors,
+                            },
                             layout,
                             chars,
                             resources,
+                            checkpoints,
+                        )?;
+                        planner.record_destroyed_actor_visibility(
+                            &transition.destroyed_actors,
                             checkpoints,
                         )?;
                     }
@@ -596,15 +580,6 @@ fn work_overflow(resources: &ResourceContext) -> AsciiError {
     resources.work_overflow()
 }
 
-fn try_clone_slice<T: Copy>(source: &[T]) -> Result<Vec<T>> {
-    let mut cloned = Vec::new();
-    cloned
-        .try_reserve_exact(source.len())
-        .map_err(|_| allocation_failed())?;
-    cloned.extend_from_slice(source);
-    Ok(cloned)
-}
-
 fn allocation_failed() -> AsciiError {
     AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
 }
@@ -615,7 +590,6 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use crate::sequence::event_plan::prepare_message_rows;
     use crate::sequence::layout::{calculate_layout, calculate_layout_with_resources};
     use crate::sequence::model::{
         SequenceActorLifecycle, SequenceArrowHead, SequenceCentralDecoration, SequenceControlKind,
@@ -629,8 +603,7 @@ mod tests {
         PreparedSequenceDocument, PreparedSequenceTitle, prepare_sequence_document,
     };
     use crate::sequence::text::{
-        SequenceBatchExtent, SequenceDocumentExtent, SequenceDocumentPlan, SequenceExtentLedger,
-        SequenceRetainedRowRun, SequenceRetainedRows,
+        SequenceDocumentExtent, SequenceDocumentPlan, SequenceRetainedRowRun, SequenceRetainedRows,
     };
     use merman_core::{OperationControl, OperationPhase};
 
@@ -739,16 +712,18 @@ mod tests {
             direction: SequenceMessageDirection::Forward,
             central_decoration: SequenceCentralDecoration::None,
         });
-        let step = plan
+        let transition = plan
             .advance(&diagram, &message, &mut resources, &mut checkpoints)
             .unwrap()
             .expect("message should produce a row step");
 
-        assert_eq!(step.created_actors, &[0]);
-        assert_eq!(step.destroyed_actors, &[0]);
-        assert_eq!(step.visible_actors, &[true]);
-        assert_eq!(plan.visible_actors(), &[false]);
+        assert_eq!(transition.created_actors, &[0]);
+        assert_eq!(transition.destroyed_actors, &[0]);
+        assert_eq!(plan.visible_actors(), &[true]);
         assert_eq!(plan.active_counts(), &[1]);
+        plan.record_destroyed_actor_visibility(&transition.destroyed_actors, &mut checkpoints)
+            .unwrap();
+        assert_eq!(plan.visible_actors(), &[false]);
 
         assert!(
             plan.advance(
@@ -767,83 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn message_batch_is_admitted_against_retained_rows_before_rendering() {
-        let diagram = diagram(2);
-        let base = AsciiRenderOptions::ascii();
-        let base_policy = AsciiResourcePolicy::default();
-        let layout = calculate_layout(&diagram, &base, &base_policy).unwrap();
-        let message = SequenceMessage {
-            model_index: 0,
-            from: 0,
-            to: 1,
-            label: "next batch".to_string(),
-            wrap: false,
-            style: SequenceLineStyle::Solid,
-            source_marker: SequenceArrowHead::None,
-            target_marker: SequenceArrowHead::Filled,
-            direction: SequenceMessageDirection::Forward,
-            central_decoration: SequenceCentralDecoration::None,
-        };
-        let visible_actors = [true, true];
-        let mut measuring = ResourceContext::new(base_policy);
-        let mut measuring_checkpoints = layout_checkpoints(&base_policy);
-        let measured = prepare_message_rows(
-            &message,
-            &layout,
-            &visible_actors,
-            &mut measuring,
-            &mut measuring_checkpoints,
-        )
-        .unwrap();
-        let width = measured.extent().materialized_width();
-        let height = measured.extent().height();
-        let batch_cells = width.checked_mul(height).unwrap();
-
-        let limited = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxGridCells, batch_cells)
-            .unwrap();
-        let mut resources = ResourceContext::new(limited);
-        let mut checkpoints = layout_checkpoints(&limited);
-        let mut extent = SequenceExtentLedger::default();
-        let retained = SequenceBatchExtent::uniform(height, width, width, &resources).unwrap();
-        let reservation = extent
-            .reserve(retained, &mut resources, &checkpoints)
-            .unwrap();
-        let retained_lines = (0..height)
-            .map(|_| blank_line(width, layout.width_profile, &resources))
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        reservation
-            .commit(&mut extent, &retained_lines, &resources)
-            .unwrap();
-
-        let prepared = prepare_message_rows(
-            &message,
-            &layout,
-            &visible_actors,
-            &mut resources,
-            &mut checkpoints,
-        )
-        .unwrap();
-        let materialized = std::cell::Cell::new(false);
-        let error = (|| {
-            let _reservation = extent.reserve(prepared.extent(), &mut resources, &checkpoints)?;
-            prepared.materialize_label_with_probe(&message.label, &resources, &materialized)
-        })()
-        .expect_err("combined rows must be rejected before render_message allocates its rows");
-
-        assert!(!materialized.get());
-        assert!(matches!(
-            error,
-            AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxGridCells
-                    && details.actual == batch_cells * 2
-                    && details.max == batch_cells
-        ));
-    }
-
-    #[test]
-    fn participant_labels_materialize_after_aggregate_box_admission() {
+    fn aggregate_box_grid_admission_accepts_exact_and_rejects_n_minus_one() {
         let diagram = diagram(2);
         let options = AsciiRenderOptions::ascii();
         let policy = AsciiResourcePolicy::default();
@@ -870,20 +769,11 @@ mod tests {
             .max(lifeline.materialized_width());
         let aggregate_cells = total_width.checked_mul(total_height).unwrap();
 
-        let exact_materialized = std::cell::Cell::new(false);
-        build_row_plan_with_grid_limit(&diagram, &options, aggregate_cells, &exact_materialized)
+        build_row_plan_with_grid_limit(&diagram, &options, aggregate_cells)
             .expect("the exact row-plan grid should be admitted");
-        assert!(exact_materialized.get());
 
-        let below_materialized = std::cell::Cell::new(false);
-        let error = build_row_plan_with_grid_limit(
-            &diagram,
-            &options,
-            aggregate_cells - 1,
-            &below_materialized,
-        )
-        .expect_err("the row-plan grid should reject its limit minus one");
-        assert!(!below_materialized.get());
+        let error = build_row_plan_with_grid_limit(&diagram, &options, aggregate_cells - 1)
+            .expect_err("the row-plan grid should reject its limit minus one");
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
@@ -894,40 +784,169 @@ mod tests {
     }
 
     #[test]
-    fn row_plan_materialization_failure_rolls_back_shared_ledgers() {
-        let diagram = diagram(1);
+    fn final_message_batch_reserves_before_footprint_and_state_materialization() {
+        let diagram = diagram(2);
         let options = AsciiRenderOptions::ascii();
-        let policy = AsciiResourcePolicy::default();
-        let base_resources = ResourceContext::new(policy);
-        let control = OperationControl::new();
-        let execution = AsciiExecution::new(&control, &policy);
-        let mut resources = execution.resource_context(&base_resources, OperationPhase::Layout);
-        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
-        let layout =
-            calculate_layout_with_resources(&diagram, &options, &mut resources, &mut checkpoints)
-                .expect("the row-plan fixture layout should fit");
-        let before_work = base_resources.layout_work_used();
-        let before_cells = base_resources.document_cells_used();
+        let base_policy = AsciiResourcePolicy::default();
+        let mut layout = calculate_layout(&diagram, &options, &base_policy).unwrap();
+        layout.message_spacing = 0;
+        let event = SequenceEvent::Message(SequenceMessage {
+            model_index: 0,
+            from: 0,
+            to: 1,
+            label: "first<br>second".to_string(),
+            wrap: false,
+            style: SequenceLineStyle::Solid,
+            source_marker: SequenceArrowHead::None,
+            target_marker: SequenceArrowHead::Filled,
+            direction: SequenceMessageDirection::Forward,
+            central_decoration: SequenceCentralDecoration::None,
+        });
+        let active_counts = [0, 0];
+        let visible_actors = [true, true];
 
-        let error = build_sequence_row_document_with_materialization_probe(
+        let prepares_with_limit = |maximum| {
+            let policy = AsciiResourcePolicy::default()
+                .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
+                .expect("the message grid limit should be valid");
+            let mut resources = ResourceContext::new(policy);
+            let mut checkpoints = layout_checkpoints(&policy);
+            let mut body = SequencePreparedBody::new(
+                &diagram,
+                &layout,
+                &visible_actors,
+                &mut resources,
+                &mut checkpoints,
+            )?;
+            let rows_before = body.current_row();
+            body.prepare_step(
+                &diagram,
+                SequenceRowStep {
+                    event: &event,
+                    active_counts: &active_counts,
+                    visible_actors: &visible_actors,
+                    created_actors: &[],
+                    destroyed_actors: &[],
+                },
+                &layout,
+                &ascii_chars(),
+                &mut resources,
+                &mut checkpoints,
+            )?;
+            Ok::<_, AsciiError>((rows_before, body.current_row()))
+        };
+
+        let mut low = 1usize;
+        let mut high = base_policy
+            .value(AsciiResourceLimitId::MaxGridCells)
+            .expect("the default policy should bound the grid");
+        while low < high {
+            let mid = low + (high - low) / 2;
+            match prepares_with_limit(mid) {
+                Ok(_) => high = mid,
+                Err(AsciiError::ResourceLimitExceeded(details))
+                    if details.limit == AsciiResourceLimitId::MaxGridCells =>
+                {
+                    low = mid + 1;
+                }
+                Err(error) => panic!("unexpected message batch admission error: {error}"),
+            }
+        }
+        let exact = low;
+
+        let (rows_before, exact_rows) = prepares_with_limit(exact)
+            .expect("the exact aggregate message batch should be admitted");
+        assert_eq!(exact_rows - rows_before, 2);
+
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, exact)
+            .expect("the exact message grid limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        let mut exact_checkpoints = layout_checkpoints(&exact_policy);
+        let mut exact_body = SequencePreparedBody::new(
             &diagram,
             &layout,
-            &ascii_chars(),
-            false,
+            &visible_actors,
+            &mut exact_resources,
+            &mut exact_checkpoints,
+        )
+        .expect("the participant header should fit the exact limit");
+        exact_body
+            .prepare_step(
+                &diagram,
+                SequenceRowStep {
+                    event: &event,
+                    active_counts: &active_counts,
+                    visible_actors: &visible_actors,
+                    created_actors: &[],
+                    destroyed_actors: &[],
+                },
+                &layout,
+                &ascii_chars(),
+                &mut exact_resources,
+                &mut exact_checkpoints,
+            )
+            .expect("the exact message batch should prepare");
+        let exact_lines = exact_body
+            .materialize(
+                &diagram,
+                &layout,
+                &ascii_chars(),
+                &mut exact_resources,
+                &mut exact_checkpoints,
+            )
+            .expect("the admitted message batch should materialize");
+        assert!(exact_lines.iter().any(|line| line.text().contains("first")));
+        assert!(
+            exact_lines
+                .iter()
+                .any(|line| line.text().contains("second"))
+        );
+
+        let below = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, exact - 1)
+            .expect("the message N-1 grid limit should be valid");
+        let mut resources = ResourceContext::new(below);
+        let mut checkpoints = layout_checkpoints(&below);
+        let mut body = SequencePreparedBody::new(
+            &diagram,
+            &layout,
+            &visible_actors,
             &mut resources,
             &mut checkpoints,
-            || control.cancel(),
         )
-        .expect_err("cancellation at the materialization seam should abort the row plan");
+        .expect("the participant header should fit below the final aggregate limit");
+        let rows_before = body.current_row();
+        let work_before = resources.layout_work_used();
+        let document_before = resources.document_cells_used();
+
+        let error = body
+            .prepare_step(
+                &diagram,
+                SequenceRowStep {
+                    event: &event,
+                    active_counts: &active_counts,
+                    visible_actors: &visible_actors,
+                    created_actors: &[],
+                    destroyed_actors: &[],
+                },
+                &layout,
+                &ascii_chars(),
+                &mut resources,
+                &mut checkpoints,
+            )
+            .expect_err("the final message batch should reject its aggregate grid N-1");
 
         assert!(matches!(
             error,
-            AsciiError::Cancelled(cancelled)
-                if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == merman_core::CancelReason::Requested
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == exact
+                    && details.max == exact - 1
         ));
-        assert_eq!(base_resources.layout_work_used(), before_work);
-        assert_eq!(base_resources.document_cells_used(), before_cells);
+        assert_eq!(body.current_row(), rows_before);
+        assert_eq!(resources.layout_work_used(), work_before);
+        assert_eq!(resources.document_cells_used(), document_before);
     }
 
     #[test]
@@ -940,21 +959,11 @@ mod tests {
             AsciiResourceLimitId::MaxDocumentCells,
         ] {
             let exact = first_admitted_row_plan_limit(&diagram, &options, limit);
-            let exact_materialized = std::cell::Cell::new(false);
-            build_row_plan_with_limit(&diagram, &options, limit, exact, &exact_materialized)
+            build_row_plan_with_limit(&diagram, &options, limit, exact)
                 .expect("the exact aggregate row-plan limit should be admitted");
-            assert!(exact_materialized.get());
 
-            let below_materialized = std::cell::Cell::new(false);
-            let error = build_row_plan_with_limit(
-                &diagram,
-                &options,
-                limit,
-                exact - 1,
-                &below_materialized,
-            )
-            .expect_err("the aggregate row-plan limit minus one should be rejected");
-            assert!(!below_materialized.get());
+            let error = build_row_plan_with_limit(&diagram, &options, limit, exact - 1)
+                .expect_err("the aggregate row-plan limit minus one should be rejected");
             assert!(matches!(
                 error,
                 AsciiError::ResourceLimitExceeded(details)
@@ -1088,7 +1097,6 @@ mod tests {
         diagram: &AsciiSequenceDiagram,
         options: &AsciiRenderOptions,
         maximum: usize,
-        materialized: &std::cell::Cell<bool>,
     ) -> Result<()> {
         let limited = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
@@ -1098,14 +1106,13 @@ mod tests {
         let layout =
             calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)?;
         let chars = ascii_chars();
-        build_sequence_row_document_with_materialization_probe(
+        prepare_sequence_row_document(
             diagram,
             &layout,
             &chars,
             false,
             &mut resources,
             &mut checkpoints,
-            || materialized.set(true),
         )?;
         Ok(())
     }
@@ -1163,7 +1170,6 @@ mod tests {
         options: &AsciiRenderOptions,
         limit: AsciiResourceLimitId,
         maximum: usize,
-        materialized: &std::cell::Cell<bool>,
     ) -> Result<()> {
         let limited = AsciiResourcePolicy::default()
             .with_limit(limit, maximum)
@@ -1172,14 +1178,13 @@ mod tests {
         let mut checkpoints = layout_checkpoints(&limited);
         let layout =
             calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)?;
-        build_sequence_row_document_with_materialization_probe(
+        prepare_sequence_row_document(
             diagram,
             &layout,
             &ascii_chars(),
             false,
             &mut resources,
             &mut checkpoints,
-            || materialized.set(true),
         )?;
         Ok(())
     }
@@ -1195,8 +1200,7 @@ mod tests {
             .expect("the test profile should bound sequence resources");
         while low < high {
             let mid = low + (high - low) / 2;
-            let materialized = std::cell::Cell::new(false);
-            match build_row_plan_with_limit(diagram, options, limit, mid, &materialized) {
+            match build_row_plan_with_limit(diagram, options, limit, mid) {
                 Ok(()) => high = mid,
                 Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == limit => {
                     low = mid + 1;

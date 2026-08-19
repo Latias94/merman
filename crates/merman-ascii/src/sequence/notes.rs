@@ -4,21 +4,17 @@ use super::{
 };
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-#[cfg(test)]
-use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 use crate::text::display_width_with_profile;
-#[cfg(test)]
-use merman_core::OperationPhase;
 
 use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::lifeline::{render_overlay_row, retained_lifeline_width};
 use super::model::{AsciiSequenceDiagram, SequenceEvent, SequenceNote, SequenceNotePlacement};
 use super::text::{
-    SequenceBatchExtent, SequenceLine, SequenceRowFootprint, blank_line_with_checkpoints,
-    validate_batch_footprints_with_checkpoints,
+    SequenceBatchExtent, SequenceFootprintRun, SequenceLine, SequenceRowFootprint,
+    blank_line_with_checkpoints,
 };
 
 #[derive(Debug)]
@@ -27,7 +23,7 @@ pub(super) struct PreparedNoteRows {
     inner_width: usize,
     left: usize,
     extent: SequenceBatchExtent,
-    footprints: Vec<SequenceRowFootprint>,
+    footprints: SequenceFootprintRun,
 }
 
 impl PreparedNoteRows {
@@ -35,24 +31,16 @@ impl PreparedNoteRows {
         self.extent
     }
 
-    pub(super) fn take_footprints(&mut self) -> Vec<SequenceRowFootprint> {
-        std::mem::take(&mut self.footprints)
-    }
-
     pub(super) const fn materialization_work_units(&self) -> usize {
         self.label_plan.materialization_work_units()
     }
 
-    #[cfg(test)]
-    fn materialize_label_with_probe(
+    pub(super) fn append_footprints(
         &self,
-        raw: &str,
-        resources: &ResourceContext,
-        materialized: &std::cell::Cell<bool>,
+        footprints: &mut Vec<SequenceRowFootprint>,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
-        self.label_plan.materialize(raw, resources)?;
-        materialized.set(true);
-        Ok(())
+        self.footprints.append_to(footprints, checkpoints)
     }
 }
 
@@ -204,20 +192,12 @@ fn prepare_note_rows_transactional(
         .checked_sub(1)
         .ok_or_else(invalid_note_geometry)?;
     let footprint = SequenceRowFootprint::with_content(retained_width, left, content_right)?;
-    checkpoints.before_charge()?;
-    resources.grid_extent(row_count, 1)?;
-    let mut footprints = Vec::new();
-    footprints
-        .try_reserve_exact(row_count)
-        .map_err(|_| allocation_failed())?;
-    footprints.resize(row_count, footprint);
-    validate_batch_footprints_with_checkpoints(extent, &footprints, resources, checkpoints)?;
     Ok(PreparedNoteRows {
         label_plan,
         inner_width,
         left,
         extent,
-        footprints,
+        footprints: SequenceFootprintRun::new(footprint, row_count),
     })
 }
 
@@ -410,68 +390,4 @@ fn note_label_plan(
         checkpoints,
     )
     .and_then(|plan| plan.ok_or_else(invalid_note_geometry))
-}
-
-#[cfg(test)]
-mod tests {
-    use std::cell::Cell;
-
-    use super::*;
-    use crate::options::TerminalWidthProfile;
-    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-
-    #[test]
-    fn note_grid_admission_precedes_label_materialization() {
-        let exact_materialized = Cell::new(false);
-        prepare_and_materialize_note_with_grid_limit(44, &exact_materialized)
-            .expect("the exact 11x4 note extent should be admitted");
-        assert!(exact_materialized.get());
-
-        let below_materialized = Cell::new(false);
-        let error = prepare_and_materialize_note_with_grid_limit(43, &below_materialized)
-            .expect_err("the note extent should exceed the limit by one cell");
-        assert!(matches!(
-            error,
-            AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxGridCells
-                    && details.actual == 44
-                    && details.max == 43
-        ));
-        assert!(!below_materialized.get());
-    }
-
-    fn prepare_and_materialize_note_with_grid_limit(
-        maximum: usize,
-        materialized: &Cell<bool>,
-    ) -> Result<()> {
-        let policy = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
-            .expect("the note grid limit override should be valid");
-        let mut resources = ResourceContext::new(policy);
-        let layout = SequenceLayout {
-            participant_widths: vec![3],
-            participant_centers: vec![5],
-            total_width: 10,
-            message_spacing: 1,
-            self_message_width: 1,
-            width_profile: TerminalWidthProfile::Unicode,
-        };
-        let note = SequenceNote {
-            model_index: 0,
-            from: 0,
-            to: 0,
-            label: "one<br>two".to_string(),
-            wrap: false,
-            placement: SequenceNotePlacement::Over,
-        };
-        let mut checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::for_test(&policy),
-            OperationPhase::Layout,
-        );
-        let prepared =
-            prepare_note_rows(&note, &layout, &[true], &mut resources, &mut checkpoints)?;
-        assert_eq!(prepared.extent().materialized_width(), 11);
-        assert_eq!(prepared.extent().height(), 4);
-        prepared.materialize_label_with_probe(&note.label, &resources, materialized)
-    }
 }

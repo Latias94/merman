@@ -12,14 +12,15 @@ use super::lifeline::retained_lifeline_width;
 use super::model::SequenceMessage;
 use super::text::{
     SequenceBatchExtent, SequenceLine, SequenceRowFootprint, padded_line_with_checkpoints,
-    validate_batch_footprints_with_checkpoints,
 };
 
 #[derive(Debug)]
 pub(super) struct PreparedMessageRows {
     label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
-    footprints: Vec<SequenceRowFootprint>,
+    label_start: usize,
+    lifeline_width: usize,
+    message_footprint: SequenceRowFootprint,
 }
 
 #[derive(Debug)]
@@ -27,7 +28,9 @@ pub(super) struct PreparedSelfMessageRows {
     label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
     geometry: SelfMessageGeometry,
-    footprints: Vec<SequenceRowFootprint>,
+    label_start: usize,
+    lifeline_width: usize,
+    message_footprint: SequenceRowFootprint,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,13 +42,19 @@ pub(super) struct SelfMessageGeometry {
     pub(super) materialized_width: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct MessageFootprintPlan {
+    label_plan: Option<NormalizedLabelPlan>,
+    extent: SequenceBatchExtent,
+    label_start: usize,
+    lifeline_width: usize,
+    message_footprint: SequenceRowFootprint,
+    message_rows: usize,
+}
+
 impl PreparedMessageRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
-    }
-
-    pub(super) fn take_footprints(&mut self) -> Vec<SequenceRowFootprint> {
-        std::mem::take(&mut self.footprints)
     }
 
     pub(super) fn materialization_work_units(&self) -> usize {
@@ -57,28 +66,28 @@ impl PreparedMessageRows {
         (self.label_plan, self.extent)
     }
 
-    #[cfg(test)]
-    pub(super) fn materialize_label_with_probe(
+    pub(super) fn append_footprints(
         &self,
         raw: &str,
         resources: &ResourceContext,
-        materialized: &std::cell::Cell<bool>,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+        footprints: &mut Vec<SequenceRowFootprint>,
     ) -> Result<()> {
-        if let Some(plan) = self.label_plan {
-            plan.materialize(raw, resources)?;
-            materialized.set(true);
+        MessageFootprintPlan {
+            label_plan: self.label_plan,
+            extent: self.extent,
+            label_start: self.label_start,
+            lifeline_width: self.lifeline_width,
+            message_footprint: self.message_footprint,
+            message_rows: 1,
         }
-        Ok(())
+        .append(raw, resources, checkpoints, footprints)
     }
 }
 
 impl PreparedSelfMessageRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
-    }
-
-    pub(super) fn take_footprints(&mut self) -> Vec<SequenceRowFootprint> {
-        std::mem::take(&mut self.footprints)
     }
 
     pub(super) fn materialization_work_units(&self) -> usize {
@@ -94,6 +103,69 @@ impl PreparedSelfMessageRows {
         SelfMessageGeometry,
     ) {
         (self.label_plan, self.extent, self.geometry)
+    }
+
+    pub(super) fn append_footprints(
+        &self,
+        raw: &str,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+        footprints: &mut Vec<SequenceRowFootprint>,
+    ) -> Result<()> {
+        MessageFootprintPlan {
+            label_plan: self.label_plan,
+            extent: self.extent,
+            label_start: self.label_start,
+            lifeline_width: self.lifeline_width,
+            message_footprint: self.message_footprint,
+            message_rows: 3,
+        }
+        .append(raw, resources, checkpoints, footprints)
+    }
+}
+
+impl MessageFootprintPlan {
+    fn append(
+        self,
+        raw: &str,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+        footprints: &mut Vec<SequenceRowFootprint>,
+    ) -> Result<()> {
+        footprints
+            .try_reserve(self.extent.height())
+            .map_err(|_| allocation_failed())?;
+        if let Some(plan) = self.label_plan {
+            let visited = plan.try_visit_row_metrics_with_checkpoint(
+                raw,
+                resources,
+                || checkpoints.checkpoint(),
+                |row| {
+                    let label_right =
+                        resources.checked_grid_add(self.label_start, row.retained_width)?;
+                    let retained_width = self.lifeline_width.max(label_right);
+                    footprints.push(if row.retained_width == 0 {
+                        SequenceRowFootprint::lifeline(retained_width)
+                    } else {
+                        SequenceRowFootprint::with_content(
+                            retained_width,
+                            self.label_start,
+                            label_right
+                                .checked_sub(1)
+                                .ok_or_else(invalid_message_geometry)?,
+                        )?
+                    });
+                    Ok(())
+                },
+            );
+            checkpoints.before_charge()?;
+            visited?;
+        }
+        for _ in 0..self.message_rows {
+            checkpoints.tick()?;
+            footprints.push(self.message_footprint);
+        }
+        Ok(())
     }
 }
 
@@ -222,10 +294,6 @@ fn prepare_message_rows_transactional(
 
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources, checkpoints)?;
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
-    let mut footprints = Vec::new();
-    footprints
-        .try_reserve_exact(row_count)
-        .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
         let visited = plan.try_visit_row_metrics_with_checkpoint(
             &message.label,
@@ -235,17 +303,6 @@ fn prepare_message_rows_transactional(
                 let label_right = resources.checked_grid_add(start, row.retained_width)?;
                 let retained_width = lifeline_width.max(label_right);
                 extent.try_push_line_length(retained_width, resources)?;
-                footprints.push(if row.retained_width == 0 {
-                    SequenceRowFootprint::lifeline(retained_width)
-                } else {
-                    SequenceRowFootprint::with_content(
-                        retained_width,
-                        start,
-                        label_right
-                            .checked_sub(1)
-                            .ok_or_else(invalid_message_geometry)?,
-                    )?
-                });
                 Ok(())
             },
         );
@@ -253,17 +310,15 @@ fn prepare_message_rows_transactional(
         visited?;
     }
     extent.try_push_line_length(lifeline_width, resources)?;
-    footprints.push(SequenceRowFootprint::with_content(
-        lifeline_width,
-        from.min(to),
-        from.max(to),
-    )?);
-    validate_batch_footprints_with_checkpoints(extent, &footprints, resources, checkpoints)?;
+    let message_footprint =
+        SequenceRowFootprint::with_content(lifeline_width, from.min(to), from.max(to))?;
 
     Ok(PreparedMessageRows {
         label_plan,
         extent,
-        footprints,
+        label_start: start,
+        lifeline_width,
+        message_footprint,
     })
 }
 
@@ -327,10 +382,6 @@ fn prepare_self_message_rows_transactional(
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources, checkpoints)?;
     let message_row_width = lifeline_width.max(geometry.loop_needed);
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
-    let mut footprints = Vec::new();
-    footprints
-        .try_reserve_exact(row_count)
-        .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
         let visited = plan.try_visit_row_metrics_with_checkpoint(
             &message.label,
@@ -340,17 +391,6 @@ fn prepare_self_message_rows_transactional(
                 let label_right = resources.checked_grid_add(start, row.retained_width)?;
                 let retained_width = lifeline_width.max(label_right);
                 extent.try_push_line_length(retained_width, resources)?;
-                footprints.push(if row.retained_width == 0 {
-                    SequenceRowFootprint::lifeline(retained_width)
-                } else {
-                    SequenceRowFootprint::with_content(
-                        retained_width,
-                        start,
-                        label_right
-                            .checked_sub(1)
-                            .ok_or_else(invalid_message_geometry)?,
-                    )?
-                });
                 Ok(())
             },
         );
@@ -360,19 +400,17 @@ fn prepare_self_message_rows_transactional(
     for _ in 0..3 {
         checkpoints.tick()?;
         extent.try_push_line_length(message_row_width, resources)?;
-        footprints.push(SequenceRowFootprint::with_content(
-            message_row_width,
-            center,
-            geometry.loop_right,
-        )?);
     }
-    validate_batch_footprints_with_checkpoints(extent, &footprints, resources, checkpoints)?;
+    let message_footprint =
+        SequenceRowFootprint::with_content(message_row_width, center, geometry.loop_right)?;
 
     Ok(PreparedSelfMessageRows {
         label_plan,
         extent,
         geometry,
-        footprints,
+        label_start: start,
+        lifeline_width,
+        message_footprint,
     })
 }
 

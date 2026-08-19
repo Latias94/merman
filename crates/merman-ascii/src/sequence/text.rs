@@ -1,7 +1,7 @@
 use super::SequenceCheckpointCursor;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::text::StyledLine;
 
 pub(super) type SequenceLine = StyledLine;
@@ -186,6 +186,33 @@ impl SequenceRowFootprint {
 
     pub(super) const fn content(self) -> Option<SequenceContentSpan> {
         self.content
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SequenceFootprintRun {
+    footprint: SequenceRowFootprint,
+    count: usize,
+}
+
+impl SequenceFootprintRun {
+    pub(super) const fn new(footprint: SequenceRowFootprint, count: usize) -> Self {
+        Self { footprint, count }
+    }
+
+    pub(super) fn append_to(
+        self,
+        footprints: &mut Vec<SequenceRowFootprint>,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        footprints.try_reserve(self.count).map_err(|_| {
+            AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+        })?;
+        for _ in 0..self.count {
+            checkpoints.tick()?;
+            footprints.push(self.footprint);
+        }
+        Ok(())
     }
 }
 

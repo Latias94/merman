@@ -12,8 +12,8 @@ use super::model::{
 };
 use super::notes::{PreparedNoteRows, ensure_note_actors_known, prepare_note_rows, render_note};
 use super::text::{
-    SequenceBatchExtent, SequenceDocumentPlan, SequenceExtentLedger, SequenceLine,
-    SequenceRetainedRows, SequenceRowFootprint, blank_line_with_checkpoints,
+    SequenceBatchExtent, SequenceDocumentPlan, SequenceExtentLedger, SequenceFootprintRun,
+    SequenceLine, SequenceRetainedRows, SequenceRowFootprint, blank_line_with_checkpoints,
     padded_line_with_checkpoints, trim_right, validate_batch_lines_with_checkpoints,
 };
 use super::{SequenceActorRenderState, SequenceCheckpointCursor};
@@ -48,13 +48,13 @@ pub(super) struct SequencePreparedBody<'diagram> {
     extent: SequenceExtentLedger,
 }
 
-#[derive(Debug)]
-pub(super) struct SequenceRowStep<'event> {
+#[derive(Debug, Clone, Copy)]
+pub(super) struct SequenceRowStep<'event, 'state> {
     pub(super) event: &'event SequenceEvent,
-    pub(super) active_counts: Vec<usize>,
-    pub(super) visible_actors: Vec<bool>,
-    pub(super) created_actors: Vec<usize>,
-    pub(super) destroyed_actors: Vec<usize>,
+    pub(super) active_counts: &'state [usize],
+    pub(super) visible_actors: &'state [bool],
+    pub(super) created_actors: &'state [usize],
+    pub(super) destroyed_actors: &'state [usize],
 }
 
 #[derive(Debug)]
@@ -96,6 +96,44 @@ enum SequencePreparedBatchKind<'diagram> {
         note: &'diagram super::model::SequenceNote,
         active_counts: Vec<usize>,
         visible_actors: Vec<bool>,
+        prepared: PreparedNoteRows,
+    },
+}
+
+#[derive(Debug)]
+enum SequencePendingBatchKind<'diagram, 'state> {
+    ParticipantBoxes {
+        visible_actors: &'state [bool],
+        frame: ParticipantBoxFrame,
+    },
+    Lifeline {
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+    },
+    LifecycleParticipants {
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+        actor_indices: &'state [usize],
+        footprint: SequenceRowFootprint,
+    },
+    Message {
+        message: &'diagram super::model::SequenceMessage,
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+        destroyed_actors: &'state [usize],
+        prepared: PreparedMessageRows,
+    },
+    SelfMessage {
+        message: &'diagram super::model::SequenceMessage,
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
+        destroyed_actors: &'state [usize],
+        prepared: PreparedSelfMessageRows,
+    },
+    Note {
+        note: &'diagram super::model::SequenceNote,
+        active_counts: &'state [usize],
+        visible_actors: &'state [bool],
         prepared: PreparedNoteRows,
     },
 }
@@ -142,12 +180,10 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         };
         let extent =
             participant_box_batch_extent(diagram, layout, visible_actors, resources, checkpoints)?;
-        let footprints = uniform_footprints(extent, checkpoints)?;
         prepared.push_batch(
             extent,
-            &footprints,
-            SequencePreparedBatchKind::ParticipantBoxes {
-                visible_actors: try_clone_slice(visible_actors)?,
+            SequencePendingBatchKind::ParticipantBoxes {
+                visible_actors,
                 frame: ParticipantBoxFrame::Header,
             },
             resources,
@@ -174,7 +210,31 @@ impl<'diagram> SequencePreparedBody<'diagram> {
     pub(super) fn prepare_step(
         &mut self,
         diagram: &'diagram AsciiSequenceDiagram,
-        step: SequenceRowStep<'diagram>,
+        step: SequenceRowStep<'diagram, '_>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        let batch_count = self.batches.len();
+        let footprint_count = self.footprints.len();
+        let extent = self.extent;
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            self.prepare_step_transactional(diagram, step, layout, chars, resources, checkpoints)
+        });
+        if result.is_err() {
+            self.batches.truncate(batch_count);
+            self.footprints.truncate(footprint_count);
+            self.extent = extent;
+        }
+        result
+    }
+
+    fn prepare_step_transactional(
+        &mut self,
+        diagram: &'diagram AsciiSequenceDiagram,
+        step: SequenceRowStep<'diagram, '_>,
         layout: &SequenceLayout,
         chars: &SequenceChars,
         resources: &mut ResourceContext,
@@ -183,8 +243,8 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         for _ in 0..layout.message_spacing {
             checkpoints.tick()?;
             self.push_lifeline(
-                &step.active_counts,
-                &step.visible_actors,
+                step.active_counts,
+                step.visible_actors,
                 layout,
                 resources,
                 checkpoints,
@@ -195,25 +255,25 @@ impl<'diagram> SequencePreparedBody<'diagram> {
             let extent = lifecycle_participant_batch_extent(
                 diagram,
                 layout,
-                &step.visible_actors,
-                &step.created_actors,
+                step.visible_actors,
+                step.created_actors,
                 resources,
                 checkpoints,
             )?;
-            let footprints = lifecycle_participant_footprints(
+            let footprint = lifecycle_participant_footprint(
                 extent,
                 layout,
-                &step.created_actors,
+                step.created_actors,
                 resources,
                 checkpoints,
             )?;
             self.push_batch(
                 extent,
-                &footprints,
-                SequencePreparedBatchKind::LifecycleParticipants {
-                    active_counts: try_clone_slice(&step.active_counts)?,
-                    visible_actors: try_clone_slice(&step.visible_actors)?,
-                    actor_indices: try_clone_slice(&step.created_actors)?,
+                SequencePendingBatchKind::LifecycleParticipants {
+                    active_counts: step.active_counts,
+                    visible_actors: step.visible_actors,
+                    actor_indices: step.created_actors,
+                    footprint,
                 },
                 resources,
                 checkpoints,
@@ -222,22 +282,20 @@ impl<'diagram> SequencePreparedBody<'diagram> {
 
         match step.event {
             SequenceEvent::Message(message) => {
-                ensure_message_actors_visible(message, &step.visible_actors)?;
+                ensure_message_actors_visible(message, step.visible_actors)?;
                 if message.from == message.to {
-                    let mut prepared = prepare_self_message_rows(
+                    let prepared = prepare_self_message_rows(
                         message,
                         layout,
                         chars,
-                        &step.visible_actors,
+                        step.visible_actors,
                         resources,
                         checkpoints,
                     )?;
                     let extent = prepared.extent();
-                    let footprints = prepared.take_footprints();
                     self.push_batch(
                         extent,
-                        &footprints,
-                        SequencePreparedBatchKind::SelfMessage {
+                        SequencePendingBatchKind::SelfMessage {
                             message,
                             active_counts: step.active_counts,
                             visible_actors: step.visible_actors,
@@ -248,19 +306,17 @@ impl<'diagram> SequencePreparedBody<'diagram> {
                         checkpoints,
                     )?;
                 } else {
-                    let mut prepared = prepare_message_rows(
+                    let prepared = prepare_message_rows(
                         message,
                         layout,
-                        &step.visible_actors,
+                        step.visible_actors,
                         resources,
                         checkpoints,
                     )?;
                     let extent = prepared.extent();
-                    let footprints = prepared.take_footprints();
                     self.push_batch(
                         extent,
-                        &footprints,
-                        SequencePreparedBatchKind::Message {
+                        SequencePendingBatchKind::Message {
                             message,
                             active_counts: step.active_counts,
                             visible_actors: step.visible_actors,
@@ -274,14 +330,12 @@ impl<'diagram> SequencePreparedBody<'diagram> {
             }
             SequenceEvent::Note(note) => {
                 ensure_note_actors_known(note, layout)?;
-                let mut prepared =
-                    prepare_note_rows(note, layout, &step.visible_actors, resources, checkpoints)?;
+                let prepared =
+                    prepare_note_rows(note, layout, step.visible_actors, resources, checkpoints)?;
                 let extent = prepared.extent();
-                let footprints = prepared.take_footprints();
                 self.push_batch(
                     extent,
-                    &footprints,
-                    SequencePreparedBatchKind::Note {
+                    SequencePendingBatchKind::Note {
                         note,
                         active_counts: step.active_counts,
                         visible_actors: step.visible_actors,
@@ -305,6 +359,37 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
+        let batch_count = self.batches.len();
+        let footprint_count = self.footprints.len();
+        let extent = self.extent;
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            self.finish_transactional(
+                actor_state,
+                diagram,
+                layout,
+                mirror_actors,
+                resources,
+                checkpoints,
+            )
+        });
+        if result.is_err() {
+            self.batches.truncate(batch_count);
+            self.footprints.truncate(footprint_count);
+            self.extent = extent;
+        }
+        result
+    }
+
+    fn finish_transactional(
+        &mut self,
+        actor_state: SequenceActorRenderState<'_>,
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
         self.push_lifeline(
             actor_state.active_counts,
             actor_state.visible_actors,
@@ -320,12 +405,10 @@ impl<'diagram> SequencePreparedBody<'diagram> {
                 resources,
                 checkpoints,
             )?;
-            let footprints = uniform_footprints(extent, checkpoints)?;
             self.push_batch(
                 extent,
-                &footprints,
-                SequencePreparedBatchKind::ParticipantBoxes {
-                    visible_actors: try_clone_slice(actor_state.visible_actors)?,
+                SequencePendingBatchKind::ParticipantBoxes {
+                    visible_actors: actor_state.visible_actors,
                     frame: ParticipantBoxFrame::Mirror,
                 },
                 resources,
@@ -344,43 +427,48 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
         let extent = lifeline_batch_extent(layout, visible_actors, resources, checkpoints)?;
-        let footprints = [SequenceRowFootprint::lifeline(extent.retained_width())];
         self.push_batch(
             extent,
-            &footprints,
-            SequencePreparedBatchKind::Lifeline {
-                active_counts: try_clone_slice(active_counts)?,
-                visible_actors: try_clone_slice(visible_actors)?,
+            SequencePendingBatchKind::Lifeline {
+                active_counts,
+                visible_actors,
             },
             resources,
             checkpoints,
         )
     }
 
-    fn push_batch(
+    fn push_batch<'state>(
         &mut self,
         extent: SequenceBatchExtent,
-        footprints: &[SequenceRowFootprint],
-        kind: SequencePreparedBatchKind<'diagram>,
+        pending: SequencePendingBatchKind<'diagram, 'state>,
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
-        let reservation = self.extent.reserve(extent, resources, checkpoints)?;
-        self.batches
-            .try_reserve(1)
-            .map_err(|_| allocation_failed())?;
-        self.footprints
-            .try_reserve(footprints.len())
-            .map_err(|_| allocation_failed())?;
-        reservation.commit_footprints_with_checkpoints(
-            &mut self.extent,
-            footprints,
-            resources,
-            checkpoints,
-        )?;
-        self.footprints.extend_from_slice(footprints);
-        self.batches.push(SequencePreparedBatch { extent, kind });
-        Ok(())
+        let footprint_count = self.footprints.len();
+        let previous_extent = self.extent;
+        let transaction = resources.clone();
+        let result = transaction.transaction(|_| {
+            let reservation = self.extent.reserve(extent, resources, checkpoints)?;
+            self.batches
+                .try_reserve(1)
+                .map_err(|_| allocation_failed())?;
+            pending.append_footprints(extent, &mut self.footprints, resources, checkpoints)?;
+            reservation.commit_footprints_with_checkpoints(
+                &mut self.extent,
+                &self.footprints[footprint_count..],
+                resources,
+                checkpoints,
+            )?;
+            let kind = pending.materialize(resources, checkpoints)?;
+            self.batches.push(SequencePreparedBatch { extent, kind });
+            Ok(())
+        });
+        if result.is_err() {
+            self.footprints.truncate(footprint_count);
+            self.extent = previous_extent;
+        }
+        result
     }
 
     pub(super) fn materialization_work_units(
@@ -447,6 +535,143 @@ impl<'diagram> SequencePreparedBody<'diagram> {
             return Err(unsupported("row extent planning"));
         }
         Ok(lines)
+    }
+}
+
+impl<'diagram, 'state> SequencePendingBatchKind<'diagram, 'state> {
+    fn append_footprints(
+        &self,
+        extent: SequenceBatchExtent,
+        footprints: &mut Vec<SequenceRowFootprint>,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        match self {
+            Self::ParticipantBoxes { .. } | Self::Lifeline { .. } => SequenceFootprintRun::new(
+                SequenceRowFootprint::lifeline(extent.retained_width()),
+                extent.height(),
+            )
+            .append_to(footprints, checkpoints),
+            Self::LifecycleParticipants { footprint, .. } => {
+                SequenceFootprintRun::new(*footprint, extent.height())
+                    .append_to(footprints, checkpoints)
+            }
+            Self::Message {
+                message, prepared, ..
+            } => prepared.append_footprints(&message.label, resources, checkpoints, footprints),
+            Self::SelfMessage {
+                message, prepared, ..
+            } => prepared.append_footprints(&message.label, resources, checkpoints, footprints),
+            Self::Note { prepared, .. } => prepared.append_footprints(footprints, checkpoints),
+        }
+    }
+
+    fn materialize(
+        self,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<SequencePreparedBatchKind<'diagram>> {
+        let clone_work = match &self {
+            Self::ParticipantBoxes { visible_actors, .. } => visible_actors.len(),
+            Self::Lifeline {
+                active_counts,
+                visible_actors,
+            }
+            | Self::Note {
+                active_counts,
+                visible_actors,
+                ..
+            } => resources.checked_work_add(active_counts.len(), visible_actors.len())?,
+            Self::LifecycleParticipants {
+                active_counts,
+                visible_actors,
+                actor_indices,
+                ..
+            } => resources.checked_work_add(
+                resources.checked_work_add(active_counts.len(), visible_actors.len())?,
+                actor_indices.len(),
+            )?,
+            Self::Message {
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                ..
+            }
+            | Self::SelfMessage {
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                ..
+            } => resources.checked_work_add(
+                resources.checked_work_add(active_counts.len(), visible_actors.len())?,
+                destroyed_actors.len(),
+            )?,
+        };
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(clone_work)?;
+        Ok(match self {
+            Self::ParticipantBoxes {
+                visible_actors,
+                frame,
+            } => SequencePreparedBatchKind::ParticipantBoxes {
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                frame,
+            },
+            Self::Lifeline {
+                active_counts,
+                visible_actors,
+            } => SequencePreparedBatchKind::Lifeline {
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+            },
+            Self::LifecycleParticipants {
+                active_counts,
+                visible_actors,
+                actor_indices,
+                ..
+            } => SequencePreparedBatchKind::LifecycleParticipants {
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                actor_indices: try_clone_slice(actor_indices, checkpoints)?,
+            },
+            Self::Message {
+                message,
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                prepared,
+            } => SequencePreparedBatchKind::Message {
+                message,
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                destroyed_actors: try_clone_slice(destroyed_actors, checkpoints)?,
+                prepared,
+            },
+            Self::SelfMessage {
+                message,
+                active_counts,
+                visible_actors,
+                destroyed_actors,
+                prepared,
+            } => SequencePreparedBatchKind::SelfMessage {
+                message,
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                destroyed_actors: try_clone_slice(destroyed_actors, checkpoints)?,
+                prepared,
+            },
+            Self::Note {
+                note,
+                active_counts,
+                visible_actors,
+                prepared,
+            } => SequencePreparedBatchKind::Note {
+                note,
+                active_counts: try_clone_slice(active_counts, checkpoints)?,
+                visible_actors: try_clone_slice(visible_actors, checkpoints)?,
+                prepared,
+            },
+        })
     }
 }
 
@@ -624,28 +849,13 @@ fn lifecycle_participant_batch_extent(
     SequenceBatchExtent::uniform(height, materialized_width, retained_width, resources)
 }
 
-fn uniform_footprints(
-    extent: SequenceBatchExtent,
-    checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<Vec<SequenceRowFootprint>> {
-    let mut footprints = Vec::new();
-    footprints
-        .try_reserve_exact(extent.height())
-        .map_err(|_| allocation_failed())?;
-    for _ in 0..extent.height() {
-        checkpoints.tick()?;
-        footprints.push(SequenceRowFootprint::lifeline(extent.retained_width()));
-    }
-    Ok(footprints)
-}
-
-fn lifecycle_participant_footprints(
+fn lifecycle_participant_footprint(
     extent: SequenceBatchExtent,
     layout: &SequenceLayout,
     actor_indices: &[usize],
     resources: &ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<Vec<SequenceRowFootprint>> {
+) -> Result<SequenceRowFootprint> {
     let mut left = None;
     let mut right = 0usize;
     for index in actor_indices {
@@ -659,16 +869,7 @@ fn lifecycle_participant_footprints(
         );
     }
     let left = left.ok_or_else(|| unsupported("actor lifecycle rows"))?;
-    let footprint = SequenceRowFootprint::with_content(extent.retained_width(), left, right)?;
-    let mut footprints = Vec::new();
-    footprints
-        .try_reserve_exact(extent.height())
-        .map_err(|_| allocation_failed())?;
-    for _ in 0..extent.height() {
-        checkpoints.tick()?;
-        footprints.push(footprint);
-    }
-    Ok(footprints)
+    SequenceRowFootprint::with_content(extent.retained_width(), left, right)
 }
 
 fn participant_box_right(
@@ -979,12 +1180,18 @@ fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usiz
     resources.charge_layout_work_product(left, right)
 }
 
-fn try_clone_slice<T: Copy>(source: &[T]) -> Result<Vec<T>> {
+fn try_clone_slice<T: Copy>(
+    source: &[T],
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<T>> {
     let mut cloned = Vec::new();
     cloned
         .try_reserve_exact(source.len())
         .map_err(|_| allocation_failed())?;
-    cloned.extend_from_slice(source);
+    for value in source {
+        checkpoints.tick()?;
+        cloned.push(*value);
+    }
     Ok(cloned)
 }
 
