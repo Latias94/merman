@@ -541,6 +541,106 @@ fn theme_parse_binding_canonicalizes_the_two_dark_mode_paths() {
 }
 
 #[test]
+fn theme_parse_evidence_reconciles_complete_conceptual_fields_and_deduplicates_paths() {
+    use crate::__private::{
+        ThemeCompatibilityConsumptionDisposition as Disposition, ThemeCompatibilityFieldKind,
+    };
+
+    let parsed = Engine::new()
+        .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "darkMode": true
+        }))))
+        .parse_metadata_sync("packet\n0-7: Header")
+        .expect("parse conceptual compatibility evidence");
+    let evidence = crate::__private::theme_parse_evidence(&parsed);
+    assert_eq!(evidence.mermaid_residual_count(), 2);
+
+    let theme = evidence
+        .mermaid_fields()
+        .find(|field| field.kind() == ThemeCompatibilityFieldKind::Theme)
+        .expect("theme conceptual field");
+    let dark_mode = evidence
+        .mermaid_fields()
+        .find(|field| field.kind() == ThemeCompatibilityFieldKind::DarkMode)
+        .expect("dark-mode conceptual field");
+    assert_eq!(theme.opaque_id(), "mermaid.theme");
+    assert_eq!(dark_mode.opaque_id(), "mermaid.darkMode");
+    assert_eq!(
+        dark_mode.surviving_assignment_paths().collect::<Vec<_>>(),
+        vec!["darkMode", "themeVariables.darkMode"]
+    );
+
+    let mut partial = theme
+        .consume_all(Disposition::ReplacedByTypedSurface)
+        .collect::<Vec<_>>();
+    partial.push(
+        dark_mode
+            .consume_assignment_path("darkMode", Disposition::NotReadByFamily)
+            .expect("surviving root dark-mode path"),
+    );
+    let partial_result = evidence.reconcile_mermaid_consumptions(partial.iter());
+    assert_eq!(partial_result.consumed_field_count(), 1);
+    assert_eq!(partial_result.remaining_field_count(), 1);
+
+    let mut complete = theme
+        .consume_all(Disposition::ReplacedByTypedSurface)
+        .collect::<Vec<_>>();
+    complete.extend(theme.consume_all(Disposition::ReplacedByTypedSurface));
+    complete.extend(dark_mode.consume_all(Disposition::NotReadByFamily));
+    let complete_result = evidence.reconcile_mermaid_consumptions(complete.iter());
+    assert_eq!(complete_result.consumed_field_count(), 2);
+    assert_eq!(complete_result.remaining_field_count(), 0);
+
+    let mut conflicting = theme
+        .consume_all(Disposition::ReplacedByTypedSurface)
+        .collect::<Vec<_>>();
+    conflicting.extend(theme.consume_all(Disposition::NotReadByFamily));
+    conflicting.extend(dark_mode.consume_all(Disposition::NotReadByFamily));
+    let conflicting_result = evidence.reconcile_mermaid_consumptions(conflicting.iter());
+    assert_eq!(conflicting_result.consumed_field_count(), 1);
+    assert_eq!(conflicting_result.remaining_field_count(), 1);
+}
+
+#[test]
+fn theme_parse_evidence_keeps_unconsumed_variables_after_theme_and_dark_mode_reconcile() {
+    use crate::__private::{
+        ThemeCompatibilityConsumptionDisposition as Disposition, ThemeCompatibilityFieldKind,
+    };
+
+    let parsed = Engine::new()
+        .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "darkMode": true,
+            "themeVariables": { "primaryColor": "#123456" }
+        }))))
+        .parse_metadata_sync("packet\n0-7: Header")
+        .expect("parse compatibility evidence with an unrelated variable");
+    let evidence = crate::__private::theme_parse_evidence(&parsed);
+    assert_eq!(evidence.mermaid_residual_count(), 3);
+
+    let consumptions = evidence
+        .mermaid_fields()
+        .filter(|field| {
+            matches!(
+                field.kind(),
+                ThemeCompatibilityFieldKind::Theme | ThemeCompatibilityFieldKind::DarkMode
+            )
+        })
+        .flat_map(|field| field.consume_all(Disposition::ReplacedByTypedSurface))
+        .collect::<Vec<_>>();
+    let result = evidence.reconcile_mermaid_consumptions(consumptions.iter());
+
+    assert_eq!(result.consumed_field_count(), 2);
+    assert_eq!(result.remaining_field_count(), 1);
+    assert!(
+        evidence
+            .mermaid_fields()
+            .any(|field| field.kind() == ThemeCompatibilityFieldKind::Variable)
+    );
+}
+
+#[test]
 fn frozen_binding_keeps_the_validated_input_when_theme_normalization_drops_a_field() {
     let binding = theme_binding_for(MermaidConfig::from_value(json!({
         "theme": "default",

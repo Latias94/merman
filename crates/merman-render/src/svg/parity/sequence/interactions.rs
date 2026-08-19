@@ -8,7 +8,8 @@ use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
 use super::settings::SequenceRenderSettings;
 use crate::sequence::{
-    SequenceBlock, SequenceStaticRectThemeReceipt, collect_sequence_blocks, frame_x_from_actors,
+    SequenceBlock, SequenceLoopThemeReceipt, SequenceStaticRectThemeReceipt,
+    collect_sequence_blocks, frame_x_from_actors,
 };
 use rustc_hash::FxHashMap;
 
@@ -31,6 +32,7 @@ pub(super) fn render_sequence_interaction_overlays(
     out: &mut impl SvgOutput,
     ctx: &SequenceInteractionRenderContext<'_>,
     activation_plan: &SequenceActivationPlan<'_>,
+    loop_theme_receipt: &SequenceLoopThemeReceipt,
     note_theme_receipt: &mut SequenceStaticRectThemeReceipt,
     activation_theme_receipt: &mut SequenceStaticRectThemeReceipt,
 ) {
@@ -68,6 +70,7 @@ pub(super) fn render_sequence_interaction_overlays(
         loop_text_style: &ctx.settings.loop_text_style,
         loop_typography: ctx.typography.loop_label(),
         typography_receipt: ctx.typography_receipt,
+        loop_theme_receipt,
         sanitize_config: ctx.sanitize_config,
         math_renderer: ctx.math_renderer,
     };

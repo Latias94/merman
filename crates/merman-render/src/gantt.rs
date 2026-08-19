@@ -1228,25 +1228,10 @@ pub(crate) fn layout_gantt_diagram_typed(
 
         let sec_num = gantt_section_class_suffix(&t.task_type, &categories, number_section_styles);
 
-        let mut task_class = String::new();
-        if t.active {
-            if t.crit {
-                task_class.push_str(" activeCrit");
-            } else {
-                task_class.push_str(" active");
-            }
-        } else if t.done {
-            if t.crit {
-                task_class.push_str(" doneCrit");
-            } else {
-                task_class.push_str(" done");
-            }
-        } else if t.crit {
-            task_class.push_str(" crit");
-        }
-        if task_class.is_empty() {
-            task_class.push_str(" task");
-        }
+        let task_state_class = task_theme
+            .bar_state_class_for_semantic_task(semantic_task_index)
+            .expect("Gantt task theme count was validated before layout");
+        let mut task_class = format!(" {task_state_class}");
         if t.milestone {
             task_class = format!(" milestone{task_class}");
         }
@@ -1518,7 +1503,7 @@ mod tests {
         });
 
         let utc = merman_core::time::LocalTimeZone::utc();
-        let task_theme = super::GanttTaskTheme::baseline(model.tasks.len());
+        let task_theme = super::GanttTaskTheme::baseline(&model.tasks);
         let layout = layout_gantt_diagram_typed(
             &model,
             None,

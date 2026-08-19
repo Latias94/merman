@@ -22,6 +22,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) loop_typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
+    pub(super) loop_theme_receipt: &'a crate::sequence::SequenceLoopThemeReceipt,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
@@ -109,6 +110,7 @@ pub(super) fn write_block_label_box(
     label: &str,
     typography: &crate::sequence::SequenceResolvedTypography,
     typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
+    theme_receipt: &crate::sequence::SequenceLoopThemeReceipt,
 ) {
     let x1 = frame_x1;
     let y1 = frame_y1;
@@ -116,7 +118,8 @@ pub(super) fn write_block_label_box(
     let y3 = y1 + label_box_height;
     let y2 = (y3 - 7.0).max(y1);
     let x3 = x2 - 8.4;
-    let _ = write!(
+    theme_receipt.record_surface_candidate();
+    let surface_emitted = write!(
         out,
         r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
         x1 = fmt(x1),
@@ -125,7 +128,11 @@ pub(super) fn write_block_label_box(
         y2 = fmt(y2),
         x3 = fmt(x3),
         y3 = fmt(y3)
-    );
+    )
+    .is_ok();
+    if surface_emitted {
+        theme_receipt.record_surface_emission();
+    }
     let label_cx = (x1 + label_box_width / 2.0).round();
     let label_cy = y1 + (label_box_height / 2.0).max(13.0);
     let style = typography.terminal_style("", "font-size: 16px; font-weight: 400;".to_string());
@@ -137,7 +144,7 @@ pub(super) fn write_block_label_box(
         style = escape_attr_display(&style),
         label = escape_xml(label)
     );
-    typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Loop);
+    typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::ControlKeyword);
 }
 
 pub(super) fn render_simple_sequence_block(
@@ -171,6 +178,7 @@ pub(super) fn render_simple_sequence_block(
         block.block_label,
         ctx.loop_typography,
         ctx.typography_receipt,
+        ctx.loop_theme_receipt,
     );
     let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
@@ -264,6 +272,7 @@ pub(super) fn render_sectioned_sequence_block(
         block_label,
         ctx.loop_typography,
         ctx.typography_receipt,
+        ctx.loop_theme_receipt,
     );
 
     // section labels
@@ -369,6 +378,7 @@ pub(super) fn render_critical_sequence_block(
         "critical",
         ctx.loop_typography,
         ctx.typography_receipt,
+        ctx.loop_theme_receipt,
     );
 
     // section labels

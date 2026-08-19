@@ -66,8 +66,9 @@ mod wardley;
 mod xychart;
 mod zenuml;
 use css::{
-    er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_theme_font_size_only,
-    info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css,
+    er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_font_family,
+    info_css_parts_with_theme_font_size_only, info_css_with_config, pie_css, push_xychart_css,
+    requirement_css, sankey_css, write_info_css_with_font_family,
     write_mermaid_default_base_css_prefix,
 };
 use output::{BoundedSvgOutput, SvgOutput};
@@ -565,10 +566,11 @@ fn render_builtin_family_artifact_raw(
     let title = metadata.title.as_deref();
 
     match family {
-        BuiltinFamilyArtifact::Error(pair) => error::render_error_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Error(artifact) => error::render_error_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             effective_config_value,
+            artifact.typography_theme(),
             options,
         ),
         #[cfg(feature = "layout-cytoscape")]
@@ -587,18 +589,20 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Swimlane(artifact) => {
             flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
         }
-        BuiltinFamilyArtifact::Cynefin(pair) => cynefin::render_cynefin_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Cynefin(artifact) => cynefin::render_cynefin_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             effective_config_value,
             title,
+            artifact.typography_theme(),
             options,
         ),
-        BuiltinFamilyArtifact::Wardley(pair) => wardley::render_wardley_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             effective_config_value,
             title,
+            artifact.typography_theme(),
             options,
         ),
         BuiltinFamilyArtifact::Railroad(artifact) => railroad::render_railroad_diagram_svg_model(
@@ -649,11 +653,12 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::Zenuml(pair) => zenuml::render_zenuml_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::Zenuml(artifact) => zenuml::render_zenuml_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
             effective_config_value,
             title,
+            artifact.title_theme(),
             options,
         ),
         BuiltinFamilyArtifact::Kanban(pair) => {
@@ -726,22 +731,28 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::Info(pair) => {
-            info::render_info_diagram_svg(pair.layout(), effective_config_value, options)
-        }
+        BuiltinFamilyArtifact::Info(artifact) => info::render_info_diagram_svg(
+            artifact.pair().layout(),
+            effective_config_value,
+            artifact.typography_theme(),
+            options,
+        ),
         BuiltinFamilyArtifact::Treemap(artifact) => treemap::render_treemap_diagram_svg(
             artifact.pair().layout(),
             effective_config_value,
             artifact.title_theme(),
             options,
         ),
-        BuiltinFamilyArtifact::Venn(pair) => venn::render_venn_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
-            effective_config_value,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Venn(artifact) => {
+            venn::render_venn_diagram_svg_model_with_title_theme(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.title_theme(),
+                effective_config_value,
+                title,
+                options,
+            )
+        }
         BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
@@ -790,13 +801,19 @@ fn render_builtin_family_artifact_raw(
             effective_config,
             options,
         ),
-        BuiltinFamilyArtifact::Ishikawa(pair) => {
-            ishikawa::render_ishikawa_diagram_svg(pair.layout(), effective_config_value, options)
+        BuiltinFamilyArtifact::Ishikawa(artifact) => {
+            ishikawa::render_ishikawa_diagram_svg_with_theme(
+                artifact.pair().layout(),
+                artifact.text_theme(),
+                effective_config_value,
+                options,
+            )
         }
-        BuiltinFamilyArtifact::EventModeling(pair) => {
-            eventmodeling::render_eventmodeling_diagram_svg(
-                pair.layout(),
-                pair.semantic(),
+        BuiltinFamilyArtifact::EventModeling(artifact) => {
+            eventmodeling::render_eventmodeling_diagram_svg_with_text_theme(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.text_theme(),
                 effective_config_value,
                 options,
             )

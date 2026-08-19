@@ -109,7 +109,7 @@ fn render_sequence_diagram_svg_inner(
 
     let mut settings = SequenceRenderSettings::from_effective_config(effective_config);
     settings.apply_typography_plan(prepared.typography());
-    let typography_receipt =
+    let mut typography_receipt =
         crate::sequence::SequenceTypographyThemeReceipt::from_plan(prepared.typography());
     let actor_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
@@ -126,6 +126,19 @@ fn render_sequence_diagram_svg_inner(
     let message_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.signalColor",
+    );
+    let sequence_number_fill_overridden =
+        merman_core::__private::config_path_overrides_typed_default(
+            sanitize_config,
+            "themeVariables.sequenceNumberColor",
+        );
+    let loop_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.labelBoxBkgColor",
+    );
+    let loop_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.labelBoxBorderColor",
     );
     let note_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
@@ -155,6 +168,10 @@ fn render_sequence_diagram_svg_inner(
         has_sequence_message_line_candidates(model),
         message_stroke_overridden,
     )?;
+    let mut sequence_number_theme =
+        resolve_sequence_number_theme(options, sequence_number_fill_overridden)?;
+    let mut loop_theme =
+        resolve_sequence_loop_theme(options, loop_fill_overridden, loop_stroke_overridden)?;
     let note_count = model
         .messages
         .iter()
@@ -236,7 +253,7 @@ fn render_sequence_diagram_svg_inner(
     out.checkpoint()?;
 
     out.push_str("<style>");
-    write_sequence_css_with_theme_adapter(
+    let css_emission = write_sequence_css_with_theme_adapter(
         &mut out,
         diagram_id,
         settings.actor_label_font_size,
@@ -247,6 +264,9 @@ fn render_sequence_diagram_svg_inner(
             lifeline_stroke: lifeline_theme.typed_stroke.as_deref(),
             lifeline_stroke_width: lifeline_theme.typed_stroke_width,
             message_stroke: message_theme.typed_stroke.as_deref(),
+            sequence_number_fill: sequence_number_theme.typed_fill.as_deref(),
+            loop_fill: loop_theme.typed_fill.as_deref(),
+            loop_stroke: loop_theme.typed_stroke.as_deref(),
             note_fill: note_theme.typed_fill.as_deref(),
             note_stroke: note_theme.typed_stroke.as_deref(),
             activation_fill: activation_theme.typed_fill.as_deref(),
@@ -256,6 +276,20 @@ fn render_sequence_diagram_svg_inner(
             note_typography: Some(prepared.typography().note()),
             loop_typography: Some(prepared.typography().loop_label()),
         },
+    );
+    sequence_number_theme.receipt.record_stylesheet_emission(
+        css_emission.sequence_number_fill(),
+        css_emission.typed_sequence_number_fill(),
+    );
+    for surface in crate::sequence::SequenceTextSurface::ALL {
+        let (final_fill, typed_fill) = css_emission.text_surface_fill(surface);
+        typography_receipt.record_stylesheet_emission(surface, final_fill, typed_fill);
+    }
+    loop_theme.receipt.record_stylesheet_emission(
+        css_emission.loop_fill(),
+        css_emission.typed_loop_fill(),
+        css_emission.loop_stroke(),
+        css_emission.typed_loop_stroke(),
     );
     out.push_str("</style><g/>");
     out.checkpoint()?;
@@ -343,10 +377,20 @@ fn render_sequence_diagram_svg_inner(
         &mut out,
         &interaction_ctx,
         &activation_plan,
+        &loop_theme.receipt,
         &mut note_theme.receipt,
         &mut activation_theme.receipt,
     );
     out.checkpoint()?;
+    prepared.theme_evidence().record_loop_emission(
+        crate::sequence::SequenceLoopThemeEmission::from_terminal_writer(
+            loop_theme.typed_fill.as_deref(),
+            loop_fill_overridden,
+            loop_theme.typed_stroke.as_deref(),
+            loop_stroke_overridden,
+            loop_theme.receipt,
+        ),
+    );
     prepared.theme_evidence().record_note_emission(
         crate::sequence::SequenceStaticRectThemeEmission::from_terminal_writer(
             note_count,
@@ -387,12 +431,25 @@ fn render_sequence_diagram_svg_inner(
         message_typography: prepared.typography().message(),
         typography_receipt: &typography_receipt,
     };
-    render_sequence_messages(&mut out, &message_ctx, &mut message_theme.receipt)?;
+    render_sequence_messages(
+        &mut out,
+        &message_ctx,
+        &mut message_theme.receipt,
+        &mut sequence_number_theme.receipt,
+        Some(css_emission.sequence_number_fill()),
+    )?;
     prepared.theme_evidence().record_message_emission(
         crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
             message_theme.typed_stroke.as_deref(),
             message_stroke_overridden,
             message_theme.receipt,
+        ),
+    );
+    prepared.theme_evidence().record_sequence_number_emission(
+        crate::sequence::SequenceNumberLabelThemeEmission::from_terminal_writer(
+            sequence_number_theme.typed_fill.as_deref(),
+            sequence_number_fill_overridden,
+            sequence_number_theme.receipt,
         ),
     );
 
@@ -468,6 +525,19 @@ struct SequenceLifelineThemeResolution {
 struct SequenceMessageThemeResolution {
     typed_stroke: Option<String>,
     receipt: crate::sequence::SequenceMessageThemeReceipt,
+}
+
+#[derive(Default)]
+struct SequenceNumberLabelThemeResolution {
+    typed_fill: Option<String>,
+    receipt: crate::sequence::SequenceNumberLabelThemeReceipt,
+}
+
+#[derive(Default)]
+struct SequenceLoopThemeResolution {
+    typed_fill: Option<String>,
+    typed_stroke: Option<String>,
+    receipt: crate::sequence::SequenceLoopThemeReceipt,
 }
 
 #[derive(Default)]
@@ -655,6 +725,126 @@ fn resolve_sequence_message_theme(
         typed_stroke,
         receipt,
     })
+}
+
+fn resolve_sequence_number_theme(
+    options: &SvgExecution<'_>,
+    fill_overridden: bool,
+) -> Result<SequenceNumberLabelThemeResolution> {
+    use crate::diagram_theme::{FamilyThemeMechanism, ThemeTarget, ThemeVariant};
+
+    let Some(theme) = options.resolved_theme() else {
+        return Ok(SequenceNumberLabelThemeResolution::default());
+    };
+    let mut has_rule_routes = false;
+    for route in theme.family_mechanism_routes().iter().copied() {
+        let FamilyThemeMechanism::RuleFacet {
+            target: ThemeTarget::SequenceNumberLabel,
+            ..
+        } = route.mechanism()
+        else {
+            continue;
+        };
+        has_rule_routes = true;
+    }
+    if !has_rule_routes {
+        return Ok(SequenceNumberLabelThemeResolution::default());
+    }
+
+    let style = theme.style_with_work_meter(
+        ThemeTarget::SequenceNumberLabel,
+        ThemeVariant::Default,
+        None,
+        options.work_meter(),
+    )?;
+    let mut receipt = crate::sequence::SequenceNumberLabelThemeReceipt::default();
+    receipt.record_static_style(&style);
+    let typed_fill = (!fill_overridden)
+        .then(|| typed_static_sequence_fill(theme, &style))
+        .flatten();
+    Ok(SequenceNumberLabelThemeResolution {
+        typed_fill,
+        receipt,
+    })
+}
+
+fn resolve_sequence_loop_theme(
+    options: &SvgExecution<'_>,
+    fill_overridden: bool,
+    stroke_overridden: bool,
+) -> Result<SequenceLoopThemeResolution> {
+    use crate::diagram_theme::{
+        FamilyThemeMechanism, FamilyThemeSelectorShape, ThemeTarget, ThemeVariant,
+    };
+
+    let Some(theme) = options.resolved_theme() else {
+        return Ok(SequenceLoopThemeResolution::default());
+    };
+    let mut has_rule_routes = false;
+    for route in theme.family_mechanism_routes().iter().copied() {
+        let FamilyThemeMechanism::RuleFacet {
+            target: ThemeTarget::Loop,
+            selector: FamilyThemeSelectorShape::Static { variant: None },
+            ..
+        } = route.mechanism()
+        else {
+            continue;
+        };
+        has_rule_routes = true;
+    }
+    if !has_rule_routes {
+        return Ok(SequenceLoopThemeResolution::default());
+    }
+
+    let style = theme.style_with_work_meter(
+        ThemeTarget::Loop,
+        ThemeVariant::Default,
+        None,
+        options.work_meter(),
+    )?;
+    let mut receipt = crate::sequence::SequenceLoopThemeReceipt::default();
+    receipt.record_static_style(&style);
+    let typed_fill = (!fill_overridden)
+        .then(|| typed_static_sequence_fill(theme, &style))
+        .flatten();
+    let typed_stroke = (!stroke_overridden)
+        .then(|| typed_static_sequence_stroke(theme, &style))
+        .flatten();
+    Ok(SequenceLoopThemeResolution {
+        typed_fill,
+        typed_stroke,
+        receipt,
+    })
+}
+
+fn typed_static_sequence_fill(
+    theme: &crate::diagram_theme::ResolvedDiagramTheme,
+    style: &crate::diagram_theme::ResolvedThemeStyle,
+) -> Option<String> {
+    let origin = style.fill_resolution().winner()?;
+    let facet =
+        crate::diagram_theme::FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?;
+    if theme.rule_facet_disposition(origin.rule_index(), facet)
+        != Some(crate::diagram_theme::FamilyThemeDisposition::TypedAdapter)
+    {
+        return None;
+    }
+    css_paint(style.fill())
+}
+
+fn typed_static_sequence_stroke(
+    theme: &crate::diagram_theme::ResolvedDiagramTheme,
+    style: &crate::diagram_theme::ResolvedThemeStyle,
+) -> Option<String> {
+    let origin = style.stroke_resolution().winner()?;
+    let facet =
+        crate::diagram_theme::FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())?;
+    if theme.rule_facet_disposition(origin.rule_index(), facet)
+        != Some(crate::diagram_theme::FamilyThemeDisposition::TypedAdapter)
+    {
+        return None;
+    }
+    css_paint(style.stroke())
 }
 
 fn resolve_sequence_lifeline_theme(

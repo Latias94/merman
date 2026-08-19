@@ -15,6 +15,9 @@ pub(crate) use label::{
     state_markdown_label_plain_text, state_node_label_xhtml, state_value_to_label_text,
 };
 
+mod edge_label_geometry;
+pub(crate) use edge_label_geometry::StateNativeLabelGeometry;
+
 mod label_artifact;
 pub(crate) use label_artifact::{
     PreparedStateLabel, StateLabelMetricsRequest, StateLabelOwner, StateLabelSidecar,
@@ -64,20 +67,23 @@ impl RectWithTitleGeometry {
     }
 }
 
+mod compatibility;
 mod config;
 mod effect_evidence;
 mod effect_plan;
 mod layout;
 mod style_plan;
 
+pub(crate) use compatibility::{
+    StateCompatibilityPlan, StateTerminalPaintProperty, StateTerminalSurface,
+};
 pub(crate) use config::StateConfigView;
 pub(crate) use effect_evidence::StateSvgEffectEvidenceRecorder;
 pub(crate) use effect_plan::{
     StateEffectOutsets, StateEffectPlan, StateNodeEffectPlan, StateSvgEffect, StateSvgFilterRegion,
 };
 pub(crate) use style_plan::{
-    ResolvedLabelTypography, StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan,
-    StateStylePlan,
+    ResolvedLabelTypography, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
 };
 
 /// Coarse static support projected from State's existing terminal consumers.

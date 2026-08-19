@@ -14,9 +14,9 @@ use std::collections::HashMap;
 mod theme;
 
 pub(crate) use theme::{
-    GITGRAPH_PALETTE_SLOT_COUNT, GitGraphCommitKind, GitGraphCommitPaletteRole,
-    GitGraphNodePalettePlan, GitGraphNodePaletteReceipt, GitGraphPaletteSource,
-    GitGraphPaletteSurface, GitGraphPaletteSurfaceOwnership, palette_slot,
+    GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt, GitGraphCommitKind,
+    GitGraphCommitPaletteRole, GitGraphNodePalettePlan, GitGraphNodePaletteReceipt,
+    GitGraphPaletteSource, GitGraphPaletteSurface, GitGraphPaletteSurfaceOwnership, palette_slot,
 };
 
 const LAYOUT_OFFSET: f64 = 10.0;

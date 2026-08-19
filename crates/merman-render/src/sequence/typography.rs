@@ -3,8 +3,9 @@ use std::collections::BTreeSet;
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet, ResolvedDiagramTheme,
-    ResolvedThemeStyle, ThemeTarget, ThemeTextStyle, ThemeTypographyProperty, ThemeVariant,
+    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet,
+    ResolvedDiagramTheme, ResolvedThemeStyle, ThemeTarget, ThemeTextStyle, ThemeTypographyProperty,
+    ThemeVariant,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::{ParsedCssFontStack, TextStyle, parse_css_font_stack, resolve_css_font_weight};
@@ -46,27 +47,33 @@ impl SequenceTypographyRole {
 
     fn config_paths(self, property: ThemeTypographyProperty) -> &'static [&'static str] {
         match (self, property) {
-            (Self::Actor, ThemeTypographyProperty::FontStack) => {
-                &["fontFamily", "sequence.actorFontFamily"]
-            }
+            (Self::Actor, ThemeTypographyProperty::FontStack) => &[
+                "fontFamily",
+                "themeVariables.fontFamily",
+                "sequence.actorFontFamily",
+            ],
             (Self::Actor, ThemeTypographyProperty::FontSize) => {
                 &["fontSize", "sequence.actorFontSize"]
             }
             (Self::Actor, ThemeTypographyProperty::FontWeight) => {
                 &["fontWeight", "sequence.actorFontWeight"]
             }
-            (Self::Message | Self::Loop, ThemeTypographyProperty::FontStack) => {
-                &["fontFamily", "sequence.messageFontFamily"]
-            }
+            (Self::Message | Self::Loop, ThemeTypographyProperty::FontStack) => &[
+                "fontFamily",
+                "themeVariables.fontFamily",
+                "sequence.messageFontFamily",
+            ],
             (Self::Message | Self::Loop, ThemeTypographyProperty::FontSize) => {
                 &["fontSize", "sequence.messageFontSize"]
             }
             (Self::Message | Self::Loop, ThemeTypographyProperty::FontWeight) => {
                 &["fontWeight", "sequence.messageFontWeight"]
             }
-            (Self::Note, ThemeTypographyProperty::FontStack) => {
-                &["fontFamily", "sequence.noteFontFamily"]
-            }
+            (Self::Note, ThemeTypographyProperty::FontStack) => &[
+                "fontFamily",
+                "themeVariables.fontFamily",
+                "sequence.noteFontFamily",
+            ],
             (Self::Note, ThemeTypographyProperty::FontSize) => {
                 &["fontSize", "sequence.noteFontSize"]
             }
@@ -80,8 +87,83 @@ impl SequenceTypographyRole {
     }
 }
 
+/// Private terminal text surfaces that share public Sequence typography targets.
+///
+/// Public theme targets intentionally remain role-oriented. This internal seam keeps terminal
+/// Mermaid ownership and writer receipts local to the selector arm that actually consumes the
+/// fill, without duplicating font resolution or layout measurement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum SequenceTextSurface {
+    ParticipantLabel,
+    BoxTitle,
+    MessageLabel,
+    NoteLabel,
+    ControlKeyword,
+    ControlPrimaryTitle,
+    ControlSectionTitle,
+}
+
+impl SequenceTextSurface {
+    pub(crate) const ALL: [Self; 7] = [
+        Self::ParticipantLabel,
+        Self::BoxTitle,
+        Self::MessageLabel,
+        Self::NoteLabel,
+        Self::ControlKeyword,
+        Self::ControlPrimaryTitle,
+        Self::ControlSectionTitle,
+    ];
+
+    pub(crate) const fn role(self) -> SequenceTypographyRole {
+        match self {
+            Self::ParticipantLabel | Self::BoxTitle => SequenceTypographyRole::Actor,
+            Self::MessageLabel => SequenceTypographyRole::Message,
+            Self::NoteLabel => SequenceTypographyRole::Note,
+            Self::ControlKeyword | Self::ControlPrimaryTitle | Self::ControlSectionTitle => {
+                SequenceTypographyRole::Loop
+            }
+        }
+    }
+
+    pub(crate) const fn index(self) -> usize {
+        match self {
+            Self::ParticipantLabel => 0,
+            Self::BoxTitle => 1,
+            Self::MessageLabel => 2,
+            Self::NoteLabel => 3,
+            Self::ControlKeyword => 4,
+            Self::ControlPrimaryTitle => 5,
+            Self::ControlSectionTitle => 6,
+        }
+    }
+
+    pub(crate) const fn mermaid_fill_owner_path(self) -> &'static str {
+        match self {
+            Self::ParticipantLabel => "themeVariables.actorTextColor",
+            Self::BoxTitle => "themeVariables.textColor",
+            Self::MessageLabel => "themeVariables.signalTextColor",
+            Self::NoteLabel => "themeVariables.noteTextColor",
+            Self::ControlKeyword => "themeVariables.labelTextColor",
+            Self::ControlPrimaryTitle | Self::ControlSectionTitle => "themeVariables.loopTextColor",
+        }
+    }
+
+    pub(crate) const fn terminal_selectors(self) -> &'static str {
+        match self {
+            Self::ParticipantLabel => "text.actor,text.actor>tspan",
+            Self::BoxTitle => "text.text,text.text>tspan",
+            Self::MessageLabel => ".messageText,.messageText>tspan",
+            Self::NoteLabel => ".noteText,.noteText>tspan",
+            Self::ControlKeyword => ".labelText,.labelText>tspan",
+            Self::ControlPrimaryTitle => ".loopText,.loopText>tspan",
+            Self::ControlSectionTitle => ".sectionTitle,.sectionTitle>tspan",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct SequenceResolvedTypography {
+    role: SequenceTypographyRole,
     measurement_style: TextStyle,
     terminal_text_style: TextStyle,
     prepared_typography: ThemeTextStyle,
@@ -89,6 +171,8 @@ pub(crate) struct SequenceResolvedTypography {
     resolved_style: Option<ResolvedThemeStyle>,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
     config_overrides: BTreeSet<ThemeTypographyProperty>,
+    typed_fill: Option<String>,
+    fill_overrides: BTreeSet<SequenceTextSurface>,
 }
 
 impl SequenceResolvedTypography {
@@ -109,6 +193,16 @@ impl SequenceResolvedTypography {
                         path,
                     )
                 })
+            })
+            .collect::<BTreeSet<_>>();
+        let fill_overrides = SequenceTextSurface::ALL
+            .into_iter()
+            .filter(|surface| surface.role() == role)
+            .filter(|surface| {
+                merman_core::__private::config_path_overrides_typed_default(
+                    effective_config,
+                    surface.mermaid_fill_owner_path(),
+                )
             })
             .collect::<BTreeSet<_>>();
         let resolved_style = resolved_theme
@@ -142,11 +236,15 @@ impl SequenceResolvedTypography {
                 typed_properties.insert(property);
             }
         }
+        let typed_fill = resolved_theme
+            .zip(resolved_style.as_ref())
+            .and_then(|(theme, style)| typed_static_fill(theme, style));
         let measurement_style = text_style;
         let (terminal_text_style, font_stack) =
             cssom_effective_text_style(&measurement_style, inherited_font_family);
         let prepared_typography = prepared_typography(&terminal_text_style, &font_stack);
         Ok(Self {
+            role,
             measurement_style,
             terminal_text_style,
             prepared_typography,
@@ -154,6 +252,8 @@ impl SequenceResolvedTypography {
             resolved_style,
             typed_properties,
             config_overrides,
+            typed_fill,
+            fill_overrides,
         })
     }
 
@@ -179,6 +279,18 @@ impl SequenceResolvedTypography {
 
     pub(crate) const fn config_overrides(&self) -> &BTreeSet<ThemeTypographyProperty> {
         &self.config_overrides
+    }
+
+    pub(crate) fn typed_fill_for(&self, surface: SequenceTextSurface) -> Option<&str> {
+        debug_assert_eq!(surface.role(), self.role);
+        (!self.fill_overrides.contains(&surface))
+            .then_some(self.typed_fill.as_deref())
+            .flatten()
+    }
+
+    pub(crate) fn fill_overridden(&self, surface: SequenceTextSurface) -> bool {
+        debug_assert_eq!(surface.role(), self.role);
+        self.fill_overrides.contains(&surface)
     }
 
     pub(crate) fn has_typed_emission(&self) -> bool {
@@ -207,11 +319,19 @@ impl SequenceResolvedTypography {
         }
     }
 
-    pub(crate) fn css_declarations(&self) -> Option<String> {
-        self.requires_resolved_emission().then(|| {
+    pub(crate) fn css_declarations_for(&self, surface: SequenceTextSurface) -> Option<String> {
+        let typed_fill = self.typed_fill_for(surface);
+        (self.requires_resolved_emission() || typed_fill.is_some()).then(|| {
             let mut declarations = String::new();
-            append_typography_declarations(&mut declarations, &self.terminal_text_style);
-            declarations.push(';');
+            if self.requires_resolved_emission() {
+                append_typography_declarations(&mut declarations, &self.terminal_text_style);
+                declarations.push(';');
+            }
+            if let Some(fill) = typed_fill {
+                declarations.push_str("fill:");
+                declarations.push_str(fill);
+                declarations.push(';');
+            }
             declarations
         })
     }
@@ -224,6 +344,27 @@ impl SequenceResolvedTypography {
             declarations
         })
     }
+}
+
+fn css_paint(paint: Option<&CanvasPaint>) -> Option<String> {
+    match paint? {
+        CanvasPaint::Transparent => Some("transparent".to_string()),
+        CanvasPaint::Solid(color) => Some(color.as_css()),
+        CanvasPaint::LinearGradient(_)
+        | CanvasPaint::RadialGradient(_)
+        | CanvasPaint::Pattern(_) => None,
+    }
+}
+
+fn typed_static_fill(theme: &ResolvedDiagramTheme, style: &ResolvedThemeStyle) -> Option<String> {
+    let origin = style.fill_resolution().winner()?;
+    let facet = FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?;
+    if theme.rule_facet_disposition(origin.rule_index(), facet)
+        != Some(FamilyThemeDisposition::TypedAdapter)
+    {
+        return None;
+    }
+    css_paint(style.fill())
 }
 
 #[derive(Debug)]

@@ -10,6 +10,23 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let text_theme = crate::eventmodeling::EventModelingTextThemePlan::baseline(layout);
+    render_eventmodeling_diagram_svg_with_text_theme(
+        layout,
+        model,
+        &text_theme,
+        effective_config,
+        options,
+    )
+}
+
+pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
+    layout: &EventModelingDiagramLayout,
+    model: &EventModelingDiagramRenderModel,
+    text_theme: &crate::eventmodeling::EventModelingTextThemePlan,
+    effective_config: &serde_json::Value,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model
@@ -25,6 +42,8 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = MermaidThemeAdapter::new(effective_config).eventmodeling();
+    let terminal_text_fill = text_theme.terminal_fill(&theme.text_color);
+    let mut text_theme_receipt = text_theme.begin_terminal_receipt(&theme.text_color);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
@@ -58,7 +77,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     }
     out.checkpoint()?;
 
-    let css = eventmodeling_css(&theme);
+    let css = eventmodeling_css(&theme, terminal_text_fill);
     let marker_id = format!("em-arrowhead-{diagram_id}");
     let _ = write!(&mut out, "<style>{css}</style>");
     drop(css);
@@ -68,25 +87,27 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     for swimlane in &layout.swimlanes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect><text font-weight="bold" x="{}" y="{}">"#,
+            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect><text fill="{}" font-weight="bold" x="{}" y="{}">"#,
             fmt(swimlane.x),
             fmt(swimlane.y),
             fmt(swimlane.width),
             fmt(swimlane.height),
             escape_attr_display(&theme.swimlane_background_fill),
             escape_attr_display(&theme.swimlane_background_stroke),
+            escape_attr_display(terminal_text_fill),
             fmt(swimlane.x + 30.0),
             fmt(swimlane.y + 30.0)
         );
         escape_xml_into(&mut out, &swimlane.label);
         out.push_str("</text></g>");
+        text_theme_receipt.record_swimlane_text(&swimlane.label, terminal_text_fill);
         out.checkpoint()?;
     }
 
     for box_layout in &layout.boxes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#,
+            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle; color: {};">"#,
             fmt(box_layout.x),
             fmt(box_layout.y),
             fmt(box_layout.width),
@@ -96,10 +117,12 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             fmt(box_layout.x + BOX_TEXT_PADDING),
             fmt(box_layout.y + BOX_TEXT_PADDING),
             fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
-            fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0))
+            fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0)),
+            escape_attr_display(terminal_text_fill),
         );
         push_box_html_label(&mut out, &box_layout.text)?;
         out.push_str("</span></div></foreignObject></g>");
+        text_theme_receipt.record_box_text(&box_layout.text, terminal_text_fill);
         out.checkpoint()?;
     }
 
@@ -126,7 +149,13 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !text_theme.record_terminal(text_theme_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Event Modeling text theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 fn push_box_html_label(out: &mut impl SvgOutput, text: &str) -> Result<()> {
@@ -162,10 +191,10 @@ fn normalize_eventmodeling_code_text(raw: &str) -> String {
     without_outer_braces.trim().to_string()
 }
 
-fn eventmodeling_css(theme: &EventModelingTheme) -> String {
+fn eventmodeling_css(theme: &EventModelingTheme, terminal_text_fill: &str) -> String {
     format!(
         ".em-swimlane text,.em-box span {{ font-family: {}; color: {}; }}\
 .em-relation {{ fill: none; }}",
-        theme.font_family_css, theme.text_color
+        theme.font_family_css, terminal_text_fill
     )
 }

@@ -43,7 +43,9 @@ const MAX_TEXT_PROJECTION_SPANS: usize = MAX_TEXT_PROJECTION_BYTES;
 const TEXT_PROJECTION_SPAN_RECORD_BYTES: usize = 32;
 const MAX_TEXT_PROJECTION_SPAN_BYTES: usize =
     MAX_TEXT_PROJECTION_SPANS * TEXT_PROJECTION_SPAN_RECORD_BYTES;
-const PREPARED_TEXT_LINE_RECORD_BYTES: usize = 96;
+// Replacing the former scalar bbox height with top/bottom extents adds one `f64` to its 96-byte
+// stable upper bound.
+const PREPARED_TEXT_LINE_RECORD_BYTES: usize = 104;
 const PREPARED_TEXT_RUN_RECORD_BYTES: usize = 64;
 const TEXT_BYTE_RANGE_RECORD_BYTES: usize = 16;
 const PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES: usize = 128;
@@ -1682,6 +1684,62 @@ const fn theme_wrap_id(wrap: crate::diagram_theme::ThemeWrapMode) -> u8 {
     }
 }
 
+/// Ink bounds for one prepared line relative to its alphabetic baseline.
+///
+/// Coordinates follow SVG's y-down axis: `top_px <= bottom_px`, with ordinary ascenders above
+/// the baseline represented by a negative `top_px` and descenders below it represented by a
+/// positive `bottom_px`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PreparedTextVerticalExtents {
+    top_px: f64,
+    bottom_px: f64,
+}
+
+impl PreparedTextVerticalExtents {
+    pub fn new(top_px: f64, bottom_px: f64) -> Result<Self, TextLayoutError> {
+        if !top_px.is_finite()
+            || !bottom_px.is_finite()
+            || top_px < -MAX_PREPARED_TEXT_GEOMETRY_PX
+            || top_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || bottom_px < -MAX_PREPARED_TEXT_GEOMETRY_PX
+            || bottom_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || top_px > bottom_px
+            || bottom_px - top_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+        {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        Ok(Self { top_px, bottom_px })
+    }
+
+    pub const fn top_px(self) -> f64 {
+        self.top_px
+    }
+
+    pub const fn bottom_px(self) -> f64 {
+        self.bottom_px
+    }
+
+    pub const fn height_px(self) -> f64 {
+        self.bottom_px - self.top_px
+    }
+
+    fn translated(self, offset_y_px: f64) -> Result<Self, TextLayoutError> {
+        Self::new(self.top_px + offset_y_px, self.bottom_px + offset_y_px)
+    }
+
+    fn union(self, other: Self) -> Result<Self, TextLayoutError> {
+        Self::new(
+            self.top_px.min(other.top_px),
+            self.bottom_px.max(other.bottom_px),
+        )
+    }
+}
+
+fn prepared_text_line_can_have_no_ink(text: &str) -> bool {
+    text.chars()
+        .all(|character| character.is_whitespace() || is_default_ignorable(character))
+}
+
 /// Prepared geometry for one visible output line.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PreparedTextLine {
@@ -1689,7 +1747,7 @@ pub(crate) struct PreparedTextLine {
     visible_range: TextByteRange,
     computed_length_px: f64,
     bbox_x: (f64, f64),
-    bbox_height_px: f64,
+    vertical_extents: PreparedTextVerticalExtents,
 }
 
 impl PreparedTextLine {
@@ -1698,8 +1756,9 @@ impl PreparedTextLine {
         visible_range: TextByteRange,
         computed_length_px: f64,
         bbox_x: (f64, f64),
-        bbox_height_px: f64,
+        vertical_extents: PreparedTextVerticalExtents,
     ) -> Result<Self, TextLayoutError> {
+        let text = text.into();
         if !computed_length_px.is_finite()
             || computed_length_px < 0.0
             || computed_length_px > MAX_PREPARED_TEXT_GEOMETRY_PX
@@ -1709,19 +1768,17 @@ impl PreparedTextLine {
             || bbox_x.1 < 0.0
             || bbox_x.0 > MAX_PREPARED_TEXT_GEOMETRY_PX
             || bbox_x.1 > MAX_PREPARED_TEXT_GEOMETRY_PX
-            || !bbox_height_px.is_finite()
-            || bbox_height_px < 0.0
-            || bbox_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
             || visible_range.start() > visible_range.end()
+            || (vertical_extents.height_px() == 0.0 && !prepared_text_line_can_have_no_ink(&text))
         {
             return Err(TextLayoutError::InvalidPreparedText);
         }
         Ok(Self {
-            text: Arc::from(text.into()),
+            text: Arc::from(text),
             visible_range,
             computed_length_px,
             bbox_x,
-            bbox_height_px,
+            vertical_extents,
         })
     }
 
@@ -1735,10 +1792,9 @@ impl PreparedTextLine {
             || response.bbox_x.1 < 0.0
             || response.bbox_x.0 > MAX_PREPARED_TEXT_GEOMETRY_PX
             || response.bbox_x.1 > MAX_PREPARED_TEXT_GEOMETRY_PX
-            || !response.bbox_height_px.is_finite()
-            || response.bbox_height_px < 0.0
-            || response.bbox_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
             || response.visible_range.start() > response.visible_range.end()
+            || (response.vertical_extents.height_px() == 0.0
+                && !prepared_text_line_can_have_no_ink(&response.text))
         {
             return Err(TextLayoutError::InvalidPreparedText);
         }
@@ -1747,7 +1803,7 @@ impl PreparedTextLine {
             visible_range: response.visible_range,
             computed_length_px: response.computed_length_px,
             bbox_x: response.bbox_x,
-            bbox_height_px: response.bbox_height_px,
+            vertical_extents: response.vertical_extents,
         })
     }
 
@@ -1772,7 +1828,11 @@ impl PreparedTextLine {
     }
 
     pub const fn bbox_height_px(&self) -> f64 {
-        self.bbox_height_px
+        self.vertical_extents.height_px()
+    }
+
+    pub(crate) const fn vertical_extents(&self) -> PreparedTextVerticalExtents {
+        self.vertical_extents
     }
 }
 
@@ -1783,7 +1843,7 @@ pub struct PreparedTextLineResponse {
     visible_range: TextByteRange,
     computed_length_px: f64,
     bbox_x: (f64, f64),
-    bbox_height_px: f64,
+    vertical_extents: PreparedTextVerticalExtents,
 }
 
 impl PreparedTextLineResponse {
@@ -1792,7 +1852,7 @@ impl PreparedTextLineResponse {
         visible_range: TextByteRange,
         computed_length_px: f64,
         bbox_x: (f64, f64),
-        bbox_height_px: f64,
+        vertical_extents: PreparedTextVerticalExtents,
     ) -> Result<Self, TextLayoutError> {
         let text = text.into();
         if text.len() > MAX_TEXT_PROJECTION_BYTES
@@ -1805,10 +1865,8 @@ impl PreparedTextLineResponse {
             || bbox_x.1 < 0.0
             || bbox_x.0 > MAX_PREPARED_TEXT_GEOMETRY_PX
             || bbox_x.1 > MAX_PREPARED_TEXT_GEOMETRY_PX
-            || !bbox_height_px.is_finite()
-            || bbox_height_px < 0.0
-            || bbox_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
             || visible_range.start() > visible_range.end()
+            || (vertical_extents.height_px() == 0.0 && !prepared_text_line_can_have_no_ink(&text))
         {
             return Err(TextLayoutError::InvalidPreparedText);
         }
@@ -1817,7 +1875,7 @@ impl PreparedTextLineResponse {
             visible_range,
             computed_length_px,
             bbox_x,
-            bbox_height_px,
+            vertical_extents,
         })
     }
 
@@ -1838,7 +1896,11 @@ impl PreparedTextLineResponse {
     }
 
     pub const fn bbox_height_px(&self) -> f64 {
-        self.bbox_height_px
+        self.vertical_extents.height_px()
+    }
+
+    pub(crate) const fn vertical_extents(&self) -> PreparedTextVerticalExtents {
+        self.vertical_extents
     }
 }
 
@@ -2548,9 +2610,11 @@ pub(crate) struct PreparedText {
     label_ledger_entry: Option<PendingPreparedTextLabelLedgerEntry>,
     metrics: TextMetrics,
     raw_width_px: Option<f64>,
+    line_height_px: f64,
     computed_length_px: f64,
     bbox_x: (f64, f64),
     bbox_width_px: f64,
+    vertical_extents: PreparedTextVerticalExtents,
     bbox_height_px: f64,
     diagnostics: Arc<[Arc<str>]>,
 }
@@ -2633,14 +2697,13 @@ impl PreparedText {
             return Err(TextLayoutError::InvalidPreparedText);
         }
         let line_count = lines.len();
+        let vertical_extents = summarize_prepared_text_vertical_extents(&lines, line_height_px)?;
         let metrics = TextMetrics {
             width: summary.computed_length_px.max(summary.bbox_width_px),
             height: line_height_px * line_count as f64,
             line_count,
         };
-        let bbox_height_px = summary.max_line_bbox_height_px.max(
-            line_height_px * line_count.saturating_sub(1) as f64 + summary.max_line_bbox_height_px,
-        );
+        let bbox_height_px = vertical_extents.height_px();
         if !metrics.height.is_finite()
             || metrics.height > MAX_PREPARED_TEXT_GEOMETRY_PX
             || !bbox_height_px.is_finite()
@@ -2679,9 +2742,11 @@ impl PreparedText {
             label_ledger_entry,
             metrics,
             raw_width_px,
+            line_height_px,
             computed_length_px: summary.computed_length_px,
             bbox_x: summary.bbox_x,
             bbox_width_px: summary.bbox_width_px,
+            vertical_extents,
             bbox_height_px,
             diagnostics,
         })
@@ -2755,6 +2820,10 @@ impl PreparedText {
         self.raw_width_px
     }
 
+    pub(crate) const fn line_height_px(&self) -> f64 {
+        self.line_height_px
+    }
+
     pub const fn computed_length_px(&self) -> f64 {
         self.computed_length_px
     }
@@ -2771,6 +2840,10 @@ impl PreparedText {
         self.bbox_height_px
     }
 
+    pub(crate) const fn vertical_extents(&self) -> PreparedTextVerticalExtents {
+        self.vertical_extents
+    }
+
     pub fn diagnostics(&self) -> impl ExactSizeIterator<Item = &str> + '_ {
         self.diagnostics.iter().map(Arc::as_ref)
     }
@@ -2785,6 +2858,7 @@ pub struct PreparedTextFuzzProbe {
     raw_width_px: Option<f64>,
     bbox_width_px: f64,
     bbox_height_px: f64,
+    vertical_extents: PreparedTextVerticalExtents,
 }
 
 #[cfg(feature = "fuzzing")]
@@ -2803,6 +2877,13 @@ impl PreparedTextFuzzProbe {
 
     pub const fn bbox_height_px(self) -> f64 {
         self.bbox_height_px
+    }
+
+    pub const fn vertical_extents_px(self) -> (f64, f64) {
+        (
+            self.vertical_extents.top_px(),
+            self.vertical_extents.bottom_px(),
+        )
     }
 }
 
@@ -2834,7 +2915,6 @@ struct PreparedTextLineSummary {
     computed_length_px: f64,
     bbox_x: (f64, f64),
     bbox_width_px: f64,
-    max_line_bbox_height_px: f64,
 }
 
 struct PreparedTextAdmissionBudget<'a> {
@@ -2860,7 +2940,6 @@ fn summarize_prepared_text_lines(
         computed_length_px: 0.0,
         bbox_x: (0.0, 0.0),
         bbox_width_px: 0.0,
-        max_line_bbox_height_px: 0.0,
     };
     for line in lines {
         summary.computed_length_px = summary.computed_length_px.max(line.computed_length_px());
@@ -2868,10 +2947,25 @@ fn summarize_prepared_text_lines(
         summary.bbox_x.0 = summary.bbox_x.0.max(line_bbox_x.0);
         summary.bbox_x.1 = summary.bbox_x.1.max(line_bbox_x.1);
         summary.bbox_width_px = summary.bbox_width_px.max(line.bbox_width_px());
-        summary.max_line_bbox_height_px =
-            summary.max_line_bbox_height_px.max(line.bbox_height_px());
     }
     Ok(summary)
+}
+
+fn summarize_prepared_text_vertical_extents(
+    lines: &[PreparedTextLine],
+    line_height_px: f64,
+) -> Result<PreparedTextVerticalExtents, TextLayoutError> {
+    let mut lines = lines.iter().enumerate();
+    let Some((first_index, first)) = lines.next() else {
+        return Err(TextLayoutError::InvalidPreparedText);
+    };
+    let first_offset = line_height_px * first_index as f64;
+    let mut extents = first.vertical_extents().translated(first_offset)?;
+    for (line_index, line) in lines {
+        let offset = line_height_px * line_index as f64;
+        extents = extents.union(line.vertical_extents().translated(offset)?)?;
+    }
+    Ok(extents)
 }
 
 struct OrderedProjectionRangeCursor<'a> {
@@ -2976,8 +3070,8 @@ fn validate_prepared_text_response_budget(
     let mut computed_length_px = 0.0_f64;
     let mut bbox_x = (0.0_f64, 0.0_f64);
     let mut bbox_width_px = 0.0_f64;
-    let mut max_line_bbox_height_px = 0.0_f64;
-    for line in response.lines.iter() {
+    let mut vertical_extents: Option<PreparedTextVerticalExtents> = None;
+    for (line_index, line) in response.lines.iter().enumerate() {
         line_text_bytes = line_text_bytes
             .checked_add(line.text().len())
             .ok_or(TextLayoutError::LimitExceeded("response.text_bytes"))?;
@@ -2986,7 +3080,12 @@ fn validate_prepared_text_response_budget(
         bbox_x.0 = bbox_x.0.max(line_bbox_x.0);
         bbox_x.1 = bbox_x.1.max(line_bbox_x.1);
         bbox_width_px = bbox_width_px.max(line_bbox_x.0 + line_bbox_x.1);
-        max_line_bbox_height_px = max_line_bbox_height_px.max(line.bbox_height_px());
+        let line_offset = response.line_height_px * line_index as f64;
+        let line_extents = line.vertical_extents().translated(line_offset)?;
+        vertical_extents = Some(match vertical_extents {
+            Some(current) => current.union(line_extents)?,
+            None => line_extents,
+        });
     }
     if line_text_bytes > visible_bytes {
         return Err(TextLayoutError::LimitExceeded("response.text_bytes"));
@@ -3023,8 +3122,9 @@ fn validate_prepared_text_response_budget(
 
     let line_count = response.lines.len() as f64;
     let total_height = response.line_height_px * line_count;
-    let bbox_height = response.line_height_px * response.lines.len().saturating_sub(1) as f64
-        + max_line_bbox_height_px;
+    let bbox_height = vertical_extents
+        .ok_or(TextLayoutError::InvalidPreparedText)?
+        .height_px();
     if !total_height.is_finite()
         || total_height > MAX_PREPARED_TEXT_GEOMETRY_PX
         || !bbox_height.is_finite()
@@ -3036,7 +3136,6 @@ fn validate_prepared_text_response_budget(
         computed_length_px,
         bbox_x,
         bbox_width_px,
-        max_line_bbox_height_px,
     })
 }
 
@@ -4497,6 +4596,7 @@ impl NativeTextLayoutBackend {
             raw_width_px: prepared.raw_width_px(),
             bbox_width_px: prepared.bbox_width_px(),
             bbox_height_px: prepared.bbox_height_px(),
+            vertical_extents: prepared.vertical_extents(),
         })
     }
 }
@@ -5166,6 +5266,18 @@ impl ShapedLineMetrics {
             (self.max_y - self.min_y).max(0.0)
         } else {
             0.0
+        }
+    }
+
+    fn vertical_extents(self) -> Result<PreparedTextVerticalExtents, TextLayoutError> {
+        if self.has_bounds {
+            // Font coordinates are y-up around the alphabetic baseline. SVG uses y-down, so the
+            // upper outline edge becomes `-max_y` and the lower edge becomes `-min_y`.
+            PreparedTextVerticalExtents::new(-self.max_y, -self.min_y)
+        } else {
+            // Empty, whitespace-only, and default-ignorable lines have no ink. Retaining their
+            // baseline as a zero-height point lets multiline aggregation preserve line advance.
+            PreparedTextVerticalExtents::new(0.0, 0.0)
         }
     }
 
@@ -6585,7 +6697,7 @@ impl NativeCatalogTextMeasurer {
                     line.visible_range(),
                     shaped.metrics.advance.abs(),
                     shaped.metrics.bbox_x(),
-                    shaped.metrics.bbox_height(),
+                    shaped.metrics.vertical_extents()?,
                 )?);
             }
             response_builder.finish()
@@ -6929,6 +7041,60 @@ mod tests {
     }
 
     #[test]
+    fn prepared_vertical_extents_reject_non_finite_or_inverted_bounds() {
+        assert_eq!(
+            PreparedTextVerticalExtents::new(f64::NAN, 1.0),
+            Err(TextLayoutError::InvalidPreparedText)
+        );
+        assert_eq!(
+            PreparedTextVerticalExtents::new(-1.0, f64::INFINITY),
+            Err(TextLayoutError::InvalidPreparedText)
+        );
+        assert_eq!(
+            PreparedTextVerticalExtents::new(2.0, 1.0),
+            Err(TextLayoutError::InvalidPreparedText)
+        );
+        let no_ink = PreparedTextVerticalExtents::new(0.0, 0.0)
+            .expect("a zero-height interval is valid for lines without ink");
+        assert_eq!(
+            PreparedTextLineResponse::new("A", TextByteRange::new(0, 1), 1.0, (0.0, 1.0), no_ink,),
+            Err(TextLayoutError::InvalidPreparedText)
+        );
+        assert!(
+            PreparedTextLineResponse::new(" ", TextByteRange::new(0, 1), 1.0, (0.0, 1.0), no_ink,)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn prepared_vertical_extents_keep_empty_lines_as_baseline_points() {
+        let empty = PreparedTextLine::new(
+            "",
+            TextByteRange::new(0, 0),
+            0.0,
+            (0.0, 0.0),
+            PreparedTextVerticalExtents::new(0.0, 0.0)
+                .expect("an empty line has no ink around its baseline"),
+        )
+        .expect("empty line geometry is valid");
+        let ink = PreparedTextLine::new(
+            "Ag",
+            TextByteRange::new(1, 3),
+            10.0,
+            (0.0, 10.0),
+            PreparedTextVerticalExtents::new(-7.0, 2.0).expect("fixed ink extents are valid"),
+        )
+        .expect("ink line geometry is valid");
+
+        assert_eq!(
+            summarize_prepared_text_vertical_extents(&[empty, ink], 12.0)
+                .expect("bounded multiline extents are valid"),
+            PreparedTextVerticalExtents::new(0.0, 14.0)
+                .expect("the first baseline point and second-line ink form one interval")
+        );
+    }
+
+    #[test]
     fn prepared_text_retained_bytes_count_shared_evidence_once() {
         let catalog = mixed_catalog();
         let face = &catalog.faces()[0];
@@ -6944,8 +7110,14 @@ mod tests {
             vec![SourceVisibleSpan::new(range, range)],
         )
         .expect("the fixed projection is valid");
-        let line = PreparedTextLine::new("AB", range, 10.0, (0.0, 10.0), 8.0)
-            .expect("the fixed line geometry is valid");
+        let line = PreparedTextLine::new(
+            "AB",
+            range,
+            10.0,
+            (0.0, 10.0),
+            PreparedTextVerticalExtents::new(-6.0, 2.0).expect("fixed vertical extents are valid"),
+        )
+        .expect("the fixed line geometry is valid");
         let run = PreparedTextLabelEvidence::new(
             range,
             range,
@@ -7341,8 +7513,14 @@ mod tests {
     fn prepared_text_rejects_line_text_outside_its_visible_range() {
         let projection = TextProjection::new("alpha", ThemeTextTransform::None)
             .expect("projection should build");
-        let line = PreparedTextLine::new("alpha", TextByteRange::new(0, 4), 1.0, (0.0, 1.0), 1.0)
-            .expect("line metrics are individually valid");
+        let line = PreparedTextLine::new(
+            "alpha",
+            TextByteRange::new(0, 4),
+            1.0,
+            (0.0, 1.0),
+            PreparedTextVerticalExtents::new(-0.8, 0.2).expect("fixed vertical extents are valid"),
+        )
+        .expect("line metrics are individually valid");
 
         assert_eq!(
             PreparedText::new(projection, [line], 1.0, None)
@@ -7355,8 +7533,14 @@ mod tests {
     fn prepared_text_rejects_a_line_that_splits_a_projection_atom() {
         let projection = TextProjection::new("ß", ThemeTextTransform::Uppercase)
             .expect("expanding projection should build");
-        let line = PreparedTextLine::new("S", TextByteRange::new(0, 1), 1.0, (0.0, 1.0), 1.0)
-            .expect("line metrics are individually valid");
+        let line = PreparedTextLine::new(
+            "S",
+            TextByteRange::new(0, 1),
+            1.0,
+            (0.0, 1.0),
+            PreparedTextVerticalExtents::new(-0.8, 0.2).expect("fixed vertical extents are valid"),
+        )
+        .expect("line metrics are individually valid");
 
         assert_eq!(
             PreparedText::new(projection, [line], 1.0, None)
@@ -7524,7 +7708,8 @@ mod tests {
                     line.visible_range,
                     10.0,
                     (0.0, 10.0),
-                    8.0,
+                    PreparedTextVerticalExtents::new(-6.0, 2.0)
+                        .expect("fixed vertical extents are valid"),
                 )
                 .expect("fixed raw line geometry is valid")
             })
@@ -7748,6 +7933,18 @@ mod tests {
         );
 
         let mut invalid = response.clone();
+        Arc::make_mut(&mut invalid.lines)[0].vertical_extents = PreparedTextVerticalExtents {
+            top_px: 2.0,
+            bottom_px: 1.0,
+        };
+        assert_eq!(
+            layout
+                .admit_text_response(&backend_request, invalid)
+                .expect_err("missing a valid baseline-relative ink interval must fail closed"),
+            TextLayoutError::InvalidPreparedText
+        );
+
+        let mut invalid = response.clone();
         Arc::make_mut(&mut invalid.lines)[0].visible_range = TextByteRange::new(0, 4);
         assert_eq!(
             layout
@@ -7809,7 +8006,8 @@ mod tests {
                 TextByteRange::new(0, 5),
                 10.0,
                 (0.0, 10.0),
-                8.0,
+                PreparedTextVerticalExtents::new(-6.0, 2.0)
+                    .expect("fixed vertical extents are valid"),
             )
             .expect("partial line geometry is structurally valid")],
             [PreparedTextRunResponse::new(
@@ -7900,7 +8098,7 @@ mod tests {
             TextByteRange::new(0, MAX_TEXT_PROJECTION_BYTES),
             1.0,
             (0.0, 1.0),
-            1.0,
+            PreparedTextVerticalExtents::new(-0.8, 0.2).expect("fixed vertical extents are valid"),
         )
         .expect("one projection-sized line remains within the per-line hard cap");
         assert_eq!(
@@ -7951,7 +8149,7 @@ mod tests {
             TextByteRange::new(0, MAX_TEXT_PROJECTION_BYTES),
             1.0,
             (0.0, 1.0),
-            1.0,
+            PreparedTextVerticalExtents::new(-0.8, 0.2).expect("fixed vertical extents are valid"),
         )
         .expect("one projection-sized line remains within the per-line hard cap");
         let line_bytes = MAX_TEXT_PROJECTION_BYTES + PREPARED_TEXT_LINE_RECORD_BYTES;
@@ -8114,6 +8312,52 @@ mod tests {
         assert!(left.is_finite() && right.is_finite());
         assert!(bbox.is_finite() && bbox > 0.0);
         assert!(height.is_finite() && height > 0.0);
+    }
+
+    #[test]
+    fn native_prepared_text_retains_baseline_relative_extents_across_lines_and_sizes() {
+        let request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let prepared = NativeTextLayoutBackend::default()
+            .prepare(&request)
+            .expect("native backend should prepare fixture catalog");
+        let mut observed_heights = Vec::new();
+
+        for font_size in [12.0, 32.0] {
+            let typography = ThemeTextStyle::default()
+                .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"))
+                .with_font_size_px(font_size)
+                .expect("fixture font size is valid")
+                .with_line_height(LineHeight::Multiplier(1.25))
+                .expect("fixture line height is valid");
+            let single = prepared
+                .prepare_text(&PrepareTextRequest::new("Agjp", typography.clone()))
+                .expect("single-line fixture should prepare");
+            let single_extents = single.vertical_extents();
+            assert!(single_extents.top_px() < 0.0);
+            assert!(single_extents.bottom_px() > 0.0);
+            assert_eq!(single.bbox_height_px(), single_extents.height_px());
+
+            let multiline = prepared
+                .prepare_text(&PrepareTextRequest::new("Ag\njp", typography))
+                .expect("multi-line fixture should prepare");
+            assert_eq!(multiline.lines().len(), 2);
+            let expected = multiline.lines()[0]
+                .vertical_extents()
+                .union(
+                    multiline.lines()[1]
+                        .vertical_extents()
+                        .translated(multiline.line_height_px())
+                        .expect("bounded line advance remains valid"),
+                )
+                .expect("bounded line union remains valid");
+            assert_eq!(multiline.vertical_extents(), expected);
+            assert_eq!(multiline.bbox_height_px(), expected.height_px());
+            assert!(multiline.bbox_height_px() > single.bbox_height_px());
+            observed_heights.push(single.bbox_height_px());
+        }
+
+        assert!(observed_heights[1] > observed_heights[0] * 2.0);
     }
 
     #[test]
@@ -8775,11 +9019,24 @@ mod tests {
         let budget = PreparedTextAdmissionBudget::new(None);
         let projection = TextProjection::new("alpha\u{00a0}beta", ThemeTextTransform::None)
             .expect("projection should build");
-        let alpha = PreparedTextLine::new("alpha", TextByteRange::new(0, 5), 1.0, (0.0, 1.0), 1.0)
-            .expect("line should be valid");
-        let beta_after_nbsp =
-            PreparedTextLine::new("beta", TextByteRange::new(7, 11), 1.0, (0.0, 1.0), 1.0)
-                .expect("line should be valid");
+        let vertical_extents =
+            PreparedTextVerticalExtents::new(-0.8, 0.2).expect("fixed vertical extents are valid");
+        let alpha = PreparedTextLine::new(
+            "alpha",
+            TextByteRange::new(0, 5),
+            1.0,
+            (0.0, 1.0),
+            vertical_extents,
+        )
+        .expect("line should be valid");
+        let beta_after_nbsp = PreparedTextLine::new(
+            "beta",
+            TextByteRange::new(7, 11),
+            1.0,
+            (0.0, 1.0),
+            vertical_extents,
+        )
+        .expect("line should be valid");
         assert_eq!(
             validate_prepared_text_coverage(
                 &projection,
@@ -8796,9 +9053,14 @@ mod tests {
 
         let collapsible_projection = TextProjection::new("alpha beta", ThemeTextTransform::None)
             .expect("projection should build");
-        let beta_after_space =
-            PreparedTextLine::new("beta", TextByteRange::new(6, 10), 1.0, (0.0, 1.0), 1.0)
-                .expect("line should be valid");
+        let beta_after_space = PreparedTextLine::new(
+            "beta",
+            TextByteRange::new(6, 10),
+            1.0,
+            (0.0, 1.0),
+            vertical_extents,
+        )
+        .expect("line should be valid");
         assert_eq!(
             validate_prepared_text_coverage(
                 &collapsible_projection,

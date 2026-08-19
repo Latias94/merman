@@ -260,10 +260,23 @@ struct BindingThemeCatalog {
 #[derive(Debug, Serialize)]
 struct BindingThemePreset {
     id: &'static str,
+    display_name: &'static str,
     appearance: &'static str,
     maturity: &'static str,
+    available: bool,
+    availability_reason_ids: Vec<&'static str>,
+    qualified_cells: Vec<BindingThemePresetQualifiedCell>,
+    license_expression: &'static str,
+    required_attribution: Option<&'static str>,
+    export_kind: &'static str,
     required_capability_ids: Vec<&'static str>,
     required_text_capability_ids: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingThemePresetQualifiedCell {
+    family_id: &'static str,
+    output_id: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -647,12 +660,26 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
                     .expect("built-in diagram theme presets must compile");
                 BindingThemePreset {
                     id: descriptor.id(),
+                    display_name: descriptor.display_name(),
                     appearance: if descriptor.is_dark() {
                         "dark"
                     } else {
                         "light"
                     },
                     maturity: descriptor.maturity(),
+                    available: true,
+                    availability_reason_ids: Vec::new(),
+                    qualified_cells: descriptor
+                        .qualified_cells()
+                        .iter()
+                        .map(|cell| BindingThemePresetQualifiedCell {
+                            family_id: cell.family_id(),
+                            output_id: cell.output_id(),
+                        })
+                        .collect(),
+                    license_expression: descriptor.license_expression(),
+                    required_attribution: descriptor.required_attribution(),
+                    export_kind: descriptor.export_kind(),
                     required_capability_ids: sorted_theme_ids(
                         theme
                             .report()
@@ -1638,6 +1665,9 @@ mod tests {
                     "gruvbox-dark",
                     "ayu-light",
                     "ayu-dark",
+                    "brutalist",
+                    "spotless",
+                    "cyberpunk",
                 ]
             );
             assert_eq!(catalog["presets"][1]["appearance"], "dark");
@@ -1647,6 +1677,48 @@ mod tests {
                     .unwrap()
                     .iter()
                     .all(|preset| preset["maturity"] == "alpha")
+            );
+            assert!(
+                catalog["presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["available"] == true)
+            );
+            assert!(
+                catalog["presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["availability_reason_ids"] == serde_json::json!([]))
+            );
+            assert!(
+                catalog["presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["qualified_cells"] == serde_json::json!([]))
+            );
+            assert!(
+                catalog["presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["license_expression"] == "MIT OR Apache-2.0")
+            );
+            assert!(
+                catalog["presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["required_attribution"].is_null())
+            );
+            assert!(
+                catalog["presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["export_kind"] == "definition")
             );
             assert!(
                 catalog["presets"][1]["required_capability_ids"]

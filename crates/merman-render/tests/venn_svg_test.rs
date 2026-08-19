@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -9,8 +9,12 @@ use merman_render::resources::{
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
+    render_typed_venn_with_engine(input, Engine::new())
+}
+
+fn render_typed_venn_with_engine(input: &str, engine: Engine) -> (VennDiagramLayout, String) {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = engine
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
@@ -136,6 +140,68 @@ union A,B["Shared"]:4
     assert!(svg.contains(r#"data-venn-sets="A_B""#));
     assert!(svg.contains(">Core</tspan></text>"));
     assert!(svg.contains(">Shared</tspan></text>"));
+}
+
+#[test]
+fn venn_non_default_theme_rederives_title_and_set_text_colors() {
+    let input = r##"%%{init: {"theme": "base", "themeVariables": {"titleColor": "#123456", "textColor": "#abcdef"}}}%%
+venn-beta
+title Dependency Surface
+set A["Alpha"]:20
+set B["Beta"]:12
+union A,B["Shared"]:3
+"##;
+
+    let (_, svg) = render_typed_venn_with_engine(
+        input,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "secure": []
+        }))),
+    );
+
+    assert!(
+        svg.contains(".venn-title{font-size:32px;fill:#123456;"),
+        "Venn stylesheet title fill must use the non-Default calculated dependency: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="venn-title" font-size="16px" text-anchor="middle" dominant-baseline="middle" x="50%" y="16" style="fill: #123456;""#),
+        "Venn title terminal must use the same calculated dependency: {svg}"
+    );
+    assert!(
+        svg.contains(".venn-intersection text{font-size:48px;fill:#abcdef;"),
+        "Venn set text must use the non-Default textColor dependency: {svg}"
+    );
+}
+
+#[test]
+fn venn_default_theme_preserves_constructor_snapshot_colors() {
+    let input = r##"%%{init: {"theme": "default", "themeVariables": {"titleColor": "#123456", "textColor": "#abcdef"}}}%%
+venn-beta
+title Constructor Snapshot
+set A["Alpha"]:20
+set B["Beta"]:12
+union A,B["Shared"]:3
+"##;
+
+    let (_, svg) = render_typed_venn_with_engine(
+        input,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "secure": []
+        }))),
+    );
+
+    assert!(
+        svg.contains(".venn-title{font-size:32px;fill:#333;"),
+        "Default Venn title must retain its constructor snapshot: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="venn-title" font-size="16px" text-anchor="middle" dominant-baseline="middle" x="50%" y="16" style="fill: #333;""#),
+        "Default Venn terminal title must retain its constructor snapshot: {svg}"
+    );
+    assert!(
+        svg.contains(".venn-intersection text{font-size:48px;fill:#333;"),
+        "Default Venn set text must retain its constructor snapshot: {svg}"
+    );
 }
 
 #[test]

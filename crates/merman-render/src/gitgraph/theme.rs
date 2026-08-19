@@ -11,6 +11,11 @@ use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod branch_stroke;
+
+use branch_stroke::GitGraphBranchStrokePlan;
+pub(crate) use branch_stroke::GitGraphBranchStrokeReceipt;
+
 pub(crate) const GITGRAPH_PALETTE_SLOT_COUNT: usize = 8;
 
 const GIT_COLOR_PATHS: [&str; GITGRAPH_PALETTE_SLOT_COUNT] = [
@@ -245,17 +250,20 @@ struct ExpectedStylesheetRule {
     slot: usize,
 }
 
-/// Family-local projection of the direct GitGraph Node ordinal palette.
+/// Family-local projection of the direct GitGraph theme routes.
 ///
 /// The plan owns only the eight visible palette slots consumed by commit shapes, arrows, and branch
-/// label backgrounds. The terminal writer resolves the actual Mermaid source for each surface and
-/// suppresses a direct rule when explicit source or site configuration owns that source. Mermaid
-/// keeps ownership of `gitInvN`, `gitBranchLabelN`, branch lines, and text colors. The terminal
-/// writer must provide a complete occurrence receipt before the palette can become Applied
-/// evidence.
+/// label backgrounds plus the static Edge stroke consumed by visible branch lines. The terminal
+/// writer resolves the actual Mermaid source for each surface and suppresses a direct value when
+/// explicit source or site configuration owns that source. Mermaid keeps ownership of `gitInvN`,
+/// `gitBranchLabelN`, text colors, and every unsupported Edge selector or paint kind. The terminal
+/// writer must provide a complete occurrence receipt before either route can become Applied
+/// evidence. The historical type name remains the central artifact seam while the family-local
+/// implementation deepens behind it.
 #[derive(Debug)]
 pub(crate) struct GitGraphNodePalettePlan {
     fills_by_slot: [Option<GitGraphNodePaletteFill>; GITGRAPH_PALETTE_SLOT_COUNT],
+    branch_stroke: GitGraphBranchStrokePlan,
     evidence: FamilyThemeEvidence,
     palette_key: Option<FamilyThemeMechanismKey>,
     visible_surfaces: [GitGraphPaletteSurfaceSet; GITGRAPH_PALETTE_SLOT_COUNT],
@@ -281,21 +289,41 @@ impl GitGraphNodePalettePlan {
         };
 
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.resolve_node_palette(theme, work_meter)?;
+        plan.branch_stroke = GitGraphBranchStrokePlan::resolve(
+            theme,
+            effective_config,
+            if layout.show_branches {
+                layout.branches.len()
+            } else {
+                0
+            },
+            work_meter,
+            &mut plan.evidence,
+        )?;
+        Ok(plan)
+    }
+
+    fn resolve_node_palette(
+        &mut self,
+        theme: &ResolvedDiagramTheme,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
         let Some(disposition) = theme.ordinal_palette_disposition(ThemeTarget::Node) else {
-            return Ok(plan);
+            return Ok(());
         };
         let key = FamilyThemeMechanismKey::OrdinalPalette {
             target: ThemeTarget::Node,
         };
-        if !plan.has_visible_surface() {
-            plan.evidence.mark_not_applicable(key);
-            return Ok(plan);
+        if !self.has_visible_surface() {
+            self.evidence.mark_not_applicable(key);
+            return Ok(());
         }
 
         match disposition {
             FamilyThemeDisposition::TypedAdapter => {
                 for slot in 0..GITGRAPH_PALETTE_SLOT_COUNT {
-                    if !plan.visible_surfaces[slot].any() {
+                    if !self.visible_surfaces[slot].any() {
                         continue;
                     }
 
@@ -312,13 +340,13 @@ impl GitGraphNodePalettePlan {
                     }
 
                     let Some(color) = theme.series_color(ThemeTarget::Node, slot + 1) else {
-                        plan.evidence.mark_residual(
+                        self.evidence.mark_residual(
                             key,
                             FamilyThemeResidualReason::UnsupportedOrdinalPalette,
                         );
-                        return Ok(plan);
+                        return Ok(());
                     };
-                    plan.fills_by_slot[slot] = Some(GitGraphNodePaletteFill {
+                    self.fills_by_slot[slot] = Some(GitGraphNodePaletteFill {
                         css: color.as_css(),
                         capability: if color.is_transparent() {
                             ThemeCapability::TransparentPaint
@@ -328,19 +356,19 @@ impl GitGraphNodePalettePlan {
                     });
                 }
 
-                if plan.fills_by_slot.iter().all(Option::is_none) {
-                    plan.evidence.mark_not_applicable(key);
+                if self.fills_by_slot.iter().all(Option::is_none) {
+                    self.evidence.mark_not_applicable(key);
                 } else {
-                    plan.palette_key = Some(key);
+                    self.palette_key = Some(key);
                 }
             }
-            FamilyThemeDisposition::Unsupported => plan
+            FamilyThemeDisposition::Unsupported => self
                 .evidence
                 .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
             FamilyThemeDisposition::LegacyCompatibility => {}
         }
 
-        Ok(plan)
+        Ok(())
     }
 
     pub(crate) fn baseline(layout: &GitGraphDiagramLayout) -> Self {
@@ -397,6 +425,11 @@ impl GitGraphNodePalettePlan {
 
         Self {
             fills_by_slot: std::array::from_fn(|_| None),
+            branch_stroke: GitGraphBranchStrokePlan::baseline(if layout.show_branches {
+                layout.branches.len()
+            } else {
+                0
+            }),
             evidence: FamilyThemeEvidence::default(),
             palette_key: None,
             visible_surfaces,
@@ -436,6 +469,10 @@ impl GitGraphNodePalettePlan {
             .map(|fill| fill.css.as_str())
     }
 
+    pub(crate) fn terminal_branch_stroke_css(&self) -> Option<&str> {
+        self.branch_stroke.terminal_css()
+    }
+
     pub(crate) fn mermaid_source_is_owned(&self, source: GitGraphPaletteSource) -> bool {
         self.mermaid_source_ownership.owns(source)
     }
@@ -463,23 +500,44 @@ impl GitGraphNodePalettePlan {
             && self.terminal_receipt.set(receipt).is_ok()
     }
 
+    pub(crate) fn begin_branch_stroke_receipt(&self) -> Option<GitGraphBranchStrokeReceipt> {
+        self.branch_stroke.begin_terminal_receipt()
+    }
+
+    pub(crate) fn record_branch_line(
+        &self,
+        receipt: &mut Option<GitGraphBranchStrokeReceipt>,
+        emitted_class: &str,
+        emitted_style: Option<&str>,
+    ) {
+        if let Some(receipt) = receipt.as_mut() {
+            receipt.record_branch_line(emitted_class, emitted_style);
+        }
+    }
+
+    pub(crate) fn record_branch_stroke_terminal(
+        &self,
+        receipt: GitGraphBranchStrokeReceipt,
+    ) -> bool {
+        self.branch_stroke.record_terminal(receipt)
+    }
+
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let Some(key) = self.palette_key.clone() else {
-            return evidence;
-        };
-        match self.terminal_receipt.get() {
-            Some(receipt) if !receipt.applied_capabilities.is_empty() => {
-                evidence.mark_applied_with_capabilities(
-                    key,
-                    receipt.applied_capabilities.iter().copied(),
-                );
-            }
-            Some(_) => evidence.mark_not_applicable(key),
-            None => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette)
+        if let Some(key) = self.palette_key.clone() {
+            match self.terminal_receipt.get() {
+                Some(receipt) if !receipt.applied_capabilities.is_empty() => {
+                    evidence.mark_applied_with_capabilities(
+                        key,
+                        receipt.applied_capabilities.iter().copied(),
+                    );
+                }
+                Some(_) => evidence.mark_not_applicable(key),
+                None => evidence
+                    .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
             }
         }
+        self.branch_stroke.finish_evidence(&mut evidence);
         evidence
     }
 
@@ -658,6 +716,7 @@ mod tests {
                 }),
                 _ => None,
             }),
+            branch_stroke: GitGraphBranchStrokePlan::baseline(0),
             evidence: FamilyThemeEvidence::default(),
             palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
                 target: ThemeTarget::Node,

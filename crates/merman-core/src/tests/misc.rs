@@ -205,7 +205,7 @@ graph TD;A-->B;"##;
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#123456")
+        Some("#cde498")
     );
 }
 

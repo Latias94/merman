@@ -231,10 +231,21 @@ fn compile_node_family(
         "title.fill",
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        [("lineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
-    );
+    let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
+    if family == DiagramFamilyId::GIT_GRAPH {
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+            [
+                ("lineColor", edge_paint.clone()),
+                ("commitLineColor", edge_paint),
+            ],
+        );
+    } else {
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+            [("lineColor", edge_paint)],
+        );
+    }
     let marker_paint = reader.marker_paint_contribution();
     contributions.add_theme_variables(
         marker_paint.contribution_id,
@@ -325,7 +336,6 @@ fn compile_node_family(
             contributions.add_theme_variables(
                 "git.commit",
                 [
-                    ("commitLineColor", reader.stroke_or_fill(ThemeTarget::Edge)),
                     ("commitLabelColor", reader.text_fill(ThemeTarget::EdgeLabel)),
                     (
                         "commitLabelBackground",
@@ -361,7 +371,7 @@ fn compile_sequence_family(
         [("actorBorder", reader.stroke(ThemeTarget::Actor))],
     );
     contributions.add_theme_variables(
-        "actor-label.fill",
+        ThemeRouteCutoverProjection::ActorLabelFill.contribution_id(),
         [("actorTextColor", reader.text_fill(ThemeTarget::ActorLabel))],
     );
     contributions.add_theme_variables(
@@ -376,22 +386,22 @@ fn compile_sequence_family(
         [("signalColor", reader.stroke_or_fill(ThemeTarget::Message))],
     );
     contributions.add_theme_variables(
-        "message-label.fill",
+        ThemeRouteCutoverProjection::MessageLabelFill.contribution_id(),
         [(
             "signalTextColor",
             reader.text_fill(ThemeTarget::MessageLabel),
         )],
     );
     contributions.add_theme_variables(
-        "loop.fill",
+        ThemeRouteCutoverProjection::LoopFill.contribution_id(),
         [("labelBoxBkgColor", reader.fill(ThemeTarget::Loop))],
     );
     contributions.add_theme_variables(
-        "loop.stroke",
+        ThemeRouteCutoverProjection::LoopStroke.contribution_id(),
         [("labelBoxBorderColor", reader.stroke(ThemeTarget::Loop))],
     );
     contributions.add_theme_variables(
-        "loop-label.fill",
+        ThemeRouteCutoverProjection::LoopLabelFill.contribution_id(),
         [
             ("labelTextColor", reader.text_fill(ThemeTarget::LoopLabel)),
             ("loopTextColor", reader.text_fill(ThemeTarget::LoopLabel)),
@@ -417,7 +427,7 @@ fn compile_sequence_family(
         [("noteBorderColor", reader.stroke(ThemeTarget::Note))],
     );
     contributions.add_theme_variables(
-        "note-label.fill",
+        ThemeRouteCutoverProjection::NoteLabelFill.contribution_id(),
         [("noteTextColor", reader.text_fill(ThemeTarget::NoteLabel))],
     );
     contributions.add_theme_variables(
@@ -451,41 +461,46 @@ fn compile_task_family(
 
     match family {
         DiagramFamilyId::GANTT => {
-            for (mapping, variant, fill_key, stroke_key) in [
+            for (stroke_mapping, fill_projection, variant, fill_key, stroke_key) in [
                 (
                     "task.default",
+                    ThemeRouteCutoverProjection::GanttTaskDefaultFill,
                     ThemeVariant::Default,
                     "taskBkgColor",
                     "taskBorderColor",
                 ),
                 (
                     "task.active",
+                    ThemeRouteCutoverProjection::GanttTaskActiveFill,
                     ThemeVariant::Active,
                     "activeTaskBkgColor",
                     "activeTaskBorderColor",
                 ),
                 (
                     "task.success",
+                    ThemeRouteCutoverProjection::GanttTaskSuccessFill,
                     ThemeVariant::Success,
                     "doneTaskBkgColor",
                     "doneTaskBorderColor",
                 ),
                 (
                     "task.error",
+                    ThemeRouteCutoverProjection::GanttTaskErrorFill,
                     ThemeVariant::Error,
                     "critBkgColor",
                     "critBorderColor",
                 ),
             ] {
                 contributions.add_theme_variables(
-                    mapping,
-                    [
-                        (fill_key, reader.fill_variant(ThemeTarget::Task, variant)),
-                        (
-                            stroke_key,
-                            reader.stroke_variant(ThemeTarget::Task, variant),
-                        ),
-                    ],
+                    fill_projection.contribution_id(),
+                    [(fill_key, reader.fill_variant(ThemeTarget::Task, variant))],
+                );
+                contributions.add_theme_variables(
+                    stroke_mapping,
+                    [(
+                        stroke_key,
+                        reader.stroke_variant(ThemeTarget::Task, variant),
+                    )],
                 );
             }
             contributions.add_theme_variables(
@@ -590,7 +605,7 @@ fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyTheme
         ],
     );
     contributions.add_theme_variables(
-        "relation.paint",
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
         [("lineColor", reader.stroke_or_fill(ThemeTarget::Relation))],
     );
     contributions.add_theme_variables(
@@ -765,16 +780,17 @@ fn compile_text_family(
     family_programs: &FamilyThemeProgramCache,
     family: DiagramFamilyId,
 ) {
-    // Only the family-neutral Text and Title targets are direct here. Renderer-specific roles
-    // remain unsupported until the public theme model has typed targets for them.
+    // Text and Title are only candidate compatibility mappings here. The family matrix filters
+    // terminal-less routes, such as Info Title and Error Text/Title, before any contribution is
+    // created. Renderer-specific roles remain unsupported until the public model types them.
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
     contributions.add_typography(&reader);
-    // Packet has no typed consumer for the family-neutral Text/Title compatibility variables.
-    // Avoid writing unused global values until those renderer-specific roles are modeled.
+    // Packet owns its Text and Title terminal roles directly. Avoid reintroducing competing
+    // global compatibility variables after that family-local ownership boundary.
     if family != DiagramFamilyId::PACKET {
         contributions.add_theme_variables(
-            "text.fill",
+            ThemeRouteCutoverProjection::TextFill.contribution_id(),
             [("textColor", reader.text_fill(ThemeTarget::Text))],
         );
         contributions.add_theme_variables(
@@ -1293,6 +1309,30 @@ mod tests {
     }
 
     #[test]
+    fn direct_mindmap_and_gitgraph_edge_stroke_retire_only_the_edge_projection() {
+        for family in [DiagramFamilyId::MINDMAP, DiagramFamilyId::GIT_GRAPH] {
+            let spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke(solid("#22c55e")),
+                    )
+                    .for_family(family),
+                ),
+            );
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(family);
+
+            assert!(artifact.overlay.is_empty(), "family={family}");
+            assert!(artifact.contribution_ids.is_empty(), "family={family}");
+            assert!(!bridge.owns_contribution_id(&format!(
+                "merman.legacy-family-theme.v1.{}.edge.stroke",
+                family.as_str()
+            )));
+        }
+    }
+
+    #[test]
     fn typed_treemap_title_fill_suppresses_only_the_title_projection() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
@@ -1324,6 +1364,50 @@ mod tests {
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.treemap.title.fill")
         );
+    }
+
+    #[test]
+    fn final_four_direct_slices_retire_only_real_legacy_paint_projections() {
+        for (family, text_projection_survives) in [
+            (DiagramFamilyId::EVENT_MODELING, false),
+            (DiagramFamilyId::ISHIKAWA, false),
+            (DiagramFamilyId::VENN, true),
+            (DiagramFamilyId::ZENUML, false),
+        ] {
+            let spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(solid("#334155")),
+                        )
+                        .for_family(family),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                        )
+                        .for_family(family),
+                    ),
+            );
+            let artifact = bridge(&spec).compile_for_family(family);
+            let prefix = format!("merman.legacy-family-theme.v1.{}", family.as_str());
+
+            assert_eq!(
+                artifact
+                    .contribution_ids
+                    .contains(&format!("{prefix}.text.fill")),
+                text_projection_survives,
+                "family={family}"
+            );
+            assert!(
+                !artifact
+                    .contribution_ids
+                    .contains(&format!("{prefix}.title.fill")),
+                "family={family}"
+            );
+        }
     }
 
     #[test]
@@ -1387,6 +1471,25 @@ mod tests {
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.er.entity.paint")
         );
+    }
+
+    #[test]
+    fn direct_er_relation_stroke_has_no_legacy_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Relation,
+                    ThemeStylePatch::default().with_stroke(solid("#334155")),
+                )
+                .for_family(DiagramFamilyId::ER),
+            ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.er.edge.stroke"));
     }
 
     fn fallback_contribution_count(metadata: &merman_core::ParseMetadata) -> usize {
@@ -1744,6 +1847,122 @@ mod tests {
     }
 
     #[test]
+    fn info_and_error_font_stack_suppression_preserves_only_real_terminal_paint_routes() {
+        for family in [DiagramFamilyId::INFO, DiagramFamilyId::ERROR] {
+            let typography = TextStyle::default()
+                .with_font_stack(
+                    super::super::FontStack::new(["Inter", "sans-serif"])
+                        .expect("valid Info/Error font stack"),
+                )
+                .with_font_size_px(18.0)
+                .expect("valid fixed-terminal residual font size");
+            let spec = DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(family, typography))
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Text,
+                                ThemeStylePatch::default().with_fill(solid("#334155")),
+                            )
+                            .for_family(family),
+                        )
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Title,
+                                ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                            )
+                            .for_family(family),
+                        ),
+                );
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(family);
+            let prefix = format!("merman.legacy-family-theme.v1.{}", family.as_str());
+
+            assert!(
+                !artifact
+                    .contribution_ids
+                    .contains(&format!("{prefix}.typography")),
+                "{family} must not retain the migrated typography contribution"
+            );
+            assert!(
+                !artifact
+                    .contribution_ids
+                    .contains(&format!("{prefix}.title.fill")),
+                "{family} has no Title terminal and must not retain a Title bridge"
+            );
+            if family == DiagramFamilyId::INFO {
+                assert!(
+                    artifact
+                        .contribution_ids
+                        .contains(&format!("{prefix}.text.fill")),
+                    "Info .version inherits the real textColor bridge"
+                );
+            } else {
+                assert!(
+                    !artifact
+                        .contribution_ids
+                        .contains(&format!("{prefix}.text.fill")),
+                    "Error .error-text reads errorTextColor, not generic textColor"
+                );
+                assert!(artifact.overlay.is_empty());
+                assert!(artifact.contribution_ids.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn cynefin_and_wardley_mixed_typography_never_recreates_the_legacy_projection() {
+        for (family, source) in [
+            (
+                DiagramFamilyId::CYNEFIN,
+                include_str!(
+                    "../../../../fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_a_simple_cynefin_diagram_with_all_five_domains_001.mmd"
+                ),
+            ),
+            (
+                DiagramFamilyId::WARDLEY,
+                include_str!(
+                    "../../../../fixtures/wardley/upstream_cypress_wardley_spec_1_should_render_tea_shop_001.mmd"
+                ),
+            ),
+        ] {
+            let typography = TextStyle::default()
+                .with_font_stack(
+                    super::super::FontStack::new(["Inter", "sans-serif"])
+                        .expect("valid Cynefin/Wardley font stack"),
+                )
+                .with_font_size_px(18.0)
+                .expect("valid unsupported Cynefin/Wardley font size");
+            let spec = DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(family, typography));
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(family);
+            let contribution_id = format!(
+                "merman.legacy-family-theme.v1.{}.typography",
+                family.as_str()
+            );
+
+            assert!(!artifact.contribution_ids.contains(&contribution_id));
+            assert!(!bridge.owns_contribution_id(&contribution_id));
+
+            let parsed = parse(&spec, source);
+            let baseline = parse(&DiagramThemeSpec::default(), source);
+            for path in [
+                "fontFamily",
+                "themeVariables.fontFamily",
+                "themeVariables.fontSize",
+            ] {
+                assert_eq!(
+                    parsed.effective_config.get_str(path),
+                    baseline.effective_config.get_str(path),
+                    "typed/unsupported {family} typography must not write legacy `{path}`"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn pie_and_block_unqualified_stroke_retire_only_their_direct_projection() {
         for (family, target, contribution_id) in [
             (
@@ -1942,8 +2161,12 @@ mod tests {
     }
 
     #[test]
-    fn typed_flowchart_and_swimlane_edge_stroke_retires_legacy_marker_fallback() {
-        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+    fn typed_node_family_edge_stroke_retires_legacy_marker_fallback() {
+        for family in [
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::CLASS,
+        ] {
             let spec = DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
@@ -2038,8 +2261,71 @@ mod tests {
     }
 
     #[test]
+    fn typed_sequence_role_paints_suppress_only_their_unqualified_legacy_projections() {
+        for (target, style, contribution_id) in [
+            (
+                ThemeTarget::ActorLabel,
+                ThemeStylePatch::default().with_fill(solid("#dc2626")),
+                "merman.legacy-family-theme.v1.sequence.actor-label.fill",
+            ),
+            (
+                ThemeTarget::MessageLabel,
+                ThemeStylePatch::default().with_fill(solid("#dc2626")),
+                "merman.legacy-family-theme.v1.sequence.message-label.fill",
+            ),
+            (
+                ThemeTarget::Loop,
+                ThemeStylePatch::default().with_fill(solid("#dc2626")),
+                "merman.legacy-family-theme.v1.sequence.loop.fill",
+            ),
+            (
+                ThemeTarget::Loop,
+                ThemeStylePatch::default().with_stroke(solid("#2563eb")),
+                "merman.legacy-family-theme.v1.sequence.loop.stroke",
+            ),
+            (
+                ThemeTarget::LoopLabel,
+                ThemeStylePatch::default().with_fill(solid("#dc2626")),
+                "merman.legacy-family-theme.v1.sequence.loop-label.fill",
+            ),
+            (
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch::default().with_fill(solid("#dc2626")),
+                "merman.legacy-family-theme.v1.sequence.note-label.fill",
+            ),
+        ] {
+            let direct_spec =
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(target, style.clone()).for_family(DiagramFamilyId::SEQUENCE),
+                ));
+            let direct_bridge = bridge(&direct_spec);
+            let direct = direct_bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
+
+            assert!(!direct.contribution_ids.contains(contribution_id));
+            assert!(!direct_bridge.owns_contribution_id(contribution_id));
+
+            let legacy_spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(target, style)
+                        .with_variant(ThemeVariant::Default)
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            );
+            let legacy_bridge = bridge(&legacy_spec);
+            let legacy = legacy_bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
+
+            assert!(legacy.contribution_ids.contains(contribution_id));
+            assert!(legacy_bridge.owns_contribution_id(contribution_id));
+        }
+    }
+
+    #[test]
     fn explicit_marker_paint_remains_legacy_when_edge_stroke_is_typed() {
-        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+        for family in [
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::CLASS,
+        ] {
             let spec = DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default()
                     .with_rule(
@@ -2247,18 +2533,27 @@ mod tests {
                     .for_family(DiagramFamilyId::REQUIREMENT),
                 ),
         );
+        let gantt_baseline = parse(&DiagramThemeSpec::new(), GANTT_FIXTURE);
         let gantt = parse(&spec, GANTT_FIXTURE);
         assert_eq!(
             gantt
                 .effective_config
                 .get_str("themeVariables.taskBkgColor"),
-            Some("#f8fafc")
+            gantt_baseline
+                .effective_config
+                .get_str("themeVariables.taskBkgColor")
         );
         assert_eq!(
             gantt
                 .effective_config
                 .get_str("themeVariables.activeTaskBkgColor"),
             Some("#f1f5f9")
+        );
+        assert_eq!(
+            gantt
+                .effective_config
+                .get_str("themeVariables.taskBorderColor"),
+            Some("#94a3b8")
         );
         assert_eq!(
             gantt
@@ -2273,6 +2568,24 @@ mod tests {
             Some("#dc2626")
         );
         assert!(fallback_contribution_count(&gantt) > 0);
+        let gantt_bridge = bridge(&spec).compile_for_family(DiagramFamilyId::GANTT);
+        assert!(
+            !gantt_bridge
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.gantt.task.default.fill")
+        );
+        assert!(
+            gantt_bridge
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.gantt.task.active.fill")
+        );
+        for mapping in ["task.default", "task.active", "task.success", "task.error"] {
+            assert!(
+                gantt_bridge
+                    .contribution_ids
+                    .contains(&format!("merman.legacy-family-theme.v1.gantt.{mapping}"))
+            );
+        }
 
         let requirement_baseline = parse(&DiagramThemeSpec::new(), REQUIREMENT_FIXTURE);
         let requirement = parse(&spec, REQUIREMENT_FIXTURE);

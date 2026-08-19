@@ -14,8 +14,10 @@ mod theme;
 mod tidy_tree;
 
 pub(crate) use theme::{
-    MINDMAP_SECTION_COUNT, MindmapNodeFillOwnership, MindmapNodeFillSource, MindmapNodePalettePlan,
-    MindmapNodePaletteTerminalDecision,
+    MINDMAP_SECTION_COUNT, MindmapEdgeStrokeReceipt, MindmapEdgeStrokeSource,
+    MindmapNodeFillOwnership, MindmapNodeFillSource, MindmapNodePalettePlan,
+    MindmapNodePaletteTerminalDecision, mindmap_color_scale_css, mindmap_model_look,
+    mindmap_neo_edges_use_node_border, mindmap_node_border_css,
 };
 
 pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {

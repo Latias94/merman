@@ -78,12 +78,15 @@ pub use theme::{MermaidThemeId, MermaidThemeIdParseError};
 /// private to `merman-core`.
 #[doc(hidden)]
 pub mod __private {
+    use std::collections::BTreeMap;
     use std::fmt;
     use std::sync::Arc;
 
     use crate::config::{
-        ConfigOverlayContribution, ConfigOverlayError, PostDetectionConfigOverlay,
-        PostDetectionConfigOverlayProvider, ThemeParseBinding, ThemeParseBindingError,
+        ConfigOverlayContribution, ConfigOverlayContributionProvenance, ConfigOverlayError,
+        FrozenThemeCompatibilityField, PostDetectionConfigOverlay,
+        PostDetectionConfigOverlayProvider, ThemeCompatibilityFieldKind as ConfigFieldKind,
+        ThemeParseBinding, ThemeParseBindingError,
     };
     use crate::{
         Engine, FallbackPostDetectionConfigOverlay, MermaidConfig, OperationControl,
@@ -256,12 +259,138 @@ pub mod __private {
         engine
     }
 
+    /// One bounded compatibility contribution and the assignments that survived finalization.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ThemeCompatibilityContributionEvidence(ConfigOverlayContributionProvenance);
+
+    impl ThemeCompatibilityContributionEvidence {
+        pub fn opaque_id(&self) -> &str {
+            self.0.opaque_id()
+        }
+
+        pub fn surviving_assignment_paths(&self) -> impl ExactSizeIterator<Item = &str> {
+            self.0.surviving_assignment_paths()
+        }
+    }
+
+    /// Conceptual Mermaid compatibility field retained after config precedence is finalized.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum ThemeCompatibilityFieldKind {
+        Theme,
+        DarkMode,
+        Variable,
+    }
+
+    impl ThemeCompatibilityFieldKind {
+        fn from_config(kind: ConfigFieldKind) -> Self {
+            match kind {
+                ConfigFieldKind::Theme => Self::Theme,
+                ConfigFieldKind::DarkMode => Self::DarkMode,
+                ConfigFieldKind::Variable => Self::Variable,
+            }
+        }
+    }
+
+    /// Frozen identity and surviving physical paths for one conceptual compatibility field.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ThemeCompatibilityFieldEvidence {
+        opaque_id: Arc<str>,
+        kind: ThemeCompatibilityFieldKind,
+        surviving_assignment_paths: Arc<[Arc<str>]>,
+    }
+
+    impl ThemeCompatibilityFieldEvidence {
+        fn from_frozen(field: &FrozenThemeCompatibilityField) -> Self {
+            Self {
+                opaque_id: Arc::from(field.opaque_id()),
+                kind: ThemeCompatibilityFieldKind::from_config(field.kind()),
+                surviving_assignment_paths: field.surviving_paths().to_vec().into(),
+            }
+        }
+
+        pub fn opaque_id(&self) -> &str {
+            &self.opaque_id
+        }
+
+        pub const fn kind(&self) -> ThemeCompatibilityFieldKind {
+            self.kind
+        }
+
+        pub fn surviving_assignment_paths(&self) -> impl ExactSizeIterator<Item = &str> {
+            self.surviving_assignment_paths
+                .iter()
+                .map(|path| path.as_ref())
+        }
+
+        /// Records one actual physical path accounted by a family terminal consumer.
+        pub fn consume_assignment_path(
+            &self,
+            assignment_path: &str,
+            disposition: ThemeCompatibilityConsumptionDisposition,
+        ) -> Option<ThemeCompatibilityFieldConsumption> {
+            self.surviving_assignment_paths
+                .iter()
+                .find(|path| path.as_ref() == assignment_path)
+                .map(|path| ThemeCompatibilityFieldConsumption {
+                    field_opaque_id: Arc::clone(&self.opaque_id),
+                    assignment_path: Arc::clone(path),
+                    disposition,
+                })
+        }
+
+        /// Records all surviving physical paths for one conceptual field.
+        pub fn consume_all(
+            &self,
+            disposition: ThemeCompatibilityConsumptionDisposition,
+        ) -> impl ExactSizeIterator<Item = ThemeCompatibilityFieldConsumption> + '_ {
+            self.surviving_assignment_paths.iter().map(move |path| {
+                ThemeCompatibilityFieldConsumption {
+                    field_opaque_id: Arc::clone(&self.opaque_id),
+                    assignment_path: Arc::clone(path),
+                    disposition,
+                }
+            })
+        }
+    }
+
+    /// Why a terminal family adapter can retire one compatibility assignment path.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum ThemeCompatibilityConsumptionDisposition {
+        ReplacedByTypedSurface,
+        NotReadByFamily,
+    }
+
+    /// One path-level compatibility consumption event tied to a conceptual field identity.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ThemeCompatibilityFieldConsumption {
+        field_opaque_id: Arc<str>,
+        assignment_path: Arc<str>,
+        disposition: ThemeCompatibilityConsumptionDisposition,
+    }
+
+    /// Result of reconciling terminal consumption against frozen conceptual fields.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ThemeCompatibilityReconciliation {
+        remaining_field_count: usize,
+        consumed_field_count: usize,
+    }
+
+    impl ThemeCompatibilityReconciliation {
+        pub const fn remaining_field_count(self) -> usize {
+            self.remaining_field_count
+        }
+
+        pub const fn consumed_field_count(self) -> usize {
+            self.consumed_field_count
+        }
+    }
+
     /// Opaque parse evidence consumed by the render session admission boundary.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct ThemeParseEvidence {
         recipe: Option<ThemeCompatibilityRecipe>,
-        mermaid_residual_count: usize,
-        fallback_contribution_count: usize,
+        mermaid_fields: Arc<[ThemeCompatibilityFieldEvidence]>,
+        fallback_contributions: Arc<[ThemeCompatibilityContributionEvidence]>,
     }
 
     impl ThemeParseEvidence {
@@ -269,31 +398,125 @@ pub mod __private {
             self.recipe.as_ref() == recipe
         }
 
-        pub const fn mermaid_residual_count(&self) -> usize {
-            self.mermaid_residual_count
+        pub fn mermaid_residual_count(&self) -> usize {
+            self.mermaid_fields.len()
         }
 
-        pub const fn fallback_contribution_count(&self) -> usize {
-            self.fallback_contribution_count
+        pub fn mermaid_residual_path_survives(&self, dotted_path: &str) -> bool {
+            self.mermaid_fields.iter().any(|field| {
+                field
+                    .surviving_assignment_paths()
+                    .any(|path| path == dotted_path)
+            })
+        }
+
+        pub fn mermaid_theme_field_survives(&self) -> bool {
+            self.mermaid_fields
+                .iter()
+                .any(|field| field.kind() == ThemeCompatibilityFieldKind::Theme)
+        }
+
+        pub fn mermaid_dark_mode_field_survives(&self) -> bool {
+            self.mermaid_fields
+                .iter()
+                .any(|field| field.kind() == ThemeCompatibilityFieldKind::DarkMode)
+        }
+
+        pub fn mermaid_fields(
+            &self,
+        ) -> impl ExactSizeIterator<Item = &ThemeCompatibilityFieldEvidence> {
+            self.mermaid_fields.iter()
+        }
+
+        /// Reconciles path-level terminal events without double-counting conceptual fields.
+        ///
+        /// Duplicate identical events are idempotent. Conflicting dispositions fail closed, and
+        /// a conceptual field is consumed only when every surviving physical path is covered.
+        pub fn reconcile_mermaid_consumptions<'a>(
+            &self,
+            consumptions: impl IntoIterator<Item = &'a ThemeCompatibilityFieldConsumption>,
+        ) -> ThemeCompatibilityReconciliation {
+            let mut coverage = BTreeMap::<
+                (Arc<str>, Arc<str>),
+                Option<ThemeCompatibilityConsumptionDisposition>,
+            >::new();
+            for consumption in consumptions {
+                let key = (
+                    Arc::clone(&consumption.field_opaque_id),
+                    Arc::clone(&consumption.assignment_path),
+                );
+                match coverage.entry(key) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        entry.insert(Some(consumption.disposition));
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut entry)
+                        if entry.get() != &Some(consumption.disposition) =>
+                    {
+                        entry.insert(None);
+                    }
+                    std::collections::btree_map::Entry::Occupied(_) => {}
+                }
+            }
+
+            let consumed_field_count = self
+                .mermaid_fields
+                .iter()
+                .filter(|field| {
+                    field.surviving_assignment_paths.iter().all(|path| {
+                        coverage
+                            .get(&(Arc::clone(&field.opaque_id), Arc::clone(path)))
+                            .is_some_and(|disposition| disposition.is_some())
+                    })
+                })
+                .count();
+            ThemeCompatibilityReconciliation {
+                remaining_field_count: self
+                    .mermaid_fields
+                    .len()
+                    .saturating_sub(consumed_field_count),
+                consumed_field_count,
+            }
+        }
+
+        pub fn fallback_contribution_count(&self) -> usize {
+            self.fallback_contributions.len()
+        }
+
+        pub fn fallback_contributions(
+            &self,
+        ) -> impl ExactSizeIterator<Item = &ThemeCompatibilityContributionEvidence> {
+            self.fallback_contributions.iter()
         }
     }
 
-    /// Freezes the compatibility identity and coarse residual evidence of a parsed artifact.
+    /// Freezes the compatibility identity and surviving residual evidence of a parsed artifact.
     pub fn theme_parse_evidence(metadata: &ParseMetadata) -> ThemeParseEvidence {
+        let mermaid_fields = metadata
+            .effective_config
+            .mermaid_compatibility_fields()
+            .map(|fields| {
+                fields
+                    .iter()
+                    .map(ThemeCompatibilityFieldEvidence::from_frozen)
+                    .collect::<Vec<_>>()
+                    .into()
+            })
+            .unwrap_or_else(|| Arc::from(Vec::<ThemeCompatibilityFieldEvidence>::new()));
         ThemeParseEvidence {
             recipe: metadata
                 .effective_config
                 .theme_parse_binding()
                 .cloned()
                 .map(ThemeCompatibilityRecipe),
-            mermaid_residual_count: metadata
-                .effective_config
-                .mermaid_compatibility_residual_count(),
-            fallback_contribution_count: metadata
+            mermaid_fields,
+            fallback_contributions: metadata
                 .effective_config
                 .overlay_provenance()
-                .fallback_contribution_ids()
-                .count(),
+                .fallback_contributions()
+                .cloned()
+                .map(ThemeCompatibilityContributionEvidence)
+                .collect::<Vec<_>>()
+                .into(),
         }
     }
 

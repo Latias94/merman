@@ -3,12 +3,19 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeVariant,
+};
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use serde_json::json;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -56,6 +63,46 @@ fn render_class_svg_from_text_with_session(
     artifact
         .render_svg(svg_options, &SvgDebugOptions::default())
         .expect("svg render ok")
+        .svg()
+        .to_owned()
+}
+
+fn class_edge_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Class edge theme")
+}
+
+fn class_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(stroke),
+    )])
+}
+
+fn try_render_class_svg_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Class diagram")
+        .expect("detect themed Class diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Class session");
+    family::prepare(parsed, &LayoutOptions::default(), session)?
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+}
+
+fn render_class_svg_with_theme(source: &str, theme: &DiagramTheme, engine: Engine) -> String {
+    try_render_class_svg_with_theme_and_engine(source, theme, engine)
+        .expect("render themed Class SVG")
         .svg()
         .to_owned()
 }
@@ -631,6 +678,336 @@ classDiagram
             && svg.contains(r#"data-look="handDrawn""#),
         "hand-drawn class relations should use RoughJS transition edge DOM: {svg}"
     );
+}
+
+#[test]
+fn class_direct_edge_stroke_reaches_relation_paths_and_only_their_referenced_markers() {
+    let source = r#"classDiagram
+  A *-- B
+  C --* D
+  E <|-- F
+  G --|> H
+  I <.. J
+  K ..> L
+  M o-- N
+  O --o P
+  Q ()-- R
+"#;
+    let theme = class_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Class relation stroke"),
+    );
+
+    for look in ["classic", "handDrawn"] {
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({ "look": look }))),
+        )
+        .expect("render directly themed Class relations");
+        let svg = rendered.svg();
+        let document = roxmltree::Document::parse(svg).expect("valid themed Class SVG");
+        let relation_paths = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("data-edge") == Some("true")
+                    && node
+                        .attribute("data-id")
+                        .is_some_and(|id| id.starts_with("id_"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(relation_paths.len(), 9, "look={look}: {svg}");
+
+        let mut referenced_marker_ids = Vec::new();
+        for path in relation_paths {
+            assert!(
+                path.attribute("style")
+                    .is_some_and(|style| style.contains("stroke:#123456 !important")),
+                "look={look}: typed stroke must reach the final relation path: {svg}"
+            );
+            if look == "handDrawn" {
+                assert_eq!(path.attribute("stroke"), Some("#123456"), "{svg}");
+            }
+            for marker_attribute in ["marker-start", "marker-end"] {
+                let Some(reference) = path.attribute(marker_attribute) else {
+                    continue;
+                };
+                let marker_id = reference
+                    .strip_prefix("url(#")
+                    .and_then(|value| value.strip_suffix(')'))
+                    .expect("Class marker URL");
+                referenced_marker_ids.push(marker_id.to_string());
+            }
+        }
+        referenced_marker_ids.sort();
+        referenced_marker_ids.dedup();
+        assert!(!referenced_marker_ids.is_empty(), "look={look}: {svg}");
+        for marker_name in [
+            "aggregationStart",
+            "aggregationEnd",
+            "extensionStart",
+            "extensionEnd",
+            "compositionStart",
+            "compositionEnd",
+            "dependencyStart",
+            "dependencyEnd",
+        ] {
+            let marker_suffix = format!("-{marker_name}");
+            assert!(
+                referenced_marker_ids
+                    .iter()
+                    .any(|marker_id| marker_id.ends_with(&marker_suffix)),
+                "look={look}: relation fixture must reference {marker_name}: {svg}"
+            );
+        }
+
+        for marker_id in &referenced_marker_ids {
+            let marker = document
+                .descendants()
+                .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+                .unwrap_or_else(|| panic!("missing referenced marker {marker_id}: {svg}"));
+            let terminal = marker
+                .children()
+                .find(roxmltree::Node::is_element)
+                .expect("Class marker terminal shape");
+            assert!(
+                terminal
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("stroke:#123456 !important")),
+                "look={look}: referenced marker {marker_id} must share the typed stroke: {svg}"
+            );
+            if marker_id.contains("aggregation") || marker_id.contains("extension") {
+                assert!(
+                    terminal.has_tag_name("path")
+                        && terminal
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("fill:transparent !important")),
+                    "hollow marker child path {marker_id} must remain transparent: {svg}"
+                );
+            } else if marker_id.contains("composition") || marker_id.contains("dependency") {
+                assert!(
+                    terminal.has_tag_name("path")
+                        && terminal
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("fill:#123456 !important")),
+                    "filled marker {marker_id} must share the typed line color: {svg}"
+                );
+            }
+        }
+
+        let unused_marker = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("marker")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| !id.ends_with("-margin"))
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| !referenced_marker_ids.iter().any(|used| used == id))
+            })
+            .expect("unused Class relation marker");
+        assert!(
+            unused_marker
+                .children()
+                .find(roxmltree::Node::is_element)
+                .and_then(|node| node.attribute("style"))
+                .is_none_or(|style| !style.contains("#123456")),
+            "an unreferenced marker must not become typed evidence: {svg}"
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1, "look={look}");
+        assert_eq!(evidence.theme_residual_count(), 0, "look={look}");
+    }
+}
+
+#[test]
+fn class_direct_edge_stroke_supports_transparent_terminals() {
+    let svg = render_class_svg_with_theme(
+        "classDiagram\n  A *-- B\n",
+        &class_edge_stroke_theme(CanvasPaint::Transparent),
+        Engine::new(),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid transparent Class SVG");
+    let relation = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .expect("Class relation path");
+    assert!(
+        relation
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke:transparent !important")),
+        "{svg}"
+    );
+    let marker_id = relation
+        .attribute("marker-start")
+        .expect("composition marker reference")
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+        .expect("composition marker id");
+    let marker_terminal = document
+        .descendants()
+        .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+        .and_then(|marker| marker.children().find(roxmltree::Node::is_element))
+        .expect("composition marker terminal");
+    let style = marker_terminal
+        .attribute("style")
+        .expect("typed marker style");
+    assert!(style.contains("stroke:transparent !important"), "{svg}");
+    assert!(style.contains("fill:transparent !important"), "{svg}");
+}
+
+#[test]
+fn class_explicit_site_and_secure_source_line_color_outrank_typed_edge_stroke() {
+    let theme = class_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Class relation stroke"),
+    );
+    let cases = [
+        (
+            "site",
+            "classDiagram\n  A *-- B\n",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": { "lineColor": "#abcdef" }
+            }))),
+            "#abcdef",
+        ),
+        (
+            "source",
+            "%%{init: {\"themeVariables\": {\"lineColor\": \"#fedcba\"}}}%%\nclassDiagram\n  A *-- B\n",
+            legacy_init_theme_compat_engine(),
+            "#fedcba",
+        ),
+    ];
+
+    for (owner, source, engine, mermaid_stroke) in cases {
+        let rendered = try_render_class_svg_with_theme_and_engine(source, &theme, engine)
+            .expect("render source-owned Class relation stroke");
+        let svg = rendered.svg().to_owned();
+        {
+            let document = roxmltree::Document::parse(&svg).expect("valid owned Class SVG");
+            let relation = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                })
+                .expect("Class relation path");
+            assert!(svg.contains(mermaid_stroke), "owner={owner}: {svg}");
+            assert!(
+                relation
+                    .attribute("style")
+                    .is_none_or(|style| !style.contains("#123456")),
+                "owner={owner}: explicit Mermaid lineColor must suppress typed stroke: {svg}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "owner={owner}");
+        assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
+        assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
+    }
+}
+
+#[test]
+fn class_edge_stroke_is_not_applicable_without_relations() {
+    let theme = class_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Class relation stroke"),
+    );
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  class A\n",
+        &theme,
+        Engine::new(),
+    )
+    .expect("Class edge stroke without relations is not applicable");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_edge_stroke_rejects_ordinal_variant_clear_gradient_and_pattern_routes() {
+    let gradient = LinearGradient::new(
+        90.0,
+        [
+            GradientStop::new(
+                0.0,
+                ThemeColorValue::parse("#123456").expect("valid Class gradient start"),
+            )
+            .expect("valid Class gradient stop"),
+            GradientStop::new(
+                1.0,
+                ThemeColorValue::parse("#abcdef").expect("valid Class gradient end"),
+            )
+            .expect("valid Class gradient stop"),
+        ],
+    )
+    .expect("valid Class gradient");
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#123456").expect("valid Class pattern color"),
+    )
+    .expect("valid Class pattern");
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.paint = Specified::Clear;
+    let solid = || {
+        ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#123456").expect("valid Class stroke"))
+    };
+    let unsupported_cases = [
+        ThemeRule::new(ThemeTarget::Edge, solid())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid Class edge ordinal")),
+        ThemeRule::new(ThemeTarget::Edge, clear),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::LinearGradient(gradient)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::Pattern(pattern)),
+        ),
+    ];
+
+    let legacy_theme = class_edge_rules_theme([
+        ThemeRule::new(ThemeTarget::Edge, solid()).with_variant(ThemeVariant::Default)
+    ]);
+    let legacy_error = match try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  A --> B\n",
+        &legacy_theme,
+        Engine::new(),
+    ) {
+        Ok(_) => panic!("the qualified Class edge route must remain a compatibility residual"),
+        Err(error) => error,
+    };
+    match legacy_error {
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id,
+            residual_count,
+        } => {
+            assert_eq!(family_id, merman_render::DiagramFamilyId::CLASS);
+            assert_eq!(residual_count, 2);
+        }
+        other => panic!("expected Class legacy compatibility residual, got {other}"),
+    }
+
+    for rule in unsupported_cases {
+        let error = match try_render_class_svg_with_theme_and_engine(
+            "classDiagram\n  A --> B\n",
+            &class_edge_rules_theme([rule]),
+            Engine::new(),
+        ) {
+            Ok(_) => panic!("unsupported Class edge stroke route must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::CLASS, 1))
+        );
+    }
 }
 
 #[test]

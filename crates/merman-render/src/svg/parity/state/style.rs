@@ -3,7 +3,7 @@ use super::*;
 fn state_shadow_defs(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    compatibility: &crate::state::StateCompatibilityStyle,
+    compatibility: &crate::state::StateCompatibilityPlan,
 ) {
     let flood_color = if compatibility.dark_mode {
         "#FFFFFF"
@@ -24,27 +24,15 @@ fn state_shadow_defs(
 fn state_gradient_defs(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config: &serde_json::Value,
+    compatibility: &crate::state::StateCompatibilityPlan,
 ) {
-    if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+    if !compatibility.use_gradient {
         return;
     }
 
-    let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
-        .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
-
     let diagram_id = escape_xml(diagram_id);
-    let gradient_start = escape_xml(&gradient_start);
-    let gradient_stop = escape_xml(&gradient_stop);
+    let gradient_start = escape_xml(&compatibility.gradient_start);
+    let gradient_stop = escape_xml(&compatibility.gradient_stop);
     let _ = write!(
         out,
         r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
@@ -98,7 +86,7 @@ pub(super) fn state_markers(
         )
     };
 
-    if compatibility.neo {
+    if compatibility.is_neo() {
         let _ = write!(
             out,
             r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"{marker_style_attr}/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"{marker_style_attr}/></marker></defs>"#,
@@ -121,7 +109,7 @@ pub(super) fn state_markers(
         let marker_id = escape_attr(&state_transition_marker_id(diagram_id.as_str(), ordinal));
         let style = escape_attr(style);
         let transition_color = escape_attr(transition_color);
-        if compatibility.neo {
+        if compatibility.is_neo() {
             let _ = write!(
                 out,
                 r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
@@ -140,11 +128,10 @@ pub(super) fn state_markers(
 pub(super) fn state_root_defs(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config: &serde_json::Value,
     style_plan: &crate::state::StateStylePlan,
 ) {
     state_shadow_defs(out, diagram_id, style_plan.compatibility());
-    state_gradient_defs(out, diagram_id, effective_config);
+    state_gradient_defs(out, diagram_id, style_plan.compatibility());
 }
 
 fn write_state_class_declarations(
@@ -200,7 +187,6 @@ fn write_state_class_rule(
 pub(super) fn write_state_css(
     out: &mut impl SvgOutput,
     diagram_id: &str,
-    effective_config: &serde_json::Value,
     style_plan: &crate::state::StateStylePlan,
 ) -> crate::Result<()> {
     out.checkpoint()?;
@@ -217,11 +203,7 @@ pub(super) fn write_state_css(
         theme.font_family_css.as_str()
     };
     let ff = crate::config::normalize_css_font_family(ff);
-    let font_size = if uses_structured_typography {
-        base_text_style.font_size
-    } else {
-        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0)
-    };
+    let font_size = base_text_style.font_size;
     let font_weight_decl = if uses_structured_typography {
         base_text_style
             .font_weight
@@ -243,7 +225,6 @@ pub(super) fn write_state_css(
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
     let text_color = theme.text_color.as_str();
-    let title_color = theme.title_color.as_str();
     let error_bkg = theme.error_bkg.as_str();
     let error_text = theme.error_text.as_str();
     let line_color = theme.line_color.as_str();
@@ -255,6 +236,8 @@ pub(super) fn write_state_css(
     let alt_background = theme.alt_background.as_str();
     let stroke_width = &theme.stroke_width;
     let stroke_width_px = &theme.stroke_width_px;
+    let neo_stroke_width = &theme.neo_stroke_width;
+    let neo_stroke_width_px = &theme.neo_stroke_width_px;
     let note_border = &theme.note_border;
     let note_bkg = &theme.note_bkg;
     let note_text = theme.note_text.as_str();
@@ -267,17 +250,29 @@ pub(super) fn write_state_css(
     let state_bkg = &theme.state_bkg;
     let state_border = &theme.state_border;
     let composite_title_background = theme.composite_title_background.as_str();
-    let use_gradient =
-        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
-    let neo_cluster_stroke = if use_gradient {
-        format!("url(#{fragment_id}-gradient)")
-    } else {
-        state_border.clone()
-    };
-    let neo_radius =
-        crate::config::config_f64_css_px(effective_config, &["themeVariables", "radius"])
-            .unwrap_or(5.0)
-            .max(0.0);
+    let hand_drawn_state_fill = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::StateHandDrawn,
+        crate::state::StateTerminalPaintProperty::Fill,
+        fragment_id.as_str(),
+    );
+    let hand_drawn_state_stroke = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::StateHandDrawn,
+        crate::state::StateTerminalPaintProperty::Stroke,
+        fragment_id.as_str(),
+    );
+    let hand_drawn_state_stroke_width =
+        theme.terminal_stroke_width_value(crate::state::StateTerminalSurface::StateHandDrawn);
+    let neo_node_stroke = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::StateNeo,
+        crate::state::StateTerminalPaintProperty::Stroke,
+        fragment_id.as_str(),
+    );
+    let neo_cluster_stroke = theme.terminal_paint_css(
+        crate::state::StateTerminalSurface::CompositeBodyNeo,
+        crate::state::StateTerminalPaintProperty::Stroke,
+        fragment_id.as_str(),
+    );
+    let neo_radius = theme.neo_radius;
     let neo_drop_shadow = theme.drop_shadow.replace(
         "url(#drop-shadow)",
         &format!("url(#{fragment_id}-drop-shadow)"),
@@ -548,13 +543,23 @@ pub(super) fn write_state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-note text{{fill:{};}}"#,
+        r#"#{} .statediagram-note .noteLabel text{{fill:{};}}"#,
         id, note_text
     );
     let _ = write!(
         &mut css,
         r#"#{} .statediagram-note .nodeLabel{{color:{};}}"#,
         id, note_text
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="handDrawn"].node rect{{fill:{};stroke:{};stroke-width:{}px;}}"#,
+        id, hand_drawn_state_fill, hand_drawn_state_stroke, hand_drawn_state_stroke_width
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="handDrawn"].node line.divider{{stroke:{};stroke-width:{}px;}}"#,
+        id, hand_drawn_state_stroke, hand_drawn_state_stroke_width
     );
     let _ = write!(
         &mut css,
@@ -589,19 +594,19 @@ pub(super) fn write_state_css(
             fmt(title_text_style.font_size),
             title_weight_decl,
             title_style_decl,
-            title_color
+            text_color
         );
     } else {
         let _ = write!(
             &mut css,
             r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
-            id, title_color
+            id, text_color
         );
     }
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].statediagram-cluster rect{{fill:{};stroke:{};stroke-width:{};}}"#,
-        id, main_bkg, neo_cluster_stroke, stroke_width
+        id, main_bkg, neo_cluster_stroke, neo_stroke_width
     );
     let _ = write!(
         &mut css,
@@ -614,12 +619,12 @@ pub(super) fn write_state_css(
     let _ = write!(
         &mut css,
         r#"#{} .node .neo-node{{stroke:{};}}"#,
-        id, state_border
+        id, neo_node_stroke
     );
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node rect,#{} [data-look="neo"].cluster rect,#{} [data-look="neo"].node polygon{{stroke:{};filter:{};}}"#,
-        id, id, id, state_border, neo_drop_shadow
+        id, id, id, neo_node_stroke, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
@@ -629,7 +634,7 @@ pub(super) fn write_state_css(
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
-        id, state_border, stroke_width_px
+        id, neo_node_stroke, neo_stroke_width_px
     );
     let _ = write!(
         &mut css,
@@ -639,12 +644,12 @@ pub(super) fn write_state_css(
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node .neo-line path{{stroke:{};filter:none;}}"#,
-        id, state_border
+        id, neo_node_stroke
     );
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].node circle{{stroke:{};filter:{};}}"#,
-        id, state_border, neo_drop_shadow
+        id, neo_node_stroke, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
@@ -654,12 +659,12 @@ pub(super) fn write_state_css(
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].icon-shape .icon{{fill:{};filter:{};}}"#,
-        id, state_border, neo_drop_shadow
+        id, neo_node_stroke, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
-        id, state_border, neo_drop_shadow
+        id, neo_node_stroke, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
@@ -670,9 +675,7 @@ pub(super) fn write_state_css(
     css.checkpoint()?;
 
     if style_plan.classes().next().is_some() {
-        let html_labels = crate::state::StateConfigView::new(effective_config)
-            .render_settings()
-            .html_labels;
+        let html_labels = theme.html_labels();
         for sc in style_plan.classes() {
             if !sc.styles().is_empty() {
                 if html_labels {
@@ -933,13 +936,89 @@ pub(crate) fn state_prepared_svg_text_label(
     center_text: bool,
     style_attr: Option<&str>,
 ) -> String {
+    let geometry = prepared
+        .native_geometry()
+        .expect("native prepared State labels retain terminal geometry");
     let style_attr = prepared.merge_emission_font_style(style_attr);
-    state_svg_text_label_lines(
+    state_native_svg_text_label_lines(
         prepared.wrapped_lines(),
+        geometry,
         center_text,
         Some(&style_attr),
         prepared.label_id_for_emission(),
     )
+}
+
+pub(crate) fn state_measured_svg_text_label(
+    geometry: &crate::state::StateNativeLabelGeometry,
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
+    state_native_svg_text_label_lines(
+        geometry
+            .measured_lines()
+            .expect("measured State label geometry retains emitted rows"),
+        geometry,
+        center_text,
+        style_attr,
+        None,
+    )
+}
+
+pub(crate) fn state_native_svg_text_label(
+    raw: &str,
+    prepared: Option<&crate::state::PreparedStateLabel>,
+    measured_geometry: Option<&crate::state::StateNativeLabelGeometry>,
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
+    if let Some(prepared) = prepared {
+        state_prepared_svg_text_label(prepared, center_text, style_attr)
+    } else if let Some(geometry) = measured_geometry {
+        state_measured_svg_text_label(geometry, center_text, style_attr)
+    } else {
+        state_svg_text_label(raw, center_text, style_attr)
+    }
+}
+
+fn state_native_svg_text_label_lines<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
+    geometry: &crate::state::StateNativeLabelGeometry,
+    center_text: bool,
+    style_attr: Option<&str>,
+    label_id: Option<crate::text::PreparedTextLabelId>,
+) -> String {
+    let text_anchor = if center_text {
+        r#" text-anchor="middle""#
+    } else {
+        ""
+    };
+    let svg_style_attr = style_attr
+        .map(state_svg_text_style_attr)
+        .filter(|style| !style.is_empty())
+        .map(|style| format!(r#" style="{}""#, escape_attr(&style)))
+        .unwrap_or_default();
+    let label_id_attr = label_id
+        .map(|id| format!(r#" id="{id}""#))
+        .unwrap_or_default();
+    let mut out = format!(r#"<text{text_anchor}{svg_style_attr}{label_id_attr}>"#);
+    let mut line_count = 0usize;
+    for (line_index, line) in lines.into_iter().enumerate() {
+        let baseline_y_px = geometry
+            .baseline_y_px(line_index)
+            .expect("State native geometry covers every emitted line");
+        let _ = write!(
+            &mut out,
+            r#"<tspan class="text-outer-tspan row" x="0" y="{}"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"{}>{}</tspan></tspan>"#,
+            fmt_display(baseline_y_px),
+            svg_style_attr,
+            escape_xml_display(line)
+        );
+        line_count += 1;
+    }
+    debug_assert_eq!(line_count, geometry.line_count());
+    out.push_str("</text>");
+    out
 }
 
 fn state_svg_text_label_lines<'a>(
@@ -1027,13 +1106,9 @@ mod tests {
         crate::state::StateStylePlan::resolve_unthemed(model, config)
     }
 
-    fn rendered_state_css(
-        diagram_id: &str,
-        config: &serde_json::Value,
-        plan: &crate::state::StateStylePlan,
-    ) -> String {
+    fn rendered_state_css(diagram_id: &str, plan: &crate::state::StateStylePlan) -> String {
         let mut css = String::new();
-        write_state_css(&mut css, diagram_id, config, plan).expect("write State CSS");
+        write_state_css(&mut css, diagram_id, plan).expect("write State CSS");
         css
     }
 
@@ -1061,7 +1136,7 @@ mod tests {
         let model = model_with_hot_class();
         let config = json!({});
         let plan = style_plan(&model, &config);
-        let css = rendered_state_css("st", &config, &plan);
+        let css = rendered_state_css("st", &plan);
 
         let declarations = "fill:rgb(255, 221, 221)!important;stroke:rgb(221, 51, 51)!important;stroke-width:2px!important;color:rgb(34, 34, 34)!important;";
         assert!(css.ends_with(&format!(
@@ -1105,25 +1180,27 @@ mod tests {
     }
 
     #[test]
-    fn state_shadow_uses_explicit_typed_theme_dark_mode() {
+    fn state_shadow_color_follows_theme_name_not_dark_mode_variables() {
         let model = StateSvgModel::default();
-        let dark_config = json!({
+        let light_named_config = json!({
             "theme": "base",
-            "themeVariables": { "darkMode": true }
+            "darkMode": true,
+            "themeVariables": { "darkMode": true },
         });
-        let dark_plan = style_plan(&model, &dark_config);
-        let mut dark = String::new();
-        state_shadow_defs(&mut dark, "st", dark_plan.compatibility());
-        assert!(dark.contains(r##"flood-color="#FFFFFF""##));
+        let light_named_plan = style_plan(&model, &light_named_config);
+        let mut light_named = String::new();
+        state_shadow_defs(&mut light_named, "st", light_named_plan.compatibility());
+        assert!(light_named.contains(r##"flood-color="#000000""##));
 
-        let light_config = json!({
+        let dark_named_config = json!({
             "theme": "dark",
-            "darkMode": false
+            "darkMode": false,
+            "themeVariables": { "darkMode": false },
         });
-        let light_plan = style_plan(&model, &light_config);
-        let mut light = String::new();
-        state_shadow_defs(&mut light, "st", light_plan.compatibility());
-        assert!(light.contains(r##"flood-color="#000000""##));
+        let dark_named_plan = style_plan(&model, &dark_named_config);
+        let mut dark_named = String::new();
+        state_shadow_defs(&mut dark_named, "st", dark_named_plan.compatibility());
+        assert!(dark_named.contains(r##"flood-color="#FFFFFF""##));
     }
 
     #[test]
@@ -1131,7 +1208,7 @@ mod tests {
         let model = model_with_hot_class();
         let config = json!({ "htmlLabels": false });
         let plan = style_plan(&model, &config);
-        let css = rendered_state_css("st", &config, &plan);
+        let css = rendered_state_css("st", &plan);
 
         for element in ["rect", "polygon", "ellipse", "circle", "path"] {
             assert!(css.contains(&format!("#st .hot {element}{{")));
@@ -1155,7 +1232,7 @@ mod tests {
 
         let config = json!({});
         let plan = style_plan(&model, &config);
-        let css = rendered_state_css("st", &config, &plan);
+        let css = rendered_state_css("st", &plan);
         assert_eq!(css.matches("#st .emphasis&gt;*").count(), 1);
         assert_eq!(css.matches("#st .emphasis span{").count(), 1);
     }
@@ -1167,7 +1244,7 @@ mod tests {
         let config = json!({});
         let baseline_model = StateSvgModel::default();
         let baseline_plan = style_plan(&baseline_model, &config);
-        let baseline_css = rendered_state_css("st", &config, &baseline_plan);
+        let baseline_css = rendered_state_css("st", &baseline_plan);
 
         let model = model_with_hot_class();
         let plan = style_plan(&model, &config);
@@ -1178,7 +1255,7 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
         let mut out = BoundedSvgOutput::new(&meter);
 
-        let error = write_state_css(&mut out, "st", &config, &plan)
+        let error = write_state_css(&mut out, "st", &plan)
             .expect_err("the first class rule must cross the SVG byte ceiling");
 
         assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
@@ -1220,7 +1297,7 @@ mod tests {
 
         let model = StateSvgModel::default();
         let plan = style_plan(&model, &cfg);
-        let css = rendered_state_css("st", &cfg, &plan);
+        let css = rendered_state_css("st", &plan);
 
         assert!(css.contains(r#"#st{font-family:Inter,Arial;font-size:16px;fill:#101010;}"#));
         assert!(css.contains(
@@ -1247,7 +1324,7 @@ mod tests {
         assert!(css.contains(
             r#"#st .statediagram-cluster rect{fill:#050505;stroke:#040404;stroke-width:4px;}"#
         ));
-        assert!(css.contains(r#"#st .statediagram-note text{fill:#b0b0b0;}"#));
+        assert!(css.contains(r#"#st .statediagram-note .noteLabel text{fill:#b0b0b0;}"#));
         assert!(css.contains(
             r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
         ));
@@ -1262,6 +1339,7 @@ mod tests {
             "look": "neo",
             "themeVariables": {
                 "mainBkg": "#606060",
+                "nodeBorder": "#030303",
                 "stateBorder": "#040404",
                 "strokeWidth": 4,
                 "useGradient": true,
@@ -1274,7 +1352,7 @@ mod tests {
 
         let model = StateSvgModel::default();
         let plan = style_plan(&model, &cfg);
-        let css = rendered_state_css("st", &cfg, &plan);
+        let css = rendered_state_css("st", &plan);
 
         assert!(css.contains(
             r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#st-gradient);stroke-width:4;}"##
@@ -1282,5 +1360,41 @@ mod tests {
         assert!(css.contains(
             r##"#st [data-look="neo"].statediagram-cluster rect.outer{rx:3px;ry:3px;filter:url(#st-drop-shadow);}"##
         ));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].node path{stroke:url(#st-gradient);stroke-width:4px;}"##
+        ));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].node circle{stroke:url(#st-gradient);filter:url(#st-drop-shadow);}"##
+        ));
+    }
+
+    #[test]
+    fn state_css_keeps_neo_node_and_cluster_strokes_separate_without_gradient() {
+        let cfg = json!({
+            "look": "neo",
+            "themeVariables": {
+                "mainBkg": "#606060",
+                "nodeBorder": "#112233",
+                "stateBorder": "#445566",
+                "strokeWidth": 0,
+                "useGradient": false
+            }
+        });
+
+        let model = StateSvgModel::default();
+        let plan = style_plan(&model, &cfg);
+        let css = rendered_state_css("st", &plan);
+
+        assert!(css.contains(r#"#st .transition{stroke:#333333;stroke-width:1;fill:none;}"#));
+        assert!(css.contains(r#"#st .node rect{fill:#606060;stroke:#445566;stroke-width:1px;}"#));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:#445566;stroke-width:0;}"##
+        ));
+        assert!(
+            css.contains(r##"#st [data-look="neo"].node path{stroke:#112233;stroke-width:0px;}"##)
+        );
+        assert!(
+            css.contains(r##"#st [data-look="neo"].node circle{stroke:#112233;filter:none;}"##)
+        );
     }
 }

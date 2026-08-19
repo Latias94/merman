@@ -283,6 +283,14 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         &a11y,
         use_max_width,
     )?;
+    let edge_stroke = group_theme.edge_stroke();
+    let edge_inline_style = edge_stroke.map(|(_, stroke)| format!("stroke:{stroke};"));
+    let mut edge_theme_receipt = group_theme.begin_edge_terminal_receipt(
+        model
+            .edges()
+            .enumerate()
+            .map(|(edge_index, edge)| (edge_index, edge.lhs_id, edge.rhs_id)),
+    );
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
@@ -295,6 +303,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             text_measurer,
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
+            edge_stroke,
+            edge_inline_style: edge_inline_style.as_deref(),
+            terminal_receipt: edge_theme_receipt.as_mut(),
         };
         push_architecture_edges(&mut edge_render_ctx)?;
     }
@@ -342,6 +353,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let rooted_svg = root_document.complete(out.finish()?)?;
     if let Some(receipt) = group_theme_receipt {
         let _ = group_theme.record_terminal(receipt);
+    }
+    if edge_theme_receipt.is_some_and(|receipt| !group_theme.record_edge_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Architecture edge stroke receipt did not match the terminal SVG".to_string(),
+        });
     }
 
     drop(_g_render_svg);

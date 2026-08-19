@@ -3791,7 +3791,7 @@ fn class_mixed_direct_width_and_legacy_paint_is_not_reported_as_applied() {
         ThemeRule::new(
             ThemeTarget::Edge,
             ThemeStylePatch::default()
-                .with_stroke(CanvasPaint::solid("#2563eb").unwrap())
+                .with_fill(CanvasPaint::solid("#2563eb").unwrap())
                 .with_stroke_width(6.0)
                 .expect("valid mixed Class relation style"),
         )

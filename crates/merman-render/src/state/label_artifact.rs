@@ -18,8 +18,8 @@ use crate::text::{
 };
 
 use super::{
-    ResolvedLabelTypography, StateLabelMeasurement, measure_state_markdown_label,
-    state_markdown_label_plain_text,
+    ResolvedLabelTypography, StateLabelMeasurement, StateNativeLabelGeometry,
+    measure_state_markdown_label, state_markdown_label_plain_text,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +55,7 @@ pub(crate) struct PreparedStateLabel {
     prepared: PreparedText,
     admitted_typography: CatalogAdmittedTextStyle,
     uses_html_wrapping_table: bool,
+    native_geometry: Option<StateNativeLabelGeometry>,
     pending_label_entry: Option<PendingPreparedTextLabelLedgerEntry>,
     label_entry: Option<PreparedTextLabelLedgerEntry>,
     label_consumed: Cell<bool>,
@@ -66,12 +67,19 @@ impl PreparedStateLabel {
         self.prepared.wrapped_lines()
     }
 
-    pub(crate) const fn metrics(&self) -> TextMetrics {
-        self.prepared.metrics()
+    pub(crate) fn layout_metrics(&self) -> TextMetrics {
+        self.native_geometry.as_ref().map_or_else(
+            || self.prepared.metrics(),
+            StateNativeLabelGeometry::layout_metrics,
+        )
     }
 
     pub(crate) const fn uses_html_wrapping_table(&self) -> bool {
         self.uses_html_wrapping_table
+    }
+
+    pub(crate) const fn native_geometry(&self) -> Option<&StateNativeLabelGeometry> {
+        self.native_geometry.as_ref()
     }
 
     pub(crate) fn matches_semantic_source(&self, source: &str) -> bool {
@@ -209,12 +217,23 @@ impl<T> StateLabelSlots<T> {
     }
 }
 
+fn label_slot<'a, T>(slots: &'a StateLabelSlots<T>, owner: StateLabelOwner<'_>) -> Option<&'a T> {
+    match owner {
+        StateLabelOwner::Node(id) => slots.nodes.get(id),
+        StateLabelOwner::NodeTitle(id) => slots.node_titles.get(id),
+        StateLabelOwner::NodeDescription(id) => slots.node_descriptions.get(id),
+        StateLabelOwner::ClusterTitle(id) => slots.cluster_titles.get(id),
+        StateLabelOwner::Edge(id) => slots.edges.get(id),
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct StateLabelSidecarBuilder {
     prepared_active: bool,
     prepared_text_layout: Option<PreparedTextLayout>,
     work_meter: Option<Arc<OperationWorkMeter>>,
     labels: RefCell<StateLabelSlots<PreparedStateLabel>>,
+    measured_native_geometries: RefCell<StateLabelSlots<StateNativeLabelGeometry>>,
     prepared_error: RefCell<Option<TextLayoutError>>,
     prepared_resource_error: RefCell<Option<ResourceLimitExceeded>>,
 }
@@ -240,12 +259,39 @@ impl StateLabelSidecarBuilder {
         }
     }
 
+    pub(crate) fn prepared_native_geometry(
+        &self,
+        owner: StateLabelOwner<'_>,
+    ) -> Option<StateNativeLabelGeometry> {
+        let labels = self.labels.borrow();
+        label_slot(&labels, owner)
+            .and_then(PreparedStateLabel::native_geometry)
+            .cloned()
+    }
+
+    pub(crate) fn measured_native_geometry(
+        &self,
+        owner: StateLabelOwner<'_>,
+    ) -> Option<StateNativeLabelGeometry> {
+        let geometries = self.measured_native_geometries.borrow();
+        label_slot(&geometries, owner).cloned()
+    }
+
     pub(crate) fn measure_for_layout(
         &self,
         request: StateLabelMetricsRequest<'_>,
     ) -> StateLabelMeasurement {
         let Some(layout) = self.prepared_text_layout.as_ref() else {
-            return measure_without_prepared_text(request);
+            let mut measurement = measure_without_prepared_text(request);
+            if let Some(geometry) =
+                StateNativeLabelGeometry::from_measurement(request, &measurement)
+            {
+                measurement.metrics = geometry.layout_metrics();
+                self.measured_native_geometries
+                    .borrow_mut()
+                    .insert(request.owner, geometry);
+            }
+            return measurement;
         };
         if self.prepared_error.borrow().is_some() || self.prepared_resource_error.borrow().is_some()
         {
@@ -261,7 +307,7 @@ impl StateLabelSidecarBuilder {
                     return failed_prepared_measurement();
                 }
                 let measurement = StateLabelMeasurement {
-                    metrics: label.metrics(),
+                    metrics: label.layout_metrics(),
                     uses_html_wrapping_table: label.uses_html_wrapping_table(),
                 };
                 self.labels.borrow_mut().insert(request.owner, label);
@@ -337,11 +383,18 @@ impl StateLabelSidecarBuilder {
             && max_width.is_some_and(|width| {
                 prepared.raw_width_px().unwrap_or(metrics.width) >= width - 1e-9
             });
+        let native_geometry = matches!(
+            request.wrap_mode,
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun
+        )
+        .then(|| StateNativeLabelGeometry::from_prepared(request.owner, &prepared))
+        .transpose()?;
         Ok(PreparedStateLabel {
             semantic_source: Arc::from(request.text),
             prepared,
             admitted_typography,
             uses_html_wrapping_table,
+            native_geometry,
             pending_label_entry: Some(pending_label_entry),
             label_entry: None,
             label_consumed: Cell::new(false),
@@ -395,6 +448,7 @@ impl StateLabelSidecarBuilder {
         StateLabelSidecar {
             prepared_active: self.prepared_active,
             labels,
+            measured_native_geometries: self.measured_native_geometries.into_inner(),
             prepared_error,
             prepared_resource_error: self.prepared_resource_error.into_inner(),
         }
@@ -444,6 +498,7 @@ fn measure_without_prepared_text(request: StateLabelMetricsRequest<'_>) -> State
 pub(crate) struct StateLabelSidecar {
     prepared_active: bool,
     labels: StateLabelSlots<PreparedStateLabel>,
+    measured_native_geometries: StateLabelSlots<StateNativeLabelGeometry>,
     prepared_error: Option<TextLayoutError>,
     prepared_resource_error: Option<ResourceLimitExceeded>,
 }
@@ -492,6 +547,13 @@ impl StateLabelSidecar {
 
     pub(crate) fn edge(&self, id: &str) -> Option<&PreparedStateLabel> {
         self.labels.edges.get(id)
+    }
+
+    pub(crate) fn measured_native_geometry(
+        &self,
+        owner: StateLabelOwner<'_>,
+    ) -> Option<&StateNativeLabelGeometry> {
+        label_slot(&self.measured_native_geometries, owner)
     }
 
     pub(crate) fn validate_for_render(
@@ -580,6 +642,7 @@ mod tests {
         ThemeTextStyle, TypographySpec,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+    use crate::state::edge_label_geometry::STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX;
     use crate::text::{
         DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest, TextStyle,
     };
@@ -779,11 +842,17 @@ mod tests {
             prepared_label.wrapped_lines().collect::<Vec<_>>(),
             vec!["READY STATE"]
         );
-        assert_eq!(measurement.metrics.width, prepared_label.metrics().width);
-        assert_eq!(measurement.metrics.height, prepared_label.metrics().height);
+        assert_eq!(
+            measurement.metrics.width,
+            prepared_label.layout_metrics().width
+        );
+        assert_eq!(
+            measurement.metrics.height,
+            prepared_label.layout_metrics().height
+        );
         assert_eq!(
             measurement.metrics.line_count,
-            prepared_label.metrics().line_count
+            prepared_label.layout_metrics().line_count
         );
         let emission_style = prepared_label.merge_emission_font_style(Some(
             "fill:#111827 !important;text-transform:lowercase !important",
@@ -805,6 +874,91 @@ mod tests {
             .next()
             .expect("emitted State ledger entry");
         assert_eq!(ledger.line_texts(), &[Arc::<str>::from("READY STATE")]);
+    }
+
+    #[test]
+    fn prepared_state_edge_geometry_contains_single_and_multiline_ink_at_multiple_sizes() {
+        let (prepared, _, _) = prepared_state_fixture();
+        let measurer = DeterministicTextMeasurer::default();
+
+        for (edge_id, text, font_size, max_width_px, minimum_lines) in [
+            ("single", "Agjp", 12.0, 384.0, 1),
+            ("multiline", "Ag Ag", 28.0, 40.0, 2),
+        ] {
+            let typography = ThemeTextStyle::default()
+                .with_font_stack(
+                    FontStack::single("Excalifont").expect("fixture family should be valid"),
+                )
+                .with_font_size_px(font_size)
+                .expect("fixture font size should be valid");
+            let resolved = ResolvedLabelTypography::new(
+                TextStyle {
+                    font_family: Some("Excalifont".to_string()),
+                    font_size: f64::from(font_size),
+                    ..TextStyle::default()
+                },
+                Some(typography),
+            );
+            let builder = StateLabelSidecarBuilder::new(Some(&prepared));
+            let measurement = builder.measure_for_layout(StateLabelMetricsRequest {
+                owner: StateLabelOwner::Edge(edge_id),
+                text,
+                source_kind: StateLabelSourceKind::Markdown,
+                measurer: &measurer,
+                typography: &resolved,
+                max_width_px: Some(max_width_px),
+                wrap_mode: WrapMode::SvgLike,
+                break_long_words: true,
+            });
+            let sidecar = builder.finish();
+            assert!(sidecar.prepared_error().is_none());
+            let label = sidecar.edge(edge_id).expect("prepared edge label");
+            let geometry = label.native_geometry().expect("native edge geometry");
+
+            assert!(geometry.line_count() >= minimum_lines);
+            assert_eq!(measurement.metrics.width, geometry.width_px());
+            assert_eq!(measurement.metrics.height, geometry.height_px());
+            assert_eq!(measurement.metrics.line_count, geometry.line_count());
+            assert_eq!(
+                geometry.prepared_ink_extents(),
+                Some(label.prepared.vertical_extents())
+            );
+
+            for (line_index, line) in label.prepared.lines().iter().enumerate() {
+                let half_advance = line.computed_length_px() / 2.0;
+                let bbox_x = line.bbox_x();
+                let left_from_anchor = bbox_x.0 + half_advance;
+                let right_from_anchor = (bbox_x.1 - half_advance).max(0.0);
+                assert!(
+                    left_from_anchor <= geometry.ink_left_from_anchor_px() + 1e-9,
+                    "prepared left ink must be retained by the edge geometry"
+                );
+                assert!(
+                    right_from_anchor <= geometry.ink_right_from_anchor_px() + 1e-9,
+                    "prepared right ink must be retained by the edge geometry"
+                );
+                assert!(
+                    geometry.width_px() / 2.0 - left_from_anchor
+                        >= STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX - 1e-9
+                );
+                assert!(
+                    geometry.width_px() / 2.0 + right_from_anchor
+                        <= geometry.width_px() - STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX + 1e-9
+                );
+                let baseline = geometry
+                    .baseline_y_px(line_index)
+                    .expect("geometry covers every prepared line");
+                let extents = line.vertical_extents();
+                assert!(
+                    baseline + extents.top_px()
+                        >= STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX - 1e-9
+                );
+                assert!(
+                    baseline + extents.bottom_px()
+                        <= geometry.height_px() - STATE_SVG_EDGE_LABEL_BACKGROUND_PADDING_PX + 1e-9
+                );
+            }
+        }
     }
 
     #[test]

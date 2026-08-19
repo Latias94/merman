@@ -17,7 +17,7 @@ mod theme;
 
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 use config::{ErLayoutAlgorithm, ErLayoutSettings};
-pub(crate) use theme::ErEntityThemePlan;
+pub(crate) use theme::{ErEntityThemePlan, ErRelationTerminalExpectation};
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;

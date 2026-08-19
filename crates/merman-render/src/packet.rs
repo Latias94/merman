@@ -7,7 +7,10 @@ mod config;
 mod theme;
 
 pub(crate) use config::PacketConfigView;
-pub(crate) use theme::{PacketSurfaceReceipt, PacketTypographyThemePlan};
+pub(crate) use theme::{
+    PacketSurfaceReceipt, PacketTextRole, PacketTypographyThemePlan,
+    deferred_mermaid_compatibility_consumptions,
+};
 
 pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramRenderModel,

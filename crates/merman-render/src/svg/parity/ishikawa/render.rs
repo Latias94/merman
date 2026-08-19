@@ -1,5 +1,6 @@
 use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
+use crate::ishikawa::{IshikawaTextThemePlan, IshikawaTextThemeReceipt};
 use crate::model::{
     IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaLabelBoxLayout,
     IshikawaLineLayout, IshikawaSubGroupLayout, IshikawaTextLayout,
@@ -24,8 +25,19 @@ pub(crate) fn render_ishikawa_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let text_theme = IshikawaTextThemePlan::baseline(layout);
+    render_ishikawa_diagram_svg_with_theme(layout, &text_theme, effective_config, options)
+}
+
+pub(crate) fn render_ishikawa_diagram_svg_with_theme(
+    layout: &IshikawaDiagramLayout,
+    text_theme: &IshikawaTextThemePlan,
+    effective_config: &serde_json::Value,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("ishikawa");
     let mut out = BoundedSvgOutput::new(options.work_meter());
+    let mut text_terminals = IshikawaTextTerminalWriter::new(text_theme);
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -57,20 +69,28 @@ pub(crate) fn render_ishikawa_diagram_svg(
             line_color: theme.line_color,
             fill_color: theme.main_bkg,
         };
-        push_hand_drawn_diagram(&mut out, layout, &rough)?;
+        push_hand_drawn_diagram(&mut out, layout, &rough, &mut text_terminals)?;
     } else {
         let marker_id = format!("ishikawa-arrow-{diagram_id}");
-        push_classic_diagram(&mut out, layout, &marker_id)?;
+        push_classic_diagram(&mut out, layout, &marker_id, &mut text_terminals)?;
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    out.checkpoint()?;
+    let rooted = root_document.complete(out.finish()?)?;
+    if !text_theme.record_terminal(text_terminals.into_receipt()) {
+        return Err(Error::InvalidModel {
+            message: "Ishikawa text receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted)
 }
 
 fn push_classic_diagram(
     out: &mut impl SvgOutput,
     layout: &IshikawaDiagramLayout,
     marker_id: &str,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     let _ = write!(out, r#"<defs><marker id=""#);
     escape_xml_into(out, marker_id);
@@ -91,15 +111,15 @@ fn push_classic_diagram(
         );
         escape_attr_into(out, &head.path_d);
         out.push_str(r#""></path>"#);
-        push_ishikawa_head_text(out, &head.label, -head.x, -head.y)?;
+        text_terminals.push_head_text(out, &head.label, -head.x, -head.y)?;
         out.push_str("</g>");
         out.checkpoint()?;
     }
     for pair in &layout.pairs {
         out.push_str(r#"<g class="ishikawa-pair">"#);
-        push_branch(out, &pair.upper, marker_id)?;
+        push_branch(out, &pair.upper, marker_id, text_terminals)?;
         if let Some(lower) = &pair.lower {
-            push_branch(out, lower, marker_id)?;
+            push_branch(out, lower, marker_id, text_terminals)?;
         }
         out.push_str("</g>");
         out.checkpoint()?;
@@ -111,6 +131,7 @@ fn push_hand_drawn_diagram(
     out: &mut impl SvgOutput,
     layout: &IshikawaDiagramLayout,
     rough: &RoughContext,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     if let Some(head) = &layout.head {
         let _ = write!(
@@ -120,15 +141,15 @@ fn push_hand_drawn_diagram(
             fmt(head.y)
         );
         push_rough_hachure_path(out, "ishikawa-head", &head.path_d, rough)?;
-        push_ishikawa_head_text(out, &head.label, -head.x, -head.y)?;
+        text_terminals.push_head_text(out, &head.label, -head.x, -head.y)?;
         out.push_str("</g>");
         out.checkpoint()?;
     }
     for pair in &layout.pairs {
         out.push_str(r#"<g class="ishikawa-pair">"#);
-        push_hand_drawn_branch(out, &pair.upper, rough)?;
+        push_hand_drawn_branch(out, &pair.upper, rough, text_terminals)?;
         if let Some(lower) = &pair.lower {
-            push_hand_drawn_branch(out, lower, rough)?;
+            push_hand_drawn_branch(out, lower, rough, text_terminals)?;
         }
         out.push_str("</g>");
         out.checkpoint()?;
@@ -143,11 +164,12 @@ fn push_branch(
     out: &mut impl SvgOutput,
     branch: &IshikawaBranchLayout,
     marker_id: &str,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     push_line(out, &branch.line, marker_id)?;
-    push_cause_label_group(out, &branch.label_group)?;
+    push_cause_label_group(out, &branch.label_group, text_terminals)?;
     for sub_group in &branch.sub_groups {
-        push_sub_group(out, sub_group, marker_id)?;
+        push_sub_group(out, sub_group, marker_id, text_terminals)?;
     }
     Ok(())
 }
@@ -155,6 +177,7 @@ fn push_branch(
 fn push_cause_label_group(
     out: &mut impl SvgOutput,
     group: &IshikawaCauseLabelGroupLayout,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-label-group">"#);
     let label_box = &group.label_box;
@@ -166,7 +189,7 @@ fn push_cause_label_group(
         fmt(label_box.width),
         fmt(label_box.height)
     );
-    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
+    text_terminals.push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
     out.checkpoint()
 }
@@ -175,10 +198,11 @@ fn push_sub_group(
     out: &mut impl SvgOutput,
     group: &IshikawaSubGroupLayout,
     marker_id: &str,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-sub-group">"#);
     push_line(out, &group.line, marker_id)?;
-    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
+    text_terminals.push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
     out.checkpoint()
 }
@@ -187,12 +211,13 @@ fn push_hand_drawn_branch(
     out: &mut impl SvgOutput,
     branch: &IshikawaBranchLayout,
     rough: &RoughContext,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     push_rough_line(out, &branch.line, rough)?;
     push_rough_arrow_marker(out, &branch.line, rough)?;
-    push_hand_drawn_cause_label_group(out, &branch.label_group, rough)?;
+    push_hand_drawn_cause_label_group(out, &branch.label_group, rough, text_terminals)?;
     for sub_group in &branch.sub_groups {
-        push_hand_drawn_sub_group(out, sub_group, rough)?;
+        push_hand_drawn_sub_group(out, sub_group, rough, text_terminals)?;
     }
     Ok(())
 }
@@ -201,11 +226,12 @@ fn push_hand_drawn_cause_label_group(
     out: &mut impl SvgOutput,
     group: &IshikawaCauseLabelGroupLayout,
     rough: &RoughContext,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-label-group">"#);
     let label_box = &group.label_box;
     push_rough_hachure_rect(out, "ishikawa-label-box", label_box, rough)?;
-    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
+    text_terminals.push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
     out.checkpoint()
 }
@@ -214,11 +240,12 @@ fn push_hand_drawn_sub_group(
     out: &mut impl SvgOutput,
     group: &IshikawaSubGroupLayout,
     rough: &RoughContext,
+    text_terminals: &mut IshikawaTextTerminalWriter<'_>,
 ) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-sub-group">"#);
     push_rough_line(out, &group.line, rough)?;
     push_rough_arrow_marker(out, &group.line, rough)?;
-    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
+    text_terminals.push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
     out.checkpoint()
 }
@@ -427,68 +454,57 @@ fn push_rough_group(
     out.checkpoint()
 }
 
-fn push_ishikawa_head_text(
-    out: &mut impl SvgOutput,
-    text: &IshikawaTextLayout,
-    dx: f64,
-    dy: f64,
-) -> Result<()> {
-    let transform_x = text.x + dx;
-    let transform_y = text.y + dy;
-    let first_y = -((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
-    let _ = write!(
-        out,
-        r#"<text class="{}" text-anchor="{}" x="{}" y="{}" transform="translate({},{})">"#,
-        escape_attr_display(&text.class_name),
-        escape_attr_display(&text.anchor),
-        fmt(0.0),
-        fmt(first_y),
-        fmt(transform_x),
-        fmt(transform_y)
-    );
-    for (idx, line) in text.lines.iter().enumerate() {
-        let _ = write!(
-            out,
-            r#"<tspan x="{}" dy="{}">"#,
-            fmt(0.0),
-            if idx == 0 {
-                "0".to_string()
-            } else {
-                fmt_string(text.line_height)
-            }
-        );
-        escape_xml_into(out, line);
-        out.push_str("</tspan>");
-        out.checkpoint()?;
-    }
-    out.push_str("</text>");
-    out.checkpoint()
+struct IshikawaTextTerminalWriter<'a> {
+    plan: &'a IshikawaTextThemePlan,
+    receipt: IshikawaTextThemeReceipt,
+    next_visible_index: usize,
 }
 
-fn push_text_with_offset(
-    out: &mut impl SvgOutput,
-    text: &IshikawaTextLayout,
-    dx: f64,
-    dy: f64,
-) -> Result<()> {
-    let first_y =
-        text.y + dy - ((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
-    let _ = write!(
-        out,
-        r#"<text class="{}" text-anchor="{}" x="{}" y="{}">"#,
-        escape_attr_display(&text.class_name),
-        escape_attr_display(&text.anchor),
-        fmt(text.x + dx),
-        fmt(first_y)
-    );
-    if text.lines.is_empty() {
-        escape_xml_into(out, &text.text);
-    } else {
+impl<'a> IshikawaTextTerminalWriter<'a> {
+    fn new(plan: &'a IshikawaTextThemePlan) -> Self {
+        Self {
+            plan,
+            receipt: plan.begin_terminal_receipt(),
+            next_visible_index: 0,
+        }
+    }
+
+    fn into_receipt(self) -> IshikawaTextThemeReceipt {
+        self.receipt
+    }
+
+    fn push_head_text(
+        &mut self,
+        out: &mut impl SvgOutput,
+        text: &IshikawaTextLayout,
+        dx: f64,
+        dy: f64,
+    ) -> Result<()> {
+        let emitted_index = self.visible_index(text);
+        let transform_x = text.x + dx;
+        let transform_y = text.y + dy;
+        let first_y = -((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
+        let _ = write!(
+            out,
+            r#"<text class="{}" text-anchor="{}" x="{}" y="{}" transform="translate({},{})" data-merman-text-bbox="{},{},{},{}""#,
+            escape_attr_display(&text.class_name),
+            escape_attr_display(&text.anchor),
+            fmt(0.0),
+            fmt(first_y),
+            fmt(transform_x),
+            fmt(transform_y),
+            fmt(text.bbox.min_x),
+            fmt(text.bbox.min_y),
+            fmt(text.bbox.max_x),
+            fmt(text.bbox.max_y)
+        );
+        self.push_fill_style(out, emitted_index);
+        out.push('>');
         for (idx, line) in text.lines.iter().enumerate() {
             let _ = write!(
                 out,
                 r#"<tspan x="{}" dy="{}">"#,
-                fmt(text.x + dx),
+                fmt(0.0),
                 if idx == 0 {
                     "0".to_string()
                 } else {
@@ -499,9 +515,87 @@ fn push_text_with_offset(
             out.push_str("</tspan>");
             out.checkpoint()?;
         }
+        out.push_str("</text>");
+        out.checkpoint()?;
+        self.record_checkpointed_text(emitted_index, text);
+        Ok(())
     }
-    out.push_str("</text>");
-    out.checkpoint()
+
+    fn push_text_with_offset(
+        &mut self,
+        out: &mut impl SvgOutput,
+        text: &IshikawaTextLayout,
+        dx: f64,
+        dy: f64,
+    ) -> Result<()> {
+        let emitted_index = self.visible_index(text);
+        let first_y =
+            text.y + dy - ((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
+        let _ = write!(
+            out,
+            r#"<text class="{}" text-anchor="{}" x="{}" y="{}" data-merman-text-bbox="{},{},{},{}""#,
+            escape_attr_display(&text.class_name),
+            escape_attr_display(&text.anchor),
+            fmt(text.x + dx),
+            fmt(first_y),
+            fmt(text.bbox.min_x),
+            fmt(text.bbox.min_y),
+            fmt(text.bbox.max_x),
+            fmt(text.bbox.max_y)
+        );
+        self.push_fill_style(out, emitted_index);
+        out.push('>');
+        if text.lines.is_empty() {
+            escape_xml_into(out, &text.text);
+        } else {
+            for (idx, line) in text.lines.iter().enumerate() {
+                let _ = write!(
+                    out,
+                    r#"<tspan x="{}" dy="{}">"#,
+                    fmt(text.x + dx),
+                    if idx == 0 {
+                        "0".to_string()
+                    } else {
+                        fmt_string(text.line_height)
+                    }
+                );
+                escape_xml_into(out, line);
+                out.push_str("</tspan>");
+                out.checkpoint()?;
+            }
+        }
+        out.push_str("</text>");
+        out.checkpoint()?;
+        self.record_checkpointed_text(emitted_index, text);
+        Ok(())
+    }
+
+    fn visible_index(&self, text: &IshikawaTextLayout) -> Option<usize> {
+        (!text.text.trim().is_empty()).then_some(self.next_visible_index)
+    }
+
+    fn push_fill_style(&self, out: &mut impl SvgOutput, emitted_index: Option<usize>) {
+        let Some((_, fill)) = emitted_index.and_then(|index| self.plan.typed_fill(index)) else {
+            return;
+        };
+        out.push_str(r#" style="fill:"#);
+        escape_attr_into(out, fill);
+        out.push_str(r#" !important;""#);
+    }
+
+    fn record_checkpointed_text(
+        &mut self,
+        emitted_index: Option<usize>,
+        text: &IshikawaTextLayout,
+    ) {
+        let Some(emitted_index) = emitted_index else {
+            return;
+        };
+        let emitted_fill = self.plan.typed_fill(emitted_index);
+        self.receipt
+            .record_checkpointed_text(emitted_index, &text.class_name, emitted_fill);
+        self.next_visible_index = self.next_visible_index.saturating_add(1);
+    }
 }
 
 fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {

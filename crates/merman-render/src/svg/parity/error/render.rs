@@ -6,17 +6,20 @@ pub(crate) fn render_error_diagram_svg_model(
     layout: &ErrorDiagramLayout,
     _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
     effective_config: &serde_json::Value,
+    typography_theme: &crate::error::ErrorTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    render_error_diagram_svg_inner(layout, effective_config, options)
+    render_error_diagram_svg_inner(layout, effective_config, typography_theme, options)
 }
 
 fn render_error_diagram_svg_inner(
     layout: &ErrorDiagramLayout,
     effective_config: &serde_json::Value,
+    typography_theme: &crate::error::ErrorTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let mut surface_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
@@ -36,13 +39,20 @@ fn render_error_diagram_svg_inner(
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
-    let css = info_css_with_config(diagram_id, effective_config);
-    let _ = write!(
+    out.push_str(r#"<style xmlns="http://www.w3.org/1999/xhtml">"#);
+    let css_write = write_info_css_with_font_family(
         &mut out,
-        r#"<style xmlns="http://www.w3.org/1999/xhtml">{}</style>"#,
-        css
-    );
+        diagram_id,
+        effective_config,
+        typography_theme.font_family_css(),
+    )?;
+    out.push_str("</style>");
     out.checkpoint()?;
+    surface_receipt.record_css_emission(
+        css_write.root_font_family_css(),
+        css_write.inherited_font_family_css(),
+        css_write.root_variable_font_family_css(),
+    );
     out.push_str(r#"<g/>"#);
     out.push_str(r#"<g>"#);
     out.checkpoint()?;
@@ -54,12 +64,26 @@ fn render_error_diagram_svg_inner(
     out.push_str(r#"<path class="error-icon" d="m496,96.586h-32c-8.844,0-16,7.164-16,16 0,8.836 7.156,16 16,16h32c8.844,0 16-7.164 16-16 0-8.836-7.156-16-16-16z"/>"#);
     out.push_str(r#"<path class="error-icon" d="m436.98,75.605c3.125,3.125 7.219,4.688 11.313,4.688 4.094,0 8.188-1.563 11.313-4.688l32-32c6.25-6.25 6.25-16.375 0-22.625s-16.375-6.25-22.625,0l-32,32c-6.251,6.25-6.251,16.375-0.001,22.625z"/>"#);
     out.checkpoint()?;
-    out.push_str(r#"<text class="error-text" x="1440" y="250" font-size="150px" style="text-anchor: middle;">Syntax error in text</text>"#);
+    let message = "Syntax error in text";
     let _ = write!(
         &mut out,
-        r#"<text class="error-text" x="1250" y="400" font-size="100px" style="text-anchor: middle;">mermaid version {}</text>"#,
-        crate::error::UPSTREAM_MERMAID_VERSION
+        r#"<text class="error-text" x="1440" y="250" font-size="150px" style="text-anchor: middle;">{message}</text>"#
     );
+    out.checkpoint()?;
+    surface_receipt.record_error_text(crate::error::ErrorTextRole::Message, "error-text", message);
+    let version = format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION);
+    let _ = write!(
+        &mut out,
+        r#"<text class="error-text" x="1250" y="400" font-size="100px" style="text-anchor: middle;">{version}</text>"#
+    );
+    out.checkpoint()?;
+    surface_receipt.record_error_text(crate::error::ErrorTextRole::Version, "error-text", &version);
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !typography_theme.record_terminal(surface_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Error typography receipt was recorded more than once".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }

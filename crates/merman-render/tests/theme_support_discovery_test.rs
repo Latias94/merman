@@ -108,9 +108,29 @@ fn direct_only_family_slices_are_reported_as_conditional() {
             ThemeRuleFacetV1::Radius,
         ),
         (
+            DiagramFamilyId::QUADRANT_CHART,
+            ThemeTarget::ChartSeries,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
             DiagramFamilyId::C4,
             ThemeTarget::Cluster,
             ThemeRuleFacetV1::Radius,
+        ),
+        (
+            DiagramFamilyId::C4,
+            ThemeTarget::Cluster,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::C4,
+            ThemeTarget::Cluster,
+            ThemeRuleFacetV1::StrokePaint,
+        ),
+        (
+            DiagramFamilyId::GANTT,
+            ThemeTarget::Task,
+            ThemeRuleFacetV1::Fill,
         ),
     ] {
         let query = ThemeSupportQueryV1::known(
@@ -132,6 +152,87 @@ fn direct_only_family_slices_are_reported_as_conditional() {
             "family={family} target={} facet={facet:?}",
             target.id()
         );
+    }
+}
+
+#[test]
+fn final_four_family_owned_paint_slices_are_reported_as_conditional() {
+    for (family, target) in [
+        (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text),
+        (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text),
+        (DiagramFamilyId::VENN, ThemeTarget::Title),
+        (DiagramFamilyId::ZENUML, ThemeTarget::Title),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ],
+            "family={family} target={}",
+            target.id()
+        );
+    }
+}
+
+#[test]
+fn relation_and_branch_edge_stroke_slices_are_reported_as_conditional() {
+    for (family, target) in [
+        (DiagramFamilyId::CLASS, ThemeTarget::Edge),
+        (DiagramFamilyId::ER, ThemeTarget::Relation),
+        (DiagramFamilyId::MINDMAP, ThemeTarget::Edge),
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            ThemeRuleFacetV1::StrokePaint,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ],
+            "family={family} target={}",
+            target.id()
+        );
+    }
+}
+
+#[test]
+fn final_four_terminal_less_paint_claims_are_unsupported() {
+    for (family, target) in [
+        (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Title),
+        (DiagramFamilyId::ISHIKAWA, ThemeTarget::Title),
+        (DiagramFamilyId::ZENUML, ThemeTarget::Text),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
+        assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
     }
 }
 
@@ -321,30 +422,35 @@ fn native_exports_stay_unverified_until_their_target_owner_qualifies_them() {
 
 #[test]
 fn support_discovery_respects_required_family_render_capabilities() {
-    let query = ThemeSupportQueryV1::known(
-        DiagramFamilyId::ARCHITECTURE.as_str(),
-        ThemeSupportOutputV1::StandaloneSvg,
-        ThemeTarget::Cluster.id(),
-        ThemeRuleFacetV1::Fill,
-    );
-
-    let support = describe_theme_support(&query);
-
-    if merman_render::layout_cytoscape_available() {
-        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
-        assert_eq!(
-            support.reason_ids(),
-            [
-                "theme-support.family-owned-consumer-present",
-                "theme-support.public-value-domain-partial",
-            ]
+    for (target, facet) in [
+        (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Edge, ThemeRuleFacetV1::StrokePaint),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            DiagramFamilyId::ARCHITECTURE.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            facet,
         );
-    } else {
-        assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
-        assert_eq!(
-            support.reason_ids(),
-            ["theme-support.family-render-capability-not-built"]
-        );
+
+        let support = describe_theme_support(&query);
+
+        if merman_render::layout_cytoscape_available() {
+            assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+            assert_eq!(
+                support.reason_ids(),
+                [
+                    "theme-support.family-owned-consumer-present",
+                    "theme-support.public-value-domain-partial",
+                ]
+            );
+        } else {
+            assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
+            assert_eq!(
+                support.reason_ids(),
+                ["theme-support.family-render-capability-not-built"]
+            );
+        }
     }
 }
 

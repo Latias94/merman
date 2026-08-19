@@ -623,6 +623,7 @@ pub(super) fn render_state_edge_label(
         id: &str,
         label_text: &str,
         prepared: Option<&crate::state::PreparedStateLabel>,
+        measured_geometry: Option<&crate::state::StateNativeLabelGeometry>,
         label_pos: crate::model::LayoutPoint,
         w: f64,
         h: f64,
@@ -634,6 +635,23 @@ pub(super) fn render_state_edge_label(
     ) {
         let w = w.max(0.0);
         let h = h.max(0.0);
+        let prepared_edge_geometry = if html_labels {
+            None
+        } else {
+            prepared.and_then(crate::state::PreparedStateLabel::native_geometry)
+        };
+        let measured_geometry = (!html_labels).then_some(measured_geometry).flatten();
+        let (w, h) = if let Some(geometry) = prepared_edge_geometry {
+            debug_assert!((geometry.width_px() - w).abs() <= 1e-6);
+            debug_assert!((geometry.height_px() - h).abs() <= 1e-6);
+            (geometry.width_px(), geometry.height_px())
+        } else if let Some(geometry) = measured_geometry {
+            debug_assert!((geometry.width_px() - w).abs() <= 1e-6);
+            debug_assert!((geometry.height_px() - h).abs() <= 1e-6);
+            (geometry.width_px(), geometry.height_px())
+        } else {
+            (w, h)
+        };
         if html_labels {
             let prepared_token_attr = state_prepared_html_label_token_attr(prepared);
             let _ = write!(
@@ -658,22 +676,36 @@ pub(super) fn render_state_edge_label(
                 )
             );
         } else {
-            let label_dom = prepared.map_or_else(
-                || {
+            let (label_dom, text_origin_y) = match (prepared, measured_geometry) {
+                (Some(prepared), _) => {
+                    prepared_edge_geometry
+                        .expect("native prepared State edge labels retain terminal geometry");
+                    (
+                        state_prepared_svg_text_label(
+                            prepared,
+                            true,
+                            (!label_style.is_empty()).then_some(label_style),
+                        ),
+                        0.0,
+                    )
+                }
+                (None, Some(geometry)) => (
+                    state_measured_svg_text_label(
+                        geometry,
+                        true,
+                        (!label_style.is_empty()).then_some(label_style),
+                    ),
+                    0.0,
+                ),
+                (None, None) => (
                     state_svg_text_label(
                         label_text,
                         true,
                         (!label_style.is_empty()).then_some(label_style),
-                    )
-                },
-                |prepared| {
-                    state_prepared_svg_text_label(
-                        prepared,
-                        true,
-                        (!label_style.is_empty()).then_some(label_style),
-                    )
-                },
-            );
+                    ),
+                    h / 2.0,
+                ),
+            };
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none;{}" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
@@ -686,7 +718,7 @@ pub(super) fn render_state_edge_label(
                 fmt_display(w),
                 fmt_display(h),
                 fmt_display(w / 2.0),
-                fmt_display(h / 2.0),
+                fmt_display(text_origin_y),
                 label_dom
             );
         }
@@ -753,6 +785,8 @@ pub(super) fn render_state_edge_label(
         &edge.id,
         label_text,
         ctx.label_sidecar.edge(&edge.id),
+        ctx.label_sidecar
+            .measured_native_geometry(crate::state::StateLabelOwner::Edge(&edge.id)),
         label_position,
         w,
         h,

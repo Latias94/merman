@@ -62,11 +62,13 @@ use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
 pub(crate) use theme_evidence::{
     SequenceActorThemeReceipt, SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt,
-    SequenceMessageThemeEmission, SequenceMessageThemeReceipt, SequenceStaticRectThemeEmission,
-    SequenceStaticRectThemeReceipt, SequenceThemeEvidenceRecorder, SequenceTypographyThemeReceipt,
+    SequenceLoopThemeEmission, SequenceLoopThemeReceipt, SequenceMessageThemeEmission,
+    SequenceMessageThemeReceipt, SequenceNumberLabelThemeEmission, SequenceNumberLabelThemeReceipt,
+    SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt, SequenceThemeEvidenceRecorder,
+    SequenceTypographyThemeReceipt,
 };
 pub(crate) use typography::{
-    SequenceResolvedTypography, SequenceTypographyPlan, SequenceTypographyRole,
+    SequenceResolvedTypography, SequenceTextSurface, SequenceTypographyPlan, SequenceTypographyRole,
 };
 
 /// Private Sequence render artifact that keeps operation-owned measurements attached to layout.

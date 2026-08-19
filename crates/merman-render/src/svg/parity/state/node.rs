@@ -35,6 +35,13 @@ fn note_rough_cache_key(
     }
 }
 
+/// Mirrors RoughJS's inline terminal paint before appending source/typed declarations.
+fn rough_terminal_paint_style(property: &str, compatibility: &str, direct: &str) -> String {
+    let mut style = format!("{property}:{compatibility};");
+    style.push_str(direct);
+    style
+}
+
 pub(super) fn render_state_node_svg(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
@@ -185,6 +192,73 @@ pub(super) fn render_state_node_svg(
 
     match node.shape.as_str() {
         "stateStart" => {
+            if data_look == "handDrawn" {
+                let key = StateRoughCacheKey {
+                    tag: 7,
+                    a: 14.0f64.to_bits(),
+                    b: 0,
+                    c: 0,
+                    seed: ctx.hand_drawn_seed.seed(),
+                };
+                let rough_start = timing.start();
+                if timing.is_enabled() {
+                    details.leaf_roughjs_calls += 1;
+                    details.leaf_roughjs_unique.insert(key);
+                }
+                let path_d = cached_circle(ctx, key, allow_rough_cache, || {
+                    roughjs_circle_path_d(14.0, &ctx.hand_drawn_seed)
+                        .unwrap_or_else(|| "M0,0".to_string())
+                });
+                if let Some(start) = rough_start {
+                    details.leaf_nodes_roughjs += start.elapsed();
+                }
+                let surface = compatibility
+                    .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
+                    .expect("State start node must have a compatibility surface");
+                let compatibility_fill = compatibility.terminal_paint_css(
+                    surface,
+                    crate::state::StateTerminalPaintProperty::Fill,
+                    &ctx.diagram_id,
+                );
+                let compatibility_stroke = compatibility.terminal_paint_css(
+                    surface,
+                    crate::state::StateTerminalPaintProperty::Stroke,
+                    &ctx.diagram_id,
+                );
+                let fill = fill_override.unwrap_or(compatibility_fill.as_str());
+                let stroke = stroke_override.unwrap_or(compatibility_stroke.as_str());
+                let stroke_width = stroke_width_override
+                    .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
+                    .max(0.0);
+                let fill_style = escape_attr(&rough_terminal_paint_style(
+                    "fill",
+                    fill,
+                    fill_path_style_attr,
+                ));
+                let stroke_style = escape_attr(&rough_terminal_paint_style(
+                    "stroke",
+                    stroke,
+                    stroke_path_style_attr,
+                ));
+                let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
+                let _ = write!(
+                    out,
+                    r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
+                    escape_xml_display(&node_dom_id),
+                    escape_xml_display(data_look),
+                    fmt_display(cx),
+                    fmt_display(cy),
+                    path_d.as_str(),
+                    escape_xml_display(fill),
+                    fill_style,
+                    path_d.as_str(),
+                    escape_xml_display(stroke),
+                    fmt_display(stroke_width),
+                    stroke_style,
+                );
+                drop(_g_emit);
+                return Ok(());
+            }
             let semantic_style = escape_xml_display(semantic_shape_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
@@ -243,28 +317,68 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
-            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
-            let inner_fill_path_style_escaped = escape_attr(
+            let outer_surface = compatibility
+                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
+                .expect("State end node must have a compatibility surface");
+            let inner_surface = compatibility.special_state_inner_surface();
+            let compatibility_outer_fill = compatibility.terminal_paint_css(
+                outer_surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                &ctx.diagram_id,
+            );
+            let compatibility_outer_stroke = compatibility.terminal_paint_css(
+                outer_surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                &ctx.diagram_id,
+            );
+            let inner_fill = compatibility.terminal_paint_css(
+                inner_surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                &ctx.diagram_id,
+            );
+            let inner_stroke = compatibility.terminal_paint_css(
+                inner_surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                &ctx.diagram_id,
+            );
+            let outer_fill = fill_override.unwrap_or(compatibility_outer_fill.as_str());
+            let outer_stroke = stroke_override.unwrap_or(compatibility_outer_stroke.as_str());
+            let outer_stroke_width = stroke_width_override
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(outer_surface))
+                .max(0.0);
+            let inner_stroke_width = compatibility
+                .terminal_stroke_width_value(inner_surface)
+                .max(0.0);
+            let fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "fill",
+                outer_fill,
+                fill_path_style_attr,
+            ));
+            let stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "stroke",
+                outer_stroke,
+                stroke_path_style_attr,
+            ));
+            let inner_fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "fill",
+                inner_fill.as_str(),
                 node_style
                     .map(crate::state::StateNodeStylePlan::special_state_inner_fill_path_style_attr)
                     .unwrap_or_default(),
-            );
-            let inner_stroke_path_style_escaped = escape_attr(
+            ));
+            let inner_stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "stroke",
+                inner_stroke.as_str(),
                 node_style
                     .map(
                         crate::state::StateNodeStylePlan::special_state_inner_stroke_path_style_attr,
                     )
                     .unwrap_or_default(),
-            );
-            let outer_fill = fill_override.unwrap_or(compatibility.end_outer_fill.as_str());
-            let outer_stroke = stroke_override.unwrap_or(compatibility.end_outer_stroke.as_str());
-            let inner_fill = compatibility.inner_end_background.as_str();
-            let inner_stroke = compatibility.end_inner_stroke.as_str();
+            ));
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
+                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
                 escape_attr(&node_dom_id),
                 escape_attr(data_look),
                 fmt(cx),
@@ -274,12 +388,14 @@ pub(super) fn render_state_node_svg(
                 fill_path_style_escaped,
                 outer_d.as_str(),
                 escape_attr(outer_stroke),
+                fmt(outer_stroke_width),
                 stroke_path_style_escaped,
                 inner_d.as_str(),
-                escape_attr(inner_fill),
+                escape_attr(&inner_fill),
                 inner_fill_path_style_escaped,
                 inner_d.as_str(),
-                escape_attr(inner_stroke),
+                escape_attr(&inner_stroke),
+                fmt(inner_stroke_width),
                 inner_stroke_path_style_escaped,
             );
             drop(_g_emit);
@@ -313,11 +429,34 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let fill_attr = fill_override.unwrap_or(compatibility.special_state_color.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility.special_state_color.as_str());
-            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
-            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
-            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
+            let surface = compatibility
+                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
+                .expect("State fork/join node must have a compatibility surface");
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                &ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                &ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let stroke_width_attr = stroke_width_override
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
+                .max(0.0);
+            let fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "fill",
+                fill_attr,
+                fill_path_style_attr,
+            ));
+            let stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "stroke",
+                stroke_attr,
+                stroke_path_style_attr,
+            ));
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -365,13 +504,34 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_roughjs += s.elapsed();
             }
 
-            let fill_attr = fill_override.unwrap_or(compatibility.main_bkg.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility.state_border.as_str());
+            let surface = compatibility
+                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
+                .expect("State choice node must have a compatibility surface");
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                &ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                &ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
             let stroke_width_attr = stroke_width_override
-                .unwrap_or(compatibility.rough_stroke_width_value)
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
-            let fill_path_style_escaped = escape_attr(fill_path_style_attr);
-            let stroke_path_style_escaped = escape_attr(stroke_path_style_attr);
+            let fill_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "fill",
+                fill_attr,
+                fill_path_style_attr,
+            ));
+            let stroke_path_style_escaped = escape_attr(&rough_terminal_paint_style(
+                "stroke",
+                stroke_attr,
+                stroke_path_style_attr,
+            ));
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
@@ -393,7 +553,9 @@ pub(super) fn render_state_node_svg(
         }
         "note" => {
             let label = state_node_label_text(node);
+            let label_owner = crate::state::StateLabelOwner::Node(node_id);
             let prepared_label = ctx.label_sidecar.node(node_id);
+            let measured_label = ctx.label_sidecar.measured_native_geometry(label_owner);
             let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
                 WrapMode::HtmlLike
@@ -402,16 +564,24 @@ pub(super) fn render_state_node_svg(
             };
             let measurement = prepared_label.map_or_else(
                 || {
-                    crate::state::measure_state_markdown_label(
-                        &label,
-                        ctx.measurer,
-                        node_text_style,
-                        Some(ctx.html_label_wrapping_width),
-                        wrap_mode,
+                    measured_label.map_or_else(
+                        || {
+                            crate::state::measure_state_markdown_label(
+                                &label,
+                                ctx.measurer,
+                                node_text_style,
+                                Some(ctx.html_label_wrapping_width),
+                                wrap_mode,
+                            )
+                        },
+                        |geometry| crate::state::StateLabelMeasurement {
+                            metrics: geometry.layout_metrics(),
+                            uses_html_wrapping_table: false,
+                        },
                     )
                 },
                 |prepared| crate::state::StateLabelMeasurement {
-                    metrics: prepared.metrics(),
+                    metrics: prepared.layout_metrics(),
                     uses_html_wrapping_table: prepared.uses_html_wrapping_table(),
                 },
             );
@@ -465,7 +635,13 @@ pub(super) fn render_state_node_svg(
                 if ctx.html_labels {
                     state_prepared_node_label_html_with_style(prepared, label_span_style)
                 } else {
-                    state_prepared_svg_text_label(prepared, false, label_span_style)
+                    state_native_svg_text_label(
+                        &label,
+                        Some(prepared),
+                        measured_label,
+                        false,
+                        label_span_style,
+                    )
                 }
             } else if ctx.html_labels {
                 state_node_label_html_with_style(
@@ -474,14 +650,29 @@ pub(super) fn render_state_node_svg(
                     node_text_style.font_size,
                 )
             } else {
-                state_svg_text_label(&label, false, label_span_style)
+                state_native_svg_text_label(&label, None, measured_label, false, label_span_style)
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
-            let fill_attr = fill_override.unwrap_or(compatibility.note_bkg.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility.note_border.as_str());
-            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
+            let surface = compatibility
+                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::Note)
+                .expect("State note node must have a compatibility surface");
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                &ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                &ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
+            let stroke_width_attr = stroke_width_override
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
+                .max(0.0);
             let fill_path_style_escaped = escape_xml_display(fill_path_style_attr);
             let stroke_path_style_escaped = escape_xml_display(stroke_path_style_attr);
             let label_style_escaped = escape_xml_display(text_style_attr);
@@ -563,20 +754,41 @@ pub(super) fn render_state_node_svg(
                 .unwrap_or_default();
             let prepared_title = ctx.label_sidecar.node_title(node_id);
             let prepared_description = ctx.label_sidecar.node_description(node_id);
+            let measured_title = ctx
+                .label_sidecar
+                .measured_native_geometry(crate::state::StateLabelOwner::NodeTitle(node_id));
+            let measured_description = ctx
+                .label_sidecar
+                .measured_native_geometry(crate::state::StateLabelOwner::NodeDescription(node_id));
             let measure_start = timing.start();
+            let wrap_mode = if ctx.html_labels {
+                WrapMode::HtmlLike
+            } else {
+                WrapMode::SvgLikeSingleRun
+            };
             let title_metrics = prepared_title.map_or_else(
                 || {
-                    ctx.measurer
-                        .measure_wrapped(&title, node_text_style, None, WrapMode::HtmlLike)
+                    measured_title.map_or_else(
+                        || {
+                            ctx.measurer
+                                .measure_wrapped(&title, node_text_style, None, wrap_mode)
+                        },
+                        crate::state::StateNativeLabelGeometry::layout_metrics,
+                    )
                 },
-                crate::state::PreparedStateLabel::metrics,
+                crate::state::PreparedStateLabel::layout_metrics,
             );
             let desc_metrics = prepared_description.map_or_else(
                 || {
-                    ctx.measurer
-                        .measure_wrapped(&desc, node_text_style, None, WrapMode::HtmlLike)
+                    measured_description.map_or_else(
+                        || {
+                            ctx.measurer
+                                .measure_wrapped(&desc, node_text_style, None, wrap_mode)
+                        },
+                        crate::state::StateNativeLabelGeometry::layout_metrics,
+                    )
                 },
-                crate::state::PreparedStateLabel::metrics,
+                crate::state::PreparedStateLabel::layout_metrics,
             );
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
@@ -596,16 +808,30 @@ pub(super) fn render_state_node_svg(
             let label_html_start = timing.start();
             let label_span_style = (!text_style_attr.is_empty()).then_some(text_style_attr);
             let (title_dom, desc_dom) =
-                if let (Some(title), Some(description)) = (prepared_title, prepared_description) {
+                if let (Some(prepared_title_label), Some(prepared_description_label)) =
+                    (prepared_title, prepared_description)
+                {
                     if ctx.html_labels {
                         (
-                            state_prepared_node_label_plain_html(title),
-                            state_prepared_node_label_plain_html(description),
+                            state_prepared_node_label_plain_html(prepared_title_label),
+                            state_prepared_node_label_plain_html(prepared_description_label),
                         )
                     } else {
                         (
-                            state_prepared_svg_text_label(title, false, label_span_style),
-                            state_prepared_svg_text_label(description, false, label_span_style),
+                            state_native_svg_text_label(
+                                &title,
+                                Some(prepared_title_label),
+                                measured_title,
+                                false,
+                                label_span_style,
+                            ),
+                            state_native_svg_text_label(
+                                &desc,
+                                Some(prepared_description_label),
+                                measured_description,
+                                false,
+                                label_span_style,
+                            ),
                         )
                     }
                 } else if ctx.html_labels {
@@ -615,14 +841,27 @@ pub(super) fn render_state_node_svg(
                     )
                 } else {
                     (
-                        state_svg_text_label(&title, false, label_span_style),
-                        state_svg_text_label(&desc, false, label_span_style),
+                        state_native_svg_text_label(
+                            &title,
+                            None,
+                            measured_title,
+                            false,
+                            label_span_style,
+                        ),
+                        state_native_svg_text_label(
+                            &desc,
+                            None,
+                            measured_description,
+                            false,
+                            label_span_style,
+                        ),
                     )
                 };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
             let shape_style_escaped = escape_xml_display(shape_style_attr);
+            let divider_style_escaped = escape_xml_display(shape_style_attr);
             let label_style_escaped = escape_xml_display(text_style_attr);
             let html_div_style_raw = format!(
                 "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
@@ -652,7 +891,7 @@ pub(super) fn render_state_node_svg(
                 );
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject{} width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject{} width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
                     escape_xml_display(&node_class),
                     escape_xml_display(&node_dom_id),
                     escape_xml_display(data_look),
@@ -664,6 +903,7 @@ pub(super) fn render_state_node_svg(
                     fmt_display(-h / 2.0),
                     fmt_display(w),
                     fmt_display(h),
+                    divider_style_escaped,
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
                     fmt_display(geometry.divider_y),
@@ -688,7 +928,7 @@ pub(super) fn render_state_node_svg(
             } else {
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
                     escape_xml_display(&node_class),
                     escape_xml_display(&node_dom_id),
                     escape_xml_display(data_look),
@@ -700,6 +940,7 @@ pub(super) fn render_state_node_svg(
                     fmt_display(-h / 2.0),
                     fmt_display(w),
                     fmt_display(h),
+                    divider_style_escaped,
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
                     fmt_display(geometry.divider_y),
@@ -718,7 +959,9 @@ pub(super) fn render_state_node_svg(
         }
         _ => {
             let label = state_node_label_text(node);
+            let label_owner = crate::state::StateLabelOwner::Node(node_id);
             let prepared_label = ctx.label_sidecar.node(node_id);
+            let measured_label = ctx.label_sidecar.measured_native_geometry(label_owner);
 
             let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
@@ -728,16 +971,24 @@ pub(super) fn render_state_node_svg(
             };
             let measurement = prepared_label.map_or_else(
                 || {
-                    crate::state::measure_state_markdown_label(
-                        &label,
-                        ctx.measurer,
-                        node_text_style,
-                        Some(ctx.html_label_wrapping_width),
-                        wrap_mode,
+                    measured_label.map_or_else(
+                        || {
+                            crate::state::measure_state_markdown_label(
+                                &label,
+                                ctx.measurer,
+                                node_text_style,
+                                Some(ctx.html_label_wrapping_width),
+                                wrap_mode,
+                            )
+                        },
+                        |geometry| crate::state::StateLabelMeasurement {
+                            metrics: geometry.layout_metrics(),
+                            uses_html_wrapping_table: false,
+                        },
                     )
                 },
                 |prepared| crate::state::StateLabelMeasurement {
-                    metrics: prepared.metrics(),
+                    metrics: prepared.layout_metrics(),
                     uses_html_wrapping_table: prepared.uses_html_wrapping_table(),
                 },
             );
@@ -801,10 +1052,23 @@ pub(super) fn render_state_node_svg(
                 }
             }
 
-            let fill_attr = fill_override.unwrap_or(compatibility.state_bkg.as_str());
-            let stroke_attr = stroke_override.unwrap_or(compatibility.state_border.as_str());
+            let surface = compatibility
+                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::State)
+                .expect("ordinary State node must have a compatibility surface");
+            let compatibility_fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                &ctx.diagram_id,
+            );
+            let compatibility_stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                &ctx.diagram_id,
+            );
+            let fill_attr = fill_override.unwrap_or(compatibility_fill.as_str());
+            let stroke_attr = stroke_override.unwrap_or(compatibility_stroke.as_str());
             let stroke_width_attr = stroke_width_override
-                .unwrap_or(compatibility.rough_stroke_width_value)
+                .unwrap_or_else(|| compatibility.terminal_stroke_width_value(surface))
                 .max(0.0);
 
             let label_span_style = if text_style_attr.is_empty() {
@@ -817,7 +1081,13 @@ pub(super) fn render_state_node_svg(
                 if ctx.html_labels {
                     state_prepared_node_label_html_with_style(prepared, label_span_style)
                 } else {
-                    state_prepared_svg_text_label(prepared, false, label_span_style)
+                    state_native_svg_text_label(
+                        &label,
+                        Some(prepared),
+                        measured_label,
+                        false,
+                        label_span_style,
+                    )
                 }
             } else if ctx.html_labels {
                 state_node_label_html_with_style(
@@ -826,7 +1096,7 @@ pub(super) fn render_state_node_svg(
                     node_text_style.font_size,
                 )
             } else {
-                state_svg_text_label(&label, false, label_span_style)
+                state_native_svg_text_label(&label, None, measured_label, false, label_span_style)
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();

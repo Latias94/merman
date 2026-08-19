@@ -5,7 +5,9 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use crate::theme::MermaidThemeAdapter;
-use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
+use merman_core::diagrams::quadrant_chart::{
+    QuadrantChartPointModel, QuadrantChartRenderModel, QuadrantChartStyles,
+};
 use serde_json::Value;
 
 mod config;
@@ -16,6 +18,27 @@ pub(crate) use theme::QuadrantChartPointThemePlan;
 
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
     MermaidThemeAdapter::new(effective_config).quadrantchart()
+}
+
+fn point_class_styles<'a>(
+    model: &'a QuadrantChartRenderModel,
+    point: &QuadrantChartPointModel,
+) -> Option<&'a QuadrantChartStyles> {
+    point
+        .class_name
+        .as_deref()
+        .and_then(|class_name| model.classes.get(class_name))
+}
+
+fn point_source_fill<'a>(
+    point: &'a QuadrantChartPointModel,
+    class_styles: Option<&'a QuadrantChartStyles>,
+) -> Option<&'a str> {
+    point
+        .styles
+        .color
+        .as_deref()
+        .or_else(|| class_styles.and_then(|class_style| class_style.color.as_deref()))
 }
 
 fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
@@ -351,10 +374,7 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
 
     let mut points: Vec<QuadrantChartPointData> = Vec::new();
     for (point_index, p) in model.points.iter().enumerate() {
-        let class_styles = p
-            .class_name
-            .as_deref()
-            .and_then(|name| model.classes.get(name));
+        let class_styles = point_class_styles(model, p);
 
         let radius = p
             .styles
@@ -363,11 +383,13 @@ pub(crate) fn layout_quadrantchart_diagram_typed(
             .or_else(|| class_styles.and_then(|c| c.radius.map(|v| v as f64)))
             .or_else(|| point_theme.radius_override_px(point_index))
             .unwrap_or(cfg.point_radius);
-        let fill = p
-            .styles
-            .color
-            .clone()
-            .or_else(|| class_styles.and_then(|c| c.color.clone()))
+        let fill = point_source_fill(p, class_styles)
+            .map(str::to_owned)
+            .or_else(|| {
+                point_theme
+                    .fill_override_css(point_index)
+                    .map(str::to_owned)
+            })
             .unwrap_or_else(|| theme.quadrant_point_fill.clone());
         let stroke_color = p
             .styles

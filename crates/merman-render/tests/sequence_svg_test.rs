@@ -6,7 +6,7 @@ use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec,
-    FontCatalogSpec, FontStack, FontStyle, InsetsPx, Specified,
+    FontCatalogSpec, FontStack, FontStyle, InsetsPx, OrdinalSelector, Specified,
     TextStylePatch as ThemeTextStylePatch, ThemeAssets, ThemePortabilityRequirement, ThemeRule,
     ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
@@ -550,6 +550,45 @@ fn sequence_role_typography_theme() -> DiagramTheme {
         .expect("compile Sequence role typography theme")
 }
 
+fn sequence_role_font_stack_theme() -> DiagramTheme {
+    let font_bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let role = |target| {
+        ThemeRule::new(
+            target,
+            ThemeStylePatch {
+                typography: ThemeTextStylePatch {
+                    font_stack: Specified::Value(
+                        FontStack::single("monospace").expect("valid role font stack"),
+                    ),
+                    ..ThemeTextStylePatch::default()
+                },
+                ..ThemeStylePatch::default()
+            },
+        )
+        .for_family(DiagramFamilyId::SEQUENCE)
+    };
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(role(ThemeTarget::ActorLabel))
+                        .with_rule(role(ThemeTarget::MessageLabel))
+                        .with_rule(role(ThemeTarget::NoteLabel))
+                        .with_rule(role(ThemeTarget::LoopLabel)),
+                )
+                .with_assets(
+                    ThemeAssets::default().with_font_catalog(FontCatalogSpec::new([
+                        FontAssetSpec::new("excalifont", font_bytes),
+                    ])),
+                ),
+        )
+        .expect("compile Sequence role font-stack theme")
+}
+
 fn sequence_excalifont_asset_theme() -> DiagramTheme {
     let font_bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -562,6 +601,48 @@ fn sequence_excalifont_asset_theme() -> DiagramTheme {
             )),
         )
         .expect("compile Sequence Excalifont asset theme")
+}
+
+fn sequence_number_label_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::SequenceNumberLabel,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile Sequence number label theme")
+}
+
+fn sequence_role_paint_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
+    let role_fill = |target| {
+        ThemeRule::new(target, ThemeStylePatch::default().with_fill(fill.clone()))
+            .for_family(DiagramFamilyId::SEQUENCE)
+    };
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(role_fill(ThemeTarget::ActorLabel))
+                    .with_rule(role_fill(ThemeTarget::MessageLabel))
+                    .with_rule(role_fill(ThemeTarget::NoteLabel))
+                    .with_rule(role_fill(ThemeTarget::LoopLabel))
+                    .with_rule(role_fill(ThemeTarget::Loop))
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Loop,
+                            ThemeStylePatch::default().with_stroke(stroke),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+            ),
+        )
+        .expect("compile Sequence role paint theme")
 }
 
 fn inline_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> {
@@ -579,6 +660,34 @@ fn inline_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> {
                 .unwrap_or(value),
         )
     })
+}
+
+fn css_property_values_for_exact_selector<'a>(
+    css: &'a str,
+    selector: &str,
+    property: &str,
+) -> Vec<&'a str> {
+    let mut values = Vec::new();
+    for rule in css.split('}') {
+        let Some((selectors, declarations)) = rule.rsplit_once('{') else {
+            continue;
+        };
+        if !selectors
+            .split(',')
+            .any(|candidate| candidate.trim() == selector)
+        {
+            continue;
+        }
+        for declaration in declarations.split(';') {
+            let Some((name, value)) = declaration.split_once(':') else {
+                continue;
+            };
+            if name.trim() == property {
+                values.push(value.trim());
+            }
+        }
+    }
+    values
 }
 
 fn assert_sequence_role_text_style(
@@ -1558,7 +1667,7 @@ sequenceDiagram
 
 #[test]
 fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() {
-    let cases = [
+    let cases = vec![
         "activation_explicit.mmd",
         "stress_sequence_batch5_many_participants_spacing_050.mmd",
         "zed_pr_57644_sequence.mmd",
@@ -2056,6 +2165,1132 @@ end"##,
 }
 
 #[test]
+fn sequence_role_text_and_loop_surface_paints_seal_terminal_css_and_dom() {
+    let source = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Message Role
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+
+    for (case, fill, stroke, fill_css, stroke_css) in [
+        (
+            "solid",
+            CanvasPaint::solid("#fef3c7").expect("valid Sequence role fill"),
+            CanvasPaint::solid("#c084fc").expect("valid Sequence Loop stroke"),
+            "#fef3c7",
+            "#c084fc",
+        ),
+        (
+            "transparent",
+            CanvasPaint::Transparent,
+            CanvasPaint::Transparent,
+            "transparent",
+            "transparent",
+        ),
+    ] {
+        let theme = sequence_role_paint_theme(fill, stroke);
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse {case} Sequence role paint source: {error}"))
+            .unwrap_or_else(|| panic!("detect {case} Sequence role paint source"));
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin {case} Sequence role paint session: {error}"));
+        let diagram_id = format!("sequence-role-paint-{case}");
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare {case} Sequence role paint: {error}"))
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(diagram_id.clone()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap_or_else(|error| panic!("render {case} Sequence role paint: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("parse {case} Sequence role paint SVG: {error}"));
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Sequence role paint stylesheet");
+
+        for terminal_rule in [
+            format!(
+                "#{diagram_id} text.actor,#{diagram_id} text.actor>tspan,#{diagram_id} text.text,#{diagram_id} text.text>tspan{{fill:{fill_css};}}"
+            ),
+            format!(
+                "#{diagram_id} .messageText,#{diagram_id} .messageText>tspan{{fill:{fill_css};}}"
+            ),
+            format!("#{diagram_id} .noteText,#{diagram_id} .noteText>tspan{{fill:{fill_css};}}"),
+            format!(
+                "#{diagram_id} .loopText,#{diagram_id} .loopText>tspan,#{diagram_id} .sectionTitle,#{diagram_id} .sectionTitle>tspan,#{diagram_id} .labelText,#{diagram_id} .labelText>tspan{{fill:{fill_css};}}"
+            ),
+            format!("#{diagram_id} .labelBox{{fill:{fill_css};}}"),
+            format!("#{diagram_id} .labelBox{{stroke:{stroke_css};}}"),
+        ] {
+            assert!(
+                css.contains(&terminal_rule),
+                "missing {case} Sequence terminal rule {terminal_rule}: {css}"
+            );
+        }
+
+        for (class_name, text_fragment) in [
+            ("actor", "Alice"),
+            ("messageText", "Message Role"),
+            ("noteText", "Note Role"),
+            ("loopText", "Loop Role"),
+            ("labelText", "loop"),
+        ] {
+            assert!(
+                document.descendants().any(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_ascii_whitespace()
+                                .any(|class| class == class_name)
+                        })
+                        && node.descendants().any(|descendant| {
+                            descendant
+                                .text()
+                                .is_some_and(|text| text.contains(text_fragment))
+                        })
+                }),
+                "missing {case} Sequence {class_name} occurrence for {text_fragment:?}"
+            );
+        }
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == "labelBox")
+                    })
+                })
+                .count(),
+            1,
+            "the Loop receipt must bind the one emitted labelBox"
+        );
+        drop(document);
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 6, "{case}");
+        assert_eq!(evidence.accounted_count(), 6, "{case}");
+        assert_eq!(evidence.applied_count(), 6, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn sequence_role_paints_respect_explicit_mermaid_owners_from_site_and_source() {
+    const SOURCE: &str = r#"sequenceDiagram
+autonumber
+participant Alice
+participant Bob
+Alice->>Bob: Message Role
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    const MERMAID_COLOR: &str = "#fedcba";
+    const TYPED_COLOR: &str = "#123456";
+    let cases = [
+        (
+            "actor-label-fill",
+            ThemeTarget::ActorLabel,
+            "actorTextColor",
+            "fill",
+            "text.actor>tspan",
+            "text",
+            "actor",
+            Some("Alice"),
+            true,
+            false,
+        ),
+        (
+            "message-label-fill",
+            ThemeTarget::MessageLabel,
+            "signalTextColor",
+            "fill",
+            ".messageText",
+            "text",
+            "messageText",
+            Some("Message Role"),
+            false,
+            false,
+        ),
+        (
+            "note-label-fill",
+            ThemeTarget::NoteLabel,
+            "noteTextColor",
+            "fill",
+            ".noteText",
+            "text",
+            "noteText",
+            Some("Note Role"),
+            false,
+            false,
+        ),
+        (
+            "loop-control-label-fill",
+            ThemeTarget::LoopLabel,
+            "labelTextColor",
+            "fill",
+            ".labelText",
+            "text",
+            "labelText",
+            Some("loop"),
+            false,
+            false,
+        ),
+        (
+            "loop-title-label-fill",
+            ThemeTarget::LoopLabel,
+            "loopTextColor",
+            "fill",
+            ".loopText",
+            "text",
+            "loopText",
+            Some("Loop Role"),
+            false,
+            false,
+        ),
+        (
+            "loop-fill",
+            ThemeTarget::Loop,
+            "labelBoxBkgColor",
+            "fill",
+            ".labelBox",
+            "polygon",
+            "labelBox",
+            None,
+            false,
+            false,
+        ),
+        (
+            "loop-stroke",
+            ThemeTarget::Loop,
+            "labelBoxBorderColor",
+            "stroke",
+            ".labelBox",
+            "polygon",
+            "labelBox",
+            None,
+            false,
+            true,
+        ),
+        (
+            "sequence-number-label-fill",
+            ThemeTarget::SequenceNumberLabel,
+            "sequenceNumberColor",
+            "fill",
+            ".sequenceNumber",
+            "text",
+            "sequenceNumber",
+            Some("1"),
+            false,
+            false,
+        ),
+    ];
+
+    for (
+        case,
+        target,
+        config_key,
+        property,
+        selector_suffix,
+        dom_tag,
+        dom_class,
+        text_fragment,
+        requires_tspan,
+        stroke,
+    ) in cases
+    {
+        for origin in ["site", "source"] {
+            let patch = if stroke {
+                ThemeStylePatch::default().with_stroke(
+                    CanvasPaint::solid(TYPED_COLOR).expect("valid configured-owner stroke"),
+                )
+            } else {
+                ThemeStylePatch::default().with_fill(
+                    CanvasPaint::solid(TYPED_COLOR).expect("valid configured-owner fill"),
+                )
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE),
+                    )),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} Sequence {case} owner test: {error}")
+                });
+            let config = serde_json::json!({
+                "themeVariables": {(config_key): MERMAID_COLOR},
+            });
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let engine = merman_render::__private::install_parse_compatibility(&theme, engine);
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} Sequence {case} owner source: {error}")
+                })
+                .unwrap_or_else(|| panic!("detect {origin} Sequence {case} owner source"));
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence {case} owner session: {error}")
+                });
+            let diagram_id = format!("sequence-{origin}-{case}");
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} Sequence {case} owner theme: {error}")
+                })
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some(diagram_id.clone()),
+                        ..SvgRenderOptions::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("render {origin} Sequence {case} owner theme: {error}")
+                });
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                panic!("parse {origin} Sequence {case} owner SVG: {error}")
+            });
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap_or_else(|| panic!("missing {origin} Sequence {case} stylesheet"));
+            let selector = format!("#{diagram_id} {selector_suffix}");
+            let values = css_property_values_for_exact_selector(css, &selector, property);
+            assert_eq!(
+                values,
+                [MERMAID_COLOR],
+                "{origin} {case} must leave the explicit Mermaid owner as the only exact {selector} {property} terminal declaration: {css}"
+            );
+
+            let target_node = document.descendants().find(|node| {
+                node.has_tag_name(dom_tag)
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == dom_class)
+                    })
+                    && text_fragment.is_none_or(|fragment| {
+                        node.descendants().any(|descendant| {
+                            descendant
+                                .text()
+                                .is_some_and(|text| text.contains(fragment))
+                        })
+                    })
+            });
+            let target_node = target_node.unwrap_or_else(|| {
+                panic!("missing {origin} Sequence {case} terminal DOM target {dom_tag}.{dom_class}")
+            });
+            if requires_tspan {
+                assert!(
+                    target_node
+                        .children()
+                        .any(|child| child.has_tag_name("tspan")),
+                    "{origin} {case} terminal selector must bind an emitted actor tspan"
+                );
+            }
+            drop(document);
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            let partially_owned_role = target == ThemeTarget::LoopLabel
+                && matches!(config_key, "labelTextColor" | "loopTextColor");
+            assert_eq!(evidence.required_count(), 1, "{origin} {case}");
+            assert_eq!(evidence.accounted_count(), 1, "{origin} {case}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(partially_owned_role),
+                "{origin} {case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!partially_owned_role),
+                "{origin} {case}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {case}");
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_label_fill_ownership_is_terminal_surface_local() {
+    const SOURCE: &str = r#"sequenceDiagram
+box Team
+participant Alice
+participant Bob
+end
+Alice->>Bob: Message
+"#;
+    const MERMAID_COLOR: &str = "#fedcba";
+    const TYPED_COLOR: &str = "#123456";
+
+    for (case, actor_owned, box_owned) in [
+        ("actor-only", true, false),
+        ("box-only", false, true),
+        ("both", true, true),
+    ] {
+        for origin in ["site", "source"] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::ActorLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid(TYPED_COLOR)
+                                        .expect("valid Sequence ActorLabel fill"),
+                                ),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} Sequence ActorLabel {case} theme: {error}")
+                });
+            let mut theme_variables = serde_json::Map::new();
+            if actor_owned {
+                theme_variables.insert(
+                    "actorTextColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            if box_owned {
+                theme_variables.insert(
+                    "textColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            let config = serde_json::json!({"themeVariables": theme_variables});
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} Sequence ActorLabel {case} source: {error}")
+                })
+                .unwrap_or_else(|| panic!("detect {origin} Sequence ActorLabel {case} source"));
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence ActorLabel {case} session: {error}")
+                });
+            let diagram_id = format!("sequence-actor-label-{origin}-{case}");
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} Sequence ActorLabel {case}: {error}")
+                })
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some(diagram_id.clone()),
+                        ..SvgRenderOptions::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("render {origin} Sequence ActorLabel {case}: {error}")
+                });
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                panic!("parse {origin} Sequence ActorLabel {case} SVG: {error}")
+            });
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("Sequence ActorLabel stylesheet");
+
+            let participant_selector = format!("#{diagram_id} text.actor>tspan");
+            let participant_values =
+                css_property_values_for_exact_selector(css, &participant_selector, "fill");
+            assert_eq!(
+                participant_values.last().copied(),
+                Some(if actor_owned {
+                    MERMAID_COLOR
+                } else {
+                    TYPED_COLOR
+                }),
+                "{origin} {case} participant terminal owner: {css}"
+            );
+
+            let box_selector = format!("#{diagram_id} text.text");
+            let box_values = css_property_values_for_exact_selector(css, &box_selector, "fill");
+            if box_owned {
+                assert!(
+                    !box_values.contains(&TYPED_COLOR),
+                    "{origin} {case} box title must not receive typed fill: {css}"
+                );
+                assert_eq!(
+                    css_property_values_for_exact_selector(css, &format!("#{diagram_id}"), "fill")
+                        .last()
+                        .copied(),
+                    Some(MERMAID_COLOR),
+                    "{origin} {case} box title must inherit the explicit root text owner"
+                );
+            } else {
+                assert_eq!(
+                    box_values.last().copied(),
+                    Some(TYPED_COLOR),
+                    "{origin} {case} box title must retain the typed fill: {css}"
+                );
+            }
+
+            for (class_name, text_fragment) in [("actor", "Alice"), ("text", "Team")] {
+                assert!(
+                    document.descendants().any(|node| {
+                        node.has_tag_name("text")
+                            && node.attribute("class").is_some_and(|classes| {
+                                classes
+                                    .split_ascii_whitespace()
+                                    .any(|class| class == class_name)
+                            })
+                            && node.descendants().any(|descendant| {
+                                descendant
+                                    .text()
+                                    .is_some_and(|text| text.contains(text_fragment))
+                            })
+                    }),
+                    "missing {origin} {case} Sequence {class_name} occurrence"
+                );
+            }
+            drop(document);
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{origin} {case}");
+            assert_eq!(evidence.accounted_count(), 1, "{origin} {case}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!(actor_owned && box_owned)),
+                "{origin} {case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(actor_owned && box_owned),
+                "{origin} {case}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {case}");
+        }
+    }
+}
+
+#[test]
+fn sequence_loop_label_fill_ownership_is_terminal_surface_local() {
+    const SOURCE: &str = r#"sequenceDiagram
+participant Alice
+participant Bob
+alt Primary
+Alice->>Bob: Message
+else Secondary
+Bob-->>Alice: Reply
+end
+"#;
+    const MERMAID_COLOR: &str = "#fedcba";
+    const TYPED_COLOR: &str = "#123456";
+
+    for (case, keyword_owned, title_owned) in [
+        ("keyword-only", true, false),
+        ("titles-only", false, true),
+        ("both", true, true),
+    ] {
+        for origin in ["site", "source"] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::LoopLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid(TYPED_COLOR)
+                                        .expect("valid Sequence LoopLabel fill"),
+                                ),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} Sequence LoopLabel {case} theme: {error}")
+                });
+            let mut theme_variables = serde_json::Map::new();
+            if keyword_owned {
+                theme_variables.insert(
+                    "labelTextColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            if title_owned {
+                theme_variables.insert(
+                    "loopTextColor".to_string(),
+                    serde_json::Value::String(MERMAID_COLOR.to_string()),
+                );
+            }
+            let config = serde_json::json!({"themeVariables": theme_variables});
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} Sequence LoopLabel {case} source: {error}")
+                })
+                .unwrap_or_else(|| panic!("detect {origin} Sequence LoopLabel {case} source"));
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin {origin} Sequence LoopLabel {case} session: {error}")
+                });
+            let diagram_id = format!("sequence-loop-label-{origin}-{case}");
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} Sequence LoopLabel {case}: {error}")
+                })
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some(diagram_id.clone()),
+                        ..SvgRenderOptions::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("render {origin} Sequence LoopLabel {case}: {error}")
+                });
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                panic!("parse {origin} Sequence LoopLabel {case} SVG: {error}")
+            });
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("Sequence LoopLabel stylesheet");
+
+            for (selector_suffix, owned) in [
+                (".labelText", keyword_owned),
+                (".loopText", title_owned),
+                (".sectionTitle", title_owned),
+            ] {
+                let selector = format!("#{diagram_id} {selector_suffix}");
+                let values = css_property_values_for_exact_selector(css, &selector, "fill");
+                assert_eq!(
+                    values.last().copied(),
+                    Some(if owned { MERMAID_COLOR } else { TYPED_COLOR }),
+                    "{origin} {case} {selector_suffix} terminal owner: {css}"
+                );
+            }
+
+            for (class_name, text_fragment) in [
+                ("labelText", "alt"),
+                ("loopText", "Primary"),
+                ("sectionTitle", "Secondary"),
+            ] {
+                assert!(
+                    document.descendants().any(|node| {
+                        node.has_tag_name("text")
+                            && node.attribute("class").is_some_and(|classes| {
+                                classes
+                                    .split_ascii_whitespace()
+                                    .any(|class| class == class_name)
+                            })
+                            && node.descendants().any(|descendant| {
+                                descendant
+                                    .text()
+                                    .is_some_and(|text| text.contains(text_fragment))
+                            })
+                    }),
+                    "missing {origin} {case} Sequence {class_name} occurrence"
+                );
+            }
+            drop(document);
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{origin} {case}");
+            assert_eq!(evidence.accounted_count(), 1, "{origin} {case}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!(keyword_owned && title_owned)),
+                "{origin} {case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(keyword_owned && title_owned),
+                "{origin} {case}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{origin} {case}");
+        }
+    }
+}
+
+#[test]
+fn sequence_role_paints_yield_to_derived_mermaid_surface_owners_from_site_and_source() {
+    const SOURCE: &str = r#"sequenceDiagram
+autonumber
+box Team
+participant Alice
+participant Bob
+end
+Alice->>Bob: Message Role
+activate Bob
+Bob-->>Alice: Active Reply
+deactivate Bob
+Note over Alice,Bob: Note Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    const MERMAID_COLOR: &str = "#22c55e";
+    const TYPED_COLOR: &str = "#123456";
+
+    let mut cases = vec![
+        ("default", ThemeTarget::ActorLabel, "textColor", false, true),
+        (
+            "default",
+            ThemeTarget::MessageLabel,
+            "textColor",
+            false,
+            true,
+        ),
+        (
+            "default",
+            ThemeTarget::NoteLabel,
+            "actorTextColor",
+            false,
+            true,
+        ),
+        (
+            "default",
+            ThemeTarget::LoopLabel,
+            "actorTextColor",
+            false,
+            true,
+        ),
+        ("base", ThemeTarget::Loop, "mainBkg", false, true),
+        (
+            "base",
+            ThemeTarget::Activation,
+            "secondaryColor",
+            true,
+            true,
+        ),
+        (
+            "base",
+            ThemeTarget::SequenceNumberLabel,
+            "lineColor",
+            false,
+            true,
+        ),
+        ("dark", ThemeTarget::Loop, "border1", true, true),
+        ("forest", ThemeTarget::Actor, "mainBkg", false, true),
+        ("forest", ThemeTarget::Lifeline, "mainBkg", true, true),
+        ("forest", ThemeTarget::Loop, "mainBkg", false, true),
+        (
+            "forest",
+            ThemeTarget::LoopLabel,
+            "actorTextColor",
+            false,
+            true,
+        ),
+        ("neutral", ThemeTarget::Actor, "mainBkg", false, true),
+        ("neutral", ThemeTarget::Lifeline, "border1", true, true),
+        ("neutral", ThemeTarget::Loop, "mainBkg", false, true),
+        ("default", ThemeTarget::Lifeline, "actorBorder", true, false),
+        ("dark", ThemeTarget::Lifeline, "actorBorder", true, false),
+        ("default", ThemeTarget::Loop, "actorBkg", false, false),
+        ("dark", ThemeTarget::Loop, "actorBkg", false, false),
+    ];
+    for (theme_id, primary_owns_activation, primary_border_owns_loop, text_owns_message) in [
+        ("neo", true, true, true),
+        ("neo-dark", false, true, true),
+        ("redux", true, false, true),
+        ("redux-dark", false, false, false),
+        ("redux-color", true, false, true),
+        ("redux-dark-color", false, false, false),
+    ] {
+        cases.extend([
+            (theme_id, ThemeTarget::Loop, "mainBkg", false, true),
+            (
+                theme_id,
+                ThemeTarget::Activation,
+                "secondaryColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Activation,
+                "secondaryColor",
+                true,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Activation,
+                "primaryColor",
+                false,
+                primary_owns_activation,
+            ),
+            (
+                theme_id,
+                ThemeTarget::LoopLabel,
+                "primaryTextColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::MessageLabel,
+                "textColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Message,
+                "textColor",
+                true,
+                text_owns_message,
+            ),
+            (
+                theme_id,
+                ThemeTarget::Loop,
+                "primaryBorderColor",
+                true,
+                primary_border_owns_loop,
+            ),
+            (
+                theme_id,
+                ThemeTarget::SequenceNumberLabel,
+                "lineColor",
+                false,
+                true,
+            ),
+            (
+                theme_id,
+                ThemeTarget::SequenceNumberLabel,
+                "background",
+                false,
+                true,
+            ),
+            (theme_id, ThemeTarget::Loop, "primaryColor", false, false),
+            (theme_id, ThemeTarget::Loop, "nodeBkg", false, false),
+        ]);
+    }
+
+    for (theme_id, target, config_key, stroke, mermaid_owns_terminal) in cases {
+        for origin in ["site", "source"] {
+            let partially_owned_terminal = theme_id == "default"
+                && target == ThemeTarget::ActorLabel
+                && config_key == "textColor";
+            let terminal_key = match target {
+                ThemeTarget::Actor => "actorBkg",
+                ThemeTarget::ActorLabel => "actorTextColor",
+                ThemeTarget::Lifeline => "actorLineColor",
+                ThemeTarget::MessageLabel => "signalTextColor",
+                ThemeTarget::NoteLabel => "noteTextColor",
+                ThemeTarget::LoopLabel => "loopTextColor",
+                ThemeTarget::Loop if stroke => "labelBoxBorderColor",
+                ThemeTarget::Loop => "labelBoxBkgColor",
+                ThemeTarget::Activation if stroke => "activationBorderColor",
+                ThemeTarget::Activation => "activationBkgColor",
+                ThemeTarget::Message => "signalColor",
+                ThemeTarget::SequenceNumberLabel => "sequenceNumberColor",
+                _ => panic!("unexpected Sequence terminal target: {target:?}"),
+            };
+            let patch = if stroke {
+                ThemeStylePatch::default().with_stroke(
+                    CanvasPaint::solid(TYPED_COLOR).expect("valid typed Sequence stroke"),
+                )
+            } else {
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid(TYPED_COLOR).expect("valid typed Sequence fill"))
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE),
+                    )),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("compile {origin} {theme_id} {config_key} Sequence theme: {error}")
+                });
+            let config = serde_json::json!({
+                "theme": theme_id,
+                "themeVariables": {(config_key): MERMAID_COLOR},
+            });
+            let (engine, source) = if origin == "site" {
+                (
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    legacy_init_theme_compat_engine(),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| {
+                    panic!("parse {origin} {theme_id} {config_key} Sequence source: {error}")
+                })
+                .unwrap_or_else(|| {
+                    panic!("detect {origin} {theme_id} {config_key} Sequence source")
+                });
+            let expected_mermaid_color = parsed
+                .metadata()
+                .effective_config
+                .as_value()["themeVariables"][terminal_key]
+                .as_str()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{origin} {theme_id} {config_key} did not resolve terminal themeVariables.{terminal_key}"
+                    )
+                })
+                .to_owned();
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap_or_else(|error| {
+                    panic!("begin strict {origin} {theme_id} {config_key} session: {error}")
+                });
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap_or_else(|error| {
+                    panic!("prepare {origin} {theme_id} {config_key} Sequence theme: {error}")
+                })
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap_or_else(|error| {
+                    panic!("render strict {origin} {theme_id} {config_key} Sequence theme: {error}")
+                });
+
+            if mermaid_owns_terminal {
+                assert!(
+                    rendered.svg().contains(&expected_mermaid_color),
+                    "{origin} {theme_id} {config_key} must preserve effective themeVariables.{terminal_key}={expected_mermaid_color}: {}",
+                    rendered.svg()
+                );
+                if partially_owned_terminal {
+                    assert!(
+                        rendered.svg().contains(TYPED_COLOR),
+                        "typed paint must remain on the unowned participant surface for {origin} {theme_id} {config_key}: {}",
+                        rendered.svg()
+                    );
+                } else {
+                    assert!(
+                        !rendered.svg().contains(TYPED_COLOR),
+                        "typed paint must yield to {origin} {theme_id} {config_key}: {}",
+                        rendered.svg()
+                    );
+                }
+            } else {
+                assert!(
+                    rendered.svg().contains(TYPED_COLOR),
+                    "typed paint must retain the unowned {origin} {theme_id} {config_key} route: {}",
+                    rendered.svg()
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(
+                evidence.required_count(),
+                1,
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.accounted_count(),
+                1,
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!mermaid_owns_terminal || partially_owned_terminal),
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(mermaid_owns_terminal && !partially_owned_terminal),
+                "{origin} {theme_id} {config_key}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                0,
+                "{origin} {theme_id} {config_key}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_role_paints_yield_to_neutral_site_text_derivations() {
+    const SOURCE: &str = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Message Role
+loop Loop Role
+Bob-->>Alice: Reply Role
+end"#;
+    const MERMAID_COLOR: &str = "#22c55e";
+    const TYPED_COLOR: &str = "#123456";
+
+    for (case, target, terminal_key, stroke) in [
+        ("loop-label", ThemeTarget::LoopLabel, "loopTextColor", false),
+        ("message", ThemeTarget::Message, "signalColor", true),
+    ] {
+        let patch = if stroke {
+            ThemeStylePatch::default().with_stroke(
+                CanvasPaint::solid(TYPED_COLOR).expect("valid typed Neutral Sequence stroke"),
+            )
+        } else {
+            ThemeStylePatch::default().with_fill(
+                CanvasPaint::solid(TYPED_COLOR).expect("valid typed Neutral Sequence fill"),
+            )
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(target, patch).for_family(DiagramFamilyId::SEQUENCE),
+                )),
+            )
+            .unwrap_or_else(|error| panic!("compile Neutral site text {case} theme: {error}"));
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "neutral",
+            "themeVariables": { "text": MERMAID_COLOR },
+        })));
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+            .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse Neutral site text {case} source: {error}"))
+            .unwrap_or_else(|| panic!("detect Neutral site text {case} source"));
+        let terminal_path = format!("themeVariables.{terminal_key}");
+        assert_eq!(
+            parsed.metadata().effective_config.get_str(&terminal_path),
+            Some(MERMAID_COLOR),
+            "Neutral site text has incorrect derived {terminal_key} value"
+        );
+        assert!(
+            merman_core::__private::config_path_overrides_typed_default(
+                &parsed.metadata().effective_config,
+                &terminal_path,
+            ),
+            "Neutral site text must own derived {terminal_key}"
+        );
+
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin strict Neutral site text {case}: {error}"));
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare Neutral site text {case}: {error}"))
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render strict Neutral site text {case}: {error}"));
+        assert!(
+            rendered.svg().contains(MERMAID_COLOR),
+            "Neutral site text must reach the {case} terminal: {}",
+            rendered.svg()
+        );
+        assert!(
+            !rendered.svg().contains(TYPED_COLOR),
+            "typed {case} paint must yield to Neutral site text: {}",
+            rendered.svg()
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.accounted_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 0, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_math_role_paint_fails_closed_without_a_native_text_terminal() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::MessageLabel,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#22d3ee").expect("valid math message fill"),
+                        ),
+                    )
+                    .for_family(DiagramFamilyId::SEQUENCE),
+                ),
+            ),
+        )
+        .expect("compile Sequence math role paint theme");
+    let source = "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x^2$$\n";
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Sequence math role paint source")
+        .expect("detect Sequence math role paint source");
+    let session = RenderEnvironment::deterministic()
+        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer))
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict Sequence math role paint session");
+    let result = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence math role paint")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+    let error = match result {
+        Ok(_) => panic!("KaTeX/HTML text cannot seal a native MessageLabel fill terminal"),
+        Err(error) => error,
+    };
+
+    assert_eq!(
+        error.incomplete_family_theme(),
+        Some((DiagramFamilyId::SEQUENCE, 1, 0))
+    );
+    assert_eq!(error.unverified_family_theme(), None);
+}
+
+#[test]
 fn sequence_role_typography_is_shared_by_layout_preparation_and_terminal_svg() {
     let theme = sequence_role_typography_theme();
     let source = r#"sequenceDiagram
@@ -2231,6 +3466,139 @@ end"#;
     assert_eq!(inline_style_value(inline, "font-weight"), Some("600"));
     assert_eq!(inline_style_value(inline, "font-style"), Some("oblique"));
     assert_eq!(sequence_number.attribute("font-size"), Some("12px"));
+}
+
+#[test]
+fn sequence_role_font_stacks_yield_to_explicit_theme_variable_font_family() {
+    const SOURCE: &str = r#"sequenceDiagram
+participant Alice as Config Actor
+participant Bob
+Alice->>Bob: Config Message
+Note over Alice,Bob: Config Note
+loop Config Loop
+Bob-->>Alice: Reply
+end"#;
+    const CONFIG_FONT: &str = "Excalifont";
+    let theme = sequence_role_font_stack_theme();
+
+    for origin in ["site", "source"] {
+        let config = serde_json::json!({
+            "themeVariables": {"fontFamily": CONFIG_FONT},
+        });
+        let (engine, source) = if origin == "site" {
+            (
+                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                SOURCE.to_string(),
+            )
+        } else {
+            (
+                legacy_init_theme_compat_engine(),
+                format!("%%{{init: {config}}}%%\n{SOURCE}"),
+            )
+        };
+        let engine = merman_render::__private::install_parse_compatibility(&theme, engine);
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap_or_else(|error| {
+                panic!("parse {origin} Sequence font ownership source: {error}")
+            })
+            .unwrap_or_else(|| panic!("detect {origin} Sequence font ownership source"));
+        let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+        let measurement_identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new(format!("sequence-theme-variable-font-{origin}"))
+                .expect("valid profile id"),
+            "1",
+        )
+        .expect("valid measurement profile identity");
+        let measurement_policy = TextMeasurementPolicy::host_display(
+            measurement_identity,
+            host.clone(),
+            TextMeasurementPhase::ALL,
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(measurement_policy)
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| {
+                panic!("begin {origin} Sequence font ownership session: {error}")
+            });
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| {
+                panic!("prepare {origin} Sequence font ownership theme: {error}")
+            })
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| {
+                panic!("render {origin} Sequence font ownership theme: {error}")
+            });
+
+        let requests = host.snapshot();
+        for text_fragment in [
+            "Config Actor",
+            "Config Message",
+            "Config Note",
+            "Config Loop",
+        ] {
+            let matching = requests
+                .iter()
+                .filter(|exchange| exchange.request.text.contains(text_fragment))
+                .collect::<Vec<_>>();
+            assert!(
+                !matching.is_empty(),
+                "expected {origin} measurement requests for {text_fragment:?}"
+            );
+            assert!(
+                matching.iter().all(|exchange| {
+                    exchange.request.font_family.as_deref() != Some("monospace")
+                }),
+                "{origin} themeVariables.fontFamily must suppress the typed role stack during measurement: {matching:#?}"
+            );
+        }
+
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("parse {origin} Sequence font ownership SVG: {error}"));
+        for (class_name, text_fragment) in [
+            ("actor-box", "Config Actor"),
+            ("messageText", "Config Message"),
+            ("noteText", "Config Note"),
+            ("loopText", "Config Loop"),
+        ] {
+            let text = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_ascii_whitespace()
+                                .any(|class| class == class_name)
+                        })
+                        && node.descendants().any(|descendant| {
+                            descendant
+                                .text()
+                                .is_some_and(|text| text.contains(text_fragment))
+                        })
+                })
+                .unwrap_or_else(|| {
+                    panic!("missing {origin} {class_name} text containing {text_fragment:?}")
+                });
+            let inline = text
+                .attribute("style")
+                .unwrap_or_else(|| panic!("missing {origin} {class_name} inline style"));
+            assert_eq!(
+                inline_style_value(inline, "font-family"),
+                Some(CONFIG_FONT),
+                "{origin} explicit themeVariables.fontFamily must beat the typed role stack"
+            );
+        }
+        drop(document);
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 4, "{origin}");
+        assert_eq!(evidence.accounted_count(), 4, "{origin}");
+        assert_eq!(evidence.applied_count(), 0, "{origin}");
+        assert_eq!(evidence.not_applicable_count(), 4, "{origin}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{origin}");
+    }
 }
 
 #[test]
@@ -2702,6 +4070,230 @@ fn sequence_typed_message_css_escapes_the_diagram_id_selector() {
         "{css}"
     );
     assert!(!css.contains("#seq:prod"), "{css}");
+}
+
+#[test]
+fn sequence_number_label_fill_seals_actual_autonumber_text() {
+    let source = r#"sequenceDiagram
+autonumber
+participant Alice
+participant Bob
+Alice->>Bob: First
+Bob-->>Alice: Second"#;
+
+    for (case, fill, expected_css) in [
+        (
+            "solid",
+            CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
+            "#123456",
+        ),
+        ("transparent", CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = sequence_number_label_theme(fill);
+        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse themed Sequence autonumber source")
+            .expect("detect themed Sequence autonumber source");
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Sequence autonumber session");
+        let diagram_id = format!("sequence-number-{case}");
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare themed Sequence autonumber")
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(diagram_id.clone()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("typed Sequence number label must be portable");
+        let svg = rendered.svg().to_owned();
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence autonumber SVG");
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Sequence stylesheet");
+        let baseline = css
+            .find(&format!("#{diagram_id} .sequenceNumber{{fill:"))
+            .expect("Mermaid Sequence number baseline");
+        let terminal_rule = format!(
+            "#{diagram_id} .sequenceNumber,#{diagram_id} .sequenceNumber>tspan{{fill:{expected_css};}}"
+        );
+        let typed = css
+            .find(&terminal_rule)
+            .unwrap_or_else(|| panic!("missing typed Sequence number rule: {css}"));
+        assert!(
+            baseline < typed,
+            "typed Sequence number CSS must win by order"
+        );
+        let numbers = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("sequenceNumber")
+            })
+            .filter_map(|node| node.text())
+            .collect::<Vec<_>>();
+        assert_eq!(numbers, ["1", "2"]);
+        drop(document);
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sequence_number_label_is_not_applicable_without_autonumber() {
+    let theme = sequence_number_label_theme(
+        CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
+    );
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse Sequence source without autonumber")
+        .expect("detect Sequence source without autonumber");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict Sequence session without autonumber");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence source without autonumber")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("an absent Sequence number label must remain portable");
+    assert!(!rendered.svg().contains(r#"class="sequenceNumber""#));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn sequence_number_label_unsupported_selectors_fail_closed() {
+    let rule = || {
+        ThemeRule::new(
+            ThemeTarget::SequenceNumberLabel,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").expect("valid Sequence number fill")),
+        )
+    };
+    for (case, rule) in [
+        (
+            "explicit-default",
+            rule().with_variant(ThemeVariant::Default),
+        ),
+        (
+            "ordinal",
+            rule().with_ordinal(OrdinalSelector::exact(1).expect("valid ordinal")),
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(rule.for_family(DiagramFamilyId::SEQUENCE)),
+            ))
+            .unwrap_or_else(|error| panic!("compile {case} Sequence number theme: {error}"));
+        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap_or_else(|error| panic!("parse {case} Sequence number source: {error}"))
+            .unwrap_or_else(|| panic!("detect {case} Sequence number source"));
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin strict {case} Sequence number session: {error}"));
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare {case} Sequence number theme: {error}"));
+        let error = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .err()
+            .unwrap_or_else(|| panic!("{case} Sequence number selector must remain unsupported"));
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::SEQUENCE, 1)),
+            "{case}"
+        );
+        assert_eq!(error.incomplete_family_theme(), None, "{case}");
+    }
+}
+
+#[test]
+fn sequence_number_label_does_not_emit_a_superseded_direct_fill() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::SequenceNumberLabel,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456")
+                                    .expect("valid direct Sequence number fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::SequenceNumberLabel,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#fedcba")
+                                    .expect("valid explicit-default Sequence number fill"),
+                            ),
+                        )
+                        .with_variant(ThemeVariant::Default)
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+            ),
+        )
+        .expect("compile mixed Sequence number theme");
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse mixed Sequence number source")
+        .expect("detect mixed Sequence number source");
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .expect("begin mixed Sequence number session");
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare mixed Sequence number theme")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render mixed Sequence number theme in best-effort mode");
+
+    for fill in ["#123456", "#fedcba"] {
+        assert!(
+            !rendered.svg().contains(&format!(
+                "#merman .sequenceNumber,#merman .sequenceNumber>tspan{{fill:{fill};}}"
+            )),
+            "an unsupported final winner must not acquire the typed Sequence number terminal: {}",
+            rendered.svg()
+        );
+    }
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
 }
 
 #[test]

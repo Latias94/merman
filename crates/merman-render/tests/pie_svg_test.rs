@@ -5,7 +5,8 @@ use merman_core::{DiagramFamilyId, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
-    ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget,
 };
 use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
@@ -51,6 +52,15 @@ fn render_pie_from_text(text: &str) -> String {
 }
 
 fn render_pie_with_theme(text: &str, theme: &DiagramTheme) -> family::RenderedFamilySvg {
+    try_render_pie_with_theme_requirement(text, theme, ThemePortabilityRequirement::BestEffort)
+        .expect("render themed Pie")
+}
+
+fn try_render_pie_with_theme_requirement(
+    text: &str,
+    theme: &DiagramTheme,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(
         theme,
         legacy_init_theme_compat_engine(),
@@ -60,13 +70,12 @@ fn render_pie_with_theme(text: &str, theme: &DiagramTheme) -> family::RenderedFa
     .expect("detect themed Pie");
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Pie session");
 
-    family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Pie")
+    family::prepare(parsed, &LayoutOptions::default(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render themed Pie")
 }
 
 fn pie_slice_palette(colors: &[&str]) -> OrdinalPalette {
@@ -126,6 +135,25 @@ fn pie_slice_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
             ),
         )
         .expect("compile Pie stroke theme")
+}
+
+fn pie_slice_ordinal_stroke_theme(selector: OrdinalSelector) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::PieSlice,
+                        ThemeStylePatch::default().with_stroke(
+                            CanvasPaint::solid("#7c3aed").expect("valid ordinal Pie stroke"),
+                        ),
+                    )
+                    .for_family(DiagramFamilyId::PIE)
+                    .with_ordinal(selector),
+                ),
+            ),
+        )
+        .expect("compile Pie ordinal stroke theme")
 }
 
 #[test]
@@ -665,6 +693,62 @@ fn pie_static_fill_rule_outranks_the_typed_palette_for_slices_and_legend() {
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 1);
+}
+
+#[test]
+fn pie_ordinal_stroke_rules_fail_closed_for_matching_slice_occurrences() {
+    let source = "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n";
+    for (case, selector) in [
+        (
+            "exact",
+            OrdinalSelector::exact(2).expect("valid matching Pie exact ordinal"),
+        ),
+        (
+            "cycle",
+            OrdinalSelector::cycle(2, 0).expect("valid matching Pie cycle ordinal"),
+        ),
+    ] {
+        let theme = pie_slice_ordinal_stroke_theme(selector);
+        let rendered = try_render_pie_with_theme_requirement(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap_or_else(|error| panic!("render best-effort {case} Pie stroke: {error}"));
+        assert!(
+            !rendered
+                .svg()
+                .contains("#merman .pieCircle{stroke:#7c3aed;}"),
+            "unsupported {case} ordinal stroke must not claim a terminal Pie rule"
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.status(),
+            merman_render::__private::FamilyEvidenceStatus::Unverified,
+            "{case}"
+        );
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.accounted_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 0, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 1, "{case}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "{case}");
+
+        let error = match try_render_pie_with_theme_requirement(
+            source,
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        ) {
+            Ok(_) => panic!("matching {case} ordinal Pie stroke must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::PIE, 1)),
+            "{case}"
+        );
+    }
 }
 
 #[test]

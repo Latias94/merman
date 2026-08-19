@@ -1,9 +1,10 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    materialize_theme,
+    ThemeVariant, materialize_theme,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -80,11 +81,65 @@ fn er_entity_paint_theme(fill: CanvasPaint, stroke: Option<CanvasPaint>) -> Diag
         .expect("compile ER entity fill theme")
 }
 
+fn er_relation_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    er_relation_rules_theme([ThemeRule::new(
+        ThemeTarget::Relation,
+        ThemeStylePatch::default().with_stroke(stroke),
+    )])
+}
+
+fn er_relation_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile ER relation stroke theme")
+}
+
+fn relationship_path_tags(svg: &str) -> Vec<&str> {
+    Regex::new(r#"<path[^>]*class="[^"]*relationshipLine[^"]*"[^>]*/>"#)
+        .expect("ER relationship path regex")
+        .find_iter(svg)
+        .map(|entry| entry.as_str())
+        .collect()
+}
+
+fn referenced_marker_ids(path_tags: &[&str]) -> Vec<String> {
+    let marker = Regex::new(r#"url\(#([^)]+)\)"#).expect("ER marker reference regex");
+    path_tags
+        .iter()
+        .flat_map(|path| marker.captures_iter(path))
+        .map(|captures| captures[1].to_string())
+        .collect()
+}
+
+fn marker_opening_tag<'a>(svg: &'a str, marker_id: &str) -> &'a str {
+    let needle = format!(r#"<marker id="{marker_id}""#);
+    let start = svg
+        .find(&needle)
+        .unwrap_or_else(|| panic!("missing ER marker {marker_id}: {svg}"));
+    let end = svg[start..]
+        .find('>')
+        .map(|offset| start + offset + 1)
+        .expect("ER marker opening tag end");
+    &svg[start..end]
+}
+
 fn prepare_er_family_with_theme_and_engine(
     text: &str,
     theme: &DiagramTheme,
     engine: Engine,
 ) -> family::FamilyRenderArtifact {
+    try_prepare_er_family_with_theme_and_engine(text, theme, engine)
+        .expect("prepare themed ER artifact")
+}
+
+fn try_prepare_er_family_with_theme_and_engine(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> merman_render::Result<family::FamilyRenderArtifact> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse themed ER diagram")
@@ -93,7 +148,7 @@ fn prepare_er_family_with_theme_and_engine(
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable ER session");
-    family::prepare(parsed, &LayoutOptions::default(), session).expect("prepare themed ER artifact")
+    family::prepare(parsed, &LayoutOptions::default(), session)
 }
 
 fn render_er_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
@@ -595,4 +650,221 @@ fn er_entity_paint_is_not_applicable_without_entities() {
         Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
     );
     let _ = render_er_svg_from_text_with_theme("erDiagram\n", &theme);
+}
+
+#[test]
+fn er_static_relation_stroke_reaches_path_referenced_markers_and_evidence() {
+    for (name, stroke, expected_css) in [
+        (
+            "solid",
+            CanvasPaint::solid("#123456").expect("valid ER relation stroke"),
+            "#123456",
+        ),
+        ("transparent", CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = er_relation_stroke_theme(stroke);
+        let artifact = prepare_er_family_with_theme_and_engine(
+            "erDiagram\n  A ||--o{ B : owns\n",
+            &theme,
+            Engine::new(),
+        );
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render {name} ER relation stroke: {error}"));
+        let paths = relationship_path_tags(rendered.svg());
+        assert_eq!(paths.len(), 1, "{name}: {}", rendered.svg());
+        assert!(
+            paths[0].contains(&format!("stroke:{expected_css}")),
+            "{name}: {}",
+            paths[0]
+        );
+
+        let marker_ids = referenced_marker_ids(&paths);
+        assert_eq!(marker_ids.len(), 2, "{name}: {}", paths[0]);
+        for marker_id in marker_ids {
+            let marker = marker_opening_tag(rendered.svg(), &marker_id);
+            assert!(
+                marker.contains(&format!("stroke:{expected_css} !important")),
+                "{name}/{marker_id}: {marker}"
+            );
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1, "{name}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{name}");
+    }
+}
+
+#[test]
+fn er_static_relation_stroke_binds_all_recursive_segments_and_terminal_markers() {
+    let theme = er_relation_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid recursive ER relation stroke"),
+    );
+    let svg = render_er_svg_from_text_with_theme("erDiagram\n  A ||--o{ A : refers\n", &theme);
+    let paths = relationship_path_tags(&svg);
+    assert_eq!(paths.len(), 3, "recursive ER path count: {svg}");
+    assert!(
+        paths.iter().all(|path| path.contains("stroke:#123456")),
+        "every recursive ER path segment must own the direct stroke: {paths:?}"
+    );
+
+    let marker_ids = referenced_marker_ids(&paths);
+    assert_eq!(
+        marker_ids.len(),
+        2,
+        "recursive ER marker references: {paths:?}"
+    );
+    for marker_id in marker_ids {
+        let marker = marker_opening_tag(&svg, &marker_id);
+        assert!(
+            marker.contains("stroke:#123456 !important"),
+            "recursive ER marker {marker_id}: {marker}"
+        );
+    }
+}
+
+#[test]
+fn er_explicit_line_color_owns_relation_paths_and_markers() {
+    let theme =
+        er_relation_stroke_theme(CanvasPaint::solid("#123456").expect("valid ER relation stroke"));
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "themeVariables": { "lineColor": "#fedcba" }
+    })));
+    let artifact =
+        prepare_er_family_with_theme_and_engine("erDiagram\n  A ||--o{ B : owns\n", &theme, engine);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render source-owned ER relation stroke");
+    let paths = relationship_path_tags(rendered.svg());
+    assert_eq!(paths.len(), 1, "{}", rendered.svg());
+    assert!(!paths[0].contains("#123456"), "{}", paths[0]);
+    assert!(
+        rendered.svg().contains("stroke:#fedcba"),
+        "{}",
+        rendered.svg()
+    );
+    for marker_id in referenced_marker_ids(&paths) {
+        let marker = marker_opening_tag(rendered.svg(), &marker_id);
+        assert!(!marker.contains("#123456"), "{marker_id}: {marker}");
+    }
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn er_relation_stroke_is_not_applicable_without_relationships() {
+    let theme =
+        er_relation_stroke_theme(CanvasPaint::solid("#123456").expect("valid ER relation stroke"));
+    let artifact =
+        prepare_er_family_with_theme_and_engine("erDiagram\n  A\n", &theme, Engine::new());
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("ER relation stroke without relationships is not applicable");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
+    let gradient = LinearGradient::new(
+        90.0,
+        [
+            GradientStop::new(
+                0.0,
+                ThemeColorValue::parse("#123456").expect("valid ER gradient start"),
+            )
+            .expect("valid ER gradient stop"),
+            GradientStop::new(
+                1.0,
+                ThemeColorValue::parse("#abcdef").expect("valid ER gradient end"),
+            )
+            .expect("valid ER gradient stop"),
+        ],
+    )
+    .expect("valid ER gradient");
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#123456").expect("valid ER pattern color"),
+    )
+    .expect("valid ER pattern");
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.paint = Specified::Clear;
+    let solid = || {
+        ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#123456").expect("valid ER relation stroke"))
+    };
+    let fill = || {
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#654321").expect("valid ER relation fill"))
+    };
+    let unsupported_cases = [
+        ThemeRule::new(ThemeTarget::Relation, solid())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid ER relation ordinal")),
+        ThemeRule::new(ThemeTarget::Relation, clear),
+        ThemeRule::new(
+            ThemeTarget::Relation,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::LinearGradient(gradient)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Relation,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::Pattern(pattern)),
+        ),
+    ];
+    let legacy_cases = [
+        ThemeRule::new(ThemeTarget::Relation, solid()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::Relation, fill()),
+        ThemeRule::new(ThemeTarget::Text, fill()),
+        ThemeRule::new(ThemeTarget::Title, fill()),
+    ];
+
+    for rule in unsupported_cases {
+        let theme = er_relation_rules_theme([rule]);
+        let result = try_prepare_er_family_with_theme_and_engine(
+            "erDiagram\n  A ||--o{ B : owns\n",
+            &theme,
+            Engine::new(),
+        )
+        .and_then(|artifact| {
+            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        });
+        let error = match result {
+            Ok(_) => panic!("unsupported ER theme route must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::ER, 1))
+        );
+    }
+
+    for rule in legacy_cases {
+        let theme = er_relation_rules_theme([rule]);
+        let error = match try_prepare_er_family_with_theme_and_engine(
+            "erDiagram\n  A ||--o{ B : owns\n",
+            &theme,
+            Engine::new(),
+        ) {
+            Ok(_) => panic!("legacy ER theme routes must remain strict compatibility residuals"),
+            Err(error) => error,
+        };
+        match error {
+            merman_render::Error::LegacyFamilyThemeCompatibility {
+                family_id,
+                residual_count,
+            } => {
+                assert_eq!(family_id, merman_render::DiagramFamilyId::ER);
+                assert_eq!(residual_count, 1);
+            }
+            other => panic!("expected ER legacy compatibility residual, got {other}"),
+        }
+    }
 }

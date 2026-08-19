@@ -2,9 +2,11 @@ use super::super::*;
 pub(crate) fn render_info_diagram_svg(
     layout: &InfoDiagramLayout,
     effective_config: &serde_json::Value,
+    typography_theme: &crate::info::InfoTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let mut surface_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_spec = root_svg::RootViewportSpec::responsive_without_view_box(400.0);
@@ -15,9 +17,20 @@ pub(crate) fn render_info_diagram_svg(
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
-    let css = info_css_with_config(diagram_id, effective_config);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    drop(css);
+    out.push_str("<style>");
+    let css_write = write_info_css_with_font_family(
+        &mut out,
+        diagram_id,
+        effective_config,
+        typography_theme.font_family_css(),
+    )?;
+    out.push_str("</style>");
+    out.checkpoint()?;
+    surface_receipt.record_css_emission(
+        css_write.root_font_family_css(),
+        css_write.inherited_font_family_css(),
+        css_write.root_variable_font_family_css(),
+    );
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
     let _ = write!(
@@ -26,8 +39,15 @@ pub(crate) fn render_info_diagram_svg(
         escape_xml(&layout.version)
     );
     out.checkpoint()?;
+    surface_receipt.record_version_text("version", &layout.version);
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !typography_theme.record_terminal(surface_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Info typography receipt was recorded more than once".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
@@ -44,6 +64,9 @@ mod tests {
             .expect("render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
+        let effective_config = merman_core::MermaidConfig::default();
+        let typography_theme =
+            crate::info::InfoTypographyThemePlan::resolve(None, &effective_config);
         let execution = SvgExecution::unthemed_for_test(
             &request,
             &debug,
@@ -56,7 +79,8 @@ mod tests {
                 bounds: None,
                 version: "v11.15.0".to_string(),
             },
-            &serde_json::json!({}),
+            effective_config.as_value(),
+            &typography_theme,
             &execution,
         )
     }

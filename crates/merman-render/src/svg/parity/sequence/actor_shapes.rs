@@ -348,7 +348,7 @@ fn write_actor_label(
         SequenceMathHeightMode::Actor,
     ) {
         ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTypographyRole::Actor);
+            .record_candidate(crate::sequence::SequenceTextSurface::ParticipantLabel);
         let x = cx - katex.width / 2.0;
         let y = cy - katex.height / 2.0;
         out.push_str("<switch>");
@@ -444,7 +444,8 @@ fn write_actor_label_lines<'a>(
             text = escape_xml_display(decoded.as_ref())
         );
         if record_receipt {
-            typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+            typography_receipt
+                .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
         }
     }
 }

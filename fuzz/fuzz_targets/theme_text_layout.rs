@@ -89,6 +89,12 @@ fuzz_target!(|data: &[u8]| {
     ] {
         assert!(value.is_finite() && value >= 0.0);
     }
+    for probe in [single_run, wrapped] {
+        let (top_px, bottom_px) = probe.vertical_extents_px();
+        assert!(top_px.is_finite() && bottom_px.is_finite());
+        assert!(top_px <= bottom_px);
+        assert!((probe.bbox_height_px() - (bottom_px - top_px)).abs() <= f64::EPSILON);
+    }
     assert!(single_run.metrics().line_count >= 1);
     assert!(wrapped.metrics().line_count >= 1);
     assert!(wrapped.metrics().line_count <= text.chars().count().saturating_add(1).max(1));

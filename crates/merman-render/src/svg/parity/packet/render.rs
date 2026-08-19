@@ -12,24 +12,33 @@ fn write_packet_css(
     let id = crate::svg::escape_css_identifier(diagram_id);
     let font = typography_theme.font_family_css();
     let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
-    let base_css_start = out.len();
+    let byte_start_role = crate::packet::PacketTextRole::ByteStart;
+    let byte_end_role = crate::packet::PacketTextRole::ByteEnd;
+    let label_role = crate::packet::PacketTextRole::Label;
+    let title_role = crate::packet::PacketTextRole::Title;
+    let start_byte_fill = typography_theme.fill_css(byte_start_role, &style.start_byte_color);
+    let end_byte_fill = typography_theme.fill_css(byte_end_role, &style.end_byte_color);
+    let label_fill = typography_theme.fill_css(label_role, &style.label_color);
+    let title_fill = typography_theme.fill_css(title_role, &style.title_color);
     write_mermaid_default_base_css_prefix(out, &id, font)?;
-    let base_css_end = out.len();
-    let role_css_start = base_css_end;
     let _ = write!(
         out,
-        r#"#{} .packetByte{{font-size:{};}}#{} .packetByte.start{{fill:{};}}#{} .packetByte.end{{fill:{};}}#{} .packetLabel{{fill:{};font-size:{};}}#{} .packetTitle{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
+        r#"#{} .packetByte{{font-size:{};}}#{} {}{{fill:{};}}#{} {}{{fill:{};}}#{} {}{{fill:{};font-size:{};}}#{} {}{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
         id,
         style.byte_font_size,
         id,
-        style.start_byte_color,
+        byte_start_role.css_selector(),
+        start_byte_fill,
         id,
-        style.end_byte_color,
+        byte_end_role.css_selector(),
+        end_byte_fill,
         id,
-        style.label_color,
+        label_role.css_selector(),
+        label_fill,
         style.label_font_size,
         id,
-        style.title_color,
+        title_role.css_selector(),
+        title_fill,
         style.title_font_size,
         id,
         style.block_stroke_color,
@@ -37,35 +46,17 @@ fn write_packet_css(
         style.block_fill_color
     );
     out.checkpoint()?;
-    let role_css_end = out.len();
-    let root_variable_css_start = role_css_end;
     let _ = write!(out, r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
     out.checkpoint()?;
-    let root_variable_css_end = out.len();
 
-    let stylesheet = out.as_str();
-    let Some(base_css) = stylesheet.get(base_css_start..base_css_end) else {
-        return Err(crate::Error::InvalidModel {
-            message: "Packet base typography CSS boundaries were invalid".to_string(),
-        });
-    };
-    let Some(role_css) = stylesheet.get(role_css_start..role_css_end) else {
-        return Err(crate::Error::InvalidModel {
-            message: "Packet role CSS boundaries were invalid".to_string(),
-        });
-    };
-    let Some(root_variable_css) = stylesheet.get(root_variable_css_start..root_variable_css_end)
-    else {
-        return Err(crate::Error::InvalidModel {
-            message: "Packet root font variable CSS boundaries were invalid".to_string(),
-        });
-    };
-    typography_receipt.record_typography_stylesheet(
-        base_css,
-        role_css,
-        root_variable_css,
-        &id,
+    typography_receipt.record_successful_css_emission(
         font,
+        [
+            (byte_start_role, start_byte_fill),
+            (byte_end_role, end_byte_fill),
+            (label_role, label_fill),
+            (title_role, title_fill),
+        ],
     );
     Ok(())
 }
@@ -80,6 +71,40 @@ pub(crate) fn render_packet_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
+    let title_from_semantic = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let title_from_meta = diagram_title
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let terminal_title = title_from_semantic.or(title_from_meta);
+    let label_role = crate::packet::PacketTextRole::Label;
+    let byte_start_role = crate::packet::PacketTextRole::ByteStart;
+    let byte_end_role = crate::packet::PacketTextRole::ByteEnd;
+    let title_role = crate::packet::PacketTextRole::Title;
+    let expected_label_count = layout
+        .words
+        .iter()
+        .flat_map(|word| word.blocks.iter())
+        .filter(|block| !block.label.trim().is_empty())
+        .count();
+    let expected_byte_start_count = if layout.show_bits {
+        layout.words.iter().map(|word| word.blocks.len()).sum()
+    } else {
+        0
+    };
+    let expected_byte_end_count = if layout.show_bits {
+        layout
+            .words
+            .iter()
+            .flat_map(|word| word.blocks.iter())
+            .filter(|block| block.start != block.end)
+            .count()
+    } else {
+        0
+    };
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -113,8 +138,13 @@ pub(crate) fn render_packet_diagram_svg_model(
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
-    let mut surface_receipt: crate::packet::PacketSurfaceReceipt =
-        typography_theme.begin_terminal_receipt();
+    let mut surface_receipt: crate::packet::PacketSurfaceReceipt = typography_theme
+        .begin_terminal_receipt([
+            (label_role, expected_label_count),
+            (byte_start_role, expected_byte_start_count),
+            (byte_end_role, expected_byte_end_count),
+            (title_role, usize::from(terminal_title.is_some())),
+        ]);
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -161,15 +191,20 @@ pub(crate) fn render_packet_diagram_svg_model(
             );
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" class="packetLabel" dominant-baseline="middle" text-anchor="middle">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" class="{class}" dominant-baseline="middle" text-anchor="middle">{text}</text>"#,
                 x = fmt(b.x + b.width / 2.0),
                 y = fmt(b.y + b.height / 2.0),
+                class = label_role.class_attribute(),
                 text = escape_xml(&b.label)
             );
 
             if !layout.show_bits {
                 out.checkpoint()?;
-                surface_receipt.record_non_empty_text(&b.label);
+                surface_receipt.record_non_empty_text(
+                    label_role,
+                    label_role.class_attribute(),
+                    &b.label,
+                );
                 continue;
             }
             let is_single_block = b.start == b.end;
@@ -182,26 +217,34 @@ pub(crate) fn render_packet_diagram_svg_model(
             let start_anchor = if is_single_block { "middle" } else { "start" };
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" class="packetByte start" dominant-baseline="auto" text-anchor="{anchor}">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" class="{class}" dominant-baseline="auto" text-anchor="{anchor}">{text}</text>"#,
                 x = fmt(start_x),
                 y = fmt(bit_number_y),
+                class = byte_start_role.class_attribute(),
                 anchor = start_anchor,
                 text = b.start
             );
             if !is_single_block {
                 let _ = write!(
                     &mut out,
-                    r#"<text x="{x}" y="{y}" class="packetByte end" dominant-baseline="auto" text-anchor="end">{text}</text>"#,
+                    r#"<text x="{x}" y="{y}" class="{class}" dominant-baseline="auto" text-anchor="end">{text}</text>"#,
                     x = fmt(b.x + b.width),
                     y = fmt(bit_number_y),
+                    class = byte_end_role.class_attribute(),
                     text = b.end
                 );
             }
             out.checkpoint()?;
-            surface_receipt.record_non_empty_text(&b.label);
-            surface_receipt.record_text_occurrence();
+            surface_receipt.record_non_empty_text(
+                label_role,
+                label_role.class_attribute(),
+                &b.label,
+            );
+            surface_receipt
+                .record_text_occurrence(byte_start_role, byte_start_role.class_attribute());
             if !is_single_block {
-                surface_receipt.record_text_occurrence();
+                surface_receipt
+                    .record_text_occurrence(byte_end_role, byte_end_role.class_attribute());
             }
         }
         out.push_str("</g>");
@@ -210,40 +253,35 @@ pub(crate) fn render_packet_diagram_svg_model(
 
     let total_row_height = layout.row_height + layout.padding_y;
     let title_y = layout.height - total_row_height / 2.0;
-    let title_from_semantic = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty());
-    let title_from_meta = diagram_title.map(str::trim).filter(|t| !t.is_empty());
-    let terminal_title = title_from_semantic.or(title_from_meta);
     match terminal_title {
         Some(title) => {
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="packetTitle">{text}</text>"#,
+                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="{class}">{text}</text>"#,
                 x = fmt(layout.width / 2.0),
                 y = fmt(title_y),
+                class = title_role.class_attribute(),
                 text = escape_xml(title)
             );
         }
         None => {
             let _ = write!(
                 &mut out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="packetTitle"/>"#,
+                r#"<text x="{x}" y="{y}" dominant-baseline="middle" text-anchor="middle" class="{class}"/>"#,
                 x = fmt(layout.width / 2.0),
                 y = fmt(title_y),
+                class = title_role.class_attribute(),
             );
         }
     }
     out.checkpoint()?;
     if terminal_title.is_some() {
-        surface_receipt.record_title_occurrence();
+        surface_receipt.record_text_occurrence(title_role, title_role.class_attribute());
     }
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if !typography_theme.record_terminal(surface_receipt) {
+    if !typography_theme.record_terminal(surface_receipt, options.work_meter())? {
         return Err(crate::Error::InvalidModel {
             message: "Packet typography receipt was recorded more than once".to_string(),
         });
@@ -272,8 +310,18 @@ mod tests {
                 "blockFillColor": "#666666"
             }
         }));
-        let typography_theme = crate::packet::PacketTypographyThemePlan::resolve(None, &config);
-        let mut typography_receipt = typography_theme.begin_terminal_receipt();
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let typography_theme =
+            crate::packet::PacketTypographyThemePlan::resolve(None, &config, &work_meter)
+                .expect("resolve baseline Packet typography");
+        let mut typography_receipt = typography_theme.begin_terminal_receipt([
+            (crate::packet::PacketTextRole::Label, 0),
+            (crate::packet::PacketTextRole::ByteStart, 0),
+            (crate::packet::PacketTextRole::ByteEnd, 0),
+            (crate::packet::PacketTextRole::Title, 0),
+        ]);
         let mut css = String::new();
         write_packet_css(
             &mut css,

@@ -222,7 +222,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     // Points.
     out.push_str(r#"<g class="data-points">"#);
     out.checkpoint()?;
-    let mut point_radius_receipt = point_theme.begin_terminal_receipt();
+    let mut point_theme_receipt = point_theme.begin_terminal_receipt();
     for (point_index, point) in layout.points.iter().enumerate() {
         out.push_str(r#"<g class="data-point">"#);
         out.checkpoint()?;
@@ -245,11 +245,11 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             stroke_width = escape_xml(&point.stroke_width),
         );
         out.checkpoint()?;
-        if let Some(receipt) = point_radius_receipt.as_mut() {
+        if let Some(receipt) = point_theme_receipt.as_mut() {
             receipt.record_checkpointed_point(
                 point_index,
                 themed_radius_token.map(|_| radius_token),
-                themed_radius_token,
+                &point.fill,
             );
         }
         let _ = write!(
@@ -301,9 +301,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
 
     out.push_str("</g></svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if point_radius_receipt.is_some_and(|receipt| !point_theme.record_terminal(receipt)) {
+    if point_theme_receipt.is_some_and(|receipt| !point_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
-            message: "Quadrant Chart point radius receipt did not match the terminal SVG"
+            message: "Quadrant Chart point theme receipt did not match the terminal SVG"
                 .to_string(),
         });
     }

@@ -23,7 +23,9 @@ use serde_json::Value;
 
 mod theme;
 
-pub(crate) use theme::{ArchitectureGroupThemePlan, ArchitectureGroupThemeReceipt};
+pub(crate) use theme::{
+    ArchitectureEdgeThemeReceipt, ArchitectureGroupThemePlan, ArchitectureGroupThemeReceipt,
+};
 
 struct ArchitectureManateeWorkControl<'a> {
     meter: &'a OperationWorkMeter,

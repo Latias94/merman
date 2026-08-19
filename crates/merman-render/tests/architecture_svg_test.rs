@@ -3,6 +3,12 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified,
+    ThemeColorValue, ThemeLength, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeVariant,
+};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
@@ -20,6 +26,18 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+
+const TWO_ARCHITECTURE_EDGES: &str = r#"architecture-beta
+  service api(server)[API]
+  service worker(server)[Worker]
+  service db(database)[DB]
+  api:R --> L:worker
+  worker:R --> L:db
+"#;
+
+const ARCHITECTURE_WITHOUT_EDGES: &str = r#"architecture-beta
+  service api(server)[API]
+"#;
 
 #[derive(Default)]
 struct CountingArchitectureHost {
@@ -123,6 +141,88 @@ fn prepare_architecture_text_with_engine(
         .begin_session()
         .expect("begin render session");
     family::prepare(parsed, &layout_options, session).expect("layout ok")
+}
+
+fn architecture_edge_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Architecture Edge rules")
+}
+
+fn architecture_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    architecture_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(stroke),
+    )
+    .for_family(DiagramFamilyId::ARCHITECTURE)])
+}
+
+fn try_render_architecture_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Architecture")
+        .expect("detect themed Architecture");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin strict portable Architecture session");
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
+}
+
+fn render_architecture_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+) -> family::RenderedFamilySvg {
+    try_render_architecture_with_theme_and_engine(source, theme, engine, diagram_id)
+        .expect("render themed Architecture")
+}
+
+fn has_class(node: &roxmltree::Node<'_, '_>, class: &str) -> bool {
+    node.attribute("class")
+        .is_some_and(|classes| classes.split_ascii_whitespace().any(|value| value == class))
+}
+
+fn architecture_edge_paths<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+) -> Vec<roxmltree::Node<'a, 'input>> {
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && has_class(node, "edge"))
+        .collect()
+}
+
+fn architecture_arrow_polygons<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+) -> Vec<roxmltree::Node<'a, 'input>> {
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("polygon") && has_class(node, "arrow"))
+        .collect()
+}
+
+fn stylesheet(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Architecture SVG");
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect()
 }
 
 fn try_render_architecture_svg_with_resource_policy(
@@ -494,6 +594,215 @@ architecture-beta
     assert!(!svg.contains(
         r#"#architecture-theme .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
     ));
+}
+
+#[test]
+fn architecture_edge_stroke_reaches_every_edge_segment_without_recoloring_arrows() {
+    for (case, stroke, expected_stroke) in [
+        (
+            "solid",
+            CanvasPaint::solid("#123456").expect("valid Architecture Edge stroke"),
+            "#123456",
+        ),
+        ("transparent", CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = architecture_edge_stroke_theme(stroke);
+        let rendered = render_architecture_with_theme_and_engine(
+            TWO_ARCHITECTURE_EDGES,
+            &theme,
+            Engine::new(),
+            &format!("architecture-edge-{case}"),
+        );
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid Architecture Edge SVG");
+        let edges = architecture_edge_paths(&document);
+        let arrows = architecture_arrow_polygons(&document);
+
+        assert_eq!(edges.len(), 2, "{case}");
+        assert!(
+            edges.iter().all(|edge| edge.attribute("style")
+                == Some(format!("stroke:{expected_stroke};").as_str())),
+            "{case}: every actual Architecture edge path must carry the direct terminal stroke",
+        );
+        assert_eq!(arrows.len(), 2, "{case}");
+        assert!(
+            arrows.iter().all(|arrow| arrow
+                .attribute("style")
+                .is_none_or(|style| !style.contains(expected_stroke))),
+            "{case}: Architecture .arrow fill remains owned by archEdgeArrowColor",
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 1, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn architecture_edge_stroke_respects_source_and_site_mermaid_owners() {
+    let theme = architecture_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Architecture Edge stroke"),
+    );
+
+    for (source_name, config) in [
+        (
+            "arch-edge",
+            serde_json::json!({ "themeVariables": { "archEdgeColor": "#fedcba" } }),
+        ),
+        (
+            "line-fallback",
+            serde_json::json!({ "themeVariables": { "lineColor": "#fedcba" } }),
+        ),
+    ] {
+        let source_config =
+            serde_json::to_string(&config).expect("serialize Architecture source config");
+        let source_owned = format!("%%{{init: {source_config}}}%%\n{TWO_ARCHITECTURE_EDGES}");
+        let cases = [
+            (
+                "site",
+                TWO_ARCHITECTURE_EDGES.to_string(),
+                Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+            ),
+            (
+                "source",
+                source_owned,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({ "secure": [] }),
+                )),
+            ),
+        ];
+
+        for (owner, source, engine) in cases {
+            let diagram_id = format!("architecture-edge-{source_name}-{owner}");
+            let rendered =
+                render_architecture_with_theme_and_engine(&source, &theme, engine, &diagram_id);
+            let document = roxmltree::Document::parse(rendered.svg())
+                .expect("valid source-owned Architecture Edge SVG");
+            let edges = architecture_edge_paths(&document);
+            let css = stylesheet(rendered.svg());
+
+            assert_eq!(edges.len(), 2, "{source_name}/{owner}");
+            assert!(
+                edges.iter().all(|edge| edge
+                    .attribute("style")
+                    .is_none_or(|style| !style.contains("#123456"))),
+                "{source_name}/{owner}: typed Edge.stroke must not overwrite the Mermaid owner",
+            );
+            assert!(
+                css.contains(&format!(
+                    "#{diagram_id} .edge{{stroke-width:3;stroke:#fedcba;fill:none;}}"
+                )),
+                "{source_name}/{owner}: Mermaid's resolved archEdgeColor must remain terminal",
+            );
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{source_name}/{owner}");
+            assert_eq!(evidence.applied_count(), 0, "{source_name}/{owner}");
+            assert_eq!(evidence.not_applicable_count(), 1, "{source_name}/{owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{source_name}/{owner}");
+        }
+    }
+}
+
+#[test]
+fn architecture_edge_stroke_is_not_applicable_without_edge_occurrences() {
+    let theme = architecture_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Architecture Edge stroke"),
+    );
+    let rendered = render_architecture_with_theme_and_engine(
+        ARCHITECTURE_WITHOUT_EDGES,
+        &theme,
+        Engine::new(),
+        "architecture-edge-empty",
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid empty-edge Architecture SVG");
+
+    assert!(architecture_edge_paths(&document).is_empty());
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_edge_stroke_rejects_ordinal_variant_clear_gradient_and_pattern_routes() {
+    let stops = || {
+        [
+            GradientStop::new(
+                0.0,
+                ThemeColorValue::parse("#123456").expect("valid Architecture gradient start"),
+            )
+            .expect("valid Architecture gradient stop"),
+            GradientStop::new(
+                1.0,
+                ThemeColorValue::parse("#abcdef").expect("valid Architecture gradient end"),
+            )
+            .expect("valid Architecture gradient stop"),
+        ]
+    };
+    let linear = LinearGradient::new(90.0, stops()).expect("valid Architecture linear gradient");
+    let radial = RadialGradient::new(
+        ThemeLength::percent(50.0),
+        ThemeLength::percent(50.0),
+        ThemeLength::percent(50.0),
+        stops(),
+    )
+    .expect("valid Architecture radial gradient");
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#123456").expect("valid Architecture pattern color"),
+    )
+    .expect("valid Architecture pattern");
+    let mut clear = ThemeStylePatch::default();
+    clear.stroke.paint = Specified::Clear;
+    let solid = || {
+        ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#123456").expect("valid Architecture stroke"))
+    };
+    let cases = [
+        ThemeRule::new(ThemeTarget::Edge, solid())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid Architecture Edge ordinal")),
+        ThemeRule::new(ThemeTarget::Edge, solid()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::Edge, clear),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::LinearGradient(linear)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::RadialGradient(radial)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::Pattern(pattern)),
+        ),
+    ];
+
+    for rule in cases {
+        let theme = architecture_edge_rules_theme([rule.for_family(DiagramFamilyId::ARCHITECTURE)]);
+        let error = match try_render_architecture_with_theme_and_engine(
+            TWO_ARCHITECTURE_EDGES,
+            &theme,
+            Engine::new(),
+            "architecture-edge-unsupported",
+        ) {
+            Ok(_) => panic!("unsupported Architecture Edge.stroke route must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::ARCHITECTURE, 1))
+        );
+    }
 }
 
 #[test]

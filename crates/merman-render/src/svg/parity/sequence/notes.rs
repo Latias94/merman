@@ -59,7 +59,7 @@ pub(super) fn render_sequence_note(
         SequenceMathHeightMode::Draw,
     ) {
         ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTypographyRole::Note);
+            .record_candidate(crate::sequence::SequenceTextSurface::NoteLabel);
         write_sequence_katex_foreign_object(
             out,
             &katex,
@@ -138,7 +138,7 @@ fn render_sequence_note_lines<'a>(
             text = escape_xml(text)
         );
         if let Some(receipt) = typography_receipt {
-            receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Note);
+            receipt.record_terminal_text(crate::sequence::SequenceTextSurface::NoteLabel);
         }
     }
 }

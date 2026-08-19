@@ -37,6 +37,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::RAILROAD, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    surface_receipt.record_root_svg_open(out.as_str());
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -244,10 +245,9 @@ fn write_railroad_css(
     let font_size_css = fmt_string(style.font_size);
     let stylesheet_start = out.len();
 
-    write_railroad_css_scope(out, &diagram_id_css)?;
     let _ = write!(
         out,
-        " .railroad-diagram{{font-family:{};font-size:{}px;}}",
+        "#{diagram_id_css}.railroad-diagram{{font-family:{};font-size:{}px;}}",
         style.font_family, font_size_css
     );
     out.checkpoint()?;
@@ -357,12 +357,7 @@ fn write_railroad_css(
             message: "Railroad typography CSS boundaries were invalid".to_string(),
         });
     };
-    surface_receipt.record_typography_stylesheet(
-        stylesheet,
-        &diagram_id_css,
-        &style.font_family,
-        &font_size_css,
-    );
+    surface_receipt.record_typography_stylesheet(stylesheet, &style.font_family, &font_size_css);
     Ok(())
 }
 
@@ -374,12 +369,16 @@ mod tests {
     fn root_font_rule_matches_mermaid_namespacing() {
         let style = crate::railroad::railroad_style(&serde_json::json!({}));
         let mut surface_receipt = crate::railroad::RailroadSurfaceReceipt::default();
+        surface_receipt.record_root_svg_open(concat!(
+            r#"<svg id="railroad.fixture" xmlns="http://www.w3.org/2000/svg" "#,
+            r#"class="railroad-diagram">"#,
+        ));
         let mut css = String::new();
         write_railroad_css(&mut css, &style, "railroad.fixture", &mut surface_receipt)
             .expect("write Railroad CSS");
 
-        assert!(css.starts_with("#railroad\\.fixture .railroad-diagram{"));
-        assert!(!css.starts_with("#railroad\\.fixture.railroad-diagram{"));
+        assert!(css.starts_with("#railroad\\.fixture.railroad-diagram{"));
+        assert!(!css.starts_with("#railroad\\.fixture .railroad-diagram{"));
         assert!(surface_receipt.typography_stylesheet_verified());
     }
 }

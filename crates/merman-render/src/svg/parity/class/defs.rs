@@ -1,5 +1,7 @@
 use super::super::path_bounds::{SvgPathBounds, svg_path_bounds_from_d};
 use super::super::*;
+use super::ClassSvgRelation;
+use std::collections::BTreeSet;
 
 const CLASS_DIAMOND_MARKER_PATH: &str = "M 18,7 L9,13 L1,7 L9,1 Z";
 const CLASS_EXTENSION_START_MARKER_PATH: &str = "M 1,7 L18,13 V 1 Z";
@@ -206,17 +208,71 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
     }
 }
 
+const CLASS_RELATION_MARKER_ORDER: [&str; 10] = [
+    "aggregationStart",
+    "aggregationEnd",
+    "extensionStart",
+    "extensionEnd",
+    "compositionStart",
+    "compositionEnd",
+    "dependencyStart",
+    "dependencyEnd",
+    "lollipopStart",
+    "lollipopEnd",
+];
+
+fn class_marker_fill_follows_stroke(marker_name: &str) -> bool {
+    marker_name.starts_with("composition") || marker_name.starts_with("dependency")
+}
+
+fn class_marker_has_transparent_terminal_fill(marker_name: &str) -> bool {
+    matches!(
+        marker_name,
+        "aggregationStart" | "aggregationEnd" | "extensionStart" | "extensionEnd"
+    )
+}
+
+pub(super) fn class_marker_terminal_expectations(
+    relations: &[ClassSvgRelation],
+) -> Vec<crate::class::ClassMarkerTerminalExpectation> {
+    let referenced = relations
+        .iter()
+        .flat_map(|relation| {
+            [
+                class_marker_name(relation.relation.type1, true),
+                class_marker_name(relation.relation.type2, false),
+            ]
+            .into_iter()
+            .flatten()
+        })
+        .collect::<BTreeSet<_>>();
+    CLASS_RELATION_MARKER_ORDER
+        .into_iter()
+        .filter(|name| referenced.contains(name))
+        .map(|name| {
+            crate::class::ClassMarkerTerminalExpectation::new(
+                name,
+                class_marker_fill_follows_stroke(name),
+            )
+        })
+        .collect()
+}
+
 pub(super) fn class_markers(
     out: &mut impl SvgOutput,
     diagram_id: &str,
     diagram_marker_class: &str,
     include_margin_markers: bool,
+    relation_theme: &crate::class::ClassRelationThemePlan,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
 ) -> Result<()> {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
     struct MarkerContext<'a, O: SvgOutput> {
         out: &'a mut O,
         diagram_id: &'a str,
         diagram_marker_class: &'a str,
+        relation_theme: &'a crate::class::ClassRelationThemePlan,
+        theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
     }
 
     enum MarkerShape<'a> {
@@ -230,7 +286,7 @@ pub(super) fn class_markers(
     }
 
     struct MarkerSpec<'a> {
-        name: &'a str,
+        name: &'static str,
         kind: &'a str,
         ref_x: &'a str,
         ref_y: &'a str,
@@ -243,6 +299,21 @@ pub(super) fn class_markers(
     }
 
     fn marker<O: SvgOutput>(ctx: &mut MarkerContext<'_, O>, spec: MarkerSpec<'_>) -> Result<()> {
+        let typed_stroke = if ctx.theme_receipt.themes_marker(spec.name) {
+            ctx.relation_theme.typed_stroke()
+        } else {
+            None
+        };
+        let fill_follows_stroke = class_marker_fill_follows_stroke(spec.name);
+        let terminal_style = typed_stroke.map(|(_, css)| {
+            if fill_follows_stroke {
+                format!("stroke:{css} !important;fill:{css} !important")
+            } else if class_marker_has_transparent_terminal_fill(spec.name) {
+                format!("stroke:{css} !important;fill:transparent !important")
+            } else {
+                format!("stroke:{css} !important")
+            }
+        });
         if spec.wrap_defs {
             ctx.out.push_str("<defs>");
             ctx.out.checkpoint()?;
@@ -271,17 +342,17 @@ pub(super) fn class_markers(
                 if let MarkerShape::PathWithViewBox(_, path_view_box) = spec.shape {
                     let _ = write!(
                         ctx.out,
-                        r#"><path d="{}" viewBox="{}"/></marker>"#,
+                        r#"><path d="{}" viewBox="{}""#,
                         escape_xml_display(d),
                         path_view_box
                     );
                 } else {
-                    let _ = write!(
-                        ctx.out,
-                        r#"><path d="{}"/></marker>"#,
-                        escape_xml_display(d)
-                    );
+                    let _ = write!(ctx.out, r#"><path d="{}""#, escape_xml_display(d));
                 }
+                if let Some(style) = terminal_style.as_deref() {
+                    let _ = write!(ctx.out, r#" style="{}""#, escape_xml_display(style));
+                }
+                ctx.out.push_str("/></marker>");
             }
             MarkerShape::Polygon(points) => {
                 let _ = write!(
@@ -305,9 +376,13 @@ pub(super) fn class_markers(
                 }
                 let _ = write!(
                     ctx.out,
-                    r#"><polygon points="{}"/></marker>"#,
+                    r#"><polygon points="{}""#,
                     escape_xml_display(points)
                 );
+                if let Some(style) = terminal_style.as_deref() {
+                    let _ = write!(ctx.out, r#" style="{}""#, escape_xml_display(style));
+                }
+                ctx.out.push_str("/></marker>");
             }
             MarkerShape::Circle {
                 stroke,
@@ -340,19 +415,33 @@ pub(super) fn class_markers(
                 if let Some(stroke_width) = stroke_width {
                     let _ = write!(ctx.out, r#" stroke-width="{}""#, stroke_width);
                 }
+                if let Some(style) = terminal_style.as_deref() {
+                    let _ = write!(ctx.out, r#" style="{}""#, escape_xml_display(style));
+                }
                 ctx.out.push_str("/></marker>");
             }
         }
         if spec.wrap_defs {
             ctx.out.push_str("</defs>");
         }
-        ctx.out.checkpoint()
+        ctx.out.checkpoint()?;
+        if typed_stroke.is_some() {
+            ctx.theme_receipt.record_marker(
+                spec.name,
+                fill_follows_stroke,
+                typed_stroke,
+                terminal_style.as_deref(),
+            );
+        }
+        Ok(())
     }
 
     let mut ctx = MarkerContext {
         out,
         diagram_id,
         diagram_marker_class,
+        relation_theme,
+        theme_receipt,
     };
 
     marker(
@@ -723,7 +812,17 @@ mod tests {
     #[test]
     fn relation_marker_paint_specs_match_the_emitted_coordinate_contract() {
         let mut svg = String::new();
-        class_markers(&mut svg, "diagram", "class", true).expect("render Class markers");
+        let relation_theme = crate::class::ClassRelationThemePlan::default();
+        let mut receipt = relation_theme.begin_terminal_receipt(Vec::new(), Vec::new(), false);
+        class_markers(
+            &mut svg,
+            "diagram",
+            "class",
+            true,
+            &relation_theme,
+            &mut receipt,
+        )
+        .expect("render Class markers");
 
         for (ty, is_start) in (0..=4).flat_map(|ty| [(ty, true), (ty, false)]) {
             let marker_name = class_marker_name(ty, is_start).expect("Class marker name");
@@ -812,9 +911,18 @@ mod tests {
     #[test]
     fn class_markers_stop_after_the_first_svg_sink_failure() {
         let mut out = RejectAfterFirstWrite::default();
+        let relation_theme = crate::class::ClassRelationThemePlan::default();
+        let mut receipt = relation_theme.begin_terminal_receipt(Vec::new(), Vec::new(), false);
 
-        let error = class_markers(&mut out, "class-sink-failure", "classDiagram", true)
-            .expect_err("the rejecting sink must stop Class marker rendering");
+        let error = class_markers(
+            &mut out,
+            "class-sink-failure",
+            "classDiagram",
+            true,
+            &relation_theme,
+            &mut receipt,
+        )
+        .expect_err("the rejecting sink must stop Class marker rendering");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
         assert_eq!(

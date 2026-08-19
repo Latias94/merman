@@ -90,7 +90,8 @@ pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };
 pub use presets::{
-    ThemePreset, ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
+    ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemePresetQualifiedCell,
+    theme_preset_descriptors,
 };
 pub(crate) use resolved::{
     ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect, ResolvedThemeStyle,

@@ -99,7 +99,7 @@ pub(super) fn write_loop_text_lines(
 ) {
     if let Some(katex) = ctx.katex_label(text) {
         ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTypographyRole::Loop);
+            .record_candidate(crate::sequence::SequenceTextSurface::ControlPrimaryTitle);
         let x = (placement.x - katex.width / 2.0).round();
         write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
         return;
@@ -134,7 +134,7 @@ pub(super) fn write_loop_text_lines(
             );
         }
         ctx.typography_receipt
-            .record_terminal_text(crate::sequence::SequenceTypographyRole::Loop);
+            .record_terminal_text(crate::sequence::SequenceTextSurface::ControlPrimaryTitle);
     }
 }
 
@@ -149,7 +149,7 @@ pub(super) fn write_section_title_lines(
 ) {
     if let Some(katex) = ctx.katex_label(text) {
         ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTypographyRole::Loop);
+            .record_candidate(crate::sequence::SequenceTextSurface::ControlSectionTitle);
         let x = (x - katex.width / 2.0).round();
         let y = (section_start_y - katex.height).round();
         write_sequence_katex_foreign_object(out, &katex, x, y);
@@ -174,6 +174,6 @@ pub(super) fn write_section_title_lines(
             text = escape_xml(&line)
         );
         ctx.typography_receipt
-            .record_terminal_text(crate::sequence::SequenceTypographyRole::Loop);
+            .record_terminal_text(crate::sequence::SequenceTextSurface::ControlSectionTitle);
     }
 }

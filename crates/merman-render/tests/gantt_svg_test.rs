@@ -1,7 +1,8 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, OrdinalSelector, Specified,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop, InsetsPx,
+    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
     ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
     ThemeTarget, ThemeVariant,
 };
@@ -71,11 +72,35 @@ fn gantt_task_radius_theme(radius: Specified<f32>) -> DiagramTheme {
     ))
 }
 
+fn gantt_task_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    gantt_task_rule_theme(ThemeRule::new(
+        ThemeTarget::Task,
+        ThemeStylePatch::default().with_fill(fill),
+    ))
+}
+
 fn prepare_gantt_family_with_theme(
     text: &str,
     theme: &DiagramTheme,
 ) -> family::FamilyRenderArtifact {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    prepare_gantt_family_with_theme_and_engine(text, theme, Engine::new())
+}
+
+fn prepare_gantt_family_with_theme_and_engine(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> family::FamilyRenderArtifact {
+    try_prepare_gantt_family_with_theme_and_engine(text, theme, engine)
+        .expect("prepare themed Gantt artifact")
+}
+
+fn try_prepare_gantt_family_with_theme_and_engine(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> merman_render::Result<family::FamilyRenderArtifact> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse themed Gantt diagram")
         .expect("detect themed Gantt diagram");
@@ -88,7 +113,6 @@ fn prepare_gantt_family_with_theme(
         .begin_session_with_theme(theme)
         .expect("begin strict portable Gantt session");
     family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare themed Gantt artifact")
 }
 
 fn render_gantt_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
@@ -104,6 +128,54 @@ fn render_gantt_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> St
         .svg()
         .to_owned()
 }
+
+fn style_property<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+    style
+        .split(';')
+        .filter_map(|declaration| declaration.trim().split_once(':'))
+        .filter(|(name, _)| name.trim().eq_ignore_ascii_case(property))
+        .map(|(_, value)| value.trim())
+        .next_back()
+}
+
+fn gantt_task_terminal_fills(svg: &str) -> Vec<(String, String, String)> {
+    let document = roxmltree::Document::parse(svg).expect("valid themed Gantt SVG XML");
+    document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_ascii_whitespace().next() == Some("task"))
+        })
+        .map(|node| {
+            let id = node
+                .attribute("id")
+                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal id: {svg}"));
+            let class = node
+                .attribute("class")
+                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal class: {svg}"));
+            let fill = node
+                .attribute("style")
+                .and_then(|style| style_property(style, "fill"))
+                .unwrap_or_else(|| panic!("Gantt task rect is missing its terminal fill: {svg}"));
+            (id.to_string(), class.to_string(), fill.to_string())
+        })
+        .collect()
+}
+
+const GANTT_TASK_FILL_SOURCE: &str = r#"gantt
+dateFormat YYYY-MM-DD
+section Delivery
+Default: default-task, 2024-01-01, 1d
+Active: active, active-task, 2024-01-02, 1d
+Done: done, done-task, 2024-01-03, 1d
+Critical: crit, crit-task, 2024-01-04, 1d
+Active critical: crit, active, active-crit-task, 2024-01-05, 1d
+Done critical: crit, done, done-crit-task, 2024-01-06, 1d
+Active milestone: milestone, active, active-milestone-task, 2024-01-07, 1d
+Done vertical marker: vert, done, done-vert-task, 2024-01-08, 0d
+"#;
 
 #[test]
 fn gantt_layout_uses_the_operation_container_width_unless_config_overrides_it() {
@@ -175,6 +247,334 @@ Radius task: radius-task, 2024-01-01, 1d
         .expect("themed Gantt task rect");
     assert_eq!(task_rect.attribute("rx"), Some("7"));
     assert_eq!(task_rect.attribute("ry"), Some("7"));
+}
+
+#[test]
+fn gantt_static_task_fill_reaches_every_terminal_state_and_shape() {
+    for (fill, expected_fill) in [
+        (
+            CanvasPaint::solid("#123456").expect("valid Gantt task fill"),
+            "#123456",
+        ),
+        (CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = gantt_task_fill_theme(fill);
+        let artifact = prepare_gantt_family_with_theme(GANTT_TASK_FILL_SOURCE, &theme);
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render strict portable Gantt task fill");
+        let terminals = gantt_task_terminal_fills(rendered.svg());
+
+        assert_eq!(terminals.len(), 8, "unexpected Gantt task terminal domain");
+        for (id, class, actual_fill) in &terminals {
+            assert_eq!(actual_fill, expected_fill, "incorrect fill for {id}");
+            let expected_state = match id.as_str() {
+                "gantt-config-default-task" => "task0",
+                "gantt-config-active-task" => "active0",
+                "gantt-config-done-task" => "done0",
+                "gantt-config-crit-task" => "crit0",
+                "gantt-config-active-crit-task" => "activeCrit0",
+                "gantt-config-done-crit-task" => "doneCrit0",
+                "gantt-config-active-milestone-task" => "active0",
+                "gantt-config-done-vert-task" => "done0",
+                _ => panic!("unexpected Gantt task rect {id}"),
+            };
+            assert!(
+                class
+                    .split_ascii_whitespace()
+                    .any(|token| token == expected_state),
+                "Gantt task state class drifted for {id}: {class}"
+            );
+        }
+        assert!(
+            terminals
+                .iter()
+                .find(|(id, _, _)| id == "gantt-config-active-milestone-task")
+                .is_some_and(|(_, class, _)| class
+                    .split_ascii_whitespace()
+                    .any(|c| c == "milestone")),
+            "milestone geometry must retain the Active task fill state"
+        );
+        assert!(
+            terminals
+                .iter()
+                .find(|(id, _, _)| id == "gantt-config-done-vert-task")
+                .is_some_and(|(_, class, _)| class.split_ascii_whitespace().any(|c| c == "vert")),
+            "vertical marker geometry must retain the Done task fill state"
+        );
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_axis_tick_lines_inherit_the_grid_stroke_owner() {
+    let svg = render_gantt_svg_from_text_with_theme(
+        GANTT_TASK_FILL_SOURCE,
+        &gantt_task_fill_theme(CanvasPaint::Transparent),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Gantt SVG XML");
+    let tick_lines = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("g") && ancestor.attribute("class") == Some("tick")
+                })
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !tick_lines.is_empty(),
+        "Gantt fixture must emit axis tick lines"
+    );
+    assert!(
+        tick_lines
+            .iter()
+            .all(|line| line.attribute("stroke").is_none()),
+        "axis tick lines must inherit the .grid .tick stroke declaration"
+    );
+}
+
+#[test]
+fn gantt_final_mermaid_fill_keys_own_their_states_independently() {
+    let theme = gantt_task_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid source-precedence Gantt task fill"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "taskBkgColor": "#111111",
+            "activeTaskBkgColor": "#222222",
+            "doneTaskBkgColor": "#333333",
+            "critBkgColor": "#444444"
+        }
+    })));
+    let artifact =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render source-owned Gantt task fills");
+    let terminals = gantt_task_terminal_fills(rendered.svg());
+
+    for (id, _, fill) in &terminals {
+        let expected = match id.as_str() {
+            "gantt-config-default-task" => "#111111",
+            "gantt-config-active-task"
+            | "gantt-config-active-crit-task"
+            | "gantt-config-active-milestone-task" => "#222222",
+            "gantt-config-done-task"
+            | "gantt-config-done-crit-task"
+            | "gantt-config-done-vert-task" => "#333333",
+            "gantt-config-crit-task" => "#444444",
+            _ => panic!("unexpected Gantt task rect {id}"),
+        };
+        assert_eq!(fill, expected, "incorrect final-key owner for {id}");
+    }
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_each_final_mermaid_fill_key_suppresses_only_its_terminal_states() {
+    let theme = gantt_task_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid partial-precedence Gantt task fill"),
+    );
+    for (key, source_fill, source_owned_ids) in [
+        (
+            "taskBkgColor",
+            "#111111",
+            &["gantt-config-default-task"][..],
+        ),
+        (
+            "activeTaskBkgColor",
+            "#222222",
+            &[
+                "gantt-config-active-task",
+                "gantt-config-active-crit-task",
+                "gantt-config-active-milestone-task",
+            ][..],
+        ),
+        (
+            "doneTaskBkgColor",
+            "#333333",
+            &[
+                "gantt-config-done-task",
+                "gantt-config-done-crit-task",
+                "gantt-config-done-vert-task",
+            ][..],
+        ),
+        ("critBkgColor", "#444444", &["gantt-config-crit-task"][..]),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({ "themeVariables": { (key): source_fill } }),
+        ));
+        let artifact =
+            prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine);
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render partially source-owned Gantt task fills");
+
+        for (id, _, fill) in gantt_task_terminal_fills(rendered.svg()) {
+            let expected = if source_owned_ids.contains(&id.as_str()) {
+                source_fill
+            } else {
+                "#123456"
+            };
+            assert_eq!(fill, expected, "{key} suppressed the wrong terminal {id}");
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_task_fill_is_not_applicable_without_task_rects() {
+    let theme = gantt_task_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid empty-domain Gantt task fill"),
+    );
+    let artifact = prepare_gantt_family_with_theme("gantt\ndateFormat YYYY-MM-DD\n", &theme);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render empty Gantt task domain");
+    assert!(gantt_task_terminal_fills(rendered.svg()).is_empty());
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_task_fill_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
+    let gradient = LinearGradient::new(
+        90.0,
+        [
+            GradientStop::new(
+                0.0,
+                ThemeColorValue::parse("#123456").expect("valid Gantt gradient start"),
+            )
+            .expect("valid Gantt gradient stop"),
+            GradientStop::new(
+                1.0,
+                ThemeColorValue::parse("#abcdef").expect("valid Gantt gradient end"),
+            )
+            .expect("valid Gantt gradient stop"),
+        ],
+    )
+    .expect("valid Gantt gradient");
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#123456").expect("valid Gantt pattern color"),
+    )
+    .expect("valid Gantt pattern");
+    let mut clear = ThemeStylePatch::default();
+    clear.paint.fill = Specified::Clear;
+    let solid = || {
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid Gantt solid fill"))
+    };
+    let legacy_cases = [
+        ThemeVariant::Default,
+        ThemeVariant::Active,
+        ThemeVariant::Success,
+        ThemeVariant::Error,
+    ]
+    .map(|variant| ThemeRule::new(ThemeTarget::Task, solid()).with_variant(variant));
+    let unsupported_cases = [
+        ThemeRule::new(ThemeTarget::Task, solid())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid Gantt task ordinal")),
+        ThemeRule::new(ThemeTarget::Task, clear),
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default().with_fill(CanvasPaint::Pattern(pattern)),
+        ),
+    ];
+
+    for rule in legacy_cases {
+        let theme = gantt_task_rule_theme(rule);
+        let error = match try_prepare_gantt_family_with_theme_and_engine(
+            GANTT_TASK_FILL_SOURCE,
+            &theme,
+            Engine::new(),
+        ) {
+            Ok(_) => panic!("legacy Gantt task fill variants must remain compatibility residuals"),
+            Err(error) => error,
+        };
+        match error {
+            merman_render::Error::LegacyFamilyThemeCompatibility {
+                family_id,
+                residual_count,
+            } => {
+                assert_eq!(family_id, merman_render::DiagramFamilyId::GANTT);
+                assert_eq!(residual_count, 1);
+            }
+            other => panic!("expected Gantt legacy compatibility residual, got {other}"),
+        }
+    }
+
+    for rule in unsupported_cases {
+        let theme = gantt_task_rule_theme(rule);
+        let result = try_prepare_gantt_family_with_theme_and_engine(
+            GANTT_TASK_FILL_SOURCE,
+            &theme,
+            Engine::new(),
+        )
+        .and_then(|artifact| {
+            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        });
+        let error = match result {
+            Ok(_) => panic!("unsupported Gantt task fill routes must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::GANTT, 1))
+        );
+    }
 }
 
 #[test]

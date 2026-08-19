@@ -236,15 +236,6 @@ fn mindmap_viewport_bounds_from_layout(
     bounds
 }
 
-fn mindmap_model_look<'a>(model_look: &'a str, config: &'a merman_core::MermaidConfig) -> &'a str {
-    let model_look = model_look.trim();
-    if model_look.is_empty() || model_look == "default" {
-        crate::config::mermaid_config_diagram_look(config).as_str()
-    } else {
-        model_look
-    }
-}
-
 fn mindmap_data_look_attr(look: &str) -> String {
     if look.is_empty() {
         String::new()
@@ -362,20 +353,6 @@ fn mindmap_css(
 
     // Mermaid default theme resolves `cScale0..11` into this palette for mindmap/kanban/timeline.
     // The first generated section is `section--1` (i=0).
-    const DEFAULT_FILLS: [&str; MINDMAP_THEME_COLOR_LIMIT_DEFAULT] = [
-        "hsl(240, 100%, 76.2745098039%)",
-        "hsl(60, 100%, 73.5294117647%)",
-        "hsl(80, 100%, 76.2745098039%)",
-        "hsl(270, 100%, 76.2745098039%)",
-        "hsl(300, 100%, 76.2745098039%)",
-        "hsl(330, 100%, 76.2745098039%)",
-        "hsl(0, 100%, 76.2745098039%)",
-        "hsl(30, 100%, 76.2745098039%)",
-        "hsl(90, 100%, 76.2745098039%)",
-        "hsl(150, 100%, 76.2745098039%)",
-        "hsl(180, 100%, 76.2745098039%)",
-        "hsl(210, 100%, 76.2745098039%)",
-    ];
     const DEFAULT_INV_FILLS: [&str; MINDMAP_THEME_COLOR_LIMIT_DEFAULT] = [
         "hsl(60, 100%, 86.2745098039%)",
         "hsl(240, 100%, 83.5294117647%)",
@@ -391,10 +368,6 @@ fn mindmap_css(
         "hsl(30, 100%, 86.2745098039%)",
     ];
 
-    fn default_mindmap_fill(i: usize) -> &'static str {
-        DEFAULT_FILLS[i % DEFAULT_FILLS.len()]
-    }
-
     fn default_mindmap_inv_fill(i: usize) -> &'static str {
         DEFAULT_INV_FILLS[i % DEFAULT_INV_FILLS.len()]
     }
@@ -407,7 +380,7 @@ fn mindmap_css(
     let look = crate::config::mermaid_config_diagram_look(config);
     let root_fill = theme_token(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
     let root_label = theme_token(effective_config, "gitBranchLabel0", "#ffffff");
-    let node_border = theme_token(effective_config, "nodeBorder", root_label.as_str());
+    let node_border = crate::mindmap::mindmap_node_border_css(config);
     let main_bkg = theme_token(effective_config, "mainBkg", root_fill.as_str());
     let stroke_width = crate::config::config_css_number_or_string(
         effective_config,
@@ -425,11 +398,7 @@ fn mindmap_css(
     );
     for i in 0..theme_color_limit {
         let section = i as i64 - 1;
-        let c_scale = theme_token(
-            effective_config,
-            &format!("cScale{}", i),
-            default_mindmap_fill(i),
-        );
+        let c_scale = crate::mindmap::mindmap_color_scale_css(config, i);
         let c_scale_inv = theme_token(
             effective_config,
             &format!("cScaleInv{}", i),
@@ -455,7 +424,7 @@ fn mindmap_css(
         } else {
             c_scale.as_str()
         };
-        let neo_edge_stroke = if theme.contains("redux") || theme == "neo-dark" {
+        let neo_edge_stroke = if crate::mindmap::mindmap_neo_edges_use_node_border(theme) {
             node_border.as_str()
         } else {
             c_scale.as_str()
@@ -894,7 +863,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     out.push_str(r#"<g class="edgePaths">"#);
     out.checkpoint()?;
-    for e in &model.edges {
+    let mut edge_stroke_receipt = node_palette.begin_edge_terminal_receipt();
+    for (edge_index, e) in model.edges.iter().enumerate() {
         let (sx, sy, tx, ty) = match (node_by_id.get(&e.start), node_by_id.get(&e.end)) {
             (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
             _ => (0.0, 0.0, 0.0, 0.0),
@@ -943,20 +913,44 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             e.thickness.trim(),
             edge_classes.trim()
         );
-        let look = mindmap_model_look(&e.look, config);
+        let look = crate::mindmap::mindmap_model_look(&e.look, config);
         let data_look_attr = mindmap_data_look_attr(look);
         let edge_dom_id = mindmap_dom_id(diagram_id, &e.id);
+        let typed_stroke = node_palette.terminal_edge_stroke(edge_index);
+        let terminal_style = typed_stroke.map(|(_, css)| format!("stroke:{css} !important"));
+        let terminal_source = node_palette.terminal_edge_source(edge_index);
+        let source_stroke = terminal_source.map(|source| source.final_css(config));
+        let final_stroke = typed_stroke
+            .map(|(_, css)| css)
+            .or(source_stroke.as_deref());
         let _ = write!(
             &mut out,
-            r#"<path d="{d}" id="{dom_id}" class="{class}"{look_attr} data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
+            r#"<path d="{d}" id="{dom_id}" class="{class}"{look_attr}"#,
             d = escape_attr(&d),
             dom_id = escape_xml(&edge_dom_id),
             class = escape_xml(&class),
             look_attr = data_look_attr,
+        );
+        if let Some(style) = terminal_style.as_deref() {
+            let _ = write!(&mut out, r#" style="{}""#, escape_attr(style));
+        }
+        let _ = write!(
+            &mut out,
+            r#" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
             id = escape_xml(&e.id),
             pts = escape_xml(&data_points),
         );
         out.checkpoint()?;
+        if let Some(receipt) = edge_stroke_receipt.as_mut() {
+            receipt.record_edge(
+                node_palette,
+                edge_index,
+                &e.id,
+                terminal_source,
+                final_stroke,
+                terminal_style.as_deref(),
+            );
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -991,7 +985,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let half_padding = padding / 2.0;
         let node_classes = mindmap_normalize_section_classes(&n.css_classes);
         let class = format!("node {}", node_classes.trim());
-        let look = mindmap_model_look(&n.look, config);
+        let look = crate::mindmap::mindmap_model_look(&n.look, config);
         let data_look_attr = mindmap_data_look_attr(look);
         let fill_source = if look == "neo" {
             neo_fill_source
@@ -1336,6 +1330,13 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     }
 
     let rooted_svg = root_document.complete(out.finish()?)?;
+    if let Some(receipt) = edge_stroke_receipt {
+        if !node_palette.record_edge_terminal(receipt) {
+            return Err(crate::Error::InvalidModel {
+                message: "Mindmap Edge stroke terminal receipt could not be sealed".to_string(),
+            });
+        }
+    }
     if !node_palette.record_terminal(node_palette_receipt) {
         return Err(crate::Error::InvalidModel {
             message: "Mindmap Node palette terminal receipt could not be sealed".to_string(),
@@ -1462,8 +1463,10 @@ mod tests {
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
+        let model = merman_core::diagrams::mindmap::MindmapDiagramRenderModel::default();
         let node_palette =
-            crate::mindmap::MindmapNodePalettePlan::resolve(None, [], &work_meter).unwrap();
+            crate::mindmap::MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter)
+                .unwrap();
         let css = mindmap_css("mm", &config, &node_palette, 3, false);
 
         assert!(css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));

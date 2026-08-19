@@ -13,6 +13,11 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod edge_stroke;
+
+use edge_stroke::ArchitectureEdgeStrokePlan;
+pub(crate) use edge_stroke::ArchitectureEdgeThemeReceipt;
+
 /// Final Architecture group paint shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct ArchitectureGroupThemePlan {
@@ -21,6 +26,7 @@ pub(crate) struct ArchitectureGroupThemePlan {
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     terminal_receipt: OnceLock<()>,
+    edge_stroke: ArchitectureEdgeStrokePlan,
 }
 
 impl ArchitectureGroupThemePlan {
@@ -28,12 +34,20 @@ impl ArchitectureGroupThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
         group_count: usize,
+        edge_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
-            return Ok(Self::baseline());
+            return Ok(Self::baseline(group_count, edge_count));
         };
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let edge_stroke = ArchitectureEdgeStrokePlan::resolve(
+            theme,
+            effective_config,
+            edge_count,
+            work_meter,
+            &mut evidence,
+        )?;
         let mut pending = BTreeMap::new();
         if group_count == 0 {
             for route in theme.family_mechanism_routes().iter().copied() {
@@ -47,6 +61,7 @@ impl ArchitectureGroupThemePlan {
                 evidence,
                 pending,
                 terminal_receipt: OnceLock::new(),
+                edge_stroke,
             });
         }
 
@@ -186,16 +201,18 @@ impl ArchitectureGroupThemePlan {
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
+            edge_stroke,
         })
     }
 
-    fn baseline() -> Self {
+    fn baseline(group_count: usize, edge_count: usize) -> Self {
         Self {
-            group_count: 0,
+            group_count,
             inline_style: None,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
+            edge_stroke: ArchitectureEdgeStrokePlan::baseline(edge_count),
         }
     }
 
@@ -218,6 +235,21 @@ impl ArchitectureGroupThemePlan {
             && self.terminal_receipt.set(()).is_ok()
     }
 
+    pub(crate) fn edge_stroke(&self) -> Option<(usize, &str)> {
+        self.edge_stroke.terminal_stroke()
+    }
+
+    pub(crate) fn begin_edge_terminal_receipt<'a>(
+        &self,
+        terminals: impl IntoIterator<Item = (usize, &'a str, &'a str)>,
+    ) -> Option<ArchitectureEdgeThemeReceipt> {
+        self.edge_stroke.begin_terminal_receipt(terminals)
+    }
+
+    pub(crate) fn record_edge_terminal(&self, receipt: ArchitectureEdgeThemeReceipt) -> bool {
+        self.edge_stroke.record_terminal(receipt)
+    }
+
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         if self.terminal_receipt.get().is_some() {
@@ -225,6 +257,7 @@ impl ArchitectureGroupThemePlan {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
             }
         }
+        self.edge_stroke.finish_evidence(&mut evidence);
         evidence
     }
 }

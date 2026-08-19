@@ -1,11 +1,13 @@
 mod capability;
 mod evidence_support;
+mod inherited_font_stack;
 mod preparation;
 
 pub use capability::{RenderCapabilityPlan, plan_render};
 pub(crate) use evidence_support::{
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
+pub(crate) use inherited_font_stack::{InheritedFontStackOutcome, InheritedFontStackPlan};
 
 use crate::diagram_theme::{
     FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,
@@ -848,14 +850,14 @@ impl ResolvedFamilyStylePlan {
     fn adapt_state(
         &mut self,
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
-        effective_config: &serde_json::Value,
+        effective_config: &merman_core::MermaidConfig,
         title: Option<&str>,
         prepared_text_available: bool,
         effective_theme_resource_policy: Arc<crate::diagram_theme::ThemeResourcePolicy>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<()> {
         debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
-        let (plan, theme_evidence) = crate::state::StateStylePlan::resolve_with_evidence(
+        let (plan, theme_evidence) = crate::state::StateStylePlan::resolve_with_config(
             model,
             effective_config,
             self.resolved_theme.as_deref(),
@@ -871,8 +873,37 @@ impl ResolvedFamilyStylePlan {
 
     fn observe_compatibility(&mut self, metadata: &merman_core::ParseMetadata) {
         let evidence = merman_core::__private::theme_parse_evidence(metadata);
-        self.mermaid_compatibility_residual_count = evidence.mermaid_residual_count();
-        self.compatibility_residual_count = evidence.fallback_contribution_count();
+        self.mermaid_compatibility_residual_count = if self.family_id == DiagramFamilyId::PACKET {
+            let deferred = crate::packet::deferred_mermaid_compatibility_consumptions(
+                self.resolved_theme.as_deref(),
+                &metadata.effective_config,
+                &evidence,
+            );
+            evidence
+                .reconcile_mermaid_consumptions(deferred.iter())
+                .remaining_field_count()
+        } else {
+            evidence.mermaid_residual_count()
+        };
+        self.compatibility_residual_count = if self.family_id == DiagramFamilyId::ERROR {
+            crate::error::remaining_legacy_compatibility_residual_count(
+                self.resolved_theme.as_deref(),
+                &evidence,
+            )
+        } else {
+            evidence.fallback_contribution_count()
+        };
+    }
+
+    fn reconcile_packet_mermaid_compatibility(
+        &mut self,
+        evidence: &merman_core::__private::ThemeParseEvidence,
+        consumptions: &[merman_core::__private::ThemeCompatibilityFieldConsumption],
+    ) {
+        debug_assert_eq!(self.family_id, DiagramFamilyId::PACKET);
+        self.mermaid_compatibility_residual_count = evidence
+            .reconcile_mermaid_consumptions(consumptions.iter())
+            .remaining_field_count();
     }
 
     fn merge_flowchart_evidence(
@@ -1002,9 +1033,17 @@ impl ResolvedFamilyStylePlan {
                 | DiagramFamilyId::SANKEY
                 | DiagramFamilyId::BLOCK
                 | DiagramFamilyId::RAILROAD
+                | DiagramFamilyId::INFO
+                | DiagramFamilyId::ERROR
+                | DiagramFamilyId::CYNEFIN
+                | DiagramFamilyId::WARDLEY
                 | DiagramFamilyId::GIT_GRAPH
                 | DiagramFamilyId::C4
                 | DiagramFamilyId::ER
+                | DiagramFamilyId::VENN
+                | DiagramFamilyId::ZENUML
+                | DiagramFamilyId::EVENT_MODELING
+                | DiagramFamilyId::ISHIKAWA
                 | DiagramFamilyId::ARCHITECTURE
         ) && self
             .resolved_theme
@@ -1137,7 +1176,7 @@ impl FamilyRenderContext {
     fn adapt_state(
         &mut self,
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
-        effective_config: &serde_json::Value,
+        effective_config: &merman_core::MermaidConfig,
         title: Option<&str>,
     ) -> Result<()> {
         let effective_theme_resource_policy = self.session.effective_theme_resource_policy();
@@ -1190,6 +1229,15 @@ impl FamilyRenderContext {
     ) {
         self.style_plan
             .merge_accounted_terminal_evidence(expected_family, evidence);
+    }
+
+    fn reconcile_packet_mermaid_compatibility(
+        &mut self,
+        evidence: &merman_core::__private::ThemeParseEvidence,
+        consumptions: &[merman_core::__private::ThemeCompatibilityFieldConsumption],
+    ) {
+        self.style_plan
+            .reconcile_packet_mermaid_compatibility(evidence, consumptions);
     }
 
     fn ensure_portable(&self) -> Result<()> {
@@ -1393,6 +1441,86 @@ pub(crate) struct SankeyFamilyArtifact {
 }
 
 #[derive(Debug)]
+pub(crate) struct VennFamilyArtifact {
+    pair: FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>,
+    title_theme: crate::venn::VennTitleThemePlan,
+}
+
+#[derive(Debug)]
+pub(crate) struct ZenumlFamilyArtifact {
+    pair:
+        FamilyPair<diagrams::zenuml::ZenumlDiagramRenderModel, crate::zenuml::ZenumlDiagramLayout>,
+    title_theme: crate::zenuml::ZenumlTitleThemePlan,
+}
+
+impl ZenumlFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::zenuml::ZenumlDiagramRenderModel, crate::zenuml::ZenumlDiagramLayout>
+    {
+        &self.pair
+    }
+
+    pub(crate) const fn title_theme(&self) -> &crate::zenuml::ZenumlTitleThemePlan {
+        &self.title_theme
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct EventModelingFamilyArtifact {
+    pair: FamilyPair<
+        diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        EventModelingDiagramLayout,
+    >,
+    text_theme: crate::eventmodeling::EventModelingTextThemePlan,
+}
+
+#[derive(Debug)]
+pub(crate) struct IshikawaFamilyArtifact {
+    pair: FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>,
+    text_theme: crate::ishikawa::IshikawaTextThemePlan,
+}
+
+impl IshikawaFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn text_theme(&self) -> &crate::ishikawa::IshikawaTextThemePlan {
+        &self.text_theme
+    }
+}
+
+impl EventModelingFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<
+        diagrams::eventmodeling::EventModelingDiagramRenderModel,
+        EventModelingDiagramLayout,
+    > {
+        &self.pair
+    }
+
+    pub(crate) const fn text_theme(&self) -> &crate::eventmodeling::EventModelingTextThemePlan {
+        &self.text_theme
+    }
+}
+
+impl VennFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn title_theme(&self) -> &crate::venn::VennTitleThemePlan {
+        &self.title_theme
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct BlockFamilyArtifact {
     pair: FamilyPair<diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
     node_stroke_theme: crate::block::BlockNodeStrokeThemePlan,
@@ -1424,6 +1552,78 @@ impl RailroadFamilyArtifact {
     }
 
     pub(crate) const fn typography_theme(&self) -> &crate::railroad::RailroadTypographyThemePlan {
+        &self.typography_theme
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ErrorFamilyArtifact {
+    pair: FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>,
+    typography_theme: crate::error::ErrorTypographyThemePlan,
+}
+
+impl ErrorFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::error::ErrorTypographyThemePlan {
+        &self.typography_theme
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct InfoFamilyArtifact {
+    pair: FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>,
+    typography_theme: crate::info::InfoTypographyThemePlan,
+}
+
+impl InfoFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::info::InfoTypographyThemePlan {
+        &self.typography_theme
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct CynefinFamilyArtifact {
+    pair: FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>,
+    typography_theme: crate::cynefin::CynefinTypographyThemePlan,
+}
+
+impl CynefinFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::cynefin::CynefinTypographyThemePlan {
+        &self.typography_theme
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WardleyFamilyArtifact {
+    pair: FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>,
+    typography_theme: crate::wardley::WardleyTypographyThemePlan,
+}
+
+impl WardleyFamilyArtifact {
+    pub(crate) const fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::wardley::WardleyTypographyThemePlan {
         &self.typography_theme
     }
 }
@@ -1683,7 +1883,7 @@ impl ArchitectureFamilyArtifact {
 
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
-    Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
+    Error(Box<ErrorFamilyArtifact>),
     Mindmap(Box<MindmapFamilyArtifact>),
     State(Box<StateFamilyArtifact>),
     Sequence(
@@ -1694,22 +1894,15 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Zenuml(
-        Box<
-            FamilyPair<
-                diagrams::zenuml::ZenumlDiagramRenderModel,
-                crate::zenuml::ZenumlDiagramLayout,
-            >,
-        >,
-    ),
+    Zenuml(Box<ZenumlFamilyArtifact>),
     Flowchart(Box<FlowchartFamilyArtifact<FlowchartLayout>>),
     Swimlane(Box<FlowchartFamilyArtifact<SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
     Architecture(Box<ArchitectureFamilyArtifact>),
     Class(Box<ClassFamilyArtifact>),
     C4(Box<C4FamilyArtifact>),
-    Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
-    Wardley(Box<FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>>),
+    Cynefin(Box<CynefinFamilyArtifact>),
+    Wardley(Box<WardleyFamilyArtifact>),
     Railroad(Box<RailroadFamilyArtifact>),
     Kanban(
         Box<
@@ -1727,7 +1920,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Requirement(Box<RequirementFamilyArtifact>),
     Sankey(Box<SankeyFamilyArtifact>),
     Radar(Box<RadarFamilyArtifact>),
-    Info(Box<FamilyPair<diagrams::info::InfoDiagramRenderModel, InfoDiagramLayout>>),
+    Info(Box<InfoFamilyArtifact>),
     Treemap(Box<TreemapFamilyArtifact>),
     Block(Box<BlockFamilyArtifact>),
     Er(Box<ErFamilyArtifact>),
@@ -1735,18 +1928,9 @@ pub(crate) enum BuiltinFamilyArtifact {
     XyChart(Box<XyChartFamilyArtifact>),
     GitGraph(Box<GitGraphFamilyArtifact>),
     TreeView(Box<TreeViewFamilyArtifact>),
-    Ishikawa(
-        Box<FamilyPair<diagrams::ishikawa::IshikawaDiagramRenderModel, IshikawaDiagramLayout>>,
-    ),
-    EventModeling(
-        Box<
-            FamilyPair<
-                diagrams::eventmodeling::EventModelingDiagramRenderModel,
-                EventModelingDiagramLayout,
-            >,
-        >,
-    ),
-    Venn(Box<FamilyPair<diagrams::venn::VennDiagramRenderModel, VennDiagramLayout>>),
+    Ishikawa(Box<IshikawaFamilyArtifact>),
+    EventModeling(Box<EventModelingFamilyArtifact>),
+    Venn(Box<VennFamilyArtifact>),
 }
 
 #[derive(serde::Serialize)]
@@ -2039,6 +2223,34 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn error_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Error(artifact) => Some(artifact.typography_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn info_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Info(artifact) => Some(artifact.typography_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn cynefin_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Cynefin(artifact) => Some(artifact.typography_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn wardley_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Wardley(artifact) => Some(artifact.typography_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     fn treemap_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
             Self::Treemap(artifact) => Some(artifact.title_theme().finish_evidence()),
@@ -2095,6 +2307,34 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn venn_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Venn(artifact) => Some(artifact.title_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn zenuml_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Zenuml(artifact) => Some(artifact.title_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn eventmodeling_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::EventModeling(artifact) => Some(artifact.text_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
+    fn ishikawa_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Ishikawa(artifact) => Some(artifact.text_theme().finish_evidence()),
+            _ => None,
+        }
+    }
+
     #[cfg(feature = "layout-cytoscape")]
     fn architecture_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
@@ -2108,19 +2348,19 @@ impl BuiltinFamilyArtifact {
         metadata: &ParseMetadata,
     ) -> merman_core::Result<serde_json::Value> {
         match self {
-            Self::Error(pair) => pair.compatibility_json(metadata),
+            Self::Error(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Mindmap(artifact) => artifact.pair.compatibility_json(metadata),
             Self::State(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
-            Self::Zenuml(pair) => pair.compatibility_json(metadata),
+            Self::Zenuml(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Class(artifact) => artifact.pair.compatibility_json(metadata),
             Self::C4(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Cynefin(pair) => pair.compatibility_json(metadata),
-            Self::Wardley(pair) => pair.compatibility_json(metadata),
+            Self::Cynefin(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Wardley(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Railroad(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Kanban(pair) => pair.compatibility_json(metadata),
             Self::Gantt(artifact) => artifact.pair.compatibility_json(metadata),
@@ -2131,7 +2371,7 @@ impl BuiltinFamilyArtifact {
             Self::Requirement(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Sankey(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Radar(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Info(pair) => pair.compatibility_json(metadata),
+            Self::Info(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Treemap(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Block(artifact) => artifact.pair().compatibility_json(metadata),
             Self::Er(artifact) => artifact.pair.compatibility_json(metadata),
@@ -2139,19 +2379,19 @@ impl BuiltinFamilyArtifact {
             Self::XyChart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::GitGraph(artifact) => artifact.pair.compatibility_json(metadata),
             Self::TreeView(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Ishikawa(pair) => pair.compatibility_json(metadata),
-            Self::EventModeling(pair) => pair.compatibility_json(metadata),
-            Self::Venn(pair) => pair.compatibility_json(metadata),
+            Self::Ishikawa(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::EventModeling(artifact) => artifact.pair().compatibility_json(metadata),
+            Self::Venn(artifact) => artifact.pair().compatibility_json(metadata),
         }
     }
 
     fn layout_projection(&self) -> LayoutProjection<'_> {
         match self {
-            Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
+            Self::Error(artifact) => LayoutProjection::ErrorDiagram(artifact.pair().layout()),
             Self::Mindmap(artifact) => LayoutProjection::MindmapDiagram(artifact.pair.layout()),
             Self::State(artifact) => LayoutProjection::StateDiagram(artifact.pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout().layout()),
-            Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
+            Self::Zenuml(artifact) => LayoutProjection::ZenumlDiagram(artifact.pair().layout()),
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
@@ -2160,8 +2400,8 @@ impl BuiltinFamilyArtifact {
             }
             Self::Class(artifact) => LayoutProjection::ClassDiagram(artifact.pair.layout()),
             Self::C4(artifact) => LayoutProjection::C4Diagram(artifact.pair.layout()),
-            Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
-            Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
+            Self::Cynefin(artifact) => LayoutProjection::CynefinDiagram(artifact.pair().layout()),
+            Self::Wardley(artifact) => LayoutProjection::WardleyDiagram(artifact.pair().layout()),
             Self::Railroad(artifact) => LayoutProjection::RailroadDiagram(artifact.pair().layout()),
             Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout().layout()),
             Self::Gantt(artifact) => LayoutProjection::GanttDiagram(artifact.pair.layout()),
@@ -2174,7 +2414,7 @@ impl BuiltinFamilyArtifact {
             }
             Self::Sankey(artifact) => LayoutProjection::SankeyDiagram(artifact.pair().layout()),
             Self::Radar(artifact) => LayoutProjection::RadarDiagram(artifact.pair.layout()),
-            Self::Info(pair) => LayoutProjection::InfoDiagram(pair.layout()),
+            Self::Info(artifact) => LayoutProjection::InfoDiagram(artifact.pair().layout()),
             Self::Treemap(artifact) => LayoutProjection::TreemapDiagram(artifact.pair.layout()),
             Self::Block(artifact) => LayoutProjection::BlockDiagram(artifact.pair().layout()),
             Self::Er(artifact) => LayoutProjection::ErDiagram(artifact.pair.layout()),
@@ -2184,9 +2424,11 @@ impl BuiltinFamilyArtifact {
             Self::XyChart(artifact) => LayoutProjection::XyChartDiagram(artifact.pair.layout()),
             Self::GitGraph(artifact) => LayoutProjection::GitGraphDiagram(artifact.pair.layout()),
             Self::TreeView(artifact) => LayoutProjection::TreeViewDiagram(artifact.pair.layout()),
-            Self::Ishikawa(pair) => LayoutProjection::IshikawaDiagram(pair.layout()),
-            Self::EventModeling(pair) => LayoutProjection::EventModelingDiagram(pair.layout()),
-            Self::Venn(pair) => LayoutProjection::VennDiagram(pair.layout()),
+            Self::Ishikawa(artifact) => LayoutProjection::IshikawaDiagram(artifact.pair().layout()),
+            Self::EventModeling(artifact) => {
+                LayoutProjection::EventModelingDiagram(artifact.pair().layout())
+            }
+            Self::Venn(artifact) => LayoutProjection::VennDiagram(artifact.pair().layout()),
         }
     }
 }
@@ -2769,14 +3011,32 @@ impl FamilyRenderArtifact {
         let sankey_theme_evidence = self.family.sankey_theme_evidence();
         let block_theme_evidence = self.family.block_theme_evidence();
         let railroad_theme_evidence = self.family.railroad_theme_evidence();
+        let error_theme_evidence = self.family.error_theme_evidence();
+        let info_theme_evidence = self.family.info_theme_evidence();
+        let cynefin_theme_evidence = self.family.cynefin_theme_evidence();
+        let wardley_theme_evidence = self.family.wardley_theme_evidence();
         let treemap_theme_evidence = self.family.treemap_theme_evidence();
         let requirement_theme_evidence = self.family.requirement_theme_evidence();
         let packet_theme_evidence = self.family.packet_theme_evidence();
+        let packet_mermaid_compatibility = match &self.family {
+            BuiltinFamilyArtifact::Packet(artifact) => {
+                let evidence = merman_core::__private::theme_parse_evidence(&self.metadata);
+                let consumptions = artifact
+                    .typography_theme()
+                    .terminal_mermaid_compatibility_consumptions(&evidence);
+                Some((evidence, consumptions))
+            }
+            _ => None,
+        };
         let c4_theme_evidence = self.family.c4_theme_evidence();
         let tree_view_theme_evidence = self.family.tree_view_theme_evidence();
         let mindmap_theme_evidence = self.family.mindmap_theme_evidence();
         let gitgraph_theme_evidence = self.family.gitgraph_theme_evidence();
         let er_theme_evidence = self.family.er_theme_evidence();
+        let venn_theme_evidence = self.family.venn_theme_evidence();
+        let zenuml_theme_evidence = self.family.zenuml_theme_evidence();
+        let eventmodeling_theme_evidence = self.family.eventmodeling_theme_evidence();
+        let ishikawa_theme_evidence = self.family.ishikawa_theme_evidence();
         #[cfg(feature = "layout-cytoscape")]
         let architecture_theme_evidence = self.family.architecture_theme_evidence();
         let state_filter_receipt = match &self.family {
@@ -2832,6 +3092,18 @@ impl FamilyRenderArtifact {
         if let Some(evidence) = railroad_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::RAILROAD, evidence);
         }
+        if let Some(evidence) = error_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::ERROR, evidence);
+        }
+        if let Some(evidence) = info_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::INFO, evidence);
+        }
+        if let Some(evidence) = cynefin_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::CYNEFIN, evidence);
+        }
+        if let Some(evidence) = wardley_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::WARDLEY, evidence);
+        }
         if let Some(evidence) = treemap_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::TREEMAP, evidence);
         }
@@ -2840,6 +3112,9 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = packet_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::PACKET, evidence);
+        }
+        if let Some((evidence, consumptions)) = packet_mermaid_compatibility {
+            context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
         }
         if let Some(evidence) = c4_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::C4, evidence);
@@ -2855,6 +3130,18 @@ impl FamilyRenderArtifact {
         }
         if let Some(evidence) = er_theme_evidence {
             context.merge_accounted_terminal_evidence(DiagramFamilyId::ER, evidence);
+        }
+        if let Some(evidence) = venn_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::VENN, evidence);
+        }
+        if let Some(evidence) = zenuml_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::ZENUML, evidence);
+        }
+        if let Some(evidence) = eventmodeling_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::EVENT_MODELING, evidence);
+        }
+        if let Some(evidence) = ishikawa_theme_evidence {
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::ISHIKAWA, evidence);
         }
         #[cfg(feature = "layout-cytoscape")]
         if let Some(evidence) = architecture_theme_evidence {

@@ -300,6 +300,8 @@ pub(super) fn render_sequence_messages(
     out: &mut impl SvgOutput,
     ctx: &SequenceMessageRenderContext<'_>,
     theme_receipt: &mut crate::sequence::SequenceMessageThemeReceipt,
+    sequence_number_receipt: &mut crate::sequence::SequenceNumberLabelThemeReceipt,
+    sequence_number_fill: Option<&str>,
 ) -> crate::Result<()> {
     let mut sequence_number_visible = false;
     let mut sequence_number = 1.0;
@@ -384,7 +386,7 @@ pub(super) fn render_sequence_messages(
                 SequenceMathHeightMode::Draw,
             ) {
                 ctx.typography_receipt
-                    .record_candidate(crate::sequence::SequenceTypographyRole::Message);
+                    .record_candidate(crate::sequence::SequenceTextSurface::MessageLabel);
                 let center_x = (p0.x + p1.x) / 2.0;
                 write_sequence_katex_foreign_object(
                     out,
@@ -523,6 +525,7 @@ pub(super) fn render_sequence_messages(
         }
 
         if sequence_number_visible {
+            sequence_number_receipt.record_text_candidate();
             let sequence_number_text = format_sequence_number(sequence_number);
             let font_size = if sequence_number_text.len() > 5 {
                 "7px"
@@ -555,6 +558,7 @@ pub(super) fn render_sequence_messages(
                 style = sequence_number_style,
                 n = sequence_number_text,
             );
+            sequence_number_receipt.record_text_emission(sequence_number_fill);
             sequence_number = round_sequence_number(sequence_number + sequence_number_step);
         }
 
@@ -612,7 +616,7 @@ fn render_sequence_message_text_lines<'a>(
             text = escape_xml(line)
         );
         out.checkpoint()?;
-        typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Message);
+        typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::MessageLabel);
     }
 
     Ok(())
@@ -770,6 +774,8 @@ mod tests {
             &mut out,
             &ctx,
             &mut crate::sequence::SequenceMessageThemeReceipt::default(),
+            &mut crate::sequence::SequenceNumberLabelThemeReceipt::default(),
+            None,
         )
         .expect_err("the rejecting sink must stop message rendering");
 
@@ -876,8 +882,14 @@ mod tests {
                 None,
             ));
 
-            render_sequence_messages(&mut String::new(), &ctx, &mut receipt)
-                .expect("incomplete layout should remain a renderable best-effort case");
+            render_sequence_messages(
+                &mut String::new(),
+                &ctx,
+                &mut receipt,
+                &mut crate::sequence::SequenceNumberLabelThemeReceipt::default(),
+                None,
+            )
+            .expect("incomplete layout should remain a renderable best-effort case");
 
             let recorder = crate::sequence::SequenceThemeEvidenceRecorder::default();
             recorder.record_message_emission(

@@ -48,9 +48,6 @@ fn render_class_diagram_svg_model_inner(
     let mut timings = RenderTimings::default();
 
     let mut detail = ClassRenderDetails::default();
-    let mut relation_theme_receipt =
-        crate::class::ClassRelationThemeReceipt::new(model.relations.len());
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = model.diagram_type.as_str();
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
@@ -64,6 +61,24 @@ fn render_class_diagram_svg_model_inner(
         "render.class.roughjs",
     );
     let settings = ClassRenderSettings::from_config(effective_config, hand_drawn_seed);
+    let relation_expectations = model
+        .relations
+        .iter()
+        .enumerate()
+        .map(|(relation_index, relation)| {
+            crate::class::ClassRelationTerminalExpectation::new(
+                relation_index,
+                class_marker_name(relation.relation.type1, true),
+                class_marker_name(relation.relation.type2, false),
+            )
+        })
+        .collect();
+    let marker_expectations = class_marker_terminal_expectations(&model.relations);
+    let mut relation_theme_receipt = relation_theme.begin_terminal_receipt(
+        relation_expectations,
+        marker_expectations,
+        settings.look == "handDrawn",
+    );
 
     // Mermaid's Dagre renderer applies fixed 8px graph margins. Its registered ELK renderer emits
     // the layout coordinates directly and keeps the viewport padding as the only outer margin.
@@ -111,7 +126,14 @@ fn render_class_diagram_svg_model_inner(
     out.push_str("<g>");
     out.checkpoint()?;
     // Mermaid 11.16 inserts both the ordinary and margin-aware marker variants for every look.
-    class_markers(&mut out, diagram_id, aria_roledescription, true)?;
+    class_markers(
+        &mut out,
+        diagram_id,
+        aria_roledescription,
+        true,
+        relation_theme,
+        &mut relation_theme_receipt,
+    )?;
     if layout.uses_elk_adapter_dom {
         out.push_str("</g>");
         push_class_shadow_defs(&mut out, diagram_id, effective_config)?;

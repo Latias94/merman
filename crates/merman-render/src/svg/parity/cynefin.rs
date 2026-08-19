@@ -6,6 +6,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
+    typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("cynefin");
@@ -25,6 +26,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         .or_else(|| diagram_title.filter(|value| !value.is_empty()));
     let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id);
     let marker_id = format!("cynefin-arrow-{diagram_id}");
+    let mut surface_receipt = typography_theme.begin_terminal_receipt(layout, title);
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "cynefin");
@@ -56,7 +58,14 @@ pub(crate) fn render_cynefin_diagram_svg_model(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    write_cynefin_css(&mut out, diagram_id, effective_config, &theme)?;
+    write_cynefin_css(
+        &mut out,
+        diagram_id,
+        effective_config,
+        &theme,
+        typography_theme,
+        &mut surface_receipt,
+    )?;
     out.push_str("</style><g/>");
     out.checkpoint()?;
     if let Some(title) = acc_title {
@@ -77,12 +86,12 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     out.checkpoint()?;
     push_backgrounds(&mut out, layout, &theme)?;
     push_boundaries(&mut out, layout, seed, &theme)?;
-    push_labels(&mut out, layout)?;
+    push_labels(&mut out, layout, &mut surface_receipt)?;
     if layout.show_domain_descriptions {
-        push_subtitles(&mut out, layout)?;
+        push_subtitles(&mut out, layout, &mut surface_receipt)?;
     }
-    push_items(&mut out, layout, &theme)?;
-    push_transitions(&mut out, layout, &marker_id)?;
+    push_items(&mut out, layout, &theme, &mut surface_receipt)?;
+    push_transitions(&mut out, layout, &marker_id, &mut surface_receipt)?;
     if let Some(title) = title {
         let _ = write!(
             &mut out,
@@ -92,6 +101,11 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             escape_xml_display(title)
         );
         out.checkpoint()?;
+        surface_receipt.record_text(
+            crate::cynefin::CynefinTextRole::Title,
+            "cynefinTitle",
+            title,
+        );
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -105,7 +119,13 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         out.checkpoint()?;
     }
     out.push_str("</svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !typography_theme.record_terminal(surface_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Cynefin typography receipt was recorded more than once".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 fn push_backgrounds(
@@ -184,7 +204,11 @@ fn push_boundaries(
     out.checkpoint()
 }
 
-fn push_labels(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Result<()> {
+fn push_labels(
+    out: &mut impl SvgOutput,
+    layout: &CynefinDiagramLayout,
+    surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
+) -> Result<()> {
     out.push_str(r#"<g class="cynefin-labels">"#);
     out.checkpoint()?;
     for domain_name in crate::cynefin::quadrant_domains() {
@@ -208,6 +232,11 @@ fn push_labels(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Resul
             escape_xml_display(crate::cynefin::domain_title(domain_name))
         );
         out.checkpoint()?;
+        surface_receipt.record_text(
+            crate::cynefin::CynefinTextRole::DomainLabel,
+            "cynefinDomainLabel",
+            crate::cynefin::domain_title(domain_name),
+        );
     }
     let y = if layout.show_domain_descriptions {
         layout.height / 2.0 - 10.0
@@ -221,10 +250,20 @@ fn push_labels(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Resul
         fmt(y)
     );
     out.push_str("</g>");
-    out.checkpoint()
+    out.checkpoint()?;
+    surface_receipt.record_text(
+        crate::cynefin::CynefinTextRole::DomainLabel,
+        "cynefinDomainLabel",
+        "Confusion",
+    );
+    Ok(())
 }
 
-fn push_subtitles(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Result<()> {
+fn push_subtitles(
+    out: &mut impl SvgOutput,
+    layout: &CynefinDiagramLayout,
+    surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
+) -> Result<()> {
     out.push_str(r#"<g class="cynefin-subtitles">"#);
     out.checkpoint()?;
     for domain_name in crate::cynefin::quadrant_domains() {
@@ -247,6 +286,16 @@ fn push_subtitles(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Re
             escape_xml_display(practice)
         );
         out.checkpoint()?;
+        surface_receipt.record_text(
+            crate::cynefin::CynefinTextRole::Subtitle,
+            "cynefinSubtitle",
+            model,
+        );
+        surface_receipt.record_text(
+            crate::cynefin::CynefinTextRole::Subtitle,
+            "cynefinSubtitle",
+            practice,
+        );
     }
     let _ = write!(
         out,
@@ -255,13 +304,20 @@ fn push_subtitles(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Re
         fmt(layout.height / 2.0 + 8.0)
     );
     out.push_str("</g>");
-    out.checkpoint()
+    out.checkpoint()?;
+    surface_receipt.record_text(
+        crate::cynefin::CynefinTextRole::Subtitle,
+        "cynefinSubtitle",
+        "Disorder",
+    );
+    Ok(())
 }
 
 fn push_items(
     out: &mut impl SvgOutput,
     layout: &CynefinDiagramLayout,
     theme: &crate::cynefin::CynefinTheme,
+    surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="cynefin-items">"#);
     out.checkpoint()?;
@@ -287,6 +343,11 @@ fn push_items(
             escape_xml_display(&item.label)
         );
         out.checkpoint()?;
+        surface_receipt.record_text(
+            crate::cynefin::CynefinTextRole::Item,
+            "cynefinItemText",
+            &item.label,
+        );
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -296,6 +357,7 @@ fn push_transitions(
     out: &mut impl SvgOutput,
     layout: &CynefinDiagramLayout,
     marker_id: &str,
+    surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
     if layout.transitions.is_empty() {
         return Ok(());
@@ -332,6 +394,11 @@ fn push_transitions(
                 escape_xml_display(label)
             );
             out.checkpoint()?;
+            surface_receipt.record_text(
+                crate::cynefin::CynefinTextRole::TransitionLabel,
+                "cynefinArrowLabel",
+                label,
+            );
         }
     }
     out.push_str("</g>");
@@ -343,9 +410,15 @@ fn write_cynefin_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
     theme: &crate::cynefin::CynefinTheme,
+    typography_theme: &crate::cynefin::CynefinTypographyThemePlan,
+    surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let parts = info_css_parts_with_font_family(
+        diagram_id,
+        effective_config,
+        typography_theme.font_family_css(),
+    );
     out.push_str(&parts.css_prefix);
     out.checkpoint()?;
     let _ = write!(
@@ -385,5 +458,7 @@ fn write_cynefin_css(
         theme.label_color
     );
     out.push_str(&parts.root_rule);
-    out.checkpoint()
+    out.checkpoint()?;
+    surface_receipt.record_css_emission(&parts.font_family, &parts.font_family, &parts.font_family);
+    Ok(())
 }

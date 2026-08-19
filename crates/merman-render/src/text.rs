@@ -56,9 +56,9 @@ pub(crate) use metrics::{
 pub(crate) use prepared::{
     CatalogAdmittedTextStyle, ParsedCssFontStack, PendingPreparedTextLabelLedgerEntry,
     PreparedText, PreparedTextCssTypographyOverrides, PreparedTextLabelFamily, PreparedTextLayout,
-    PreparedTextLayoutBuilder, PreparedTextLayoutResponse, TextLayoutBackend,
-    TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutError, TextProjection,
-    merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
+    PreparedTextLayoutBuilder, PreparedTextLayoutResponse, PreparedTextVerticalExtents,
+    TextLayoutBackend, TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutError,
+    TextProjection, merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
     resolve_css_font_weight, text_projection_layout_error,
 };
 #[cfg(feature = "fuzzing")]
@@ -74,6 +74,8 @@ pub(crate) use prepared::{
 pub(crate) use prepared::{
     PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
 };
+#[cfg(test)]
+pub(crate) use prepared::{PreparedTextLine, TextByteRange};
 pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
 
 /// Workspace-internal native-export evidence scheduled for replacement by a compact export plan.

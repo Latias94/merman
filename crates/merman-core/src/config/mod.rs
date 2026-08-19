@@ -5,8 +5,8 @@ pub(crate) use overlay::ConfigOverlayApplication;
 pub(crate) use overlay::ConfigOverlayField;
 pub(crate) use overlay::ConfigOverlayLane;
 pub(crate) use overlay::{
-    ConfigOverlayContribution, ConfigOverlayError, ConfigOverlayProvenance,
-    PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider,
+    ConfigOverlayContribution, ConfigOverlayContributionProvenance, ConfigOverlayError,
+    ConfigOverlayProvenance, PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider,
 };
 
 use crate::{OperationControl, OperationControlResult};
@@ -258,9 +258,29 @@ enum ThemeCompatibilityState {
     Tracking(Arc<ThemeCompatibilityOwnership>),
     Frozen {
         binding: ThemeParseBinding,
-        surviving_field_count: usize,
-        surviving_paths: Arc<BTreeSet<Arc<str>>>,
+        fields: Arc<[FrozenThemeCompatibilityField]>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FrozenThemeCompatibilityField {
+    opaque_id: Arc<str>,
+    kind: ThemeCompatibilityFieldKind,
+    surviving_paths: Arc<[Arc<str>]>,
+}
+
+impl FrozenThemeCompatibilityField {
+    pub(crate) fn opaque_id(&self) -> &str {
+        &self.opaque_id
+    }
+
+    pub(crate) const fn kind(&self) -> ThemeCompatibilityFieldKind {
+        self.kind
+    }
+
+    pub(crate) fn surviving_paths(&self) -> &[Arc<str>] {
+        &self.surviving_paths
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -271,7 +291,16 @@ struct ThemeCompatibilityOwnership {
 
 #[derive(Debug, Clone)]
 struct ThemeCompatibilityFieldOwnership {
+    opaque_id: Arc<str>,
+    kind: ThemeCompatibilityFieldKind,
     paths: Vec<ThemeCompatibilityPathOwnership>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ThemeCompatibilityFieldKind {
+    Theme,
+    DarkMode,
+    Variable,
 }
 
 #[derive(Debug, Clone)]
@@ -288,17 +317,20 @@ impl ThemeCompatibilityOwnership {
         };
 
         if root.contains_key("theme") {
-            fields.push(ThemeCompatibilityFieldOwnership::new(["theme"]));
+            fields.push(ThemeCompatibilityFieldOwnership::new(
+                ThemeCompatibilityFieldKind::Theme,
+                ["theme"],
+            ));
         }
 
         let variables = root.get("themeVariables").and_then(Value::as_object);
         if root.contains_key("darkMode")
             || variables.is_some_and(|variables| variables.contains_key("darkMode"))
         {
-            fields.push(ThemeCompatibilityFieldOwnership::new([
-                "darkMode",
-                "themeVariables.darkMode",
-            ]));
+            fields.push(ThemeCompatibilityFieldOwnership::new(
+                ThemeCompatibilityFieldKind::DarkMode,
+                ["darkMode", "themeVariables.darkMode"],
+            ));
         }
 
         if let Some(variables) = variables {
@@ -307,7 +339,10 @@ impl ThemeCompatibilityOwnership {
                     .keys()
                     .filter(|key| key.as_str() != "darkMode")
                     .map(|key| {
-                        ThemeCompatibilityFieldOwnership::new([format!("themeVariables.{key}")])
+                        ThemeCompatibilityFieldOwnership::new(
+                            ThemeCompatibilityFieldKind::Variable,
+                            [format!("themeVariables.{key}")],
+                        )
                     }),
             );
         }
@@ -325,30 +360,47 @@ impl ThemeCompatibilityOwnership {
         }
     }
 
-    fn surviving_field_count(&self) -> usize {
+    fn freeze_fields(&self) -> Arc<[FrozenThemeCompatibilityField]> {
         self.fields
             .iter()
-            .filter(|field| field.paths.iter().any(|path| path.owned))
-            .count()
-    }
-
-    fn surviving_paths(&self) -> BTreeSet<Arc<str>> {
-        self.fields
-            .iter()
-            .flat_map(|field| field.paths.iter())
-            .filter(|path| path.owned)
-            .map(|path| Arc::clone(&path.path))
-            .collect()
+            .filter_map(|field| {
+                let surviving_paths = field
+                    .paths
+                    .iter()
+                    .filter(|path| path.owned)
+                    .map(|path| Arc::clone(&path.path))
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                (!surviving_paths.is_empty()).then(|| FrozenThemeCompatibilityField {
+                    opaque_id: Arc::clone(&field.opaque_id),
+                    kind: field.kind,
+                    surviving_paths: surviving_paths.into(),
+                })
+            })
+            .collect::<Vec<_>>()
+            .into()
     }
 }
 
 impl ThemeCompatibilityFieldOwnership {
-    fn new<I, P>(paths: I) -> Self
+    fn new<I, P>(kind: ThemeCompatibilityFieldKind, paths: I) -> Self
     where
         I: IntoIterator<Item = P>,
         P: Into<Arc<str>>,
     {
+        let paths = paths.into_iter().map(Into::into).collect::<Vec<Arc<str>>>();
+        let primary_path = paths
+            .first()
+            .expect("theme compatibility conceptual fields must own at least one path");
+        let opaque_id = match kind {
+            ThemeCompatibilityFieldKind::Theme => Arc::from("mermaid.theme"),
+            ThemeCompatibilityFieldKind::DarkMode => Arc::from("mermaid.darkMode"),
+            ThemeCompatibilityFieldKind::Variable => Arc::from(format!("mermaid.{primary_path}")),
+        };
         Self {
+            opaque_id,
+            kind,
             paths: paths
                 .into_iter()
                 .map(|path| ThemeCompatibilityPathOwnership {
@@ -452,11 +504,17 @@ impl MermaidConfig {
     /// Returns explicit Mermaid compatibility fields still owned by the parsed theme.
     pub(crate) fn mermaid_compatibility_residual_count(&self) -> usize {
         match self.theme_compatibility.as_ref() {
-            Some(ThemeCompatibilityState::Frozen {
-                surviving_field_count,
-                ..
-            }) => *surviving_field_count,
+            Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.len(),
             Some(ThemeCompatibilityState::Tracking(_)) | None => 0,
+        }
+    }
+
+    pub(crate) fn mermaid_compatibility_fields(
+        &self,
+    ) -> Option<Arc<[FrozenThemeCompatibilityField]>> {
+        match self.theme_compatibility.as_ref() {
+            Some(ThemeCompatibilityState::Frozen { fields, .. }) => Some(Arc::clone(fields)),
+            Some(ThemeCompatibilityState::Tracking(_)) | None => None,
         }
     }
 
@@ -517,8 +575,7 @@ impl MermaidConfig {
         };
         self.theme_compatibility = Some(ThemeCompatibilityState::Frozen {
             binding: ownership.binding.clone(),
-            surviving_field_count: ownership.surviving_field_count(),
-            surviving_paths: Arc::new(ownership.surviving_paths()),
+            fields: ownership.freeze_fields(),
         });
     }
 
@@ -542,9 +599,10 @@ impl MermaidConfig {
         self.explicit_config_owns_path(dotted_path)
             || matches!(
                 self.theme_compatibility.as_ref(),
-                Some(ThemeCompatibilityState::Frozen { surviving_paths, .. })
-                    if surviving_paths
+                Some(ThemeCompatibilityState::Frozen { fields, .. })
+                    if fields
                         .iter()
+                        .flat_map(|field| field.surviving_paths.iter())
                         .any(|candidate| dotted_paths_overlap(candidate, dotted_path))
             )
     }
@@ -579,11 +637,23 @@ impl MermaidConfig {
                     }
                 }
             }
-            Some(ThemeCompatibilityState::Frozen {
-                surviving_paths, ..
-            }) => {
-                if surviving_paths.contains(source_path.as_str()) {
-                    Arc::make_mut(surviving_paths).insert(target_path);
+            Some(ThemeCompatibilityState::Frozen { fields, .. }) => {
+                for field in Arc::make_mut(fields) {
+                    if field
+                        .surviving_paths
+                        .iter()
+                        .any(|path| path.as_ref() == source_path.as_str())
+                        && !field
+                            .surviving_paths
+                            .iter()
+                            .any(|path| path.as_ref() == target_path.as_ref())
+                    {
+                        let mut surviving_paths = field.surviving_paths.to_vec();
+                        surviving_paths.push(Arc::clone(&target_path));
+                        surviving_paths.sort_unstable();
+                        surviving_paths.dedup();
+                        field.surviving_paths = surviving_paths.into();
+                    }
                 }
             }
             None => {}
@@ -1253,6 +1323,32 @@ mod tests {
             "themeVariables.darkMode",
             "themeVariables.useGradient"
         ));
+    }
+
+    #[test]
+    fn dark_mode_ownership_remains_one_concept_when_one_mirrored_path_survives() {
+        let compatibility = json!({
+            "darkMode": true,
+            "themeVariables": {
+                "darkMode": true
+            }
+        });
+        let binding = ThemeParseBinding::try_new(
+            [0; 32],
+            MermaidConfig::from_value(clone_value_nonrecursive(&compatibility)),
+        )
+        .expect("valid mirrored dark-mode compatibility");
+        let mut ownership = ThemeCompatibilityOwnership::from_config(binding, &compatibility);
+
+        ownership.shadow_path("darkMode");
+
+        let fields = ownership.freeze_fields();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].kind(), ThemeCompatibilityFieldKind::DarkMode);
+        assert_eq!(
+            fields[0].surviving_paths(),
+            &[Arc::<str>::from("themeVariables.darkMode")]
+        );
     }
 
     #[test]

@@ -119,7 +119,8 @@ pub(super) fn render_sequence_actor_popup_menus(
                     label = escape_xml(label)
                 );
             }
-            typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+            typography_receipt
+                .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
             link_y += 30.0;
         }
 

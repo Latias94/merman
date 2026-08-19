@@ -23,8 +23,24 @@ const MAX_RETAINED_BYTES_PER_OVERLAY: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ConfigOverlayProvenance {
-    host: Arc<[Arc<str>]>,
-    fallback: Arc<[Arc<str>]>,
+    host: Arc<[ConfigOverlayContributionProvenance]>,
+    fallback: Arc<[ConfigOverlayContributionProvenance]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConfigOverlayContributionProvenance {
+    opaque_id: Arc<str>,
+    surviving_assignment_paths: Arc<[Arc<str>]>,
+}
+
+impl ConfigOverlayContributionProvenance {
+    pub(crate) fn opaque_id(&self) -> &str {
+        &self.opaque_id
+    }
+
+    pub(crate) fn surviving_assignment_paths(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.surviving_assignment_paths.iter().map(AsRef::as_ref)
+    }
 }
 
 impl ConfigOverlayProvenance {
@@ -33,7 +49,7 @@ impl ConfigOverlayProvenance {
         self.host
             .iter()
             .chain(self.fallback.iter())
-            .map(AsRef::as_ref)
+            .map(ConfigOverlayContributionProvenance::opaque_id)
     }
 
     #[cfg(test)]
@@ -48,11 +64,23 @@ impl ConfigOverlayProvenance {
     }
 
     /// Returns contributions from the low-priority compatibility lane only.
+    #[cfg(test)]
     pub(crate) fn fallback_contribution_ids(&self) -> impl ExactSizeIterator<Item = &str> {
-        self.fallback.iter().map(AsRef::as_ref)
+        self.fallback
+            .iter()
+            .map(ConfigOverlayContributionProvenance::opaque_id)
     }
 
-    fn from_lanes(host: Vec<Arc<str>>, fallback: Vec<Arc<str>>) -> Self {
+    pub(crate) fn fallback_contributions(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &ConfigOverlayContributionProvenance> {
+        self.fallback.iter()
+    }
+
+    fn from_lanes(
+        host: Vec<ConfigOverlayContributionProvenance>,
+        fallback: Vec<ConfigOverlayContributionProvenance>,
+    ) -> Self {
         Self {
             host: host.into(),
             fallback: fallback.into(),
@@ -345,28 +373,32 @@ pub(crate) struct ConfigOverlayApplication {
 
 impl ConfigOverlayApplication {
     pub(crate) fn finalize(&self, effective_config: &MermaidConfig) -> ConfigOverlayProvenance {
-        let mut seen_host_ids = BTreeSet::new();
-        let mut surviving_host_ids = Vec::new();
-        let mut seen_fallback_ids = BTreeSet::new();
-        let mut surviving_fallback_ids = Vec::new();
+        let mut surviving_host = Vec::new();
+        let mut surviving_fallback = Vec::new();
         for contribution in &self.contributions {
-            let survives = contribution.assignments.iter().any(|assignment| {
-                value_at_path(effective_config, &assignment.path) == Some(assignment.value.as_ref())
-            });
-            if !survives {
+            let surviving_assignment_paths = contribution
+                .assignments
+                .iter()
+                .filter(|assignment| {
+                    value_at_path(effective_config, &assignment.path)
+                        == Some(assignment.value.as_ref())
+                })
+                .map(|assignment| Arc::clone(&assignment.path))
+                .collect::<Vec<_>>();
+            if surviving_assignment_paths.is_empty() {
                 continue;
             }
-            let (seen_ids, surviving_ids) = match contribution.lane {
-                ConfigOverlayLane::Host => (&mut seen_host_ids, &mut surviving_host_ids),
-                ConfigOverlayLane::Fallback => {
-                    (&mut seen_fallback_ids, &mut surviving_fallback_ids)
-                }
+            let surviving = match contribution.lane {
+                ConfigOverlayLane::Host => &mut surviving_host,
+                ConfigOverlayLane::Fallback => &mut surviving_fallback,
             };
-            if seen_ids.insert(Arc::clone(&contribution.opaque_id)) {
-                surviving_ids.push(Arc::clone(&contribution.opaque_id));
-            }
+            record_surviving_contribution(
+                surviving,
+                &contribution.opaque_id,
+                surviving_assignment_paths,
+            );
         }
-        ConfigOverlayProvenance::from_lanes(surviving_host_ids, surviving_fallback_ids)
+        ConfigOverlayProvenance::from_lanes(surviving_host, surviving_fallback)
     }
 
     fn claims_path(&self, path: &str) -> bool {
@@ -394,6 +426,30 @@ impl ConfigOverlayApplication {
             assignments,
         });
     }
+}
+
+fn record_surviving_contribution(
+    contributions: &mut Vec<ConfigOverlayContributionProvenance>,
+    opaque_id: &Arc<str>,
+    surviving_assignment_paths: Vec<Arc<str>>,
+) {
+    if let Some(existing) = contributions
+        .iter_mut()
+        .find(|candidate| candidate.opaque_id.as_ref() == opaque_id.as_ref())
+    {
+        let mut merged_paths = existing.surviving_assignment_paths.to_vec();
+        for path in surviving_assignment_paths {
+            if !merged_paths.contains(&path) {
+                merged_paths.push(path);
+            }
+        }
+        existing.surviving_assignment_paths = merged_paths.into();
+        return;
+    }
+    contributions.push(ConfigOverlayContributionProvenance {
+        opaque_id: Arc::clone(opaque_id),
+        surviving_assignment_paths: surviving_assignment_paths.into(),
+    });
 }
 
 #[derive(Debug)]
@@ -911,6 +967,58 @@ mod tests {
         effective.set_value("themeVariables.lineColor", json!("#abcdef"));
 
         assert!(application.finalize(&effective).is_empty());
+    }
+
+    #[test]
+    fn finalization_records_only_the_assignment_paths_that_still_survive() {
+        let opaque_id = "legacy.flowchart.typography";
+        let overlay = PostDetectionConfigOverlay::new()
+            .with_family_contribution(
+                "flowchart",
+                contribution(
+                    opaque_id,
+                    json!({
+                        "fontFamily": "TypedFont,sans-serif",
+                        "themeVariables": {
+                            "fontFamily": "TypedFont,sans-serif",
+                            "fontSize": "24px"
+                        }
+                    }),
+                ),
+            )
+            .unwrap();
+        let explicit = MermaidConfig::empty_object();
+        let before_detect = MermaidConfig::empty_object();
+        let mut effective = before_detect.clone();
+        let mut application = ConfigOverlayApplication::default();
+        overlay
+            .apply_family_controlled_in_lane(
+                "flowchart",
+                &explicit,
+                &explicit,
+                &before_detect,
+                &mut effective,
+                &mut application,
+                ConfigOverlayLane::Fallback,
+                &OperationControl::new(),
+            )
+            .unwrap();
+
+        effective.set_value("themeVariables.fontSize", json!("16px"));
+        let provenance = application.finalize(&effective);
+        let contribution = provenance
+            .fallback_contributions()
+            .next()
+            .expect("partially surviving fallback contribution");
+
+        assert_eq!(contribution.opaque_id(), opaque_id);
+        assert_eq!(
+            contribution
+                .surviving_assignment_paths()
+                .collect::<Vec<_>>(),
+            ["fontFamily", "themeVariables.fontFamily"]
+        );
+        assert_eq!(provenance.fallback_contributions().len(), 1);
     }
 
     #[test]

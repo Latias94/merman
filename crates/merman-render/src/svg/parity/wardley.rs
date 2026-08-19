@@ -76,6 +76,8 @@ fn write_text(
     class: Option<&str>,
     fill: &str,
     include_font_weight: bool,
+    role: crate::wardley::WardleyTextRole,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str("<text");
     if let Some(class) = class {
@@ -110,7 +112,9 @@ fn write_text(
         );
     }
     let _ = write!(out, ">{}</text>", escape_xml_display(&text.text));
-    out.checkpoint()
+    out.checkpoint()?;
+    surface_receipt.record_text(role, class, &text.text);
+    Ok(())
 }
 
 fn write_line(
@@ -200,6 +204,7 @@ fn write_axes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-axes">"#);
     out.checkpoint()?;
@@ -225,6 +230,8 @@ fn write_axes(
         Some("wardley-axis-label wardley-axis-label-x"),
         &theme.axis_text_color,
         true,
+        crate::wardley::WardleyTextRole::AxisLabel,
+        surface_receipt,
     )?;
     write_text(
         out,
@@ -232,6 +239,8 @@ fn write_axes(
         Some("wardley-axis-label wardley-axis-label-y"),
         &theme.axis_text_color,
         true,
+        crate::wardley::WardleyTextRole::AxisLabel,
+        surface_receipt,
     )?;
     out.push_str("</g>");
     out.checkpoint()
@@ -241,6 +250,7 @@ fn write_stages(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     if layout.stages.is_empty() {
         return Ok(());
@@ -259,6 +269,8 @@ fn write_stages(
             Some("wardley-stage-label"),
             &theme.axis_text_color,
             false,
+            crate::wardley::WardleyTextRole::StageLabel,
+            surface_receipt,
         )?;
     }
     out.push_str("</g>");
@@ -348,6 +360,7 @@ fn write_links(
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
     diagram_id: &str,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-links">"#);
     out.checkpoint()?;
@@ -393,6 +406,8 @@ fn write_links(
                 Some("wardley-link-label"),
                 &theme.axis_text_color,
                 false,
+                crate::wardley::WardleyTextRole::LinkLabel,
+                surface_receipt,
             )?;
         }
     }
@@ -498,6 +513,7 @@ fn write_nodes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-nodes">"#);
     out.checkpoint()?;
@@ -557,6 +573,8 @@ fn write_nodes(
             Some("wardley-node-label"),
             label_fill,
             true,
+            crate::wardley::WardleyTextRole::NodeLabel,
+            surface_receipt,
         )?;
         out.push_str("</g>");
         out.checkpoint()?;
@@ -569,6 +587,7 @@ fn write_annotations_box(
     out: &mut impl SvgOutput,
     annotations_box: &WardleyAnnotationsBoxLayout,
     theme: &WardleyTheme,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<g class="wardley-annotations-box">"#);
     out.checkpoint()?;
@@ -587,7 +606,15 @@ fn write_annotations_box(
         out.checkpoint()?;
     }
     for line in &annotations_box.lines {
-        write_text(out, line, None, &theme.axis_text_color, false)?;
+        write_text(
+            out,
+            line,
+            None,
+            &theme.axis_text_color,
+            false,
+            crate::wardley::WardleyTextRole::AnnotationBoxLine,
+            surface_receipt,
+        )?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -597,6 +624,7 @@ fn write_annotations(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     if layout.annotations.is_empty() {
         return Ok(());
@@ -628,13 +656,21 @@ fn write_annotations(
                 &theme.axis_color,
                 1.5,
             )?;
-            write_text(out, &point.label, None, &theme.axis_text_color, true)?;
+            write_text(
+                out,
+                &point.label,
+                None,
+                &theme.axis_text_color,
+                true,
+                crate::wardley::WardleyTextRole::AnnotationPoint,
+                surface_receipt,
+            )?;
             out.push_str("</g>");
             out.checkpoint()?;
         }
     }
     if let Some(annotations_box) = &layout.annotations_box {
-        write_annotations_box(out, annotations_box, theme)?;
+        write_annotations_box(out, annotations_box, theme, surface_receipt)?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -644,6 +680,7 @@ fn write_notes(
     out: &mut impl SvgOutput,
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     if layout.notes.is_empty() {
         return Ok(());
@@ -651,7 +688,15 @@ fn write_notes(
     out.push_str(r#"<g class="wardley-notes">"#);
     out.checkpoint()?;
     for note in &layout.notes {
-        write_text(out, &note.text, None, &theme.axis_text_color, true)?;
+        write_text(
+            out,
+            &note.text,
+            None,
+            &theme.axis_text_color,
+            true,
+            crate::wardley::WardleyTextRole::Note,
+            surface_receipt,
+        )?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -661,6 +706,8 @@ fn write_arrow(
     out: &mut impl SvgOutput,
     arrow: &WardleyArrowLayout,
     theme: &WardleyTheme,
+    role: crate::wardley::WardleyTextRole,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     out.push_str(r#"<path d="M "#);
     out.checkpoint()?;
@@ -677,7 +724,15 @@ fn write_arrow(
         escape_attr_display(&theme.component_stroke)
     );
     out.checkpoint()?;
-    write_text(out, &arrow.label, None, &theme.axis_text_color, true)
+    write_text(
+        out,
+        &arrow.label,
+        None,
+        &theme.axis_text_color,
+        true,
+        role,
+        surface_receipt,
+    )
 }
 
 fn write_arrows(
@@ -685,6 +740,8 @@ fn write_arrows(
     class: &str,
     arrows: &[WardleyArrowLayout],
     theme: &WardleyTheme,
+    role: crate::wardley::WardleyTextRole,
+    surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
 ) -> Result<()> {
     if arrows.is_empty() {
         return Ok(());
@@ -692,7 +749,7 @@ fn write_arrows(
     let _ = write!(out, r#"<g class="{}">"#, escape_attr_display(class));
     out.checkpoint()?;
     for arrow in arrows {
-        write_arrow(out, arrow, theme)?;
+        write_arrow(out, arrow, theme, role, surface_receipt)?;
     }
     out.push_str("</g>");
     out.checkpoint()
@@ -715,6 +772,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
     model: &WardleyDiagramRenderModel,
     effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
+    typography_theme: &crate::wardley::WardleyTypographyThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("wardley");
@@ -723,6 +781,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = WardleyTheme::from_config(effective_config);
+    let mut surface_receipt = typography_theme.begin_terminal_receipt(layout);
 
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
@@ -737,8 +796,19 @@ pub(crate) fn render_wardley_diagram_svg_model(
             .write_open(&mut out, root_spec, root_chrome)?;
     write_accessibility(&mut out, diagram_id, acc_title, acc_descr)?;
 
-    out.push_str(r#"<g class="wardley-map">"#);
-    out.checkpoint()?;
+    if typography_theme.should_write_inherited_font() {
+        let _ = write!(
+            &mut out,
+            r#"<g class="wardley-map" font-family="{}">"#,
+            escape_attr_display(typography_theme.font_family_css())
+        );
+        out.checkpoint()?;
+        surface_receipt
+            .record_inherited_font_writer("wardley-map", typography_theme.font_family_css());
+    } else {
+        out.push_str(r#"<g class="wardley-map">"#);
+        out.checkpoint()?;
+    }
     let _ = write!(
         out,
         r#"<rect class="wardley-background" width="{}" height="{}" fill="{}"/>"#,
@@ -754,34 +824,46 @@ pub(crate) fn render_wardley_diagram_svg_model(
             Some("wardley-title"),
             &theme.axis_text_color,
             true,
+            crate::wardley::WardleyTextRole::Title,
+            &mut surface_receipt,
         )?;
     }
-    write_axes(&mut out, layout, &theme)?;
-    write_stages(&mut out, layout, &theme)?;
+    write_axes(&mut out, layout, &theme, &mut surface_receipt)?;
+    write_stages(&mut out, layout, &theme, &mut surface_receipt)?;
     write_grid(&mut out, layout, &theme)?;
     write_pipelines(&mut out, layout, model, &theme)?;
-    write_links(&mut out, layout, &theme, diagram_id)?;
+    write_links(&mut out, layout, &theme, diagram_id, &mut surface_receipt)?;
     write_trends(&mut out, layout, &theme, diagram_id)?;
-    write_nodes(&mut out, layout, &theme)?;
-    write_annotations(&mut out, layout, &theme)?;
-    write_notes(&mut out, layout, &theme)?;
+    write_nodes(&mut out, layout, &theme, &mut surface_receipt)?;
+    write_annotations(&mut out, layout, &theme, &mut surface_receipt)?;
+    write_notes(&mut out, layout, &theme, &mut surface_receipt)?;
     write_arrows(
         &mut out,
         "wardley-accelerators",
         &layout.accelerators,
         &theme,
+        crate::wardley::WardleyTextRole::Accelerator,
+        &mut surface_receipt,
     )?;
     write_arrows(
         &mut out,
         "wardley-deaccelerators",
         &layout.deaccelerators,
         &theme,
+        crate::wardley::WardleyTextRole::Deaccelerator,
+        &mut surface_receipt,
     )?;
     out.push_str("</g>");
     out.checkpoint()?;
     write_defs(&mut out, diagram_id, &theme)?;
     out.push_str("</svg>");
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if !typography_theme.record_terminal(surface_receipt) {
+        return Err(crate::Error::InvalidModel {
+            message: "Wardley typography receipt was recorded more than once".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 #[cfg(test)]
@@ -797,6 +879,10 @@ mod tests {
     ) -> crate::Result<root_svg::RootedSvg> {
         let model = WardleyDiagramRenderModel::default();
         let effective_config = serde_json::json!({});
+        let effective_mermaid_config =
+            merman_core::MermaidConfig::from_value(effective_config.clone());
+        let typography_theme =
+            crate::wardley::WardleyTypographyThemePlan::resolve(None, &effective_mermaid_config);
         let layout = crate::wardley::layout_wardley_diagram_typed(
             &model,
             None,
@@ -820,7 +906,14 @@ mod tests {
         )
         .expect("SVG execution");
 
-        render_wardley_diagram_svg_model(&layout, &model, &effective_config, None, &execution)
+        render_wardley_diagram_svg_model(
+            &layout,
+            &model,
+            &effective_config,
+            None,
+            &typography_theme,
+            &execution,
+        )
     }
 
     #[test]

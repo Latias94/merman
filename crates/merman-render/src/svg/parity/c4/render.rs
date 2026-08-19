@@ -380,7 +380,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     for r in &model.rels {
         rel_meta.insert((r.from_alias.as_str(), r.to_alias.as_str()), r);
     }
-    let mut cluster_radius_receipt = cluster_theme.begin_terminal_receipt();
+    let mut cluster_theme_receipt = cluster_theme.begin_terminal_receipt();
     let mut boundary_emission_ordinal = 0usize;
 
     const PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
@@ -656,14 +656,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
             C4PaintItem::Boundary(index) => {
                 let b = &layout.boundaries[index];
                 let meta = boundary_meta.get(b.alias.as_str()).copied();
-                let fill_color = meta
-                    .and_then(|m| m.bg_color.clone())
-                    .unwrap_or_else(|| "none".to_string());
-                let stroke_color = meta
-                    .and_then(|m| m.border_color.clone())
-                    .unwrap_or_else(|| "#444444".to_string());
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
-                let boundary_radius_attr = cluster_theme.radius_token();
+                let Some((fill_color, stroke_color, boundary_radius_attr)) =
+                    cluster_theme.boundary_tokens(&b.alias)
+                else {
+                    return Err(crate::Error::InvalidModel {
+                        message: format!("C4 cluster theme plan is missing boundary `{}`", b.alias),
+                    });
+                };
 
                 out.push_str("<g>");
                 out.checkpoint()?;
@@ -673,8 +673,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="1"/>"#,
                         fmt(b.x),
                         fmt(b.y),
-                        escape_attr(&fill_color),
-                        escape_attr(&stroke_color),
+                        escape_attr(fill_color),
+                        escape_attr(stroke_color),
                         fmt(b.width),
                         fmt(b.height),
                         boundary_radius_attr,
@@ -686,8 +686,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="{}" ry="{}" stroke-width="1" stroke-dasharray="7.0,7.0"/>"#,
                         fmt(b.x),
                         fmt(b.y),
-                        escape_attr(&fill_color),
-                        escape_attr(&stroke_color),
+                        escape_attr(fill_color),
+                        escape_attr(stroke_color),
                         fmt(b.width),
                         fmt(b.height),
                         boundary_radius_attr,
@@ -695,9 +695,12 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     );
                 }
                 out.checkpoint()?;
-                if let Some(receipt) = cluster_radius_receipt.as_mut() {
+                if let Some(receipt) = cluster_theme_receipt.as_mut() {
                     receipt.record_checkpointed_boundary(
                         boundary_emission_ordinal,
+                        &b.alias,
+                        fill_color,
+                        stroke_color,
                         boundary_radius_attr,
                         boundary_radius_attr,
                     );
@@ -912,9 +915,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     out.push_str("</svg>");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if cluster_radius_receipt.is_some_and(|receipt| !cluster_theme.record_terminal(receipt)) {
+    if cluster_theme_receipt.is_some_and(|receipt| !cluster_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
-            message: "C4 cluster radius receipt did not match the terminal SVG".to_string(),
+            message: "C4 cluster theme receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)

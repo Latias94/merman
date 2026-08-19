@@ -204,14 +204,14 @@ fn root_open(
     )
 }
 
-fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
+fn venn_css(diagram_id: &str, theme: &VennTheme, title_fill: &str) -> String {
     let id = crate::svg::escape_css_identifier(diagram_id);
     format!(
         "#{id} .venn-title{{font-size:32px;fill:{title_color};font-family:{font_family};}}\
 #{id} .venn-circle text{{font-size:48px;font-family:{font_family};}}\
 #{id} .venn-intersection text{{font-size:48px;fill:{set_text_color};font-family:{font_family};}}\
 #{id} .venn-text-node{{font-family:{font_family};color:{set_text_color};}}",
-        title_color = theme.title_color,
+        title_color = title_fill,
         font_family = theme.font_family_css,
         set_text_color = theme.set_text_color,
     )
@@ -220,6 +220,25 @@ fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
 pub(crate) fn render_venn_diagram_svg_model(
     layout: &VennDiagramLayout,
     model: &VennDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let title_theme = crate::venn::VennTitleThemePlan::baseline();
+    render_venn_diagram_svg_model_with_title_theme(
+        layout,
+        model,
+        &title_theme,
+        effective_config,
+        diagram_title,
+        options,
+    )
+}
+
+pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
+    layout: &VennDiagramLayout,
+    model: &VennDiagramRenderModel,
+    title_theme: &crate::venn::VennTitleThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
@@ -277,7 +296,12 @@ pub(crate) fn render_venn_diagram_svg_model(
     }
 
     let theme = MermaidThemeAdapter::new(effective_config).venn()?;
-    let css = venn_css(diagram_id, &theme);
+    let title_fill = title_theme.fill_css().unwrap_or(theme.title_color.as_str());
+    let mut title_theme_receipt = title_theme.begin_terminal_receipt();
+    let css = venn_css(diagram_id, &theme, title_fill);
+    if let Some(receipt) = title_theme_receipt.as_mut() {
+        receipt.record_stylesheet(crate::venn::VENN_TITLE_CLASS, title_fill);
+    }
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
     drop(css);
     out.checkpoint()?;
@@ -287,13 +311,17 @@ pub(crate) fn render_venn_diagram_svg_model(
     if let Some(title) = title {
         let _ = write!(
             &mut out,
-            r#"<text class="venn-title" font-size="{font_size}px" text-anchor="middle" dominant-baseline="middle" x="50%" y="{y}" style="fill: {fill};">{text}</text>"#,
+            r#"<text class="{class}" font-size="{font_size}px" text-anchor="middle" dominant-baseline="middle" x="50%" y="{y}" style="fill: {fill};">{text}</text>"#,
+            class = crate::venn::VENN_TITLE_CLASS,
             font_size = fmt(32.0 * layout.scale),
             y = fmt(32.0 * layout.scale),
-            fill = escape_xml(&theme.title_color),
+            fill = escape_xml(title_fill),
             text = escape_xml(title)
         );
         out.checkpoint()?;
+        if let Some(receipt) = title_theme_receipt.as_mut() {
+            receipt.record_title_text(crate::venn::VENN_TITLE_CLASS, title_fill);
+        }
     }
 
     let _ = write!(
@@ -517,7 +545,13 @@ pub(crate) fn render_venn_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if title_theme_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Venn title theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    Ok(rooted)
 }
 
 #[cfg(test)]

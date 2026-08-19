@@ -2,10 +2,7 @@
 
 use super::StateNode;
 pub(super) use crate::config::config_f64;
-use crate::config::{
-    config_diagram_look, config_effective_html_labels, config_f64_css_px, config_string,
-    config_string_or_first_array,
-};
+use crate::config::{config_f64_css_px, config_string, config_string_or_first_array};
 use crate::text::TextStyle;
 use crate::text::WrapMode;
 use dugong::{GraphLabel, RankDir};
@@ -116,8 +113,12 @@ impl<'a> StateConfigView<'a> {
         }
     }
 
-    pub(super) fn layout_settings(&self, direction: &str) -> StateLayoutSettings {
-        let html_labels = config_effective_html_labels(self.effective_config);
+    pub(super) fn layout_settings(
+        &self,
+        direction: &str,
+        compatibility: &super::StateCompatibilityPlan,
+    ) -> StateLayoutSettings {
+        let html_labels = compatibility.html_labels();
         StateLayoutSettings {
             graph: GraphLabel {
                 rankdir: rank_dir_from(direction),
@@ -138,13 +139,14 @@ impl<'a> StateConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings(&self) -> StateRenderSettings {
-        let html_labels = config_effective_html_labels(self.effective_config);
+    pub(crate) fn render_settings(
+        &self,
+        compatibility: &super::StateCompatibilityPlan,
+    ) -> StateRenderSettings {
+        let html_labels = compatibility.html_labels();
         StateRenderSettings {
             title_top_margin: self.title_top_margin(),
-            diagram_look: config_diagram_look(self.effective_config)
-                .as_str()
-                .to_string(),
+            diagram_look: compatibility.diagram_look().to_string(),
             hand_drawn_seed: self
                 .effective_config
                 .get("handDrawnSeed")
@@ -240,6 +242,10 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn compatibility(config: &Value) -> super::super::StateCompatibilityPlan {
+        super::super::StateCompatibilityPlan::from_value(config)
+    }
+
     #[test]
     fn state_html_label_wrapping_width_honors_number_and_px_string() {
         let numeric = json!({
@@ -275,7 +281,8 @@ mod tests {
             "htmlLabels": false,
             "flowchart": { "htmlLabels": true }
         });
-        let settings = StateConfigView::new(&root_false).layout_settings("TB");
+        let settings =
+            StateConfigView::new(&root_false).layout_settings("TB", &compatibility(&root_false));
         assert!(!settings.html_labels);
         assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
 
@@ -283,14 +290,16 @@ mod tests {
             "htmlLabels": true,
             "flowchart": { "htmlLabels": false }
         });
-        let settings = StateConfigView::new(&root_true).layout_settings("TB");
+        let settings =
+            StateConfigView::new(&root_true).layout_settings("TB", &compatibility(&root_true));
         assert!(settings.html_labels);
         assert_eq!(settings.wrap_mode, WrapMode::HtmlLike);
 
         let deprecated_false = json!({
             "flowchart": { "htmlLabels": false }
         });
-        let settings = StateConfigView::new(&deprecated_false).layout_settings("TB");
+        let settings = StateConfigView::new(&deprecated_false)
+            .layout_settings("TB", &compatibility(&deprecated_false));
         assert!(!settings.html_labels);
         assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
     }
@@ -314,7 +323,7 @@ mod tests {
             }
         });
 
-        let settings = StateConfigView::new(&cfg).layout_settings("LR");
+        let settings = StateConfigView::new(&cfg).layout_settings("LR", &compatibility(&cfg));
 
         assert_eq!(settings.graph.rankdir, RankDir::LR);
         assert_eq!(settings.graph.nodesep, 70.0);
@@ -344,7 +353,7 @@ mod tests {
             }
         });
 
-        let settings = StateConfigView::new(&cfg).render_settings();
+        let settings = StateConfigView::new(&cfg).render_settings(&compatibility(&cfg));
 
         assert_eq!(settings.diagram_look, "neo");
         assert_eq!(settings.hand_drawn_seed, 42.0);
@@ -353,6 +362,26 @@ mod tests {
         assert_eq!(settings.html_label_wrapping_width, 0.0);
         assert_eq!(settings.state_padding, 0.0);
         assert_eq!(settings.title_top_margin, 0.0);
+    }
+
+    #[test]
+    fn state_layout_and_render_settings_take_look_and_html_labels_from_compatibility_plan() {
+        let raw = json!({
+            "look": "classic",
+            "htmlLabels": true,
+        });
+        let compatibility = super::super::StateCompatibilityPlan::from_value(&json!({
+            "look": "handDrawn",
+            "htmlLabels": false,
+        }));
+
+        let layout = StateConfigView::new(&raw).layout_settings("TB", &compatibility);
+        let render = StateConfigView::new(&raw).render_settings(&compatibility);
+
+        assert_eq!(layout.html_labels, compatibility.html_labels());
+        assert_eq!(layout.wrap_mode, WrapMode::SvgLike);
+        assert_eq!(render.diagram_look, compatibility.diagram_look());
+        assert_eq!(render.html_labels, compatibility.html_labels());
     }
 
     #[test]

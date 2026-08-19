@@ -219,10 +219,14 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         } else {
             ctx.relations_by_id.get(e.id.as_str()).copied()
         };
-        let is_relation = relation.is_some();
         let relation_stroke_width = relation.and(ctx.relation_theme.paint_stroke_width());
+        let typed_stroke = relation.and(ctx.relation_theme.typed_stroke());
         let typed_stroke_width = relation.and(ctx.relation_theme.typed_stroke_width());
         let stroke_outset = relation_stroke_width.map_or(0.0, |width| f64::from(width) / 2.0);
+        let start_marker_name =
+            relation.and_then(|relation| class_marker_name(relation.relation.type1, true));
+        let end_marker_name =
+            relation.and_then(|relation| class_marker_name(relation.relation.type2, false));
         let start_marker_paint =
             relation.and_then(|rel| class_marker_paint_spec(rel.relation.type1, true));
         let end_marker_paint =
@@ -371,11 +375,17 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
 
         let edge_id_attr = format!("{}-{}", ctx.diagram_id, edge_dom_id_buf);
         let _ = write!(out, r#"<path d="{}""#, escape_attr_display(render_d));
+        let hand_drawn_stroke = (ctx.look == "handDrawn").then(|| {
+            typed_stroke
+                .map(|(_, css)| css)
+                .unwrap_or(CLASS_HAND_DRAWN_EDGE_STROKE)
+        });
         if ctx.look == "handDrawn" {
             let _ = write!(
                 out,
                 r#" stroke="{}" stroke-width="{}" fill="none""#,
-                CLASS_HAND_DRAWN_EDGE_STROKE, CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH,
+                escape_attr_display(hand_drawn_stroke.unwrap_or(CLASS_HAND_DRAWN_EDGE_STROKE)),
+                CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH,
             );
         }
         let _ = write!(
@@ -387,38 +397,49 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
             escape_attr_display(&edge_points_b64_buf),
         );
         let _ = write!(out, r#" data-look="{}""#, escape_attr_display(ctx.look));
-        if let Some(rel) = relation {
-            if let Some(name) = class_marker_name(rel.relation.type1, true) {
-                out.push_str(r#" marker-start="url(#"#);
-                out.push_str(ctx.marker_url_prefix);
-                out.push_str(name);
-                out.push_str(r#")""#);
-            }
-            if let Some(name) = class_marker_name(rel.relation.type2, false) {
-                out.push_str(r#" marker-end="url(#"#);
-                out.push_str(ctx.marker_url_prefix);
-                out.push_str(name);
-                out.push_str(r#")""#);
-            }
+        if let Some(name) = start_marker_name {
+            out.push_str(r#" marker-start="url(#"#);
+            out.push_str(ctx.marker_url_prefix);
+            out.push_str(name);
+            out.push_str(r#")""#);
+        }
+        if let Some(name) = end_marker_name {
+            out.push_str(r#" marker-end="url(#"#);
+            out.push_str(ctx.marker_url_prefix);
+            out.push_str(name);
+            out.push_str(r#")""#);
         }
         let base_style = class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn");
-        match typed_stroke_width {
-            Some(width) => {
-                let _ = write!(
-                    out,
-                    r#" style="{}stroke-width:{}px !important""#,
-                    base_style,
-                    fmt(f64::from(width)),
-                );
-            }
-            None => {
-                let _ = write!(out, r#" style="{}""#, base_style);
-            }
+        let mut terminal_style = base_style.to_string();
+        if let Some((_, stroke)) = typed_stroke {
+            let _ = write!(&mut terminal_style, "stroke:{stroke} !important;");
         }
+        if let Some(width) = typed_stroke_width {
+            let _ = write!(
+                &mut terminal_style,
+                "stroke-width:{}px !important",
+                fmt(f64::from(width)),
+            );
+        }
+        let _ = write!(out, r#" style="{}""#, escape_attr_display(&terminal_style));
         out.push_str("/>");
         out.checkpoint()?;
-        if is_relation {
-            theme_receipt.record_checkpointed_relation(typed_stroke_width.is_some());
+        if let Some(relation) = relation {
+            let relation_index = ctx
+                .relation_index_by_id
+                .get(e.id.as_str())
+                .copied()
+                .and_then(|index| index.checked_sub(1))
+                .unwrap_or(usize::MAX);
+            theme_receipt.record_relation(
+                relation_index,
+                start_marker_name,
+                end_marker_name,
+                typed_stroke,
+                &terminal_style,
+                hand_drawn_stroke,
+                typed_stroke_width.is_some(),
+            );
         }
     }
     out.push_str("</g>");

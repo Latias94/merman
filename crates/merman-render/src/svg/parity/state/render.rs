@@ -51,8 +51,8 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    let state_render_settings =
-        crate::state::StateConfigView::new(effective_config).render_settings();
+    let state_render_settings = crate::state::StateConfigView::new(effective_config)
+        .render_settings(style_plan.compatibility());
     let title_top_margin = state_render_settings.title_top_margin;
     let hand_drawn_seed = options.rough_randomness(
         state_render_settings.hand_drawn_seed,
@@ -333,7 +333,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // the bounded document so a large public diagram id or class catalog cannot allocate an
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
-    write_state_css(&mut out, diagram_id, effective_config, style_plan)?;
+    write_state_css(&mut out, diagram_id, style_plan)?;
     out.push_str("</style>");
     out.checkpoint()?;
 
@@ -360,7 +360,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
-    state_root_defs(&mut out, diagram_id, effective_config, style_plan);
+    state_root_defs(&mut out, diagram_id, style_plan);
     out.checkpoint()?;
 
     drop(_g_render_svg);
@@ -799,6 +799,39 @@ fn render_state_root(
     out.checkpoint()
 }
 
+fn state_hand_drawn_rect_paths(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    stroke_width: f64,
+    stroke_dasharray: &str,
+    randomness: &roughr::core::RoughRandomness,
+) -> (String, String) {
+    let path = format!(
+        "M{x},{y} L{},{} L{},{} L{},{} Z",
+        x + width,
+        y,
+        x + width,
+        y + height,
+        x,
+        y + height,
+    );
+    roughjs_paths_for_svg_path(
+        &path,
+        "#ECECFF",
+        "#9370DB",
+        stroke_width as f32,
+        stroke_dasharray,
+        randomness,
+    )
+    .unwrap_or_else(|| (path.clone(), path))
+}
+
+fn state_hand_drawn_terminal_style(property: &str, compatibility: &str, direct: &str) -> String {
+    format!("{property}:{compatibility};{direct}")
+}
+
 fn render_state_cluster(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
@@ -832,12 +865,25 @@ fn render_state_cluster(
     let x = left - origin_x;
     let y = top - origin_y;
     let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
+    let cluster_node = ctx.nodes_by_id.get(cluster_id).copied();
     let node_style = ctx.style_plan.node(cluster_id);
     let body_style = node_style
         .map(crate::state::StateNodeStylePlan::shape_style_attr)
         .unwrap_or_default();
     let header_style = node_style
         .map(crate::state::StateNodeStylePlan::composite_header_style_attr)
+        .unwrap_or_default();
+    let body_fill_path_style = node_style
+        .map(crate::state::StateNodeStylePlan::fill_path_style_attr)
+        .unwrap_or_default();
+    let body_stroke_path_style = node_style
+        .map(crate::state::StateNodeStylePlan::stroke_path_style_attr)
+        .unwrap_or_default();
+    let header_fill_path_style = node_style
+        .map(crate::state::StateNodeStylePlan::composite_header_fill_path_style_attr)
+        .unwrap_or_default();
+    let header_stroke_path_style = node_style
+        .map(crate::state::StateNodeStylePlan::composite_header_stroke_path_style_attr)
         .unwrap_or_default();
     let label_style = node_style
         .map(crate::state::StateNodeStylePlan::label_style_attr)
@@ -877,6 +923,53 @@ fn render_state_cluster(
         .unwrap_or_default();
 
     if shape == "divider" {
+        if data_look == "handDrawn" {
+            let compatibility = ctx.style_plan.compatibility();
+            let surface = cluster_node
+                .and_then(|node| {
+                    compatibility
+                        .node_shape_surface(node, crate::diagram_theme::ThemeTarget::Composite)
+                })
+                .expect("State divider cluster must have a compatibility surface");
+            let fill = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Fill,
+                &ctx.diagram_id,
+            );
+            let stroke = compatibility.terminal_paint_css(
+                surface,
+                crate::state::StateTerminalPaintProperty::Stroke,
+                &ctx.diagram_id,
+            );
+            let stroke_width = compatibility.terminal_stroke_width_value(surface);
+            let (fill_d, stroke_d) = state_hand_drawn_rect_paths(
+                x,
+                y,
+                cluster.width.max(1.0),
+                cluster.height.max(1.0),
+                stroke_width,
+                "5",
+                &ctx.hand_drawn_seed,
+            );
+            let fill_style = state_hand_drawn_terminal_style("fill", &fill, body_fill_path_style);
+            let stroke_style =
+                state_hand_drawn_terminal_style("stroke", &stroke, body_stroke_path_style);
+            let _ = write!(
+                out,
+                r#"<g class="{}" id="{}" data-look="{}"><g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="5" style="{}"/></g></g>"#,
+                escape_attr(class),
+                escape_attr(&dom_id),
+                escape_attr(data_look),
+                escape_attr(&fill_d),
+                escape_attr(&fill),
+                escape_attr(&fill_style),
+                escape_attr(&stroke_d),
+                escape_attr(&stroke),
+                fmt(stroke_width),
+                escape_attr(&stroke_style),
+            );
+            return;
+        }
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
@@ -901,9 +994,113 @@ fn render_state_cluster(
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
     let prepared_title = ctx.label_sidecar.cluster_title(cluster_id);
+    let measured_title = ctx
+        .label_sidecar
+        .measured_native_geometry(crate::state::StateLabelOwner::ClusterTitle(cluster_id));
     let title_height = cluster.title_label.height.max(0.0);
     let inner_y = y + title_height + 2.0;
     let inner_height = (cluster.height - title_height - 6.0).max(1.0);
+    let (outer_shape, inner_shape) = if data_look == "handDrawn" {
+        let compatibility = ctx.style_plan.compatibility();
+        let body_surface = cluster_node
+            .and_then(|node| {
+                compatibility.node_shape_surface(node, crate::diagram_theme::ThemeTarget::Composite)
+            })
+            .expect("State composite body must have a compatibility surface");
+        let header_surface = compatibility.composite_header_surface();
+        let body_fill = compatibility.terminal_paint_css(
+            body_surface,
+            crate::state::StateTerminalPaintProperty::Fill,
+            &ctx.diagram_id,
+        );
+        let body_stroke = compatibility.terminal_paint_css(
+            body_surface,
+            crate::state::StateTerminalPaintProperty::Stroke,
+            &ctx.diagram_id,
+        );
+        let body_stroke_width = compatibility.terminal_stroke_width_value(body_surface);
+        let header_fill = compatibility.terminal_paint_css(
+            header_surface,
+            crate::state::StateTerminalPaintProperty::Fill,
+            &ctx.diagram_id,
+        );
+        let header_stroke = compatibility.terminal_paint_css(
+            header_surface,
+            crate::state::StateTerminalPaintProperty::Stroke,
+            &ctx.diagram_id,
+        );
+        let header_stroke_width = compatibility.terminal_stroke_width_value(header_surface);
+        let (outer_fill_d, outer_stroke_d) = state_hand_drawn_rect_paths(
+            x,
+            y,
+            cluster.width.max(1.0),
+            cluster.height.max(1.0),
+            header_stroke_width,
+            "0 0",
+            &ctx.hand_drawn_seed,
+        );
+        let (inner_fill_d, inner_stroke_d) = state_hand_drawn_rect_paths(
+            x,
+            inner_y,
+            cluster.width.max(1.0),
+            inner_height,
+            body_stroke_width,
+            "0 0",
+            &ctx.hand_drawn_seed,
+        );
+        let header_fill_style =
+            state_hand_drawn_terminal_style("fill", &header_fill, header_fill_path_style);
+        let header_stroke_style =
+            state_hand_drawn_terminal_style("stroke", &header_stroke, header_stroke_path_style);
+        let body_fill_style =
+            state_hand_drawn_terminal_style("fill", &body_fill, body_fill_path_style);
+        let body_stroke_style =
+            state_hand_drawn_terminal_style("stroke", &body_stroke, body_stroke_path_style);
+        (
+            format!(
+                r#"<g class="outer"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>"#,
+                escape_attr(&outer_fill_d),
+                escape_attr(&header_fill),
+                escape_attr(&header_fill_style),
+                escape_attr(&outer_stroke_d),
+                escape_attr(&header_stroke),
+                fmt(header_stroke_width),
+                escape_attr(&header_stroke_style),
+            ),
+            format!(
+                r#"<g class="inner"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>"#,
+                escape_attr(&inner_fill_d),
+                escape_attr(&body_fill),
+                escape_attr(&body_fill_style),
+                escape_attr(&inner_stroke_d),
+                escape_attr(&body_stroke),
+                fmt(body_stroke_width),
+                escape_attr(&body_stroke_style),
+            ),
+        )
+    } else {
+        (
+            format!(
+                r#"<rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/>"#,
+                escape_attr(header_style),
+                radius_attrs,
+                fmt(x),
+                fmt(y),
+                fmt(cluster.width.max(1.0)),
+                fmt(cluster.height.max(1.0)),
+                escape_attr(data_look),
+            ),
+            format!(
+                r#"<rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/>"#,
+                escape_attr(body_style),
+                radius_attrs,
+                fmt(x),
+                fmt(inner_y),
+                fmt(cluster.width.max(1.0)),
+                fmt(inner_height),
+            ),
+        )
+    };
 
     if ctx.html_labels {
         let prepared_token_attr = state_prepared_html_label_token_attr(prepared_title);
@@ -913,18 +1110,12 @@ fn render_state_cluster(
         );
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g>{}</g>"#,
             escape_attr(class),
             escape_attr(&dom_id),
             escape_attr(cluster_id),
             escape_attr(data_look),
-            escape_attr(header_style),
-            radius_attrs,
-            fmt(x),
-            fmt(y),
-            fmt(cluster.width.max(1.0)),
-            fmt(cluster.height.max(1.0)),
-            escape_attr(data_look),
+            outer_shape,
             escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
@@ -933,54 +1124,29 @@ fn render_state_cluster(
             fmt(title_height),
             escape_attr(&label_div_style),
             prepared_title.map_or_else(|| escape_xml(&title), state_prepared_html_lines,),
-            escape_attr(body_style),
-            radius_attrs,
-            fmt(x),
-            fmt(inner_y),
-            fmt(cluster.width.max(1.0)),
-            fmt(inner_height)
+            inner_shape,
         );
     } else {
-        let title_dom = prepared_title.map_or_else(
-            || {
-                state_svg_text_label(
-                    &title,
-                    false,
-                    (!title_style.is_empty()).then_some(title_style),
-                )
-            },
-            |prepared| {
-                state_prepared_svg_text_label(
-                    prepared,
-                    false,
-                    (!title_style.is_empty()).then_some(title_style),
-                )
-            },
+        let title_dom = state_native_svg_text_label(
+            &title,
+            prepared_title,
+            measured_title,
+            false,
+            (!title_style.is_empty()).then_some(title_style),
         );
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" style="{}" transform="translate({}, {})">{}</g><rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})">{}</g>{}</g>"#,
             escape_attr(class),
             escape_attr(&dom_id),
             escape_attr(cluster_id),
             escape_attr(data_look),
-            escape_attr(header_style),
-            radius_attrs,
-            fmt(x),
-            fmt(y),
-            fmt(cluster.width.max(1.0)),
-            fmt(cluster.height.max(1.0)),
-            escape_attr(data_look),
+            outer_shape,
             escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y - 2.0),
             title_dom,
-            escape_attr(body_style),
-            radius_attrs,
-            fmt(x),
-            fmt(inner_y),
-            fmt(cluster.width.max(1.0)),
-            fmt(inner_height)
+            inner_shape,
         );
     }
 }

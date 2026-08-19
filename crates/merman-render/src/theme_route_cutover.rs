@@ -104,11 +104,22 @@ pub enum ThemeRouteCutoverProjection {
     TitleFill = 14,
     RequirementFill = 15,
     PieSliceStroke = 16,
+    ActorLabelFill = 17,
+    MessageLabelFill = 18,
+    LoopFill = 19,
+    LoopStroke = 20,
+    LoopLabelFill = 21,
+    NoteLabelFill = 22,
+    TextFill = 23,
+    GanttTaskDefaultFill = 24,
+    GanttTaskActiveFill = 25,
+    GanttTaskSuccessFill = 26,
+    GanttTaskErrorFill = 27,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 17] = [
+    const ALL: [Self; 28] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -126,6 +137,17 @@ impl ThemeRouteCutoverProjection {
         Self::TitleFill,
         Self::RequirementFill,
         Self::PieSliceStroke,
+        Self::ActorLabelFill,
+        Self::MessageLabelFill,
+        Self::LoopFill,
+        Self::LoopStroke,
+        Self::LoopLabelFill,
+        Self::NoteLabelFill,
+        Self::TextFill,
+        Self::GanttTaskDefaultFill,
+        Self::GanttTaskActiveFill,
+        Self::GanttTaskSuccessFill,
+        Self::GanttTaskErrorFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -147,6 +169,17 @@ impl ThemeRouteCutoverProjection {
             Self::TitleFill => "title.fill",
             Self::RequirementFill => "requirement.fill",
             Self::PieSliceStroke => "slice.stroke",
+            Self::ActorLabelFill => "actor-label.fill",
+            Self::MessageLabelFill => "message-label.fill",
+            Self::LoopFill => "loop.fill",
+            Self::LoopStroke => "loop.stroke",
+            Self::LoopLabelFill => "loop-label.fill",
+            Self::NoteLabelFill => "note-label.fill",
+            Self::TextFill => "text.fill",
+            Self::GanttTaskDefaultFill => "task.default.fill",
+            Self::GanttTaskActiveFill => "task.active.fill",
+            Self::GanttTaskSuccessFill => "task.success.fill",
+            Self::GanttTaskErrorFill => "task.error.fill",
         }
     }
 
@@ -169,12 +202,23 @@ impl ThemeRouteCutoverProjection {
             | Self::LifelineStroke
             | Self::TitleFill
             | Self::RequirementFill
-            | Self::PieSliceStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::PieSliceStroke
+            | Self::ActorLabelFill
+            | Self::MessageLabelFill
+            | Self::LoopFill
+            | Self::LoopStroke
+            | Self::LoopLabelFill
+            | Self::NoteLabelFill
+            | Self::TextFill
+            | Self::GanttTaskDefaultFill
+            | Self::GanttTaskActiveFill
+            | Self::GanttTaskSuccessFill
+            | Self::GanttTaskErrorFill => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const fn bit(self) -> u32 {
+    const fn bit(self) -> u64 {
         1 << self as u8
     }
 }
@@ -200,12 +244,13 @@ impl ThemeRouteCutoverProjectionAction {
 /// Fixed, canonical set of legacy projection obligations for one route.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ThemeRouteCutoverProjectionSet(u32);
+pub struct ThemeRouteCutoverProjectionSet(u64);
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_NODE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::NodeFill);
     pub const REPLACE_NODE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::NodeStroke);
+    pub const REPLACE_EDGE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::EdgeStroke);
     pub const REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK: Self = Self::edge_stroke();
     pub const REPLACE_ACTOR_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::ActorFill);
     pub const REPLACE_ACTOR_STROKE: Self =
@@ -225,10 +270,27 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_LIFELINE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::LifelineStroke);
     pub const REPLACE_TITLE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TitleFill);
+    pub const REPLACE_TEXT_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TextFill);
     pub const REPLACE_REQUIREMENT_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::RequirementFill);
     pub const REPLACE_PIE_SLICE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::PieSliceStroke);
+    pub const REPLACE_ACTOR_LABEL_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ActorLabelFill);
+    pub const REPLACE_MESSAGE_LABEL_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::MessageLabelFill);
+    pub const REPLACE_LOOP_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::LoopFill);
+    pub const REPLACE_LOOP_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::LoopStroke);
+    pub const REPLACE_LOOP_LABEL_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::LoopLabelFill);
+    pub const REPLACE_NOTE_LABEL_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::NoteLabelFill);
+    pub const REPLACE_GANTT_TASK_FILLS: Self = Self(
+        ThemeRouteCutoverProjection::GanttTaskDefaultFill.bit()
+            | ThemeRouteCutoverProjection::GanttTaskActiveFill.bit()
+            | ThemeRouteCutoverProjection::GanttTaskSuccessFill.bit()
+            | ThemeRouteCutoverProjection::GanttTaskErrorFill.bit(),
+    );
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -422,6 +484,53 @@ mod tests {
     }
 
     #[test]
+    fn text_fill_projection_is_an_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::TextFill;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "text.fill");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn gantt_task_fill_projections_preserve_state_specific_bridge_identity() {
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_FILLS
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            projections,
+            vec![
+                ThemeRouteCutoverProjection::GanttTaskDefaultFill,
+                ThemeRouteCutoverProjection::GanttTaskActiveFill,
+                ThemeRouteCutoverProjection::GanttTaskSuccessFill,
+                ThemeRouteCutoverProjection::GanttTaskErrorFill,
+            ]
+        );
+        assert_eq!(
+            projections
+                .iter()
+                .map(|projection| projection.contribution_id())
+                .collect::<Vec<_>>(),
+            vec![
+                "task.default.fill",
+                "task.active.fill",
+                "task.success.fill",
+                "task.error.fill",
+            ]
+        );
+        assert!(projections.iter().all(|projection| {
+            projection.action() == ThemeRouteCutoverProjectionAction::Replace
+        }));
+    }
+
+    #[test]
     fn requirement_fill_projection_is_an_exact_replacement() {
         let projection = ThemeRouteCutoverProjection::RequirementFill;
         let projections = ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_FILL
@@ -449,5 +558,48 @@ mod tests {
             ThemeRouteCutoverProjectionAction::Replace
         );
         assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn sequence_role_paint_projections_are_exact_replacements() {
+        for (projection, set, contribution_id) in [
+            (
+                ThemeRouteCutoverProjection::ActorLabelFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_LABEL_FILL,
+                "actor-label.fill",
+            ),
+            (
+                ThemeRouteCutoverProjection::MessageLabelFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_LABEL_FILL,
+                "message-label.fill",
+            ),
+            (
+                ThemeRouteCutoverProjection::LoopFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_LOOP_FILL,
+                "loop.fill",
+            ),
+            (
+                ThemeRouteCutoverProjection::LoopStroke,
+                ThemeRouteCutoverProjectionSet::REPLACE_LOOP_STROKE,
+                "loop.stroke",
+            ),
+            (
+                ThemeRouteCutoverProjection::LoopLabelFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_LOOP_LABEL_FILL,
+                "loop-label.fill",
+            ),
+            (
+                ThemeRouteCutoverProjection::NoteLabelFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_NOTE_LABEL_FILL,
+                "note-label.fill",
+            ),
+        ] {
+            assert_eq!(projection.contribution_id(), contribution_id);
+            assert_eq!(
+                projection.action(),
+                ThemeRouteCutoverProjectionAction::Replace
+            );
+            assert_eq!(set.iter().collect::<Vec<_>>(), vec![projection]);
+        }
     }
 }

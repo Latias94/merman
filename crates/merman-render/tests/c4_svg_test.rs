@@ -1,8 +1,10 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeGeometryPatch,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
+    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified,
+    ThemeColorValue, ThemeGeometryPatch, ThemeLength, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -33,19 +35,39 @@ fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment)
         .to_owned()
 }
 
+fn c4_cluster_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile C4 cluster theme")
+}
+
 fn c4_cluster_radius_theme(radius: Specified<f32>) -> DiagramTheme {
     let style = ThemeStylePatch {
         geometry: ThemeGeometryPatch { radius },
         ..ThemeStylePatch::default()
     };
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Cluster, style)),
-        ))
-        .expect("compile C4 cluster radius theme")
+    c4_cluster_rules_theme([
+        ThemeRule::new(ThemeTarget::Cluster, style).for_family(merman_render::DiagramFamilyId::C4)
+    ])
 }
 
-fn render_c4_svg_with_theme(source: &str, theme: &DiagramTheme) -> String {
+fn c4_cluster_paint_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
+    c4_cluster_rules_theme([ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default()
+            .with_fill(fill)
+            .with_stroke(stroke),
+    )
+    .for_family(merman_render::DiagramFamilyId::C4)])
+}
+
+fn try_render_c4_svg_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> merman_render::Result<String> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed C4 diagram")
@@ -54,14 +76,16 @@ fn render_c4_svg_with_theme(source: &str, theme: &DiagramTheme) -> String {
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(theme)
         .expect("begin strict portable C4 session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare themed C4 artifact");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
-    artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render themed C4 SVG")
+    Ok(artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
         .svg()
-        .to_owned()
+        .to_owned())
+}
+
+fn render_c4_svg_with_theme(source: &str, theme: &DiagramTheme) -> String {
+    try_render_c4_svg_with_theme(source, theme).expect("render themed C4 SVG")
 }
 
 fn try_render_c4_svg_with_resource_policy(
@@ -145,6 +169,196 @@ fn deep_c4_boundary_chain(depth: usize) -> String {
         input.push_str("}\n");
     }
     input
+}
+
+#[test]
+fn c4_cluster_solid_paint_reaches_explicit_solid_and_dashed_boundaries_only() {
+    let source = r#"C4Context
+Node(solid, "Solid Boundary") {
+  System(service, "Service")
+}
+Boundary(dashed, "Dashed Boundary") {
+  System(worker, "Worker")
+}
+"#;
+    let theme = c4_cluster_paint_theme(
+        CanvasPaint::solid("#ef4444").expect("valid C4 Cluster fill"),
+        CanvasPaint::solid("#2563eb").expect("valid C4 Cluster stroke"),
+    );
+    let svg = render_c4_svg_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid themed C4 SVG XML");
+
+    for label in ["Solid Boundary", "Dashed Boundary"] {
+        let boundary = c4_rect_labeled(&document, label);
+        assert_eq!(boundary.attribute("fill"), Some("#ef4444"), "{label}");
+        assert_eq!(boundary.attribute("stroke"), Some("#2563eb"), "{label}");
+    }
+
+    let ordinary_element = c4_rect_labeled(&document, "Service");
+    assert_eq!(ordinary_element.attribute("fill"), Some("#1168BD"));
+    assert_eq!(ordinary_element.attribute("stroke"), Some("#3C7FC0"));
+}
+
+#[test]
+fn c4_cluster_transparent_paint_reaches_terminal_boundary_attributes() {
+    let source = r#"C4Context
+Boundary(boundary, "Boundary") {
+  System(service, "Service")
+}
+"#;
+    let theme = c4_cluster_paint_theme(CanvasPaint::Transparent, CanvasPaint::Transparent);
+    let svg = render_c4_svg_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid themed C4 SVG XML");
+
+    let boundary = c4_rect_labeled(&document, "Boundary");
+    assert_eq!(boundary.attribute("fill"), Some("transparent"));
+    assert_eq!(boundary.attribute("stroke"), Some("transparent"));
+    let ordinary_element = c4_rect_labeled(&document, "Service");
+    assert_eq!(ordinary_element.attribute("fill"), Some("#1168BD"));
+    assert_eq!(ordinary_element.attribute("stroke"), Some("#3C7FC0"));
+}
+
+#[test]
+fn c4_cluster_source_paint_outranks_typed_values_per_facet() {
+    let source = r##"C4Context
+Boundary(fill_owned, "Source Fill") {
+  System(fill_child, "Fill Child")
+}
+Boundary(stroke_owned, "Source Stroke") {
+  System(stroke_child, "Stroke Child")
+}
+UpdateElementStyle(fill_owned, $bgColor="#22c55e")
+UpdateElementStyle(stroke_owned, $borderColor="#0f766e")
+"##;
+    let theme = c4_cluster_paint_theme(
+        CanvasPaint::solid("#ef4444").expect("valid C4 Cluster fill"),
+        CanvasPaint::solid("#2563eb").expect("valid C4 Cluster stroke"),
+    );
+    let svg = render_c4_svg_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid themed C4 SVG XML");
+
+    let source_fill = c4_rect_labeled(&document, "Source Fill");
+    assert_eq!(source_fill.attribute("fill"), Some("#22c55e"));
+    assert_eq!(source_fill.attribute("stroke"), Some("#2563eb"));
+
+    let source_stroke = c4_rect_labeled(&document, "Source Stroke");
+    assert_eq!(source_stroke.attribute("fill"), Some("#ef4444"));
+    assert_eq!(source_stroke.attribute("stroke"), Some("#0f766e"));
+}
+
+#[test]
+fn c4_cluster_paint_is_not_applicable_when_source_owns_both_facets() {
+    let source = r##"C4Context
+Boundary(boundary, "Source Owned") {
+  System(service, "Service")
+}
+UpdateElementStyle(boundary, $bgColor="#22c55e", $borderColor="#0f766e")
+"##;
+    let theme = c4_cluster_paint_theme(
+        CanvasPaint::solid("#ef4444").expect("valid suppressed C4 Cluster fill"),
+        CanvasPaint::solid("#2563eb").expect("valid suppressed C4 Cluster stroke"),
+    );
+    let svg = render_c4_svg_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid source-owned C4 SVG XML");
+    let boundary = c4_rect_labeled(&document, "Source Owned");
+
+    assert_eq!(boundary.attribute("fill"), Some("#22c55e"));
+    assert_eq!(boundary.attribute("stroke"), Some("#0f766e"));
+    assert!(!svg.contains("#ef4444"));
+    assert!(!svg.contains("#2563eb"));
+}
+
+#[test]
+fn c4_cluster_paint_is_not_applicable_without_explicit_boundaries() {
+    let theme = c4_cluster_paint_theme(
+        CanvasPaint::solid("#ef4444").expect("valid empty-domain C4 Cluster fill"),
+        CanvasPaint::solid("#2563eb").expect("valid empty-domain C4 Cluster stroke"),
+    );
+    let svg = render_c4_svg_with_theme("C4Context\nSystem(service, \"Service\")\n", &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid empty-domain C4 SVG XML");
+    let service = c4_rect_labeled(&document, "Service");
+
+    assert_eq!(service.attribute("fill"), Some("#1168BD"));
+    assert_eq!(service.attribute("stroke"), Some("#3C7FC0"));
+    assert!(!svg.contains("#ef4444"));
+    assert!(!svg.contains("#2563eb"));
+}
+
+#[test]
+fn c4_cluster_paint_rejects_variant_ordinal_clear_gradient_and_pattern_routes() {
+    let stops = || {
+        [
+            GradientStop::new(
+                0.0,
+                ThemeColorValue::parse("#123456").expect("valid C4 gradient start"),
+            )
+            .expect("valid C4 gradient stop"),
+            GradientStop::new(
+                1.0,
+                ThemeColorValue::parse("#abcdef").expect("valid C4 gradient end"),
+            )
+            .expect("valid C4 gradient stop"),
+        ]
+    };
+    let linear = LinearGradient::new(90.0, stops()).expect("valid C4 linear gradient");
+    let radial = RadialGradient::new(
+        ThemeLength::percent(50.0),
+        ThemeLength::percent(50.0),
+        ThemeLength::percent(50.0),
+        stops(),
+    )
+    .expect("valid C4 radial gradient");
+    let pattern = PatternSpec::new(
+        PatternKind::Grid,
+        8.0,
+        8.0,
+        ThemeColorValue::parse("#123456").expect("valid C4 pattern color"),
+    )
+    .expect("valid C4 pattern");
+    let mut clear = ThemeStylePatch::default();
+    clear.paint.fill = Specified::Clear;
+    clear.stroke.paint = Specified::Clear;
+    let solid = || {
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid C4 fill"))
+            .with_stroke(CanvasPaint::solid("#abcdef").expect("valid C4 stroke"))
+    };
+    let cases = [
+        ThemeRule::new(ThemeTarget::Cluster, solid()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::Cluster, solid())
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid C4 boundary ordinal")),
+        ThemeRule::new(ThemeTarget::Cluster, clear),
+        ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::LinearGradient(linear.clone()))
+                .with_stroke(CanvasPaint::LinearGradient(linear)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::RadialGradient(radial.clone()))
+                .with_stroke(CanvasPaint::RadialGradient(radial)),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::Pattern(pattern.clone()))
+                .with_stroke(CanvasPaint::Pattern(pattern)),
+        ),
+    ];
+    let source =
+        "C4Context\nBoundary(boundary, \"Boundary\") {\n  System(service, \"Service\")\n}\n";
+
+    for rule in cases {
+        let theme = c4_cluster_rules_theme([rule.for_family(merman_render::DiagramFamilyId::C4)]);
+        let error = try_render_c4_svg_with_theme(source, &theme)
+            .expect_err("unsupported C4 Cluster paint routes must fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::C4, 1))
+        );
+    }
 }
 
 #[test]

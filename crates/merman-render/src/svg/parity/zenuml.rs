@@ -1,8 +1,10 @@
 use super::*;
 use crate::zenuml::{
-    ZenumlArrowStyle, ZenumlCommentLayout, ZenumlCreationLayout, ZenumlDiagramLayout,
-    ZenumlFragmentLayout, ZenumlLayoutFragmentKind, ZenumlMessageLayout, ZenumlParticipantLayout,
-    ZenumlReturnLayout, ZenumlSelfCallLayout, resolve_zenuml_emojis_in_text, zenuml_emoji_unicode,
+    ZENUML_FRAME_TITLE_CLASS, ZENUML_FRAME_TITLE_SELECTOR, ZenumlArrowStyle, ZenumlCommentLayout,
+    ZenumlCreationLayout, ZenumlDiagramLayout, ZenumlFragmentLayout, ZenumlLayoutFragmentKind,
+    ZenumlMessageLayout, ZenumlParticipantLayout, ZenumlReturnLayout, ZenumlSelfCallLayout,
+    ZenumlTitleThemePlan, resolve_zenuml_emojis_in_text, resolve_zenuml_title,
+    zenuml_emoji_unicode,
 };
 use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
 
@@ -14,9 +16,12 @@ pub(super) fn render_zenuml_diagram_svg_model(
     model: &ZenumlDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
+    title_theme: &ZenumlTitleThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("zenuml");
+    let title = resolve_zenuml_title(model, diagram_title);
+    let mut title_theme_receipt = title_theme.begin_terminal_receipt();
     let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
     let view_width =
         layout.width + content_left + CONTENT_PADDING + layout.frame_border_right + 1.0;
@@ -37,8 +42,18 @@ pub(super) fn render_zenuml_diagram_svg_model(
 
     out.push_str("<defs><style>");
     out.push_str(zenuml_css());
+    if let Some(fill_css) = title_theme.fill_css() {
+        let _ = write!(
+            &mut out,
+            "{ZENUML_FRAME_TITLE_SELECTOR}{{fill:{fill_css};}}"
+        );
+    }
     out.push_str("</style></defs>");
     out.checkpoint()?;
+    if let (Some(receipt), Some(fill_css)) = (title_theme_receipt.as_mut(), title_theme.fill_css())
+    {
+        receipt.record_stylesheet_writer(ZENUML_FRAME_TITLE_SELECTOR, fill_css);
+    }
     let _ = write!(
         &mut out,
         r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="4"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="3"/>"#,
@@ -57,19 +72,18 @@ pub(super) fn render_zenuml_diagram_svg_model(
         fmt(header_y - 0.5),
     );
     out.checkpoint()?;
-    let title = model
-        .title
-        .as_deref()
-        .filter(|title| !title.is_empty())
-        .or_else(|| diagram_title.filter(|title| !title.is_empty()));
     if let Some(title) = title {
         let _ = write!(
             &mut out,
-            r#"<text x="5" y="{}" dominant-baseline="central" class="frame-title">{}</text>"#,
+            r#"<text x="5" y="{}" dominant-baseline="central" class="{}">{}</text>"#,
             fmt((header_y - 0.5) / 2.0),
+            ZENUML_FRAME_TITLE_CLASS,
             escape_xml(&resolve_emoji_in_text(title)),
         );
         out.checkpoint()?;
+        if let Some(receipt) = title_theme_receipt.as_mut() {
+            receipt.record_frame_title_text_writer("text", ZENUML_FRAME_TITLE_CLASS, title);
+        }
     }
     let _ = write!(
         &mut out,
@@ -202,7 +216,13 @@ pub(super) fn render_zenuml_diagram_svg_model(
     }
     out.push_str("</g></svg>");
     out.checkpoint()?;
-    root_document.complete(out.finish()?)
+    let rooted_svg = root_document.complete(out.finish()?)?;
+    if title_theme_receipt.is_some_and(|receipt| !title_theme.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "ZenUML title theme receipt did not match text.frame-title".to_string(),
+        });
+    }
+    Ok(rooted_svg)
 }
 
 fn render_participant(

@@ -22,6 +22,9 @@ fn theme_catalog_contains_only_visual_presets() {
             "gruvbox-dark",
             "ayu-light",
             "ayu-dark",
+            "brutalist",
+            "spotless",
+            "cyberpunk",
         ]
     );
     assert!(ThemePreset::from_id("merman-modern").is_err());
@@ -30,6 +33,41 @@ fn theme_catalog_contains_only_visual_presets() {
             .iter()
             .all(|descriptor| descriptor.maturity() == "alpha")
     );
+}
+
+#[test]
+fn preset_catalog_ids_round_trip_through_all_ten_enum_projections() {
+    const EDITOR_LIGHT_ID: &str = ThemePreset::EditorLight.id();
+    const EDITOR_DARK_IS_DARK: bool = ThemePreset::EditorDark.is_dark();
+    const PRESET_COUNT: usize = theme_preset_descriptors().len();
+
+    assert_eq!(EDITOR_LIGHT_ID, "editor-light");
+    assert!(EDITOR_DARK_IS_DARK);
+    assert_eq!(PRESET_COUNT, 10);
+
+    let descriptors = theme_preset_descriptors();
+    assert_eq!(descriptors.len(), 10);
+    let expected_display_names = [
+        "Editor Light",
+        "Editor Dark",
+        "One Dark",
+        "Gruvbox Light",
+        "Gruvbox Dark",
+        "Ayu Light",
+        "Ayu Dark",
+        "Brutalist",
+        "Spotless",
+        "Cyberpunk",
+    ];
+
+    for (descriptor, expected_display_name) in descriptors.iter().zip(expected_display_names) {
+        let parsed = ThemePreset::from_id(descriptor.id()).expect("catalog ID must parse");
+        assert_eq!(parsed, descriptor.preset());
+        assert_eq!(parsed.id(), descriptor.id());
+        assert_eq!(descriptor.display_name(), expected_display_name);
+        assert_eq!(descriptor.maturity(), "alpha");
+        assert_eq!(descriptor.qualified_cell_count(), 0);
+    }
 }
 
 #[test]

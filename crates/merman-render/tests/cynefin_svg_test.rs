@@ -3,8 +3,13 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
+    ThemeTextStyle, TypographySpec,
+};
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity,
@@ -79,6 +84,45 @@ fn try_render_cynefin_svg_with_resource_policy(
         &SvgDebugOptions::default(),
     )?;
     Ok(rendered.svg().to_owned())
+}
+
+fn cynefin_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::CYNEFIN, typography),
+        ))
+        .expect("compile Cynefin typography theme")
+}
+
+fn try_render_cynefin_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    environment: &RenderEnvironment,
+    diagram_id: &str,
+) -> merman_render::Result<(CynefinDiagramLayout, family::RenderedFamilySvg)> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed Cynefin")
+        .expect("detect themed Cynefin");
+    let session = environment.begin_session_with_theme(theme).unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let projection = artifact.layout_json()?;
+    let layout = serde_json::from_value(projection["layout"]["CynefinDiagram"].clone())
+        .expect("Cynefin layout projection");
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok((layout, rendered))
+}
+
+fn portable_cynefin_environment() -> RenderEnvironment {
+    RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
 }
 
 #[test]
@@ -218,4 +262,212 @@ complex
         svg.contains(r#"#cynefin-test{font-family:"Fira Code",monospace;"#),
         "global font family should be emitted by the common Mermaid CSS: {svg}"
     );
+}
+
+#[derive(Debug)]
+struct CynefinTypedFontProbeMeasurer {
+    expected_font_family: String,
+}
+
+impl TextMeasurer for CynefinTypedFontProbeMeasurer {
+    fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
+        assert_eq!(
+            style.font_family.as_deref(),
+            Some(self.expected_font_family.as_str()),
+            "Cynefin measurement must use the same resolved font winner as terminal CSS"
+        );
+        TextMetrics {
+            width: 100.0,
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
+}
+
+#[test]
+fn cynefin_typed_font_stack_drives_measurement_css_and_terminal_evidence() {
+    let font_stack =
+        FontStack::new(["Cynefin Typed", "monospace"]).expect("valid Cynefin font stack");
+    let expected_font = font_stack.as_css();
+    let theme = cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.cynefin-typed-font-probe").unwrap(),
+        "test",
+    )
+    .unwrap();
+    let environment = portable_cynefin_environment().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(CynefinTypedFontProbeMeasurer {
+                expected_font_family: expected_font.clone(),
+            }),
+        )),
+    );
+    let (layout, rendered) = try_render_cynefin_with_theme(
+        "cynefin-beta\ncomplex\n\"Measure me\"\n",
+        &theme,
+        Engine::new(),
+        &environment,
+        "cynefin-typed-font",
+    )
+    .expect("render directly themed Cynefin");
+
+    assert_eq!(layout.items[0].width, 120.0);
+    let svg = rendered.svg();
+    for rule in [
+        format!("#cynefin-typed-font{{font-family:{expected_font};"),
+        format!("#cynefin-typed-font svg{{font-family:{expected_font};"),
+        format!("#cynefin-typed-font :root{{--mermaid-font-family:{expected_font};}}"),
+    ] {
+        assert!(
+            svg.contains(&rule),
+            "missing resolved Cynefin font rule {rule:?}"
+        );
+    }
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn cynefin_empty_item_does_not_invalidate_font_stack_terminal_evidence() {
+    let font_stack =
+        FontStack::new(["Cynefin Empty Item", "monospace"]).expect("valid Cynefin font stack");
+    let expected_font = font_stack.as_css();
+    let theme = cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+
+    let (_, rendered) = try_render_cynefin_with_theme(
+        "cynefin-beta\ncomplex\n\"\"\n",
+        &theme,
+        Engine::new(),
+        &portable_cynefin_environment(),
+        "cynefin-empty-item-font",
+    )
+    .expect("an empty Cynefin item must not invalidate inherited font evidence");
+
+    assert!(rendered.svg().contains(&format!(
+        "#cynefin-empty-item-font{{font-family:{expected_font};"
+    )));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn cynefin_direct_font_stack_exceeds_the_retired_legacy_bridge_limit() {
+    let families = (0..32)
+        .map(|index| format!("CynefinFont{index:02}{}", "x".repeat(140)))
+        .collect::<Vec<_>>();
+    let font_stack = FontStack::new(families).expect("valid large Cynefin font stack");
+    let expected_font = font_stack.as_css();
+    assert!(expected_font.len() > 4 * 1024);
+    let theme = cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+
+    let (_, rendered) = try_render_cynefin_with_theme(
+        "cynefin-beta\ncomplex\n\"A\"\n",
+        &theme,
+        Engine::new(),
+        &portable_cynefin_environment(),
+        "cynefin-large-font",
+    )
+    .expect("render Cynefin beyond the legacy bridge string budget");
+    assert!(rendered.svg().contains(&format!(
+        "#cynefin-large-font{{font-family:{expected_font};"
+    )));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn cynefin_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
+    let theme =
+        cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(
+            FontStack::single("TypedCynefinFont").expect("valid typed Cynefin font"),
+        ));
+    let cases = [
+        (
+            "site-font",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontFamily": "SiteCynefinFont,serif" }
+            }))),
+            "cynefin-beta\ncomplex\n\"A\"\n".to_string(),
+            "SiteCynefinFont,serif",
+        ),
+        (
+            "source-font",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "secure": []
+            }))),
+            concat!(
+                "%%{init: {\"fontFamily\": \"SourceCynefinFont,monospace\"}}%%\n",
+                "cynefin-beta\ncomplex\n\"A\"\n"
+            )
+            .to_string(),
+            "SourceCynefinFont,monospace",
+        ),
+    ];
+
+    for (case, engine, source, expected_font) in cases {
+        let (_, rendered) = try_render_cynefin_with_theme(
+            &source,
+            &theme,
+            engine,
+            &portable_cynefin_environment(),
+            case,
+        )
+        .expect("explicit Cynefin font ownership remains portable");
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!("#{case}{{font-family:{expected_font};"))
+        );
+        assert!(!rendered.svg().contains("TypedCynefinFont"));
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn cynefin_mixed_base_typography_fails_closed() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::single("MixedCynefinFont").expect("valid mixed Cynefin font stack"),
+        )
+        .with_font_size_px(24.0)
+        .expect("valid unsupported Cynefin font size");
+    let theme = cynefin_typography_theme(typography);
+    let error = try_render_cynefin_with_theme(
+        "cynefin-beta\ncomplex\n\"A\"\n",
+        &theme,
+        Engine::new(),
+        &portable_cynefin_environment(),
+        "cynefin-mixed-typography",
+    )
+    .err()
+    .expect("RequirePortable must reject mixed Cynefin typography");
+
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::CYNEFIN, 1))
+    );
+    assert_eq!(error.incomplete_family_theme(), None);
 }

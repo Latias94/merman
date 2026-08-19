@@ -29,6 +29,8 @@ pub enum ThemeTarget {
     Legend,
     Table,
     Task,
+    PacketByteLabel,
+    PacketFieldLabel,
     State,
     StateLabel,
     Transition,
@@ -45,6 +47,7 @@ pub enum ThemeTarget {
     Lifeline,
     Message,
     MessageLabel,
+    SequenceNumberLabel,
     Loop,
     LoopLabel,
     Note,
@@ -80,6 +83,8 @@ impl ThemeTarget {
         Self::Legend,
         Self::Table,
         Self::Task,
+        Self::PacketByteLabel,
+        Self::PacketFieldLabel,
         Self::State,
         Self::StateLabel,
         Self::Transition,
@@ -96,6 +101,7 @@ impl ThemeTarget {
         Self::Lifeline,
         Self::Message,
         Self::MessageLabel,
+        Self::SequenceNumberLabel,
         Self::Loop,
         Self::LoopLabel,
         Self::Note,
@@ -127,6 +133,8 @@ impl ThemeTarget {
             Self::Legend => "legend",
             Self::Table => "table",
             Self::Task => "task",
+            Self::PacketByteLabel => "packet-byte-label",
+            Self::PacketFieldLabel => "packet-field-label",
             Self::State => "state",
             Self::StateLabel => "state-label",
             Self::Transition => "transition",
@@ -143,6 +151,7 @@ impl ThemeTarget {
             Self::Lifeline => "lifeline",
             Self::Message => "message",
             Self::MessageLabel => "message-label",
+            Self::SequenceNumberLabel => "sequence-number",
             Self::Loop => "loop",
             Self::LoopLabel => "loop-label",
             Self::Note => "note",
@@ -183,6 +192,7 @@ impl ThemeTarget {
             | Self::Lifeline
             | Self::Message
             | Self::MessageLabel
+            | Self::SequenceNumberLabel
             | Self::Loop
             | Self::LoopLabel
             | Self::Activation => {
@@ -201,6 +211,9 @@ impl ThemeTarget {
             Self::TimelineEvent => matches!(family, DiagramFamilyId::TIMELINE),
             Self::JourneyTask => matches!(family, DiagramFamilyId::JOURNEY),
             Self::Task => matches!(family, DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN),
+            Self::PacketByteLabel | Self::PacketFieldLabel => {
+                matches!(family, DiagramFamilyId::PACKET)
+            }
             Self::Table => matches!(
                 family,
                 DiagramFamilyId::CLASS
@@ -219,8 +232,18 @@ impl ThemeTarget {
                     | DiagramFamilyId::GIT_GRAPH
                     | DiagramFamilyId::SANKEY
             ),
+            Self::Edge => matches!(
+                family,
+                DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::SWIMLANE
+                    | DiagramFamilyId::CLASS
+                    | DiagramFamilyId::MINDMAP
+                    | DiagramFamilyId::TREE_VIEW
+                    | DiagramFamilyId::BLOCK
+                    | DiagramFamilyId::GIT_GRAPH
+                    | DiagramFamilyId::ARCHITECTURE
+            ),
             Self::NodeLabel
-            | Self::Edge
             | Self::EdgeLabel
             | Self::EdgeLabelBackground
             | Self::ClusterLabel
@@ -868,7 +891,6 @@ mod tests {
         for target in [
             ThemeTarget::Node,
             ThemeTarget::NodeLabel,
-            ThemeTarget::Edge,
             ThemeTarget::EdgeLabel,
             ThemeTarget::EdgeLabelBackground,
             ThemeTarget::ClusterLabel,
@@ -876,6 +898,7 @@ mod tests {
         ] {
             assert!(!target.valid_for(DiagramFamilyId::ARCHITECTURE));
         }
+        assert!(ThemeTarget::Edge.valid_for(DiagramFamilyId::ARCHITECTURE));
     }
 
     #[test]
@@ -886,6 +909,32 @@ mod tests {
         assert!(!ThemeTarget::Requirement.valid_for(DiagramFamilyId::ER));
         assert!(ThemeTarget::Relation.valid_for(DiagramFamilyId::ER));
         assert!(ThemeTarget::Relation.valid_for(DiagramFamilyId::REQUIREMENT));
+    }
+
+    #[test]
+    fn packet_label_targets_are_packet_only_semantic_targets() {
+        assert_eq!(
+            ThemeTarget::from_id("packet-byte-label"),
+            Some(ThemeTarget::PacketByteLabel)
+        );
+        assert_eq!(
+            ThemeTarget::from_id("packet-field-label"),
+            Some(ThemeTarget::PacketFieldLabel)
+        );
+        assert!(ThemeTarget::PacketByteLabel.valid_for(DiagramFamilyId::PACKET));
+        assert!(!ThemeTarget::PacketByteLabel.valid_for(DiagramFamilyId::SEQUENCE));
+        assert!(ThemeTarget::PacketFieldLabel.valid_for(DiagramFamilyId::PACKET));
+        assert!(!ThemeTarget::PacketFieldLabel.valid_for(DiagramFamilyId::SEQUENCE));
+    }
+
+    #[test]
+    fn sequence_number_label_keeps_the_sequence_number_wire_id() {
+        assert_eq!(
+            ThemeTarget::from_id("sequence-number"),
+            Some(ThemeTarget::SequenceNumberLabel)
+        );
+        assert!(ThemeTarget::SequenceNumberLabel.valid_for(DiagramFamilyId::SEQUENCE));
+        assert!(!ThemeTarget::SequenceNumberLabel.valid_for(DiagramFamilyId::PACKET));
     }
 
     #[test]

@@ -210,6 +210,20 @@ pub(super) fn info_css_parts_with_config(
         diagram_id,
         effective_config,
         InfoCssFontSizeSource::ThemeThenTopLevel,
+        None,
+    )
+}
+
+pub(super) fn info_css_parts_with_font_family(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    font_family: &str,
+) -> InfoCssParts {
+    info_css_parts_with_font_size_source(
+        diagram_id,
+        effective_config,
+        InfoCssFontSizeSource::ThemeThenTopLevel,
+        Some(font_family),
     )
 }
 
@@ -221,6 +235,7 @@ pub(super) fn info_css_parts_with_theme_font_size_only(
         diagram_id,
         effective_config,
         InfoCssFontSizeSource::ThemeOnly,
+        None,
     )
 }
 
@@ -232,6 +247,7 @@ pub(super) fn info_css_parts_with_raw_theme_font_size(
         diagram_id,
         effective_config,
         InfoCssFontSizeSource::RawTheme,
+        None,
     )
 }
 
@@ -239,11 +255,15 @@ fn info_css_parts_with_font_size_source(
     diagram_id: &str,
     effective_config: &serde_json::Value,
     font_size_source: InfoCssFontSizeSource,
+    resolved_font_family: Option<&str>,
 ) -> InfoCssParts {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
 
-    let font_family = crate::config::config_font_family_css(effective_config);
+    let font_family = resolved_font_family.map_or_else(
+        || crate::config::config_font_family_css(effective_config),
+        str::to_owned,
+    );
     let font_size_css = match font_size_source {
         InfoCssFontSizeSource::ThemeThenTopLevel => {
             crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
@@ -303,6 +323,60 @@ pub(super) fn info_css_with_config(
     let mut out = parts.css_prefix;
     out.push_str(&parts.root_rule);
     out
+}
+
+/// Font-family values recorded at the successful writer events for the three inherited rules.
+#[derive(Debug)]
+pub(super) struct InheritedFontStackCssWrite {
+    root_font_family_css: Box<str>,
+    inherited_font_family_css: Box<str>,
+    root_variable_font_family_css: Box<str>,
+}
+
+impl InheritedFontStackCssWrite {
+    pub(super) fn root_font_family_css(&self) -> &str {
+        &self.root_font_family_css
+    }
+
+    pub(super) fn inherited_font_family_css(&self) -> &str {
+        &self.inherited_font_family_css
+    }
+
+    pub(super) fn root_variable_font_family_css(&self) -> &str {
+        &self.root_variable_font_family_css
+    }
+}
+
+/// Writes the Info-like stylesheet with a family-resolved inherited font stack.
+///
+/// The receipt values come from successful output writes. They deliberately do not inspect or
+/// reparse the emitted stylesheet.
+pub(super) fn write_info_css_with_font_family(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    font_family: &str,
+) -> Result<InheritedFontStackCssWrite> {
+    let parts = info_css_parts_with_font_size_source(
+        diagram_id,
+        effective_config,
+        InfoCssFontSizeSource::ThemeThenTopLevel,
+        Some(font_family),
+    );
+    out.push_str(&parts.css_prefix);
+    out.checkpoint()?;
+    let root_font_family_css = parts.font_family.clone().into_boxed_str();
+    let inherited_font_family_css = parts.font_family.clone().into_boxed_str();
+
+    out.push_str(&parts.root_rule);
+    out.checkpoint()?;
+    let root_variable_font_family_css = parts.font_family.into_boxed_str();
+
+    Ok(InheritedFontStackCssWrite {
+        root_font_family_css,
+        inherited_font_family_css,
+        root_variable_font_family_css,
+    })
 }
 
 #[cfg(feature = "layout-cytoscape")]

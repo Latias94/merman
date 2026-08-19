@@ -24,8 +24,12 @@ const SMALL: f64 = 1e-10;
 const REFERENCE_WIDTH: f64 = 1600.0;
 
 mod config;
+mod theme;
 
 use config::VennConfigView;
+pub(crate) use theme::{VennTitleThemePlan, VennTitleThemeReceipt};
+
+pub(crate) const VENN_TITLE_CLASS: &str = "venn-title";
 
 #[cfg(test)]
 pub(crate) fn layout_venn_diagram_typed(

@@ -287,7 +287,7 @@ fn write_stick_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<
         label = escape_xml(ctx.label)
     );
     ctx.typography_receipt
-        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+        .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
 }
 
 fn write_boundary_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
@@ -314,7 +314,7 @@ fn write_boundary_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphConte
         label = escape_xml(ctx.label)
     );
     ctx.typography_receipt
-        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+        .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
 }
 
 fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
@@ -339,7 +339,7 @@ fn write_control_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContex
         label = escape_xml(ctx.label)
     );
     ctx.typography_receipt
-        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+        .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
 }
 
 fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_>) {
@@ -370,7 +370,7 @@ fn write_entity_actor_glyph(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext
         label = escape_xml(ctx.label)
     );
     ctx.typography_receipt
-        .record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+        .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
 }
 
 fn actor_man_label_style(ctx: &ActorManGlyphContext<'_>) -> String {

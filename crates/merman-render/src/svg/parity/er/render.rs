@@ -333,6 +333,71 @@ fn parse_px_f64(v: &str) -> Option<f64> {
     raw.parse::<f64>().ok()
 }
 
+fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
+    let rest = edge_id.strip_prefix("er-rel-")?;
+    let digits_len = rest
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .map(char::len_utf8)
+        .sum::<usize>();
+    if digits_len == 0 {
+        return None;
+    }
+    rest[..digits_len].parse::<usize>().ok()
+}
+
+fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) -> String {
+    let Some(idx) = er_rel_idx_from_edge_id(edge_id) else {
+        return edge_id.to_string();
+    };
+    let Some(rel) = relationships.get(idx) else {
+        return edge_id.to_string();
+    };
+    let rest = edge_id.strip_prefix("er-rel-").unwrap_or("");
+    let idx_prefix = idx.to_string();
+    let suffix = rest.strip_prefix(&idx_prefix).unwrap_or("");
+
+    if rel.entity_a == rel.entity_b {
+        match suffix {
+            "-cyclic-0" => format!("{}-cyclic-special-1", rel.entity_a),
+            "" => format!("{}-cyclic-special-mid", rel.entity_a),
+            "-cyclic-2" => format!("{}-cyclic-special-2", rel.entity_a),
+            _ => format!("{}-cyclic-special-mid", rel.entity_a),
+        }
+    } else {
+        format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_er_marker_definition(
+    out: &mut impl SvgOutput,
+    marker_id: &str,
+    marker_class: &str,
+    ref_x: &str,
+    ref_y: &str,
+    marker_width: &str,
+    marker_height: &str,
+    content: &str,
+    typed_stroke: Option<(usize, &str)>,
+) -> Result<()> {
+    let _ = write!(
+        out,
+        r#"<defs><marker id="{}" class="{}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
+        escape_attr(marker_id),
+        escape_attr(marker_class),
+        ref_x,
+        ref_y,
+        marker_width,
+        marker_height,
+    );
+    if let Some((_, css)) = typed_stroke {
+        let _ = write!(out, r#" style="stroke:{} !important""#, escape_attr(css));
+    }
+    let _ = writeln!(out, ">{content}</marker></defs>");
+    out.checkpoint()
+}
+
 pub(crate) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
@@ -431,6 +496,27 @@ pub(crate) fn render_er_diagram_svg_model(
         (idx, variant)
     }
     edges.sort_by_key(|e| er_edge_sort_key(&e.id));
+
+    let visible_relation_edges = edges
+        .iter()
+        .filter(|edge| options.debug.include_edges && edge.points.len() >= 2)
+        .collect::<Vec<_>>();
+    let relation_terminals = visible_relation_edges
+        .iter()
+        .map(|edge| {
+            crate::er::ErRelationTerminalExpectation::new(
+                edge.id.clone(),
+                edge.start_marker
+                    .as_deref()
+                    .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker)),
+                edge.end_marker
+                    .as_deref()
+                    .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let typed_relation_stroke = entity_theme.typed_relation_stroke();
+    let mut entity_theme_receipt = entity_theme.begin_terminal_receipt(relation_terminals);
 
     let include_md_parent = edges.iter().any(|e| {
         matches!(
@@ -567,77 +653,135 @@ pub(crate) fn render_er_diagram_svg_model(
     // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
     // Note: ids follow Mermaid marker rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
     // Mermaid's ER unified renderer enables four marker types by default; include MD_PARENT only if used.
-    let diagram_id_esc = escape_xml(diagram_id);
-    let diagram_type_esc = escape_xml(diagram_type);
-
-    // Mermaid emits one `<defs>` wrapper per marker.
+    // Mermaid emits one `<defs>` wrapper per marker. Only marker definitions referenced by a
+    // visible relationship receive the direct Relation.stroke terminal override.
     if include_md_parent {
-        let _ = writeln!(
-            &mut out,
-            r#"<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentStart" class="marker mdParent er" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentEnd" class="marker mdParent er" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>"#
-        );
-        out.checkpoint()?;
+        for (suffix, ref_x, marker_width) in
+            [("mdParentStart", "0", "190"), ("mdParentEnd", "19", "20")]
+        {
+            let marker_id = format!("{diagram_id}_{diagram_type}-{suffix}");
+            let expected = entity_theme_receipt.expects_relation_marker(&marker_id);
+            let emitted_stroke = expected.then_some(typed_relation_stroke).flatten();
+            write_er_marker_definition(
+                &mut out,
+                &marker_id,
+                "marker mdParent er",
+                ref_x,
+                "7",
+                marker_width,
+                if suffix.ends_with("Start") {
+                    "240"
+                } else {
+                    "28"
+                },
+                r#"<path d="M 18,7 L9,13 L1,7 L9,1 Z"/>"#,
+                emitted_stroke,
+            )?;
+            if expected {
+                entity_theme_receipt
+                    .record_checkpointed_relation_marker(&marker_id, emitted_stroke);
+            }
+        }
     }
 
-    let _ = writeln!(
-        &mut out,
-        r#"<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneStart" class="marker onlyOne er" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M9,0 L9,18 M15,0 L15,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneEnd" class="marker onlyOne er" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M3,0 L3,18 M9,0 L9,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneStart" class="marker zeroOrOne er" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="21" cy="9" r="6"/><path d="M9,0 L9,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneEnd" class="marker zeroOrOne er" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="9" cy="9" r="6"/><path d="M21,0 L21,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreStart" class="marker oneOrMore er" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/></marker></defs>
-<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
-    );
-    out.checkpoint()?;
+    for (suffix, class, ref_x, ref_y, width, height, content) in [
+        (
+            "onlyOneStart",
+            "marker onlyOne er",
+            "0",
+            "9",
+            "18",
+            "18",
+            r#"<path d="M9,0 L9,18 M15,0 L15,18"/>"#,
+        ),
+        (
+            "onlyOneEnd",
+            "marker onlyOne er",
+            "18",
+            "9",
+            "18",
+            "18",
+            r#"<path d="M3,0 L3,18 M9,0 L9,18"/>"#,
+        ),
+        (
+            "zeroOrOneStart",
+            "marker zeroOrOne er",
+            "0",
+            "9",
+            "30",
+            "18",
+            r#"<circle fill="white" cx="21" cy="9" r="6"/><path d="M9,0 L9,18"/>"#,
+        ),
+        (
+            "zeroOrOneEnd",
+            "marker zeroOrOne er",
+            "30",
+            "9",
+            "30",
+            "18",
+            r#"<circle fill="white" cx="9" cy="9" r="6"/><path d="M21,0 L21,18"/>"#,
+        ),
+        (
+            "oneOrMoreStart",
+            "marker oneOrMore er",
+            "18",
+            "18",
+            "45",
+            "36",
+            r#"<path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"/>"#,
+        ),
+        (
+            "oneOrMoreEnd",
+            "marker oneOrMore er",
+            "27",
+            "18",
+            "45",
+            "36",
+            r#"<path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"/>"#,
+        ),
+        (
+            "zeroOrMoreStart",
+            "marker zeroOrMore er",
+            "18",
+            "18",
+            "57",
+            "36",
+            r#"<circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/>"#,
+        ),
+        (
+            "zeroOrMoreEnd",
+            "marker zeroOrMore er",
+            "39",
+            "18",
+            "57",
+            "36",
+            r#"<circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/>"#,
+        ),
+    ] {
+        let marker_id = format!("{diagram_id}_{diagram_type}-{suffix}");
+        let expected = entity_theme_receipt.expects_relation_marker(&marker_id);
+        let emitted_stroke = expected.then_some(typed_relation_stroke).flatten();
+        write_er_marker_definition(
+            &mut out,
+            &marker_id,
+            class,
+            ref_x,
+            ref_y,
+            width,
+            height,
+            content,
+            emitted_stroke,
+        )?;
+        if expected {
+            entity_theme_receipt.record_checkpointed_relation_marker(&marker_id, emitted_stroke);
+        }
+    }
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();
     for e in model.entities.values() {
         entity_by_id.insert(e.id.as_str(), e);
     }
-    let mut entity_theme_receipt = entity_theme.begin_terminal_receipt();
-
-    fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
-        let rest = edge_id.strip_prefix("er-rel-")?;
-        let mut digits_len = 0usize;
-        for ch in rest.chars() {
-            if !ch.is_ascii_digit() {
-                break;
-            }
-            digits_len += ch.len_utf8();
-        }
-        if digits_len == 0 {
-            return None;
-        }
-        rest[..digits_len].parse::<usize>().ok()
-    }
-
-    fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) -> String {
-        let Some(idx) = er_rel_idx_from_edge_id(edge_id) else {
-            return edge_id.to_string();
-        };
-        let Some(rel) = relationships.get(idx) else {
-            return edge_id.to_string();
-        };
-        let rest = edge_id.strip_prefix("er-rel-").unwrap_or("");
-        let idx_prefix = idx.to_string();
-        let suffix = rest.strip_prefix(&idx_prefix).unwrap_or("");
-
-        if rel.entity_a == rel.entity_b {
-            match suffix {
-                "-cyclic-0" => format!("{}-cyclic-special-1", rel.entity_a),
-                "" => format!("{}-cyclic-special-mid", rel.entity_a),
-                "-cyclic-2" => format!("{}-cyclic-special-2", rel.entity_a),
-                _ => format!("{}-cyclic-special-mid", rel.entity_a),
-            }
-        } else {
-            format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
-        }
-    }
-
     if is_elk_layout {
         // Mermaid's ER diagram output changes shape when `layout=elk` is enabled: markers are
         // emitted in their own wrapper `<g>`, and the rest of the content is written as sibling
@@ -693,27 +837,44 @@ pub(crate) fn render_er_diagram_svg_model(
                 );
             }
             let d = curve_basis_path_d(&curve_points);
+            let path_style = typed_relation_stroke.map_or_else(
+                || "undefined;;;undefined".to_string(),
+                |(_, css)| format!("undefined;;;undefined;stroke:{css}"),
+            );
 
             let _ = write!(
                 &mut out,
-                r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+                r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
                 escape_xml(&d),
                 escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),
+                escape_attr(&path_style),
                 escape_xml(&edge_dom_id),
                 escape_xml(&data_points),
                 escape_xml(data_look)
             );
-            if let Some(m) = &e.start_marker {
-                let marker = er_unified_marker_id(diagram_id, diagram_type, m);
-                let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(&marker));
+            let start_marker_id = e
+                .start_marker
+                .as_deref()
+                .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker));
+            let end_marker_id = e
+                .end_marker
+                .as_deref()
+                .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker));
+            if let Some(marker) = &start_marker_id {
+                let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_attr(marker));
             }
-            if let Some(m) = &e.end_marker {
-                let marker = er_unified_marker_id(diagram_id, diagram_type, m);
-                let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(&marker));
+            if let Some(marker) = &end_marker_id {
+                let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_attr(marker));
             }
             out.push_str(" />");
             out.checkpoint()?;
+            entity_theme_receipt.record_checkpointed_relation_path(
+                &e.id,
+                typed_relation_stroke,
+                start_marker_id.as_deref(),
+                end_marker_id.as_deref(),
+            );
         }
     }
     out.push_str("</g>");
@@ -1572,7 +1733,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let rooted_svg = root_document.complete(out.finish()?)?;
     if !entity_theme.record_terminal(entity_theme_receipt) {
         return Err(Error::InvalidModel {
-            message: "ER entity theme terminal evidence could not be sealed".to_string(),
+            message: "ER theme terminal evidence could not be sealed".to_string(),
         });
     }
     Ok(rooted_svg)
@@ -1932,6 +2093,7 @@ mod tests {
                 None,
                 &effective_config,
                 &model.entities,
+                model.relationships.len(),
                 options.work_meter(),
             )
             .expect("resolve baseline ER entity theme");

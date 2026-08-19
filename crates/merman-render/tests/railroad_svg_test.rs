@@ -80,7 +80,11 @@ fn railroad_style(svg: &str) -> &str {
 }
 
 fn railroad_rule_body<'a>(style: &'a str, diagram_id: &str, selector: &str) -> &'a str {
-    let rule_start = format!("#{diagram_id} {selector}{{");
+    let rule_start = if selector == ".railroad-diagram" {
+        format!("#{diagram_id}{selector}{{")
+    } else {
+        format!("#{diagram_id} {selector}{{")
+    };
     let body = style
         .split_once(&rule_start)
         .unwrap_or_else(|| panic!("missing Railroad rule {rule_start:?}"))
@@ -217,8 +221,14 @@ fn railroad_svg_escapes_css_significant_characters_in_the_root_id_selector() {
     let (svg, _) = render_railroad_with_id(json!({}), "railroad.theme:one");
     let style = railroad_style(&svg);
 
-    assert!(style.contains(r#"#railroad\.theme\:one .railroad-diagram{"#));
+    assert!(style.contains(r#"#railroad\.theme\:one.railroad-diagram{"#));
+    assert!(!style.contains(r#"#railroad\.theme\:one .railroad-diagram{"#));
     assert!(style.contains(r#"#railroad\.theme\:one .railroad-terminal rect{"#));
+
+    let document = roxmltree::Document::parse(&svg).expect("valid Railroad SVG");
+    let root = document.root_element();
+    assert_eq!(root.attribute("id"), Some("railroad.theme:one"));
+    assert_eq!(root.attribute("class"), Some("railroad-diagram"));
 }
 
 #[test]

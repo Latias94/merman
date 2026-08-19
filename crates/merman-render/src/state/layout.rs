@@ -207,9 +207,18 @@ fn edge_label_metrics(
             |sidecar| sidecar.measure_for_layout(request),
         )
         .metrics;
+    let owner = super::StateLabelOwner::Edge(edge_id);
+    let prepared_edge_geometry =
+        sidecar.and_then(|sidecar| sidecar.prepared_native_geometry(owner));
+    let measured_edge_geometry =
+        sidecar.and_then(|sidecar| sidecar.measured_native_geometry(owner));
     // For SVG edge labels, `createText(..., addSvgBackground=true)` adds a background rect with a
     // 2px padding.
-    if wrap_mode == WrapMode::SvgLike {
+    if let Some(geometry) = prepared_edge_geometry {
+        metrics = geometry.layout_metrics();
+    } else if let Some(geometry) = measured_edge_geometry.as_ref() {
+        metrics = geometry.layout_metrics();
+    } else if wrap_mode == WrapMode::SvgLike {
         metrics.width += 4.0;
         metrics.height += 4.0;
     }
@@ -1467,7 +1476,8 @@ fn build_state_diagram_dagre_input(
         wrap_mode,
         wrapping_width,
         state_padding,
-    } = StateConfigView::new(effective_config).layout_settings(&model.direction);
+    } = StateConfigView::new(effective_config)
+        .layout_settings(&model.direction, style_plan.compatibility());
     let base_label_typography = style_plan.base_label_typography();
     let diagram_dir = graph_label.rankdir;
 
@@ -1546,12 +1556,17 @@ fn build_state_diagram_dagre_input(
                         .as_ref()
                         .map(|v| v.join("\n"))
                         .unwrap_or_default();
+                    let title_wrap_mode = if html_labels {
+                        WrapMode::HtmlLike
+                    } else {
+                        WrapMode::SvgLikeSingleRun
+                    };
                     let (title_w, title_h) = title_label_metrics(
                         super::StateLabelOwner::NodeTitle(&n.id),
                         &label_text,
                         measurer,
                         node_label_typography,
-                        WrapMode::HtmlLike,
+                        title_wrap_mode,
                         label_sidecar,
                     );
                     let (desc_w, desc_h) = title_label_metrics(
@@ -1559,7 +1574,7 @@ fn build_state_diagram_dagre_input(
                         &desc,
                         measurer,
                         node_label_typography,
-                        WrapMode::HtmlLike,
+                        title_wrap_mode,
                         label_sidecar,
                     );
 

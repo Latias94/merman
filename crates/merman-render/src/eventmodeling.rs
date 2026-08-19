@@ -14,8 +14,11 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
+mod theme;
 
 use config::EventModelingConfigView;
+
+pub(crate) use theme::EventModelingTextThemePlan;
 
 const SWIMLANE_MIN_HEIGHT: f64 = 70.0;
 const SWIMLANE_PADDING: f64 = 15.0;

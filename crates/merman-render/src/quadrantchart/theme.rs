@@ -1,13 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use merman_core::MermaidConfig;
-use merman_core::diagrams::quadrant_chart::{QuadrantChartPointModel, QuadrantChartRenderModel};
+use merman_core::diagrams::quadrant_chart::{
+    QuadrantChartPointModel, QuadrantChartRenderModel, QuadrantChartStyles,
+};
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, Specified,
-    ThemeCapability, ThemeTarget, ThemeVariant,
+    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
+    FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
+    ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
@@ -15,19 +17,63 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-/// Typed radius overrides for Quadrant Chart point marks and their terminal evidence.
+/// Typed geometry and paint for Quadrant Chart point marks and their terminal evidence.
 #[derive(Debug)]
 pub(crate) struct QuadrantChartPointThemePlan {
-    radius_overrides: Vec<Option<QuadrantChartPointRadius>>,
+    points: Box<[QuadrantChartPointThemeExpectation]>,
     evidence: FamilyThemeEvidence,
-    pending_radius_key: Option<FamilyThemeMechanismKey>,
-    terminal_receipt: OnceLock<()>,
+    pending: BTreeMap<FamilyThemeMechanismKey, QuadrantChartPointPendingEvidence>,
+    terminal_receipt: OnceLock<QuadrantChartPointThemeReceipt>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct QuadrantChartPointThemeExpectation {
+    radius: Option<QuadrantChartPointRadius>,
+    fill: Option<QuadrantChartPointFillExpectation>,
 }
 
 #[derive(Debug, Clone)]
 struct QuadrantChartPointRadius {
     value_px: f64,
-    token: Box<str>,
+    token: Arc<str>,
+    rule_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QuadrantChartPointFillOwner {
+    Source,
+    Config,
+    Typed { capability: ThemeCapability },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct QuadrantChartPointFillExpectation {
+    css: Arc<str>,
+    rule_index: usize,
+    owner: QuadrantChartPointFillOwner,
+}
+
+#[derive(Debug, Clone)]
+struct QuadrantChartTypedPointFill {
+    css: Arc<str>,
+    rule_index: usize,
+    capability: ThemeCapability,
+}
+
+impl QuadrantChartPointFillExpectation {
+    const fn typed_rule_index(&self) -> Option<usize> {
+        match self.owner {
+            QuadrantChartPointFillOwner::Typed { .. } => Some(self.rule_index),
+            QuadrantChartPointFillOwner::Source | QuadrantChartPointFillOwner::Config => None,
+        }
+    }
+
+    const fn typed_capability(&self) -> Option<ThemeCapability> {
+        match self.owner {
+            QuadrantChartPointFillOwner::Typed { capability } => Some(capability),
+            QuadrantChartPointFillOwner::Source | QuadrantChartPointFillOwner::Config => None,
+        }
+    }
 }
 
 impl QuadrantChartPointThemePlan {
@@ -46,26 +92,50 @@ impl QuadrantChartPointThemePlan {
             effective_config,
             "quadrantChart.pointRadius",
         );
+        let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.quadrantPointFill",
+        );
         let mermaid_point_radius_px =
             super::QuadrantChartConfigView::new(effective_config.as_value())
                 .layout_settings()
                 .point_radius;
+        let point_class_styles = model
+            .points
+            .iter()
+            .map(|point| super::point_class_styles(model, point))
+            .collect::<Vec<_>>();
         let radius_has_higher_priority_owner = model
             .points
             .iter()
-            .map(|point| config_owns_radius || point_has_source_radius(model, point))
+            .zip(point_class_styles.iter().copied())
+            .map(|(point, class_styles)| {
+                config_owns_radius || point_has_source_radius(point, class_styles)
+            })
             .collect::<Vec<_>>();
         let unowned_point_count = radius_has_higher_priority_owner
             .iter()
             .filter(|owned| !**owned)
             .count();
 
-        let has_ordinal_series_rules = theme
-            .family_rules()
-            .any(|(_, rule)| rule.target() == ThemeTarget::ChartSeries && rule.ordinal().is_some());
-        let mut radius_overrides = vec![None; point_count];
+        let mut has_ordinal_series_rules = false;
+        let mut static_series_rules = BTreeSet::new();
+        for (rule_index, rule) in theme.family_rules() {
+            if rule.target() != ThemeTarget::ChartSeries {
+                continue;
+            }
+            has_ordinal_series_rules |= rule.ordinal().is_some();
+            if rule.variant().is_none() && rule.ordinal().is_none() {
+                static_series_rules.insert(rule_index);
+            }
+        }
+        let mut points = vec![QuadrantChartPointThemeExpectation::default(); point_count];
         let mut occurrence_winners = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
         let mut unowned_radius_winners = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
+        let mut typed_radius_rules = BTreeSet::<usize>::new();
+        let mut typed_fill_capabilities = BTreeMap::<usize, ThemeCapability>::new();
+        let mut suppressed_fill_rules = BTreeSet::<usize>::new();
+        let mut mermaid_point_fill_css = None::<Arc<str>>;
 
         if point_count != 0 && has_ordinal_series_rules {
             for (point_index, radius_has_higher_priority_owner) in
@@ -81,9 +151,27 @@ impl QuadrantChartPointThemePlan {
                 occurrence_winners.extend(winners.iter().copied());
                 if !radius_has_higher_priority_owner {
                     unowned_radius_winners.extend(winners);
-                    radius_overrides[point_index] =
-                        typed_radius_override(theme, &style, mermaid_point_radius_px);
+                    if let Some(radius) =
+                        typed_radius_override(theme, &style, mermaid_point_radius_px)
+                    {
+                        typed_radius_rules.insert(radius.rule_index);
+                        points[point_index].radius = Some(radius);
+                    }
                 }
+                let typed_fill = typed_fill_candidate(theme, &style, &static_series_rules);
+                record_fill_expectation(
+                    &mut points[point_index].fill,
+                    point_fill_expectation(
+                        typed_fill.as_ref(),
+                        &model.points[point_index],
+                        point_class_styles[point_index],
+                        config_owns_fill,
+                        effective_config,
+                        &mut mermaid_point_fill_css,
+                    ),
+                    &mut typed_fill_capabilities,
+                    &mut suppressed_fill_rules,
+                );
             }
         } else if point_count != 0 {
             let style = theme.style_with_work_meter(
@@ -94,16 +182,35 @@ impl QuadrantChartPointThemePlan {
             )?;
             let winners = winner_properties(&style);
             occurrence_winners.extend(winners.iter().copied());
+            let typed_fill = typed_fill_candidate(theme, &style, &static_series_rules);
             if unowned_point_count != 0 {
                 unowned_radius_winners.extend(winners);
                 let radius_override = typed_radius_override(theme, &style, mermaid_point_radius_px);
+                if let Some(radius) = &radius_override {
+                    typed_radius_rules.insert(radius.rule_index);
+                }
                 for (point_index, radius_has_higher_priority_owner) in
                     radius_has_higher_priority_owner.iter().copied().enumerate()
                 {
                     if !radius_has_higher_priority_owner {
-                        radius_overrides[point_index] = radius_override.clone();
+                        points[point_index].radius = radius_override.clone();
                     }
                 }
+            }
+            for (point_index, expectation) in points.iter_mut().enumerate() {
+                record_fill_expectation(
+                    &mut expectation.fill,
+                    point_fill_expectation(
+                        typed_fill.as_ref(),
+                        &model.points[point_index],
+                        point_class_styles[point_index],
+                        config_owns_fill,
+                        effective_config,
+                        &mut mermaid_point_fill_css,
+                    ),
+                    &mut typed_fill_capabilities,
+                    &mut suppressed_fill_rules,
+                );
             }
         }
 
@@ -152,7 +259,29 @@ impl QuadrantChartPointThemePlan {
                             FamilyThemeSelectorShape::Static { variant: None },
                             FamilyThemeRuleFacet::Radius,
                         ) if route_won => {
-                            observation.radius_pending = true;
+                            if typed_radius_rules.contains(&rule_index) {
+                                observation.pending.radius = true;
+                                observation
+                                    .pending
+                                    .capabilities
+                                    .insert(ThemeCapability::RoundedGeometry);
+                            } else {
+                                observation.incomplete = true;
+                            }
+                        }
+                        (
+                            FamilyThemeDisposition::TypedAdapter,
+                            FamilyThemeSelectorShape::Static { variant: None },
+                            FamilyThemeRuleFacet::Fill(
+                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                            ),
+                        ) if route_won => {
+                            if let Some(capability) = typed_fill_capabilities.get(&rule_index) {
+                                observation.pending.fill = true;
+                                observation.pending.capabilities.insert(*capability);
+                            } else if !suppressed_fill_rules.contains(&rule_index) {
+                                observation.incomplete = true;
+                            }
                         }
                         (FamilyThemeDisposition::Unsupported, _, facet) => {
                             observation
@@ -196,7 +325,7 @@ impl QuadrantChartPointThemePlan {
             }
         }
 
-        let mut pending_radius_key = None;
+        let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
             let key = FamilyThemeMechanismKey::Rule {
                 index: rule_index,
@@ -208,82 +337,96 @@ impl QuadrantChartPointThemePlan {
                 evidence.mark_residual(key, reason);
             } else if observation.incomplete {
                 // Mixed rules stay unaccounted until every winning facet has a terminal owner.
-            } else if observation.radius_pending {
-                debug_assert!(pending_radius_key.is_none());
-                pending_radius_key = Some(key);
+            } else if observation.pending.requires_terminal_proof() {
+                pending.insert(key, observation.pending);
             } else {
                 evidence.mark_not_applicable(key);
             }
         }
 
         Ok(Self {
-            radius_overrides,
+            points: points.into_boxed_slice(),
             evidence,
-            pending_radius_key,
+            pending,
             terminal_receipt: OnceLock::new(),
         })
     }
 
     pub(crate) fn baseline(point_count: usize) -> Self {
         Self {
-            radius_overrides: vec![None; point_count],
+            points: vec![QuadrantChartPointThemeExpectation::default(); point_count]
+                .into_boxed_slice(),
             evidence: FamilyThemeEvidence::default(),
-            pending_radius_key: None,
+            pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
         }
     }
 
     pub(crate) fn point_count(&self) -> usize {
-        self.radius_overrides.len()
+        self.points.len()
     }
 
     pub(crate) fn radius_override_px(&self, point_index: usize) -> Option<f64> {
-        self.radius_overrides
+        self.points
             .get(point_index)
-            .and_then(|radius| radius.as_ref())
+            .and_then(|point| point.radius.as_ref())
             .map(|radius| radius.value_px)
     }
 
     pub(crate) fn radius_override_token(&self, point_index: usize) -> Option<&str> {
-        self.radius_overrides
+        self.points
             .get(point_index)
-            .and_then(|radius| radius.as_ref())
+            .and_then(|point| point.radius.as_ref())
             .map(|radius| radius.token.as_ref())
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<QuadrantChartPointRadiusThemeReceipt> {
-        self.pending_radius_key
-            .as_ref()
-            .map(|_| QuadrantChartPointRadiusThemeReceipt::new(self.point_count()))
+    pub(crate) fn fill_override_css(&self, point_index: usize) -> Option<&str> {
+        self.points
+            .get(point_index)
+            .and_then(|point| point.fill.as_ref())
+            .filter(|fill| fill.typed_rule_index().is_some())
+            .map(|fill| fill.css.as_ref())
     }
 
-    pub(crate) fn record_terminal(&self, receipt: QuadrantChartPointRadiusThemeReceipt) -> bool {
-        self.pending_radius_key.is_some()
-            && receipt.proves(self.point_count())
-            && self.terminal_receipt.set(()).is_ok()
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<QuadrantChartPointThemeReceipt> {
+        let requires_receipt =
+            !self.pending.is_empty() || self.points.iter().any(|point| point.fill.is_some());
+        requires_receipt.then(|| QuadrantChartPointThemeReceipt::new(self.points.clone()))
+    }
+
+    pub(crate) fn record_terminal(&self, receipt: QuadrantChartPointThemeReceipt) -> bool {
+        receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        if let Some(key) = self.pending_radius_key.clone()
-            && self.terminal_receipt.get().is_some()
-        {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::RoundedGeometry]);
+        let Some(receipt) = self.terminal_receipt.get() else {
+            return evidence;
+        };
+        for (key, pending) in &self.pending {
+            let rule_index = match key {
+                FamilyThemeMechanismKey::Rule { index, .. } => *index,
+                FamilyThemeMechanismKey::Typography
+                | FamilyThemeMechanismKey::OrdinalPalette { .. }
+                | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
+            };
+            if receipt.proves_rule(rule_index, pending) {
+                evidence.mark_applied_with_capabilities(
+                    key.clone(),
+                    pending.capabilities.iter().copied(),
+                );
+            }
         }
         evidence
     }
 }
 
 fn point_has_source_radius(
-    model: &QuadrantChartRenderModel,
     point: &QuadrantChartPointModel,
+    class_styles: Option<&QuadrantChartStyles>,
 ) -> bool {
     point.styles.radius.is_some()
-        || point
-            .class_name
-            .as_deref()
-            .and_then(|class_name| model.classes.get(class_name))
-            .is_some_and(|class_style| class_style.radius.is_some())
+        || class_styles.is_some_and(|class_style| class_style.radius.is_some())
 }
 
 fn winner_properties(
@@ -294,6 +437,23 @@ fn winner_properties(
         .into_iter()
         .map(|(property, origin)| (origin.rule_index(), property))
         .collect()
+}
+
+fn record_fill_expectation(
+    slot: &mut Option<QuadrantChartPointFillExpectation>,
+    fill: Option<QuadrantChartPointFillExpectation>,
+    typed_fill_capabilities: &mut BTreeMap<usize, ThemeCapability>,
+    suppressed_fill_rules: &mut BTreeSet<usize>,
+) {
+    let Some(fill) = fill else {
+        return;
+    };
+    if let Some(capability) = fill.typed_capability() {
+        typed_fill_capabilities.insert(fill.rule_index, capability);
+    } else {
+        suppressed_fill_rules.insert(fill.rule_index);
+    }
+    *slot = Some(fill);
 }
 
 fn typed_radius_override(
@@ -310,30 +470,106 @@ fn typed_radius_override(
     match style.radius_resolution().specified() {
         Specified::Value(value) => Some(QuadrantChartPointRadius {
             value_px: f64::from(*value),
-            token: value.to_string().into_boxed_str(),
+            token: Arc::from(value.to_string()),
+            rule_index: origin.rule_index(),
         }),
         Specified::Clear => Some(QuadrantChartPointRadius {
             value_px: mermaid_point_radius_px,
-            token: mermaid_point_radius_px.to_string().into_boxed_str(),
+            token: Arc::from(mermaid_point_radius_px.to_string()),
+            rule_index: origin.rule_index(),
         }),
         Specified::Unspecified => None,
     }
 }
 
-/// Writer-owned proof that all point circles reached the terminal SVG in semantic order.
-#[derive(Debug)]
-pub(crate) struct QuadrantChartPointRadiusThemeReceipt {
-    expected_point_count: usize,
-    next_point_index: usize,
-    attributes_match: bool,
+fn typed_fill_candidate(
+    theme: &ResolvedDiagramTheme,
+    style: &crate::diagram_theme::ResolvedThemeStyle,
+    static_series_rules: &BTreeSet<usize>,
+) -> Option<QuadrantChartTypedPointFill> {
+    let origin = style.fill_resolution().winner()?;
+    let facet = FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?;
+    if !static_series_rules.contains(&origin.rule_index())
+        || theme.rule_facet_disposition(origin.rule_index(), facet)
+            != Some(FamilyThemeDisposition::TypedAdapter)
+    {
+        return None;
+    }
+
+    let (css, capability) = match style.fill_resolution().specified() {
+        Specified::Value(CanvasPaint::Transparent) => {
+            (Arc::from("transparent"), ThemeCapability::TransparentPaint)
+        }
+        Specified::Value(CanvasPaint::Solid(color)) => {
+            (Arc::from(color.as_css()), ThemeCapability::SolidPaint)
+        }
+        Specified::Unspecified
+        | Specified::Clear
+        | Specified::Value(
+            CanvasPaint::LinearGradient(_)
+            | CanvasPaint::RadialGradient(_)
+            | CanvasPaint::Pattern(_),
+        ) => return None,
+    };
+
+    Some(QuadrantChartTypedPointFill {
+        css,
+        rule_index: origin.rule_index(),
+        capability,
+    })
 }
 
-impl QuadrantChartPointRadiusThemeReceipt {
-    fn new(expected_point_count: usize) -> Self {
+fn point_fill_expectation(
+    typed_fill: Option<&QuadrantChartTypedPointFill>,
+    point: &QuadrantChartPointModel,
+    class_styles: Option<&QuadrantChartStyles>,
+    config_owns_fill: bool,
+    effective_config: &MermaidConfig,
+    mermaid_point_fill_css: &mut Option<Arc<str>>,
+) -> Option<QuadrantChartPointFillExpectation> {
+    let typed_fill = typed_fill?;
+    let (css, owner) = if let Some(source_fill) = super::point_source_fill(point, class_styles) {
+        (Arc::from(source_fill), QuadrantChartPointFillOwner::Source)
+    } else if config_owns_fill {
+        let css = mermaid_point_fill_css.get_or_insert_with(|| {
+            Arc::from(
+                super::default_quadrant_theme(effective_config.as_value()).quadrant_point_fill,
+            )
+        });
+        (css.clone(), QuadrantChartPointFillOwner::Config)
+    } else {
+        (
+            typed_fill.css.clone(),
+            QuadrantChartPointFillOwner::Typed {
+                capability: typed_fill.capability,
+            },
+        )
+    };
+    Some(QuadrantChartPointFillExpectation {
+        css,
+        rule_index: typed_fill.rule_index,
+        owner,
+    })
+}
+
+/// Writer-owned proof that all point circles reached the terminal SVG in semantic order.
+#[derive(Debug)]
+pub(crate) struct QuadrantChartPointThemeReceipt {
+    expectations: Box<[QuadrantChartPointThemeExpectation]>,
+    next_point_index: usize,
+    attributes_match: bool,
+    radius_rules: BTreeSet<usize>,
+    fill_rules: BTreeSet<usize>,
+}
+
+impl QuadrantChartPointThemeReceipt {
+    fn new(expectations: Box<[QuadrantChartPointThemeExpectation]>) -> Self {
         Self {
-            expected_point_count,
+            expectations,
             next_point_index: 0,
             attributes_match: true,
+            radius_rules: BTreeSet::new(),
+            fill_rules: BTreeSet::new(),
         }
     }
 
@@ -341,20 +577,48 @@ impl QuadrantChartPointRadiusThemeReceipt {
         &mut self,
         point_index: usize,
         emitted_radius_token: Option<&str>,
-        expected_radius_token: Option<&str>,
+        emitted_fill: &str,
     ) {
         if point_index != self.next_point_index {
             self.attributes_match = false;
             return;
         }
         self.next_point_index = self.next_point_index.saturating_add(1);
-        self.attributes_match &= emitted_radius_token == expected_radius_token;
+        let Some(expected) = self.expectations.get(point_index) else {
+            self.attributes_match = false;
+            return;
+        };
+        let radius_matches =
+            emitted_radius_token == expected.radius.as_ref().map(|radius| radius.token.as_ref());
+        let fill_matches = expected
+            .fill
+            .as_ref()
+            .map_or(true, |fill| emitted_fill == fill.css.as_ref());
+        let terminal_matches = radius_matches && fill_matches;
+        self.attributes_match &= terminal_matches;
+
+        if terminal_matches {
+            if let Some(radius) = &expected.radius {
+                self.radius_rules.insert(radius.rule_index);
+            }
+            if let Some(rule_index) = expected
+                .fill
+                .as_ref()
+                .and_then(QuadrantChartPointFillExpectation::typed_rule_index)
+            {
+                self.fill_rules.insert(rule_index);
+            }
+        }
     }
 
-    fn proves(&self, expected_point_count: usize) -> bool {
-        self.expected_point_count == expected_point_count
-            && self.next_point_index == expected_point_count
-            && self.attributes_match
+    fn proves_complete(&self) -> bool {
+        self.next_point_index == self.expectations.len() && self.attributes_match
+    }
+
+    fn proves_rule(&self, rule_index: usize, pending: &QuadrantChartPointPendingEvidence) -> bool {
+        self.proves_complete()
+            && (!pending.radius || self.radius_rules.contains(&rule_index))
+            && (!pending.fill || self.fill_rules.contains(&rule_index))
     }
 }
 
@@ -363,5 +627,18 @@ struct QuadrantChartSeriesRuleObservation {
     applicable: bool,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
-    radius_pending: bool,
+    pending: QuadrantChartPointPendingEvidence,
+}
+
+#[derive(Debug, Default)]
+struct QuadrantChartPointPendingEvidence {
+    radius: bool,
+    fill: bool,
+    capabilities: BTreeSet<ThemeCapability>,
+}
+
+impl QuadrantChartPointPendingEvidence {
+    const fn requires_terminal_proof(&self) -> bool {
+        self.radius || self.fill
+    }
 }

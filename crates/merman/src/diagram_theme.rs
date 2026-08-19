@@ -14,10 +14,10 @@ pub use merman_core::DiagramFamilyId;
 pub use merman_render::diagram_theme::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeCompileError,
     ThemeDefinitionCompileError, ThemePreset, ThemePresetDescriptor, ThemePresetParseError,
-    ThemeTarget, ThemeVariant, compile_theme_definition, compile_theme_definition_json,
-    describe_theme_support, materialize_theme, materialize_theme_json,
-    materialize_theme_json_with_resource_policy, materialize_theme_with_resource_policy,
-    theme_preset_descriptors,
+    ThemePresetQualifiedCell, ThemeTarget, ThemeVariant, compile_theme_definition,
+    compile_theme_definition_json, describe_theme_support, materialize_theme,
+    materialize_theme_json, materialize_theme_json_with_resource_policy,
+    materialize_theme_with_resource_policy, theme_preset_descriptors,
 };
 pub use merman_theme_contract::{
     CanonicalJsonError, CanonicalJsonErrorKind, DiagramThemeSpecWireV1, MaterializedThemeWireV1,

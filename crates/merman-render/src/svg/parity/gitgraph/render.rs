@@ -813,6 +813,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let node_palette_ownership =
         gitgraph_node_palette_surface_ownership(effective_config, node_palette);
     let mut node_palette_receipt = node_palette.begin_terminal_receipt(node_palette_ownership);
+    let mut branch_stroke_receipt: Option<crate::gitgraph::GitGraphBranchStrokeReceipt> =
+        node_palette.begin_branch_stroke_receipt();
     let node_palette_css = gitgraph_node_palette_css(
         diagram_id,
         node_palette,
@@ -869,42 +871,58 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     } else {
         ""
     };
+    let branch_stroke_style = node_palette
+        .terminal_branch_stroke_css()
+        .map(|stroke| format!("stroke:{stroke};"));
+    let branch_stroke_attr = branch_stroke_style
+        .as_deref()
+        .map(|style| format!(r#" style="{}""#, escape_attr(style)))
+        .unwrap_or_default();
 
     if layout.show_branches {
         out.push_str("<g>");
         for b in &layout.branches {
             let idx = crate::gitgraph::palette_slot(b.index);
             let pos = b.pos;
+            let branch_class = format!("branch branch{idx}");
 
             if direction == "TB" {
                 let _ = write!(
                     &mut out,
-                    r#"<line x1="{x1}" y1="30" x2="{x2}" y2="{y2}" class="branch branch{idx}"/>"#,
+                    r#"<line x1="{x1}" y1="30" x2="{x2}" y2="{y2}" class="{class}"{style}/>"#,
                     x1 = fmt(pos),
                     x2 = fmt(pos),
                     y2 = fmt(layout.max_pos),
-                    idx = idx
+                    class = branch_class,
+                    style = branch_stroke_attr,
                 );
             } else if direction == "BT" {
                 let _ = write!(
                     &mut out,
-                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="30" class="branch branch{idx}"/>"#,
+                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="30" class="{class}"{style}/>"#,
                     x1 = fmt(pos),
                     y1 = fmt(layout.max_pos),
                     x2 = fmt(pos),
-                    idx = idx
+                    class = branch_class,
+                    style = branch_stroke_attr,
                 );
             } else {
                 let spine_y = crate::gitgraph::gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
                 let _ = write!(
                     &mut out,
-                    r#"<line x1="0" y1="{y1}" x2="{x2}" y2="{y2}" class="branch branch{idx}"/>"#,
+                    r#"<line x1="0" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"{style}/>"#,
                     y1 = fmt(spine_y),
                     x2 = fmt(layout.max_pos),
                     y2 = fmt(spine_y),
-                    idx = idx
+                    class = branch_class,
+                    style = branch_stroke_attr,
                 );
             }
+            node_palette.record_branch_line(
+                &mut branch_stroke_receipt,
+                &branch_class,
+                branch_stroke_style.as_deref(),
+            );
 
             let name = escape_xml(&b.name);
             let bbox_w = b.bbox_width.max(0.0);
@@ -1481,6 +1499,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     if node_palette_receipt.is_some_and(|receipt| !node_palette.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "GitGraph Node palette receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if branch_stroke_receipt
+        .is_some_and(|receipt| !node_palette.record_branch_stroke_terminal(receipt))
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "GitGraph branch stroke receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)

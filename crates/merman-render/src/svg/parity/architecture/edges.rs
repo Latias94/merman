@@ -5,7 +5,7 @@ use crate::architecture_metrics::{
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
-use super::super::{SvgOutput, escape_xml_into, fmt, fmt_into, fmt_string};
+use super::super::{SvgOutput, escape_attr_into, escape_xml_into, fmt, fmt_into, fmt_string};
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
     svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
@@ -25,6 +25,9 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
+    pub(super) edge_stroke: Option<(usize, &'a str)>,
+    pub(super) edge_inline_style: Option<&'a str>,
+    pub(super) terminal_receipt: Option<&'a mut crate::architecture::ArchitectureEdgeThemeReceipt>,
 }
 
 struct ArchitectureEdgeLabelPlan {
@@ -119,6 +122,7 @@ fn write_architecture_edge_path(
     diagram_id: &str,
     edge: super::model::ArchitectureEdgeRef<'_>,
     points: ArchitectureEdgePoints,
+    edge_inline_style: Option<&str>,
 ) {
     out.push_str(r#"<path d="M "#);
     fmt_into(out, points.start_x);
@@ -134,7 +138,13 @@ fn write_architecture_edge_path(
     fmt_into(out, points.end_y);
     out.push_str(r#" " class="edge" id=""#);
     write_architecture_edge_id_attr(out, diagram_id, "L", edge.lhs_id, edge.rhs_id, 0);
-    out.push_str(r#""/>"#);
+    out.push('"');
+    if let Some(style) = edge_inline_style {
+        out.push_str(r#" style=""#);
+        escape_attr_into(out, style);
+        out.push('"');
+    }
+    out.push_str("/>");
 }
 
 fn write_architecture_arrow_transform(
@@ -411,6 +421,9 @@ fn architecture_edge_label_plan(
 pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
     ctx: &mut ArchitectureEdgeRenderContext<'_, M, O>,
 ) -> crate::Result<()> {
+    let edge_stroke = ctx.edge_stroke;
+    let edge_inline_style = ctx.edge_inline_style;
+    let mut terminal_receipt = ctx.terminal_receipt.take();
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -603,7 +616,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
             }
 
             out.push_str("<g>");
-            write_architecture_edge_path(out, diagram_id, edge, points);
+            write_architecture_edge_path(out, diagram_id, edge, points, edge_inline_style);
 
             if let Some(arrow) = lhs_arrow.as_ref() {
                 write_architecture_arrow_polygon(out, arrow);
@@ -627,6 +640,16 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
 
             out.push_str("</g>");
             out.checkpoint()?;
+            if let Some(receipt) = terminal_receipt.as_deref_mut() {
+                receipt.record_checkpointed_edge(
+                    edge_idx,
+                    edge.lhs_id,
+                    edge.rhs_id,
+                    "edge",
+                    edge_stroke,
+                    edge_inline_style,
+                );
+            }
         }
     }
     Ok(())
@@ -760,6 +783,9 @@ mod tests {
             text_measurer: &measurer,
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
+            edge_stroke: None,
+            edge_inline_style: None,
+            terminal_receipt: None,
         };
 
         let error = push_architecture_edges(&mut ctx)

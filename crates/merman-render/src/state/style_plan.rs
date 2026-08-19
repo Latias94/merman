@@ -22,9 +22,11 @@ use crate::mermaid_style::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter, RenderResourcePolicy};
 use crate::text::TextStyle;
-use crate::theme::MermaidThemeAdapter;
 
-use super::{StateEffectPlan, StateNodeEffectPlan};
+use super::{
+    StateCompatibilityPlan, StateEffectPlan, StateNodeEffectPlan, StateTerminalPaintProperty,
+    StateTerminalSurface,
+};
 
 /// One immutable typography decision shared by State layout, prepared-text measurement and SVG
 /// emission.
@@ -127,57 +129,6 @@ impl ResolvedLabelTypography {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StateCompatibilityStyle {
-    pub(crate) dark_mode: bool,
-    pub(crate) neo: bool,
-    pub(crate) font_family_css: String,
-    pub(crate) text_color: String,
-    pub(crate) title_color: String,
-    pub(crate) line_color: String,
-    pub(crate) error_bkg: String,
-    pub(crate) error_text: String,
-    pub(crate) transition_color: String,
-    pub(crate) node_border: String,
-    pub(crate) background: String,
-    pub(crate) main_bkg: String,
-    pub(crate) alt_background: String,
-    pub(crate) stroke_width: String,
-    pub(crate) stroke_width_px: String,
-    pub(crate) rough_stroke_width_value: f64,
-    pub(crate) note_border: String,
-    pub(crate) note_bkg: String,
-    pub(crate) note_text: String,
-    pub(crate) label_background: String,
-    pub(crate) edge_label_background: String,
-    pub(crate) transition_label_color: String,
-    pub(crate) special_state_color: String,
-    pub(crate) inner_end_background: String,
-    pub(crate) end_outer_fill: String,
-    pub(crate) end_outer_stroke: String,
-    pub(crate) end_inner_stroke: String,
-    pub(crate) composite_background: String,
-    pub(crate) state_bkg: String,
-    pub(crate) state_border: String,
-    pub(crate) composite_title_background: String,
-    pub(crate) state_label_color: String,
-    pub(crate) drop_shadow: String,
-}
-
-impl StateCompatibilityStyle {
-    fn classic_stroke_width_value(&self) -> f64 {
-        self.stroke_width_px
-            .trim()
-            .strip_suffix("px")
-            .unwrap_or(self.stroke_width_px.trim())
-            .trim()
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite() && *value >= 0.0)
-            .unwrap_or(1.0)
-    }
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct StateClassStylePlan {
     id: String,
     styles: Vec<(usize, Arc<PreparedSourceStyleDeclaration>)>,
@@ -204,6 +155,8 @@ pub(crate) struct StateNodeStylePlan {
     binding: StateNodeThemeBinding,
     semantic_shape_style_attr: String,
     composite_header_style_attr: String,
+    composite_header_fill_path_style_attr: String,
+    composite_header_stroke_path_style_attr: String,
     composite_header_text_style_attr: String,
     shape_style_attr: String,
     fill_path_style_attr: String,
@@ -356,6 +309,14 @@ impl StateNodeStylePlan {
         &self.composite_header_style_attr
     }
 
+    pub(crate) fn composite_header_fill_path_style_attr(&self) -> &str {
+        &self.composite_header_fill_path_style_attr
+    }
+
+    pub(crate) fn composite_header_stroke_path_style_attr(&self) -> &str {
+        &self.composite_header_stroke_path_style_attr
+    }
+
     pub(crate) fn composite_header_text_style_attr(&self) -> &str {
         &self.composite_header_text_style_attr
     }
@@ -423,7 +384,7 @@ impl StateNodeStylePlan {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateStylePlan {
-    compatibility: StateCompatibilityStyle,
+    compatibility: StateCompatibilityPlan,
     structured_typography: bool,
     base_label_typography: ResolvedLabelTypography,
     transition_label_typography: ResolvedLabelTypography,
@@ -662,9 +623,9 @@ impl StateGeometrySupport {
 impl StateStylePlan {
     /// Resolves the compatibility-only plan used by parity helpers that do not install a theme.
     ///
-    /// The themed production path must use [`Self::resolve_with_evidence`] so dynamic selector
-    /// work is charged to the render operation's cumulative meter and terminal effect lowering
-    /// reads the session-owned resource intersection.
+    /// The themed production path must use [`Self::resolve_with_config`] so dynamic selector work
+    /// is charged to the render operation's cumulative meter, terminal effect lowering reads the
+    /// session-owned resource intersection, and compatibility provenance remains available.
     pub(crate) fn resolve_unthemed(
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,
@@ -673,7 +634,7 @@ impl StateStylePlan {
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         Self::resolve_internal(
             model,
-            effective_config,
+            StateCompatibilityPlan::from_value(effective_config),
             None,
             Arc::new(ThemeResourcePolicy::interactive()),
             None,
@@ -695,7 +656,27 @@ impl StateStylePlan {
     ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
         Self::resolve_internal(
             model,
-            effective_config,
+            StateCompatibilityPlan::from_value(effective_config),
+            resolved_theme,
+            effective_theme_resource_policy,
+            title,
+            prepared_text_available,
+            work_meter,
+        )
+    }
+
+    pub(crate) fn resolve_with_config(
+        model: &StateDiagramRenderModel,
+        effective_config: &merman_core::MermaidConfig,
+        resolved_theme: Option<&ResolvedDiagramTheme>,
+        effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
+        title: Option<&str>,
+        prepared_text_available: bool,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
+        Self::resolve_internal(
+            model,
+            StateCompatibilityPlan::from_config(effective_config),
             resolved_theme,
             effective_theme_resource_policy,
             title,
@@ -706,19 +687,20 @@ impl StateStylePlan {
 
     fn resolve_internal(
         model: &StateDiagramRenderModel,
-        effective_config: &serde_json::Value,
+        compatibility: StateCompatibilityPlan,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
         prepared_text_available: bool,
         work_meter: &OperationWorkMeter,
     ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
-        let compatibility = MermaidThemeAdapter::new(effective_config).state_diagram();
-        let config_view = super::StateConfigView::new(effective_config);
-        let config_text_style = config_view.text_style();
-        let render_settings = config_view.render_settings();
-        let html_labels = render_settings.html_labels;
-        let diagram_look = render_settings.diagram_look;
+        let config_text_style = TextStyle {
+            font_family: Some(compatibility.font_family_css.clone()),
+            font_size: compatibility.font_size_px,
+            font_weight: None,
+            font_style: None,
+        };
+        let html_labels = compatibility.html_labels();
         let structured_typography =
             resolved_theme.is_some_and(|theme| theme.typography() != &ThemeTextStyle::default());
         let base_text_typography = prepared_text_available
@@ -804,17 +786,23 @@ impl StateStylePlan {
             theme_evidence
                 .observe_base_typography_use(semantic_title_text.as_ref(), &BTreeSet::new());
         }
+        let title_fill_owned = compatibility.owns(
+            StateTerminalSurface::Title,
+            StateTerminalPaintProperty::Fill,
+        );
         let title_style_attr = resolved_theme
             .zip(semantic_title_text.as_ref())
             .map(|(theme, style)| {
-                if has_title {
-                    theme_evidence.consume_text_style(style);
+                let use_id = has_title.then(|| theme_evidence.consume_text_style(style));
+                if title_fill_owned {
+                    theme_evidence.shadow_source_property(use_id, ResolvedStyleProperty::Fill);
                 }
                 let mut emission = IndexMap::new();
                 append_theme_base_text_emission(theme, &mut emission);
                 append_semantic_text_emission(style, &mut emission);
                 title_label_typography.canonicalize_emission(&mut emission);
-                if let Some(color) = text_paint_value(style.fill_resolution()) {
+                if !title_fill_owned && let Some(color) = text_paint_value(style.fill_resolution())
+                {
                     insert_emitted(&mut emission, "fill", color);
                 }
                 compact_style_attr(&emission)
@@ -828,8 +816,20 @@ impl StateStylePlan {
             None,
             work_meter,
         )?;
-        let transition_marker_style_attr =
-            semantic_shape_style_attr(semantic_transition_marker.as_ref());
+        let transition_marker_fill_owned = compatibility.owns(
+            StateTerminalSurface::TransitionMarker,
+            StateTerminalPaintProperty::Fill,
+        );
+        let transition_marker_stroke_owned = compatibility.owns(
+            StateTerminalSurface::TransitionMarker,
+            StateTerminalPaintProperty::Stroke,
+        );
+        let transition_marker_style_attr = semantic_shape_style_attr_with_suppressed_paints(
+            semantic_transition_marker.as_ref(),
+            transition_marker_fill_owned,
+            transition_marker_stroke_owned,
+            false,
+        );
         let semantic_transition_label_background = resolve_theme_style(
             resolved_theme,
             ThemeTarget::TransitionLabelBackground,
@@ -837,10 +837,26 @@ impl StateStylePlan {
             None,
             work_meter,
         )?;
+        let transition_label_background_surface = if html_labels {
+            StateTerminalSurface::TransitionLabelBackgroundHtml
+        } else {
+            StateTerminalSurface::TransitionLabelBackgroundNative
+        };
+        let transition_label_background_fill_owned = compatibility.owns(
+            transition_label_background_surface,
+            StateTerminalPaintProperty::Fill,
+        );
         let transition_label_background_style_attr =
-            semantic_shape_style_attr(semantic_transition_label_background.as_ref());
-        let transition_label_background_div_style_prefix =
-            semantic_html_background_style(semantic_transition_label_background.as_ref());
+            semantic_shape_style_attr_with_suppressed_paints(
+                semantic_transition_label_background.as_ref(),
+                transition_label_background_fill_owned,
+                false,
+                false,
+            );
+        let transition_label_background_div_style_prefix = semantic_html_background_style(
+            semantic_transition_label_background.as_ref(),
+            transition_label_background_fill_owned,
+        );
         let hidden_prefixes = hidden_state_prefixes(model);
         let shadowed_self_loops = shadowed_self_loop_edge_indices(model, &hidden_prefixes);
         let mut target_ordinals = BTreeMap::<ThemeTarget, usize>::new();
@@ -882,7 +898,6 @@ impl StateStylePlan {
                 target,
                 label_target,
                 variant,
-                diagram_look.as_str(),
                 one_based_ordinal,
                 label_ordinal,
                 composite_header_ordinal,
@@ -927,6 +942,7 @@ impl StateStylePlan {
                     label_ordinal,
                     marker_ordinal,
                     html_labels,
+                    &compatibility,
                     &mut theme_evidence,
                     work_meter,
                 )?,
@@ -953,7 +969,7 @@ impl StateStylePlan {
         Ok((plan, theme_evidence.finish()))
     }
 
-    pub(crate) const fn compatibility(&self) -> &StateCompatibilityStyle {
+    pub(crate) const fn compatibility(&self) -> &StateCompatibilityPlan {
         &self.compatibility
     }
 
@@ -1917,12 +1933,11 @@ fn prepare_node(
     node: &StateDiagramRenderNode,
     classes: &IndexMap<String, StateClassStylePlan>,
     base_text_style: &TextStyle,
-    compatibility: &StateCompatibilityStyle,
+    compatibility: &StateCompatibilityPlan,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     target: ThemeTarget,
     label_target: ThemeTarget,
     variant: ThemeVariant,
-    diagram_look: &str,
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
     composite_header_ordinal: Option<usize>,
@@ -1933,6 +1948,17 @@ fn prepare_node(
     work_meter: &OperationWorkMeter,
 ) -> Result<StateNodeStylePlan, OperationWorkError> {
     let prepared_text_available = theme_evidence.prepared_text_available;
+    let shape_surface = compatibility.node_shape_surface(node, target);
+    let label_surface = StateCompatibilityPlan::node_label_surface(label_target);
+    let shape_fill_owned = shape_surface
+        .is_some_and(|surface| compatibility.owns(surface, StateTerminalPaintProperty::Fill));
+    let shape_stroke_owned = shape_surface
+        .is_some_and(|surface| compatibility.owns(surface, StateTerminalPaintProperty::Stroke));
+    let shape_stroke_width_owned = shape_surface.is_some_and(|surface| {
+        compatibility.owns(surface, StateTerminalPaintProperty::StrokeWidth)
+    });
+    let label_fill_owned = label_surface
+        .is_some_and(|surface| compatibility.owns(surface, StateTerminalPaintProperty::Fill));
     let semantic_shape = resolve_theme_style(resolved_theme, target, variant, ordinal, work_meter)?;
     let semantic_label = resolve_theme_text_style(
         resolved_theme,
@@ -1974,7 +2000,7 @@ fn prepare_node(
         let style = semantic_shape.as_ref()?;
         let resolved = theme.resolve_effect(target, style.effect_resolution());
         let surface_supported =
-            target == ThemeTarget::State && node.shape == "rect" && diagram_look == "classic";
+            target == ThemeTarget::State && node.shape == "rect" && compatibility.is_classic();
         theme_evidence.consume_effect(
             use_id,
             target,
@@ -1987,12 +2013,67 @@ fn prepare_node(
     let label_use = label_ordinal
         .zip(semantic_label.as_ref())
         .map(|(_, style)| theme_evidence.consume_text_style(style));
-    let _composite_header_use = composite_header_ordinal
+    if shape_fill_owned {
+        theme_evidence.shadow_source_property(shape_use, ResolvedStyleProperty::Fill);
+    }
+    if shape_stroke_owned {
+        theme_evidence.shadow_source_property(shape_use, ResolvedStyleProperty::Stroke);
+    }
+    if shape_stroke_width_owned {
+        theme_evidence.shadow_source_property(shape_use, ResolvedStyleProperty::StrokeWidth);
+    }
+    if label_fill_owned {
+        theme_evidence.shadow_source_property(label_use, ResolvedStyleProperty::Fill);
+    }
+    let composite_header_surface = compatibility.composite_header_surface();
+    let composite_header_fill_owned =
+        compatibility.owns(composite_header_surface, StateTerminalPaintProperty::Fill);
+    let composite_header_stroke_owned =
+        compatibility.owns(composite_header_surface, StateTerminalPaintProperty::Stroke);
+    let composite_header_stroke_width_owned = compatibility.owns(
+        composite_header_surface,
+        StateTerminalPaintProperty::StrokeWidth,
+    );
+    let composite_header_use = composite_header_ordinal
         .zip(semantic_composite_header.as_ref())
         .map(|(_, style)| theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE));
+    if composite_header_fill_owned {
+        theme_evidence.shadow_source_property(composite_header_use, ResolvedStyleProperty::Fill);
+    }
+    if composite_header_stroke_owned {
+        theme_evidence.shadow_source_property(composite_header_use, ResolvedStyleProperty::Stroke);
+    }
+    if composite_header_stroke_width_owned {
+        theme_evidence
+            .shadow_source_property(composite_header_use, ResolvedStyleProperty::StrokeWidth);
+    }
+    let special_state_inner_surface = compatibility.special_state_inner_surface();
+    let special_state_inner_fill_owned = compatibility.owns(
+        special_state_inner_surface,
+        StateTerminalPaintProperty::Fill,
+    );
+    let special_state_inner_stroke_owned = compatibility.owns(
+        special_state_inner_surface,
+        StateTerminalPaintProperty::Stroke,
+    );
+    let special_state_inner_stroke_width_owned = compatibility.owns(
+        special_state_inner_surface,
+        StateTerminalPaintProperty::StrokeWidth,
+    );
     let special_state_inner_use = special_state_inner_ordinal
         .zip(semantic_special_state_inner.as_ref())
         .map(|(_, style)| theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE));
+    if special_state_inner_fill_owned {
+        theme_evidence.shadow_source_property(special_state_inner_use, ResolvedStyleProperty::Fill);
+    }
+    if special_state_inner_stroke_owned {
+        theme_evidence
+            .shadow_source_property(special_state_inner_use, ResolvedStyleProperty::Stroke);
+    }
+    if special_state_inner_stroke_width_owned {
+        theme_evidence
+            .shadow_source_property(special_state_inner_use, ResolvedStyleProperty::StrokeWidth);
+    }
     let mut shape_declarations = Vec::new();
     let mut label_declarations = Vec::new();
 
@@ -2081,19 +2162,34 @@ fn prepare_node(
     let mut shadowed_shape_properties = BTreeSet::new();
     let mut shadowed_label_properties = BTreeSet::new();
     let mut label_uses_series_color = false;
-    let semantic_fill = semantic_shape
-        .as_ref()
-        .and_then(|style| shape_paint_value(style.fill_resolution()));
+    let semantic_fill = (!shape_fill_owned)
+        .then(|| {
+            semantic_shape
+                .as_ref()
+                .and_then(|style| shape_paint_value(style.fill_resolution()))
+        })
+        .flatten();
     let series_fill = ordinal.and_then(|ordinal| theme_evidence.series_color(target, ordinal));
-    let mut fill_uses_series_color = semantic_fill.is_none() && series_fill.is_some();
-    let mut fill_override = semantic_fill.or(series_fill);
-    let mut stroke_override = semantic_shape
-        .as_ref()
-        .and_then(|style| shape_paint_value(style.stroke_resolution()));
-    let mut stroke_width_override = semantic_shape
-        .as_ref()
-        .and_then(ResolvedThemeStyle::stroke_width)
-        .map(f64::from);
+    let mut fill_uses_series_color =
+        !shape_fill_owned && semantic_fill.is_none() && series_fill.is_some();
+    let mut fill_override = (!shape_fill_owned)
+        .then(|| semantic_fill.or(series_fill))
+        .flatten();
+    let mut stroke_override = (!shape_stroke_owned)
+        .then(|| {
+            semantic_shape
+                .as_ref()
+                .and_then(|style| shape_paint_value(style.stroke_resolution()))
+        })
+        .flatten();
+    let mut stroke_width_override = (!shape_stroke_width_owned)
+        .then(|| {
+            semantic_shape
+                .as_ref()
+                .and_then(ResolvedThemeStyle::stroke_width)
+                .map(f64::from)
+        })
+        .flatten();
     let mut radius_override = semantic_shape
         .as_ref()
         .and_then(ResolvedThemeStyle::radius)
@@ -2105,6 +2201,9 @@ fn prepare_node(
 
     if let Some(style) = semantic_shape.as_ref() {
         append_semantic_shape_emission(style, &mut shape_emission);
+        if shape_stroke_width_owned {
+            shape_emission.shift_remove("stroke-width");
+        }
     }
     if let Some(fill) = fill_override.as_ref() {
         insert_emitted(&mut shape_emission, "fill", fill.clone());
@@ -2119,9 +2218,14 @@ fn prepare_node(
         append_semantic_text_emission(style, &mut label_emission);
         let series_color =
             label_ordinal.and_then(|ordinal| theme_evidence.series_color(label_target, ordinal));
-        let semantic_color = text_paint_value(style.fill_resolution());
-        label_uses_series_color = semantic_color.is_none() && series_color.is_some();
-        let color = semantic_color.or(series_color);
+        let semantic_color = (!label_fill_owned)
+            .then(|| text_paint_value(style.fill_resolution()))
+            .flatten();
+        label_uses_series_color =
+            !label_fill_owned && semantic_color.is_none() && series_color.is_some();
+        let color = (!label_fill_owned)
+            .then(|| semantic_color.or(series_color))
+            .flatten();
         if let Some(color) = color {
             insert_emitted(&mut label_emission, "color", color);
         }
@@ -2132,25 +2236,41 @@ fn prepare_node(
     let mut composite_header_text_emission = IndexMap::new();
     if let Some(style) = semantic_composite_header.as_ref() {
         append_semantic_shape_emission(style, &mut composite_header_emission);
-        if let Some(fill) = shape_paint_value(style.fill_resolution()) {
+        if composite_header_stroke_width_owned {
+            composite_header_emission.shift_remove("stroke-width");
+        }
+        if !composite_header_fill_owned
+            && let Some(fill) = shape_paint_value(style.fill_resolution())
+        {
             insert_emitted(&mut composite_header_emission, "fill", fill);
         }
-        if let Some(stroke) = shape_paint_value(style.stroke_resolution()) {
+        if !composite_header_stroke_owned
+            && let Some(stroke) = shape_paint_value(style.stroke_resolution())
+        {
             insert_emitted(&mut composite_header_emission, "stroke", stroke);
         }
     }
     let mut special_state_inner_emission = IndexMap::new();
     if let Some(style) = semantic_special_state_inner.as_ref() {
         append_semantic_shape_emission(style, &mut special_state_inner_emission);
-        if let Some(fill) = shape_paint_value(style.fill_resolution()) {
+        if special_state_inner_stroke_width_owned {
+            special_state_inner_emission.shift_remove("stroke-width");
+        }
+        if !special_state_inner_fill_owned
+            && let Some(fill) = shape_paint_value(style.fill_resolution())
+        {
             insert_emitted(&mut special_state_inner_emission, "fill", fill);
         }
-        if let Some(stroke) = shape_paint_value(style.stroke_resolution()) {
+        if !special_state_inner_stroke_owned
+            && let Some(stroke) = shape_paint_value(style.stroke_resolution())
+        {
             insert_emitted(&mut special_state_inner_emission, "stroke", stroke);
         }
     }
     for declaration in &shape_declarations {
-        if node.shape == "stateStart" {
+        if shape_surface.is_some_and(|surface| {
+            !compatibility.source_shape_property_reaches(surface, declaration.property())
+        }) {
             residuals.push(SourceStyleResidual::from_declaration(
                 declaration,
                 SourceStyleResidualReason::UnsupportedSurface,
@@ -2216,7 +2336,9 @@ fn prepare_node(
                 append_theme_base_text_emission(theme, &mut composite_header_text_emission);
             }
             append_semantic_text_emission(style, &mut composite_header_text_emission);
-            let color = text_paint_value(style.fill_resolution());
+            let color = (!label_fill_owned)
+                .then(|| text_paint_value(style.fill_resolution()))
+                .flatten();
             if let Some(color) = color {
                 insert_emitted(&mut composite_header_text_emission, "color", color);
             }
@@ -2323,6 +2445,12 @@ fn prepare_node(
         },
         semantic_shape_style_attr,
         composite_header_style_attr: compact_style_attr(&composite_header_emission),
+        composite_header_fill_path_style_attr: compact_split_fill_path_style_attr(
+            &composite_header_emission,
+        ),
+        composite_header_stroke_path_style_attr: compact_split_stroke_path_style_attr(
+            &composite_header_emission,
+        ),
         composite_header_text_style_attr: compact_style_attr(&composite_header_text_emission),
         shape_style_attr: compact_style_attr(&shape_emission),
         fill_path_style_attr: compact_split_fill_path_style_attr(&shape_emission),
@@ -2349,7 +2477,7 @@ fn prepare_node(
 }
 
 fn classic_stroke_paint_width(
-    compatibility: &StateCompatibilityStyle,
+    compatibility: &StateCompatibilityPlan,
     shape_emission: &IndexMap<String, EmittedDeclaration>,
     stroke_override: Option<&str>,
     stroke_width_override: Option<f64>,
@@ -2403,10 +2531,38 @@ fn prepare_edge(
     label_ordinal: Option<usize>,
     marker_ordinal: Option<usize>,
     html_labels: bool,
+    compatibility: &StateCompatibilityPlan,
     theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
     work_meter: &OperationWorkMeter,
 ) -> Result<StateEdgeStylePlan, OperationWorkError> {
     let prepared_text_available = theme_evidence.prepared_text_available;
+    let transition_stroke_owned = compatibility.owns(
+        StateTerminalSurface::Transition,
+        StateTerminalPaintProperty::Stroke,
+    );
+    let transition_stroke_width_owned = compatibility.owns(
+        StateTerminalSurface::Transition,
+        StateTerminalPaintProperty::StrokeWidth,
+    );
+    let marker_fill_owned = compatibility.owns(
+        StateTerminalSurface::TransitionMarker,
+        StateTerminalPaintProperty::Fill,
+    );
+    let marker_stroke_owned = compatibility.owns(
+        StateTerminalSurface::TransitionMarker,
+        StateTerminalPaintProperty::Stroke,
+    );
+    let label_background_surface = if html_labels {
+        StateTerminalSurface::TransitionLabelBackgroundHtml
+    } else {
+        StateTerminalSurface::TransitionLabelBackgroundNative
+    };
+    let label_background_fill_owned =
+        compatibility.owns(label_background_surface, StateTerminalPaintProperty::Fill);
+    let label_fill_owned = compatibility.owns(
+        StateTerminalSurface::TransitionLabel,
+        StateTerminalPaintProperty::Fill,
+    );
     let semantic_path = resolve_theme_style(
         resolved_theme,
         ThemeTarget::Transition,
@@ -2414,15 +2570,27 @@ fn prepare_edge(
         ordinal,
         work_meter,
     )?;
-    let mut path_style_attr = semantic_shape_style_attr(semantic_path.as_ref());
+    let mut path_style_attr = semantic_shape_style_attr_with_suppressed_paints(
+        semantic_path.as_ref(),
+        false,
+        transition_stroke_owned,
+        transition_stroke_width_owned,
+    );
     if ordinal.is_some()
         && let Some(style) = semantic_path.as_ref()
     {
-        theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE);
+        let use_id = theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE);
+        if transition_stroke_owned {
+            theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Stroke);
+        }
+        if transition_stroke_width_owned {
+            theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::StrokeWidth);
+        }
     }
     let series_stroke =
         ordinal.and_then(|ordinal| theme_evidence.series_color(ThemeTarget::Transition, ordinal));
-    if !path_style_attr.contains("stroke:")
+    if !transition_stroke_owned
+        && !path_style_attr.contains("stroke:")
         && let Some(color) = series_stroke
     {
         append_style_declaration(&mut path_style_attr, "stroke", color);
@@ -2435,11 +2603,22 @@ fn prepare_edge(
         marker_ordinal,
         work_meter,
     )?;
-    let marker_style_attr = semantic_shape_style_attr(semantic_marker.as_ref());
+    let marker_style_attr = semantic_shape_style_attr_with_suppressed_paints(
+        semantic_marker.as_ref(),
+        marker_fill_owned,
+        marker_stroke_owned,
+        false,
+    );
     if marker_ordinal.is_some()
         && let Some(style) = semantic_marker.as_ref()
     {
-        theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE);
+        let use_id = theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE);
+        if marker_fill_owned {
+            theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Fill);
+        }
+        if marker_stroke_owned {
+            theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Stroke);
+        }
     }
     let semantic_label_background = resolve_theme_style(
         resolved_theme,
@@ -2448,18 +2627,28 @@ fn prepare_edge(
         label_ordinal,
         work_meter,
     )?;
-    let label_background_style_attr = semantic_shape_style_attr(semantic_label_background.as_ref());
+    let label_background_style_attr = semantic_shape_style_attr_with_suppressed_paints(
+        semantic_label_background.as_ref(),
+        label_background_fill_owned,
+        false,
+        false,
+    );
     if label_ordinal.is_some()
         && let Some(style) = semantic_label_background.as_ref()
     {
-        if html_labels {
-            theme_evidence.consume_html_background_style(style);
+        let use_id = if html_labels {
+            theme_evidence.consume_html_background_style(style)
         } else {
-            theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE);
+            theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE)
+        };
+        if label_background_fill_owned {
+            theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Fill);
         }
     }
-    let label_background_div_style_prefix =
-        semantic_html_background_style(semantic_label_background.as_ref());
+    let label_background_div_style_prefix = semantic_html_background_style(
+        semantic_label_background.as_ref(),
+        label_background_fill_owned,
+    );
     let semantic_label = resolve_theme_text_style(
         resolved_theme,
         ThemeTarget::TransitionLabel,
@@ -2469,16 +2658,22 @@ fn prepare_edge(
     )?;
     let mut label_emission = IndexMap::<String, EmittedDeclaration>::new();
     if let Some((theme, style)) = resolved_theme.zip(semantic_label.as_ref()) {
-        if label_ordinal.is_some() {
-            theme_evidence.consume_text_style(style);
+        let use_id = label_ordinal.map(|_| theme_evidence.consume_text_style(style));
+        if label_fill_owned {
+            theme_evidence.shadow_source_property(use_id, ResolvedStyleProperty::Fill);
         }
         append_theme_base_text_emission(theme, &mut label_emission);
         append_semantic_text_emission(style, &mut label_emission);
         let series_color = label_ordinal
             .and_then(|ordinal| theme_evidence.series_color(ThemeTarget::TransitionLabel, ordinal));
-        let semantic_color = text_paint_value(style.fill_resolution());
-        let color_uses_series = semantic_color.is_none() && series_color.is_some();
-        let color = semantic_color.or(series_color);
+        let semantic_color = (!label_fill_owned)
+            .then(|| text_paint_value(style.fill_resolution()))
+            .flatten();
+        let color_uses_series =
+            !label_fill_owned && semantic_color.is_none() && series_color.is_some();
+        let color = (!label_fill_owned)
+            .then(|| semantic_color.or(series_color))
+            .flatten();
         if let Some(color) = color {
             insert_emitted(&mut label_emission, "color", color);
         }
@@ -2517,27 +2712,36 @@ fn prepare_edge(
     })
 }
 
-fn semantic_shape_style_attr(style: Option<&ResolvedThemeStyle>) -> String {
+fn semantic_shape_style_attr_with_suppressed_paints(
+    style: Option<&ResolvedThemeStyle>,
+    suppress_fill: bool,
+    suppress_stroke: bool,
+    suppress_stroke_width: bool,
+) -> String {
     let Some(style) = style else {
         return String::new();
     };
-    semantic_shape_style_attr_for_style(style)
-}
-
-fn semantic_shape_style_attr_for_style(style: &ResolvedThemeStyle) -> String {
     let mut emission = IndexMap::<String, EmittedDeclaration>::new();
     append_semantic_shape_emission(style, &mut emission);
-
-    if let Some(fill) = shape_paint_value(style.fill_resolution()) {
+    if suppress_stroke_width {
+        emission.shift_remove("stroke-width");
+    }
+    if !suppress_fill && let Some(fill) = shape_paint_value(style.fill_resolution()) {
         insert_emitted(&mut emission, "fill", fill);
     }
-    if let Some(stroke) = shape_paint_value(style.stroke_resolution()) {
+    if !suppress_stroke && let Some(stroke) = shape_paint_value(style.stroke_resolution()) {
         insert_emitted(&mut emission, "stroke", stroke);
     }
     compact_style_attr(&emission)
 }
 
-fn semantic_html_background_style(style: Option<&ResolvedThemeStyle>) -> String {
+fn semantic_html_background_style(
+    style: Option<&ResolvedThemeStyle>,
+    suppress_fill: bool,
+) -> String {
+    if suppress_fill {
+        return String::new();
+    }
     let Some(style) = style else {
         return String::new();
     };
@@ -4037,6 +4241,77 @@ mod tests {
         assert!(!evidence.applied().contains(&key));
         assert!(evidence.not_applicable_mechanisms().contains(&key));
         assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn hand_drawn_source_paints_reach_only_the_upstream_shape_surfaces() {
+        let source_styles = vec![
+            "fill:#111827".to_string(),
+            "stroke:#2563eb".to_string(),
+            "stroke-width:6px".to_string(),
+        ];
+        let mut model = StateDiagramRenderModel::default();
+        model.style_classes.insert(
+            "source-paint".to_string(),
+            StateDiagramRenderStyleClass {
+                id: "source-paint".to_string(),
+                styles: source_styles,
+                text_styles: Vec::new(),
+            },
+        );
+
+        for (id, shape) in [
+            ("Ordinary", "rect"),
+            ("Note", "note"),
+            ("Choice", "choice"),
+            ("Fork", "fork"),
+            ("Join", "join"),
+            ("End", "stateEnd"),
+            ("Start", "stateStart"),
+        ] {
+            let mut node = semantic_node(id, shape);
+            node.css_classes = "source-paint".to_string();
+            model.nodes.push(node);
+        }
+        for (id, shape) in [("Composite", "roundedWithTitle"), ("Divider", "divider")] {
+            let mut node = semantic_node(id, shape);
+            node.is_group = true;
+            node.node_type = Some("group".to_string());
+            node.css_classes = "source-paint".to_string();
+            model.nodes.push(node);
+        }
+
+        let plan = StateStylePlan::resolve_unthemed(&model, &json!({ "look": "handDrawn" }));
+
+        for id in ["Ordinary", "Choice", "End"] {
+            let node = plan.node(id).unwrap_or_else(|| panic!("prepared {id}"));
+            assert_eq!(node.fill_override(), Some("#111827"), "{id}");
+            assert_eq!(node.stroke_override(), Some("#2563eb"), "{id}");
+            assert_eq!(node.stroke_width_override(), Some(6.0), "{id}");
+        }
+        let end = plan.node("End").expect("prepared End");
+        assert!(
+            end.special_state_inner_fill_path_style_attr()
+                .contains("fill:#111827 !important")
+        );
+        assert!(
+            end.special_state_inner_stroke_path_style_attr()
+                .contains("stroke:#2563eb !important")
+        );
+
+        for id in ["Note", "Fork", "Join"] {
+            let node = plan.node(id).unwrap_or_else(|| panic!("prepared {id}"));
+            assert_eq!(node.fill_override(), None, "{id}");
+            assert_eq!(node.stroke_override(), None, "{id}");
+            assert_eq!(node.stroke_width_override(), Some(6.0), "{id}");
+        }
+
+        for id in ["Start", "Composite", "Divider"] {
+            let node = plan.node(id).unwrap_or_else(|| panic!("prepared {id}"));
+            assert_eq!(node.fill_override(), None, "{id}");
+            assert_eq!(node.stroke_override(), None, "{id}");
+            assert_eq!(node.stroke_width_override(), None, "{id}");
+        }
     }
 
     #[test]

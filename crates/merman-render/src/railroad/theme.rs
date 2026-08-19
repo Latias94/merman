@@ -40,6 +40,9 @@ impl RailroadUnsupportedRoute {
 /// Writer-owned proof of the styled Railroad text surfaces emitted to terminal SVG.
 #[derive(Debug, Default)]
 pub(crate) struct RailroadSurfaceReceipt {
+    root_svg_recorded: bool,
+    root_svg_id: Option<Box<str>>,
+    root_svg_class_verified: bool,
     terminal_text_count: usize,
     nonterminal_text_count: usize,
     comment_text_count: usize,
@@ -50,10 +53,47 @@ pub(crate) struct RailroadSurfaceReceipt {
 }
 
 impl RailroadSurfaceReceipt {
+    pub(crate) fn record_root_svg_open(&mut self, root_svg_open: &str) {
+        if self.root_svg_recorded {
+            self.root_svg_id = None;
+            self.root_svg_class_verified = false;
+            return;
+        }
+        self.root_svg_recorded = true;
+
+        let Some(root_svg_open) = root_svg_open.strip_suffix('>') else {
+            return;
+        };
+        if !root_svg_open.starts_with("<svg ") || root_svg_open[4..].contains('<') {
+            return;
+        }
+        let mut root_document = String::with_capacity(root_svg_open.len().saturating_add(7));
+        root_document.push_str(root_svg_open);
+        root_document.push_str("></svg>");
+        let Ok(document) = roxmltree::Document::parse(&root_document) else {
+            return;
+        };
+        let root = document.root_element();
+        if !root.has_tag_name(("http://www.w3.org/2000/svg", "svg"))
+            || root.children().next().is_some()
+        {
+            return;
+        }
+        let Some(root_svg_id) = root.attribute("id").filter(|value| !value.is_empty()) else {
+            return;
+        };
+
+        self.root_svg_id = Some(root_svg_id.into());
+        self.root_svg_class_verified = root
+            .attribute("class")
+            .unwrap_or_default()
+            .split_ascii_whitespace()
+            .any(|candidate| candidate == "railroad-diagram");
+    }
+
     pub(crate) fn record_typography_stylesheet(
         &mut self,
         stylesheet: &str,
-        diagram_id_css: &str,
         expected_font_family: &str,
         expected_font_size: &str,
     ) {
@@ -62,8 +102,19 @@ impl RailroadSurfaceReceipt {
             return;
         }
         self.typography_stylesheet_recorded = true;
-        self.typography_stylesheet_verified = [
-            ".railroad-diagram",
+        let Some(root_svg_id) = self.root_svg_id.as_deref() else {
+            self.typography_stylesheet_verified = false;
+            return;
+        };
+        let diagram_id_css = crate::svg::escape_css_identifier(root_svg_id);
+        let root_rule_matches = self.root_svg_class_verified
+            && typography_rule_matches(
+                stylesheet,
+                &format!("#{diagram_id_css}.railroad-diagram"),
+                expected_font_family,
+                expected_font_size,
+            );
+        let descendant_rules_match = [
             ".railroad-terminal text",
             ".railroad-nonterminal text",
             ".railroad-comment text",
@@ -79,6 +130,7 @@ impl RailroadSurfaceReceipt {
                 expected_font_size,
             )
         });
+        self.typography_stylesheet_verified = root_rule_matches && descendant_rules_match;
     }
 
     pub(crate) fn record_terminal_text(&mut self, text: &str) {
@@ -366,8 +418,12 @@ mod tests {
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
     };
 
+    const VALID_ROOT_SVG_OPEN: &str = concat!(
+        r#"<svg id="rr" width="100%" xmlns="http://www.w3.org/2000/svg" "#,
+        r#"xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram">"#,
+    );
     const VALID_CSS: &str = concat!(
-        "#rr .railroad-diagram{font-family:monospace;font-size:18px;}",
+        "#rr.railroad-diagram{font-family:monospace;font-size:18px;}",
         "#rr .railroad-terminal text{fill:black;font-family:monospace;font-size:18px;text-anchor:middle;}",
         "#rr .railroad-nonterminal text{fill:black;font-family:monospace;font-size:18px;text-anchor:middle;}",
         "#rr .railroad-comment text{fill:black;font-style:italic;font-family:monospace;font-size:18px;text-anchor:middle;}",
@@ -411,10 +467,35 @@ mod tests {
                 ".railroad-special text{fill:black;font-family:monospace;font-size:18px;",
                 ".railroad-special text{fill:black;font-family:monospace;font-size:17px;",
             ),
-            format!("{VALID_CSS}#rr .railroad-diagram{{font-family:serif;font-size:18px;}}"),
+            format!("{VALID_CSS}#rr.railroad-diagram{{font-family:serif;font-size:18px;}}"),
         ] {
             let mut receipt = RailroadSurfaceReceipt::default();
-            receipt.record_typography_stylesheet(&invalid_css, "rr", "monospace", "18");
+            receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
+            receipt.record_typography_stylesheet(&invalid_css, "monospace", "18");
+
+            assert!(!receipt.typography_stylesheet_verified());
+        }
+    }
+
+    #[test]
+    fn railroad_typography_receipt_requires_the_selector_to_match_the_emitted_root_svg() {
+        for (root_svg_open, stylesheet) in [
+            (
+                VALID_ROOT_SVG_OPEN,
+                VALID_CSS.replacen("#rr.railroad-diagram", "#rr .railroad-diagram", 1),
+            ),
+            (
+                r#"<svg id="other" xmlns="http://www.w3.org/2000/svg" class="railroad-diagram">"#,
+                VALID_CSS.to_string(),
+            ),
+            (
+                r#"<svg id="rr" xmlns="http://www.w3.org/2000/svg" class="other-family">"#,
+                VALID_CSS.to_string(),
+            ),
+        ] {
+            let mut receipt = RailroadSurfaceReceipt::default();
+            receipt.record_root_svg_open(root_svg_open);
+            receipt.record_typography_stylesheet(&stylesheet, "monospace", "18");
 
             assert!(!receipt.typography_stylesheet_verified());
         }
@@ -424,7 +505,8 @@ mod tests {
     fn railroad_comment_occurrence_can_verify_typed_typography() {
         let plan = typed_railroad_plan();
         let mut receipt = plan.begin_terminal_receipt();
-        receipt.record_typography_stylesheet(VALID_CSS, "rr", "monospace", "18");
+        receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
+        receipt.record_typography_stylesheet(VALID_CSS, "monospace", "18");
         receipt.record_comment_text("comment");
         assert!(plan.record_terminal(receipt));
 
@@ -441,7 +523,8 @@ mod tests {
             ".railroad-comment text{fill:black;font-style:italic;font-family:monospace;",
             ".railroad-comment text{fill:black;font-style:italic;font-family:serif;",
         );
-        receipt.record_typography_stylesheet(&invalid_css, "rr", "monospace", "18");
+        receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
+        receipt.record_typography_stylesheet(&invalid_css, "monospace", "18");
         receipt.record_terminal_text("terminal");
         assert!(plan.record_terminal(receipt));
 

@@ -61,11 +61,7 @@ fn render_gantt_axis_ticks(
             fmt(tx)
         );
         out.checkpoint()?;
-        let _ = write!(
-            out,
-            r#"<line stroke="currentColor" y2="{}"/>"#,
-            fmt(tick_size)
-        );
+        let _ = write!(out, r#"<line y2="{}"/>"#, fmt(tick_size));
         out.checkpoint()?;
         if with_dy {
             let _ = write!(
@@ -305,12 +301,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let mut tasks_in_draw_order: Vec<(usize, &crate::model::GanttTaskLayout)> =
         layout.tasks.iter().enumerate().collect();
     tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
-    let mut task_radius_receipt = task_theme.begin_terminal_receipt();
+    let mut task_theme_receipt = task_theme.begin_terminal_receipt();
 
     let mut semantic_task_by_id: std::collections::HashMap<&str, &GanttRenderTask> =
         std::collections::HashMap::new();
-    for t in &model.tasks {
-        semantic_task_by_id.insert(t.id.as_str(), t);
+    for task in &model.tasks {
+        semantic_task_by_id.insert(task.id.as_str(), task);
     }
 
     if layout.tasks.is_empty() {
@@ -333,11 +329,17 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let _ = write!(&mut out, r#"<rect"#);
             let rx = fmt(t.bar.rx);
             let ry = fmt(t.bar.ry);
-            let _ = write!(
-                &mut out,
-                r#" id="{}""#,
-                escape_attr(&gantt_dom_id(diagram_id, &t.bar.id))
+            let terminal_id = gantt_dom_id(diagram_id, &t.bar.id);
+            let terminal_fill = task_theme.terminal_fill_for_layout_task(*task_index);
+            let section_suffix = crate::gantt::gantt_section_class_suffix(
+                &t.task_type,
+                &layout.categories,
+                layout.number_section_styles,
             );
+            let _ = write!(&mut out, r#" id="{}""#, escape_attr(&terminal_id));
+            if let Some(fill) = terminal_fill {
+                let _ = write!(&mut out, r#" style="fill:{};""#, escape_attr(fill));
+            }
             let _ = write!(
                 &mut out,
                 r#" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{origin}" class="{cls}"/>"#,
@@ -351,64 +353,59 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 cls = escape_attr(&t.bar.class),
             );
             out.checkpoint()?;
-            if let Some(receipt) = task_radius_receipt.as_mut() {
-                let expected_radius = task_theme
-                    .radius_px_for_layout_task(*task_index)
-                    .map(|radius| fmt(radius).to_string());
-                let rx = rx.to_string();
-                let ry = ry.to_string();
+            if let Some(receipt) = task_theme_receipt.as_mut() {
                 receipt.record_checkpointed_task(
                     *task_index,
-                    expected_radius
-                        .as_deref()
-                        .is_some_and(|expected| expected == rx.as_str() && expected == ry.as_str()),
+                    diagram_id,
+                    &t.id,
+                    &terminal_id,
+                    &section_suffix,
+                    &t.bar.class,
+                    t.bar.rx,
+                    t.bar.ry,
+                    terminal_fill,
                 );
             }
         }
 
-        for (_idx, t) in &tasks_in_draw_order {
+        for (_task_index, t) in &tasks_in_draw_order {
             let base_class = &t.label.class;
             let mut task_type_class = String::new();
-            if let Some(st) = semantic_task_by_id.get(t.id.as_str()) {
-                let sec_num = crate::gantt::gantt_section_class_suffix(
-                    &st.task_type,
+            if let Some(task) = semantic_task_by_id.get(t.id.as_str()) {
+                let section_suffix = crate::gantt::gantt_section_class_suffix(
+                    &task.task_type,
                     &layout.categories,
                     layout.number_section_styles,
                 );
-                if st.active {
-                    if st.crit {
-                        task_type_class = format!("activeCritText{sec_num}");
+                if task.active {
+                    if task.crit {
+                        task_type_class = format!("activeCritText{section_suffix}");
                     } else {
-                        task_type_class = format!("activeText{sec_num}");
+                        task_type_class = format!("activeText{section_suffix}");
                     }
                 }
-                if st.done {
-                    if st.crit {
-                        if !task_type_class.is_empty() {
-                            task_type_class.push(' ');
-                        }
-                        task_type_class.push_str(&format!("doneCritText{sec_num}"));
-                    } else {
-                        if !task_type_class.is_empty() {
-                            task_type_class.push(' ');
-                        }
-                        task_type_class.push_str(&format!("doneText{sec_num}"));
-                    }
-                } else if st.crit {
+                if task.done {
                     if !task_type_class.is_empty() {
                         task_type_class.push(' ');
                     }
-                    task_type_class.push_str(&format!("critText{sec_num}"));
+                    if task.crit {
+                        task_type_class.push_str(&format!("doneCritText{section_suffix}"));
+                    } else {
+                        task_type_class.push_str(&format!("doneText{section_suffix}"));
+                    }
+                } else if task.crit {
+                    if !task_type_class.is_empty() {
+                        task_type_class.push(' ');
+                    }
+                    task_type_class.push_str(&format!("critText{section_suffix}"));
                 }
-
-                if st.milestone {
+                if task.milestone {
                     if !task_type_class.is_empty() {
                         task_type_class.push(' ');
                     }
                     task_type_class.push_str("milestoneText");
                 }
-
-                if st.vert {
+                if task.vert {
                     if !task_type_class.is_empty() {
                         task_type_class.push(' ');
                     }
@@ -526,9 +523,9 @@ pub(crate) fn render_gantt_diagram_svg_model(
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if task_radius_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
+    if task_theme_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
-            message: "Gantt task radius receipt did not match the terminal SVG".to_string(),
+            message: "Gantt task theme receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)

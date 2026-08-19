@@ -13,7 +13,10 @@ mod css;
 use css::write_class_css;
 
 mod defs;
-use defs::{class_markers, push_class_gradient, push_class_shadow_defs};
+use defs::{
+    class_marker_name, class_marker_terminal_expectations, class_markers, push_class_gradient,
+    push_class_shadow_defs,
+};
 
 mod edge;
 

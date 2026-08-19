@@ -105,7 +105,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
                 style = escape_attr_display(&style),
                 text = escape_xml_display(name)
             );
-            typography_receipt.record_terminal_text(crate::sequence::SequenceTypographyRole::Actor);
+            typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::BoxTitle);
         }
         out.push_str("</g>");
     }

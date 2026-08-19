@@ -1,10 +1,4 @@
-use merman_theme_contract::{
-    DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, SpecifiedWireV1,
-    ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeRuleSetWireV1,
-    ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
-};
-
-use super::definition_admission::materialize_theme;
+mod catalog;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
@@ -20,151 +14,28 @@ pub enum ThemePreset {
     GruvboxDark,
     AyuLight,
     AyuDark,
+    Brutalist,
+    Spotless,
+    Cyberpunk,
 }
 
 impl ThemePreset {
-    /// Current built-in preset inventory.
-    ///
-    /// The slice avoids freezing a public array length. Individual IDs remain alpha inventory
-    /// until their descriptors are qualified by the preset maturity gate.
-    const ALL: &'static [Self] = &[
-        Self::EditorLight,
-        Self::EditorDark,
-        Self::OneDark,
-        Self::GruvboxLight,
-        Self::GruvboxDark,
-        Self::AyuLight,
-        Self::AyuDark,
-    ];
-
     pub const fn id(self) -> &'static str {
-        match self {
-            Self::EditorLight => "editor-light",
-            Self::EditorDark => "editor-dark",
-            Self::OneDark => "one-dark",
-            Self::GruvboxLight => "gruvbox-light",
-            Self::GruvboxDark => "gruvbox-dark",
-            Self::AyuLight => "ayu-light",
-            Self::AyuDark => "ayu-dark",
-        }
+        catalog::entry_at(self as usize).id()
     }
 
     pub const fn is_dark(self) -> bool {
-        matches!(
-            self,
-            Self::EditorDark | Self::OneDark | Self::GruvboxDark | Self::AyuDark
-        )
+        catalog::entry_at(self as usize).is_dark()
     }
 
     pub fn from_id(id: &str) -> Result<Self, ThemePresetParseError> {
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|preset| preset.id() == id)
+        catalog::entry_for_id(id)
+            .map(catalog::PresetCatalogEntry::preset)
             .ok_or_else(|| ThemePresetParseError { id: id.to_string() })
     }
 
-    pub(crate) fn spec_wire(self) -> DiagramThemeSpecWireV1 {
-        let palette = preset_palette(self);
-        let tokens = ThemeTokensV1::default()
-            .with_color(ThemeColorTokenV1::Canvas, palette.canvas)
-            .with_color(ThemeColorTokenV1::Surface, palette.surface)
-            .with_color(ThemeColorTokenV1::SurfaceAlt, palette.surface_alt)
-            .with_color(ThemeColorTokenV1::SurfaceMuted, palette.surface_muted)
-            .with_color(ThemeColorTokenV1::Text, palette.text)
-            .with_color(ThemeColorTokenV1::Border, palette.border)
-            .with_color(ThemeColorTokenV1::Line, palette.line)
-            .with_color(ThemeColorTokenV1::Accent, palette.accent)
-            .with_series(
-                palette
-                    .series
-                    .iter()
-                    .map(|color| (*color).to_owned())
-                    .collect(),
-            );
-        let definition = ThemeDefinitionV1::new(tokens).with_styles(vec![
-            preset_rule("node", Some(palette.surface), None),
-            preset_rule(
-                "edge-label-background",
-                Some(palette.edge_label_background),
-                None,
-            ),
-            preset_rule(
-                "cluster",
-                Some(palette.cluster_background),
-                Some(palette.cluster_border),
-            ),
-            preset_rule(
-                "actor",
-                Some(palette.actor_background),
-                Some(palette.actor_border),
-            ),
-            preset_rule("actor-label", Some(palette.actor_text), None),
-            preset_rule(
-                "lifeline",
-                Some(palette.actor_border),
-                Some(palette.actor_border),
-            ),
-            preset_rule("loop-label", Some(palette.actor_text), None),
-            preset_rule(
-                "transition-label-background",
-                Some(palette.edge_label_background),
-                None,
-            ),
-            preset_rule(
-                "note",
-                Some(palette.note_background),
-                Some(palette.note_border),
-            ),
-            preset_rule("note-label", Some(palette.note_text), None),
-            preset_rule(
-                "activation",
-                Some(palette.activation_background),
-                Some(palette.activation_border),
-            ),
-            preset_rule("axis", Some(palette.text), Some(palette.line)),
-            preset_rule("legend", Some(palette.subtle_text), None),
-            preset_palette_rule("task", palette.series),
-            preset_palette_rule("chart-series", palette.series),
-            preset_palette_rule("timeline-event", palette.series),
-            preset_palette_rule("journey-task", palette.series),
-        ]);
-        let mut spec = materialize_theme(&definition)
-            .expect("built-in theme preset values must remain statically valid")
-            .into_spec();
-        spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
-            theme: Some("base".to_owned()),
-            dark_mode: Some(self.is_dark()),
-            variables: None,
-        });
-        spec
-    }
-}
-
-fn preset_rule(target: &str, fill: Option<&str>, stroke: Option<&str>) -> ThemeRuleSetWireV1 {
-    let mut style = ThemeStylePatchWireV1::default();
-    if let Some(fill) = fill {
-        style.fill = SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned()));
-    }
-    if let Some(stroke) = stroke {
-        style.stroke = Some(ThemeStrokePatchWireV1 {
-            paint: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(stroke.to_owned())),
-            ..ThemeStrokePatchWireV1::default()
-        });
-    }
-    ThemeRuleSetWireV1::Rule {
-        target: target.to_owned(),
-        family: None,
-        variant: None,
-        ordinal: None,
-        style,
-    }
-}
-
-fn preset_palette_rule(target: &str, colors: &[&str]) -> ThemeRuleSetWireV1 {
-    ThemeRuleSetWireV1::OrdinalPalette {
-        target: target.to_owned(),
-        colors: colors.iter().map(|color| (*color).to_owned()).collect(),
+    pub(crate) fn spec_wire(self) -> merman_theme_contract::DiagramThemeSpecWireV1 {
+        catalog::build_spec_wire(self)
     }
 }
 
@@ -180,19 +51,57 @@ impl ThemePresetParseError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// One freshly qualified diagram-family/output cell for a preset recipe revision.
+pub struct ThemePresetQualifiedCell {
+    family_id: &'static str,
+    output_id: &'static str,
+}
+
+impl ThemePresetQualifiedCell {
+    /// Creates a qualified cell from stable family and output identifiers.
+    pub const fn new(family_id: &'static str, output_id: &'static str) -> Self {
+        Self {
+            family_id,
+            output_id,
+        }
+    }
+
+    /// Returns the stable diagram-family identifier.
+    pub const fn family_id(self) -> &'static str {
+        self.family_id
+    }
+
+    /// Returns the stable render-output identifier.
+    pub const fn output_id(self) -> &'static str {
+        self.output_id
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemePresetDescriptor {
-    preset: ThemePreset,
-    maturity: &'static str,
+    catalog_index: u8,
 }
 
 impl ThemePresetDescriptor {
+    pub(super) const fn from_catalog_index(catalog_index: u8) -> Self {
+        Self { catalog_index }
+    }
+
+    const fn entry(self) -> &'static catalog::PresetCatalogEntry {
+        catalog::entry_at(self.catalog_index as usize)
+    }
+
     pub const fn id(self) -> &'static str {
-        self.preset.id()
+        self.entry().id()
+    }
+
+    pub const fn display_name(self) -> &'static str {
+        self.entry().display_name()
     }
 
     pub const fn is_dark(self) -> bool {
-        self.preset.is_dark()
+        self.entry().is_dark()
     }
 
     /// Returns the open-string maturity reported by discovery surfaces.
@@ -201,262 +110,134 @@ impl ThemePresetDescriptor {
     /// maturity promotion is backed by a different qualified descriptor revision rather than by
     /// the preset's presence in this catalog alone.
     pub const fn maturity(self) -> &'static str {
-        self.maturity
+        self.entry().maturity()
     }
 
     pub const fn preset(self) -> ThemePreset {
-        self.preset
+        self.entry().preset()
+    }
+
+    pub const fn catalog_schema_version(self) -> u32 {
+        self.entry().catalog_schema_version()
+    }
+
+    pub const fn authoring_schema_version(self) -> u32 {
+        self.entry().authoring_schema_version()
+    }
+
+    pub const fn expansion_version(self) -> u32 {
+        self.entry().expansion_version()
+    }
+
+    pub const fn spec_schema_version(self) -> u32 {
+        self.entry().spec_schema_version()
+    }
+
+    pub const fn recipe_revision(self) -> u32 {
+        self.entry().recipe_revision()
+    }
+
+    pub fn recipe_fingerprint(self) -> &'static str {
+        self.entry().recipe_fingerprint()
+    }
+
+    pub const fn resource_fingerprint(self) -> &'static str {
+        self.entry().resource_fingerprint()
+    }
+
+    pub const fn qualified_cell_count(self) -> usize {
+        self.entry().qualified_cells().len()
+    }
+
+    pub const fn qualified_cells(self) -> &'static [ThemePresetQualifiedCell] {
+        self.entry().qualified_cells()
+    }
+
+    pub const fn export_kind(self) -> &'static str {
+        self.entry().export_kind()
+    }
+
+    pub const fn qualification_schema_revision(self) -> u32 {
+        self.entry()
+            .qualification_invalidation()
+            .qualification_schema_revision()
+    }
+
+    pub const fn qualification_admission_revision(self) -> u32 {
+        self.entry()
+            .qualification_invalidation()
+            .admission_revision()
+    }
+
+    pub const fn qualification_invalidates_recipe_changes(self) -> bool {
+        self.entry()
+            .qualification_invalidation()
+            .invalidate_on_recipe_fingerprint_change()
+    }
+
+    pub const fn qualification_invalidates_resource_changes(self) -> bool {
+        self.entry()
+            .qualification_invalidation()
+            .invalidate_on_resource_fingerprint_change()
+    }
+
+    pub const fn license_expression(self) -> &'static str {
+        self.entry().license_expression()
+    }
+
+    pub const fn required_attribution(self) -> Option<&'static str> {
+        self.entry().required_attribution()
     }
 }
 
-const THEME_PRESET_DESCRIPTORS: [ThemePresetDescriptor; 7] = [
-    ThemePresetDescriptor {
-        preset: ThemePreset::EditorLight,
-        maturity: "alpha",
-    },
-    ThemePresetDescriptor {
-        preset: ThemePreset::EditorDark,
-        maturity: "alpha",
-    },
-    ThemePresetDescriptor {
-        preset: ThemePreset::OneDark,
-        maturity: "alpha",
-    },
-    ThemePresetDescriptor {
-        preset: ThemePreset::GruvboxLight,
-        maturity: "alpha",
-    },
-    ThemePresetDescriptor {
-        preset: ThemePreset::GruvboxDark,
-        maturity: "alpha",
-    },
-    ThemePresetDescriptor {
-        preset: ThemePreset::AyuLight,
-        maturity: "alpha",
-    },
-    ThemePresetDescriptor {
-        preset: ThemePreset::AyuDark,
-        maturity: "alpha",
-    },
-];
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) struct ThemePresetQualificationInvalidation {
+    qualification_schema_revision: u32,
+    admission_revision: u32,
+    invalidate_on_recipe_fingerprint_change: bool,
+    invalidate_on_resource_fingerprint_change: bool,
+}
+
+impl ThemePresetQualificationInvalidation {
+    pub(super) const fn current() -> Self {
+        Self {
+            qualification_schema_revision: 1,
+            admission_revision: 1,
+            invalidate_on_recipe_fingerprint_change: true,
+            invalidate_on_resource_fingerprint_change: true,
+        }
+    }
+
+    const fn qualification_schema_revision(self) -> u32 {
+        self.qualification_schema_revision
+    }
+
+    const fn admission_revision(self) -> u32 {
+        self.admission_revision
+    }
+
+    const fn invalidate_on_recipe_fingerprint_change(self) -> bool {
+        self.invalidate_on_recipe_fingerprint_change
+    }
+
+    const fn invalidate_on_resource_fingerprint_change(self) -> bool {
+        self.invalidate_on_resource_fingerprint_change
+    }
+}
 
 pub const fn theme_preset_descriptors() -> &'static [ThemePresetDescriptor] {
-    &THEME_PRESET_DESCRIPTORS
+    catalog::descriptors()
 }
 
-struct PresetPalette {
-    canvas: &'static str,
-    surface: &'static str,
-    surface_alt: &'static str,
-    surface_muted: &'static str,
-    text: &'static str,
-    subtle_text: &'static str,
-    border: &'static str,
-    line: &'static str,
-    accent: &'static str,
-    edge_label_background: &'static str,
-    cluster_background: &'static str,
-    cluster_border: &'static str,
-    note_background: &'static str,
-    note_border: &'static str,
-    note_text: &'static str,
-    actor_background: &'static str,
-    actor_border: &'static str,
-    actor_text: &'static str,
-    activation_background: &'static str,
-    activation_border: &'static str,
-    series: &'static [&'static str],
-}
-
-fn preset_palette(preset: ThemePreset) -> PresetPalette {
-    match preset {
-        ThemePreset::EditorLight => PresetPalette {
-            canvas: "#ffffff",
-            surface: "#f8fafc",
-            surface_alt: "#e2e8f0",
-            surface_muted: "#f1f5f9",
-            text: "#0f172a",
-            subtle_text: "#475569",
-            border: "#94a3b8",
-            line: "#64748b",
-            accent: "#2563eb",
-            edge_label_background: "#ffffff",
-            cluster_background: "#f1f5f9",
-            cluster_border: "#cbd5e1",
-            note_background: "#fff7ed",
-            note_border: "#fdba74",
-            note_text: "#7c2d12",
-            actor_background: "#f8fafc",
-            actor_border: "#94a3b8",
-            actor_text: "#0f172a",
-            activation_background: "#e2e8f0",
-            activation_border: "#94a3b8",
-            series: &[
-                "#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#a16207",
-                "#65a30d",
-            ],
-        },
-        ThemePreset::EditorDark => PresetPalette {
-            canvas: "#0f172a",
-            surface: "#111827",
-            surface_alt: "#1f2937",
-            surface_muted: "#334155",
-            text: "#e5e7eb",
-            subtle_text: "#cbd5e1",
-            border: "#475569",
-            line: "#94a3b8",
-            accent: "#60a5fa",
-            edge_label_background: "#0f172a",
-            cluster_background: "#1e293b",
-            cluster_border: "#475569",
-            note_background: "#422006",
-            note_border: "#f59e0b",
-            note_text: "#fef3c7",
-            actor_background: "#1f2937",
-            actor_border: "#475569",
-            actor_text: "#e5e7eb",
-            activation_background: "#334155",
-            activation_border: "#64748b",
-            series: &[
-                "#60a5fa", "#34d399", "#f59e0b", "#c084fc", "#22d3ee", "#fb7185", "#facc15",
-                "#a3e635",
-            ],
-        },
-        ThemePreset::OneDark => PresetPalette {
-            canvas: "#282c34",
-            surface: "#21252b",
-            surface_alt: "#2c313a",
-            surface_muted: "#3e4451",
-            text: "#abb2bf",
-            subtle_text: "#abb2bf",
-            border: "#3e4451",
-            line: "#61afef",
-            accent: "#61afef",
-            edge_label_background: "#282c34",
-            cluster_background: "#2c313a",
-            cluster_border: "#3e4451",
-            note_background: "#3a2f1b",
-            note_border: "#e5c07b",
-            note_text: "#f0dca4",
-            actor_background: "#2c313a",
-            actor_border: "#3e4451",
-            actor_text: "#abb2bf",
-            activation_background: "#3e4451",
-            activation_border: "#5c6370",
-            series: &[
-                "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#e06c75", "#d19a66",
-                "#be5046",
-            ],
-        },
-        ThemePreset::GruvboxLight => PresetPalette {
-            canvas: "#fbf1c7",
-            surface: "#f2e5bc",
-            surface_alt: "#ebdbb2",
-            surface_muted: "#d5c4a1",
-            text: "#3c3836",
-            subtle_text: "#665c54",
-            border: "#d5c4a1",
-            line: "#7c6f64",
-            accent: "#458588",
-            edge_label_background: "#fbf1c7",
-            cluster_background: "#ebdbb2",
-            cluster_border: "#d5c4a1",
-            note_background: "#f2e5bc",
-            note_border: "#d79921",
-            note_text: "#3c3836",
-            actor_background: "#ebdbb2",
-            actor_border: "#d5c4a1",
-            actor_text: "#3c3836",
-            activation_background: "#d5c4a1",
-            activation_border: "#bdae93",
-            series: &[
-                "#458588", "#98971a", "#d79921", "#b16286", "#689d6a", "#cc241d", "#d65d0e",
-                "#427b58",
-            ],
-        },
-        ThemePreset::GruvboxDark => PresetPalette {
-            canvas: "#282828",
-            surface: "#3c3836",
-            surface_alt: "#504945",
-            surface_muted: "#665c54",
-            text: "#ebdbb2",
-            subtle_text: "#d5c4a1",
-            border: "#665c54",
-            line: "#d5c4a1",
-            accent: "#83a598",
-            edge_label_background: "#282828",
-            cluster_background: "#3c3836",
-            cluster_border: "#665c54",
-            note_background: "#3c3836",
-            note_border: "#fabd2f",
-            note_text: "#fbf1c7",
-            actor_background: "#3c3836",
-            actor_border: "#665c54",
-            actor_text: "#ebdbb2",
-            activation_background: "#504945",
-            activation_border: "#7c6f64",
-            series: &[
-                "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb4934", "#fe8019",
-                "#689d6a",
-            ],
-        },
-        ThemePreset::AyuLight => PresetPalette {
-            canvas: "#fcfcfc",
-            surface: "#f3f4f5",
-            surface_alt: "#e6e8eb",
-            surface_muted: "#d9d7ce",
-            text: "#5c6166",
-            subtle_text: "#5c6166",
-            border: "#8a9199",
-            line: "#5c6166",
-            accent: "#55b4d4",
-            edge_label_background: "#fcfcfc",
-            cluster_background: "#f3f4f5",
-            cluster_border: "#8a9199",
-            note_background: "#fff3bf",
-            note_border: "#ffaa33",
-            note_text: "#5c6166",
-            actor_background: "#f3f4f5",
-            actor_border: "#8a9199",
-            actor_text: "#5c6166",
-            activation_background: "#e6e8eb",
-            activation_border: "#8a9199",
-            series: &[
-                "#55b4d4", "#86b300", "#ffaa33", "#a37acc", "#4cbf99", "#f07171", "#f2ae49",
-                "#399ee6",
-            ],
-        },
-        ThemePreset::AyuDark => PresetPalette {
-            canvas: "#0b0e14",
-            surface: "#11151c",
-            surface_alt: "#1f2430",
-            surface_muted: "#343b48",
-            text: "#bfbdb6",
-            subtle_text: "#8a9199",
-            border: "#343b48",
-            line: "#59c2ff",
-            accent: "#59c2ff",
-            edge_label_background: "#0b0e14",
-            cluster_background: "#1f2430",
-            cluster_border: "#343b48",
-            note_background: "#332a14",
-            note_border: "#ffb454",
-            note_text: "#ffdf99",
-            actor_background: "#1f2430",
-            actor_border: "#343b48",
-            actor_text: "#bfbdb6",
-            activation_background: "#343b48",
-            activation_border: "#4f5866",
-            series: &[
-                "#59c2ff", "#aad94c", "#ffb454", "#d2a6ff", "#95e6cb", "#f07178", "#ff8f40",
-                "#e6b673",
-            ],
-        },
-    }
+#[cfg(test)]
+fn preset_palette(preset: ThemePreset) -> catalog::PresetPalette {
+    catalog::entry_for_preset(preset).palette()
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeSet, HashSet};
+
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
@@ -477,6 +258,12 @@ mod tests {
             .expect("built-in theme preset should compile");
         let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         (theme, resolved)
+    }
+
+    fn all_presets() -> impl ExactSizeIterator<Item = ThemePreset> {
+        theme_preset_descriptors()
+            .iter()
+            .map(|descriptor| descriptor.preset())
     }
 
     fn assert_style(
@@ -500,9 +287,54 @@ mod tests {
         );
     }
 
+    fn resolved_solid_fill(theme: &ResolvedDiagramTheme, target: ThemeTarget) -> String {
+        theme
+            .style(target, ThemeVariant::Default, None)
+            .fill()
+            .and_then(solid_color)
+            .unwrap_or_else(|| panic!("{target:?} must resolve to a solid fill"))
+    }
+
+    fn resolved_solid_stroke(theme: &ResolvedDiagramTheme, target: ThemeTarget) -> String {
+        theme
+            .style(target, ThemeVariant::Default, None)
+            .stroke()
+            .and_then(solid_color)
+            .unwrap_or_else(|| panic!("{target:?} must resolve to a solid stroke"))
+    }
+
+    fn contrast_ratio(foreground: &str, background: &str) -> f64 {
+        fn relative_luminance(color: &str) -> f64 {
+            fn linear_channel(channel: u8) -> f64 {
+                let channel = f64::from(channel) / 255.0;
+                if channel <= 0.04045 {
+                    channel / 12.92
+                } else {
+                    ((channel + 0.055) / 1.055).powf(2.4)
+                }
+            }
+
+            let hex = color
+                .strip_prefix('#')
+                .unwrap_or_else(|| panic!("expected a hex color, got {color}"));
+            assert_eq!(hex.len(), 6, "expected a six-digit hex color, got {color}");
+            let channel = |offset| {
+                u8::from_str_radix(&hex[offset..offset + 2], 16)
+                    .unwrap_or_else(|_| panic!("expected a valid hex color, got {color}"))
+            };
+            0.2126 * linear_channel(channel(0))
+                + 0.7152 * linear_channel(channel(2))
+                + 0.0722 * linear_channel(channel(4))
+        }
+
+        let foreground = relative_luminance(foreground);
+        let background = relative_luminance(background);
+        (foreground.max(background) + 0.05) / (foreground.min(background) + 0.05)
+    }
+
     #[test]
     fn built_in_presets_keep_mermaid_compatibility_without_layout_or_look() {
-        for preset in ThemePreset::ALL.iter().copied() {
+        for preset in all_presets() {
             let (theme, _) = compiled(preset);
             let config = theme.spec().mermaid().to_mermaid_config();
 
@@ -519,6 +351,117 @@ mod tests {
     }
 
     #[test]
+    fn preset_catalog_is_the_complete_unique_enum_projection() {
+        const EXPECTED_PRESETS: [ThemePreset; 10] = [
+            ThemePreset::EditorLight,
+            ThemePreset::EditorDark,
+            ThemePreset::OneDark,
+            ThemePreset::GruvboxLight,
+            ThemePreset::GruvboxDark,
+            ThemePreset::AyuLight,
+            ThemePreset::AyuDark,
+            ThemePreset::Brutalist,
+            ThemePreset::Spotless,
+            ThemePreset::Cyberpunk,
+        ];
+
+        let descriptors = theme_preset_descriptors();
+        assert_eq!(descriptors.len(), EXPECTED_PRESETS.len());
+
+        let mut ids = BTreeSet::new();
+        let mut display_names = BTreeSet::new();
+        let mut presets = HashSet::new();
+        for (descriptor, expected_preset) in descriptors.iter().zip(EXPECTED_PRESETS) {
+            assert_eq!(descriptor.preset(), expected_preset);
+            assert_eq!(ThemePreset::from_id(descriptor.id()), Ok(expected_preset));
+            assert_eq!(expected_preset.id(), descriptor.id());
+            assert_eq!(expected_preset.is_dark(), descriptor.is_dark());
+            assert!(ids.insert(descriptor.id()), "duplicate preset ID");
+            assert!(
+                display_names.insert(descriptor.display_name()),
+                "duplicate preset display name"
+            );
+            assert!(
+                presets.insert(descriptor.preset()),
+                "duplicate enum projection"
+            );
+        }
+    }
+
+    #[test]
+    fn alpha_preset_metadata_starts_unqualified_and_fail_closed() {
+        for descriptor in theme_preset_descriptors() {
+            let entry = catalog::entry_for_preset(descriptor.preset());
+            assert_eq!(descriptor.catalog_schema_version(), 1);
+            assert_eq!(descriptor.authoring_schema_version(), 1);
+            assert_eq!(descriptor.expansion_version(), 1);
+            assert_eq!(descriptor.spec_schema_version(), 1);
+            assert_eq!(descriptor.recipe_revision(), 1);
+            assert_eq!(descriptor.maturity(), "alpha");
+            assert_eq!(descriptor.qualified_cell_count(), 0);
+            assert!(descriptor.qualified_cells().is_empty());
+            assert_eq!(descriptor.export_kind(), "definition");
+            assert_eq!(descriptor.qualification_schema_revision(), 1);
+            assert_eq!(descriptor.qualification_admission_revision(), 1);
+            assert!(descriptor.qualification_invalidates_recipe_changes());
+            assert!(descriptor.qualification_invalidates_resource_changes());
+            assert_eq!(descriptor.license_expression(), "MIT OR Apache-2.0");
+            assert_eq!(descriptor.required_attribution(), None);
+            assert!(entry.required_feature_ids().is_empty());
+            assert!(entry.bundled_resource_ids().is_empty());
+            assert!(entry.allowed_residual_ids().is_empty());
+            assert!(entry.retained());
+        }
+    }
+
+    #[test]
+    fn preset_catalog_fingerprints_match_the_exact_compiled_recipes() {
+        let mut recipe_fingerprints = BTreeSet::new();
+        for descriptor in theme_preset_descriptors() {
+            let first_catalog_fingerprint = descriptor.recipe_fingerprint();
+            let second_catalog_fingerprint = descriptor.recipe_fingerprint();
+            assert_eq!(first_catalog_fingerprint, second_catalog_fingerprint);
+            assert_eq!(first_catalog_fingerprint.len(), 64);
+            assert!(
+                first_catalog_fingerprint
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            );
+
+            let theme = DiagramThemeCompiler::new()
+                .compile_preset(descriptor.preset())
+                .expect("catalog recipe must compile");
+            let actual_recipe = theme.recipe_fingerprint().to_hex();
+            let actual_resources = theme.report().font_catalog_fingerprint().to_hex();
+
+            assert_eq!(first_catalog_fingerprint, actual_recipe.as_str());
+            assert_eq!(descriptor.resource_fingerprint(), actual_resources.as_str());
+            assert!(
+                recipe_fingerprints.insert(first_catalog_fingerprint),
+                "catalog recipes must have unique fingerprints"
+            );
+        }
+    }
+
+    #[test]
+    fn all_ten_catalog_recipes_round_trip_as_closed_complete_specs() {
+        for descriptor in theme_preset_descriptors() {
+            let original = descriptor.preset().spec_wire();
+            let encoded = serde_json::to_vec(&original).expect("complete spec must serialize");
+            let decoded: merman_theme_contract::DiagramThemeSpecWireV1 =
+                serde_json::from_slice(&encoded).expect("complete spec must deserialize");
+            let round_tripped = DiagramThemeCompiler::new()
+                .compile_spec_wire(decoded)
+                .expect("round-tripped catalog recipe must compile");
+
+            assert_eq!(
+                round_tripped.recipe_fingerprint().to_hex(),
+                descriptor.recipe_fingerprint()
+            );
+        }
+    }
+
+    #[test]
     fn built_in_alpha_presets_materialize_expected_semantic_representatives() {
         let expected = [
             (ThemePreset::EditorLight, "#ffffff", "#64748b", "#2563eb"),
@@ -528,6 +471,9 @@ mod tests {
             (ThemePreset::GruvboxDark, "#282828", "#d5c4a1", "#83a598"),
             (ThemePreset::AyuLight, "#fcfcfc", "#5c6166", "#55b4d4"),
             (ThemePreset::AyuDark, "#0b0e14", "#59c2ff", "#59c2ff"),
+            (ThemePreset::Brutalist, "#f4f0e6", "#111111", "#ff4f00"),
+            (ThemePreset::Spotless, "#f7f5ef", "#2c2416", "#8b5e34"),
+            (ThemePreset::Cyberpunk, "#020617", "#22d3ee", "#22d3ee"),
         ];
 
         for (preset, canvas, line, first_series) in expected {
@@ -573,7 +519,7 @@ mod tests {
 
     #[test]
     fn built_in_presets_preserve_family_specific_winners_and_all_ordinal_palettes() {
-        for preset in ThemePreset::ALL.iter().copied() {
+        for preset in all_presets() {
             let palette = preset_palette(preset);
             let theme = DiagramThemeCompiler::new()
                 .compile_preset(preset)
@@ -610,6 +556,34 @@ mod tests {
             assert_style(
                 &theme,
                 DiagramFamilyId::SEQUENCE,
+                ThemeTarget::SequenceNumberLabel,
+                Some(palette.sequence_number_text),
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::MessageLabel,
+                Some(palette.text),
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Loop,
+                Some(palette.surface_alt),
+                Some(palette.border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::LoopLabel,
+                Some(palette.text),
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
                 ThemeTarget::Note,
                 Some(palette.note_background),
                 Some(palette.note_border),
@@ -617,9 +591,30 @@ mod tests {
             assert_style(
                 &theme,
                 DiagramFamilyId::SEQUENCE,
+                ThemeTarget::NoteLabel,
+                Some(palette.note_text),
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SEQUENCE,
                 ThemeTarget::Activation,
                 Some(palette.activation_background),
                 Some(palette.activation_border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::PACKET,
+                ThemeTarget::PacketByteLabel,
+                Some(palette.text),
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::PACKET,
+                ThemeTarget::PacketFieldLabel,
+                Some(palette.packet_field_label_text),
+                None,
             );
             assert_style(
                 &theme,
@@ -654,6 +649,115 @@ mod tests {
                     "{family} {target:?} palette"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn built_in_sequence_presets_pair_role_foregrounds_and_backgrounds() {
+        const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
+
+        for preset in all_presets() {
+            let palette = preset_palette(preset);
+            let theme = DiagramThemeCompiler::new()
+                .compile_preset(preset)
+                .expect("built-in theme preset should compile");
+            let sequence = theme.resolve(DiagramFamilyId::SEQUENCE);
+            let canvas = solid_color(theme.spec().canvas().base())
+                .expect("built-in preset canvas must be a solid color");
+            let sequence_number = resolved_solid_fill(&sequence, ThemeTarget::SequenceNumberLabel);
+            let sequence_number_background = resolved_solid_stroke(&sequence, ThemeTarget::Message);
+            let message_text = resolved_solid_fill(&sequence, ThemeTarget::MessageLabel);
+            let loop_text = resolved_solid_fill(&sequence, ThemeTarget::LoopLabel);
+            let loop_background = resolved_solid_fill(&sequence, ThemeTarget::Loop);
+            let note_text = resolved_solid_fill(&sequence, ThemeTarget::NoteLabel);
+            let note_background = resolved_solid_fill(&sequence, ThemeTarget::Note);
+
+            let pairs = [
+                (
+                    "sequence-number/message-stroke",
+                    sequence_number.as_str(),
+                    sequence_number_background.as_str(),
+                    palette.sequence_number_text,
+                    palette.line,
+                ),
+                (
+                    "message-label/canvas",
+                    message_text.as_str(),
+                    canvas.as_str(),
+                    palette.text,
+                    palette.canvas,
+                ),
+                (
+                    "loop-label/loop",
+                    loop_text.as_str(),
+                    loop_background.as_str(),
+                    palette.text,
+                    palette.surface_alt,
+                ),
+                (
+                    "loop-label/canvas",
+                    loop_text.as_str(),
+                    canvas.as_str(),
+                    palette.text,
+                    palette.canvas,
+                ),
+                (
+                    "note-label/note",
+                    note_text.as_str(),
+                    note_background.as_str(),
+                    palette.note_text,
+                    palette.note_background,
+                ),
+            ];
+
+            for (role, foreground, background, expected_foreground, expected_background) in pairs {
+                assert_eq!(
+                    foreground,
+                    expected_foreground,
+                    "{} {role} foreground recipe",
+                    preset.id()
+                );
+                assert_eq!(
+                    background,
+                    expected_background,
+                    "{} {role} background recipe",
+                    preset.id()
+                );
+                let ratio = contrast_ratio(foreground, background);
+                assert!(
+                    ratio >= MINIMUM_TEXT_CONTRAST,
+                    "{} {role} contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({foreground} on {background})",
+                    preset.id()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn built_in_packet_presets_keep_field_labels_readable_on_the_light_block() {
+        const PACKET_BLOCK_BACKGROUND: &str = "#efefef";
+        const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
+
+        for preset in all_presets() {
+            let palette = preset_palette(preset);
+            let theme = DiagramThemeCompiler::new()
+                .compile_preset(preset)
+                .expect("built-in theme preset should compile");
+            let packet = theme.resolve(DiagramFamilyId::PACKET);
+            let field_label = resolved_solid_fill(&packet, ThemeTarget::PacketFieldLabel);
+
+            assert_eq!(
+                field_label.as_str(),
+                palette.packet_field_label_text,
+                "{} Packet field-label recipe",
+                preset.id()
+            );
+            let ratio = contrast_ratio(&field_label, PACKET_BLOCK_BACKGROUND);
+            assert!(
+                ratio >= MINIMUM_TEXT_CONTRAST,
+                "{} Packet field-label contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({field_label} on {PACKET_BLOCK_BACKGROUND})",
+                preset.id()
+            );
         }
     }
 }

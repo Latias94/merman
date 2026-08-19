@@ -56,6 +56,22 @@ fn mindmap_node_palette_theme(colors: &[&str]) -> DiagramTheme {
         .expect("compile Mindmap Node palette")
 }
 
+fn mindmap_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke(stroke),
+                    )
+                    .for_family(merman_render::DiagramFamilyId::MINDMAP),
+                ),
+            ),
+        )
+        .expect("compile Mindmap Edge stroke")
+}
+
 fn prepare_mindmap_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -105,6 +121,19 @@ fn mindmap_node_attribute(svg: &str, node_dom_id: &str, attribute: &str) -> Opti
     document
         .descendants()
         .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(node_dom_id))
+        .and_then(|node| node.attribute(attribute))
+        .map(str::to_string)
+}
+
+fn mindmap_edge_attribute(svg: &str, edge_id: &str, attribute: &str) -> Option<String> {
+    let document = roxmltree::Document::parse(svg).expect("valid Mindmap SVG");
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some(edge_id)
+        })
         .and_then(|node| node.attribute(attribute))
         .map(str::to_string)
 }
@@ -407,6 +436,182 @@ fn mindmap_node_palette_reaches_branch_shapes_without_recoloring_the_root() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_direct_edge_stroke_reaches_classic_hand_drawn_neo_and_redux_paths() {
+    let source = "mindmap\n  Root\n    Child\n";
+    for (case, stroke, expected_stroke) in [
+        (
+            "solid",
+            CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+            "#123456",
+        ),
+        ("transparent", CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = mindmap_edge_stroke_theme(stroke);
+        for (look_case, config) in [
+            ("classic", json!({ "look": "classic" })),
+            ("hand-drawn", json!({ "look": "handDrawn" })),
+            ("neo", json!({ "look": "neo" })),
+            ("redux", json!({ "theme": "redux", "look": "neo" })),
+        ] {
+            let rendered = render_mindmap_with_theme_and_engine(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                &format!("mindmap-edge-{case}-{look_case}"),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            let style = mindmap_edge_attribute(rendered.svg(), "edge_0_1", "style")
+                .expect("directly themed Mindmap edge style");
+            assert_eq!(
+                style,
+                format!("stroke:{expected_stroke} !important"),
+                "case={case} look={look_case}: {}",
+                rendered.svg(),
+            );
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "case={case} look={look_case}");
+            assert_eq!(evidence.applied_count(), 1, "case={case} look={look_case}");
+            assert_eq!(
+                evidence.theme_residual_count(),
+                0,
+                "case={case} look={look_case}",
+            );
+        }
+    }
+}
+
+#[test]
+fn mindmap_color_scale_ownership_suppresses_only_edges_using_that_slot() {
+    let theme = mindmap_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+    );
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    First\n      First child\n    Second\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "themeVariables": { "cScale1": "#fedcba" }
+        }))),
+        "mindmap-edge-color-scale-owner",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    for edge_id in ["edge_0_1", "edge_1_2"] {
+        assert_eq!(
+            mindmap_edge_attribute(rendered.svg(), edge_id, "style"),
+            None,
+            "cScale1 must retain the edges in its section: {}",
+            rendered.svg(),
+        );
+    }
+    assert_eq!(
+        mindmap_edge_attribute(rendered.svg(), "edge_0_3", "style").as_deref(),
+        Some("stroke:#123456 !important"),
+        "an unrelated section must retain the typed terminal owner: {}",
+        rendered.svg(),
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_neo_redux_node_border_ownership_suppresses_the_typed_edge_stroke() {
+    let theme = mindmap_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+    );
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    First\n    Second\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": { "nodeBorder": "#fedcba" }
+        }))),
+        "mindmap-edge-node-border-owner",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    for edge_id in ["edge_0_1", "edge_0_2"] {
+        assert_eq!(
+            mindmap_edge_attribute(rendered.svg(), edge_id, "style"),
+            None,
+            "the source-owned Redux nodeBorder must retain each Neo edge: {}",
+            rendered.svg(),
+        );
+    }
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains(r#"[data-look="neo"].section-edge-0{stroke:#fedcba;}"#,),
+        "the source-owned final edge value must remain in the terminal stylesheet: {stylesheet}",
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_line_color_does_not_claim_the_edge_terminal() {
+    let theme = mindmap_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+    );
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "themeVariables": { "lineColor": "#fedcba" }
+        }))),
+        "mindmap-edge-line-color",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+
+    assert_eq!(
+        mindmap_edge_attribute(rendered.svg(), "edge_0_1", "style").as_deref(),
+        Some("stroke:#123456 !important"),
+        "lineColor is not a Mindmap edge source owner: {}",
+        rendered.svg(),
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_edge_stroke_is_not_applicable_without_edge_paths() {
+    let theme = mindmap_edge_stroke_theme(
+        CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
+    );
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n",
+        &theme,
+        Engine::new(),
+        "mindmap-edge-empty",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid empty Mindmap SVG");
+    assert!(
+        document
+            .descendants()
+            .all(|node| node.attribute("data-edge") != Some("true")),
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 

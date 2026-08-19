@@ -1,4 +1,8 @@
-use crate::config::{config_bool, config_f64_or, config_font_family_css};
+mod theme;
+
+pub(crate) use theme::{WardleySurfaceReceipt, WardleyTextRole, WardleyTypographyThemePlan};
+
+use crate::config::{config_bool, config_f64_or};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::wardley::{
@@ -653,6 +657,39 @@ pub(crate) fn layout_wardley_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
+    let font_family_css = crate::config::config_font_family_css(effective_config);
+    layout_wardley_diagram_with_font_family(
+        model,
+        diagram_title,
+        effective_config,
+        &font_family_css,
+        measurer,
+    )
+}
+
+pub(crate) fn layout_wardley_diagram_typed_with_theme(
+    model: &WardleyDiagramRenderModel,
+    diagram_title: Option<&str>,
+    effective_config: &Value,
+    typography_theme: &WardleyTypographyThemePlan,
+    measurer: &dyn TextMeasurer,
+) -> Result<WardleyDiagramLayout> {
+    layout_wardley_diagram_with_font_family(
+        model,
+        diagram_title,
+        effective_config,
+        typography_theme.font_family_css(),
+        measurer,
+    )
+}
+
+fn layout_wardley_diagram_with_font_family(
+    model: &WardleyDiagramRenderModel,
+    diagram_title: Option<&str>,
+    effective_config: &Value,
+    font_family_css: &str,
+    measurer: &dyn TextMeasurer,
+) -> Result<WardleyDiagramLayout> {
     let settings = WardleySettings::from_config(effective_config);
     let width = model.size.map_or(settings.width, |size| size.width);
     let height = model.size.map_or(settings.height, |size| size.height);
@@ -1072,9 +1109,8 @@ pub(crate) fn layout_wardley_diagram_typed(
                 };
             }
 
-            let font_family = config_font_family_css(effective_config);
             let style = TextStyle {
-                font_family: Some(font_family),
+                font_family: Some(font_family_css.to_string()),
                 font_size,
                 font_weight: None,
                 font_style: None,

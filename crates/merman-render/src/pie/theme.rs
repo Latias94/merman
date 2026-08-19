@@ -199,6 +199,38 @@ impl PieThemePlan {
         self.stroke = typed_static_stroke(theme, &style, slice_site, outer_site);
 
         let occurrence_count = model.sections.len();
+        // Pie only emits a shared static stroke rule today. Ordinal stroke winners therefore
+        // remain residual, but they must still be observed at the occurrences they match.
+        let has_ordinal_stroke_routes =
+            theme
+                .family_mechanism_routes()
+                .iter()
+                .copied()
+                .any(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet {
+                            target: ThemeTarget::PieSlice,
+                            selector: FamilyThemeSelectorShape::Ordinal { .. },
+                            facet: FamilyThemeRuleFacet::Stroke(_),
+                            ..
+                        }
+                    )
+                });
+        let mut occurrence_stroke_winners = BTreeSet::new();
+        if has_ordinal_stroke_routes {
+            for ordinal in 1..=occurrence_count {
+                let occurrence_style = theme.style_with_work_meter(
+                    ThemeTarget::PieSlice,
+                    ThemeVariant::Default,
+                    Some(ordinal),
+                    work_meter,
+                )?;
+                if let Some(origin) = occurrence_style.stroke_resolution().winner() {
+                    occurrence_stroke_winners.insert(origin.rule_index());
+                }
+            }
+        }
         let mut observations = BTreeMap::<usize, PieSliceRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             let FamilyThemeMechanism::RuleFacet {
@@ -214,8 +246,10 @@ impl PieThemePlan {
             if !selector.ordinal_domain_intersects_occurrence_count(occurrence_count) {
                 continue;
             }
-            let route_won =
-                winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
+            let route_won = winner_properties
+                .contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                || (matches!(facet, FamilyThemeRuleFacet::Stroke(_))
+                    && occurrence_stroke_winners.contains(&rule_index));
             let qualified_variant = matches!(
                 selector,
                 FamilyThemeSelectorShape::Static { variant: Some(_) }

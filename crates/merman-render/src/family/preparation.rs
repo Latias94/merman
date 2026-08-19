@@ -64,7 +64,8 @@ fn prepare_mindmap_family(
 ) -> Result<BuiltinFamilyArtifact> {
     let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(
         execution.resolved_theme(),
-        model.nodes.iter().map(|node| node.section),
+        &meta.effective_config,
+        &model,
         execution.work_meter_ref(),
     )?;
     let layout = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
@@ -152,6 +153,99 @@ fn prepare_railroad_family(
     )?;
     Ok(BuiltinFamilyArtifact::Railroad(Box::new(
         RailroadFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            typography_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_error_family(
+    model: diagrams::error_diagram::ErrorDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let typography_theme = crate::error::ErrorTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::error::layout_error_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Error(Box::new(
+        ErrorFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            typography_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_info_family(
+    model: diagrams::info::InfoDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::info::layout_info_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Info(Box::new(InfoFamilyArtifact {
+        pair: FamilyPair::new(model, layout),
+        typography_theme,
+    })))
+}
+
+#[inline(never)]
+fn prepare_cynefin_family(
+    model: diagrams::cynefin::CynefinDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let typography_theme = crate::cynefin::CynefinTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::cynefin::layout_cynefin_diagram_typed_with_theme(
+        &model,
+        meta.effective_config.as_value(),
+        &typography_theme,
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Cynefin(Box::new(
+        CynefinFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            typography_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_wardley_family(
+    model: diagrams::wardley::WardleyDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let typography_theme = crate::wardley::WardleyTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
+    let layout = crate::wardley::layout_wardley_diagram_typed_with_theme(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        &typography_theme,
+        execution.text_measurer(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Wardley(Box::new(
+        WardleyFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             typography_theme,
         },
@@ -287,6 +381,7 @@ fn prepare_architecture_family(
         execution.resolved_theme(),
         &meta.effective_config,
         model.groups.len(),
+        model.edges.len(),
         execution.work_meter().as_ref(),
     )?;
     let layout = crate::architecture::layout_architecture_diagram_typed(
@@ -310,14 +405,9 @@ fn prepare_c4_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let explicit_boundary_count = model
-        .boundaries
-        .iter()
-        .filter(|boundary| boundary.alias != "global")
-        .count();
     let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
         execution.resolved_theme(),
-        explicit_boundary_count,
+        &model.boundaries,
         execution.work_meter_ref(),
     )?;
     let layout = crate::c4::layout_c4_diagram_typed(
@@ -342,6 +432,7 @@ fn prepare_gantt_family(
 ) -> Result<BuiltinFamilyArtifact> {
     let task_theme = crate::gantt::GanttTaskTheme::resolve(
         execution.resolved_theme(),
+        &meta.effective_config,
         &model.tasks,
         execution.work_meter_ref(),
     )?;
@@ -497,6 +588,7 @@ fn prepare_er_family(
         execution.resolved_theme(),
         &meta.effective_config,
         &model.entities,
+        model.relationships.len(),
         execution.work_meter_ref(),
     )?;
     #[cfg(feature = "layout-elk")]
@@ -636,7 +728,8 @@ fn prepare_packet_family(
     let typography_theme = crate::packet::PacketTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
+        execution.work_meter_ref(),
+    )?;
     let layout = crate::packet::layout_packet_diagram_typed(
         &model,
         meta.title.as_deref(),
@@ -712,6 +805,113 @@ fn prepare_class_family(
 }
 
 #[inline(never)]
+fn prepare_venn_family(
+    model: diagrams::venn::VennDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let effective_title = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            meta.title
+                .as_deref()
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        });
+    let title_theme = crate::venn::VennTitleThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        effective_title,
+        execution.work_meter_ref(),
+    )?;
+    let layout = crate::venn::layout_venn_diagram_typed_with_work_meter(
+        &model,
+        meta.title.as_deref(),
+        meta.effective_config.as_value(),
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Venn(Box::new(VennFamilyArtifact {
+        pair: FamilyPair::new(model, layout),
+        title_theme,
+    })))
+}
+
+#[inline(never)]
+fn prepare_zenuml_family(
+    model: diagrams::zenuml::ZenumlDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::zenuml::layout_zenuml_diagram_typed(&model, execution.text_measurer())?;
+    let title_theme = crate::zenuml::ZenumlTitleThemePlan::resolve(
+        execution.resolved_theme(),
+        &model,
+        &layout,
+        meta.title.as_deref(),
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Zenuml(Box::new(
+        ZenumlFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            title_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_eventmodeling_family(
+    model: diagrams::eventmodeling::EventModelingDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::eventmodeling::layout_eventmodeling_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    let text_theme = crate::eventmodeling::EventModelingTextThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::EventModeling(Box::new(
+        EventModelingFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            text_theme,
+        },
+    )))
+}
+
+#[inline(never)]
+fn prepare_ishikawa_family(
+    model: diagrams::ishikawa::IshikawaDiagramRenderModel,
+    meta: &ParseMetadata,
+    execution: &LayoutExecution<'_>,
+) -> Result<BuiltinFamilyArtifact> {
+    let layout = crate::ishikawa::layout_ishikawa_diagram_typed(
+        &model,
+        meta.effective_config.as_value(),
+        execution.text_measurer(),
+    )?;
+    let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
+    Ok(BuiltinFamilyArtifact::Ishikawa(Box::new(
+        IshikawaFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            text_theme,
+        },
+    )))
+}
+
+#[inline(never)]
 pub(super) fn prepare_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
@@ -742,20 +942,12 @@ pub(super) fn prepare_non_class_render(
     let title = meta.title.as_deref();
     context.observe_compatibility(&meta);
     if let RenderSemanticModel::State(model) = &model {
-        context.adapt_state(model, effective_config, title)?;
+        context.adapt_state(model, &meta.effective_config, title)?;
     }
     context.ensure_portable_before_svg()?;
     let execution = LayoutExecution::new(options, context.execution());
     let family = match model {
-        RenderSemanticModel::Error(model) => {
-            BuiltinFamilyArtifact::Error(prepare_pair(model, |model| {
-                crate::error::layout_error_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
-        }
+        RenderSemanticModel::Error(model) => prepare_error_family(model, &meta, &execution)?,
         RenderSemanticModel::Mindmap(model) => prepare_mindmap_family(model, &meta, &execution)?,
         RenderSemanticModel::State(model) => prepare_state_family(model, &meta, &execution)?,
         RenderSemanticModel::Sequence(model) => {
@@ -772,11 +964,7 @@ pub(super) fn prepare_non_class_render(
                 )
             })?)
         }
-        RenderSemanticModel::Zenuml(model) => {
-            BuiltinFamilyArtifact::Zenuml(prepare_pair(model, |model| {
-                crate::zenuml::layout_zenuml_diagram_typed(model, execution.text_measurer())
-            })?)
-        }
+        RenderSemanticModel::Zenuml(model) => prepare_zenuml_family(model, &meta, &execution)?,
         RenderSemanticModel::Flowchart(model) => {
             prepare_flowchart_family(model, flowchart_label_sources, &meta, &execution)?
         }
@@ -795,25 +983,8 @@ pub(super) fn prepare_non_class_render(
             unreachable!("Class models use the stack-bounded family dispatch path")
         }
         RenderSemanticModel::C4(model) => prepare_c4_family(model, &meta, &execution)?,
-        RenderSemanticModel::Cynefin(model) => {
-            BuiltinFamilyArtifact::Cynefin(prepare_pair(model, |model| {
-                crate::cynefin::layout_cynefin_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
-        }
-        RenderSemanticModel::Wardley(model) => {
-            BuiltinFamilyArtifact::Wardley(prepare_pair(model, |model| {
-                crate::wardley::layout_wardley_diagram_typed(
-                    model,
-                    title,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
-        }
+        RenderSemanticModel::Cynefin(model) => prepare_cynefin_family(model, &meta, &execution)?,
+        RenderSemanticModel::Wardley(model) => prepare_wardley_family(model, &meta, &execution)?,
         RenderSemanticModel::Railroad(model) => {
             prepare_railroad_family(model, diagram_type, &meta, &execution)?
         }
@@ -838,15 +1009,7 @@ pub(super) fn prepare_non_class_render(
         }
         RenderSemanticModel::Sankey(model) => prepare_sankey_family(model, &meta, &execution)?,
         RenderSemanticModel::Radar(model) => prepare_radar_family(model, &meta, &execution)?,
-        RenderSemanticModel::Info(model) => {
-            BuiltinFamilyArtifact::Info(prepare_pair(model, |model| {
-                crate::info::layout_info_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
-        }
+        RenderSemanticModel::Info(model) => prepare_info_family(model, &meta, &execution)?,
         RenderSemanticModel::Treemap(model) => prepare_treemap_family(model, &meta, &execution)?,
         RenderSemanticModel::Block(model) => prepare_block_family(model, &meta, &execution)?,
         RenderSemanticModel::Er(model) => prepare_er_family(model, &meta, &execution)?,
@@ -856,34 +1019,11 @@ pub(super) fn prepare_non_class_render(
         RenderSemanticModel::XyChart(model) => prepare_xy_chart_family(model, &meta, &execution)?,
         RenderSemanticModel::GitGraph(model) => prepare_gitgraph_family(model, &meta, &execution)?,
         RenderSemanticModel::TreeView(model) => prepare_tree_view_family(model, &meta, &execution)?,
-        RenderSemanticModel::Ishikawa(model) => {
-            BuiltinFamilyArtifact::Ishikawa(prepare_pair(model, |model| {
-                crate::ishikawa::layout_ishikawa_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
-        }
+        RenderSemanticModel::Ishikawa(model) => prepare_ishikawa_family(model, &meta, &execution)?,
         RenderSemanticModel::EventModeling(model) => {
-            BuiltinFamilyArtifact::EventModeling(prepare_pair(model, |model| {
-                crate::eventmodeling::layout_eventmodeling_diagram_typed(
-                    model,
-                    effective_config,
-                    execution.text_measurer(),
-                )
-            })?)
+            prepare_eventmodeling_family(model, &meta, &execution)?
         }
-        RenderSemanticModel::Venn(model) => {
-            BuiltinFamilyArtifact::Venn(prepare_pair(model, |model| {
-                crate::venn::layout_venn_diagram_typed_with_work_meter(
-                    model,
-                    title,
-                    effective_config,
-                    execution.work_meter_ref(),
-                )
-            })?)
-        }
+        RenderSemanticModel::Venn(model) => prepare_venn_family(model, &meta, &execution)?,
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
         }
