@@ -4,8 +4,8 @@ use crate::svg::pipeline::{
 };
 use crate::{Error, Result};
 use cssparser::{
-    BasicParseErrorKind, CssStringWriter, Parser, ParserInput, Token, serialize_identifier,
-    serialize_name,
+    BasicParseErrorKind, CssStringWriter, Parser, ParserInput, SourcePosition, Token,
+    serialize_identifier, serialize_name,
 };
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesCData, BytesStart, BytesText, Event};
@@ -741,8 +741,9 @@ fn rewrite_parser<'i, 't, W: fmt::Write>(
                 let is_url = name.eq_ignore_ascii_case("url");
                 let nested_hashes = name.eq_ignore_ascii_case("selector")
                     || (rewrite_hashes && group_at_rule.is_none());
+                let mut rewrite_error = None;
                 let nested = input.parse_nested_block(|nested| {
-                    rewrite_url_or_nested_to(
+                    match rewrite_url_or_nested_to(
                         nested,
                         ids,
                         prefix,
@@ -750,10 +751,18 @@ fn rewrite_parser<'i, 't, W: fmt::Write>(
                         is_url,
                         output,
                         cadence,
-                    )
-                    .map_err(|_| nested.new_custom_error::<(), ()>(()))
+                    ) {
+                        Ok(()) => Ok(()),
+                        Err(error) => {
+                            rewrite_error = Some(error);
+                            Err(nested.new_custom_error::<(), ()>(()))
+                        }
+                    }
                 });
                 cadence.checkpoint()?;
+                if let Some(error) = rewrite_error {
+                    return Err(error);
+                }
                 nested.map_err(|_| rebase_error("invalid CSS function"))?;
                 output
                     .write_char(')')
@@ -770,15 +779,25 @@ fn rewrite_parser<'i, 't, W: fmt::Write>(
                 } else {
                     rewrite_hashes && group_at_rule.is_none()
                 };
+                let mut rewrite_error = None;
                 let nested = input.parse_nested_block(|nested| {
                     let result = if matches!(token, Token::SquareBracketBlock) && nested_hashes {
                         rewrite_attribute_selector_to(nested, prefix, output, cadence)
                     } else {
                         rewrite_parser(nested, ids, prefix, nested_hashes, output, cadence)
                     };
-                    result.map_err(|_| nested.new_custom_error::<(), ()>(()))
+                    match result {
+                        Ok(()) => Ok(()),
+                        Err(error) => {
+                            rewrite_error = Some(error);
+                            Err(nested.new_custom_error::<(), ()>(()))
+                        }
+                    }
                 });
                 cadence.checkpoint()?;
+                if let Some(error) = rewrite_error {
+                    return Err(error);
+                }
                 nested.map_err(|_| rebase_error("invalid nested CSS block"))?;
                 output
                     .write_char(match token {
@@ -1030,17 +1049,40 @@ fn rewrite_url_or_nested_to<'i, 't, W: fmt::Write>(
     if !is_url {
         return rewrite_parser(input, ids, prefix, rewrite_hashes, output, cadence);
     }
-    cadence.tick()?;
-    let start = input.position();
-    let token = input.next_including_whitespace_and_comments();
-    cadence.checkpoint()?;
-    let token = match token {
-        Ok(token) => token.clone(),
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            return Ok(());
+    let body_start = input.position();
+    let mut payload = None::<(SourcePosition, SourcePosition, Token<'i>)>;
+    let mut has_multiple_payload_tokens = false;
+    let body_end = loop {
+        cadence.tick()?;
+        let token_start = input.position();
+        let token = input.next_including_whitespace_and_comments();
+        cadence.checkpoint()?;
+        let token = match token {
+            Ok(token) => token.clone(),
+            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+                break input.position();
+            }
+            Err(error) => return Err(rebase_error(format!("invalid CSS URL: {error:?}"))),
+        };
+        let token_end = input.position();
+        match token {
+            Token::WhiteSpace(_) | Token::Comment(_) => {}
+            Token::BadUrl(_) | Token::BadString(_) => {
+                return Err(rebase_error("invalid CSS URL token"));
+            }
+            token if payload.is_none() => payload = Some((token_start, token_end, token)),
+            _ => has_multiple_payload_tokens = true,
         }
-        Err(error) => return Err(rebase_error(format!("invalid CSS URL: {error:?}"))),
     };
+
+    if has_multiple_payload_tokens {
+        return write_rebased(output, input.slice(body_start..body_end));
+    }
+    let Some((token_start, token_end, token)) = payload else {
+        return write_rebased(output, input.slice(body_start..body_end));
+    };
+
+    write_rebased(output, input.slice(body_start..token_start))?;
     match token {
         Token::QuotedString(value) if value.starts_with('#') => {
             output
@@ -1061,17 +1103,9 @@ fn rewrite_url_or_nested_to<'i, 't, W: fmt::Write>(
                 .map_err(|_| rebase_error("failed to write rebased CSS URL prefix"))?;
             serialize_rebased_identifier(prefix, value.as_ref(), output, "CSS URL", cadence)?;
         }
-        _ => write_rebased(output, input.slice_from(start))?,
+        _ => write_rebased(output, input.slice(token_start..token_end))?,
     }
-    loop {
-        cadence.tick()?;
-        let next = input.next_including_whitespace_and_comments();
-        cadence.checkpoint()?;
-        if next.is_err() {
-            break;
-        }
-    }
-    Ok(())
+    write_rebased(output, input.slice(token_end..body_end))
 }
 
 fn rebase_error(message: impl Into<String>) -> Error {
@@ -1118,6 +1152,21 @@ mod tests {
             assert!(output.contains(expected), "missing {expected:?}: {output}");
         }
         roxmltree::Document::parse(&output).expect("rebased SVG XML");
+    }
+
+    #[test]
+    fn rebases_quoted_urls_without_discarding_whitespace_or_comments() {
+        let svg = r##"<svg><style>.spaced{fill:url( "#paint" )}.commented{stroke:u\72l( "#paint" /* trailing */)}</style><defs><linearGradient id="paint"/></defs></svg>"##;
+        let output = rebase(svg);
+
+        assert!(
+            output.contains("url( &quot;#fragment-light-paint&quot; )"),
+            "{output}"
+        );
+        assert!(
+            output.contains("u\\72l( &quot;#fragment-light-paint&quot; /* trailing */)"),
+            "{output}"
+        );
     }
 
     #[test]

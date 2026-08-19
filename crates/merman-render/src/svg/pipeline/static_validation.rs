@@ -1264,19 +1264,34 @@ fn validate_quoted_css_url<'i, 't>(
     require_target: bool,
     control: &StaticCssControl<'_>,
 ) -> std::result::Result<(), String> {
-    css_checkpoint(control)?;
-    let token = input
-        .next_including_whitespace_and_comments()
-        .map_err(|_| "rendered SVG contains an empty CSS URL".to_string())?
-        .clone();
-    let value = match token {
-        Token::QuotedString(value) => value,
-        Token::IDHash(value) => {
-            return validate_local_css_target(&value, ids, require_target);
+    let mut payload = None::<Token<'i>>;
+    loop {
+        css_checkpoint(control)?;
+        let token = match input.next_including_whitespace_and_comments() {
+            Ok(token) => token.clone(),
+            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => break,
+            Err(error) => {
+                return Err(format!(
+                    "rendered SVG contains an invalid CSS URL: {error:?}"
+                ));
+            }
+        };
+        match token {
+            Token::WhiteSpace(_) | Token::Comment(_) => {}
+            Token::BadUrl(_) | Token::BadString(_) => {
+                return Err("rendered SVG contains an invalid CSS URL token".to_string());
+            }
+            token if payload.is_none() => payload = Some(token),
+            _ => return Err("rendered SVG contains a malformed CSS URL".to_string()),
         }
-        _ => return Err("rendered SVG contains a malformed CSS URL".to_string()),
-    };
-    validate_css_url(&value, ids, require_target)
+    }
+
+    match payload {
+        Some(Token::QuotedString(value)) => validate_css_url(&value, ids, require_target),
+        Some(Token::IDHash(value)) => validate_local_css_target(&value, ids, require_target),
+        Some(_) => Err("rendered SVG contains a malformed CSS URL".to_string()),
+        None => Err("rendered SVG contains an empty CSS URL".to_string()),
+    }
 }
 
 fn validate_css_url(
@@ -1406,6 +1421,24 @@ mod tests {
             r##"<svg id="root" aria-label="prose url(https://example.test/not-a-resource)"><defs><path id="shape"/><linearGradient id="paint"/></defs><style>#root #shape{fill:url(#paint)}#root .optional{fill:url(#unused-theme-paint)}</style><use href="#shape"/><a href="https://example.test/docs"><text>Docs</text></a></svg>"##,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn accepts_quoted_local_css_urls_with_whitespace_and_comments() {
+        validate(
+            r##"<svg><defs><linearGradient id="paint"/></defs><path style='fill:url( "#paint" /* trailing */ )'/></svg>"##,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn rejects_quoted_css_urls_with_multiple_payload_tokens() {
+        let error = validate(
+            r##"<svg><defs><linearGradient id="paint"/></defs><path style='fill:url("#paint" fallback)'/></svg>"##,
+        )
+        .expect_err("a CSS URL must contain exactly one payload token");
+
+        assert!(error.to_string().contains("malformed CSS URL"), "{error}");
     }
 
     #[test]
