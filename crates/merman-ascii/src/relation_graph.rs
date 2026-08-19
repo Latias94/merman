@@ -136,6 +136,8 @@ pub(crate) use self::stack::{render_stacked_boxes, render_stacked_boxes_with_sec
 pub(crate) use self::summary::*;
 
 pub(crate) trait RelationComponentAdapter<'text, R> {
+    fn direction_transform(&self) -> DirectionTransform;
+
     fn build_edges(&self, relation: &R) -> LayeredRelationEdge;
 
     fn is_self_relation(&self, relation: &R) -> bool;
@@ -606,7 +608,14 @@ where
         rows.push(adapter.build_summary_row(relation, reason, resources, deferred)?);
     }
     Ok(RelationRegionPlan::Summary(
-        RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
+        RelationSummaryPaintPlan::stacked(
+            boxes,
+            adapter.direction_transform(),
+            rows,
+            Some(reason),
+            options,
+            resources,
+        )?,
     ))
 }
 

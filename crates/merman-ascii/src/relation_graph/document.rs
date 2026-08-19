@@ -475,12 +475,14 @@ pub(crate) struct RelationSummaryPaintPlan<'a> {
 
 impl<'a> RelationSummaryPaintPlan<'a> {
     pub(crate) fn stacked(
-        boxes: Vec<&'a RelationGraphBox>,
+        mut boxes: Vec<&'a RelationGraphBox>,
+        direction: DirectionTransform,
         rows: Vec<RelationGraphSummaryRow>,
         reason: Option<LayeredRelationSummaryReason>,
         options: &AsciiRenderOptions,
         resources: &ResourceContext,
     ) -> Result<Self> {
+        direction.order_stacked_boxes(&mut boxes)?;
         let base_extent = stacked_box_ref_extent(&boxes, resources)?;
         let summary_extent = relation_summary_extent(&rows, reason, options, resources)?;
         let document = RelationDocumentPlan::new(

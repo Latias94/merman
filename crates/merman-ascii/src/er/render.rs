@@ -90,7 +90,7 @@ type RenderedEntityBox = RelationGraphBox;
 struct ErRelationComponentAdapter {
     charset: ErCharset,
     width_profile: TerminalWidthProfile,
-    direction: RelationDirection,
+    transform: relation_graph::DirectionTransform,
 }
 
 struct ErRenderContext<'render> {
@@ -318,7 +318,7 @@ fn render_er_components<'model>(
     let adapter = ErRelationComponentAdapter {
         charset: context.charset,
         width_profile: context.options.terminal_width_profile,
-        direction: context.direction,
+        transform: context.direction.transform(),
     };
     if context.direction.is_horizontal() {
         let lines = render_horizontal_er_component_lines(
@@ -823,7 +823,14 @@ fn plan_parallel_vertical_relationships<'plan, 'model>(
             )?);
         }
         return Ok(RelationRegionPlan::Summary(
-            RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
+            RelationSummaryPaintPlan::stacked(
+                boxes,
+                first.transform,
+                rows,
+                Some(reason),
+                options,
+                resources,
+            )?,
         ));
     }
 
@@ -1033,6 +1040,10 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
 impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'model>>
     for ErRelationComponentAdapter
 {
+    fn direction_transform(&self) -> relation_graph::DirectionTransform {
+        self.transform
+    }
+
     fn build_edges(&self, layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
         er_layered_edge(layout)
     }
@@ -1050,7 +1061,7 @@ impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'
             layout,
             self.charset,
             self.width_profile,
-            self.direction.is_horizontal(),
+            self.transform.is_horizontal(),
             resources,
         )
     }
@@ -1064,7 +1075,7 @@ impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'
             layout,
             self.charset,
             self.width_profile,
-            self.direction.is_horizontal(),
+            self.transform.is_horizontal(),
             resources,
         )
     }
@@ -1680,7 +1691,7 @@ mod tests {
         let adapter = ErRelationComponentAdapter {
             charset,
             width_profile: options.terminal_width_profile,
-            direction,
+            transform: direction.transform(),
         };
         let lines = relation_graph::render_relation_component_lines(
             &boxes,
@@ -1980,7 +1991,7 @@ mod tests {
         let adapter = ErRelationComponentAdapter {
             charset,
             width_profile: options.terminal_width_profile,
-            direction,
+            transform: direction.transform(),
         };
         let context = ErRenderContext {
             options: &options,

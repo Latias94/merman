@@ -277,6 +277,7 @@ impl<'a> RenderedClassBoxIndex<'a> {
 struct ClassRelationComponentAdapter {
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
+    transform: relation_graph::DirectionTransform,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -726,8 +727,7 @@ fn render_class_diagram_impl(
     let rendered = render_class_components(
         &boxes,
         &layouts,
-        options,
-        charset,
+        settings,
         &mut resources,
         &mut deferred_text,
         execution,
@@ -883,20 +883,20 @@ fn render_class_boxes<'a>(
 fn render_class_components<'text>(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'text>],
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
+    settings: ClassRenderSettings<'_>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'text>,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let adapter = ClassRelationComponentAdapter {
-        charset,
-        width_profile: options.terminal_width_profile,
+        charset: settings.charset,
+        width_profile: settings.options.terminal_width_profile,
+        transform: settings.direction.transform(),
     };
     relation_graph::render_relation_components_with_deferred_with_execution(
         boxes,
         layouts,
-        options,
+        settings.options,
         resources,
         &adapter,
         deferred_text,
@@ -916,6 +916,7 @@ fn render_class_component_lines<'text>(
     let adapter = ClassRelationComponentAdapter {
         charset: settings.charset,
         width_profile: settings.options.terminal_width_profile,
+        transform: settings.direction.transform(),
     };
     relation_graph::render_relation_component_lines_with_execution(
         boxes,
@@ -955,6 +956,7 @@ fn render_horizontal_class_component_lines<'text>(
     let adapter = ClassRelationComponentAdapter {
         charset: settings.charset,
         width_profile: settings.options.terminal_width_profile,
+        transform: settings.direction.transform(),
     };
     relation_graph::render_horizontal_relation_components_with_execution(
         boxes,
@@ -1899,6 +1901,7 @@ fn plan_parallel_vertical_relations<'plan, 'text>(
             diagram_type: "class",
             feature: "empty parallel class relationship layout",
         })?;
+    let transform = first.transform;
     let first = first.physical();
     let top = relation_graph::find_box_ref(&boxes, first.top.render_id).ok_or(
         AsciiError::UnsupportedFeature {
@@ -1948,7 +1951,14 @@ fn plan_parallel_vertical_relations<'plan, 'text>(
             )?);
         }
         return Ok(RelationRegionPlan::Summary(
-            RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
+            RelationSummaryPaintPlan::stacked(
+                boxes,
+                transform,
+                rows,
+                Some(reason),
+                options,
+                resources,
+            )?,
         ));
     }
 
@@ -2303,6 +2313,10 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
 impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayout<'relation>>
     for ClassRelationComponentAdapter
 {
+    fn direction_transform(&self) -> relation_graph::DirectionTransform {
+        self.transform
+    }
+
     fn build_edges(&self, layout: &RelationLayout<'relation>) -> LayeredRelationEdge {
         class_layered_edge(layout)
     }
@@ -3234,9 +3248,13 @@ mod tests {
                 .expect("class summary relation should plan"),
             );
         }
+        for layout in &mut layouts {
+            layout.transform = direction.transform();
+        }
         let adapter = ClassRelationComponentAdapter {
             charset,
             width_profile: options.terminal_width_profile,
+            transform: direction.transform(),
         };
         let lines = relation_graph::render_relation_component_lines(
             &boxes,

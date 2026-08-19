@@ -138,6 +138,22 @@ impl DirectionTransform {
         }
     }
 
+    pub(crate) fn order_stacked_boxes<T>(self, boxes: &mut [T]) -> Result<()> {
+        match self.direction {
+            RelationDirection::TopDown => Ok(()),
+            RelationDirection::BottomUp => {
+                boxes.reverse();
+                Ok(())
+            }
+            RelationDirection::LeftRight | RelationDirection::RightLeft => {
+                Err(AsciiError::InvalidOption {
+                    field: "direction",
+                    message: "stacked relation layout requires TB or BT",
+                })
+            }
+        }
+    }
+
     pub(crate) const fn map_extent(self, extent: RelationExtent) -> RelationExtent {
         match self.direction {
             RelationDirection::TopDown | RelationDirection::BottomUp => extent,
@@ -347,6 +363,35 @@ mod tests {
                 direction.transform().require_horizontal(),
                 Ok(direction.transform())
             );
+        }
+    }
+
+    #[test]
+    fn stacked_box_order_accepts_only_vertical_transforms() {
+        let mut top_down = ["source", "target"];
+        RelationDirection::TopDown
+            .transform()
+            .order_stacked_boxes(&mut top_down)
+            .expect("top-down stacking should preserve order");
+        assert_eq!(top_down, ["source", "target"]);
+
+        let mut bottom_up = ["source", "target"];
+        RelationDirection::BottomUp
+            .transform()
+            .order_stacked_boxes(&mut bottom_up)
+            .expect("bottom-up stacking should reverse physical order");
+        assert_eq!(bottom_up, ["target", "source"]);
+
+        for direction in [RelationDirection::LeftRight, RelationDirection::RightLeft] {
+            let mut boxes = ["source", "target"];
+            assert!(matches!(
+                direction.transform().order_stacked_boxes(&mut boxes),
+                Err(AsciiError::InvalidOption {
+                    field: "direction",
+                    message: "stacked relation layout requires TB or BT",
+                })
+            ));
+            assert_eq!(boxes, ["source", "target"]);
         }
     }
 

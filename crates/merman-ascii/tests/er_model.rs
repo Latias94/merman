@@ -874,6 +874,16 @@ fn er_bottom_up_summary_preserves_semantic_endpoint_roles() {
     )
     .expect("bottom-up parallel ER relationships should preserve semantic roles");
 
+    let b_line = rendered
+        .lines()
+        .position(|line| line == "| B |")
+        .expect("bottom-up summary should render entity B");
+    let a_line = rendered
+        .lines()
+        .position(|line| line == "| A |")
+        .expect("bottom-up summary should render entity A");
+    assert!(b_line < a_line, "BT should place B above A:\n{rendered}");
+
     let summary = rendered
         .split_once("relations:\n")
         .expect("parallel relationships should use structured fallback")

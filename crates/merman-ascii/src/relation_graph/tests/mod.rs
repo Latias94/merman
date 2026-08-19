@@ -55,6 +55,10 @@ impl<'text, R> RelationComponentAdapter<'text, R> for TestRelationAdapter
 where
     R: TestRelationEndpoints,
 {
+    fn direction_transform(&self) -> DirectionTransform {
+        RelationDirection::TopDown.transform()
+    }
+
     fn build_edges(&self, relation: &R) -> LayeredRelationEdge {
         LayeredRelationEdge::new(relation.source_id(), relation.target_id(), 0, 0)
     }
