@@ -318,7 +318,8 @@ impl<'a> LayoutExecution<'a> {
         Self {
             request,
             session,
-            text_measurer: session.text_measurer(TextMeasurementPhase::Layout),
+            text_measurer: session
+                .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout),
         }
     }
 

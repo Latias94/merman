@@ -336,7 +336,8 @@ impl<'a> SvgExecution<'a> {
         Ok(Self {
             request,
             session,
-            text_measurer: session.text_measurer(TextMeasurementPhase::SvgBBox),
+            text_measurer: session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit),
             timing,
             debug,
         })
@@ -347,7 +348,8 @@ impl<'a> SvgExecution<'a> {
     }
 
     pub(crate) fn text_measurer_for(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
-        self.session.text_measurer(phase)
+        self.session
+            .controlled_text_measurer(phase, OperationPhase::Emit)
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
@@ -536,15 +538,12 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         BuiltinFamilyArtifact::Sequence(pair) => {
-            let text_measurer = options
-                .session
-                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
             sequence::render_sequence_diagram_svg_model_with_config(
                 pair.layout(),
                 pair.semantic(),
                 effective_config,
                 title,
-                &text_measurer,
+                measurer,
                 options,
             )
         }

@@ -1623,6 +1623,7 @@ fn prepare_non_class_render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     use crate::environment::{
@@ -1818,6 +1819,19 @@ mod tests {
         }
     }
 
+    struct CancellingSuccessfulHost {
+        calls: AtomicUsize,
+        control: OperationControl,
+    }
+
+    impl HostTextMeasurer for CancellingSuccessfulHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.control.cancel();
+            Ok(Some(sidecar_host_measurement(request, 0)))
+        }
+    }
+
     fn sidecar_host_measurement(
         request: HostTextMeasurementRequest<'_>,
         ordinal: usize,
@@ -1870,6 +1884,42 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn family_layout_stops_host_measurement_after_callback_cancellation() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    First child\n    Second child\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse mindmap")
+            .expect("detect mindmap");
+        let control = OperationControl::new();
+        let host = Arc::new(CancellingSuccessfulHost {
+            calls: AtomicUsize::new(0),
+            control: control.clone(),
+        });
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.family-cancelling-host").expect("profile id"),
+            "1",
+        )
+        .expect("profile identity");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session_with_control(control)
+            .expect("begin render session");
+
+        let result = prepare(parsed, &LayoutOptions::default(), session);
+        let Err(Error::Cancelled(cancelled)) = result else {
+            panic!("family preparation must surface callback cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(host.calls.load(Ordering::Relaxed), 1);
     }
 
     fn render_with_sidecar_host_control(

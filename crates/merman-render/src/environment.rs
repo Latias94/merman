@@ -984,6 +984,14 @@ impl CancelledTextMeasurement for (TextMetrics, Option<f64>) {
 }
 
 impl RoutedTextMeasurer<'_> {
+    fn controlled_cancellation_value<T: CancelledTextMeasurement>(&self) -> Option<T> {
+        let phase = self.controlled_operation_phase?;
+        self.work_meter
+            .checkpoint(phase)
+            .is_err()
+            .then(T::cancelled)
+    }
+
     fn phase_for(&self, operation: TextMeasurementOperation) -> TextMeasurementPhase {
         match operation {
             TextMeasurementOperation::ComputedLength => TextMeasurementPhase::ComputedLength,
@@ -1039,22 +1047,26 @@ impl RoutedTextMeasurer<'_> {
     ) -> T {
         let phase = request.phase;
         let operation = request.operation;
-        if let Some(operation_phase) = self.controlled_operation_phase
-            && self.work_meter.checkpoint(operation_phase).is_err()
-        {
-            return T::cancelled();
+        if let Some(cancelled) = self.controlled_cancellation_value() {
+            return cancelled;
         }
         match &self.policy.routes[phase.index()] {
             TextMeasurementRouteConfig::Profile(profile) => {
                 let value = profile_call(profile.backend.as_ref());
                 self.recorder
                     .record(phase, operation, TextMeasurementRouteOutcome::Profile);
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
+                }
                 value
             }
             TextMeasurementRouteConfig::Host {
                 backend, fallback, ..
             } => {
                 let attempt = backend.measure(request);
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
+                }
                 let decoded = match &attempt {
                     Ok(Some(value)) if validate_host_text_measurement(&request, value).is_ok() => {
                         decode_host(*value)
@@ -1073,14 +1085,11 @@ impl RoutedTextMeasurer<'_> {
                     Ok(None) => HostFallbackReason::Missing,
                     Err(error) => error.fallback_reason(),
                 };
-                // `TextMeasurer` is intentionally infallible. Observe the session's canonical
-                // control before entering another opaque backend; the caller-owned phase
-                // checkpoint immediately after this trait call projects the structured
-                // cancellation. The neutral value is never consumed by that controlled path.
-                if let Some(operation_phase) = self.controlled_operation_phase
-                    && self.work_meter.checkpoint(operation_phase).is_err()
-                {
-                    return T::cancelled();
+                // `TextMeasurer` is intentionally infallible. A controlled route therefore
+                // observes the canonical operation before entering another opaque backend and
+                // returns a neutral value only to unwind toward the caller's fallible boundary.
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
                 }
                 let value = profile_call(fallback.backend.as_ref());
                 self.recorder.record(
@@ -1088,6 +1097,9 @@ impl RoutedTextMeasurer<'_> {
                     operation,
                     TextMeasurementRouteOutcome::Fallback(reason),
                 );
+                if let Some(cancelled) = self.controlled_cancellation_value() {
+                    return cancelled;
+                }
                 value
             }
         }
