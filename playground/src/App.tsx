@@ -106,10 +106,13 @@ export default function App() {
                   onPointerDownCapture={() => setWorkspacePane("editor")}
                 >
                   <EditorPanel
-                    activateCodeEditorImmediately={
+                    activateEditorLanguageImmediately={
                       isNarrowLayout && workspacePane === "editor"
                     }
                     editorMode={editorMode}
+                    mountCodeEditorImmediately={
+                      !isNarrowLayout || workspacePane === "editor"
+                    }
                     setEditorMode={setEditorMode}
                     t={t}
                   />
@@ -147,13 +150,15 @@ export default function App() {
 }
 
 function EditorPanel({
-  activateCodeEditorImmediately,
+  activateEditorLanguageImmediately,
   editorMode,
+  mountCodeEditorImmediately,
   setEditorMode,
   t,
 }: {
-  activateCodeEditorImmediately: boolean;
+  activateEditorLanguageImmediately: boolean;
   editorMode: "code" | "config";
+  mountCodeEditorImmediately: boolean;
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
 }) {
@@ -188,9 +193,10 @@ function EditorPanel({
         forceMount
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <DeferredCodeEditor
-          activateImmediately={activateCodeEditorImmediately}
+        <StartupCodeEditor
+          activateLanguageImmediately={activateEditorLanguageImmediately}
           className="h-full min-h-0"
+          mountImmediately={mountCodeEditorImmediately}
         />
       </TabsContent>
       <TabsContent
@@ -208,22 +214,24 @@ function EditorPanel({
   );
 }
 
-function DeferredCodeEditor({
-  activateImmediately,
+function StartupCodeEditor({
+  activateLanguageImmediately,
   className,
+  mountImmediately,
 }: {
-  readonly activateImmediately: boolean;
+  readonly activateLanguageImmediately: boolean;
   readonly className?: string;
+  readonly mountImmediately: boolean;
 }) {
   const { t } = useTranslation();
-  const [activated, setActivated] = useState(
-    () => playgroundStartupBoundary.reason() !== null,
+  const [mounted, setMounted] = useState(
+    () => mountImmediately || playgroundStartupBoundary.reason() !== null,
   );
 
   useEffect(() => {
     let active = true;
     void playgroundStartupBoundary.wait().then(() => {
-      if (active) setActivated(true);
+      if (active) setMounted(true);
     });
     return () => {
       active = false;
@@ -231,26 +239,34 @@ function DeferredCodeEditor({
   }, []);
 
   useEffect(() => {
-    if (!activateImmediately) return;
-    playgroundStartupBoundary.activate("editor-visible");
-    setActivated(true);
-  }, [activateImmediately]);
+    if (!mountImmediately) return;
+    setMounted(true);
+  }, [mountImmediately]);
 
-  const activateFromEditorIntent = () => {
+  useEffect(() => {
+    if (!activateLanguageImmediately) return;
+    playgroundStartupBoundary.activate("editor-visible");
+  }, [activateLanguageImmediately]);
+
+  const activateLanguageFromEditorIntent = () => {
     playgroundStartupBoundary.activate("editor-intent");
-    setActivated(true);
   };
 
-  if (!activated) {
+  const mountFromEditorIntent = () => {
+    activateLanguageFromEditorIntent();
+    setMounted(true);
+  };
+
+  if (!mounted) {
     return (
       <button
         type="button"
         data-testid="editor-activation"
         aria-label={t("editor.loading")}
         className={`${className ?? ""} flex w-full items-center justify-center bg-card text-sm text-muted-foreground`}
-        onClick={activateFromEditorIntent}
-        onFocus={activateFromEditorIntent}
-        onPointerDown={activateFromEditorIntent}
+        onClick={mountFromEditorIntent}
+        onFocus={mountFromEditorIntent}
+        onPointerDown={mountFromEditorIntent}
       >
         {t("editor.loading")}
       </button>
@@ -258,12 +274,22 @@ function DeferredCodeEditor({
   }
 
   return (
-    <LazyFeatureBoundary
-      feature={t("layout.editor")}
-      presentation={{ kind: "panel" }}
+    <div
+      className={`${className ?? ""} flex flex-col`}
+      data-testid="editor-startup-surface"
+      onFocusCapture={activateLanguageFromEditorIntent}
+      onPointerDownCapture={activateLanguageFromEditorIntent}
     >
-      <CodeEditor className={className} />
-    </LazyFeatureBoundary>
+      <LazyFeatureBoundary
+        feature={t("layout.editor")}
+        presentation={{ kind: "panel" }}
+      >
+        <CodeEditor
+          className="h-full min-h-0"
+          waitForLanguageActivation={playgroundStartupBoundary.wait}
+        />
+      </LazyFeatureBoundary>
+    </div>
   );
 }
 
