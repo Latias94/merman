@@ -26,7 +26,6 @@ use jni::{
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
     BindingError, BindingOperationRequest, BindingOperationResult, OperationControl,
-    OperationPhase,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{BindingIconRegistry, BindingStatus, IconPack, build_icon_registry};
@@ -486,7 +485,7 @@ fn native_execute_controlled<'local>(
     uri: JString<'local>,
     control_token: jlong,
 ) -> JniResult<JObject<'local>> {
-    let Some(operation_control) = preflight_operation_control(env, control_token) else {
+    let Some(operation_control) = operation_control_for_execution(env, control_token) else {
         return Ok(JObject::null());
     };
     native_execute_impl(
@@ -748,7 +747,7 @@ fn native_engine_execute_controlled<'local>(
     uri: JString<'local>,
     control_token: jlong,
 ) -> JniResult<JObject<'local>> {
-    let Some(operation_control) = preflight_operation_control(env, control_token) else {
+    let Some(operation_control) = operation_control_for_execution(env, control_token) else {
         return Ok(JObject::null());
     };
     native_engine_execute_impl(
@@ -861,14 +860,10 @@ fn acquire_operation_control(token: jlong) -> Result<OperationControl, BindingEr
         .acquire(token)
 }
 
-fn preflight_operation_control(env: &mut Env<'_>, token: jlong) -> Option<OperationControl> {
-    let result = acquire_operation_control(token).and_then(|operation_control| {
-        operation_control
-            .checkpoint_at(OperationPhase::Admission)
-            .map_err(BindingError::cancelled)?;
-        Ok(operation_control)
-    });
-    match result {
+// Token lifetime belongs to JNI, but request identity and cancellation precedence belong to the
+// transport-neutral bindings-core executor. Do not checkpoint while borrowing this clone.
+fn operation_control_for_execution(env: &mut Env<'_>, token: jlong) -> Option<OperationControl> {
+    match acquire_operation_control(token) {
         Ok(operation_control) => Some(operation_control),
         Err(error) => {
             throw_merman_exception(env, binding_error_text(error));
