@@ -669,7 +669,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     }
     for layout in &mut external_layouts {
         checkpoint_layout(execution)?;
-        layout.apply_direction(settings.direction);
+        layout.transform = settings.direction.transform();
     }
     let summary_rows = external_namespace_note_summary_rows(
         model,
@@ -683,7 +683,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
         if settings.direction.is_horizontal() {
             let lines = relation_graph::render_horizontal_box_strip_lines(
                 &boxes,
-                settings.direction.horizontal_direction(),
+                settings.direction.transform(),
                 CLASS_LEVEL_HORIZONTAL_GAP,
                 settings.options.terminal_width_profile,
                 resources,
@@ -774,7 +774,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
             |resources| {
                 relation_graph::render_horizontal_box_strip_lines(
                     std::slice::from_ref(&routed_box),
-                    settings.direction.horizontal_direction(),
+                    settings.direction.transform(),
                     gap,
                     settings.options.terminal_width_profile,
                     resources,
@@ -1061,7 +1061,7 @@ fn render_namespace_box<'model>(
     )?);
     for layout in &mut direct_layouts {
         checkpoint_layout(context.execution)?;
-        layout.apply_direction(context.settings.direction);
+        layout.transform = context.settings.direction.transform();
     }
 
     if direct_layouts.is_empty() {
@@ -1119,7 +1119,7 @@ pub(super) fn render_namespace_container_box<'a>(
     if settings.direction.is_horizontal() && children.len() > 1 {
         let lines = relation_graph::render_horizontal_box_strip_lines(
             &children,
-            settings.direction.horizontal_direction(),
+            settings.direction.transform(),
             CLASS_LEVEL_HORIZONTAL_GAP,
             settings.options.terminal_width_profile,
             resources,

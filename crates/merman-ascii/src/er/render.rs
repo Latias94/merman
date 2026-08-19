@@ -3,14 +3,12 @@ use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
-#[cfg(test)]
-use crate::relation_graph::RelationGraphHorizontalDirection;
 use crate::relation_graph::{
     HorizontalRelationEndpoint, HorizontalRelationMarker, HorizontalRelationStyle,
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationDirection,
-    RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLabelBatchPlan, RelationGraphLabelPlan,
-    RelationGraphLine, RelationGraphSummaryRow, RelationLineChars, RelationOverlay,
-    RelationParallelPlan, RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, PhysicalPortSide,
+    RelationDirection, RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLabelBatchPlan,
+    RelationGraphLabelPlan, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationRegionPlan, RelationSelfLoopMetrics,
     RelationStackPlan, RelationSummaryPaintPlan,
 };
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
@@ -102,6 +100,9 @@ struct ErRenderContext<'render> {
 }
 
 struct ErRelationLayout<'a> {
+    transform: relation_graph::DirectionTransform,
+    // Canonical semantic endpoints and authored identity/cardinality. Direction changes only
+    // their physical projection; these fields are never swapped for BT or RL.
     relationship: &'a ErRelationshipRenderModel,
     top_id: &'a str,
     bottom_id: &'a str,
@@ -112,14 +113,15 @@ struct ErRelationLayout<'a> {
     label: Option<RelationGraphLabel>,
 }
 
-impl ErRelationLayout<'_> {
-    fn apply_direction(&mut self, direction: RelationDirection) {
-        if direction != RelationDirection::BottomUp {
-            return;
-        }
-        std::mem::swap(&mut self.top_id, &mut self.bottom_id);
-        std::mem::swap(&mut self.top_identity, &mut self.bottom_identity);
-        std::mem::swap(&mut self.top_cardinality, &mut self.bottom_cardinality);
+impl<'a> ErRelationLayout<'a> {
+    fn physical_ids(&self) -> (&'a str, &'a str) {
+        self.transform
+            .physical_vertical_pair(self.top_id, self.bottom_id)
+    }
+
+    fn physical_cardinalities(&self) -> (&'a str, &'a str) {
+        self.transform
+            .physical_vertical_pair(self.top_cardinality, self.bottom_cardinality)
     }
 }
 
@@ -181,7 +183,7 @@ fn render_er_diagram_impl(
         if direction.is_horizontal() {
             let lines = relation_graph::render_horizontal_box_strip_lines(
                 &boxes,
-                direction.horizontal_direction(),
+                direction.transform(),
                 ER_LEVEL_HORIZONTAL_GAP,
                 options.terminal_width_profile,
                 &resources,
@@ -294,7 +296,8 @@ fn render_er_components<'model>(
         .map_err(|_| layout_allocation_failed())?;
     for (relationship, label) in relationships.iter().zip(labels) {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
-        let mut layout = ErRelationLayout {
+        let layout = ErRelationLayout {
+            transform: context.direction.transform(),
             relationship,
             top_id: relationship.entity_a.as_str(),
             bottom_id: relationship.entity_b.as_str(),
@@ -310,7 +313,6 @@ fn render_er_components<'model>(
             bottom_cardinality: relationship.rel_spec.card_a.as_str(),
             label,
         };
-        layout.apply_direction(context.direction);
         layouts.push(layout);
     }
     let adapter = ErRelationComponentAdapter {
@@ -616,7 +618,7 @@ fn render_horizontal_er_component_lines<'model>(
     relation_graph::render_horizontal_relation_components_with_execution(
         boxes,
         layouts,
-        context.direction.horizontal_direction(),
+        context.direction.transform(),
         context.options,
         resources,
         adapter,
@@ -634,8 +636,9 @@ fn plan_vertical_relationship<'plan>(
     resources: &mut ResourceContext,
 ) -> Result<RelationRegionPlan<'plan>> {
     let relationship = layout.relationship;
-    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
-    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
+    let (top_cardinality, bottom_cardinality) = layout.physical_cardinalities();
+    let top_cardinality = cardinality_marker(top_cardinality, charset)?;
+    let bottom_cardinality = cardinality_marker(bottom_cardinality, charset)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let label_half_width = layout
         .label
@@ -780,18 +783,17 @@ fn plan_parallel_vertical_relationships<'plan, 'model>(
             diagram_type: "er",
             feature: "empty parallel ER relationship layout",
         })?;
-    let top = relation_graph::find_box_ref(&boxes, first.top_id).ok_or(
-        AsciiError::UnsupportedFeature {
+    let (top_id, bottom_id) = first.physical_ids();
+    let top =
+        relation_graph::find_box_ref(&boxes, top_id).ok_or(AsciiError::UnsupportedFeature {
             diagram_type: "er",
             feature: "relationships with missing endpoint entities",
-        },
-    )?;
-    let bottom = relation_graph::find_box_ref(&boxes, first.bottom_id).ok_or(
-        AsciiError::UnsupportedFeature {
+        })?;
+    let bottom =
+        relation_graph::find_box_ref(&boxes, bottom_id).ok_or(AsciiError::UnsupportedFeature {
             diagram_type: "er",
             feature: "relationships with missing endpoint entities",
-        },
-    )?;
+        })?;
     let mut lane_extents = Vec::new();
     lane_extents
         .try_reserve_exact(layouts.len())
@@ -851,8 +853,9 @@ fn parallel_er_lane_extent(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<LogicalExtent> {
-    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
-    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
+    let (top_cardinality, bottom_cardinality) = layout.physical_cardinalities();
+    let top_cardinality = cardinality_marker(top_cardinality, charset)?;
+    let bottom_cardinality = cardinality_marker(bottom_cardinality, charset)?;
     let relation = relationship_line(&layout.relationship.rel_spec.rel_type, charset)?;
     let label_height = layout
         .label
@@ -888,8 +891,9 @@ fn parallel_er_lane_rows(
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
     let relationship = layout.relationship;
-    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
-    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
+    let (top_cardinality, bottom_cardinality) = layout.physical_cardinalities();
+    let top_cardinality = cardinality_marker(top_cardinality, charset)?;
+    let bottom_cardinality = cardinality_marker(bottom_cardinality, charset)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let label_lines = match layout.label.as_ref() {
         Some(label) => {
@@ -940,13 +944,12 @@ fn er_relationship_summary_row<'model>(
     deferred: &mut DeferredTextRegistry<'model>,
 ) -> Result<RelationGraphSummaryRow> {
     let relationship = layout.relationship;
-    // Summary rows use Mermaid's horizontal, left-to-right token orientation;
-    // the routed renderer passes the physical port side explicitly, so mirror
-    // that mapping here instead of reusing vertical marker glyphs.
+    // Summary rows retain semantic source/target identity. Direction changes physical placement
+    // and port selection only; it must not relabel the relationship terminals.
     let left_cardinality =
-        horizontal_cardinality_marker(layout.top_cardinality, RelationPortSide::Right, charset)?;
+        horizontal_cardinality_marker(layout.top_cardinality, PhysicalPortSide::Right, charset)?;
     let right_cardinality =
-        horizontal_cardinality_marker(layout.bottom_cardinality, RelationPortSide::Left, charset)?;
+        horizontal_cardinality_marker(layout.bottom_cardinality, PhysicalPortSide::Left, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
     let source = deferred.try_register_framed_value(
         "id(bytes=",
@@ -1012,6 +1015,7 @@ fn er_layered_edge(layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
             .map(RelationGraphLabel::line_count)
             .unwrap_or(0),
     )
+    .with_reversed_route(layout.transform.reverses_vertical_order())
 }
 
 fn er_layered_error(error: LayeredRelationError) -> AsciiError {
@@ -1068,17 +1072,18 @@ impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'
     fn horizontal_relation_style(
         &self,
         layout: &ErRelationLayout<'_>,
-        source_side: RelationPortSide,
-        target_side: RelationPortSide,
+        source_side: PhysicalPortSide,
+        target_side: PhysicalPortSide,
         _resources: &ResourceContext,
     ) -> Result<HorizontalRelationStyle> {
+        let (top_cardinality, bottom_cardinality) = layout.physical_cardinalities();
         let source_marker = HorizontalRelationMarker::new(
-            horizontal_cardinality_marker(layout.top_cardinality, source_side, self.charset)?,
+            horizontal_cardinality_marker(top_cardinality, source_side, self.charset)?,
             AsciiColorRole::EdgeArrow,
             self.width_profile,
         );
         let target_marker = HorizontalRelationMarker::new(
-            horizontal_cardinality_marker(layout.bottom_cardinality, target_side, self.charset)?,
+            horizontal_cardinality_marker(bottom_cardinality, target_side, self.charset)?,
             AsciiColorRole::EdgeArrow,
             self.width_profile,
         );
@@ -1120,8 +1125,9 @@ impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'
         resources: &ResourceContext,
     ) -> Result<Vec<RelationOverlay>> {
         resources.charge_layout_work(3)?;
-        let top_cardinality = cardinality_marker(layout.top_cardinality, self.charset)?;
-        let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, self.charset)?;
+        let (top_cardinality, bottom_cardinality) = layout.physical_cardinalities();
+        let top_cardinality = cardinality_marker(top_cardinality, self.charset)?;
+        let bottom_cardinality = cardinality_marker(bottom_cardinality, self.charset)?;
 
         let mut overlays = Vec::new();
         overlays
@@ -1159,13 +1165,13 @@ impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'
         layout: &'plan ErRelationLayout<'model>,
         resources: &mut ResourceContext,
     ) -> Result<RelationRegionPlan<'plan>> {
-        let top = relation_graph::find_box_ref(boxes, layout.top_id).ok_or(
-            AsciiError::UnsupportedFeature {
+        let (top_id, bottom_id) = layout.physical_ids();
+        let top =
+            relation_graph::find_box_ref(boxes, top_id).ok_or(AsciiError::UnsupportedFeature {
                 diagram_type: "er",
                 feature: "relationships with missing endpoint entities",
-            },
-        )?;
-        let bottom = relation_graph::find_box_ref(boxes, layout.bottom_id).ok_or(
+            })?;
+        let bottom = relation_graph::find_box_ref(boxes, bottom_id).ok_or(
             AsciiError::UnsupportedFeature {
                 diagram_type: "er",
                 feature: "relationships with missing endpoint entities",
@@ -1226,23 +1232,16 @@ fn er_self_loop_cardinality_markers(
     charset: ErCharset,
     horizontal: bool,
 ) -> Result<(&'static str, &'static str)> {
+    let (top_cardinality, bottom_cardinality) = layout.physical_cardinalities();
     if horizontal {
         Ok((
-            horizontal_cardinality_marker(
-                layout.top_cardinality,
-                RelationPortSide::Right,
-                charset,
-            )?,
-            horizontal_cardinality_marker(
-                layout.bottom_cardinality,
-                RelationPortSide::Left,
-                charset,
-            )?,
+            horizontal_cardinality_marker(top_cardinality, PhysicalPortSide::Right, charset)?,
+            horizontal_cardinality_marker(bottom_cardinality, PhysicalPortSide::Left, charset)?,
         ))
     } else {
         Ok((
-            cardinality_marker(layout.top_cardinality, charset)?,
-            cardinality_marker(layout.bottom_cardinality, charset)?,
+            cardinality_marker(top_cardinality, charset)?,
+            cardinality_marker(bottom_cardinality, charset)?,
         ))
     }
 }
@@ -1336,17 +1335,17 @@ fn cardinality_marker(cardinality: &str, charset: ErCharset) -> Result<&'static 
 
 fn horizontal_cardinality_marker(
     cardinality: &str,
-    side: RelationPortSide,
+    side: PhysicalPortSide,
     charset: ErCharset,
 ) -> Result<&'static str> {
     match (cardinality, side) {
         ("ONLY_ONE", _) => Ok("||"),
-        ("ZERO_OR_ONE", RelationPortSide::Right) => Ok("|o"),
-        ("ZERO_OR_ONE", RelationPortSide::Left) => Ok("o|"),
-        ("ONE_OR_MORE", RelationPortSide::Right) => Ok("}|"),
-        ("ONE_OR_MORE", RelationPortSide::Left) => Ok("|{"),
-        ("ZERO_OR_MORE", RelationPortSide::Right) => Ok("}o"),
-        ("ZERO_OR_MORE", RelationPortSide::Left) => Ok("o{"),
+        ("ZERO_OR_ONE", PhysicalPortSide::Right) => Ok("|o"),
+        ("ZERO_OR_ONE", PhysicalPortSide::Left) => Ok("o|"),
+        ("ONE_OR_MORE", PhysicalPortSide::Right) => Ok("}|"),
+        ("ONE_OR_MORE", PhysicalPortSide::Left) => Ok("|{"),
+        ("ZERO_OR_MORE", PhysicalPortSide::Right) => Ok("}o"),
+        ("ZERO_OR_MORE", PhysicalPortSide::Left) => Ok("o{"),
         ("MD_PARENT", _) => Ok(charset.md_parent),
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "er",
@@ -1659,6 +1658,7 @@ mod tests {
                 .transpose()
                 .expect("ER summary label should materialize");
             layouts.push(ErRelationLayout {
+                transform: direction.transform(),
                 relationship,
                 top_id: relationship.entity_a.as_str(),
                 bottom_id: relationship.entity_b.as_str(),
@@ -1958,6 +1958,7 @@ mod tests {
                 .transpose()
                 .expect("horizontal ER label should materialize");
             layouts.push(ErRelationLayout {
+                transform: direction.transform(),
                 relationship,
                 top_id: relationship.entity_a.as_str(),
                 bottom_id: relationship.entity_b.as_str(),
@@ -2345,7 +2346,7 @@ mod tests {
             let resources = resources_with_limit(limit, 5);
             let error = relation_graph::render_horizontal_box_strip_lines(
                 &boxes,
-                RelationGraphHorizontalDirection::LeftRight,
+                RelationDirection::LeftRight.transform(),
                 ER_LEVEL_HORIZONTAL_GAP,
                 TerminalWidthProfile::Unicode,
                 &resources,

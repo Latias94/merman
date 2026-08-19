@@ -1,6 +1,5 @@
 use super::horizontal::{
-    HorizontalRelationPaintPlan, RelationGraphHorizontalDirection, horizontal_box_strip_lines,
-    horizontal_box_strip_ref_extent,
+    HorizontalRelationPaintPlan, horizontal_box_strip_lines, horizontal_box_strip_ref_extent,
 };
 use super::layered::{
     LayeredRelationRoutePlan, LayeredRelationScene, LayeredRelationSummaryReason,
@@ -10,9 +9,9 @@ use super::summary::{
     RelationGraphSummaryRow, relation_summary_extent, relation_summary_lines_for_rows,
 };
 use super::{
-    RelationCheckpointCursor, RelationGraphBox, RelationGraphLine, RelationParallelPlan,
-    RelationResourceCheckpointCursor, RelationSelfLoopPlan, RelationSelfLoopRows,
-    RelationStackPlan, grid_overflow, layout_allocation_failed,
+    DirectionTransform, RelationCheckpointCursor, RelationGraphBox, RelationGraphLine,
+    RelationParallelPlan, RelationResourceCheckpointCursor, RelationSelfLoopPlan,
+    RelationSelfLoopRows, RelationStackPlan, grid_overflow, layout_allocation_failed,
 };
 use crate::Result;
 use crate::color::AsciiColorRole;
@@ -400,7 +399,7 @@ pub(crate) enum RelationBoxStripPlan<'a> {
     },
     Horizontal {
         boxes: Vec<&'a RelationGraphBox>,
-        direction: RelationGraphHorizontalDirection,
+        direction: DirectionTransform,
         gap: usize,
         width_profile: TerminalWidthProfile,
         extent: LogicalExtent,
@@ -418,11 +417,12 @@ impl<'a> RelationBoxStripPlan<'a> {
 
     pub(crate) fn horizontal(
         boxes: Vec<&'a RelationGraphBox>,
-        direction: RelationGraphHorizontalDirection,
+        direction: DirectionTransform,
         gap: usize,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<Self> {
+        let direction = direction.require_horizontal()?;
         let extent = horizontal_box_strip_ref_extent(&boxes, gap, resources)?;
         Ok(Self::Horizontal {
             boxes,
@@ -461,7 +461,7 @@ enum RelationSummaryBase<'a> {
     Stacked(Vec<&'a RelationGraphBox>),
     Horizontal {
         boxes: Vec<&'a RelationGraphBox>,
-        direction: RelationGraphHorizontalDirection,
+        direction: DirectionTransform,
         gap: usize,
     },
 }
@@ -499,13 +499,14 @@ impl<'a> RelationSummaryPaintPlan<'a> {
 
     pub(crate) fn horizontal(
         boxes: Vec<&'a RelationGraphBox>,
-        direction: RelationGraphHorizontalDirection,
+        direction: DirectionTransform,
         gap: usize,
         rows: Vec<RelationGraphSummaryRow>,
         reason: Option<LayeredRelationSummaryReason>,
         options: &AsciiRenderOptions,
         resources: &ResourceContext,
     ) -> Result<Self> {
+        let direction = direction.require_horizontal()?;
         let base_extent = horizontal_box_strip_ref_extent(&boxes, gap, resources)?;
         let summary_extent = relation_summary_extent(&rows, reason, options, resources)?;
         let document = RelationDocumentPlan::new(

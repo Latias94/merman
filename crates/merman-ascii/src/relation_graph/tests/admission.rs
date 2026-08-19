@@ -497,7 +497,7 @@ fn stack_and_horizontal_strip_admit_exact_grid_extent() {
     let horizontal_resources = test_resources(policy_with_grid_limit(27));
     let strip = render_horizontal_box_strip_lines(
         &boxes,
-        RelationGraphHorizontalDirection::LeftRight,
+        RelationDirection::LeftRight.transform(),
         2,
         options.terminal_width_profile,
         &horizontal_resources,
@@ -525,7 +525,7 @@ fn stack_and_horizontal_strip_reject_grid_extent_at_n_minus_one() {
     let horizontal_resources = test_resources(policy_with_grid_limit(26));
     let error = render_horizontal_box_strip_lines(
         &boxes,
-        RelationGraphHorizontalDirection::LeftRight,
+        RelationDirection::LeftRight.transform(),
         2,
         options.terminal_width_profile,
         &horizontal_resources,

@@ -728,6 +728,47 @@ fn class_parser_direction_controls_terminal_layout() {
 }
 
 #[test]
+fn class_bottom_up_summary_preserves_semantic_endpoint_roles() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction BT\n",
+            "class A\n",
+            "class B\n",
+            "A \"source\" <|--|> \"target\" B : first\n",
+            "A \"source2\" <|--|> \"target2\" B : second",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("bottom-up parallel class relationships should preserve semantic roles");
+
+    let summary = rendered
+        .split_once("relations:\n")
+        .expect("parallel relationships should use structured fallback")
+        .1;
+    for (source_label, target_label) in [("source", "target"), ("source2", "target2")] {
+        let line = summary
+            .lines()
+            .find(|line| line.contains(source_label))
+            .unwrap_or_else(|| panic!("missing {source_label:?} summary row:\n{rendered}"));
+        assert!(
+            line.starts_with(&framed_class_summary_endpoint("A")),
+            "{line}"
+        );
+        assert!(line.contains(&framed_class_summary_endpoint("B")), "{line}");
+        assert!(line.contains("<|--|>"), "{line}");
+        assert!(
+            line.contains("endpoint1=[") && line.contains(source_label),
+            "{line}"
+        );
+        assert!(
+            line.contains("endpoint2=[") && line.contains(target_label),
+            "{line}"
+        );
+    }
+}
+
+#[test]
 fn class_direction_bytes_are_admitted_before_parsing() {
     let mut model = parse_class_model("classDiagram\nclass A");
     model.direction = format!("{}sideways", " ".repeat(1_024));
@@ -2748,18 +2789,20 @@ fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
     assert!(authored_break.contains("relations:"), "{authored_break}");
     assert!(authored_empty.contains("relations:"), "{authored_empty}");
     assert!(
-        literal_slash.contains("<-- endpoint1=[bytes=3 \"a/b\"]"),
-        "literal slash identity should remain framed:\n{literal_slash}"
+        literal_slash.contains("endpoint1=[bytes=3 \"a/b\"] -->"),
+        "literal slash identity should remain framed on the semantic source:\n{literal_slash}"
     );
     assert!(
-        authored_break.contains("<-- endpoint1=[bytes=1 \"a\", bytes=1 \"b\",")
+        authored_break.contains("endpoint1=[bytes=1 \"a\", bytes=1 \"b\",")
             && authored_break.contains("authored(bytes=6)=")
-            && authored_break.contains("<br>"),
+            && authored_break.contains("<br>")
+            && authored_break.contains("] -->"),
         "authored line boundaries and source bytes should remain framed:\n{authored_break}"
     );
     assert!(
-        authored_empty.contains("<-- endpoint1=[bytes=0 \"\",")
-            && authored_empty.contains("authored(bytes=0)="),
+        authored_empty.contains("endpoint1=[bytes=0 \"\",")
+            && authored_empty.contains("authored(bytes=0)=")
+            && authored_empty.contains("] -->"),
         "authored empty endpoint labels should remain framed:\n{authored_empty}"
     );
     assert_ne!(literal_slash, authored_break);

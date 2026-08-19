@@ -1,4 +1,4 @@
-use super::super::{RelationGraphLabel, RelationResourceCheckpointCursor};
+use super::super::{PhysicalPortSide, RelationGraphLabel, RelationResourceCheckpointCursor};
 use super::boxes::PlacedRelationGraphBox;
 use super::draw::{
     RelationLineChars, put_relation_char, write_centered_relation_label,
@@ -187,20 +187,8 @@ impl RelationOverlayBounds {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LayeredRelationPhysicalSide {
-    Top,
-    Right,
-    Bottom,
-    Left,
-}
-
-impl LayeredRelationPhysicalSide {
-    const ALL: [Self; 4] = [Self::Top, Self::Right, Self::Bottom, Self::Left];
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LayeredRelationPhysicalPort {
-    side: LayeredRelationPhysicalSide,
+    side: PhysicalPortSide,
     marker_x: usize,
     marker_y: usize,
     path_x: usize,
@@ -208,7 +196,7 @@ pub(crate) struct LayeredRelationPhysicalPort {
 }
 
 impl LayeredRelationPhysicalPort {
-    pub(crate) fn side(self) -> LayeredRelationPhysicalSide {
+    pub(crate) fn side(self) -> PhysicalPortSide {
         self.side
     }
 
@@ -222,22 +210,22 @@ impl LayeredRelationPhysicalPort {
 
     pub(crate) fn fits_box(self, relation_box: &PlacedRelationGraphBox<'_>) -> bool {
         match self.side {
-            LayeredRelationPhysicalSide::Top => {
+            PhysicalPortSide::Top => {
                 (relation_box.x()..=relation_box.right()).contains(&self.marker_x)
                     && self.marker_y < relation_box.y()
                     && self.path_y < relation_box.y()
             }
-            LayeredRelationPhysicalSide::Bottom => {
+            PhysicalPortSide::Bottom => {
                 (relation_box.x()..=relation_box.right()).contains(&self.marker_x)
                     && self.marker_y > relation_box.bottom()
                     && self.path_y > relation_box.bottom()
             }
-            LayeredRelationPhysicalSide::Left => {
+            PhysicalPortSide::Left => {
                 (relation_box.y()..=relation_box.bottom()).contains(&self.marker_y)
                     && self.marker_x < relation_box.x()
                     && self.path_x < relation_box.x()
             }
-            LayeredRelationPhysicalSide::Right => {
+            PhysicalPortSide::Right => {
                 (relation_box.y()..=relation_box.bottom()).contains(&self.marker_y)
                     && self.marker_x > relation_box.right()
                     && self.path_x > relation_box.right()
@@ -470,12 +458,12 @@ impl LayeredRelationRouteGeometry {
     ) -> Result<(usize, usize)> {
         let port = if source { self.source } else { self.target };
         let y = match port.side {
-            LayeredRelationPhysicalSide::Top => resources.checked_grid_add(port.marker_y, 1)?,
-            LayeredRelationPhysicalSide::Bottom => port
+            PhysicalPortSide::Top => resources.checked_grid_add(port.marker_y, 1)?,
+            PhysicalPortSide::Bottom => port
                 .marker_y
                 .checked_sub(line_count)
                 .ok_or_else(|| grid_overflow(resources))?,
-            LayeredRelationPhysicalSide::Left | LayeredRelationPhysicalSide::Right => port.marker_y,
+            PhysicalPortSide::Left | PhysicalPortSide::Right => port.marker_y,
         };
         Ok((port.marker_x, y))
     }
@@ -906,7 +894,7 @@ pub(crate) fn plan_layered_relation_route(
 
     if target_top > resources.checked_grid_add(source_bottom, request.profile.min_vertical_gap)? {
         let source = LayeredRelationPhysicalPort {
-            side: LayeredRelationPhysicalSide::Bottom,
+            side: PhysicalPortSide::Bottom,
             marker_x: from_x,
             marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
             path_x: from_x,
@@ -924,7 +912,7 @@ pub(crate) fn plan_layered_relation_route(
             resources,
         )?;
         let target = LayeredRelationPhysicalPort {
-            side: LayeredRelationPhysicalSide::Top,
+            side: PhysicalPortSide::Top,
             marker_x: to_x,
             marker_y: checked_sub_gap(target_top, 1, endpoint_label_gap, resources)?,
             path_x: to_x,
@@ -948,7 +936,7 @@ pub(crate) fn plan_layered_relation_route(
 
     if source_top > resources.checked_grid_add(target_bottom, request.profile.min_vertical_gap)? {
         let source = LayeredRelationPhysicalPort {
-            side: LayeredRelationPhysicalSide::Top,
+            side: PhysicalPortSide::Top,
             marker_x: from_x,
             marker_y: checked_sub_gap(source_top, 1, endpoint_label_gap, resources)?,
             path_x: from_x,
@@ -966,7 +954,7 @@ pub(crate) fn plan_layered_relation_route(
             resources,
         )?;
         let target = LayeredRelationPhysicalPort {
-            side: LayeredRelationPhysicalSide::Bottom,
+            side: PhysicalPortSide::Bottom,
             marker_x: to_x,
             marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
             path_x: to_x,
@@ -987,7 +975,7 @@ pub(crate) fn plan_layered_relation_route(
     }
 
     let source = LayeredRelationPhysicalPort {
-        side: LayeredRelationPhysicalSide::Bottom,
+        side: PhysicalPortSide::Bottom,
         marker_x: from_x,
         marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
         path_x: from_x,
@@ -1005,7 +993,7 @@ pub(crate) fn plan_layered_relation_route(
         resources,
     )?;
     let target = LayeredRelationPhysicalPort {
-        side: LayeredRelationPhysicalSide::Bottom,
+        side: PhysicalPortSide::Bottom,
         marker_x: to_x,
         marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
         path_x: to_x,
@@ -1035,7 +1023,7 @@ fn plan_planar_k2_2_relation_route(
     if source_box.y() == target_box.y() {
         let (side, route_y, placement) = if source_box.y() < scene_height / 2 {
             (
-                LayeredRelationPhysicalSide::Top,
+                PhysicalPortSide::Top,
                 0,
                 LayeredRelationLabelPlacement::TopLane {
                     center_x: resources
@@ -1049,7 +1037,7 @@ fn plan_planar_k2_2_relation_route(
                 .checked_sub(1)
                 .ok_or_else(|| grid_overflow(resources))?;
             (
-                LayeredRelationPhysicalSide::Bottom,
+                PhysicalPortSide::Bottom,
                 route_y,
                 LayeredRelationLabelPlacement::BottomLane {
                     center_x: resources
@@ -1067,15 +1055,9 @@ fn plan_planar_k2_2_relation_route(
     }
 
     let (source_side, target_side) = if source_box.y() < target_box.y() {
-        (
-            LayeredRelationPhysicalSide::Bottom,
-            LayeredRelationPhysicalSide::Top,
-        )
+        (PhysicalPortSide::Bottom, PhysicalPortSide::Top)
     } else {
-        (
-            LayeredRelationPhysicalSide::Top,
-            LayeredRelationPhysicalSide::Bottom,
-        )
+        (PhysicalPortSide::Top, PhysicalPortSide::Bottom)
     };
     let source = physical_port(source_box, source_side, true, profile, resources)?;
     let target = physical_port(target_box, target_side, false, profile, resources)?;
@@ -1108,12 +1090,12 @@ fn plan_planar_k2_2_relation_route(
 
 fn physical_port(
     relation_box: &PlacedRelationGraphBox<'_>,
-    side: LayeredRelationPhysicalSide,
+    side: PhysicalPortSide,
     source: bool,
     profile: LayeredRelationRouteProfile,
     resources: &ResourceContext,
 ) -> Result<LayeredRelationPhysicalPort> {
-    debug_assert!(LayeredRelationPhysicalSide::ALL.contains(&side));
+    debug_assert!(PhysicalPortSide::ALL.contains(&side));
     let gap = profile.endpoint_label_gap;
     let marker_offset = resources.checked_grid_add(1, gap)?;
     let path_offset = if source {
@@ -1125,7 +1107,7 @@ fn physical_port(
         )?
     };
     match side {
-        LayeredRelationPhysicalSide::Top => Ok(LayeredRelationPhysicalPort {
+        PhysicalPortSide::Top => Ok(LayeredRelationPhysicalPort {
             side,
             marker_x: relation_box.center_x(),
             marker_y: relation_box
@@ -1138,14 +1120,14 @@ fn physical_port(
                 .checked_sub(path_offset)
                 .ok_or_else(|| grid_overflow(resources))?,
         }),
-        LayeredRelationPhysicalSide::Bottom => Ok(LayeredRelationPhysicalPort {
+        PhysicalPortSide::Bottom => Ok(LayeredRelationPhysicalPort {
             side,
             marker_x: relation_box.center_x(),
             marker_y: resources.checked_grid_add(relation_box.bottom(), marker_offset)?,
             path_x: relation_box.center_x(),
             path_y: resources.checked_grid_add(relation_box.bottom(), path_offset)?,
         }),
-        LayeredRelationPhysicalSide::Left => Ok(LayeredRelationPhysicalPort {
+        PhysicalPortSide::Left => Ok(LayeredRelationPhysicalPort {
             side,
             marker_x: relation_box
                 .x()
@@ -1158,7 +1140,7 @@ fn physical_port(
                 .ok_or_else(|| grid_overflow(resources))?,
             path_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
         }),
-        LayeredRelationPhysicalSide::Right => Ok(LayeredRelationPhysicalPort {
+        PhysicalPortSide::Right => Ok(LayeredRelationPhysicalPort {
             side,
             marker_x: resources.checked_grid_add(relation_box.right(), marker_offset)?,
             marker_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,

@@ -1,7 +1,8 @@
 use super::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationSummaryReason, RelationBoxStripPlan,
-    RelationCheckpointCursor, RelationComponentAdapter, RelationGraphBox, RelationGraphLabel,
-    RelationGraphLine, RelationLineChars, RelationRegionPlan, RelationRenderPlan,
+    DirectionTransform, LayeredRelationEdge, LayeredRelationError, LayeredRelationSummaryReason,
+    PhysicalPortSide, RelationBoxStripPlan, RelationCheckpointCursor, RelationComponentAdapter,
+    RelationDirection, RelationExtent, RelationGraphBox, RelationGraphLabel, RelationGraphLine,
+    RelationLineChars, RelationPoint, RelationRegionPlan, RelationRenderPlan,
     RelationResourceCheckpointCursor, RelationSelfLoopPlan, RelationSummaryPaintPlan,
     build_layered_edges, grid_overflow, layout_allocation_failed, put_relation_char,
     relation_components, work_overflow,
@@ -18,24 +19,6 @@ use merman_core::OperationPhase;
 mod collision;
 
 use collision::{CompatibleSharedEndpoints, HorizontalEdgeGeometry, VerticalOwnershipSpan};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RelationGraphHorizontalDirection {
-    LeftRight,
-    RightLeft,
-}
-
-impl RelationGraphHorizontalDirection {
-    fn is_reversed(self) -> bool {
-        matches!(self, Self::RightLeft)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RelationPortSide {
-    Left,
-    Right,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HorizontalRelationEndpoint {
@@ -195,7 +178,7 @@ struct HorizontalEdgePlan {
 struct HorizontalComponentPlanContext<'plan, 'scratch, R, A> {
     edges: &'scratch [LayeredRelationEdge],
     relations: &'plan [R],
-    direction: RelationGraphHorizontalDirection,
+    direction: DirectionTransform,
     options: &'scratch AsciiRenderOptions,
     adapter: &'plan A,
 }
@@ -289,7 +272,7 @@ impl HorizontalEdgePlan {
 pub(crate) fn render_horizontal_relation_components_with_execution<'text, R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
-    direction: RelationGraphHorizontalDirection,
+    direction: DirectionTransform,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &A,
@@ -299,6 +282,7 @@ pub(crate) fn render_horizontal_relation_components_with_execution<'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R>,
 {
+    let direction = direction.require_horizontal()?;
     let mut layout_checkpoints = RelationCheckpointCursor::new(execution, OperationPhase::Layout);
     let mut layout_resources = execution.resource_context(resources, OperationPhase::Layout);
     layout_checkpoints.checkpoint()?;
@@ -324,7 +308,7 @@ where
 fn plan_horizontal_relation_components<'plan, 'text, R, A>(
     boxes: &'plan [RelationGraphBox],
     relations: &'plan [R],
-    direction: RelationGraphHorizontalDirection,
+    direction: DirectionTransform,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &'plan A,
@@ -409,11 +393,12 @@ where
 
 pub(crate) fn render_horizontal_box_strip_lines(
     boxes: &[RelationGraphBox],
-    direction: RelationGraphHorizontalDirection,
+    direction: DirectionTransform,
     gap: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
+    let direction = direction.require_horizontal()?;
     horizontal_box_strip_extent(boxes, gap, resources)?;
     let mut refs = Vec::new();
     refs.try_reserve_exact(boxes.len())
@@ -577,15 +562,20 @@ where
             .edges
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        let source_index = node_index(&nodes, edge.source_id(), checkpoints)?
+        let source_index = node_index(&nodes, edge.route_source_id(), checkpoints)?
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        let target_index = node_index(&nodes, edge.target_id(), checkpoints)?
+        let target_index = node_index(&nodes, edge.route_target_id(), checkpoints)?
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        let (source_side, target_side) = if source_index < target_index {
-            (RelationPortSide::Right, RelationPortSide::Left)
-        } else {
-            (RelationPortSide::Left, RelationPortSide::Right)
-        };
+        let forward_sides = (
+            context.direction.map_port(PhysicalPortSide::Bottom),
+            context.direction.map_port(PhysicalPortSide::Top),
+        );
+        let (source_side, target_side) =
+            if (source_index < target_index) != context.direction.is_reversed() {
+                forward_sides
+            } else {
+                (forward_sides.1, forward_sides.0)
+            };
         let style =
             adapter.horizontal_relation_style(relation, source_side, target_side, resources)?;
         edge_plans.push(HorizontalEdgePlan {
@@ -605,7 +595,7 @@ where
         return Ok(RelationRegionPlan::BoxStrip(
             RelationBoxStripPlan::horizontal(
                 refs,
-                RelationGraphHorizontalDirection::LeftRight,
+                RelationDirection::LeftRight.transform(),
                 adapter.layered_horizontal_gap(),
                 options.terminal_width_profile,
                 resources,
@@ -735,7 +725,7 @@ where
     let gap = adapter.layered_horizontal_gap();
     RelationSummaryPaintPlan::horizontal(
         ordered_boxes,
-        RelationGraphHorizontalDirection::LeftRight,
+        RelationDirection::LeftRight.transform(),
         gap,
         rows,
         Some(reason),
@@ -748,7 +738,7 @@ fn stable_horizontal_order<'text, R, A>(
     boxes: &[&RelationGraphBox],
     edge_indices: &[usize],
     edges: &[LayeredRelationEdge],
-    direction: RelationGraphHorizontalDirection,
+    direction: DirectionTransform,
     resources: &mut ResourceContext,
     adapter: &A,
     checkpoints: &mut RelationCheckpointCursor<'_>,
@@ -768,10 +758,10 @@ where
         let edge = edges
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        if edge.source_id() == edge.target_id() {
+        if edge.route_source_id() == edge.route_target_id() {
             continue;
         }
-        let target = box_index(boxes, edge.target_id(), checkpoints)?
+        let target = box_index(boxes, edge.route_target_id(), checkpoints)?
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         indegree[target] = indegree[target]
             .checked_add(1)
@@ -815,10 +805,12 @@ where
             let edge = edges
                 .get(*edge_index)
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            if edge.source_id() != source_id || edge.source_id() == edge.target_id() {
+            if edge.route_source_id() != source_id
+                || edge.route_source_id() == edge.route_target_id()
+            {
                 continue;
             }
-            let target = box_index(boxes, edge.target_id(), checkpoints)?
+            let target = box_index(boxes, edge.route_target_id(), checkpoints)?
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
             indegree[target] = indegree[target].saturating_sub(1);
         }
@@ -1153,14 +1145,21 @@ fn draw_vertical_span(
 
 pub(crate) fn horizontal_box_strip_lines(
     boxes: &[&RelationGraphBox],
-    direction: RelationGraphHorizontalDirection,
+    direction: DirectionTransform,
     gap: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
+    let direction = direction.require_horizontal()?;
     let mut checkpoints = RelationResourceCheckpointCursor::new();
     let extent = horizontal_box_strip_ref_extent(boxes, gap, resources)?;
     let height = extent.height();
+    let canonical_order_extent = RelationExtent::new(usize::from(!boxes.is_empty()), boxes.len());
+    let physical_order_extent = direction.map_extent(canonical_order_extent);
+    debug_assert_eq!(
+        physical_order_extent.height(),
+        usize::from(!boxes.is_empty())
+    );
     resources.checkpoint()?;
     resources.charge_layout_work(extent.cells())?;
     let mut lines = Vec::new();
@@ -1176,13 +1175,13 @@ pub(crate) fn horizontal_box_strip_lines(
         parts
             .try_reserve_exact(part_capacity)
             .map_err(|_| layout_allocation_failed())?;
-        for ordered_index in 0..boxes.len() {
+        for ordered_index in 0..physical_order_extent.width() {
             checkpoints.tick(resources)?;
-            let box_index = if direction.is_reversed() {
-                boxes.len() - ordered_index - 1
-            } else {
-                ordered_index
-            };
+            let physical_point = direction
+                .map_point(RelationPoint::new(0, ordered_index), canonical_order_extent)
+                .ok_or_else(|| grid_overflow(resources))?;
+            debug_assert_eq!(physical_point.y(), 0);
+            let box_index = physical_point.x();
             let relation_box = boxes[box_index];
             if ordered_index > 0 {
                 parts.push(RelationGraphLine::try_blank(gap, width_profile, resources)?);

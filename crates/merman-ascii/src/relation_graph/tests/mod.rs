@@ -94,8 +94,8 @@ where
     fn horizontal_relation_style(
         &self,
         _relation: &R,
-        _source_side: RelationPortSide,
-        _target_side: RelationPortSide,
+        _source_side: PhysicalPortSide,
+        _target_side: PhysicalPortSide,
         _resources: &ResourceContext,
     ) -> Result<HorizontalRelationStyle> {
         Ok(HorizontalRelationStyle::new(

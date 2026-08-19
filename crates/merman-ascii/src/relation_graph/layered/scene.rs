@@ -116,7 +116,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         let lane_offsets = parallel_relation_lane_offsets(
             edges
                 .iter()
-                .map(|edge| (edge.source_id(), edge.target_id())),
+                .map(|edge| (edge.route_source_id(), edge.route_target_id())),
             resources,
         )?;
         resources.charge_layout_work(lane_offsets.len().max(1))?;
@@ -154,7 +154,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             .plan
             .placed_boxes()
             .iter()
-            .find(|placed| placed.id() == edge.source_id())
+            .find(|placed| placed.id() == edge.route_source_id())
         else {
             return false;
         };
@@ -162,7 +162,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             .plan
             .placed_boxes()
             .iter()
-            .find(|placed| placed.id() == edge.target_id())
+            .find(|placed| placed.id() == edge.route_target_id())
         else {
             return false;
         };
@@ -393,12 +393,12 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             .plan
             .placed_boxes()
             .iter()
-            .find(|placed_box| placed_box.id() == edge.source_id())?;
+            .find(|placed_box| placed_box.id() == edge.route_source_id())?;
         let target = self
             .plan
             .placed_boxes()
             .iter()
-            .find(|placed_box| placed_box.id() == edge.target_id())?;
+            .find(|placed_box| placed_box.id() == edge.route_target_id())?;
         Some((source, target))
     }
 }

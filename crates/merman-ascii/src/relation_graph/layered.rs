@@ -25,9 +25,8 @@ pub(crate) use self::draw::{
 #[cfg(test)]
 pub(crate) use self::lanes::parallel_relation_lane_offsets;
 pub(crate) use self::route::{
-    LayeredRelationPhysicalPort, LayeredRelationPhysicalSide, LayeredRelationRouteGeometry,
-    LayeredRelationRoutePlan, LayeredRelationRouteProfile, LayeredRelationRouteStyle,
-    RelationOverlay,
+    LayeredRelationPhysicalPort, LayeredRelationRouteGeometry, LayeredRelationRoutePlan,
+    LayeredRelationRouteProfile, LayeredRelationRouteStyle, RelationOverlay,
 };
 #[cfg(test)]
 pub(crate) use self::route::{

@@ -80,7 +80,9 @@ impl RelationResourceCheckpointCursor {
     }
 }
 
-pub(crate) use self::direction::RelationDirection;
+pub(crate) use self::direction::{
+    DirectionTransform, PhysicalPortSide, RelationDirection, RelationExtent, RelationPoint,
+};
 #[cfg(test)]
 pub(crate) use self::document::RelationDocumentPlan;
 #[cfg(test)]
@@ -100,11 +102,10 @@ pub(crate) use self::horizontal::*;
 #[allow(unused_imports)]
 pub(crate) use self::layered::LayeredRelationPhysicalPort;
 pub(crate) use self::layered::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationPhysicalSide,
-    LayeredRelationRouteGeometry, LayeredRelationRouteProfile, LayeredRelationRouteStyle,
-    LayeredRelationSummaryReason, RelationLineChars, RelationOverlay,
-    centered_label_lines_with_role, centered_text_line_with_role, label_lines_with_role,
-    marker_line_with_role, put_relation_char,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteGeometry,
+    LayeredRelationRouteProfile, LayeredRelationRouteStyle, LayeredRelationSummaryReason,
+    RelationLineChars, RelationOverlay, centered_label_lines_with_role,
+    centered_text_line_with_role, label_lines_with_role, marker_line_with_role, put_relation_char,
 };
 #[cfg(test)]
 use self::layered::{
@@ -158,8 +159,8 @@ pub(crate) trait RelationComponentAdapter<'text, R> {
     fn horizontal_relation_style(
         &self,
         relation: &R,
-        source_side: RelationPortSide,
-        target_side: RelationPortSide,
+        source_side: PhysicalPortSide,
+        target_side: PhysicalPortSide,
         resources: &ResourceContext,
     ) -> Result<HorizontalRelationStyle>;
 

@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 pub(crate) struct LayeredRelationEdge {
     from_id: String,
     to_id: String,
+    route_reversed: bool,
     label_width: usize,
     label_line_count: usize,
 }
@@ -23,9 +24,17 @@ impl LayeredRelationEdge {
         Self {
             from_id: from_id.into(),
             to_id: to_id.into(),
+            route_reversed: false,
             label_width,
             label_line_count,
         }
+    }
+
+    /// Reverses only the physical route/rank projection while preserving semantic endpoints.
+    #[must_use]
+    pub(crate) const fn with_reversed_route(mut self, route_reversed: bool) -> Self {
+        self.route_reversed = route_reversed;
+        self
     }
 
     pub(crate) fn source_id(&self) -> &str {
@@ -34,6 +43,22 @@ impl LayeredRelationEdge {
 
     pub(crate) fn target_id(&self) -> &str {
         self.to_id.as_str()
+    }
+
+    pub(crate) fn route_source_id(&self) -> &str {
+        if self.route_reversed {
+            self.target_id()
+        } else {
+            self.source_id()
+        }
+    }
+
+    pub(crate) fn route_target_id(&self) -> &str {
+        if self.route_reversed {
+            self.source_id()
+        } else {
+            self.target_id()
+        }
     }
 }
 
@@ -262,11 +287,11 @@ pub(crate) fn relation_components<'a>(
     for edge in edges {
         checkpoints.tick(resources)?;
         let source_index = box_index_by_id
-            .get(edge.source_id())
+            .get(edge.route_source_id())
             .copied()
             .ok_or(LayeredRelationError::MissingEndpoint)?;
         let target_index = box_index_by_id
-            .get(edge.target_id())
+            .get(edge.route_target_id())
             .copied()
             .ok_or(LayeredRelationError::MissingEndpoint)?;
         degrees[source_index] = degrees[source_index]
@@ -510,11 +535,11 @@ fn layered_relation_levels(
     for edge in edges {
         checkpoints.tick(resources)?;
         let source_index = box_index_by_id
-            .get(edge.source_id())
+            .get(edge.route_source_id())
             .copied()
             .ok_or(LayeredRelationError::MissingEndpoint)?;
         let target_index = box_index_by_id
-            .get(edge.target_id())
+            .get(edge.route_target_id())
             .copied()
             .ok_or(LayeredRelationError::MissingEndpoint)?;
         incident.insert(source_index);
@@ -732,13 +757,16 @@ fn strict_k2_2_cycle_groups<'a>(
         .try_reserve(edges.len())
         .map_err(|_| layout_allocation_failed())?;
     for edge in edges {
-        if find_box_ref(boxes, edge.source_id()).is_none()
-            || find_box_ref(boxes, edge.target_id()).is_none()
+        if find_box_ref(boxes, edge.route_source_id()).is_none()
+            || find_box_ref(boxes, edge.route_target_id()).is_none()
         {
             return Err(LayeredRelationError::MissingEndpoint.into());
         }
-        if edge.source_id() == edge.target_id()
-            || !pairs.insert(ordered_endpoint_pair(edge.source_id(), edge.target_id()))
+        if edge.route_source_id() == edge.route_target_id()
+            || !pairs.insert(ordered_endpoint_pair(
+                edge.route_source_id(),
+                edge.route_target_id(),
+            ))
         {
             return Ok(None);
         }
@@ -750,10 +778,10 @@ fn strict_k2_2_cycle_groups<'a>(
         .try_reserve_exact(2)
         .map_err(|_| layout_allocation_failed())?;
     for edge in edges {
-        if edge.source_id() == first.id() {
-            neighbors.push(edge.target_id());
-        } else if edge.target_id() == first.id() {
-            neighbors.push(edge.source_id());
+        if edge.route_source_id() == first.id() {
+            neighbors.push(edge.route_target_id());
+        } else if edge.route_target_id() == first.id() {
+            neighbors.push(edge.route_source_id());
         }
     }
     neighbors.sort_unstable();
@@ -1040,20 +1068,32 @@ fn crossing_layered_relation_count(
     let mut crossings = 0usize;
     for (left_index, left) in edges.iter().enumerate() {
         checkpoints.tick(resources)?;
-        let left_from_level = levels.get(left.source_id()).copied().unwrap_or(0);
-        let left_to_level = levels.get(left.target_id()).copied().unwrap_or(0);
-        let left_from_order = order_by_id.get(left.source_id()).copied().unwrap_or(0);
-        let left_to_order = order_by_id.get(left.target_id()).copied().unwrap_or(0);
+        let left_from_level = levels.get(left.route_source_id()).copied().unwrap_or(0);
+        let left_to_level = levels.get(left.route_target_id()).copied().unwrap_or(0);
+        let left_from_order = order_by_id
+            .get(left.route_source_id())
+            .copied()
+            .unwrap_or(0);
+        let left_to_order = order_by_id
+            .get(left.route_target_id())
+            .copied()
+            .unwrap_or(0);
         for right in edges.iter().skip(left_index + 1) {
             checkpoints.tick(resources)?;
-            if levels.get(right.source_id()).copied().unwrap_or(0) != left_from_level
-                || levels.get(right.target_id()).copied().unwrap_or(0) != left_to_level
+            if levels.get(right.route_source_id()).copied().unwrap_or(0) != left_from_level
+                || levels.get(right.route_target_id()).copied().unwrap_or(0) != left_to_level
             {
                 continue;
             }
 
-            let right_from_order = order_by_id.get(right.source_id()).copied().unwrap_or(0);
-            let right_to_order = order_by_id.get(right.target_id()).copied().unwrap_or(0);
+            let right_from_order = order_by_id
+                .get(right.route_source_id())
+                .copied()
+                .unwrap_or(0);
+            let right_to_order = order_by_id
+                .get(right.route_target_id())
+                .copied()
+                .unwrap_or(0);
 
             let crosses_left_to_right =
                 left_from_order < right_from_order && left_to_order > right_to_order;
@@ -1165,12 +1205,12 @@ fn order_layered_groups_downward<'a>(
                 .map_err(|_| layout_allocation_failed())?;
             for edge in edges {
                 checkpoints.tick(resources)?;
-                if edge.target_id() != relation_box.id()
-                    || levels.get(edge.source_id()).copied() != Some(level - 1)
+                if edge.route_target_id() != relation_box.id()
+                    || levels.get(edge.route_source_id()).copied() != Some(level - 1)
                 {
                     continue;
                 }
-                if let Some(order) = previous_order.get(edge.source_id()).copied() {
+                if let Some(order) = previous_order.get(edge.route_source_id()).copied() {
                     neighbor_orders.push(order);
                 }
             }
@@ -1237,12 +1277,12 @@ fn order_layered_groups_upward<'a>(
                 .map_err(|_| layout_allocation_failed())?;
             for edge in edges {
                 checkpoints.tick(resources)?;
-                if edge.source_id() != relation_box.id()
-                    || levels.get(edge.target_id()).copied() != Some(level + 1)
+                if edge.route_source_id() != relation_box.id()
+                    || levels.get(edge.route_target_id()).copied() != Some(level + 1)
                 {
                     continue;
                 }
-                if let Some(order) = next_order.get(edge.target_id()).copied() {
+                if let Some(order) = next_order.get(edge.route_target_id()).copied() {
                     neighbor_orders.push(order);
                 }
             }
@@ -1331,7 +1371,7 @@ fn place_layered_boxes<'a>(
     let parallel_lane_margin = parallel_lane_margin(
         edges
             .iter()
-            .map(|edge| (edge.source_id(), edge.target_id())),
+            .map(|edge| (edge.route_source_id(), edge.route_target_id())),
         resources,
     )?;
     let parallel_margin = resources.checked_grid_mul(parallel_lane_margin, 2)?;
@@ -1500,8 +1540,8 @@ fn spanning_lane_margin(
     resources: &ResourceContext,
 ) -> Result<usize, LayeredRelationPlanningError> {
     let has_spanning_edge = edges.iter().any(|edge| {
-        let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
-        let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
+        let from_level = levels.get(edge.route_source_id()).copied().unwrap_or(0);
+        let to_level = levels.get(edge.route_target_id()).copied().unwrap_or(0);
         from_level.abs_diff(to_level) > 1
     });
     if !has_spanning_edge {
@@ -1538,8 +1578,8 @@ fn precompute_layered_relation_gap_heights(
             let mut measurement_checkpoints = RelationResourceCheckpointCursor::new();
             for edge in edges {
                 measurement_checkpoints.tick(resources)?;
-                let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
-                let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
+                let from_level = levels.get(edge.route_source_id()).copied().unwrap_or(0);
+                let to_level = levels.get(edge.route_target_id()).copied().unwrap_or(0);
                 let min_level = from_level.min(to_level);
                 let end = from_level.max(to_level).min(gap_count);
                 crossed_gap_visits = resources
@@ -1564,8 +1604,8 @@ fn precompute_layered_relation_gap_heights(
             let mut fill_checkpoints = RelationResourceCheckpointCursor::new();
             for edge in edges {
                 fill_checkpoints.tick(resources)?;
-                let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
-                let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
+                let from_level = levels.get(edge.route_source_id()).copied().unwrap_or(0);
+                let to_level = levels.get(edge.route_target_id()).copied().unwrap_or(0);
                 let min_level = from_level.min(to_level);
                 let end = from_level.max(to_level).min(gap_count);
                 if min_level >= end {
@@ -1605,6 +1645,16 @@ mod tests {
     use crate::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
     use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn reversed_route_preserves_semantic_endpoints() {
+        let edge = LayeredRelationEdge::new("source", "target", 0, 0).with_reversed_route(true);
+
+        assert_eq!(edge.source_id(), "source");
+        assert_eq!(edge.target_id(), "target");
+        assert_eq!(edge.route_source_id(), "target");
+        assert_eq!(edge.route_target_id(), "source");
+    }
 
     #[test]
     fn score_ordered_layered_group_candidate_skips_duplicate_orders() {
