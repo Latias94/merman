@@ -4,6 +4,8 @@
 //! executed synchronously through the same internal operation runner. Target-specific layout and
 //! emission remain private to their adapters.
 
+#[cfg(feature = "ascii")]
+use merman_core::OperationPhase;
 use merman_core::{
     Engine, OperationCancelled, OperationControl, ParseOptions, resources::InputResourcePolicy,
 };
@@ -923,6 +925,10 @@ fn render_ascii_target(
     request: AsciiRequest,
 ) -> Result<Option<String>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
+    operation
+        .control
+        .checkpoint_at(OperationPhase::Admission)
+        .map_err(RenderError::Cancelled)?;
     let renderer = merman_ascii::AsciiRenderer::new(request.options).map_err(map_ascii_error)?;
     renderer
         .render_model(

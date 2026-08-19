@@ -10,7 +10,7 @@ use merman::{
 
 #[cfg(feature = "ascii")]
 use merman::{
-    AsciiRequest,
+    AsciiRequest, RenderTarget,
     ascii::{AsciiResourceLimitId, AsciiResourcePolicy},
 };
 
@@ -516,4 +516,52 @@ fn ascii_request_uses_common_cancellation() {
         ))
         .expect_err("cancelled ASCII request must stop");
     assert!(matches!(error, RenderError::Cancelled(_)));
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn ascii_target_cancellation_precedes_option_validation() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should produce a semantic artifact");
+    control.cancel();
+
+    let mut request = AsciiRequest::default();
+    request.options.flowchart_node_label_wrap_width = 0;
+    let error = artifact
+        .render(RenderTarget::Ascii(request))
+        .expect_err("target admission cancellation must win over invalid options");
+
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Admission
+                && cancelled.reason == merman::CancelReason::Requested
+    ));
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn ascii_target_deadline_precedes_option_validation() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should produce a semantic artifact");
+    assert!(control.set_deadline(Duration::ZERO));
+
+    let mut request = AsciiRequest::default();
+    request.options.flowchart_node_label_wrap_width = 0;
+    let error = artifact
+        .render(RenderTarget::Ascii(request))
+        .expect_err("target admission deadline must win over invalid options");
+
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Admission
+                && cancelled.reason == merman::CancelReason::DeadlineExceeded
+    ));
 }
