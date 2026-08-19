@@ -1,14 +1,19 @@
 use merman_theme_contract::{
-    THEME_SUPPORT_SCHEMA_VERSION_V1, ThemeCapabilityDescriptorV1, ThemeSupportFacetV1,
-    ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
+    THEME_SUPPORT_SCHEMA_VERSION_V1, THEME_SUPPORT_SCHEMA_VERSION_V2, ThemeCapabilityDescriptorV1,
+    ThemeCapabilityDescriptorV2, ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2,
+    ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportQueryV2,
+    ThemeSupportStateV1, ThemeSupportSubjectV2,
 };
 
 use crate::DiagramFamilyId;
 
-use super::family_mechanism_matrix::summarize_theme_support;
+use super::family_mechanism_matrix::{
+    FamilyThemeSupportSummary, summarize_base_typography_support, summarize_theme_support,
+};
 use super::semantic::ThemeTarget;
 
 const THEME_SUPPORT_CLAIM_REVISION_V1: u32 = 1;
+const THEME_SUPPORT_CLAIM_REVISION_V2: u32 = 1;
 
 /// Describes the current build's coarse static support for one theme capability.
 ///
@@ -146,6 +151,218 @@ pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDes
     )
 }
 
+/// Describes the current build's coarse static support for one V2 theme subject.
+///
+/// V2 separates family-wide base typography from semantic-target rules. Output qualification and
+/// family render-capability gates remain identical to V1.
+pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapabilityDescriptorV2 {
+    if query.schema_version() != THEME_SUPPORT_SCHEMA_VERSION_V2 {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.unknown-schema-version"],
+        );
+    }
+    let Some(family) = DiagramFamilyId::from_id(query.family_id()) else {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.unknown-family"],
+        );
+    };
+    let Some(output) = ThemeSupportOutputV1::from_id(query.output_id()) else {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.unknown-output"],
+        );
+    };
+
+    #[derive(Clone, Copy)]
+    enum ResolvedSubject {
+        Target {
+            target: ThemeTarget,
+            facet: ThemeSupportFacetV1,
+        },
+        BaseTypography(ThemeSupportBaseTypographyPropertyV2),
+    }
+
+    let subject = match query.subject() {
+        ThemeSupportSubjectV2::Rule { target, facet } => {
+            let Some(target) = ThemeTarget::from_id(target) else {
+                return descriptor_v2(
+                    query,
+                    ThemeSupportStateV1::Unverified,
+                    ["theme-support.unknown-target"],
+                );
+            };
+            let Some(facet) = ThemeRuleFacetV1::from_id(facet) else {
+                return descriptor_v2(
+                    query,
+                    ThemeSupportStateV1::Unverified,
+                    ["theme-support.unknown-facet"],
+                );
+            };
+            ResolvedSubject::Target {
+                target,
+                facet: ThemeSupportFacetV1::Rule(facet),
+            }
+        }
+        ThemeSupportSubjectV2::OrdinalPalette { target } => {
+            let Some(target) = ThemeTarget::from_id(target) else {
+                return descriptor_v2(
+                    query,
+                    ThemeSupportStateV1::Unverified,
+                    ["theme-support.unknown-target"],
+                );
+            };
+            ResolvedSubject::Target {
+                target,
+                facet: ThemeSupportFacetV1::OrdinalPalette,
+            }
+        }
+        ThemeSupportSubjectV2::BaseTypography { property } => {
+            let Some(property) = ThemeSupportBaseTypographyPropertyV2::from_id(property) else {
+                return descriptor_v2(
+                    query,
+                    ThemeSupportStateV1::Unverified,
+                    ["theme-support.unknown-base-typography-property"],
+                );
+            };
+            ResolvedSubject::BaseTypography(property)
+        }
+        ThemeSupportSubjectV2::Unknown { .. } => {
+            return descriptor_v2(
+                query,
+                ThemeSupportStateV1::Unverified,
+                ["theme-support.unknown-subject"],
+            );
+        }
+        _ => {
+            return descriptor_v2(
+                query,
+                ThemeSupportStateV1::Unverified,
+                ["theme-support.unknown-subject"],
+            );
+        }
+    };
+
+    if let ResolvedSubject::Target { target, .. } = subject {
+        if !target.valid_for(family) {
+            return descriptor_v2(
+                query,
+                ThemeSupportStateV1::NotApplicable,
+                ["theme-support.target-not-applicable-to-family"],
+            );
+        }
+    }
+    if output == ThemeSupportOutputV1::Ascii {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::NotApplicable,
+            ["theme-support.visual-theme-not-applicable-to-output"],
+        );
+    }
+    if output == ThemeSupportOutputV1::BrowserSvg {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.terminal-qualification-incomplete"],
+        );
+    }
+    if matches!(
+        output,
+        ThemeSupportOutputV1::Png | ThemeSupportOutputV1::Jpeg | ThemeSupportOutputV1::Pdf
+    ) {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.output-qualification-not-owned-by-renderer"],
+        );
+    }
+    if matches!(
+        subject,
+        ResolvedSubject::Target {
+            target: ThemeTarget::Canvas,
+            ..
+        }
+    ) {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.root-support-query-not-yet-modeled"],
+        );
+    }
+    if family == DiagramFamilyId::ARCHITECTURE && !crate::layout_cytoscape_available() {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unverified,
+            ["theme-support.family-render-capability-not-built"],
+        );
+    }
+
+    let summary = match subject {
+        ResolvedSubject::Target { target, facet } => summarize_theme_support(family, target, facet),
+        ResolvedSubject::BaseTypography(property) => {
+            summarize_base_typography_support(family, property)
+        }
+    };
+    descriptor_v2_from_summary(query, summary)
+}
+
+fn descriptor_v2_from_summary(
+    query: &ThemeSupportQueryV2,
+    summary: FamilyThemeSupportSummary,
+) -> ThemeCapabilityDescriptorV2 {
+    if summary.has_typed() {
+        if summary.has_legacy() || summary.has_unsupported() {
+            return descriptor_v2(
+                query,
+                ThemeSupportStateV1::Conditional,
+                [
+                    "theme-support.family-owned-consumer-present",
+                    "theme-support.public-value-domain-partial",
+                ],
+            );
+        }
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Conditional,
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ],
+        );
+    }
+    if summary.has_legacy() {
+        let reasons = if summary.has_unsupported() {
+            [
+                "theme-support.legacy-compatibility-only",
+                "theme-support.public-value-domain-partial",
+            ]
+        } else {
+            [
+                "theme-support.legacy-compatibility-only",
+                "theme-support.document-surface-dependent",
+            ]
+        };
+        return descriptor_v2(query, ThemeSupportStateV1::Conditional, reasons);
+    }
+    if summary.has_unsupported() {
+        return descriptor_v2(
+            query,
+            ThemeSupportStateV1::Unsupported,
+            ["theme-support.no-supported-route"],
+        );
+    }
+
+    descriptor_v2(
+        query,
+        ThemeSupportStateV1::Unverified,
+        ["theme-support.support-claim-missing"],
+    )
+}
+
 fn descriptor<const N: usize>(
     query: &ThemeSupportQueryV1,
     state: ThemeSupportStateV1,
@@ -153,6 +370,19 @@ fn descriptor<const N: usize>(
 ) -> ThemeCapabilityDescriptorV1 {
     ThemeCapabilityDescriptorV1::from_renderer_claim(
         THEME_SUPPORT_CLAIM_REVISION_V1,
+        query.clone(),
+        state,
+        reason_ids,
+    )
+}
+
+fn descriptor_v2<const N: usize>(
+    query: &ThemeSupportQueryV2,
+    state: ThemeSupportStateV1,
+    reason_ids: [&'static str; N],
+) -> ThemeCapabilityDescriptorV2 {
+    ThemeCapabilityDescriptorV2::from_renderer_claim(
+        THEME_SUPPORT_CLAIM_REVISION_V2,
         query.clone(),
         state,
         reason_ids,

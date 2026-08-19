@@ -30,8 +30,10 @@ pub use spec::{
     ThemeTypographySpecWireV1,
 };
 pub use support::{
-    MAX_THEME_SUPPORT_REASON_IDS_V1, THEME_SUPPORT_SCHEMA_VERSION_V1, ThemeCapabilityDescriptorV1,
-    ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
+    MAX_THEME_SUPPORT_REASON_IDS_V1, THEME_SUPPORT_SCHEMA_VERSION_V1,
+    THEME_SUPPORT_SCHEMA_VERSION_V2, ThemeCapabilityDescriptorV1, ThemeCapabilityDescriptorV2,
+    ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1, ThemeSupportOutputV1,
+    ThemeSupportQueryV1, ThemeSupportQueryV2, ThemeSupportStateV1, ThemeSupportSubjectV2,
 };
 pub use version::{
     ThemeContractVersion, ThemeContractVersionError, authoring_version_registry,

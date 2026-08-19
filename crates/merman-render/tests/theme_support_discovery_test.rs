@@ -1,7 +1,10 @@
 use merman_render::DiagramFamilyId;
-use merman_render::diagram_theme::{ThemeSupportStateV1, ThemeTarget, describe_theme_support};
+use merman_render::diagram_theme::{
+    ThemeSupportStateV1, ThemeTarget, describe_theme_support, describe_theme_support_v2,
+};
 use merman_theme_contract::{
-    ThemeRuleFacetV1, ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
+    ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1,
+    ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportQueryV2,
 };
 
 #[test]
@@ -470,4 +473,261 @@ fn ascii_has_a_separate_non_visual_theme_contract() {
         support.reason_ids(),
         ["theme-support.visual-theme-not-applicable-to-output"]
     );
+}
+
+#[test]
+fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
+    for (family, property, expected_state, expected_reasons) in [
+        (
+            DiagramFamilyId::PACKET,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::PACKET,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Unsupported,
+            &["theme-support.no-supported-route"][..],
+        ),
+        (
+            DiagramFamilyId::RAILROAD,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::RAILROAD,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::INFO,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::INFO,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Unsupported,
+            &["theme-support.no-supported-route"][..],
+        ),
+        (
+            DiagramFamilyId::ERROR,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::ERROR,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Unsupported,
+            &["theme-support.no-supported-route"][..],
+        ),
+        (
+            DiagramFamilyId::CYNEFIN,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::CYNEFIN,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Unsupported,
+            &["theme-support.no-supported-route"][..],
+        ),
+        (
+            DiagramFamilyId::WARDLEY,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+            ThemeSupportStateV1::Conditional,
+            &[
+                "theme-support.family-owned-consumer-present",
+                "theme-support.document-surface-dependent",
+            ][..],
+        ),
+        (
+            DiagramFamilyId::WARDLEY,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+            ThemeSupportStateV1::Unsupported,
+            &["theme-support.no-supported-route"][..],
+        ),
+    ] {
+        let query = ThemeSupportQueryV2::base_typography(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            property,
+        );
+        let support = describe_theme_support_v2(&query);
+
+        assert_eq!(
+            support.state(),
+            expected_state,
+            "family={family} property={property:?}"
+        );
+        assert_eq!(
+            support.reason_ids(),
+            expected_reasons,
+            "family={family} property={property:?}"
+        );
+    }
+}
+
+#[test]
+fn v2_rule_and_ordinal_subjects_preserve_v1_support_decisions() {
+    let cases = [
+        (
+            ThemeSupportQueryV1::known(
+                DiagramFamilyId::FLOWCHART.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeTarget::Node.id(),
+                ThemeRuleFacetV1::Radius,
+            ),
+            ThemeSupportQueryV2::rule(
+                DiagramFamilyId::FLOWCHART.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeTarget::Node.id(),
+                ThemeRuleFacetV1::Radius,
+            ),
+        ),
+        (
+            ThemeSupportQueryV1::known(
+                DiagramFamilyId::MINDMAP.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeTarget::Node.id(),
+                ThemeSupportFacetV1::OrdinalPalette,
+            ),
+            ThemeSupportQueryV2::ordinal_palette(
+                DiagramFamilyId::MINDMAP.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeTarget::Node.id(),
+            ),
+        ),
+    ];
+
+    for (v1_query, v2_query) in cases {
+        let v1 = describe_theme_support(&v1_query);
+        let v2 = describe_theme_support_v2(&v2_query);
+
+        assert_eq!(v2.state(), v1.state());
+        assert_eq!(v2.reason_ids(), v1.reason_ids());
+    }
+}
+
+#[test]
+fn v2_base_typography_is_not_the_v1_text_font_stack_rule() {
+    let v1 = describe_theme_support(&ThemeSupportQueryV1::known(
+        DiagramFamilyId::INFO.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Text.id(),
+        ThemeRuleFacetV1::FontStack,
+    ));
+    let v2 = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+        DiagramFamilyId::INFO.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeSupportBaseTypographyPropertyV2::FontStack,
+    ));
+
+    assert_eq!(v1.state(), ThemeSupportStateV1::Unsupported);
+    assert_eq!(v2.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        v2.reason_ids(),
+        [
+            "theme-support.family-owned-consumer-present",
+            "theme-support.document-surface-dependent",
+        ]
+    );
+}
+
+#[test]
+fn v2_unknown_subject_and_base_typography_property_are_unverified() {
+    for (query, reason_id) in [
+        (
+            serde_json::json!({
+                "schema_version": 2,
+                "family": "railroad",
+                "output": "standalone-svg",
+                "subject": { "kind": "future-subject" }
+            }),
+            "theme-support.unknown-subject",
+        ),
+        (
+            serde_json::json!({
+                "schema_version": 2,
+                "family": "railroad",
+                "output": "standalone-svg",
+                "subject": {
+                    "kind": "base-typography",
+                    "property": "future-property"
+                }
+            }),
+            "theme-support.unknown-base-typography-property",
+        ),
+    ] {
+        let query: ThemeSupportQueryV2 =
+            serde_json::from_value(query).expect("unknown V2 identifiers remain queryable");
+        let support = describe_theme_support_v2(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
+        assert_eq!(support.reason_ids(), [reason_id]);
+    }
+}
+
+#[test]
+fn v2_preserves_the_v1_output_qualification_gates() {
+    for (output, expected_state, expected_reason) in [
+        (
+            ThemeSupportOutputV1::BrowserSvg,
+            ThemeSupportStateV1::Unverified,
+            "theme-support.terminal-qualification-incomplete",
+        ),
+        (
+            ThemeSupportOutputV1::Png,
+            ThemeSupportStateV1::Unverified,
+            "theme-support.output-qualification-not-owned-by-renderer",
+        ),
+        (
+            ThemeSupportOutputV1::Jpeg,
+            ThemeSupportStateV1::Unverified,
+            "theme-support.output-qualification-not-owned-by-renderer",
+        ),
+        (
+            ThemeSupportOutputV1::Pdf,
+            ThemeSupportStateV1::Unverified,
+            "theme-support.output-qualification-not-owned-by-renderer",
+        ),
+        (
+            ThemeSupportOutputV1::Ascii,
+            ThemeSupportStateV1::NotApplicable,
+            "theme-support.visual-theme-not-applicable-to-output",
+        ),
+    ] {
+        let support = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+            DiagramFamilyId::RAILROAD.as_str(),
+            output,
+            ThemeSupportBaseTypographyPropertyV2::FontStack,
+        ));
+
+        assert_eq!(support.state(), expected_state, "output={output:?}");
+        assert_eq!(support.reason_ids(), [expected_reason], "output={output:?}");
+    }
 }

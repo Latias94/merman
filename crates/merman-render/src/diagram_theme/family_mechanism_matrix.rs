@@ -7,7 +7,9 @@ use crate::theme_route_cutover::{
     ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjectionSet, ThemeRouteCutoverSelector,
     ThemeRouteCutoverValue,
 };
-use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportFacetV1};
+use merman_theme_contract::{
+    ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1,
+};
 
 use super::canvas::CanvasPaint;
 use super::resolved::ThemeTypographyProperty;
@@ -713,6 +715,30 @@ pub(super) fn summarize_theme_support(
             summary.record(disposition);
         });
     });
+    summary
+}
+
+/// Projects the family-wide base typography classifier into public V2 discovery facts.
+///
+/// The property match is only a contract-to-renderer vocabulary translation. Route ownership
+/// remains exclusively defined by `classify_base_typography`.
+pub(super) fn summarize_base_typography_support(
+    family: DiagramFamilyId,
+    property: ThemeSupportBaseTypographyPropertyV2,
+) -> FamilyThemeSupportSummary {
+    let property = match property {
+        ThemeSupportBaseTypographyPropertyV2::FontStack => ThemeTypographyProperty::FontStack,
+        ThemeSupportBaseTypographyPropertyV2::FontSize => ThemeTypographyProperty::FontSize,
+        ThemeSupportBaseTypographyPropertyV2::FontWeight => ThemeTypographyProperty::FontWeight,
+        ThemeSupportBaseTypographyPropertyV2::FontStyle => ThemeTypographyProperty::FontStyle,
+        ThemeSupportBaseTypographyPropertyV2::LineHeight => ThemeTypographyProperty::LineHeight,
+        ThemeSupportBaseTypographyPropertyV2::LetterSpacing => {
+            ThemeTypographyProperty::LetterSpacing
+        }
+        _ => return FamilyThemeSupportSummary::default(),
+    };
+    let mut summary = FamilyThemeSupportSummary::default();
+    summary.record(classify_base_typography(family, property));
     summary
 }
 

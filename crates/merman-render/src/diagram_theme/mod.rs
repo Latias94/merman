@@ -44,10 +44,11 @@ use std::sync::Arc;
 
 pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
 pub use merman_theme_contract::{
-    DiagramThemeSpecWireV1, MaterializedThemeWireV1, ThemeCapabilityDescriptorV1,
-    ThemeDefinitionV1, ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1,
-    ThemeRuleFacetV1, ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1,
-    ThemeSupportStateV1,
+    DiagramThemeSpecWireV1, MaterializedThemeWireV1, THEME_SUPPORT_SCHEMA_VERSION_V2,
+    ThemeCapabilityDescriptorV1, ThemeCapabilityDescriptorV2, ThemeDefinitionV1,
+    ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1, ThemeRuleFacetV1,
+    ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1, ThemeSupportOutputV1,
+    ThemeSupportQueryV1, ThemeSupportQueryV2, ThemeSupportStateV1, ThemeSupportSubjectV2,
 };
 
 pub(crate) use admission::ResolvedThemeAdmission;
@@ -114,7 +115,7 @@ pub use semantic::{
     ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
-pub use support::describe_theme_support;
+pub use support::{describe_theme_support, describe_theme_support_v2};
 pub(crate) use typography::is_css_wide_keyword;
 pub use typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,

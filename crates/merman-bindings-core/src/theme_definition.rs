@@ -1,7 +1,9 @@
 use merman::diagram_theme::{
     ThemeDefinitionCompileError, ThemeMaterializationErrorV1, ThemeSupportQueryV1,
+    ThemeSupportQueryV2,
     compile_theme_definition_json as compile_theme_definition_json_with_renderer,
     describe_theme_support as describe_theme_support_with_renderer,
+    describe_theme_support_v2 as describe_theme_support_v2_with_renderer,
     materialize_theme_json_with_resource_policy as materialize_theme_json_with_renderer_policy,
 };
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourceLimitId, ThemeResourcePolicy};
@@ -42,11 +44,28 @@ pub fn describe_theme_support_json_with_resource_policy(
     policy
         .check_theme_encoded_bytes(bytes.len())
         .map_err(crate::theme::theme_resource_error)?;
-    let query = serde_json::from_slice::<ThemeSupportQueryV1>(bytes).map_err(|error| {
+
+    #[derive(serde::Deserialize)]
+    struct SupportQueryVersion {
+        schema_version: u32,
+    }
+
+    let version = serde_json::from_slice::<SupportQueryVersion>(bytes).map_err(|error| {
         BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
     })?;
-    let descriptor = describe_theme_support_with_renderer(&query);
-    serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
+    if version.schema_version == merman::diagram_theme::THEME_SUPPORT_SCHEMA_VERSION_V2 {
+        let query = serde_json::from_slice::<ThemeSupportQueryV2>(bytes).map_err(|error| {
+            BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
+        })?;
+        let descriptor = describe_theme_support_v2_with_renderer(&query);
+        serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
+    } else {
+        let query = serde_json::from_slice::<ThemeSupportQueryV1>(bytes).map_err(|error| {
+            BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
+        })?;
+        let descriptor = describe_theme_support_with_renderer(&query);
+        serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
+    }
 }
 
 /// Compiles one versioned authoring definition with the general binding resource profile.
@@ -117,8 +136,9 @@ fn materialization_error(
 mod tests {
     use crate::BindingError;
     use merman::diagram_theme::{
-        MaterializedThemeWireV1, ThemeDefinitionV1, ThemeRuleFacetV1, ThemeSupportOutputV1,
-        ThemeSupportQueryV1, ThemeTokensV1, describe_theme_support,
+        MaterializedThemeWireV1, ThemeDefinitionV1, ThemeRuleFacetV1,
+        ThemeSupportBaseTypographyPropertyV2, ThemeSupportOutputV1, ThemeSupportQueryV1,
+        ThemeSupportQueryV2, ThemeTokensV1, describe_theme_support, describe_theme_support_v2,
         materialize_theme_with_resource_policy,
     };
     use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
@@ -314,6 +334,21 @@ mod tests {
                 .expect("known descriptor should serialize")
         );
 
+        let known_v2 = ThemeSupportQueryV2::base_typography(
+            "railroad",
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeSupportBaseTypographyPropertyV2::FontSize,
+        );
+        let known_v2_input =
+            serde_json::to_vec(&known_v2).expect("known V2 query should serialize");
+        let known_v2_output = crate::describe_theme_support_json(&known_v2_input)
+            .expect("known V2 query should succeed");
+        assert_eq!(
+            known_v2_output,
+            serde_json::to_vec(&describe_theme_support_v2(&known_v2))
+                .expect("known V2 descriptor should serialize")
+        );
+
         for (field, value, reason_id) in [
             ("family", "future-family", "theme-support.unknown-family"),
             ("target", "future-target", "theme-support.unknown-target"),
@@ -336,6 +371,26 @@ mod tests {
             assert_eq!(descriptor["state"], "unverified");
             assert_eq!(descriptor["reason_ids"], json!([reason_id]));
         }
+
+        let unknown_v2_property = json!({
+            "schema_version": 2,
+            "family": "railroad",
+            "output": "standalone-svg",
+            "subject": {
+                "kind": "base-typography",
+                "property": "future-property"
+            }
+        });
+        let output =
+            crate::describe_theme_support_json(&serde_json::to_vec(&unknown_v2_property).unwrap())
+                .expect("unknown V2 properties remain valid discovery input");
+        let descriptor: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(descriptor["query"], unknown_v2_property);
+        assert_eq!(descriptor["state"], "unverified");
+        assert_eq!(
+            descriptor["reason_ids"],
+            json!(["theme-support.unknown-base-typography-property"])
+        );
     }
 
     #[test]
