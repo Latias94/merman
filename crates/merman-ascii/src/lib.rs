@@ -97,41 +97,8 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
-        match model {
-            RenderSemanticModel::Flowchart(model) => {
-                return render_flowchart_operation(model, &self.options, execution);
-            }
-            RenderSemanticModel::State(model) => {
-                return render_state_operation(model, &self.options, execution);
-            }
-            _ => {}
-        }
         render_model_with_execution(model, &self.options, execution, context.local_time_zone())
     }
-}
-
-fn render_flowchart_operation(
-    model: &FlowchartModel,
-    options: &AsciiRenderOptions,
-    execution: operation::AsciiExecution<'_>,
-) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Admission)?;
-    options.validate()?;
-    let rendered = render_flowchart_model(model, options, &execution)?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    Ok(rendered)
-}
-
-fn render_state_operation(
-    model: &StateDiagramRenderModel,
-    options: &AsciiRenderOptions,
-    execution: operation::AsciiExecution<'_>,
-) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Admission)?;
-    options.validate()?;
-    let rendered = render_state_model(model, options, &execution)?;
-    execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    Ok(rendered)
 }
 
 fn render_model_with_execution(
