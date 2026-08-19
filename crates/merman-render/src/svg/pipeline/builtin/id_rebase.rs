@@ -1248,6 +1248,76 @@ mod tests {
     }
 
     #[test]
+    fn large_prefix_style_projection_matches_output_and_rejects_n_minus_one() {
+        let prefix = "p".repeat(REBASE_PREFIX_CHECKPOINT_BYTES * 64);
+        let svg = r##"<svg><style>#node{fill:url(#paint)}</style><style><![CDATA[#node{stroke:url(#paint)}]]></style><defs><linearGradient id="paint"/></defs><path id="node"/></svg>"##;
+        let processor = RebaseSvgIdsPostprocessor::new(prefix.clone());
+        let metadata = SvgPostprocessMetadata::from_svg(svg);
+        let unbounded_session = RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap();
+        let unbounded_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "rebase-svg-ids",
+            &metadata,
+            &unbounded_session,
+        );
+        let expected = processor
+            .process(Cow::Borrowed(svg), &unbounded_context)
+            .expect("unbounded ID rebase should materialize");
+        let projected_bytes = expected.len();
+        assert!(projected_bytes > 1024 * 1024);
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected_bytes)
+            .unwrap();
+        let exact_session = RenderEnvironment::deterministic()
+            .with_resource_policy(exact_policy)
+            .begin_session()
+            .unwrap();
+        let exact_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "rebase-svg-ids",
+            &metadata,
+            &exact_session,
+        );
+        let exact = processor
+            .process(Cow::Borrowed(svg), &exact_context)
+            .expect("the exact SVG byte limit should admit the expanded styles");
+        assert_eq!(exact, expected);
+
+        let limited_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected_bytes - 1)
+            .unwrap();
+        let limited_session = RenderEnvironment::deterministic()
+            .with_resource_policy(limited_policy)
+            .begin_session()
+            .unwrap();
+        let limited_context = SvgPostprocessContext::new(
+            SvgPipelinePreset::Parity,
+            0,
+            "rebase-svg-ids",
+            &metadata,
+            &limited_session,
+        );
+        let error = processor
+            .process(Cow::Borrowed(svg), &limited_context)
+            .expect_err("N - 1 bytes must reject before rebased SVG materialization");
+
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection, got {error}");
+        };
+        assert_eq!(details.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(details.phase, ResourceLimitPhase::SvgPostprocess);
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.actual, projected_bytes);
+        assert_eq!(details.max, projected_bytes - 1);
+    }
+
+    #[test]
     fn streaming_element_limit_preserves_exact_and_n_minus_one_boundaries() {
         let svg = r#"<svg id="root"><g id="first"/><g id="second"/></svg>"#;
         let processor = RebaseSvgIdsPostprocessor::new("fragment-with-a-long-scope");
