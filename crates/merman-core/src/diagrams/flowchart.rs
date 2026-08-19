@@ -319,13 +319,22 @@ fn parse_flowchart_semantic_source_controlled(
         description: acc_descr,
         ..
     } = scan_flowchart_accessibility_controlled(code, control)?;
-    control.checkpoint()?;
-    let ast = match parse_flowchart_ast(&code, meta) {
+    let ast = match parse_flowchart_ast_controlled(&code, meta, control)? {
         Ok(ast) => ast,
         Err(error) => return Ok(Err(error)),
     };
-    control.checkpoint()?;
     parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, control)
+}
+
+fn parse_flowchart_ast_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<FlowchartAst>> {
+    control.checkpoint()?;
+    let parsed = parse_flowchart_ast(code, meta);
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 fn parse_flowchart_semantic_source_from_ast_controlled(
@@ -2104,6 +2113,27 @@ F -- "&nbsp;" --> G
             parse_flowchart_json_and_editor_facts("flowchart TD\nA-->B\n", &meta, &control),
             Err(crate::OperationCancelled { .. })
         ));
+    }
+
+    #[test]
+    fn flowchart_parse_error_cannot_mask_post_parser_cancellation() {
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+        control.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            parse_flowchart_ast_controlled("flowchart TD\nA-->\n", &meta, &control),
+            Err(crate::OperationCancelled {
+                phase: crate::OperationPhase::Parse,
+                reason: crate::CancelReason::Requested,
+            })
+        ));
+        assert!(control.is_cancelled());
     }
 
     #[test]
