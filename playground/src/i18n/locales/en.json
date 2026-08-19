@@ -333,7 +333,10 @@
     "gruvbox-light": "Gruvbox Light",
     "gruvbox-dark": "Gruvbox Dark",
     "ayu-light": "Ayu Light",
-    "ayu-dark": "Ayu Dark"
+    "ayu-dark": "Ayu Dark",
+    "brutalist": "Brutalist",
+    "spotless": "Spotless",
+    "cyberpunk": "Cyberpunk"
   },
   "svgPipelines": {
     "parity": "Mermaid parity",

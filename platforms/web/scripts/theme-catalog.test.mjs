@@ -23,15 +23,29 @@ function themeCatalogFixture(overrides = {}) {
     presets: [
       {
         id: "editor-light",
+        display_name: "Editor Light",
         appearance: "light",
         maturity: "alpha",
+        available: true,
+        availability_reason_ids: [],
+        qualified_cells: [],
+        license_expression: "MIT OR Apache-2.0",
+        required_attribution: null,
+        export_kind: "definition",
         required_capability_ids: ["semantic-rules"],
         required_text_capability_ids: [],
       },
       {
         id: "future-theme",
+        display_name: "Future Theme",
         appearance: "adaptive",
         maturity: "experimental",
+        available: false,
+        availability_reason_ids: ["future-resource-unavailable"],
+        qualified_cells: [{ family_id: "flowchart", output_id: "svg" }],
+        license_expression: "LicenseRef-Future",
+        required_attribution: "Future Theme authors",
+        export_kind: "complete-spec",
         required_capability_ids: ["future-capability", "semantic-rules"],
         required_text_capability_ids: ["opentype-shaping"],
       },
@@ -111,15 +125,22 @@ test("theme catalog accepts future IDs, caches per surface, and returns defensiv
   assert.equal(firstFull.presets[1].id, "future-theme");
   assert.equal(firstFull.presets[0].maturity, "alpha");
   assert.equal(firstFull.presets[1].maturity, "experimental");
+  assert.equal(firstFull.presets[0].available, true);
+  assert.equal(firstFull.presets[1].available, false);
+  assert.deepEqual(firstFull.presets[1].qualified_cells, [
+    { family_id: "flowchart", output_id: "svg" },
+  ]);
   assert.equal(firstFull.known_semantic_target_ids[0], "future-target");
   assert.equal(firstFull.resource_limits[0].hard_cap, true);
   firstFull.presets[0].required_capability_ids[0] = "mutated-by-caller";
+  firstFull.presets[1].qualified_cells[0].family_id = "mutated-by-caller";
   firstFull.resource_limits[0].description = "mutated-by-caller";
 
   assert.equal(analysis.themeCatalog().presets.length, 0);
   assert.deepEqual(full.themeCatalog().presets[0].required_capability_ids, [
     "semantic-rules",
   ]);
+  assert.equal(full.themeCatalog().presets[1].qualified_cells[0].family_id, "flowchart");
   assert.notEqual(full.themeCatalog().resource_limits[0].description, "mutated-by-caller");
   assert.equal(fullCalls, 1);
   assert.equal(analysisCalls, 1);
@@ -139,6 +160,51 @@ test("theme catalog rejects missing or malformed preset maturity", async () => {
     mutate(presets[0]);
     const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
     assert.throws(() => runtime.themeCatalog(), /maturity|required fields/, label);
+  }
+});
+
+test("theme catalog validates preset availability, export kind, and qualified cells", async () => {
+  for (const [label, mutate, expected] of [
+    [
+      "available with reasons",
+      (preset) => { preset.availability_reason_ids = ["unexpected-reason"]; },
+      /availability/,
+    ],
+    [
+      "unavailable without reasons",
+      (preset) => { preset.available = false; },
+      /availability/,
+    ],
+    [
+      "unknown export kind",
+      (preset) => { preset.export_kind = "future-export"; },
+      /export kind/,
+    ],
+    [
+      "duplicate qualified cell",
+      (preset) => {
+        preset.qualified_cells = [
+          { family_id: "flowchart", output_id: "svg" },
+          { family_id: "flowchart", output_id: "svg" },
+        ];
+      },
+      /duplicate qualified cells/,
+    ],
+    [
+      "unsorted qualified cells",
+      (preset) => {
+        preset.qualified_cells = [
+          { family_id: "state", output_id: "svg" },
+          { family_id: "flowchart", output_id: "svg" },
+        ];
+      },
+      /qualified cells must be sorted/,
+    ],
+  ]) {
+    const presets = themeCatalogFixture().presets;
+    mutate(presets[0]);
+    const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
+    assert.throws(() => runtime.themeCatalog(), expected, label);
   }
 });
 

@@ -1586,7 +1586,7 @@ async function runSameProcessPackageSmoke() {
     full.runtimeCatalog().resources.general_binding_default_profile,
     "interactive"
   );
-  assert.equal(full.themeCatalog().presets.length, 7);
+  assert.equal(full.themeCatalog().presets.length, 10);
   assert.ok(full.themeCatalog().known_semantic_target_ids.includes("node"));
   assert.match(full.renderSvg(source, options), /<svg/);
   assert.equal(

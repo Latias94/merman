@@ -335,11 +335,26 @@ function assertStringField(value: unknown, label: string): string {
   throw new Error(`Merman WASM returned an invalid ${label}.`);
 }
 
+function assertNonEmptyStringField(value: unknown, label: string): string {
+  const stringValue = assertStringField(value, label);
+  if (stringValue.length !== 0) {
+    return stringValue;
+  }
+  throw new Error(`Merman WASM returned an invalid ${label}.`);
+}
+
 function assertNullableStringField(value: unknown, label: string): string | null {
   if (value === undefined || value === null) {
     return null;
   }
   return assertStringField(value, label);
+}
+
+function assertNullableNonEmptyStringField(value: unknown, label: string): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return assertNonEmptyStringField(value, label);
 }
 
 function assertBooleanField(value: unknown, label: string): boolean {
@@ -798,17 +813,43 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
     assertRequiredRecordKeys(
       entry,
       [
+        "availability_reason_ids",
+        "available",
         "appearance",
+        "display_name",
+        "export_kind",
         "id",
+        "license_expression",
         "maturity",
+        "qualified_cells",
+        "required_attribution",
         "required_capability_ids",
         "required_text_capability_ids",
       ],
       "Merman WASM theme preset"
     );
     const id = assertUniqueThemeId(entry.id, seen, "preset");
+    const available = assertBooleanField(entry.available, `theme preset ${id} availability`);
+    const availabilityReasonIds = normalizeSortedIdentifierIds(
+      entry.availability_reason_ids,
+      `theme preset ${id} availability reason IDs`
+    );
+    if (available !== (availabilityReasonIds.length === 0)) {
+      throw new Error(`Merman WASM returned inconsistent availability for theme preset ${id}.`);
+    }
+    const exportKind = assertRuntimeIdentifier(
+      entry.export_kind,
+      `theme preset ${id} export kind`
+    );
+    if (exportKind !== "definition" && exportKind !== "complete-spec") {
+      throw new Error(`Merman WASM returned an invalid export kind for theme preset ${id}.`);
+    }
     return {
       id,
+      display_name: assertNonEmptyStringField(
+        entry.display_name,
+        `theme preset ${id} display name`
+      ),
       appearance: assertRuntimeIdentifier(
         entry.appearance,
         `theme preset ${id} appearance`
@@ -817,6 +858,18 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
         entry.maturity,
         `theme preset ${id} maturity`
       ),
+      available,
+      availability_reason_ids: availabilityReasonIds,
+      qualified_cells: normalizeThemePresetQualifiedCells(entry.qualified_cells, id),
+      license_expression: assertNonEmptyStringField(
+        entry.license_expression,
+        `theme preset ${id} license expression`
+      ),
+      required_attribution: assertNullableNonEmptyStringField(
+        entry.required_attribution,
+        `theme preset ${id} required attribution`
+      ),
+      export_kind: exportKind,
       required_capability_ids: normalizeSortedIdentifierIds(
         entry.required_capability_ids,
         `theme preset ${id} required capability IDs`
@@ -826,6 +879,45 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
         `theme preset ${id} required text capability IDs`
       ),
     };
+  });
+}
+
+function normalizeThemePresetQualifiedCells(
+  value: unknown,
+  presetId: string
+): ThemePresetCatalogEntry["qualified_cells"] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Merman WASM returned invalid qualified cells for theme preset ${presetId}.`);
+  }
+  const seen = new Set<string>();
+  let previousKey: string | undefined;
+  return value.map((cell) => {
+    if (!isRecord(cell)) {
+      throw new Error(`Merman WASM returned an invalid qualified cell for theme preset ${presetId}.`);
+    }
+    assertRequiredRecordKeys(
+      cell,
+      ["family_id", "output_id"],
+      `Merman WASM theme preset ${presetId} qualified cell`
+    );
+    const familyId = assertRuntimeIdentifier(
+      cell.family_id,
+      `theme preset ${presetId} qualified family ID`
+    );
+    const outputId = assertRuntimeIdentifier(
+      cell.output_id,
+      `theme preset ${presetId} qualified output ID`
+    );
+    const key = `${familyId}\u0000${outputId}`;
+    if (seen.has(key)) {
+      throw new Error(`Merman WASM theme preset ${presetId} has duplicate qualified cells.`);
+    }
+    if (previousKey !== undefined && previousKey >= key) {
+      throw new Error(`Merman WASM theme preset ${presetId} qualified cells must be sorted.`);
+    }
+    seen.add(key);
+    previousKey = key;
+    return { family_id: familyId, output_id: outputId };
   });
 }
 

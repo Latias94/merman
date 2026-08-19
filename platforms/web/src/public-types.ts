@@ -92,10 +92,22 @@ export interface ThemeCatalog {
 
 export interface ThemePresetCatalogEntry {
   id: string;
+  display_name: string;
   appearance: string;
   maturity: string;
+  available: boolean;
+  availability_reason_ids: string[];
+  qualified_cells: ThemePresetQualifiedCell[];
+  license_expression: string;
+  required_attribution: string | null;
+  export_kind: string;
   required_capability_ids: string[];
   required_text_capability_ids: string[];
+}
+
+export interface ThemePresetQualifiedCell {
+  family_id: string;
+  output_id: string;
 }
 
 export interface ThemeResourceLimitCatalogEntry {
