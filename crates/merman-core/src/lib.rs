@@ -59,7 +59,7 @@ pub use family::{
     diagram_type_render_model_kind,
 };
 pub use operation::{
-    CancelReason, OperationCancelled, OperationControl, OperationControlResult, OperationLedger,
+    CancelReason, OperationCancelled, OperationControl, OperationControlResult,
     OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
 };
 pub use preprocess::{

@@ -4,7 +4,9 @@
 //! deadline semantics. Their layout and output budgets remain adapter-owned.
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(any(test, feature = "test-support"))]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 #[cfg(any(
     not(all(target_arch = "wasm32", target_os = "unknown")),
@@ -459,7 +461,7 @@ fn default_clock() -> Clock {
     }
 }
 
-/// Target-neutral description of a checked operation ledger rejection.
+/// Target-neutral description of a checked operation resource rejection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error(
     "operation resource limit `{id}` exceeded during {phase}: {consumed} + {requested} > {limit}"
@@ -473,7 +475,7 @@ pub struct OperationResourceLimitExceeded {
     pub requested: u64,
 }
 
-/// Failure returned by [`OperationLedger::charge`].
+/// Sticky terminal failure shared by operation controls and target-owned resource adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum OperationLedgerError {
     #[error(transparent)]
@@ -490,94 +492,6 @@ pub enum OperationLedgerError {
         actual: u64,
         maximum: u64,
     },
-}
-
-/// A checked operation-scoped work ledger. Target-specific quotas remain adapter-owned.
-///
-/// Every call for one ledger must use clones or phase views of the same [`OperationControl`]. A
-/// child control starts a distinct ledger-terminal scope even though it observes its parent's
-/// cancellation and deadline.
-#[derive(Debug)]
-pub struct OperationLedger {
-    id: &'static str,
-    limit: Option<u64>,
-    consumed: AtomicU64,
-}
-
-impl OperationLedger {
-    pub const fn new(id: &'static str, limit: Option<u64>) -> Self {
-        Self {
-            id,
-            limit,
-            consumed: AtomicU64::new(0),
-        }
-    }
-
-    pub fn consumed(&self) -> u64 {
-        self.consumed.load(Ordering::Acquire)
-    }
-
-    pub fn limit(&self) -> Option<u64> {
-        self.limit
-    }
-
-    pub fn charge(
-        &self,
-        control: &OperationControl,
-        phase: OperationPhase,
-        requested: u64,
-    ) -> Result<u64, OperationLedgerError> {
-        control.terminal_checkpoint_at(phase)?;
-
-        let mut consumed = self.consumed.load(Ordering::Acquire);
-        loop {
-            let next = match consumed.checked_add(requested) {
-                Some(next) => next,
-                None => {
-                    return Err(control.terminate_resource_overflow(
-                        self.id,
-                        phase,
-                        phase.as_str(),
-                        u64::MAX,
-                        self.limit.unwrap_or(u64::MAX),
-                    ));
-                }
-            };
-            if self.limit.is_some_and(|limit| next > limit) {
-                return Err(
-                    control.latch_terminal_error(self.limit_error(phase, requested, consumed))
-                );
-            }
-            match self.consumed.compare_exchange_weak(
-                consumed,
-                next,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => return Ok(next),
-                Err(actual) => {
-                    control.terminal_checkpoint_at(phase)?;
-                    consumed = actual;
-                }
-            }
-        }
-    }
-
-    fn limit_error(
-        &self,
-        phase: OperationPhase,
-        requested: u64,
-        consumed: u64,
-    ) -> OperationLedgerError {
-        OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
-            id: self.id,
-            phase,
-            resource_phase: phase.as_str(),
-            limit: self.limit.unwrap_or(u64::MAX),
-            consumed,
-            requested,
-        })
-    }
 }
 
 #[cfg(test)]
@@ -622,15 +536,12 @@ mod tests {
         let error = control.checkpoint_at(OperationPhase::Layout).unwrap_err();
         assert_eq!(error.reason, CancelReason::DeadlineExceeded);
         assert_eq!(control.checkpoint().unwrap_err(), error);
-
-        let ledger = OperationLedger::new("work", Some(0));
         assert_eq!(
-            ledger
-                .charge(&control, OperationPhase::Emit, 1)
+            control
+                .terminal_checkpoint_at(OperationPhase::Emit)
                 .unwrap_err(),
             OperationLedgerError::Cancelled(error)
         );
-        assert_eq!(ledger.consumed(), 0);
     }
 
     #[test]
@@ -858,11 +769,14 @@ mod tests {
     #[test]
     fn operation_replays_the_first_resource_rejection_after_later_cancellation() {
         let control = OperationControl::new();
-        let ledger = OperationLedger::new("work", Some(2));
-        assert_eq!(ledger.charge(&control, OperationPhase::Layout, 2), Ok(2));
-        let first = ledger
-            .charge(&control, OperationPhase::Layout, 1)
-            .unwrap_err();
+        let first = control.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "work",
+            phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            limit: 2,
+            consumed: 2,
+            requested: 1,
+        });
         assert_eq!(
             first,
             OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
@@ -874,7 +788,6 @@ mod tests {
                 requested: 1,
             })
         );
-        assert_eq!(ledger.consumed(), 2);
 
         let clone = control.clone();
         let child = control.child();
@@ -898,36 +811,61 @@ mod tests {
             OperationLedgerError::Cancelled(cancellation)
         );
         assert_eq!(
-            ledger
-                .charge(&control, OperationPhase::Emit, u64::MAX)
-                .unwrap_err(),
+            control.terminate_resource_overflow(
+                "later_work",
+                OperationPhase::Emit,
+                "emit",
+                u64::MAX,
+                u64::MAX,
+            ),
             first
         );
-        assert_eq!(ledger.consumed(), 2);
     }
 
     #[test]
-    fn child_control_starts_a_distinct_ledger_terminal_scope() {
+    fn child_control_starts_a_distinct_terminal_scope() {
         let parent = OperationControl::new();
-        let parent_ledger = OperationLedger::new("parent_work", Some(0));
-        assert!(matches!(
-            parent_ledger.charge(&parent, OperationPhase::Layout, 1),
-            Err(OperationLedgerError::ResourceLimitExceeded(_))
-        ));
+        let parent_terminal = parent.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "parent_work",
+            phase: OperationPhase::Layout,
+            resource_phase: "layout",
+            limit: 0,
+            consumed: 0,
+            requested: 1,
+        });
 
         let child = parent.child();
-        let child_ledger = OperationLedger::new("child_work", None);
-        assert_eq!(child_ledger.charge(&child, OperationPhase::Emit, 1), Ok(1));
+        assert_eq!(child.terminal_checkpoint_at(OperationPhase::Emit), Ok(()));
+        let child_terminal = child.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "child_work",
+            phase: OperationPhase::Emit,
+            resource_phase: "emit",
+            limit: 0,
+            consumed: 0,
+            requested: 1,
+        });
+        assert_ne!(child_terminal, parent_terminal);
+        assert_eq!(
+            parent
+                .terminal_checkpoint_at(OperationPhase::Layout)
+                .unwrap_err(),
+            parent_terminal
+        );
+        assert_eq!(
+            child
+                .terminal_checkpoint_at(OperationPhase::Emit)
+                .unwrap_err(),
+            child_terminal
+        );
     }
 
     #[test]
-    fn ledger_replays_cancellation_before_later_resource_failure() {
+    fn operation_replays_cancellation_before_later_resource_failure() {
         let control = OperationControl::new();
-        let ledger = OperationLedger::new("work", Some(0));
         control.cancel();
 
-        let first = ledger
-            .charge(&control, OperationPhase::Parse, 1)
+        let first = control
+            .terminal_checkpoint_at(OperationPhase::Parse)
             .unwrap_err();
         assert_eq!(
             first,
@@ -937,45 +875,34 @@ mod tests {
             })
         );
         assert_eq!(
-            ledger
-                .charge(&control, OperationPhase::Emit, u64::MAX)
+            control.terminate_resource_limit(OperationResourceLimitExceeded {
+                id: "work",
+                phase: OperationPhase::Emit,
+                resource_phase: "emit",
+                limit: 0,
+                consumed: 0,
+                requested: 1,
+            }),
+            first
+        );
+        assert_eq!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Postprocess)
                 .unwrap_err(),
             first
         );
-        assert_eq!(ledger.consumed(), 0);
     }
 
     #[test]
-    fn ledgers_share_the_operation_terminal_error() {
+    fn operation_replays_the_first_arithmetic_overflow() {
         let control = OperationControl::new();
-        let first_ledger = OperationLedger::new("layout_work", Some(0));
-        let second_ledger = OperationLedger::new("output_bytes", None);
-
-        let first = first_ledger
-            .charge(&control, OperationPhase::Layout, 1)
-            .unwrap_err();
-        assert_eq!(
-            second_ledger
-                .charge(&control, OperationPhase::Emit, 1)
-                .unwrap_err(),
-            first
+        let first = control.terminate_resource_overflow(
+            "layout_work",
+            OperationPhase::Layout,
+            "layout",
+            u64::MAX,
+            u64::MAX,
         );
-        assert_eq!(second_ledger.consumed(), 0);
-    }
-
-    #[test]
-    fn ledgers_replay_the_first_arithmetic_overflow() {
-        let control = OperationControl::new();
-        let first_ledger = OperationLedger::new("layout_work", None);
-        let second_ledger = OperationLedger::new("output_bytes", None);
-        assert_eq!(
-            first_ledger.charge(&control, OperationPhase::Layout, u64::MAX),
-            Ok(u64::MAX)
-        );
-
-        let first = first_ledger
-            .charge(&control, OperationPhase::Layout, 1)
-            .unwrap_err();
         assert_eq!(
             first,
             OperationLedgerError::ArithmeticOverflow {
@@ -987,63 +914,43 @@ mod tests {
             }
         );
         assert_eq!(
-            second_ledger
-                .charge(&control, OperationPhase::Emit, 1)
+            control.terminate_resource_limit(OperationResourceLimitExceeded {
+                id: "output_bytes",
+                phase: OperationPhase::Emit,
+                resource_phase: "emit",
+                limit: 0,
+                consumed: 0,
+                requested: 1,
+            }),
+            first
+        );
+        assert_eq!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Postprocess)
                 .unwrap_err(),
             first
         );
-        assert_eq!(second_ledger.consumed(), 0);
-    }
-
-    #[test]
-    fn ledger_concurrent_charges_never_exceed_the_limit() {
-        const THREADS: usize = 32;
-        const LIMIT: u64 = 7;
-        let control = OperationControl::new();
-        let ledger = Arc::new(OperationLedger::new("concurrent_work", Some(LIMIT)));
-        let barrier = Arc::new(Barrier::new(THREADS));
-        let handles = (0..THREADS)
-            .map(|_| {
-                let ledger = Arc::clone(&ledger);
-                let barrier = Arc::clone(&barrier);
-                let control = control.clone();
-                thread::spawn(move || {
-                    barrier.wait();
-                    ledger.charge(&control, OperationPhase::Layout, 1)
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let mut accepted = 0_u64;
-        for handle in handles {
-            match handle.join().expect("ledger thread should not panic") {
-                Ok(_) => accepted += 1,
-                Err(OperationLedgerError::ResourceLimitExceeded(error)) => {
-                    assert_eq!(error.consumed, LIMIT);
-                    assert_eq!(error.requested, 1);
-                }
-                Err(other) => panic!("unexpected ledger rejection: {other:?}"),
-            }
-        }
-
-        assert_eq!(accepted, LIMIT);
-        assert_eq!(ledger.consumed(), LIMIT);
     }
 
     #[test]
     fn concurrent_resource_and_cancellation_observers_replay_one_terminal_error() {
         for _ in 0..32 {
             let control = OperationControl::new();
-            let ledger = Arc::new(OperationLedger::new("race_work", Some(0)));
             let barrier = Arc::new(Barrier::new(2));
 
             let resource = {
                 let control = control.clone();
-                let ledger = Arc::clone(&ledger);
                 let barrier = Arc::clone(&barrier);
                 thread::spawn(move || {
                     barrier.wait();
-                    ledger.charge(&control, OperationPhase::Layout, 1)
+                    control.terminate_resource_limit(OperationResourceLimitExceeded {
+                        id: "race_work",
+                        phase: OperationPhase::Layout,
+                        resource_phase: "layout",
+                        limit: 0,
+                        consumed: 0,
+                        requested: 1,
+                    })
                 })
             };
             let cancellation = {
@@ -1056,22 +963,18 @@ mod tests {
                 })
             };
 
-            let resource = resource
-                .join()
-                .expect("resource thread should not panic")
-                .unwrap_err();
+            let resource = resource.join().expect("resource thread should not panic");
             let cancellation = cancellation
                 .join()
                 .expect("cancellation thread should not panic")
                 .unwrap_err();
             assert_eq!(resource, cancellation);
             assert_eq!(
-                ledger
-                    .charge(&control, OperationPhase::Postprocess, 1)
+                control
+                    .terminal_checkpoint_at(OperationPhase::Postprocess)
                     .unwrap_err(),
                 resource
             );
-            assert_eq!(ledger.consumed(), 0);
         }
     }
 }
