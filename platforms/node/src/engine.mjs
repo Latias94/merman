@@ -246,8 +246,9 @@ export class MermanEngine {
     } catch (error) {
       return Promise.reject(error);
     }
+    const prepared = prepareOperationRequest(request, { timeoutMs });
     if (signal?.aborted) return Promise.reject(abortError());
-    const encoded = operationRequestJson(request, { timeoutMs });
+    const encoded = operationRequestJson(prepared);
     return this.#executor.submit(
       async () => {
         // A signal can flip after queue admission but before this start microtask runs. That work
@@ -275,7 +276,7 @@ export class MermanEngine {
 
   executeOperationSync(request, { timeoutMs } = {}) {
     this.#executor.assertSyncAvailable();
-    const encoded = operationRequestJson(request, { timeoutMs });
+    const encoded = operationRequestJson(prepareOperationRequest(request, { timeoutMs }));
     let responseJson;
     try {
       responseJson = this.#transport.executeSync(encoded.json, timeoutMs);
@@ -304,7 +305,7 @@ function invocationCancellationReasons(signal, timeoutMs) {
   return reasons;
 }
 
-function operationRequestJson(value, { timeoutMs } = {}) {
+function prepareOperationRequest(value, { timeoutMs } = {}) {
   if (!isPlainObject(value)) throw new TypeError("operation request must be a plain object.");
   const knownFields = new Set(["operationId", "source", "uri", "optionsJson"]);
   for (const field of Object.keys(value)) {
@@ -312,12 +313,9 @@ function operationRequestJson(value, { timeoutMs } = {}) {
       throw new TypeError(`unknown operation request field \`${field}\`.`);
     }
   }
-  const {
-    operationId,
-    source,
-    uri = null,
-    optionsJson = undefined,
-  } = value;
+  const operationId = value.operationId;
+  const source = value.source;
+  const uri = value.uri === undefined ? null : value.uri;
   if (typeof operationId !== "string" || operationId.length === 0) {
     throw new TypeError("operationId must be a non-empty string.");
   }
@@ -358,6 +356,23 @@ function operationRequestJson(value, { timeoutMs } = {}) {
     source,
     uri: normalizedUri,
   };
+  if (timeoutMs !== undefined) {
+    if (
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs < 0 ||
+      timeoutMs > MAX_OPERATION_TIMEOUT_MS
+    ) {
+      throw new RangeError(
+        `operation timeoutMs must be an integer from 0 through ${MAX_OPERATION_TIMEOUT_MS}.`,
+      );
+    }
+    request.operation_control = { timeout_ms: timeoutMs };
+  }
+  return { expectation, request, value };
+}
+
+function operationRequestJson({ expectation, request, value }) {
+  const optionsJson = value.optionsJson;
   if (optionsJson !== undefined) {
     if (typeof optionsJson !== "string") {
       throw new TypeError("optionsJson must be a JSON string when provided.");
@@ -373,18 +388,6 @@ function operationRequestJson(value, { timeoutMs } = {}) {
       NODE_TRANSPORT_LIMITS.binding_options,
     );
     request.options_json = optionsJson;
-  }
-  if (timeoutMs !== undefined) {
-    if (
-      !Number.isSafeInteger(timeoutMs) ||
-      timeoutMs < 0 ||
-      timeoutMs > MAX_OPERATION_TIMEOUT_MS
-    ) {
-      throw new RangeError(
-        `operation timeoutMs must be an integer from 0 through ${MAX_OPERATION_TIMEOUT_MS}.`,
-      );
-    }
-    request.operation_control = { timeout_ms: timeoutMs };
   }
   return {
     expectation,

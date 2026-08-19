@@ -7,9 +7,9 @@ use std::time::Duration;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingCancellationErrorDetails,
     BindingDiagnosticErrorDetails, BindingEngine, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingJsSafeResourceErrorDetails, BindingOperationRequest,
-    BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST,
-    CapabilityKey, OperationControl, OperationKey, OperationPhase,
+    BindingIconRegistryErrorDetails, BindingJsSafeResourceErrorDetails, BindingOperationKind,
+    BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus, BindingTransportKey,
+    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationControl, OperationKey, OperationPhase,
     RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
     TargetKey, ValidatedArtifactContract,
 };
@@ -539,14 +539,11 @@ fn execute_wire_inner(
     control: OperationControl,
     admitted_timeout_ms: Option<u32>,
 ) -> Result<String, BindingError> {
+    let request = parse_operation_request_framing(request_json)?;
+    validate_operation_request_identity(&request)?;
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
-    let request = parse_operation_request(request_json);
-    control
-        .checkpoint_at(OperationPhase::Admission)
-        .map_err(BindingError::cancelled)?;
-    let request = request?;
     let request_timeout_ms = request
         .operation_control
         .as_ref()
@@ -569,6 +566,7 @@ fn execute_wire_inner(
         }
         (Some(_), Some(_)) | (None, None) => {}
     }
+    validate_operation_request_options(&request)?;
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
@@ -591,6 +589,14 @@ pub(crate) fn error_envelope(error: &BindingError) -> String {
 }
 
 fn parse_operation_request(request_json: &str) -> Result<NodeOperationRequest, BindingError> {
+    let request = parse_operation_request_framing(request_json)?;
+    validate_operation_request_options(&request)?;
+    Ok(request)
+}
+
+fn parse_operation_request_framing(
+    request_json: &str,
+) -> Result<NodeOperationRequest, BindingError> {
     let contract = node_wire_contract();
     let request = deserialize_bounded_json::<NodeOperationRequest>(
         request_json,
@@ -620,6 +626,31 @@ fn parse_operation_request(request_json: &str) -> Result<NodeOperationRequest, B
         ensure_field(uri, "operation request uri", contract.fields.uri_utf8_bytes)
             .map_err(caller_options_error)?;
     }
+    Ok(request)
+}
+
+fn validate_operation_request_identity(request: &NodeOperationRequest) -> Result<(), BindingError> {
+    let operation = BindingOperationKind::from_id(&request.operation_id)?;
+    let has_uri = request.uri.as_deref().is_some_and(|uri| !uri.is_empty());
+    if operation.requires_uri() != has_uri {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "operation `{}` {} a document URI",
+                operation.operation_id(),
+                if operation.requires_uri() {
+                    "requires"
+                } else {
+                    "does not accept"
+                }
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_operation_request_options(request: &NodeOperationRequest) -> Result<(), BindingError> {
+    let contract = node_wire_contract();
     if let Some(options_json) = request.options_json.as_deref() {
         ensure_field(
             options_json,
@@ -634,7 +665,7 @@ fn parse_operation_request(request_json: &str) -> Result<NodeOperationRequest, B
         )
         .map_err(caller_options_error)?;
     }
-    Ok(request)
+    Ok(())
 }
 
 fn validate_binding_options(options_json: &str) -> Result<(), BindingError> {
@@ -1725,6 +1756,47 @@ mod tests {
             "admission"
         );
         assert!(cancelled["error"]["details"].get("resource").is_none());
+    }
+
+    #[test]
+    fn cancelled_operation_preserves_canonical_mixed_error_precedence() {
+        let engine = create_engine("").unwrap();
+        let cases = [
+            (
+                r#"{"operation_id":"unknown-operation","source":"flowchart TD\nA-->B","uri":null,"options_json":"{"}"#,
+                "MERMAN_UNSUPPORTED_OPERATION",
+                "unknown-operation",
+            ),
+            (
+                r#"{"operation_id":"document-analysis-json","source":"flowchart TD\nA-->B","uri":null,"options_json":"{"}"#,
+                "MERMAN_INVALID_ARGUMENT",
+                "generic",
+            ),
+            (
+                r#"{"operation_id":"semantic-json","source":"flowchart TD\nA-->B","uri":null,"options_json":"{"}"#,
+                "MERMAN_CANCELLED",
+                "generic",
+            ),
+        ];
+
+        for (request, expected_code_name, expected_kind) in cases {
+            let control = merman_bindings_core::OperationControl::new();
+            control.cancel();
+            let response: serde_json::Value =
+                serde_json::from_str(&execute_wire_with_control(&engine, request, control))
+                    .expect("mixed-error response");
+
+            assert_eq!(response["error"]["code_name"], expected_code_name);
+            assert_eq!(response["error"]["kind"], expected_kind);
+            if expected_code_name == "MERMAN_CANCELLED" {
+                assert_eq!(
+                    response["error"]["details"]["cancellation"]["phase"],
+                    "admission"
+                );
+            } else {
+                assert!(response["error"].get("details").is_none());
+            }
+        }
     }
 
     #[test]

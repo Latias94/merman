@@ -644,33 +644,74 @@ test("operation deadlines use the additive request control field", async () => {
   await engine.dispose();
 });
 
-test("already-aborted operations stop before request materialization", async () => {
+test("already-aborted operations preserve canonical request precedence", async () => {
   const factory = transportFactory();
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
   const controller = new AbortController();
   controller.abort();
-  let sourceRead = false;
-  const request = {
+
+  const malformedOptionsJson = "{";
+  const cases = [
+    {
+      name: "unknown operation",
+      request: {
+        operationId: "unknown-operation",
+        source: "flowchart TD\nA --> B",
+        optionsJson: malformedOptionsJson,
+      },
+      error: /operation id `unknown-operation` is not callable/i,
+    },
+    {
+      name: "required URI missing",
+      request: {
+        operationId: "document-analysis-json",
+        source: "flowchart TD\nA --> B",
+        optionsJson: malformedOptionsJson,
+      },
+      error: /requires a non-empty uri/i,
+    },
+    {
+      name: "invalid source Unicode",
+      request: {
+        operationId: "svg",
+        source: "\ud800",
+        optionsJson: malformedOptionsJson,
+      },
+      error: /isolated UTF-16 surrogate/i,
+    },
+  ];
+
+  for (const { name, request, error } of cases) {
+    assert.throws(
+      () => engine.executeOperation(request, { signal: controller.signal }),
+      error,
+      name,
+    );
+  }
+
+  let optionsRead = false;
+  const validRequest = {
     operationId: "svg",
-    get source() {
-      sourceRead = true;
-      throw new Error("source should not be materialized");
+    source: "flowchart TD\nA --> B",
+    get optionsJson() {
+      optionsRead = true;
+      throw new Error("options should not be materialized after cancelled admission");
     },
   };
 
   await assert.rejects(
-    engine.executeOperation(request, { signal: controller.signal }),
+    engine.executeOperation(validRequest, { signal: controller.signal }),
     (error) => error?.name === "AbortError",
   );
-  assert.equal(sourceRead, false);
+  assert.equal(optionsRead, false);
   assert.equal(factory.calls.length, 0);
   await engine.dispose();
 
   await assert.rejects(
-    engine.executeOperation(request, { signal: controller.signal }),
+    engine.executeOperation(validRequest, { signal: controller.signal }),
     MermanDisposedError,
   );
-  assert.equal(sourceRead, false);
+  assert.equal(optionsRead, false);
 });
 
 test("operation URI policy normalizes empty values and rejects forbidden identifiers", async () => {
