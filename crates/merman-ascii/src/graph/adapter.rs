@@ -58,8 +58,8 @@ fn from_flowchart_model_transactional(
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     let memberships = preflight_flowchart_projection(model, resources, execution)?;
-    let style_plan = FlowchartStylePlan::try_new(model, resources, execution)?;
     validate_supported_flowchart_model(model, &memberships, resources, execution)?;
+    let style_plan = FlowchartStylePlan::try_new(model, resources, execution)?;
 
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
@@ -114,9 +114,6 @@ fn from_flowchart_model_transactional(
         model.nodes.iter().zip(nodes).zip(node_styles).enumerate()
     {
         checkpoint_projection(execution, index)?;
-        let Some(node_plan) = node_plan else {
-            continue;
-        };
         let id = try_clone_projection_string(&node.id, resources)?;
         let text = node_plan.text.materialize_after_admission(resources)?;
         graph.add_node_with_prepared_text(
@@ -514,7 +511,7 @@ fn preflight_subgraph_nesting(
 
 #[derive(Debug)]
 struct FlowchartProjectionPlan<'a> {
-    nodes: Vec<Option<FlowchartNodeProjectionPlan<'a>>>,
+    nodes: Vec<FlowchartNodeProjectionPlan<'a>>,
     edge_labels: Vec<Option<NormalizedTrimmedTextPlan<'a>>>,
     groups: Vec<FlowchartGroupProjectionPlan<'a>>,
 }
@@ -627,10 +624,6 @@ impl<'a> FlowchartProjectionPlan<'a> {
             .map_err(|_| projection_allocation_failed())?;
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_projection(execution, index)?;
-            if memberships.is_group_id(&node.id) {
-                nodes.push(None);
-                continue;
-            }
             let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
             let projected_label = shape.projected_label(node.label.as_deref().unwrap_or(&node.id));
             let text = DeferredGraphNodeLabelPlan::single(
@@ -648,7 +641,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
             )?;
             admission.include_copy(&node.id, resources)?;
             admission.include_node_label(&text, resources)?;
-            nodes.push(Some(FlowchartNodeProjectionPlan { text, shape }));
+            nodes.push(FlowchartNodeProjectionPlan { text, shape });
         }
 
         let mut edge_labels = Vec::new();
@@ -783,6 +776,18 @@ fn validate_supported_flowchart_model(
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
+        if memberships.is_group_id(&node.id) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "node ids colliding with subgraph ids",
+            });
+        }
+        if !node_ids.insert(node.id.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "duplicate node ids",
+            });
+        }
         if node.icon.is_some()
             || node.img.is_some()
             || node.form.is_some()
@@ -794,12 +799,6 @@ fn validate_supported_flowchart_model(
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
                 feature: "flowchart icon and image node metadata",
-            });
-        }
-        if !node_ids.insert(node.id.as_str()) {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "duplicate node ids",
             });
         }
     }
@@ -1306,7 +1305,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_projection_assigns_colliding_endpoint_ids_to_subgraphs() {
+    fn flowchart_projection_rejects_colliding_node_and_subgraph_ids() {
         let model = FlowchartModel {
             keyword: "flowchart".to_string(),
             acc_descr: None,
@@ -1338,13 +1337,17 @@ mod tests {
         let options = AsciiRenderOptions::ascii();
         let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
-        let graph = from_flowchart_model(&model, &options, &mut resources)
-            .expect("subgraph endpoint projection should remain supported");
+        let error = from_flowchart_model(&model, &options, &mut resources)
+            .expect_err("ambiguous node and subgraph identities must be rejected");
 
-        assert!(graph.nodes.iter().all(|node| node.id != "TOP"));
-        assert_eq!(graph.groups.len(), 1);
-        assert_eq!(graph.groups[0].id, "TOP");
-        assert_eq!(graph.edges[0].to, "TOP");
-        assert_eq!(graph.edges[1].from, "TOP");
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "node ids colliding with subgraph ids",
+            }
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
     }
 }
