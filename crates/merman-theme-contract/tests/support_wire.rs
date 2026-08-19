@@ -153,12 +153,11 @@ fn support_v2_preserves_forward_compatible_subject_and_property_ids() {
         }
     }))
     .expect("unknown subject tags remain valid discovery input");
-    assert_eq!(
-        unknown_subject.subject(),
-        &ThemeSupportSubjectV2::Unknown {
-            kind: "future-subject".to_owned()
-        }
-    );
+    let ThemeSupportSubjectV2::Unknown(unknown) = unknown_subject.subject() else {
+        panic!("unknown subject tag should remain an opaque subject");
+    };
+    assert_eq!(unknown.kind(), "future-subject");
+    assert_eq!(unknown.field_count(), 0);
 
     let unknown_property: ThemeSupportQueryV2 = serde_json::from_value(serde_json::json!({
         "schema_version": 2,
@@ -176,6 +175,64 @@ fn support_v2_preserves_forward_compatible_subject_and_property_ids() {
             property: "future-property".to_owned()
         }
     );
+}
+
+#[test]
+fn support_v2_unknown_subject_round_trip_preserves_bounded_opaque_fields() {
+    let input = serde_json::json!({
+        "schema_version": 2,
+        "family": "future-family",
+        "output": "standalone-svg",
+        "subject": {
+            "kind": "future-subject",
+            "target": "future-target",
+            "options": {
+                "enabled": true,
+                "weights": [3, 1, 2]
+            }
+        }
+    });
+    let query: ThemeSupportQueryV2 = serde_json::from_value(input.clone()).unwrap();
+    let ThemeSupportSubjectV2::Unknown(unknown) = query.subject() else {
+        panic!("future subject should remain opaque");
+    };
+    assert_eq!(unknown.kind(), "future-subject");
+    assert_eq!(unknown.field_json("target"), Some(r#""future-target""#));
+    assert_eq!(
+        unknown.field_json("options"),
+        Some(r#"{"enabled":true,"weights":[3,1,2]}"#)
+    );
+    assert_eq!(serde_json::to_value(query).unwrap(), input);
+}
+
+#[test]
+fn support_v2_unknown_subject_rejects_unbounded_opaque_fields() {
+    let fields = (0..17)
+        .map(|index| (format!("field-{index}"), serde_json::json!(index)))
+        .collect::<serde_json::Map<_, _>>();
+    let mut subject = serde_json::Map::new();
+    subject.insert("kind".to_owned(), serde_json::json!("future-subject"));
+    subject.extend(fields);
+    let error = serde_json::from_value::<ThemeSupportQueryV2>(serde_json::json!({
+        "schema_version": 2,
+        "family": "future-family",
+        "output": "standalone-svg",
+        "subject": subject
+    }))
+    .expect_err("opaque subject fields must remain bounded");
+    assert!(error.to_string().contains("opaque field limit"));
+
+    let oversized_kind = "x".repeat(65);
+    let error = serde_json::from_value::<ThemeSupportQueryV2>(serde_json::json!({
+        "schema_version": 2,
+        "family": "future-family",
+        "output": "standalone-svg",
+        "subject": {
+            "kind": oversized_kind
+        }
+    }))
+    .expect_err("opaque subject tags must remain bounded");
+    assert!(error.to_string().contains("invalid opaque kind"));
 }
 
 #[test]

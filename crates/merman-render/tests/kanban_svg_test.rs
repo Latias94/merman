@@ -12,7 +12,7 @@ use merman_render::model::KanbanDiagramLayout;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
-use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 
 fn kanban_task_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
     let styles = rules
@@ -53,6 +53,28 @@ fn kanban_task_palette_theme(colors: &[&str]) -> DiagramTheme {
         .expect("compile Kanban task palette")
 }
 
+fn kanban_task_surface_styles(colors: &[&str]) -> ThemeRuleSet {
+    (0..12).fold(kanban_task_palette_styles(colors), |styles, offset| {
+        styles.with_rule(
+            ThemeRule::new(
+                ThemeTarget::TaskLabel,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#000000").expect("valid task label fill")),
+            )
+            .for_family(merman_render::DiagramFamilyId::KANBAN)
+            .with_ordinal(
+                OrdinalSelector::cycle(12, offset).expect("valid task label ordinal cycle"),
+            ),
+        )
+    })
+}
+
+fn kanban_task_surface_theme(colors: &[&str]) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(kanban_task_surface_styles(colors)))
+        .expect("compile paired Kanban task surface")
+}
+
 fn render_kanban_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -89,6 +111,25 @@ fn kanban_task_rect_style<'input>(
         .and_then(|group| group.children().find(|node| node.has_tag_name("rect")))
         .and_then(|rect| rect.attribute("style"))
         .expect("Kanban task rect style")
+}
+
+fn kanban_task_label_style<'input>(
+    document: &'input roxmltree::Document<'input>,
+    id: &str,
+) -> &'input str {
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(id))
+        .and_then(|group| {
+            group.descendants().find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|token| token == "label")
+                    })
+            })
+        })
+        .and_then(|label| label.attribute("style"))
+        .expect("Kanban task label style")
 }
 
 fn render_kanban_artifact(
@@ -299,7 +340,7 @@ fn kanban_static_task_radius_reaches_layout_priority_geometry_svg_and_evidence()
 
 #[test]
 fn kanban_task_palette_reaches_terminal_paint_and_wraps_the_twelve_mermaid_slots() {
-    let theme = kanban_task_palette_theme(&[
+    let theme = kanban_task_surface_theme(&[
         "#123456",
         "transparent",
         "#111111",
@@ -353,14 +394,14 @@ fn kanban_task_palette_reaches_terminal_paint_and_wraps_the_twelve_mermaid_slots
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 13);
+    assert_eq!(evidence.applied_count(), 13);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
 fn kanban_task_palette_derives_dark_mode_from_the_final_typed_winner() {
-    let theme = kanban_task_palette_theme(&["#123456"]);
+    let theme = kanban_task_surface_theme(&["#123456"]);
     let rendered = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n    task[Task]\n",
         &theme,
@@ -378,8 +419,38 @@ fn kanban_task_palette_derives_dark_mode_from_the_final_typed_winner() {
 }
 
 #[test]
+fn kanban_task_surface_foreground_survives_the_resvg_fallback() {
+    let theme = kanban_task_surface_theme(&["#123456"]);
+    let rendered = render_kanban_with_theme_and_engine(
+        concat!(
+            "kanban\n  todo[Todo]\n",
+            "    task[Task]@{ ticket: MC-2038, assigned: 'Alice' }\n",
+        ),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let native = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("finalize paired Kanban surface for resvg");
+    let native_svg = merman_render::__private::native_export_svg(native.svg());
+    let document = roxmltree::Document::parse(native_svg).expect("valid native Kanban SVG");
+    for expected in ["Task", "MC-2038", "Alice"] {
+        let task_text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(expected))
+            .unwrap_or_else(|| panic!("native Kanban {expected} label"));
+        assert_eq!(task_text.attribute("fill"), Some("#000000"));
+    }
+    assert!(
+        native_svg.contains(r#"data-merman-foreignobject="fallback""#),
+        "the native projection must prove the label foreground after foreignObject fallback"
+    );
+}
+
+#[test]
 fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
-    let theme = kanban_task_palette_theme(&["#123456"]);
+    let theme = kanban_task_surface_theme(&["#123456"]);
     let site = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n    task[Task]\n",
         &theme,
@@ -420,13 +491,58 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
         "the source-owned background must remain in Mermaid's task-card CSS"
     );
 
+    for (name, engine, source) in [
+        (
+            "site",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "textColor": "#fedcba" }
+            }))),
+            "kanban\n  todo[Todo]\n    task[Task]\n",
+        ),
+        (
+            "source",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "secure": []
+            }))),
+            concat!(
+                "%%{init: {\"themeVariables\": {\"textColor\": \"#fedcba\"}}}%%\n",
+                "kanban\n  todo[Todo]\n    task[Task]\n",
+            ),
+        ),
+    ] {
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|_| panic!("valid {name}-owned Kanban SVG"));
+        assert_eq!(
+            kanban_task_rect_style(&document, "kanban-palette-task"),
+            "",
+            "{name}-owned text must retain the complete compatibility card surface"
+        );
+        assert_eq!(
+            kanban_task_label_style(&document, "kanban-palette-task"),
+            "text-align:left !important",
+            "{name}-owned text must suppress the paired typed foreground"
+        );
+        assert!(
+            rendered.svg().contains("#fedcba"),
+            "the {name}-owned text color must remain in Kanban CSS"
+        );
+    }
+
     let compatibility = MermaidThemeCompatibility::default()
         .with_variable("background", "#fedcba")
-        .expect("valid explicit Kanban Mermaid compatibility");
+        .expect("valid explicit Kanban background compatibility")
+        .with_variable("textColor", "#abcdef")
+        .expect("valid explicit Kanban text compatibility");
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new()
-                .with_styles(kanban_task_palette_styles(&["#123456"]))
+                .with_styles(kanban_task_surface_styles(&["#123456"]))
                 .with_mermaid_compatibility(compatibility),
         )
         .expect("compile explicit Mermaid Kanban palette fixture");
@@ -441,9 +557,13 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
         kanban_task_rect_style(&spec_document, "kanban-palette-task"),
         ""
     );
+    assert_eq!(
+        kanban_task_label_style(&spec_document, "kanban-palette-task"),
+        "text-align:left !important"
+    );
     assert!(
-        spec.svg().contains("#fedcba"),
-        "the spec-owned background must remain in Mermaid's task-card CSS"
+        spec.svg().contains("#fedcba") && spec.svg().contains("#abcdef"),
+        "the spec-owned background and text must remain in Mermaid's task-card CSS"
     );
 
     for (site_config, expected_surface) in [
@@ -456,7 +576,7 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
             "root",
         ),
     ] {
-        let theme = kanban_task_palette_theme(&["#123456"]);
+        let theme = kanban_task_surface_theme(&["#123456"]);
         let rendered = render_kanban_with_theme_and_engine(
             "kanban\n  todo[Todo]\n    task[Task]\n",
             &theme,
@@ -478,7 +598,7 @@ fn kanban_task_palette_respects_the_actual_mermaid_card_fill_owner() {
 
 #[test]
 fn kanban_task_palette_is_not_applicable_without_tasks() {
-    let theme = kanban_task_palette_theme(&["#123456"]);
+    let theme = kanban_task_surface_theme(&["#123456"]);
     let rendered = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n",
         &theme,
@@ -487,9 +607,84 @@ fn kanban_task_palette_is_not_applicable_without_tasks() {
     );
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.required_count(), 13);
+    assert_eq!(evidence.not_applicable_count(), 13);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn kanban_task_palette_without_label_foregrounds_fails_closed() {
+    let source = "kanban\n  todo[Todo]\n    task[Task]\n";
+    let theme = kanban_task_palette_theme(&["#123456"]);
+
+    let error = try_render_kanban_svg_with_theme(source, &theme)
+        .expect_err("an unpaired Kanban task palette must fail strict portability");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::KANBAN, 1))
+    );
+
+    let rendered = render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid fallback Kanban SVG");
+    assert_eq!(
+        kanban_task_rect_style(&document, "kanban-palette-task"),
+        "",
+        "an unpaired user palette must preserve the compatibility card surface"
+    );
+}
+
+#[test]
+fn kanban_task_surface_requires_a_foreground_for_every_visible_item() {
+    let source = concat!(
+        "kanban\n  todo[Todo]\n",
+        "    first[First]\n",
+        "    second[Second]\n",
+    );
+    let styles = kanban_task_palette_styles(&["#123456"]).with_rule(
+        ThemeRule::new(
+            ThemeTarget::TaskLabel,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#000000").expect("valid task label fill")),
+        )
+        .for_family(merman_render::DiagramFamilyId::KANBAN)
+        .with_ordinal(OrdinalSelector::exact(1).expect("valid first task ordinal")),
+    );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile partially paired Kanban task surface");
+
+    let error = try_render_kanban_svg_with_theme(source, &theme)
+        .expect_err("a partially paired Kanban task surface must fail strict portability");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::KANBAN, 2))
+    );
+
+    let rendered = render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid fallback Kanban surface SVG");
+    for id in ["kanban-palette-first", "kanban-palette-second"] {
+        assert_eq!(
+            kanban_task_rect_style(&document, id),
+            "",
+            "partial pairing must not leave a mixed typed/compatibility task surface"
+        );
+        assert_eq!(
+            kanban_task_label_style(&document, id),
+            "text-align:left !important",
+            "partial pairing must not leave a typed label on a compatibility card"
+        );
+    }
 }
 
 #[test]

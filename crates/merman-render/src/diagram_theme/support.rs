@@ -151,10 +151,11 @@ pub fn describe_theme_support(query: &ThemeSupportQueryV1) -> ThemeCapabilityDes
     )
 }
 
-/// Describes the current build's coarse static support for one V2 theme subject.
+/// Describes the current build's coarse static support for one unstable alpha V2 subject.
 ///
 /// V2 separates family-wide base typography from semantic-target rules. Output qualification and
-/// family render-capability gates remain identical to V1.
+/// family render-capability gates remain identical to V1. Its subject inventory and identifiers
+/// remain unfrozen until the C7a rollout gate closes.
 pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapabilityDescriptorV2 {
     if query.schema_version() != THEME_SUPPORT_SCHEMA_VERSION_V2 {
         return descriptor_v2(
@@ -231,7 +232,7 @@ pub fn describe_theme_support_v2(query: &ThemeSupportQueryV2) -> ThemeCapability
             };
             ResolvedSubject::BaseTypography(property)
         }
-        ThemeSupportSubjectV2::Unknown { .. } => {
+        ThemeSupportSubjectV2::Unknown(_) => {
             return descriptor_v2(
                 query,
                 ThemeSupportStateV1::Unverified,

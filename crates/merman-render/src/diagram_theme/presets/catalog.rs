@@ -1,7 +1,8 @@
 use merman_theme_contract::{
     DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, SpecifiedWireV1,
     ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializationErrorV1,
-    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
+    ThemeOrdinalCycleWireV1, ThemeOrdinalSelectorWireV1, ThemeRuleSetWireV1,
+    ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
 };
 
 use super::{
@@ -16,33 +17,33 @@ const CATALOG_SCHEMA_VERSION: u32 = 1;
 const AUTHORING_SCHEMA_VERSION: u32 = 1;
 const EXPANSION_VERSION: u32 = 1;
 const SPEC_SCHEMA_VERSION: u32 = 1;
-const RECIPE_REVISION: u32 = 2;
+const RECIPE_REVISION: u32 = 3;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
 const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
 const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
-const EDITOR_LIGHT_RECIPE_V2_FINGERPRINT: &str =
-    "7eb95fcbf81ee51aed070e17d19ec5554fa3cbb77e7c08a703bb54572edf5a27";
-const EDITOR_DARK_RECIPE_V2_FINGERPRINT: &str =
-    "4edad45a819d4bae1d2b24ac2c1e27a482591581edc530e275349e03ff5716ee";
-const ONE_DARK_RECIPE_V2_FINGERPRINT: &str =
-    "4545711472b0fe777b42a59f255b776d9dfeab52c03fcbee7f16636206cbdb30";
-const GRUVBOX_LIGHT_RECIPE_V2_FINGERPRINT: &str =
-    "7c95136d1b7069e270fff96d26a93b9d256ca8f8440ad3d49b983e39b6e22137";
-const GRUVBOX_DARK_RECIPE_V2_FINGERPRINT: &str =
-    "91dae7df3753bc3498504070b89f4b050a5a308338ddf9bab6bee40e57f3ffdb";
-const AYU_LIGHT_RECIPE_V2_FINGERPRINT: &str =
-    "342572661fee5f811712481f0f9a06a819d3a396b86af7b8dffa11554109dab4";
-const AYU_DARK_RECIPE_V2_FINGERPRINT: &str =
-    "215fdc038ad0a0b6c9bd9cdddfbb49bfa34547976be43ba7dfa90a5c129bcf25";
-const BRUTALIST_RECIPE_V2_FINGERPRINT: &str =
-    "30ffe3720a81d5ec35935a2c3f9567b5f48d17b0045d5f4edce7c53b8fd82b37";
-const SPOTLESS_RECIPE_V2_FINGERPRINT: &str =
-    "3ff65ee0f8df0828fb12f3da34747c9f151d06453278220069c546ba2e4e76b7";
-const CYBERPUNK_RECIPE_V2_FINGERPRINT: &str =
-    "ea3458abd5330473696a09413f8117d079408df28d688fe0f6a6c4cd46322e2b";
+const EDITOR_LIGHT_RECIPE_V3_FINGERPRINT: &str =
+    "3cacaaab346b39e9ff3ea0d2c4ef84daa3b90805cfd677c7efe55f4fee494d6a";
+const EDITOR_DARK_RECIPE_V3_FINGERPRINT: &str =
+    "4487602f285a20782f6e150cc34d41c64156175aeaa52308d78cc7889648339b";
+const ONE_DARK_RECIPE_V3_FINGERPRINT: &str =
+    "b59be74941b224f7710430bef6aea7a2f73c2dca8047c86970f6d8d799648c36";
+const GRUVBOX_LIGHT_RECIPE_V3_FINGERPRINT: &str =
+    "93cb21a070d853bd81818a031021e2c9f02785930a153c40ffc8b92ba88842ff";
+const GRUVBOX_DARK_RECIPE_V3_FINGERPRINT: &str =
+    "221cd05dc295576219afa2916d1ca600538033eecb5054e15180f394b71bf96a";
+const AYU_LIGHT_RECIPE_V3_FINGERPRINT: &str =
+    "c4d8d724e25d44efead0b344d24c3b50db6b8529b29967c26b268a6380ecdd13";
+const AYU_DARK_RECIPE_V3_FINGERPRINT: &str =
+    "b0c20b50fab86b82caf25df8f1bc7096b969e4dffd252e3279ca74284dda77c2";
+const BRUTALIST_RECIPE_V3_FINGERPRINT: &str =
+    "ea28883d99aa8f39707850dd146d35e3aa0aa2753895e87e4a1b04451c5f3049";
+const SPOTLESS_RECIPE_V3_FINGERPRINT: &str =
+    "95ef186ab422e6ded6ad5f2e14e7082cbda4ee8d53a670fbea084a2e6de7e05c";
+const CYBERPUNK_RECIPE_V3_FINGERPRINT: &str =
+    "12f0802e9a1345dae80df6c915fb2c2a1f688331c9decca642390cfa3163adeb";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDefinitionV1;
 
 #[derive(Clone, Copy)]
@@ -70,6 +71,7 @@ pub(super) struct PresetPalette {
     pub(super) sequence_number_text: &'static str,
     pub(super) packet_field_label_text: &'static str,
     pub(super) series: &'static [&'static str],
+    pub(super) kanban_task_labels: &'static [&'static str],
 }
 
 pub(super) struct PresetCatalogEntry {
@@ -238,7 +240,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-light",
         "Editor Light",
         false,
-        EDITOR_LIGHT_RECIPE_V2_FINGERPRINT,
+        EDITOR_LIGHT_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#ffffff",
             surface: "#f8fafc",
@@ -266,6 +268,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#a16207",
                 "#65a30d",
             ],
+            kanban_task_labels: &["#000000"; 8],
         },
     ),
     entry(
@@ -273,7 +276,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-dark",
         "Editor Dark",
         true,
-        EDITOR_DARK_RECIPE_V2_FINGERPRINT,
+        EDITOR_DARK_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#0f172a",
             surface: "#111827",
@@ -301,6 +304,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#60a5fa", "#34d399", "#f59e0b", "#c084fc", "#22d3ee", "#fb7185", "#facc15",
                 "#a3e635",
             ],
+            kanban_task_labels: &["#000000"; 8],
         },
     ),
     entry(
@@ -308,7 +312,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "one-dark",
         "One Dark",
         true,
-        ONE_DARK_RECIPE_V2_FINGERPRINT,
+        ONE_DARK_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#282c34",
             surface: "#21252b",
@@ -336,6 +340,10 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#e06c75", "#d19a66",
                 "#be5046",
             ],
+            kanban_task_labels: &[
+                "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
+                "#ffffff",
+            ],
         },
     ),
     entry(
@@ -343,7 +351,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-light",
         "Gruvbox Light",
         false,
-        GRUVBOX_LIGHT_RECIPE_V2_FINGERPRINT,
+        GRUVBOX_LIGHT_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
@@ -371,6 +379,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#458588", "#98971a", "#d79921", "#b16286", "#689d6a", "#cc241d", "#d65d0e",
                 "#427b58",
             ],
+            kanban_task_labels: &["#000000"; 8],
         },
     ),
     entry(
@@ -378,7 +387,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-dark",
         "Gruvbox Dark",
         true,
-        GRUVBOX_DARK_RECIPE_V2_FINGERPRINT,
+        GRUVBOX_DARK_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#282828",
             surface: "#3c3836",
@@ -406,6 +415,10 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb4934", "#fe8019",
                 "#689d6a",
             ],
+            kanban_task_labels: &[
+                "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
+                "#ffffff",
+            ],
         },
     ),
     entry(
@@ -413,7 +426,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-light",
         "Ayu Light",
         false,
-        AYU_LIGHT_RECIPE_V2_FINGERPRINT,
+        AYU_LIGHT_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
@@ -441,6 +454,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#55b4d4", "#86b300", "#ffaa33", "#a37acc", "#4cbf99", "#f07171", "#f2ae49",
                 "#399ee6",
             ],
+            kanban_task_labels: &["#000000"; 8],
         },
     ),
     entry(
@@ -448,7 +462,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-dark",
         "Ayu Dark",
         true,
-        AYU_DARK_RECIPE_V2_FINGERPRINT,
+        AYU_DARK_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#0b0e14",
             surface: "#11151c",
@@ -476,6 +490,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#59c2ff", "#aad94c", "#ffb454", "#d2a6ff", "#95e6cb", "#f07178", "#ff8f40",
                 "#e6b673",
             ],
+            kanban_task_labels: &["#000000"; 8],
         },
     ),
     entry(
@@ -483,7 +498,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "brutalist",
         "Brutalist",
         false,
-        BRUTALIST_RECIPE_V2_FINGERPRINT,
+        BRUTALIST_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#f4f0e6",
             surface: "#fffdf5",
@@ -511,6 +526,10 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#ff4f00", "#006d77", "#ffba08", "#8338ec", "#3a86ff", "#d00000", "#2a9d8f",
                 "#6a4c93",
             ],
+            kanban_task_labels: &[
+                "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
+                "#ffffff",
+            ],
         },
     ),
     entry(
@@ -518,7 +537,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "spotless",
         "Spotless",
         false,
-        SPOTLESS_RECIPE_V2_FINGERPRINT,
+        SPOTLESS_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#f7f5ef",
             surface: "#ffffff",
@@ -546,6 +565,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#8b5e34", "#557a46", "#9a6aa8", "#b2604b", "#4f748d", "#987b2f", "#6f6a91",
                 "#5c7c76",
             ],
+            kanban_task_labels: &["#000000"; 8],
         },
     ),
     entry(
@@ -553,7 +573,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "cyberpunk",
         "Cyberpunk",
         true,
-        CYBERPUNK_RECIPE_V2_FINGERPRINT,
+        CYBERPUNK_RECIPE_V3_FINGERPRINT,
         PresetPalette {
             canvas: "#020617",
             surface: "#0f172a",
@@ -581,6 +601,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
                 "#22d3ee", "#f472b6", "#a3e635", "#facc15", "#c084fc", "#38bdf8", "#fb7185",
                 "#2dd4bf",
             ],
+            kanban_task_labels: &["#000000"; 8],
         },
     ),
 ];
@@ -778,6 +799,21 @@ fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDefinitionV1 {
         preset_palette_rule(ThemeTarget::JourneyTask, palette.series),
     ]);
 
+    assert_eq!(
+        palette.kanban_task_labels.len(),
+        palette.series.len(),
+        "each preset series slot must own one Kanban task-label foreground"
+    );
+    for terminal_slot in 0usize..12 {
+        styles.push(preset_ordinal_fill_rule(
+            DiagramFamilyId::KANBAN,
+            ThemeTarget::TaskLabel,
+            12,
+            terminal_slot as u32,
+            palette.kanban_task_labels[terminal_slot % palette.kanban_task_labels.len()],
+        ));
+    }
+
     ThemeDefinitionV1::new(tokens).with_styles(styles)
 }
 
@@ -827,5 +863,25 @@ fn preset_palette_rule(target: ThemeTarget, colors: &[&str]) -> ThemeRuleSetWire
     ThemeRuleSetWireV1::OrdinalPalette {
         target: target.id().to_owned(),
         colors: colors.iter().map(|color| (*color).to_owned()).collect(),
+    }
+}
+
+fn preset_ordinal_fill_rule(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    period: u32,
+    offset: u32,
+    fill: &str,
+) -> ThemeRuleSetWireV1 {
+    let mut style = ThemeStylePatchWireV1::default();
+    style.fill = SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned()));
+    ThemeRuleSetWireV1::Rule {
+        target: target.id().to_owned(),
+        family: Some(family.as_str().to_owned()),
+        variant: None,
+        ordinal: Some(ThemeOrdinalSelectorWireV1::Cycle {
+            cycle: ThemeOrdinalCycleWireV1 { period, offset },
+        }),
+        style,
     }
 }

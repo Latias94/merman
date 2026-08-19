@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::kanban::{
     KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX, KanbanPreparedArtifact,
-    KanbanPreparedLabelGeometry,
+    KanbanPreparedLabelGeometry, KanbanTaskLabelRole,
 };
 
 fn write_kanban_css(
@@ -135,6 +135,13 @@ struct KanbanLabelGroup<'a> {
     geometry: KanbanPreparedLabelGeometry,
     div_class: Option<&'a str>,
     wrap_title: bool,
+    foreground: Option<&'a str>,
+}
+
+struct KanbanLabelGroupEmission {
+    visible: bool,
+    group_style: String,
+    div_style: String,
 }
 
 struct KanbanTaskRectEmission {
@@ -186,7 +193,7 @@ fn write_kanban_label_group(
     out: &mut impl SvgOutput,
     context: &KanbanLabelRenderContext,
     group: KanbanLabelGroup<'_>,
-) -> Result<()> {
+) -> Result<KanbanLabelGroupEmission> {
     let KanbanLabelGroup {
         position: (x, y),
         text,
@@ -194,6 +201,7 @@ fn write_kanban_label_group(
         geometry,
         div_class,
         wrap_title,
+        foreground,
     } = group;
     let max_width = context.max_width;
     let div_style_overrides = match text {
@@ -210,7 +218,7 @@ fn write_kanban_label_group(
     let class_attr = div_class
         .map(|class| format!(r#" class="{}""#, escape_attr(class)))
         .unwrap_or_default();
-    let div_style = if let Some(overrides) = div_style_overrides {
+    let mut div_style = if let Some(overrides) = div_style_overrides {
         format!("text-align: center; {overrides}")
     } else {
         format!(
@@ -218,6 +226,14 @@ fn write_kanban_label_group(
             width = fmt(max_width),
         )
     };
+    if let Some(foreground) = foreground {
+        div_style.insert_str(0, &format!("color: {foreground}; "));
+    }
+    let group_style = foreground
+        .map(|foreground| {
+            format!("color:{foreground};fill:{foreground};text-align:left !important")
+        })
+        .unwrap_or_else(|| "text-align:left !important".to_string());
     let span_class = if wrap_title {
         "nodeLabel markdown-node-label"
     } else {
@@ -230,11 +246,12 @@ fn write_kanban_label_group(
     };
     let _ = write!(
         out,
-        r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject width="{width}" height="{height}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
+        r##"<g class="label" style="{group_style}" transform="translate({x}, {y})"><rect/><foreignObject width="{width}" height="{height}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
         x = fmt(x),
         y = fmt(y),
         width = fmt(geometry.foreign_object_width),
         height = fmt(foreign_object_height),
+        group_style = escape_attr(&group_style),
         div_style = escape_attr(&div_style),
         class_attr = class_attr,
         span_class = span_class,
@@ -245,7 +262,35 @@ fn write_kanban_label_group(
         let _ = write!(out, r#"<p>{}</p>"#, escape_xml(text));
     }
     out.push_str("</span></div></foreignObject></g>");
-    out.checkpoint()
+    out.checkpoint()?;
+    let visible = text.is_some_and(|text| !text.is_empty());
+    Ok(KanbanLabelGroupEmission {
+        visible,
+        group_style,
+        div_style,
+    })
+}
+
+fn record_kanban_label_emission(
+    receipt: Option<&mut crate::kanban::KanbanTaskThemeReceipt>,
+    item_index: usize,
+    semantic_id: &str,
+    role: KanbanTaskLabelRole,
+    emission: &KanbanLabelGroupEmission,
+    decision: &crate::kanban::KanbanTaskPaletteTerminalDecision,
+) {
+    if emission.visible && decision.label_css().is_some() {
+        if let Some(receipt) = receipt {
+            receipt.record_label(
+                item_index,
+                semantic_id,
+                role,
+                &emission.group_style,
+                &emission.div_style,
+                decision,
+            );
+        }
+    }
 }
 
 pub(crate) fn render_kanban_diagram_svg(
@@ -353,7 +398,7 @@ pub(crate) fn render_kanban_diagram_svg(
 
     out.push_str(r#"<g class="items">"#);
     out.checkpoint()?;
-    let mut task_theme_receipt = task_theme.begin_terminal_receipt();
+    let mut task_theme_receipt = task_theme.begin_terminal_receipt(&task_palette_decisions);
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
     let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
@@ -409,7 +454,7 @@ pub(crate) fn render_kanban_diagram_svg(
         };
 
         // Title label (may wrap).
-        write_kanban_label_group(
+        let title_emission = write_kanban_label_group(
             &mut out,
             &label_context,
             KanbanLabelGroup {
@@ -417,10 +462,23 @@ pub(crate) fn render_kanban_diagram_svg(
                 text: Some(n.label.as_str()),
                 html: Some(prepared_item.title.html.as_str()),
                 geometry: title_geometry,
-                div_class: n.icon.as_deref().map(|_| "labelBkg"),
+                div_class: if palette_decision.label_css().is_some() {
+                    None
+                } else {
+                    n.icon.as_deref().map(|_| "labelBkg")
+                },
                 wrap_title: true,
+                foreground: palette_decision.label_css(),
             },
         )?;
+        record_kanban_label_emission(
+            task_theme_receipt.as_mut(),
+            item_index,
+            &n.id,
+            KanbanTaskLabelRole::Title,
+            &title_emission,
+            palette_decision,
+        );
 
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
         let ticket_text = n.ticket.as_deref();
@@ -434,7 +492,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     out.push_str(r#" target="_blank""#);
                 }
                 out.push('>');
-                write_kanban_label_group(
+                let ticket_emission = write_kanban_label_group(
                     &mut out,
                     &label_context,
                     KanbanLabelGroup {
@@ -444,12 +502,21 @@ pub(crate) fn render_kanban_diagram_svg(
                         geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
+                        foreground: palette_decision.label_css(),
                     },
                 )?;
+                record_kanban_label_emission(
+                    task_theme_receipt.as_mut(),
+                    item_index,
+                    &n.id,
+                    KanbanTaskLabelRole::Ticket,
+                    &ticket_emission,
+                    palette_decision,
+                );
                 out.push_str("</a>");
                 out.checkpoint()?;
             } else {
-                write_kanban_label_group(
+                let ticket_emission = write_kanban_label_group(
                     &mut out,
                     &label_context,
                     KanbanLabelGroup {
@@ -459,11 +526,20 @@ pub(crate) fn render_kanban_diagram_svg(
                         geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
+                        foreground: palette_decision.label_css(),
                     },
                 )?;
+                record_kanban_label_emission(
+                    task_theme_receipt.as_mut(),
+                    item_index,
+                    &n.id,
+                    KanbanTaskLabelRole::Ticket,
+                    &ticket_emission,
+                    palette_decision,
+                );
             }
         } else {
-            write_kanban_label_group(
+            let _ = write_kanban_label_group(
                 &mut out,
                 &label_context,
                 KanbanLabelGroup {
@@ -473,12 +549,13 @@ pub(crate) fn render_kanban_diagram_svg(
                     geometry: ticket_geometry,
                     div_class: None,
                     wrap_title: false,
+                    foreground: palette_decision.label_css(),
                 },
             )?;
         }
 
         // Assigned label.
-        write_kanban_label_group(
+        let assigned_emission = write_kanban_label_group(
             &mut out,
             &label_context,
             KanbanLabelGroup {
@@ -488,8 +565,17 @@ pub(crate) fn render_kanban_diagram_svg(
                 geometry: assigned_geometry,
                 div_class: None,
                 wrap_title: false,
+                foreground: palette_decision.label_css(),
             },
         )?;
+        record_kanban_label_emission(
+            task_theme_receipt.as_mut(),
+            item_index,
+            &n.id,
+            KanbanTaskLabelRole::Assigned,
+            &assigned_emission,
+            palette_decision,
+        );
 
         if let Some(p) = n.priority.as_deref() {
             let y1 = rect_y + (n.rx / 2.0).floor();
@@ -513,6 +599,7 @@ pub(crate) fn render_kanban_diagram_svg(
         if let Some(receipt) = task_theme_receipt.as_mut() {
             receipt.record_checkpointed_item(
                 item_index,
+                &n.id,
                 task_theme.radius_px(item_index).is_some_and(|expected| {
                     task_rect_emission.matches_theme(expected, palette_decision.fill_css())
                 }),

@@ -59,12 +59,17 @@ pub fn describe_theme_support_json_with_resource_policy(
         })?;
         let descriptor = describe_theme_support_v2_with_renderer(&query);
         serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
-    } else {
+    } else if version.schema_version == merman::diagram_theme::THEME_SUPPORT_SCHEMA_VERSION_V1 {
         let query = serde_json::from_slice::<ThemeSupportQueryV1>(bytes).map_err(|error| {
             BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
         })?;
         let descriptor = describe_theme_support_with_renderer(&query);
         serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
+    } else {
+        Err(BindingError::invalid_options_json(format!(
+            "unsupported theme support query schema version {}",
+            version.schema_version
+        )))
     }
 }
 
@@ -391,6 +396,30 @@ mod tests {
             descriptor["reason_ids"],
             json!(["theme-support.unknown-base-typography-property"])
         );
+
+        let unknown_v2_subject = json!({
+            "schema_version": 2,
+            "family": "future-family",
+            "output": "standalone-svg",
+            "subject": {
+                "kind": "future-subject",
+                "target": "future-target",
+                "options": {
+                    "enabled": true,
+                    "weights": [3, 1, 2]
+                }
+            }
+        });
+        let output =
+            crate::describe_theme_support_json(&serde_json::to_vec(&unknown_v2_subject).unwrap())
+                .expect("bounded unknown V2 subjects remain valid discovery input");
+        let descriptor: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(descriptor["query"], unknown_v2_subject);
+        assert_eq!(descriptor["state"], "unverified");
+        assert_eq!(
+            descriptor["reason_ids"],
+            json!(["theme-support.unknown-subject"])
+        );
     }
 
     #[test]
@@ -424,5 +453,16 @@ mod tests {
             assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
             assert!(error.theme_authoring_details().is_none());
         }
+    }
+
+    #[test]
+    fn support_query_rejects_unknown_schema_versions_instead_of_decoding_as_v1() {
+        let error = crate::describe_theme_support_json(
+            br#"{"schema_version":99,"family":"flowchart","output":"standalone-svg","target":"node","facet":"fill"}"#,
+        )
+        .expect_err("unknown support schema must fail closed");
+
+        assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
+        assert!(error.to_string().contains("schema version 99"));
     }
 }

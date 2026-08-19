@@ -58,7 +58,10 @@ mod config;
 mod theme;
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
-pub(crate) use theme::KanbanTaskTheme;
+pub(crate) use theme::{
+    KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskPaletteTerminalDecision, KanbanTaskTheme,
+    KanbanTaskThemeReceipt,
+};
 
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedArtifact {
@@ -303,7 +306,35 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 .count()
         })
         .sum();
-    let task_theme = KanbanTaskTheme::resolve(theme, item_capacity, work_meter)?;
+    let task_occurrences = section_inputs
+        .iter()
+        .flat_map(|(_, items)| {
+            model.nodes[items.start..items.end]
+                .iter()
+                .filter(|node| node.parent_id.is_some())
+                .map(|node| {
+                    KanbanTaskOccurrence::new(
+                        node.id.clone(),
+                        [
+                            (!node.label.is_empty()).then_some(KanbanTaskLabelRole::Title),
+                            node.ticket
+                                .as_deref()
+                                .is_some_and(|ticket| !ticket.is_empty())
+                                .then_some(KanbanTaskLabelRole::Ticket),
+                            node.assigned
+                                .as_deref()
+                                .is_some_and(|assigned| !assigned.is_empty())
+                                .then_some(KanbanTaskLabelRole::Assigned),
+                        ]
+                        .into_iter()
+                        .flatten(),
+                    )
+                })
+        })
+        .collect::<Vec<_>>();
+    debug_assert_eq!(task_occurrences.len(), item_capacity);
+    let task_theme =
+        KanbanTaskTheme::resolve(theme, task_occurrences, effective_config, work_meter)?;
     let mut max_label_height = section_label_height_baseline;
     let mut sections: Vec<KanbanSectionLayout> = Vec::with_capacity(section_inputs.len());
     let mut items: Vec<KanbanItemLayout> = Vec::with_capacity(item_capacity);

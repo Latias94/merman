@@ -34,6 +34,7 @@ pub use support::{
     THEME_SUPPORT_SCHEMA_VERSION_V2, ThemeCapabilityDescriptorV1, ThemeCapabilityDescriptorV2,
     ThemeSupportBaseTypographyPropertyV2, ThemeSupportFacetV1, ThemeSupportOutputV1,
     ThemeSupportQueryV1, ThemeSupportQueryV2, ThemeSupportStateV1, ThemeSupportSubjectV2,
+    ThemeSupportUnknownSubjectV2,
 };
 pub use version::{
     ThemeContractVersion, ThemeContractVersionError, authoring_version_registry,

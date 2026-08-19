@@ -29,6 +29,7 @@ pub enum ThemeTarget {
     Legend,
     Table,
     Task,
+    TaskLabel,
     PacketByteLabel,
     PacketFieldLabel,
     State,
@@ -83,6 +84,7 @@ impl ThemeTarget {
         Self::Legend,
         Self::Table,
         Self::Task,
+        Self::TaskLabel,
         Self::PacketByteLabel,
         Self::PacketFieldLabel,
         Self::State,
@@ -133,6 +135,7 @@ impl ThemeTarget {
             Self::Legend => "legend",
             Self::Table => "table",
             Self::Task => "task",
+            Self::TaskLabel => "task-label",
             Self::PacketByteLabel => "packet-byte-label",
             Self::PacketFieldLabel => "packet-field-label",
             Self::State => "state",
@@ -211,6 +214,7 @@ impl ThemeTarget {
             Self::TimelineEvent => matches!(family, DiagramFamilyId::TIMELINE),
             Self::JourneyTask => matches!(family, DiagramFamilyId::JOURNEY),
             Self::Task => matches!(family, DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN),
+            Self::TaskLabel => matches!(family, DiagramFamilyId::KANBAN),
             Self::PacketByteLabel | Self::PacketFieldLabel => {
                 matches!(family, DiagramFamilyId::PACKET)
             }
@@ -925,6 +929,16 @@ mod tests {
         assert!(!ThemeTarget::PacketByteLabel.valid_for(DiagramFamilyId::SEQUENCE));
         assert!(ThemeTarget::PacketFieldLabel.valid_for(DiagramFamilyId::PACKET));
         assert!(!ThemeTarget::PacketFieldLabel.valid_for(DiagramFamilyId::SEQUENCE));
+    }
+
+    #[test]
+    fn kanban_task_label_is_a_kanban_only_semantic_target() {
+        assert_eq!(
+            ThemeTarget::from_id("task-label"),
+            Some(ThemeTarget::TaskLabel)
+        );
+        assert!(ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::KANBAN));
+        assert!(!ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::GANTT));
     }
 
     #[test]

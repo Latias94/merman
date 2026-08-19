@@ -593,6 +593,54 @@ fn v2_base_typography_reports_the_family_wide_matrix_instead_of_a_text_rule() {
 }
 
 #[test]
+fn v2_state_base_typography_reports_each_runtime_property_domain() {
+    for property in ThemeSupportBaseTypographyPropertyV2::ALL {
+        let support = describe_theme_support_v2(&ThemeSupportQueryV2::base_typography(
+            DiagramFamilyId::STATE.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            *property,
+        ));
+        let supported = matches!(
+            property,
+            ThemeSupportBaseTypographyPropertyV2::FontStack
+                | ThemeSupportBaseTypographyPropertyV2::FontSize
+                | ThemeSupportBaseTypographyPropertyV2::FontWeight
+                | ThemeSupportBaseTypographyPropertyV2::FontStyle
+                | ThemeSupportBaseTypographyPropertyV2::LetterSpacing
+                | ThemeSupportBaseTypographyPropertyV2::WordSpacing
+                | ThemeSupportBaseTypographyPropertyV2::Transform
+        );
+
+        if supported {
+            assert_eq!(
+                support.state(),
+                ThemeSupportStateV1::Conditional,
+                "property={property:?}"
+            );
+            assert_eq!(
+                support.reason_ids(),
+                [
+                    "theme-support.family-owned-consumer-present",
+                    "theme-support.document-surface-dependent",
+                ],
+                "property={property:?}"
+            );
+        } else {
+            assert_eq!(
+                support.state(),
+                ThemeSupportStateV1::Unsupported,
+                "property={property:?}"
+            );
+            assert_eq!(
+                support.reason_ids(),
+                ["theme-support.no-supported-route"],
+                "property={property:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn v2_rule_and_ordinal_subjects_preserve_v1_support_decisions() {
     let cases = [
         (

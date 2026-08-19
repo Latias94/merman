@@ -247,8 +247,8 @@ mod tests {
 
     fn contrast_ratio(foreground: &str, background: &str) -> f64 {
         fn relative_luminance(color: &str) -> f64 {
-            fn linear_channel(channel: u8) -> f64 {
-                let channel = f64::from(channel) / 255.0;
+            fn linear_channel(channel: f64) -> f64 {
+                let channel = channel / 255.0;
                 if channel <= 0.04045 {
                     channel / 12.92
                 } else {
@@ -256,17 +256,12 @@ mod tests {
                 }
             }
 
-            let hex = color
-                .strip_prefix('#')
-                .unwrap_or_else(|| panic!("expected a hex color, got {color}"));
-            assert_eq!(hex.len(), 6, "expected a six-digit hex color, got {color}");
-            let channel = |offset| {
-                u8::from_str_radix(&hex[offset..offset + 2], 16)
-                    .unwrap_or_else(|_| panic!("expected a valid hex color, got {color}"))
-            };
-            0.2126 * linear_channel(channel(0))
-                + 0.7152 * linear_channel(channel(2))
-                + 0.0722 * linear_channel(channel(4))
+            let rgba = merman_core::theme_color::ThemeColor::parse(color)
+                .unwrap_or_else(|_| panic!("expected a Mermaid-compatible color, got {color}"))
+                .rgba_channels();
+            0.2126 * linear_channel(rgba.red)
+                + 0.7152 * linear_channel(rgba.green)
+                + 0.0722 * linear_channel(rgba.blue)
         }
 
         let foreground = relative_luminance(foreground);
@@ -338,7 +333,7 @@ mod tests {
             assert_eq!(entry.authoring_schema_version(), 1);
             assert_eq!(entry.expansion_version(), 1);
             assert_eq!(entry.spec_schema_version(), 1);
-            assert_eq!(entry.recipe_revision(), 2);
+            assert_eq!(entry.recipe_revision(), 3);
             assert_eq!(descriptor.maturity(), "alpha");
             assert!(descriptor.qualified_cells().is_empty());
             assert_eq!(descriptor.export_kind(), "complete_spec");
@@ -858,6 +853,56 @@ mod tests {
                 assert!(
                     ratio >= MINIMUM_TEXT_CONTRAST,
                     "{} {role} contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({foreground} on {background})",
+                    preset.id()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn built_in_kanban_presets_pair_each_task_palette_slot_with_a_readable_label() {
+        const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
+
+        for preset in all_presets() {
+            let palette = preset_palette(preset);
+            let theme = DiagramThemeCompiler::new()
+                .compile_preset(preset)
+                .expect("built-in theme preset should compile");
+            let kanban = theme.resolve(DiagramFamilyId::KANBAN);
+
+            for item_ordinal in 1..=24 {
+                let terminal_ordinal = (item_ordinal - 1) % 12 + 1;
+                let task_fill = kanban
+                    .series_color(ThemeTarget::Task, terminal_ordinal)
+                    .map(ThemeColorValue::as_css)
+                    .expect("Kanban task palette slot");
+                let terminal_fill = if preset.is_dark() {
+                    merman_core::theme_color::darken(&task_fill, 10.0)
+                } else {
+                    merman_core::theme_color::lighten(&task_fill, 10.0)
+                }
+                .expect("built-in Kanban task color");
+                let label = kanban
+                    .style(
+                        ThemeTarget::TaskLabel,
+                        ThemeVariant::Default,
+                        Some(item_ordinal),
+                    )
+                    .fill()
+                    .and_then(solid_color)
+                    .expect("each Kanban task palette slot must own its label foreground");
+                assert_eq!(
+                    label,
+                    palette.kanban_task_labels
+                        [(terminal_ordinal - 1) % palette.kanban_task_labels.len()],
+                    "{} Kanban item {item_ordinal} terminal slot {terminal_ordinal} authored label foreground",
+                    preset.id()
+                );
+                let ratio = contrast_ratio(&label, &terminal_fill);
+
+                assert!(
+                    ratio >= MINIMUM_TEXT_CONTRAST,
+                    "{} Kanban item {item_ordinal} terminal slot {terminal_ordinal} contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({label} on {terminal_fill})",
                     preset.id()
                 );
             }

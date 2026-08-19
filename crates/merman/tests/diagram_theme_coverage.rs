@@ -497,6 +497,7 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             ],
             &[
                 "class=\"basic label-container __APA__\" style=\"fill:hsl(213.1168831169, 93.9024390244%, 57.8431372549%)\"",
+                "class=\"label\" style=\"color:#000000;fill:#000000;text-align:left\"",
             ],
         ),
         (

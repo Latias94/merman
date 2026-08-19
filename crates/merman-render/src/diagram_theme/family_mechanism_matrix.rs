@@ -735,6 +735,12 @@ pub(super) fn summarize_base_typography_support(
         ThemeSupportBaseTypographyPropertyV2::LetterSpacing => {
             ThemeTypographyProperty::LetterSpacing
         }
+        ThemeSupportBaseTypographyPropertyV2::WordSpacing => ThemeTypographyProperty::WordSpacing,
+        ThemeSupportBaseTypographyPropertyV2::Transform => ThemeTypographyProperty::Transform,
+        ThemeSupportBaseTypographyPropertyV2::Decoration => ThemeTypographyProperty::Decoration,
+        ThemeSupportBaseTypographyPropertyV2::TextAlign => ThemeTypographyProperty::TextAlign,
+        ThemeSupportBaseTypographyPropertyV2::WhiteSpace => ThemeTypographyProperty::WhiteSpace,
+        ThemeSupportBaseTypographyPropertyV2::Wrap => ThemeTypographyProperty::Wrap,
         _ => return FamilyThemeSupportSummary::default(),
     };
     let mut summary = FamilyThemeSupportSummary::default();
@@ -849,7 +855,20 @@ fn classify_base_typography(
     property: ThemeTypographyProperty,
 ) -> FamilyThemeDisposition {
     if family == DiagramFamilyId::STATE {
-        return FamilyThemeDisposition::TypedAdapter;
+        return match property {
+            ThemeTypographyProperty::FontStack
+            | ThemeTypographyProperty::FontSize
+            | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform => FamilyThemeDisposition::TypedAdapter,
+            ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => FamilyThemeDisposition::Unsupported,
+        };
     }
     if family == DiagramFamilyId::ZENUML {
         return FamilyThemeDisposition::Unsupported;
@@ -1155,6 +1174,21 @@ pub(super) fn classify_rule_facet(
     if family == DiagramFamilyId::GANTT
         && target == ThemeTarget::Task
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::KANBAN
+        && target == ThemeTarget::TaskLabel
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Ordinal { variant: None, .. }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -2345,6 +2379,24 @@ mod tests {
     fn kanban_owns_the_task_ordinal_palette() {
         assert_eq!(
             compile_ordinal_palette_route(DiagramFamilyId::KANBAN, ThemeTarget::Task).disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+    }
+
+    #[test]
+    fn kanban_owns_family_qualified_ordinal_task_label_foregrounds() {
+        let rule = ThemeRule::new(
+            ThemeTarget::TaskLabel,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#000000").expect("valid label foreground")),
+        )
+        .for_family(DiagramFamilyId::KANBAN)
+        .with_ordinal(crate::diagram_theme::OrdinalSelector::cycle(12, 0).unwrap());
+        let routes = compile_rule_routes(DiagramFamilyId::KANBAN, 0, &rule);
+
+        assert_eq!(routes.len(), 1);
+        assert_eq!(
+            routes[0].disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
     }

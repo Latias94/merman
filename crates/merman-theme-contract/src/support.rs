@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 
-use serde::de::{Error as _, IgnoredAny};
+use serde::de::Error as _;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 
 use crate::ThemeRuleFacetV1;
+use crate::canonical_json::canonical_json_bytes;
 
 /// Schema version used by the version 1 theme-support discovery query.
 pub const THEME_SUPPORT_SCHEMA_VERSION_V1: u32 = 1;
@@ -14,6 +16,13 @@ pub const THEME_SUPPORT_SCHEMA_VERSION_V2: u32 = 2;
 
 /// Maximum number of stable reason identifiers in one coarse support descriptor.
 pub const MAX_THEME_SUPPORT_REASON_IDS_V1: usize = 8;
+
+const MAX_UNKNOWN_SUBJECT_FIELDS_V2: usize = 16;
+const MAX_UNKNOWN_SUBJECT_KIND_BYTES_V2: usize = 64;
+const MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V2: usize = 64;
+const MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V2: usize = 32;
+const MAX_UNKNOWN_SUBJECT_VALUE_DEPTH_V2: usize = 4;
+const MAX_UNKNOWN_SUBJECT_ENCODED_BYTES_V2: usize = 4 * 1024;
 
 /// A versioned, forward-compatible query for coarse theme support.
 ///
@@ -77,11 +86,12 @@ impl ThemeSupportQueryV1 {
     }
 }
 
-/// A version 2 theme-support query with an explicit tagged subject.
+/// An unstable alpha version 2 theme-support query with an explicit tagged subject.
 ///
 /// Unlike V1, family-wide base typography is not projected through a synthetic semantic target.
 /// Unknown subject and property identifiers remain decodable discovery input and resolve to an
-/// unverified renderer claim.
+/// unverified renderer claim. The V2 subject inventory remains explicitly unfrozen until the C7a
+/// rollout gate closes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeSupportQueryV2 {
@@ -163,7 +173,7 @@ impl ThemeSupportQueryV2 {
     }
 }
 
-/// The subject of a version 2 theme-support query.
+/// The subject of an unstable alpha version 2 theme-support query.
 ///
 /// The wire representation is tagged by `kind`. Known subjects preserve unknown target, facet,
 /// and property identifiers as strings so the renderer can return `Unverified` instead of
@@ -189,10 +199,34 @@ pub enum ThemeSupportSubjectV2 {
         property: String,
     },
     /// A subject tag unknown to this contract version.
-    Unknown {
-        /// Preserved unknown subject tag.
-        kind: String,
-    },
+    Unknown(ThemeSupportUnknownSubjectV2),
+}
+
+/// A bounded, forward-compatible subject payload unknown to this contract version.
+///
+/// Opaque values are stored as canonical JSON so decoding and re-encoding preserves additive
+/// fields without exposing an unbounded arbitrary-value tree as part of the Rust API.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ThemeSupportUnknownSubjectV2 {
+    kind: String,
+    fields: BTreeMap<String, String>,
+}
+
+impl ThemeSupportUnknownSubjectV2 {
+    /// Returns the preserved unknown subject tag.
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    /// Returns one preserved opaque field as canonical JSON.
+    pub fn field_json(&self, key: &str) -> Option<&str> {
+        self.fields.get(key).map(String::as_str)
+    }
+
+    /// Returns the number of preserved opaque fields.
+    pub fn field_count(&self) -> usize {
+        self.fields.len()
+    }
 }
 
 impl Serialize for ThemeSupportSubjectV2 {
@@ -203,7 +237,7 @@ impl Serialize for ThemeSupportSubjectV2 {
         let field_count = match self {
             Self::Rule { .. } => 3,
             Self::OrdinalPalette { .. } | Self::BaseTypography { .. } => 2,
-            Self::Unknown { .. } => 1,
+            Self::Unknown(unknown) => 1 + unknown.fields.len(),
         };
         let mut map = serializer.serialize_map(Some(field_count))?;
         match self {
@@ -220,8 +254,16 @@ impl Serialize for ThemeSupportSubjectV2 {
                 map.serialize_entry("kind", "base-typography")?;
                 map.serialize_entry("property", property)?;
             }
-            Self::Unknown { kind } => {
-                map.serialize_entry("kind", kind)?;
+            Self::Unknown(unknown) => {
+                map.serialize_entry("kind", &unknown.kind)?;
+                for (key, encoded) in &unknown.fields {
+                    let value = serde_json::from_str::<Value>(encoded).map_err(|error| {
+                        serde::ser::Error::custom(format!(
+                            "invalid preserved theme support subject field `{key}`: {error}"
+                        ))
+                    })?;
+                    map.serialize_entry(key, &value)?;
+                }
             }
         }
         map.end()
@@ -233,89 +275,166 @@ impl<'de> Deserialize<'de> for ThemeSupportSubjectV2 {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct SubjectWire {
-            kind: String,
-            #[serde(default)]
-            target: Option<String>,
-            #[serde(default)]
-            facet: Option<String>,
-            #[serde(default)]
-            property: Option<String>,
-            #[serde(flatten)]
-            extra: BTreeMap<String, IgnoredAny>,
-        }
-
-        let SubjectWire {
-            kind,
-            target,
-            facet,
-            property,
-            extra,
-        } = SubjectWire::deserialize(deserializer)?;
-
-        let reject_extra = |kind: &str| {
-            if extra.is_empty() {
-                Ok(())
-            } else {
-                Err(D::Error::custom(format!(
-                    "unexpected fields for theme support subject `{kind}`"
-                )))
-            }
-        };
+        let mut fields = BTreeMap::<String, Value>::deserialize(deserializer)?;
+        let kind = fields
+            .remove("kind")
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .ok_or_else(|| D::Error::custom("theme support subject requires string `kind`"))?;
         match kind.as_str() {
             "rule" => {
-                reject_extra(&kind)?;
-                if property.is_some() {
-                    return Err(D::Error::custom(
-                        "theme support subject `rule` does not accept `property`",
-                    ));
-                }
-                Ok(Self::Rule {
-                    target: target.ok_or_else(|| {
-                        D::Error::custom("theme support subject `rule` requires `target`")
-                    })?,
-                    facet: facet.ok_or_else(|| {
-                        D::Error::custom("theme support subject `rule` requires `facet`")
-                    })?,
-                })
+                let target = take_required_string::<D>(&mut fields, "target", &kind)?;
+                let facet = take_required_string::<D>(&mut fields, "facet", &kind)?;
+                reject_known_subject_extra::<D>(&kind, &fields)?;
+                Ok(Self::Rule { target, facet })
             }
             "ordinal-palette" => {
-                reject_extra(&kind)?;
-                if facet.is_some() || property.is_some() {
-                    return Err(D::Error::custom(
-                        "theme support subject `ordinal-palette` only accepts `target`",
-                    ));
-                }
-                Ok(Self::OrdinalPalette {
-                    target: target.ok_or_else(|| {
-                        D::Error::custom(
-                            "theme support subject `ordinal-palette` requires `target`",
-                        )
-                    })?,
-                })
+                let target = take_required_string::<D>(&mut fields, "target", &kind)?;
+                reject_known_subject_extra::<D>(&kind, &fields)?;
+                Ok(Self::OrdinalPalette { target })
             }
             "base-typography" => {
-                reject_extra(&kind)?;
-                if target.is_some() || facet.is_some() {
-                    return Err(D::Error::custom(
-                        "theme support subject `base-typography` only accepts `property`",
-                    ));
-                }
-                Ok(Self::BaseTypography {
-                    property: property.ok_or_else(|| {
-                        D::Error::custom(
-                            "theme support subject `base-typography` requires `property`",
-                        )
-                    })?,
-                })
+                let property = take_required_string::<D>(&mut fields, "property", &kind)?;
+                reject_known_subject_extra::<D>(&kind, &fields)?;
+                Ok(Self::BaseTypography { property })
             }
-            _ => Ok(Self::Unknown { kind }),
+            _ => {
+                let fields = preserve_unknown_subject_fields::<D>(&kind, fields)?;
+                Ok(Self::Unknown(ThemeSupportUnknownSubjectV2 { kind, fields }))
+            }
         }
     }
 }
 
-/// A public family-wide typography property available to V2 support discovery.
+fn take_required_string<'de, D>(
+    fields: &mut BTreeMap<String, Value>,
+    key: &str,
+    kind: &str,
+) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    fields
+        .remove(key)
+        .ok_or_else(|| {
+            D::Error::custom(format!("theme support subject `{kind}` requires `{key}`"))
+        })?
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            D::Error::custom(format!(
+                "theme support subject `{kind}` field `{key}` must be a string"
+            ))
+        })
+}
+
+fn reject_known_subject_extra<'de, D>(
+    kind: &str,
+    fields: &BTreeMap<String, Value>,
+) -> Result<(), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if fields.is_empty() {
+        Ok(())
+    } else {
+        Err(D::Error::custom(format!(
+            "unexpected fields for theme support subject `{kind}`"
+        )))
+    }
+}
+
+fn preserve_unknown_subject_fields<'de, D>(
+    kind: &str,
+    fields: BTreeMap<String, Value>,
+) -> Result<BTreeMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if kind.is_empty() || kind.len() > MAX_UNKNOWN_SUBJECT_KIND_BYTES_V2 {
+        return Err(D::Error::custom(
+            "theme support subject has an invalid opaque kind",
+        ));
+    }
+    if fields.len() > MAX_UNKNOWN_SUBJECT_FIELDS_V2 {
+        return Err(D::Error::custom(format!(
+            "theme support subject `{kind}` exceeds the opaque field limit"
+        )));
+    }
+    let mut encoded_bytes = kind.len();
+    let mut preserved = BTreeMap::new();
+    for (key, value) in fields {
+        if key.len() > MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V2 {
+            return Err(D::Error::custom(format!(
+                "theme support subject `{kind}` has an oversized opaque field key"
+            )));
+        }
+        validate_unknown_subject_value::<D>(kind, &value, 0)?;
+        let encoded = canonical_json_bytes(&value).map_err(|error| {
+            D::Error::custom(format!(
+                "theme support subject `{kind}` has a non-canonical opaque field: {error}"
+            ))
+        })?;
+        encoded_bytes = encoded_bytes
+            .checked_add(key.len())
+            .and_then(|bytes| bytes.checked_add(encoded.len()))
+            .ok_or_else(|| D::Error::custom("theme support subject opaque payload overflow"))?;
+        if encoded_bytes > MAX_UNKNOWN_SUBJECT_ENCODED_BYTES_V2 {
+            return Err(D::Error::custom(format!(
+                "theme support subject `{kind}` exceeds the opaque byte limit"
+            )));
+        }
+        let encoded = String::from_utf8(encoded)
+            .map_err(|_| D::Error::custom("canonical theme support JSON was not UTF-8"))?;
+        preserved.insert(key, encoded);
+    }
+    Ok(preserved)
+}
+
+fn validate_unknown_subject_value<'de, D>(
+    kind: &str,
+    value: &Value,
+    depth: usize,
+) -> Result<(), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if depth > MAX_UNKNOWN_SUBJECT_VALUE_DEPTH_V2 {
+        return Err(D::Error::custom(format!(
+            "theme support subject `{kind}` exceeds the opaque nesting limit"
+        )));
+    }
+    match value {
+        Value::Array(values) => {
+            if values.len() > MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V2 {
+                return Err(D::Error::custom(format!(
+                    "theme support subject `{kind}` exceeds the opaque array item limit"
+                )));
+            }
+            for value in values {
+                validate_unknown_subject_value::<D>(kind, value, depth + 1)?;
+            }
+        }
+        Value::Object(values) => {
+            if values.len() > MAX_UNKNOWN_SUBJECT_CONTAINER_ITEMS_V2 {
+                return Err(D::Error::custom(format!(
+                    "theme support subject `{kind}` exceeds the opaque object field limit"
+                )));
+            }
+            for (key, value) in values {
+                if key.len() > MAX_UNKNOWN_SUBJECT_FIELD_KEY_BYTES_V2 {
+                    return Err(D::Error::custom(format!(
+                        "theme support subject `{kind}` has an oversized nested field key"
+                    )));
+                }
+                validate_unknown_subject_value::<D>(kind, value, depth + 1)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// An alpha family-wide typography property available to V2 support discovery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
@@ -332,10 +451,22 @@ pub enum ThemeSupportBaseTypographyPropertyV2 {
     LineHeight,
     /// Letter spacing.
     LetterSpacing,
+    /// Word spacing.
+    WordSpacing,
+    /// Text transform.
+    Transform,
+    /// Text decoration.
+    Decoration,
+    /// Text alignment.
+    TextAlign,
+    /// White-space handling.
+    WhiteSpace,
+    /// Text wrapping policy.
+    Wrap,
 }
 
 impl ThemeSupportBaseTypographyPropertyV2 {
-    /// Stable enumeration view for catalogs and contract round-trip checks.
+    /// Current alpha enumeration view for catalogs and contract round-trip checks.
     pub const ALL: &'static [Self] = &[
         Self::FontStack,
         Self::FontSize,
@@ -343,9 +474,17 @@ impl ThemeSupportBaseTypographyPropertyV2 {
         Self::FontStyle,
         Self::LineHeight,
         Self::LetterSpacing,
+        Self::WordSpacing,
+        Self::Transform,
+        Self::Decoration,
+        Self::TextAlign,
+        Self::WhiteSpace,
+        Self::Wrap,
     ];
 
-    /// Stable wire identifier for this base typography property.
+    /// Current V2 wire identifier for this base typography property.
+    ///
+    /// These identifiers remain unfrozen until the C7a rollout gate closes.
     pub const fn id(self) -> &'static str {
         match self {
             Self::FontStack => "font-stack",
@@ -354,6 +493,12 @@ impl ThemeSupportBaseTypographyPropertyV2 {
             Self::FontStyle => "font-style",
             Self::LineHeight => "line-height",
             Self::LetterSpacing => "letter-spacing",
+            Self::WordSpacing => "word-spacing",
+            Self::Transform => "transform",
+            Self::Decoration => "decoration",
+            Self::TextAlign => "text-align",
+            Self::WhiteSpace => "white-space",
+            Self::Wrap => "wrap",
         }
     }
 
@@ -450,7 +595,7 @@ impl ThemeCapabilityDescriptorV1 {
     }
 }
 
-/// A version 2 coarse theme-support result envelope.
+/// An unstable alpha version 2 coarse theme-support result envelope.
 ///
 /// V2 preserves the explicit subject from [`ThemeSupportQueryV2`] while retaining the same coarse
 /// state and bounded stable-reason contract as V1.
