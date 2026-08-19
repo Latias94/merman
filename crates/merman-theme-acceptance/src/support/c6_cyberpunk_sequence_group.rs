@@ -14,8 +14,9 @@ use merman_theme_fixtures::{
 use crate::observation::{C6RenderIdentity, C6RuntimeError};
 
 use super::c6_sequence_proof::{
-    SequenceLineProofStyle, SequenceProofContract, SequenceRectProofStyle, SequenceSvgProof,
-    prove_sequence_png, prove_sequence_svg,
+    SequenceLineProofStyle, SequenceProofContract, SequenceRectProofStyle,
+    SequenceRoleTextProofContract, SequenceSvgProof, prove_sequence_png,
+    prove_sequence_svg_with_role_text,
 };
 use super::{
     C6CompletedRenderGroup, C6ProofError, C6ProofResult, C6RenderGroupAdapter, C6RenderGroupWork,
@@ -105,8 +106,9 @@ fn prove_cyberpunk_sequence_rendered_document(
     )?;
     let contract = proof_contract();
     let artifact = bind_document_svg_artifact(&document);
-    let svg_proof = prove_sequence_svg(
+    let svg_proof = prove_sequence_svg_with_role_text(
         contract,
+        role_text_contract(),
         &CELL_MECHANISMS,
         "cyberpunk-sequence-standalone-svg-v1",
         artifact,
@@ -212,28 +214,23 @@ fn compile_theme(
             PRIMARY,
             "cyberpunk-sequence-activation-stroke",
         )?);
+    let loop_surface = ThemeStylePatch::default()
+        .with_fill(fixture_solid(SURFACE, "cyberpunk-sequence-loop-fill")?);
+    let actor_label = label_patch(&font_stack, CANVAS, "cyberpunk-sequence-actor-label-fill")?;
+    let message_label = label_patch(&font_stack, TEXT, "cyberpunk-sequence-message-label-fill")?;
+    let note_label = label_patch(&font_stack, TEXT, "cyberpunk-sequence-note-label-fill")?;
+    let loop_label = label_patch(&font_stack, TEXT, "cyberpunk-sequence-loop-label-fill")?;
     let styles = ThemeRuleSet::default()
         .with_rule(sequence_rule(ThemeTarget::Actor, actor))
         .with_rule(sequence_rule(ThemeTarget::Lifeline, lifeline))
         .with_rule(sequence_rule(ThemeTarget::Message, message))
         .with_rule(sequence_rule(ThemeTarget::Note, note))
         .with_rule(sequence_rule(ThemeTarget::Activation, activation))
-        .with_rule(sequence_rule(
-            ThemeTarget::ActorLabel,
-            label_patch(&font_stack),
-        ))
-        .with_rule(sequence_rule(
-            ThemeTarget::MessageLabel,
-            label_patch(&font_stack),
-        ))
-        .with_rule(sequence_rule(
-            ThemeTarget::NoteLabel,
-            label_patch(&font_stack),
-        ))
-        .with_rule(sequence_rule(
-            ThemeTarget::LoopLabel,
-            label_patch(&font_stack),
-        ));
+        .with_rule(sequence_rule(ThemeTarget::Loop, loop_surface))
+        .with_rule(sequence_rule(ThemeTarget::ActorLabel, actor_label))
+        .with_rule(sequence_rule(ThemeTarget::MessageLabel, message_label))
+        .with_rule(sequence_rule(ThemeTarget::NoteLabel, note_label))
+        .with_rule(sequence_rule(ThemeTarget::LoopLabel, loop_label));
     let spec =
         DiagramThemeSpec::new()
             .with_typography(TypographySpec::default().with_default(ThemeTextStyle::default()))
@@ -247,10 +244,14 @@ fn compile_theme(
         .map_err(|error| C6ProofError::new("cyberpunk-sequence-theme", error.to_string()))
 }
 
-fn label_patch(font_stack: &FontStack) -> ThemeStylePatch {
-    let mut patch = ThemeStylePatch::default();
+fn label_patch(
+    font_stack: &FontStack,
+    fill: &str,
+    context: &'static str,
+) -> C6ProofResult<ThemeStylePatch> {
+    let mut patch = ThemeStylePatch::default().with_fill(fixture_solid(fill, context)?);
     patch.typography.font_stack = Specified::Value(font_stack.clone());
-    patch
+    Ok(patch)
 }
 
 fn sequence_rule(target: ThemeTarget, patch: ThemeStylePatch) -> ThemeRule {
@@ -315,5 +316,16 @@ const fn proof_contract() -> SequenceProofContract<'static> {
             stroke: PRIMARY,
         }),
         font_family: Some(FONT_FAMILY),
+    }
+}
+
+const fn role_text_contract() -> SequenceRoleTextProofContract<'static> {
+    SequenceRoleTextProofContract {
+        actor_text: CANVAS,
+        message_text: TEXT,
+        note_text: TEXT,
+        loop_text: TEXT,
+        canvas: CANVAS,
+        loop_label_surface: SURFACE,
     }
 }

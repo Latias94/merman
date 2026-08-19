@@ -68,6 +68,8 @@ const MIN_NON_TRANSPARENT_MASK_ALLOWANCE: usize = 8;
 const MIN_UNDERLAY_MASK_PERCENT: usize = 80;
 const TRANSPARENT_ALPHA_TOLERANCE: u8 = 2;
 const MARKER_PROBE_RADIUS: f64 = 9.0;
+const CLASS_RELATION_OCCURRENCE_COUNT: usize = 5;
+const EVENT_MODELING_SWIMLANE_OCCURRENCE_COUNT: usize = 3;
 const MINIMUM_MARKER_PIXELS: usize = 6;
 
 const FLOWCHART_NODE_SOURCE: &str = "flowchart LR\nA[Alpha]\nB[Beta]\n";
@@ -137,6 +139,13 @@ actor Alice
 participant Bob
 Alice->>Bob: Hello
 "#;
+const SEQUENCE_ROLE_LABEL_SOURCE: &str = r#"sequenceDiagram
+box rgb(241,245,249) Team
+participant Alice
+participant Bob
+end
+Alice->>Bob: Hello
+"#;
 const SEQUENCE_NOTE_SOURCE: &str = r#"sequenceDiagram
 participant Alice
 participant Bob
@@ -173,6 +182,15 @@ A-|/B: solid bottom
 B-\\A: stick top
 A-//B: stick bottom
 "#;
+const SEQUENCE_LOOP_SOURCE: &str = r#"sequenceDiagram
+participant Alice
+participant Bob
+alt Primary path
+Alice->>Bob: Ping
+else Secondary path
+Bob-->>Alice: Pong
+end
+"#;
 const TREEMAP_TITLE_TEXT: &str = "Cutover treemap title";
 const TREEMAP_TITLE_SOURCE: &str = r#"treemap
 title Cutover treemap title
@@ -195,6 +213,52 @@ const BLOCK_STROKE_SOURCE: &str = r#"block-beta
   columns 5
   rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
 "#;
+const ZENUML_TITLE_SOURCE: &str = "zenuml\ntitle Cutover ZenUML title\nClient->Service: request\n";
+const VENN_TITLE_SOURCE: &str = r#"venn-beta
+title Cutover Venn title
+set A["Alpha"]:20
+set B["Beta"]:12
+union A,B["Shared"]:3
+"#;
+const ISHIKAWA_TEXT_SOURCE: &str = "ishikawa-beta\n Root cause\n  Process\n   Slow step\n   Missing spec\n  People\n   Missing owner\n";
+const EVENT_MODELING_TEXT_SOURCE: &str =
+    "eventmodeling\ntf 01 ui View\ntf 02 cmd Run ->> 01\ntf 03 evt Done ->> 02\n";
+const CLASS_EDGE_SOURCE: &str = r#"classDiagram
+  A *-- B
+  C <|-- D
+  E ..> F
+  G o-- H
+  I ()-- J
+"#;
+const ER_RELATION_SOURCE: &str = r#"erDiagram
+  A ||--o{ B : owns
+  SELF ||--o{ SELF : refers
+"#;
+const MINDMAP_EDGE_SOURCE: &str = r#"mindmap
+  Root
+    First
+      First child
+    Second
+"#;
+const GITGRAPH_EDGE_SOURCE: &str = r#"gitGraph
+  commit id: "1"
+  branch develop
+  checkout develop
+  commit id: "2"
+  checkout main
+  commit id: "3"
+"#;
+const GANTT_TASK_FILL_SOURCE: &str = r#"gantt
+dateFormat YYYY-MM-DD
+todayMarker off
+section Delivery
+Default: default-task, 2024-01-01, 1d
+Active: active, active-task, 2024-01-02, 1d
+Done: done, done-task, 2024-01-03, 1d
+Critical: crit, crit-task, 2024-01-04, 1d
+Active critical: crit, active, active-crit-task, 2024-01-05, 1d
+Done critical: crit, done, done-crit-task, 2024-01-06, 1d
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -208,6 +272,8 @@ impl CutoverWitnessProfile {
     const CLASSIC: [Self; 1] = [Self::ClassicStatic];
     const CLUSTER: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
     const EDGE: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::NeoAnimated];
+    const CLASS_EDGE: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
+    const ISHIKAWA_TEXT: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
 
     const fn id(self) -> &'static str {
         match self {
@@ -243,8 +309,19 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
-        if route.target() == ThemeTarget::Edge {
+        if matches!(
+            route.family_id(),
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+        ) && route.target() == ThemeTarget::Edge
+        {
             &Self::EDGE
+        } else if route.family_id() == DiagramFamilyId::CLASS && route.target() == ThemeTarget::Edge
+        {
+            &Self::CLASS_EDGE
+        } else if route.family_id() == DiagramFamilyId::ISHIKAWA
+            && route.target() == ThemeTarget::Text
+        {
+            &Self::ISHIKAWA_TEXT
         } else if route.family_id() == DiagramFamilyId::FLOWCHART
             && route.target() == ThemeTarget::Cluster
         {
@@ -307,11 +384,23 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SEQUENCE_STROKE_SOURCE)
         }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::ActorLabel, ThemeRouteCutoverFacet::Fill) => {
+            Ok(SEQUENCE_ROLE_LABEL_SOURCE)
+        }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Lifeline, _) => Ok(SEQUENCE_LIFELINE_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, _) => Ok(SEQUENCE_NOTE_SOURCE),
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::NoteLabel, ThemeRouteCutoverFacet::Fill) => {
+            Ok(SEQUENCE_NOTE_SOURCE)
+        }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, _) => Ok(SEQUENCE_ACTIVATION_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SEQUENCE_MESSAGE_SOURCE)
+        }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::MessageLabel, ThemeRouteCutoverFacet::Fill) => {
+            Ok(SEQUENCE_ROLE_LABEL_SOURCE)
+        }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Loop | ThemeTarget::LoopLabel, _) => {
+            Ok(SEQUENCE_LOOP_SOURCE)
         }
         (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(TREEMAP_TITLE_SOURCE)
@@ -324,6 +413,33 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::BLOCK, ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
             Ok(BLOCK_STROKE_SOURCE)
+        }
+        (DiagramFamilyId::ZENUML, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(ZENUML_TITLE_SOURCE)
+        }
+        (DiagramFamilyId::VENN, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(VENN_TITLE_SOURCE)
+        }
+        (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(ISHIKAWA_TEXT_SOURCE)
+        }
+        (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(EVENT_MODELING_TEXT_SOURCE)
+        }
+        (DiagramFamilyId::CLASS, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(CLASS_EDGE_SOURCE)
+        }
+        (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(ER_RELATION_SOURCE)
+        }
+        (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(MINDMAP_EDGE_SOURCE)
+        }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(GITGRAPH_EDGE_SOURCE)
+        }
+        (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Fill) => {
+            Ok(GANTT_TASK_FILL_SOURCE)
         }
         _ => Err(C6ProofError::new(
             "route-source",
@@ -780,11 +896,12 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
         }
         ThemeRouteCutoverFacet::Stroke => {
             let solid = match route.target() {
-                ThemeTarget::Edge => SOLID_EDGE.css,
+                ThemeTarget::Edge | ThemeTarget::Relation => SOLID_EDGE.css,
                 ThemeTarget::Node
                 | ThemeTarget::Cluster
                 | ThemeTarget::Actor
                 | ThemeTarget::Lifeline
+                | ThemeTarget::Loop
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
                 | ThemeTarget::Message
@@ -838,13 +955,18 @@ fn cutover_paint(value: ThemeRouteCutoverValue, solid: &str) -> C6ProofResult<Ca
 
 fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
     let profile = witness.profile();
-    let theme_variables = if witness.route().target() == ThemeTarget::Activation {
-        serde_json::json!({
+    let theme_variables = match (witness.route().family_id(), witness.route().target()) {
+        (_, ThemeTarget::Activation) => serde_json::json!({
             "actorLineColor": "transparent",
             "signalColor": "transparent"
-        })
-    } else {
-        serde_json::json!({})
+        }),
+        (DiagramFamilyId::GANTT, ThemeTarget::Task) => serde_json::json!({
+            "sectionBkgColor": "transparent",
+            "sectionBkgColor2": "transparent",
+            "altSectionBkgColor": "transparent",
+            "gridColor": "transparent"
+        }),
+        _ => serde_json::json!({}),
     };
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({
@@ -1102,10 +1224,17 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Cluster
             | ThemeTarget::Title
             | ThemeTarget::Actor
+            | ThemeTarget::ActorLabel
             | ThemeTarget::Lifeline
+            | ThemeTarget::MessageLabel
+            | ThemeTarget::Loop
+            | ThemeTarget::LoopLabel
             | ThemeTarget::Note
+            | ThemeTarget::NoteLabel
             | ThemeTarget::Activation
-            | ThemeTarget::Requirement,
+            | ThemeTarget::Requirement
+            | ThemeTarget::Text
+            | ThemeTarget::Task,
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(SOLID_FILL),
         (
@@ -1113,13 +1242,16 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             | ThemeTarget::Cluster
             | ThemeTarget::Actor
             | ThemeTarget::Lifeline
+            | ThemeTarget::Loop
             | ThemeTarget::Note
             | ThemeTarget::Activation
             | ThemeTarget::Message
             | ThemeTarget::PieSlice,
             ThemeRouteCutoverFacet::Stroke,
         ) => Ok(SOLID_STROKE),
-        (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE),
+        (ThemeTarget::Edge | ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(SOLID_EDGE)
+        }
         _ => Err(C6ProofError::new(
             "route-png-proof",
             format!("no PNG control color for {}", route_label(route)),
@@ -1141,7 +1273,16 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             | DiagramFamilyId::TREEMAP
             | DiagramFamilyId::REQUIREMENT
             | DiagramFamilyId::PIE
-            | DiagramFamilyId::BLOCK => Ok("transparent"),
+            | DiagramFamilyId::BLOCK
+            | DiagramFamilyId::ZENUML
+            | DiagramFamilyId::VENN
+            | DiagramFamilyId::ISHIKAWA
+            | DiagramFamilyId::EVENT_MODELING
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::MINDMAP
+            | DiagramFamilyId::GIT_GRAPH
+            | DiagramFamilyId::GANTT => Ok("transparent"),
             family => Err(C6ProofError::new(
                 "route-svg-proof",
                 format!("unsupported transparent cutover family {family}"),
@@ -1153,10 +1294,17 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Cluster
                 | ThemeTarget::Title
                 | ThemeTarget::Actor
+                | ThemeTarget::ActorLabel
                 | ThemeTarget::Lifeline
+                | ThemeTarget::MessageLabel
+                | ThemeTarget::Loop
+                | ThemeTarget::LoopLabel
                 | ThemeTarget::Note
+                | ThemeTarget::NoteLabel
                 | ThemeTarget::Activation
-                | ThemeTarget::Requirement,
+                | ThemeTarget::Requirement
+                | ThemeTarget::Text
+                | ThemeTarget::Task,
                 ThemeRouteCutoverFacet::Fill,
             ) => Ok(SOLID_FILL.css),
             (
@@ -1164,13 +1312,16 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 | ThemeTarget::Cluster
                 | ThemeTarget::Actor
                 | ThemeTarget::Lifeline
+                | ThemeTarget::Loop
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
                 | ThemeTarget::Message
                 | ThemeTarget::PieSlice,
                 ThemeRouteCutoverFacet::Stroke,
             ) => Ok(SOLID_STROKE.css),
-            (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE.css),
+            (ThemeTarget::Edge | ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
+                Ok(SOLID_EDGE.css)
+            }
             _ => Err(C6ProofError::new(
                 "route-svg-proof",
                 format!("unsupported solid cutover route {}", route_label(route)),
@@ -1333,11 +1484,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_forty_two_routes_and_fifty_four_artifact_witnesses() {
+    fn route_inventory_retains_seventy_two_routes_and_eighty_eight_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 42);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 54);
+        assert_eq!(inventory.len(), 72);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 88);
     }
 
     #[test]

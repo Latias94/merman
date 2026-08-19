@@ -58,69 +58,84 @@ fn cell_mut<'a>(value: &'a mut Value, theme: &str, family: &str, target: &str) -
 fn expected_mechanisms(
     theme: C6ProofTheme,
     family: C6ProofFamily,
+    target: ExpectedOutputTarget,
 ) -> BTreeSet<ReferenceThemeMechanism> {
     use ReferenceThemeMechanism as Mechanism;
 
-    let mechanisms: &[Mechanism] = match (theme, family) {
-        (C6ProofTheme::Brutalist, C6ProofFamily::Flowchart) => &[
-            Mechanism::NthChildSelector,
-            Mechanism::RoundedCorners,
-            Mechanism::StrokeStyling,
-        ],
-        (C6ProofTheme::Brutalist, C6ProofFamily::State) => &[
-            Mechanism::CanvasSolid,
-            Mechanism::CssFilter,
-            Mechanism::FontStack,
-            Mechanism::NthChildSelector,
-            Mechanism::RoundedCorners,
-            Mechanism::StrokeStyling,
-            Mechanism::ThemeVariables,
-        ],
-        (C6ProofTheme::Brutalist, C6ProofFamily::Sequence) => &[Mechanism::ThemeVariables],
-        (C6ProofTheme::Spotless, C6ProofFamily::Flowchart) => &[
-            Mechanism::CanvasGradient,
-            Mechanism::CanvasPattern,
-            Mechanism::DashArray,
-            Mechanism::FontStack,
-            Mechanism::RoundedCorners,
-            Mechanism::StrokeStyling,
-        ],
-        (C6ProofTheme::Spotless, C6ProofFamily::State) => &[
+    let mechanisms: &[Mechanism] = match (theme, family, target) {
+        (C6ProofTheme::Spotless, C6ProofFamily::State, ExpectedOutputTarget::Png) => &[
             Mechanism::CanvasGradient,
             Mechanism::CanvasLayering,
             Mechanism::CanvasPattern,
-            Mechanism::CanvasSolid,
-            Mechanism::CssLetterSpacing,
-            Mechanism::CssTextTransform,
-            Mechanism::FontStack,
-            Mechanism::ThemeVariables,
         ],
-        (C6ProofTheme::Spotless, C6ProofFamily::Sequence) => &[
-            Mechanism::FontStack,
-            Mechanism::StrokeStyling,
-            Mechanism::ThemeVariables,
-        ],
-        (C6ProofTheme::Cyberpunk, C6ProofFamily::Flowchart) => &[
-            Mechanism::CanvasBlend,
-            Mechanism::CanvasGradient,
-            Mechanism::CanvasLayering,
-            Mechanism::CanvasPattern,
-            Mechanism::StrokeStyling,
-        ],
-        (C6ProofTheme::Cyberpunk, C6ProofFamily::State) => &[
-            Mechanism::CanvasSolid,
-            Mechanism::CssFilter,
-            Mechanism::FontStack,
-            Mechanism::RoundedCorners,
-            Mechanism::StrokeStyling,
-            Mechanism::ThemeVariables,
-        ],
-        (C6ProofTheme::Cyberpunk, C6ProofFamily::Sequence) => &[
-            Mechanism::CanvasSolid,
-            Mechanism::FontStack,
-            Mechanism::StrokeStyling,
-            Mechanism::ThemeVariables,
-        ],
+        (C6ProofTheme::Spotless, C6ProofFamily::Sequence, ExpectedOutputTarget::Png)
+        | (C6ProofTheme::Cyberpunk, C6ProofFamily::Sequence, ExpectedOutputTarget::Png) => {
+            &[Mechanism::StrokeStyling, Mechanism::ThemeVariables]
+        }
+        (C6ProofTheme::Cyberpunk, C6ProofFamily::State, ExpectedOutputTarget::Png) => {
+            &[Mechanism::CssFilter]
+        }
+        (theme, family, _) => match (theme, family) {
+            (C6ProofTheme::Brutalist, C6ProofFamily::Flowchart) => &[
+                Mechanism::NthChildSelector,
+                Mechanism::RoundedCorners,
+                Mechanism::StrokeStyling,
+            ],
+            (C6ProofTheme::Brutalist, C6ProofFamily::State) => &[
+                Mechanism::CanvasSolid,
+                Mechanism::CssFilter,
+                Mechanism::FontStack,
+                Mechanism::NthChildSelector,
+                Mechanism::RoundedCorners,
+                Mechanism::StrokeStyling,
+                Mechanism::ThemeVariables,
+            ],
+            (C6ProofTheme::Brutalist, C6ProofFamily::Sequence) => &[Mechanism::ThemeVariables],
+            (C6ProofTheme::Spotless, C6ProofFamily::Flowchart) => &[
+                Mechanism::CanvasGradient,
+                Mechanism::CanvasPattern,
+                Mechanism::DashArray,
+                Mechanism::FontStack,
+                Mechanism::RoundedCorners,
+                Mechanism::StrokeStyling,
+            ],
+            (C6ProofTheme::Spotless, C6ProofFamily::State) => &[
+                Mechanism::CanvasGradient,
+                Mechanism::CanvasLayering,
+                Mechanism::CanvasPattern,
+                Mechanism::CanvasSolid,
+                Mechanism::CssLetterSpacing,
+                Mechanism::CssTextTransform,
+                Mechanism::FontStack,
+                Mechanism::ThemeVariables,
+            ],
+            (C6ProofTheme::Spotless, C6ProofFamily::Sequence) => &[
+                Mechanism::FontStack,
+                Mechanism::StrokeStyling,
+                Mechanism::ThemeVariables,
+            ],
+            (C6ProofTheme::Cyberpunk, C6ProofFamily::Flowchart) => &[
+                Mechanism::CanvasBlend,
+                Mechanism::CanvasGradient,
+                Mechanism::CanvasLayering,
+                Mechanism::CanvasPattern,
+                Mechanism::StrokeStyling,
+            ],
+            (C6ProofTheme::Cyberpunk, C6ProofFamily::State) => &[
+                Mechanism::CanvasSolid,
+                Mechanism::CssFilter,
+                Mechanism::FontStack,
+                Mechanism::RoundedCorners,
+                Mechanism::StrokeStyling,
+                Mechanism::ThemeVariables,
+            ],
+            (C6ProofTheme::Cyberpunk, C6ProofFamily::Sequence) => &[
+                Mechanism::CanvasSolid,
+                Mechanism::FontStack,
+                Mechanism::StrokeStyling,
+                Mechanism::ThemeVariables,
+            ],
+        },
     };
     mechanisms.iter().copied().collect()
 }
@@ -170,7 +185,7 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
     assert_eq!(
         encode_hex(catalog.manifest_digest()),
-        "0a3154c120a169b95fc0efd4c1ba48fde6c43028b169aba5de4855f14d9af29e"
+        "4dce825a78de601c7f631eb645a937e3e6321e03d2edaa6be2b8458d1e749286"
     );
     assert_eq!(
         encode_hex(catalog.previous_manifest_digest()),
@@ -216,7 +231,7 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
                 .keys()
                 .copied()
                 .collect::<BTreeSet<_>>(),
-            expected_mechanisms(cell.key().theme(), cell.key().family())
+            expected_mechanisms(cell.key().theme(), cell.key().family(), cell.key().target(),)
         );
         assert!(expectation.expected_residual_ids().is_empty());
         assert!(

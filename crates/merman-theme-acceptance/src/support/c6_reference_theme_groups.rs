@@ -685,6 +685,26 @@ fn build_cyberpunk_state_recipe(font: FixedRecipeFont) -> C6ProofResult<FixedC6R
                     .with_fill(fixture_solid(CYBERPUNK_STATE_TEXT, "fixture-text-color")?),
             )
             .for_family(DiagramFamilyId::STATE),
+        )
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::TransitionLabel,
+                ThemeStylePatch::default().with_fill(fixture_solid(
+                    CYBERPUNK_STATE_TEXT,
+                    "fixture-transition-text-color",
+                )?),
+            )
+            .for_family(DiagramFamilyId::STATE),
+        )
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::TransitionLabelBackground,
+                ThemeStylePatch::default().with_fill(fixture_solid(
+                    CYBERPUNK_STATE_SURFACE,
+                    "fixture-transition-label-background",
+                )?),
+            )
+            .for_family(DiagramFamilyId::STATE),
         );
     let graph = EffectGraph::new(
         CYBERPUNK_STATE_EFFECT_ID,
@@ -727,6 +747,7 @@ fn build_cyberpunk_state_recipe(font: FixedRecipeFont) -> C6ProofResult<FixedC6R
             surface: CYBERPUNK_STATE_SURFACE,
             primary: CYBERPUNK_STATE_PRIMARY,
             text: CYBERPUNK_STATE_TEXT,
+            transition_surface: CYBERPUNK_STATE_SURFACE,
             border_width: f64::from(CYBERPUNK_STATE_BORDER_WIDTH),
             radius: f64::from(CYBERPUNK_STATE_RADIUS),
             glow_blur: f64::from(CYBERPUNK_STATE_GLOW_BLUR),

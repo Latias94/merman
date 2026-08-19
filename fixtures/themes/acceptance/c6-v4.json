@@ -260,12 +260,7 @@
         "mechanismRequirements": {
           "canvas-gradient": "must-apply",
           "canvas-layering": "must-apply",
-          "canvas-pattern": "must-apply",
-          "canvas-solid": "must-apply",
-          "css-letter-spacing": "must-apply",
-          "css-text-transform": "must-apply",
-          "font-stack": "must-apply",
-          "theme-variables": "must-apply"
+          "canvas-pattern": "must-apply"
         },
         "expectedResidualIds": [],
         "semanticAssertionId": "spotless-state-png-v1"
@@ -299,7 +294,6 @@
       "target": "png",
       "expectation": {
         "mechanismRequirements": {
-          "font-stack": "must-apply",
           "stroke-styling": "must-apply",
           "theme-variables": "must-apply"
         },
@@ -378,12 +372,7 @@
       "target": "png",
       "expectation": {
         "mechanismRequirements": {
-          "canvas-solid": "must-apply",
-          "css-filter": "must-apply",
-          "font-stack": "must-apply",
-          "rounded-corners": "must-apply",
-          "stroke-styling": "must-apply",
-          "theme-variables": "must-apply"
+          "css-filter": "must-apply"
         },
         "expectedResidualIds": [],
         "semanticAssertionId": "cyberpunk-state-png-v1"
@@ -418,8 +407,6 @@
       "target": "png",
       "expectation": {
         "mechanismRequirements": {
-          "canvas-solid": "must-apply",
-          "font-stack": "must-apply",
           "stroke-styling": "must-apply",
           "theme-variables": "must-apply"
         },

@@ -28,6 +28,12 @@ const CELL_MECHANISMS: [ReferenceThemeMechanism; 8] = [
     ReferenceThemeMechanism::FontStack,
     ReferenceThemeMechanism::ThemeVariables,
 ];
+// PNG proves visible overlay composition, not the SVG-only text or base-canvas facts.
+const PNG_MECHANISMS: [ReferenceThemeMechanism; 3] = [
+    ReferenceThemeMechanism::CanvasGradient,
+    ReferenceThemeMechanism::CanvasLayering,
+    ReferenceThemeMechanism::CanvasPattern,
+];
 const MIN_OVERLAY_DIFFERENCE: u8 = 16;
 const MIN_OVERLAY_CORE_COVERAGE: f64 = 0.75;
 
@@ -52,12 +58,6 @@ pub(crate) struct SpotlessStateSvgProof {
 }
 
 impl SpotlessStateSvgProof {
-    pub(crate) fn mechanisms(
-        &self,
-    ) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-        self.mechanisms.clone()
-    }
-
     pub(crate) fn target_proof(&self) -> C6BoundTargetProof {
         self.target_proof.clone()
     }
@@ -126,18 +126,44 @@ pub(crate) fn prove_spotless_state_png(
     artifact: C6TargetArtifact<'_>,
     plan: RasterPlan,
 ) -> C6ProofResult<C6BoundTargetProof> {
-    let (_, target_proof) =
-        artifact.check_with("spotless-state-png-v1", svg_proof.mechanisms(), |bytes| {
-            let raster = decode_bounded_png_artifact(bytes, plan)?;
-            prove_overlay_visibility(
-                &raster,
-                svg_proof.view_box,
-                svg_proof.overlay_regions,
-                parse_c6_hex_rgb(contract.canvas)?,
-            )?;
-            Ok(())
-        })?;
+    let mechanisms = spotless_state_png_mechanisms(&svg_proof.mechanisms)?;
+    let (_, target_proof) = artifact.check_with("spotless-state-png-v1", mechanisms, |bytes| {
+        let raster = decode_bounded_png_artifact(bytes, plan)?;
+        prove_overlay_visibility(
+            &raster,
+            svg_proof.view_box,
+            svg_proof.overlay_regions,
+            parse_c6_hex_rgb(contract.canvas)?,
+        )?;
+        Ok(())
+    })?;
     Ok(target_proof)
+}
+
+fn spotless_state_png_mechanisms(
+    svg_mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+) -> C6ProofResult<BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>> {
+    PNG_MECHANISMS
+        .into_iter()
+        .map(|mechanism| {
+            let disposition = svg_mechanisms.get(&mechanism).copied().ok_or_else(|| {
+                C6ProofError::new(
+                    "spotless-state-png-mechanisms",
+                    format!(
+                        "Spotless State PNG overlay proof lacks SVG mechanism `{}`",
+                        mechanism.id()
+                    ),
+                )
+            })?;
+            c6_ensure!(
+                "spotless-state-png-mechanisms",
+                disposition == C6ObservedMechanismDisposition::Applied,
+                "Spotless State PNG cannot report `{}` from a non-Applied SVG mechanism",
+                mechanism.id()
+            );
+            Ok((mechanism, disposition))
+        })
+        .collect()
 }
 
 fn prove_terminal_canvas(
@@ -538,6 +564,38 @@ fn approx_eq(left: f64, right: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spotless_state_png_scope_excludes_text_font_canvas_and_foreground_claims() {
+        let svg_mechanisms = CELL_MECHANISMS
+            .into_iter()
+            .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
+            .collect();
+
+        assert_eq!(
+            spotless_state_png_mechanisms(&svg_mechanisms).unwrap(),
+            PNG_MECHANISMS
+                .into_iter()
+                .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
+                .collect()
+        );
+    }
+
+    #[test]
+    fn spotless_state_png_scope_rejects_a_missing_or_non_applied_overlay_mechanism() {
+        let mut svg_mechanisms = CELL_MECHANISMS
+            .into_iter()
+            .map(|mechanism| (mechanism, C6ObservedMechanismDisposition::Applied))
+            .collect::<BTreeMap<_, _>>();
+        svg_mechanisms.remove(&ReferenceThemeMechanism::CanvasPattern);
+        assert!(spotless_state_png_mechanisms(&svg_mechanisms).is_err());
+
+        svg_mechanisms.insert(
+            ReferenceThemeMechanism::CanvasPattern,
+            C6ObservedMechanismDisposition::Residual,
+        );
+        assert!(spotless_state_png_mechanisms(&svg_mechanisms).is_err());
+    }
 
     fn contract() -> SpotlessStateProofContract<'static> {
         SpotlessStateProofContract {

@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 9;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 12;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 17] = [
+); 28] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -41,6 +41,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
+        ThemeRouteCutoverProjection::ActorLabelFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
         ThemeRouteCutoverProjection::NoteFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
@@ -58,6 +62,26 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::MessageStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::MessageLabelFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::LoopFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::LoopStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::LoopLabelFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::NoteLabelFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
@@ -82,6 +106,26 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::PieSliceStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::TextFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskDefaultFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskActiveFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskSuccessFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskErrorFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -121,10 +165,14 @@ const EDGE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::EdgeStroke,
     ThemeRouteCutoverProjection::MarkerPaintFromEdge,
 ];
+const EDGE_STROKE_ONLY_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::EdgeStroke];
 const ACTOR_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActorFill];
 const ACTOR_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActorStroke];
+const ACTOR_LABEL_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::ActorLabelFill];
 const LIFELINE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::LifelineStroke];
 const NOTE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -137,6 +185,16 @@ const ACTIVATION_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActivationStroke];
 const MESSAGE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::MessageStroke];
+const MESSAGE_LABEL_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::MessageLabelFill];
+const LOOP_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::LoopFill];
+const LOOP_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::LoopStroke];
+const LOOP_LABEL_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::LoopLabelFill];
+const NOTE_LABEL_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::NoteLabelFill];
 const CLUSTER_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ClusterFill];
 const CLUSTER_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -147,6 +205,14 @@ const REQUIREMENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementFill];
 const PIE_SLICE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::PieSliceStroke];
+const TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::TextFill];
+const GANTT_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::GanttTaskDefaultFill,
+    ThemeRouteCutoverProjection::GanttTaskActiveFill,
+    ThemeRouteCutoverProjection::GanttTaskSuccessFill,
+    ThemeRouteCutoverProjection::GanttTaskErrorFill,
+];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -161,7 +227,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 42] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 72] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -304,6 +370,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 42] = [
     ),
     route(
         DiagramFamilyId::SEQUENCE,
+        ThemeTarget::ActorLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ACTOR_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::ActorLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ACTOR_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
         ThemeTarget::Lifeline,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
@@ -360,6 +440,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 42] = [
     ),
     route(
         DiagramFamilyId::SEQUENCE,
+        ThemeTarget::NoteLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NOTE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::NoteLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NOTE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
         ThemeTarget::Activation,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
@@ -399,6 +493,62 @@ const ACTIVE_ROUTES: [RouteAuthorization; 42] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         MESSAGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::MessageLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        MESSAGE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::MessageLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        MESSAGE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        LOOP_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        LOOP_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        LOOP_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        LOOP_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::LoopLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        LOOP_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::LoopLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        LOOP_LABEL_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::TREEMAP,
@@ -455,6 +605,132 @@ const ACTIVE_ROUTES: [RouteAuthorization; 42] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ZENUML,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ZENUML,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::VENN,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::VENN,
+        ThemeTarget::Title,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ISHIKAWA,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ISHIKAWA,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::EVENT_MODELING,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::EVENT_MODELING,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_FILL_PROJECTIONS,
     ),
 ];
 

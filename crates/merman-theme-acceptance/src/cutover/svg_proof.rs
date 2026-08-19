@@ -1,5 +1,9 @@
 use super::*;
 
+mod deep_family_paint;
+mod final_four_family_paint;
+mod sequence_role_paint_proof;
+
 pub(super) fn prove_svg_routes(
     case: CutoverCase,
     routes: &[ThemeRouteCutoverDescriptor],
@@ -27,7 +31,8 @@ pub(super) fn prove_svg_routes(
                 )
             }
             DiagramFamilyId::SEQUENCE => {
-                let observation = sequence_route_observation(&document, route)?;
+                let observation =
+                    sequence_role_paint_proof::sequence_route_observation(&document, route)?;
                 (
                     observation.value,
                     observation.terminal_digest,
@@ -66,6 +71,34 @@ pub(super) fn prove_svg_routes(
                     observation.target_regions,
                 )
             }
+            DiagramFamilyId::ZENUML
+            | DiagramFamilyId::VENN
+            | DiagramFamilyId::ISHIKAWA
+            | DiagramFamilyId::EVENT_MODELING => {
+                let observation =
+                    final_four_family_paint::final_four_route_observation(&document, route)?;
+                (
+                    observation.value,
+                    observation.terminal_digest,
+                    observation.target_regions,
+                )
+            }
+            DiagramFamilyId::CLASS
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::MINDMAP
+            | DiagramFamilyId::GIT_GRAPH
+            | DiagramFamilyId::GANTT => {
+                let observation = deep_family_paint::deep_family_route_observation(
+                    &document,
+                    route,
+                    case.id.profile(),
+                )?;
+                (
+                    observation.value,
+                    observation.terminal_digest,
+                    observation.target_regions,
+                )
+            }
             _ => {
                 return Err(C6ProofError::new(
                     "route-svg-proof",
@@ -85,7 +118,14 @@ pub(super) fn prove_svg_routes(
         append_witness(&mut value, witness);
         append_len_prefixed(&mut value, actual.as_bytes());
         value.extend_from_slice(&terminal_digest);
-        if matches!(route.target(), ThemeTarget::Edge) {
+        if route
+            .projections()
+            .contains(ThemeRouteCutoverProjection::MarkerPaintFromEdge)
+            && matches!(
+                route.family_id(),
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+            )
+        {
             c6_ensure!(
                 "route-svg-proof",
                 !markers.is_empty(),
@@ -115,7 +155,7 @@ pub(super) fn prove_svg_routes(
         "route case produced an empty target region set"
     );
     let target_underlay_colors =
-        target_underlay_colors(&document, case.id.route(), target_regions.len())?;
+        target_underlay_colors(&document, case.id.route(), &target_regions)?;
     Ok(SvgCutoverProof {
         assertions,
         view_box,
@@ -127,8 +167,9 @@ pub(super) fn prove_svg_routes(
 fn target_underlay_colors(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
-    region_count: usize,
+    target_regions: &[[f64; 4]],
 ) -> C6ProofResult<Vec<Vec<[u8; 3]>>> {
+    let region_count = target_regions.len();
     let underlays: Vec<Vec<[u8; 3]>> = match (route.family_id(), route.target(), route.facet()) {
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
             let root_id = document
@@ -180,24 +221,8 @@ fn target_underlay_colors(
                 })
                 .collect::<C6ProofResult<Vec<_>>>()?
         }
-        (
-            DiagramFamilyId::SEQUENCE,
-            ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation,
-            ThemeRouteCutoverFacet::Stroke,
-        ) => {
-            let root_id = document
-                .root_element()
-                .attribute("id")
-                .ok_or_else(|| C6ProofError::new("route-svg-proof", "SVG root lacks an id"))?;
-            let selector = match route.target() {
-                ThemeTarget::Actor => format!("#{root_id} .actor"),
-                ThemeTarget::Note => format!("#{root_id} .note"),
-                ThemeTarget::Activation => format!("#{root_id} .activation0"),
-                _ => unreachable!("guarded by the Sequence underlay route"),
-            };
-            let underlay =
-                parse_optional_css_rgb(sequence_stylesheet_property(document, &selector, "fill")?)?;
-            std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
+        (DiagramFamilyId::SEQUENCE, _, _) => {
+            sequence_role_paint_proof::sequence_underlay_colors(document, route, target_regions)?
         }
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             let root_id = document
@@ -240,6 +265,23 @@ fn target_underlay_colors(
                 parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?;
             std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
         }
+        (
+            DiagramFamilyId::ZENUML
+            | DiagramFamilyId::VENN
+            | DiagramFamilyId::ISHIKAWA
+            | DiagramFamilyId::EVENT_MODELING,
+            _,
+            ThemeRouteCutoverFacet::Fill,
+        ) => final_four_family_paint::final_four_underlay_colors(document, route, target_regions)?,
+        (
+            DiagramFamilyId::CLASS
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::MINDMAP
+            | DiagramFamilyId::GIT_GRAPH
+            | DiagramFamilyId::GANTT,
+            _,
+            _,
+        ) => deep_family_paint::deep_family_underlay_colors(document, route, target_regions)?,
         _ => std::iter::repeat_n(Vec::new(), region_count).collect(),
     };
     c6_ensure!(
@@ -559,26 +601,18 @@ fn stylesheet_property<'a>(
 
 fn parse_css_rgb(raw: &str) -> C6ProofResult<[u8; 3]> {
     let value = raw.trim();
-    let hex = value.strip_prefix('#').ok_or_else(|| {
+    let color = value.parse::<svgtypes::Color>().map_err(|error| {
         C6ProofError::new(
             "route-svg-proof",
-            format!("underlay color must be a six-digit hex color, got `{value}`"),
+            format!("invalid terminal underlay color `{value}`: {error}"),
         )
     })?;
     c6_ensure!(
         "route-svg-proof",
-        hex.len() == 6,
-        "underlay color must be a six-digit hex color, got `{value}`"
+        color.alpha == u8::MAX,
+        "terminal underlay color must be opaque, got `{value}`"
     );
-    let channel = |offset: usize| {
-        u8::from_str_radix(&hex[offset..offset + 2], 16).map_err(|error| {
-            C6ProofError::new(
-                "route-svg-proof",
-                format!("invalid underlay color `{value}`: {error}"),
-            )
-        })
-    };
-    Ok([channel(0)?, channel(2)?, channel(4)?])
+    Ok([color.red, color.green, color.blue])
 }
 
 fn parse_svg_view_box(raw: &str) -> C6ProofResult<[f64; 4]> {
@@ -1492,410 +1526,6 @@ fn block_route_observation(
     })
 }
 
-fn sequence_route_observation(
-    document: &roxmltree::Document<'_>,
-    route: ThemeRouteCutoverDescriptor,
-) -> C6ProofResult<SequenceRouteObservation> {
-    match route.target() {
-        ThemeTarget::Actor => sequence_actor_route_observation(document, route),
-        ThemeTarget::Lifeline => sequence_lifeline_route_observation(document, route),
-        ThemeTarget::Note | ThemeTarget::Activation => {
-            sequence_static_rect_route_observation(document, route)
-        }
-        target => Err(C6ProofError::new(
-            "route-svg-proof",
-            format!("unsupported Sequence cutover target {}", target.id()),
-        )),
-    }
-}
-
-fn sequence_actor_route_observation(
-    document: &roxmltree::Document<'_>,
-    route: ThemeRouteCutoverDescriptor,
-) -> C6ProofResult<SequenceRouteObservation> {
-    c6_ensure!(
-        "route-svg-proof",
-        route.target() == ThemeTarget::Actor,
-        "unsupported Sequence cutover target {}",
-        route.target().id()
-    );
-    let root = document.root_element();
-    let root_id = root
-        .attribute("id")
-        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Sequence SVG root lacks an id"))?;
-    let participant_types = document
-        .descendants()
-        .filter(|node| node.attribute("data-et") == Some("participant"))
-        .try_fold(BTreeMap::<String, usize>::new(), |mut types, node| {
-            let actor_type = node.attribute("data-type").ok_or_else(|| {
-                C6ProofError::new(
-                    "route-svg-proof",
-                    "Sequence participant surface lacks data-type",
-                )
-            })?;
-            *types.entry(actor_type.to_owned()).or_insert(0) += 1;
-            Ok::<_, C6ProofError>(types)
-        })?;
-    let expected_types = match route.facet() {
-        ThemeRouteCutoverFacet::Fill => &[
-            "actor",
-            "boundary",
-            "collections",
-            "database",
-            "entity",
-            "participant",
-            "queue",
-        ][..],
-        ThemeRouteCutoverFacet::Stroke => &[
-            "actor",
-            "boundary",
-            "collections",
-            "entity",
-            "participant",
-            "queue",
-        ][..],
-    }
-    .iter()
-    .map(|value| (*value).to_owned())
-    .collect::<BTreeSet<_>>();
-    let actual_types = participant_types.keys().cloned().collect::<BTreeSet<_>>();
-    c6_ensure!(
-        "route-svg-proof",
-        actual_types == expected_types,
-        "Sequence witness participant types differ: actual={actual_types:?}, expected={expected_types:?}"
-    );
-    let actor_surfaces = document
-        .descendants()
-        .filter(|node| node.is_element() && class_contains(*node, "actor"))
-        .count();
-    let actor_man_surfaces = document
-        .descendants()
-        .filter(|node| node.is_element() && class_contains(*node, "actor-man"))
-        .count();
-    c6_ensure!(
-        "route-svg-proof",
-        actor_surfaces > 0 && actor_man_surfaces > 0,
-        "Sequence witness lacks actor-owned rectangle/path or actor-man surfaces"
-    );
-
-    let property = facet_property(route.facet());
-    let actor_selector = format!("#{root_id} .actor");
-    let actor_shape_selector = format!(
-        "#{root_id} .actor-man line,#{root_id} .actor-man circle,#{root_id} .actor line,#{root_id} .actor circle"
-    );
-    let actor_value = sequence_stylesheet_property(document, &actor_selector, property)?;
-    let actor_shape_value =
-        sequence_stylesheet_property(document, &actor_shape_selector, property)?;
-    c6_ensure!(
-        "route-svg-proof",
-        actor_value == actor_shape_value,
-        "Sequence Actor surfaces disagree for {property}: actor={actor_value}, actor-shape={actor_shape_value}"
-    );
-
-    let participants = document
-        .descendants()
-        .filter(|node| node.attribute("data-et") == Some("participant"))
-        .collect::<Vec<_>>();
-    let mut target_regions = Vec::new();
-    let mut terminal = b"merman.c6-route-sequence-surfaces.v2\0".to_vec();
-    for (actor_type, count) in &participant_types {
-        append_len_prefixed(&mut terminal, actor_type.as_bytes());
-        terminal.extend_from_slice(&usize_to_u64(*count).to_be_bytes());
-    }
-    for participant in participants {
-        let actor_type = participant.attribute("data-type").unwrap_or_default();
-        let paintable = participant.descendants().filter(|node| {
-            node.is_element()
-                && (class_contains(*node, "actor")
-                    || (matches!(node.tag_name().name(), "line" | "circle")
-                        && node
-                            .ancestors()
-                            .any(|ancestor| class_contains(ancestor, "actor-man"))))
-        });
-        c6_ensure!(
-            "route-svg-proof",
-            paintable.count() > 0,
-            "Sequence {actor_type} participant lacks a typed Actor paint surface"
-        );
-        for node in participant.descendants().filter(|node| node.is_element()) {
-            if let Some(inline) = style_value(node, property) {
-                c6_ensure!(
-                    "route-svg-proof",
-                    inline == actor_value,
-                    "Sequence {actor_type} participant overrides typed {property} with `{inline}`"
-                );
-            }
-        }
-        let region = group_bounds(participant, route.facet())?;
-        append_len_prefixed(
-            &mut terminal,
-            participant
-                .attribute("data-id")
-                .unwrap_or_default()
-                .as_bytes(),
-        );
-        append_len_prefixed(&mut terminal, actor_type.as_bytes());
-        append_rect(&mut terminal, region);
-        target_regions.push(region);
-    }
-    append_len_prefixed(&mut terminal, actor_selector.as_bytes());
-    append_len_prefixed(&mut terminal, actor_value.as_bytes());
-    append_len_prefixed(&mut terminal, actor_shape_selector.as_bytes());
-    append_len_prefixed(&mut terminal, actor_shape_value.as_bytes());
-    terminal.extend_from_slice(&usize_to_u64(actor_surfaces).to_be_bytes());
-    terminal.extend_from_slice(&usize_to_u64(actor_man_surfaces).to_be_bytes());
-
-    Ok(SequenceRouteObservation {
-        value: actor_value.to_owned(),
-        terminal_digest: sha256(terminal),
-        target_regions,
-    })
-}
-
-fn sequence_lifeline_route_observation(
-    document: &roxmltree::Document<'_>,
-    route: ThemeRouteCutoverDescriptor,
-) -> C6ProofResult<SequenceRouteObservation> {
-    c6_ensure!(
-        "route-svg-proof",
-        route.target() == ThemeTarget::Lifeline,
-        "unsupported Sequence cutover target {}",
-        route.target().id()
-    );
-    let root_id = document
-        .root_element()
-        .attribute("id")
-        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Sequence SVG root lacks an id"))?;
-    let selector = format!("#{root_id} .actor-line");
-    let value = sequence_stylesheet_property(document, &selector, "stroke")?;
-    let lines = document
-        .descendants()
-        .filter(|node| node.attribute("data-et") == Some("life-line"))
-        .collect::<Vec<_>>();
-    c6_ensure!(
-        "route-svg-proof",
-        lines.len() == 2,
-        "Sequence Lifeline witness expected two terminal lines, found {}",
-        lines.len()
-    );
-    let actual_ids = lines
-        .iter()
-        .filter_map(|line| line.attribute("data-id"))
-        .collect::<BTreeSet<_>>();
-    let expected_ids = ["Alice", "Bob"].into_iter().collect::<BTreeSet<_>>();
-    c6_ensure!(
-        "route-svg-proof",
-        actual_ids == expected_ids,
-        "Sequence Lifeline terminal identities differ: actual={actual_ids:?}, expected={expected_ids:?}"
-    );
-
-    let mut terminal = b"merman.c6-route-sequence-lifeline-surfaces.v1\0".to_vec();
-    let mut target_regions = Vec::with_capacity(lines.len());
-    for line in lines {
-        c6_ensure!(
-            "route-svg-proof",
-            line.has_tag_name("line") && class_contains(line, "actor-line"),
-            "Sequence Lifeline terminal is not an actor-line"
-        );
-        c6_ensure!(
-            "route-svg-proof",
-            style_value(line, "stroke").is_none(),
-            "Sequence Lifeline terminal overrides the typed actor-line stroke inline"
-        );
-        let base_stroke = line.attribute("stroke").ok_or_else(|| {
-            C6ProofError::new(
-                "route-svg-proof",
-                "Sequence Lifeline terminal lacks its source-backed stroke",
-            )
-        })?;
-        c6_ensure!(
-            "route-svg-proof",
-            !base_stroke.trim().is_empty() && base_stroke != value,
-            "Sequence Lifeline terminal does not rely on the final actor-line stroke winner"
-        );
-        let region = element_bounds(line, ThemeRouteCutoverFacet::Stroke)?;
-        append_len_prefixed(
-            &mut terminal,
-            line.attribute("data-id").unwrap_or_default().as_bytes(),
-        );
-        append_len_prefixed(&mut terminal, base_stroke.as_bytes());
-        append_len_prefixed(
-            &mut terminal,
-            line.attribute("stroke-width")
-                .unwrap_or_default()
-                .as_bytes(),
-        );
-        for attribute in ["x1", "y1", "x2", "y2"] {
-            append_len_prefixed(
-                &mut terminal,
-                line.attribute(attribute).unwrap_or_default().as_bytes(),
-            );
-        }
-        append_rect(&mut terminal, region);
-        target_regions.push(region);
-    }
-    append_len_prefixed(&mut terminal, selector.as_bytes());
-    append_len_prefixed(&mut terminal, value.as_bytes());
-
-    Ok(SequenceRouteObservation {
-        value: value.to_owned(),
-        terminal_digest: sha256(terminal),
-        target_regions,
-    })
-}
-
-fn sequence_static_rect_route_observation(
-    document: &roxmltree::Document<'_>,
-    route: ThemeRouteCutoverDescriptor,
-) -> C6ProofResult<SequenceRouteObservation> {
-    let root = document.root_element();
-    let root_id = root
-        .attribute("id")
-        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Sequence SVG root lacks an id"))?;
-    let (surface_name, selector, surfaces) = match route.target() {
-        ThemeTarget::Note => {
-            let notes = document
-                .descendants()
-                .filter(|node| node.attribute("data-et") == Some("note"))
-                .collect::<Vec<_>>();
-            c6_ensure!(
-                "route-svg-proof",
-                notes.len() == 3,
-                "Sequence Note witness expected 3 terminal groups, found {}",
-                notes.len()
-            );
-            let mut surfaces = Vec::with_capacity(notes.len());
-            for note in notes {
-                let rects = note
-                    .children()
-                    .filter(|node| node.has_tag_name("rect") && class_contains(*node, "note"))
-                    .collect::<Vec<_>>();
-                c6_ensure!(
-                    "route-svg-proof",
-                    rects.len() == 1,
-                    "Sequence Note group expected one terminal rect, found {}",
-                    rects.len()
-                );
-                surfaces.push((
-                    note.attribute("data-id").unwrap_or_default().to_owned(),
-                    rects[0],
-                ));
-            }
-            ("Note", format!("#{root_id} .note"), surfaces)
-        }
-        ThemeTarget::Activation => {
-            let activations = document
-                .descendants()
-                .filter(|node| {
-                    node.has_tag_name("rect")
-                        && ["activation0", "activation1", "activation2"]
-                            .into_iter()
-                            .any(|class| class_contains(*node, class))
-                })
-                .collect::<Vec<_>>();
-            c6_ensure!(
-                "route-svg-proof",
-                activations.len() == 3,
-                "Sequence Activation witness expected three terminal rects, found {}",
-                activations.len()
-            );
-            let mut surfaces = Vec::with_capacity(3);
-            for class in ["activation0", "activation1", "activation2"] {
-                let matching = activations
-                    .iter()
-                    .copied()
-                    .filter(|activation| activation.attribute("class") == Some(class))
-                    .collect::<Vec<_>>();
-                c6_ensure!(
-                    "route-svg-proof",
-                    matching.len() == 1,
-                    "Sequence Activation witness expected one terminal {class} rect, found {}",
-                    matching.len()
-                );
-                surfaces.push((class.to_owned(), matching[0]));
-            }
-            (
-                "Activation",
-                sequence_activation_selector(root_id),
-                surfaces,
-            )
-        }
-        target => {
-            return Err(C6ProofError::new(
-                "route-svg-proof",
-                format!("unsupported Sequence rectangle target {}", target.id()),
-            ));
-        }
-    };
-    let property = facet_property(route.facet());
-    let value = sequence_stylesheet_property(document, &selector, property)?;
-    let mut target_regions = Vec::with_capacity(surfaces.len());
-    let mut activation_fill_region = None;
-    let mut terminal = b"merman.c6-route-sequence-static-rect-surfaces.v1\0".to_vec();
-    append_len_prefixed(&mut terminal, route.target().id().as_bytes());
-    for (identity, rect) in surfaces {
-        if let Some(inline) = style_value(rect, property) {
-            c6_ensure!(
-                "route-svg-proof",
-                inline == value,
-                "Sequence {surface_name} rect overrides typed {property} with `{inline}`"
-            );
-        }
-        let base_value = rect.attribute(property).ok_or_else(|| {
-            C6ProofError::new(
-                "route-svg-proof",
-                format!("Sequence {surface_name} rect lacks its base {property} attribute"),
-            )
-        })?;
-        let region = element_bounds(rect, route.facet())?;
-        if route.target() == ThemeTarget::Activation
-            && route.facet() == ThemeRouteCutoverFacet::Fill
-            && identity == "activation0"
-        {
-            let [x, y, width, height] = raw_element_bounds(rect)?.rect(0.0)?;
-            activation_fill_region = Some([x, y, width, width.min(height)]);
-        }
-        append_len_prefixed(&mut terminal, identity.as_bytes());
-        append_len_prefixed(&mut terminal, base_value.as_bytes());
-        append_rect(&mut terminal, region);
-        target_regions.push(region);
-    }
-    if let Some(region) = activation_fill_region {
-        target_regions = vec![region];
-    }
-    append_len_prefixed(&mut terminal, selector.as_bytes());
-    append_len_prefixed(&mut terminal, value.as_bytes());
-
-    Ok(SequenceRouteObservation {
-        value: value.to_owned(),
-        terminal_digest: sha256(terminal),
-        target_regions,
-    })
-}
-
-fn sequence_activation_selector(root_id: &str) -> String {
-    format!("#{root_id} .activation0,#{root_id} .activation1,#{root_id} .activation2")
-}
-
-fn sequence_stylesheet_property<'a>(
-    document: &'a roxmltree::Document<'a>,
-    selector: &str,
-    property: &str,
-) -> C6ProofResult<&'a str> {
-    document
-        .descendants()
-        .filter(|node| node.has_tag_name("style"))
-        .filter_map(|node| node.text())
-        .filter_map(|css| css_last_property(css, selector, property))
-        .next_back()
-        .ok_or_else(|| {
-            C6ProofError::new(
-                "route-svg-proof",
-                format!("Sequence stylesheet lacks {selector} {property}"),
-            )
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1913,13 +1543,6 @@ mod tests {
 </g>
 </svg>"##;
 
-    const NESTED_ACTIVATION_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 120">
-<style>#fixture .activation0,#fixture .activation1,#fixture .activation2{fill:#dc2626;}</style>
-<rect x="10" y="10" width="10" height="100" fill="#edf2ae" class="activation0"/>
-<rect x="15" y="40" width="10" height="50" fill="#edf2ae" class="activation1"/>
-<rect x="20" y="60" width="10" height="20" fill="#edf2ae" class="activation2"/>
-</svg>"##;
-
     const ALL_POINT_MARKER_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 100">
 <style>#fixture .marker{fill:#333333;stroke:#333333;}</style>
 <defs>
@@ -1930,33 +1553,6 @@ mod tests {
 <path data-edge="true" data-id="L_B_C_0" data-look="classic" d="M 0 20 L 10 20" marker-start="url(#fixture-pointStart)" marker-end="url(#fixture-pointEnd)"/>
 <path data-edge="true" data-id="L_C_D_0" data-look="classic" d="M 0 30 L 10 30" marker-start="url(#fixture-pointStart)" marker-end="url(#fixture-pointEnd)"/>
 </svg>"##;
-
-    fn sequence_activation_fill_route() -> ThemeRouteCutoverDescriptor {
-        legacy_replacing_typed_theme_routes()
-            .expect("derive route inventory")
-            .into_iter()
-            .find(|route| {
-                route.family_id() == DiagramFamilyId::SEQUENCE
-                    && route.target() == ThemeTarget::Activation
-                    && route.facet() == ThemeRouteCutoverFacet::Fill
-                    && route.value() == ThemeRouteCutoverValue::Solid
-            })
-            .expect("Sequence Activation fill route")
-    }
-
-    fn nested_activation_observation(svg: &str) -> SequenceRouteObservation {
-        let document = roxmltree::Document::parse(svg).expect("parse nested activation SVG");
-        sequence_static_rect_route_observation(&document, sequence_activation_fill_route())
-            .expect("observe nested activation fill")
-    }
-
-    #[test]
-    fn sequence_activation_fill_uses_one_non_overlapping_png_region() {
-        let observation = nested_activation_observation(NESTED_ACTIVATION_SVG);
-
-        assert_eq!(observation.value, SOLID_FILL.css);
-        assert_eq!(observation.target_regions, vec![[10.0, 10.0, 10.0, 10.0]]);
-    }
 
     #[test]
     fn requirement_fill_observer_reads_the_final_path_attribute_and_transformed_region() {
@@ -1971,19 +1567,6 @@ mod tests {
     }
 
     #[test]
-    fn sequence_activation_fill_roi_does_not_narrow_terminal_svg_proof() {
-        let baseline = nested_activation_observation(NESTED_ACTIVATION_SVG);
-        let changed_svg = NESTED_ACTIVATION_SVG.replace(
-            r##"fill="#edf2ae" class="activation2""##,
-            r##"fill="#fef3c7" class="activation2""##,
-        );
-        let changed = nested_activation_observation(&changed_svg);
-
-        assert_eq!(changed.target_regions, baseline.target_regions);
-        assert_ne!(changed.terminal_digest, baseline.terminal_digest);
-    }
-
-    #[test]
     fn marker_witness_rejects_all_shapes_mapped_to_point() {
         let result =
             prove_flowchart_markers_svg(ALL_POINT_MARKER_SVG, CutoverWitnessProfile::ClassicStatic);
@@ -1995,5 +1578,18 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.to_string().contains("marker mapping drifted"));
+    }
+
+    #[test]
+    fn underlay_color_parser_accepts_terminal_hex_and_rgb_but_rejects_alpha() {
+        assert_eq!(
+            parse_css_rgb("#f1f5f9").expect("hex color"),
+            [241, 245, 249]
+        );
+        assert_eq!(
+            parse_css_rgb("rgb(241,245,249)").expect("rgb color"),
+            [241, 245, 249]
+        );
+        assert!(parse_css_rgb("rgba(241,245,249,0.5)").is_err());
     }
 }
