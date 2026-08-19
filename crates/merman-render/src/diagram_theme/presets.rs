@@ -183,8 +183,8 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        CanvasPaint, DiagramTheme, DiagramThemeCompiler, ResolvedDiagramTheme, ThemeColorValue,
-        ThemeTarget, ThemeVariant,
+        CanvasPaint, DiagramTheme, DiagramThemeCompiler, FamilyThemeDisposition,
+        ResolvedDiagramTheme, ThemeColorValue, ThemeTarget, ThemeVariant,
     };
 
     fn solid_color(paint: &CanvasPaint) -> Option<String> {
@@ -338,7 +338,7 @@ mod tests {
             assert_eq!(entry.authoring_schema_version(), 1);
             assert_eq!(entry.expansion_version(), 1);
             assert_eq!(entry.spec_schema_version(), 1);
-            assert_eq!(entry.recipe_revision(), 1);
+            assert_eq!(entry.recipe_revision(), 2);
             assert_eq!(descriptor.maturity(), "alpha");
             assert!(descriptor.qualified_cells().is_empty());
             assert_eq!(descriptor.export_kind(), "complete_spec");
@@ -371,6 +371,7 @@ mod tests {
     #[test]
     fn preset_catalog_fingerprints_match_the_exact_compiled_recipes() {
         let mut recipe_fingerprints = BTreeSet::new();
+        let mut mismatches = Vec::new();
         for descriptor in theme_preset_descriptors() {
             let entry = catalog::entry_for_preset(descriptor.preset());
             let catalog_fingerprint = entry.recipe_fingerprint();
@@ -387,13 +388,20 @@ mod tests {
             let actual_recipe = theme.recipe_fingerprint().to_hex();
             let actual_resources = theme.report().font_catalog_fingerprint().to_hex();
 
-            assert_eq!(catalog_fingerprint, actual_recipe.as_str());
+            if catalog_fingerprint != actual_recipe {
+                mismatches.push(format!("{}: {actual_recipe}", descriptor.preset().id()));
+            }
             assert_eq!(entry.resource_fingerprint(), actual_resources.as_str());
             assert!(
                 recipe_fingerprints.insert(catalog_fingerprint),
                 "catalog recipes must have unique fingerprints"
             );
         }
+        assert!(
+            mismatches.is_empty(),
+            "catalog recipe fingerprints drifted; sign these exact compiled values:\n{}",
+            mismatches.join("\n")
+        );
     }
 
     #[test]
@@ -547,6 +555,27 @@ mod tests {
             );
             assert_style(
                 &theme,
+                DiagramFamilyId::MINDMAP,
+                ThemeTarget::Node,
+                None,
+                Some(palette.border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Node,
+                None,
+                Some(palette.border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::SANKEY,
+                ThemeTarget::Node,
+                None,
+                Some(palette.border),
+            );
+            assert_style(
+                &theme,
                 DiagramFamilyId::FLOWCHART,
                 ThemeTarget::Cluster,
                 Some(palette.cluster_background),
@@ -643,11 +672,100 @@ mod tests {
                 Some(palette.subtle_text),
                 None,
             );
+            assert_style(
+                &theme,
+                DiagramFamilyId::ER,
+                ThemeTarget::Relation,
+                None,
+                Some(palette.line),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Requirement,
+                Some(palette.surface),
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::PIE,
+                ThemeTarget::PieSlice,
+                None,
+                Some(palette.border),
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::QUADRANT_CHART,
+                ThemeTarget::ChartSeries,
+                palette.series.first().copied(),
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::GANTT,
+                ThemeTarget::Task,
+                Some(palette.surface),
+                None,
+            );
+
+            // Family-qualified fallbacks must not become static winners for palette-owned
+            // families that share the same semantic target.
+            assert_style(
+                &theme,
+                DiagramFamilyId::KANBAN,
+                ThemeTarget::Task,
+                None,
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::XY_CHART,
+                ThemeTarget::ChartSeries,
+                None,
+                None,
+            );
+            assert_style(
+                &theme,
+                DiagramFamilyId::RADAR,
+                ThemeTarget::ChartSeries,
+                None,
+                None,
+            );
+
+            assert_eq!(
+                theme
+                    .resolve(DiagramFamilyId::GANTT)
+                    .ordinal_palette_disposition(ThemeTarget::Task),
+                Some(FamilyThemeDisposition::Unsupported),
+                "{} Gantt palette residual",
+                preset.id()
+            );
+            assert_eq!(
+                theme
+                    .resolve(DiagramFamilyId::QUADRANT_CHART)
+                    .ordinal_palette_disposition(ThemeTarget::ChartSeries),
+                Some(FamilyThemeDisposition::Unsupported),
+                "{} Quadrant palette residual",
+                preset.id()
+            );
+            for (family, target) in [
+                (DiagramFamilyId::KANBAN, ThemeTarget::Task),
+                (DiagramFamilyId::XY_CHART, ThemeTarget::ChartSeries),
+                (DiagramFamilyId::RADAR, ThemeTarget::ChartSeries),
+            ] {
+                assert_eq!(
+                    theme.resolve(family).ordinal_palette_disposition(target),
+                    Some(FamilyThemeDisposition::TypedAdapter),
+                    "{} {family} {target:?} palette route",
+                    preset.id()
+                );
+            }
 
             for (family, target) in [
                 (DiagramFamilyId::MINDMAP, ThemeTarget::Node),
                 (DiagramFamilyId::KANBAN, ThemeTarget::Task),
                 (DiagramFamilyId::XY_CHART, ThemeTarget::ChartSeries),
+                (DiagramFamilyId::RADAR, ThemeTarget::ChartSeries),
                 (DiagramFamilyId::PIE, ThemeTarget::PieSlice),
                 (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent),
                 (DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask),

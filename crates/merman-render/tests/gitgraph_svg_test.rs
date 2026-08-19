@@ -46,6 +46,33 @@ fn gitgraph_node_palette_theme(colors: &[&str]) -> DiagramTheme {
         .expect("compile GitGraph Node palette")
 }
 
+fn gitgraph_node_palette_with_static_stroke_theme(
+    colors: &[&str],
+    stroke: CanvasPaint,
+) -> DiagramTheme {
+    let palette = OrdinalPalette::new(
+        colors
+            .iter()
+            .map(|color| ThemeColorValue::parse(*color).expect("valid GitGraph palette color")),
+    )
+    .expect("non-empty GitGraph Node palette");
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_ordinal_palette(ThemeTarget::Node, palette)
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_stroke(stroke),
+                        )
+                        .for_family(DiagramFamilyId::GIT_GRAPH),
+                    ),
+            ),
+        )
+        .expect("compile GitGraph Node palette with static stroke")
+}
+
 fn gitgraph_edge_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
     let styles = rules
         .into_iter()
@@ -69,14 +96,30 @@ fn try_render_gitgraph_with_theme_and_engine(
     engine: Engine,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_gitgraph_with_theme_engine_and_requirement(
+        source,
+        theme,
+        engine,
+        diagram_id,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn try_render_gitgraph_with_theme_engine_and_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed GitGraph")
         .expect("detect themed GitGraph");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable GitGraph session");
+        .expect("begin themed GitGraph session");
     family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
@@ -519,6 +562,81 @@ fn gitgraph_node_palette_reaches_terminal_commit_arrow_and_branch_label_surfaces
 }
 
 #[test]
+fn gitgraph_node_palette_strokes_survive_static_node_stroke_on_its_actual_tag_surface() {
+    let theme = gitgraph_node_palette_with_static_stroke_theme(
+        &["#123456", "#abcdef"],
+        CanvasPaint::solid("#654321").expect("valid GitGraph static Node stroke"),
+    );
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+        r#"gitGraph
+  commit id: "1" tag: "v1"
+  branch develop
+  checkout develop
+  commit id: "2"
+  checkout main
+  commit id: "3"
+"#,
+        &theme,
+        Engine::new(),
+        "git-palette-static-stroke",
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort GitGraph should retain the direct palette beside compatibility stroke");
+    let document = roxmltree::Document::parse(rendered.svg())
+        .expect("valid GitGraph palette and static stroke SVG");
+    let css = stylesheet(rendered.svg());
+
+    for (slot, color) in [(0, "#123456"), (1, "#abcdef")] {
+        assert!(
+            css.contains(&format!(
+                "#git-palette-static-stroke .commit{slot}{{stroke:{color};fill:{color};}}"
+            )),
+            "the palette must retain both commit properties for slot {slot}: {css}"
+        );
+        assert!(
+            css.contains(&format!(
+                "#git-palette-static-stroke .arrow{slot}{{stroke:{color};}}"
+            )),
+            "the palette must retain the arrow stroke for slot {slot}: {css}"
+        );
+        assert!(
+            css.contains(&format!(
+                "#git-palette-static-stroke .label{slot}{{fill:{color};}}"
+            )),
+            "the palette must retain the branch-label fill for slot {slot}: {css}"
+        );
+        assert!(
+            !css.contains(&format!(
+                "#git-palette-static-stroke .commit{slot}{{stroke:#654321;"
+            )),
+            "the static Node stroke must not claim commit slot {slot}: {css}"
+        );
+    }
+
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("polygon") && has_class(&node, "tag-label-bkg")),
+        "the static Node stroke fixture must contain its terminal tag surface"
+    );
+    let tag_rule = css
+        .split_once("#git-palette-static-stroke .tag-label-bkg{")
+        .and_then(|(_, remaining)| remaining.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("GitGraph tag-label background rule");
+    assert!(
+        tag_rule.contains("stroke:#654321;"),
+        "the compatibility-owned static Node stroke must remain on its tag surface: {tag_rule}"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn gitgraph_node_palette_respects_source_and_site_git_slot_owners() {
     let theme = gitgraph_node_palette_theme(&["#123456", "#654321"]);
     let cases = [
@@ -641,10 +759,13 @@ fn gitgraph_redux_palette_preserves_source_and_site_node_border_per_terminal_sur
                 "the {owner}-owned nodeBorder must remain the terminal arrow owner"
             );
             assert!(
-                !css.contains(&format!(
-                    "#{diagram_id} .commit0{{stroke:#123456;fill:#123456;}}"
-                )),
-                "the typed palette must not overwrite the {owner}-owned commit surface"
+                css.contains(&format!("#{diagram_id} .commit-bullets{{fill:#fedcba;}}")),
+                "the {owner}-owned nodeBorder must remain the inherited commit fill owner"
+            );
+            assert!(
+                !css.contains(&format!("#{diagram_id} .commit0{{stroke:#123456;"))
+                    && !css.contains(&format!("#{diagram_id} .commit0{{fill:#123456;")),
+                "the typed palette must not overwrite the {owner}-owned commit properties"
             );
             assert!(
                 !css.contains(&format!("#{diagram_id} .arrow0{{stroke:#123456;}}")),
@@ -727,7 +848,7 @@ fn gitgraph_redux_color_palette_preserves_site_border_color_array_surfaces() {
 }
 
 #[test]
-fn gitgraph_neo_palette_is_not_applicable_when_source_or_site_owns_every_surface() {
+fn gitgraph_neo_palette_yields_when_every_visible_surface_is_owned() {
     let theme = gitgraph_node_palette_theme(&["#123456"]);
     render_source_and_site_config_cases(
         "gitGraph\n  commit id: \"1\"\n",
@@ -758,16 +879,22 @@ fn gitgraph_neo_palette_is_not_applicable_when_source_or_site_owns_every_surface
                 "the {owner}-owned nodeBorder must remain the terminal commit owner"
             );
             assert!(
+                css.contains(&format!("#{diagram_id} .commit-bullets{{fill:#fedcba;}}")),
+                "the {owner}-owned nodeBorder must remain the inherited commit fill owner"
+            );
+            assert!(
                 css.contains(&format!(
                     "#{diagram_id} .label0{{fill:#abcdef;stroke:url(#{diagram_id}-gradient);stroke-width:"
                 )),
                 "the {owner}-owned mainBkg must remain the terminal label owner"
             );
             assert!(
-                !css.contains(&format!(
-                    "#{diagram_id} .commit0{{stroke:#123456;fill:#123456;}}"
-                )),
-                "the typed palette must not overwrite the {owner}-owned commit surface"
+                !css.contains(&format!("#{diagram_id} .commit0{{fill:#123456;}}")),
+                "the typed palette must not overwrite the {owner}-owned inherited commit fill"
+            );
+            assert!(
+                !css.contains(&format!("#{diagram_id} .commit0{{stroke:#123456;")),
+                "the typed palette must not overwrite the {owner}-owned commit stroke"
             );
             assert!(
                 !css.contains(&format!("#{diagram_id} .label0{{fill:#123456;}}")),

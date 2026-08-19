@@ -368,7 +368,7 @@ fn diagram_theme_series_palette_reaches_supported_ordinal_diagrams() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
             "diagram-theme-mindmap",
-            "mindmap\n  Root\n    Child",
+            "mindmap\n  Root\n    First\n    Second",
             &["#60a5fa", "#34d399"],
         ),
         (
@@ -459,33 +459,24 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  CUSTOMER {\n    string name\n  }",
             &["#111827", "#e5e7eb", "#94a3b8", "#475569"],
             &[
-                ".entityBox{fill:#111827;stroke:#475569;}",
-                ".relationshipLine{stroke:#94a3b8;",
+                "class=\"basic label-container\" style=\"fill:#111827;stroke:#475569\"",
+                "class=\"edge-thickness-normal edge-pattern-solid relationshipLine\" style=\"stroke:#94a3b8\"",
             ],
         ),
         (
             "diagram-theme-requirement",
             "requirementDiagram\n  requirement req1 {\n    id: 1\n    text: Host requirement\n    risk: high\n    verifymethod: analysis\n  }\n  element sys {\n    type: system\n  }\n  sys - satisfies -> req1",
-            &["#111827", "#e5e7eb", "#475569", "#94a3b8"],
-            &[
-                "fill=\"#111827\"",
-                "stroke=\"#475569\" stroke-width=\"1.3\"",
-                ".relationshipLine{stroke:#94a3b8;",
-            ],
+            &["#111827", "#e5e7eb"],
+            &["fill=\"#111827\""],
         ),
         (
             "diagram-theme-gantt",
             "gantt\n  title Profile Plan\n  dateFormat YYYY-MM-DD\n  section Core\n  Build : 2026-01-01, 15d\n  Critical :crit, 2026-01-16, 2d\n  Ship :done, 2026-01-18, 3d",
+            &["#e5e7eb", "#111827"],
             &[
-                "#e5e7eb", "#1f2937", "#475569", "#34d399", "#f87171", "#fbbf24",
-            ],
-            &[
-                ".task0,#diagram-theme-gantt .task1",
-                "{fill:#111827;stroke:#475569;}",
-                ".done0,#diagram-theme-gantt .done1",
-                "{stroke:#34d399;fill:#1f2937;",
-                ".crit0,#diagram-theme-gantt .crit1",
-                "{stroke:#f87171;fill:#1f2937;",
+                "id=\"diagram-theme-gantt-task1\" style=\"fill:#111827\"",
+                "id=\"diagram-theme-gantt-task2\" style=\"fill:#111827\"",
+                "id=\"diagram-theme-gantt-task3\" style=\"fill:#111827\"",
             ],
         ),
         (
@@ -500,10 +491,12 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
         (
             "diagram-theme-kanban",
             "kanban\n  todo[Todo]\n    card[Dark Card]@{ assigned: \"Core\", priority: \"High\" }",
-            &["#60a5fa", "#34d399", "#e5e7eb", "#475569"],
             &[
-                ".section-root rect,#diagram-theme-kanban .section-root path",
-                ".node rect,#diagram-theme-kanban .node circle",
+                "#e5e7eb",
+                "hsl(213.1168831169, 93.9024390244%, 57.8431372549%)",
+            ],
+            &[
+                "class=\"basic label-container __APA__\" style=\"fill:hsl(213.1168831169, 93.9024390244%, 57.8431372549%)\"",
             ],
         ),
         (

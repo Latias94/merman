@@ -8,39 +8,41 @@ use super::{
     ThemePreset, ThemePresetDescriptor, ThemePresetQualificationInvalidation,
     ThemePresetQualifiedCell,
 };
-use crate::diagram_theme::ThemeResourcePolicy;
+use crate::DiagramFamilyId;
 use crate::diagram_theme::definition_admission::materialize_theme_with_resource_policy;
+use crate::diagram_theme::{ThemeResourcePolicy, ThemeTarget};
 
 const CATALOG_SCHEMA_VERSION: u32 = 1;
 const AUTHORING_SCHEMA_VERSION: u32 = 1;
 const EXPANSION_VERSION: u32 = 1;
 const SPEC_SCHEMA_VERSION: u32 = 1;
+const RECIPE_REVISION: u32 = 2;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
 const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
 const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
-const EDITOR_LIGHT_RECIPE_V1_FINGERPRINT: &str =
-    "86d97c5535b6e6e18464f3021cfb3be32a2b67da626f4ce8156fa6226b622072";
-const EDITOR_DARK_RECIPE_V1_FINGERPRINT: &str =
-    "cce6fc1bb059dd0b4d4bc40f8059fab979b8e490dbc3a9b1f52d09a6ade3a48e";
-const ONE_DARK_RECIPE_V1_FINGERPRINT: &str =
-    "d13df7df39aa540ee4afe11402956a5ec49a3de15fe09e688294170f68b641b4";
-const GRUVBOX_LIGHT_RECIPE_V1_FINGERPRINT: &str =
-    "3937cd427248164757d6a91709c7a375acfaa058139477cadf3a37060e6b5eef";
-const GRUVBOX_DARK_RECIPE_V1_FINGERPRINT: &str =
-    "33cdb285bd8524ca3dc39439036c819d4f6d36c95a3443580e552ae30d2c7046";
-const AYU_LIGHT_RECIPE_V1_FINGERPRINT: &str =
-    "c2959559b5ee97d1d388fdb012e2295941bfc0064d273830ddc4d79adec7a8e0";
-const AYU_DARK_RECIPE_V1_FINGERPRINT: &str =
-    "8d8fd3d8188071d43b37fe0e1654a45dd830696eb15e1d69f0552fa3a0324671";
-const BRUTALIST_RECIPE_V1_FINGERPRINT: &str =
-    "d1d03d91fe664073afb7ab8fda1d7a02779c1cbefd1ae90496a3c939132a635a";
-const SPOTLESS_RECIPE_V1_FINGERPRINT: &str =
-    "4fc028b522105a59ba77aa548b49ec57ce22cfb9a1b6ebd386255bff607d9fdd";
-const CYBERPUNK_RECIPE_V1_FINGERPRINT: &str =
-    "665cea53a07936efbaf90d5880e993191dc6e036f2e0ac2cca2750aca2cad11d";
+const EDITOR_LIGHT_RECIPE_V2_FINGERPRINT: &str =
+    "7eb95fcbf81ee51aed070e17d19ec5554fa3cbb77e7c08a703bb54572edf5a27";
+const EDITOR_DARK_RECIPE_V2_FINGERPRINT: &str =
+    "4edad45a819d4bae1d2b24ac2c1e27a482591581edc530e275349e03ff5716ee";
+const ONE_DARK_RECIPE_V2_FINGERPRINT: &str =
+    "4545711472b0fe777b42a59f255b776d9dfeab52c03fcbee7f16636206cbdb30";
+const GRUVBOX_LIGHT_RECIPE_V2_FINGERPRINT: &str =
+    "7c95136d1b7069e270fff96d26a93b9d256ca8f8440ad3d49b983e39b6e22137";
+const GRUVBOX_DARK_RECIPE_V2_FINGERPRINT: &str =
+    "91dae7df3753bc3498504070b89f4b050a5a308338ddf9bab6bee40e57f3ffdb";
+const AYU_LIGHT_RECIPE_V2_FINGERPRINT: &str =
+    "342572661fee5f811712481f0f9a06a819d3a396b86af7b8dffa11554109dab4";
+const AYU_DARK_RECIPE_V2_FINGERPRINT: &str =
+    "215fdc038ad0a0b6c9bd9cdddfbb49bfa34547976be43ba7dfa90a5c129bcf25";
+const BRUTALIST_RECIPE_V2_FINGERPRINT: &str =
+    "30ffe3720a81d5ec35935a2c3f9567b5f48d17b0045d5f4edce7c53b8fd82b37";
+const SPOTLESS_RECIPE_V2_FINGERPRINT: &str =
+    "3ff65ee0f8df0828fb12f3da34747c9f151d06453278220069c546ba2e4e76b7";
+const CYBERPUNK_RECIPE_V2_FINGERPRINT: &str =
+    "ea3458abd5330473696a09413f8117d079408df28d688fe0f6a6c4cd46322e2b";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDefinitionV1;
 
 #[derive(Clone, Copy)]
@@ -213,7 +215,7 @@ const fn entry(
         authoring_schema_version: AUTHORING_SCHEMA_VERSION,
         expansion_version: EXPANSION_VERSION,
         spec_schema_version: SPEC_SCHEMA_VERSION,
-        recipe_revision: 1,
+        recipe_revision: RECIPE_REVISION,
         recipe_fingerprint,
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: build_cross_family_recipe,
@@ -236,7 +238,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-light",
         "Editor Light",
         false,
-        EDITOR_LIGHT_RECIPE_V1_FINGERPRINT,
+        EDITOR_LIGHT_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#ffffff",
             surface: "#f8fafc",
@@ -271,7 +273,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-dark",
         "Editor Dark",
         true,
-        EDITOR_DARK_RECIPE_V1_FINGERPRINT,
+        EDITOR_DARK_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#0f172a",
             surface: "#111827",
@@ -306,7 +308,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "one-dark",
         "One Dark",
         true,
-        ONE_DARK_RECIPE_V1_FINGERPRINT,
+        ONE_DARK_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#282c34",
             surface: "#21252b",
@@ -341,7 +343,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-light",
         "Gruvbox Light",
         false,
-        GRUVBOX_LIGHT_RECIPE_V1_FINGERPRINT,
+        GRUVBOX_LIGHT_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
@@ -376,7 +378,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-dark",
         "Gruvbox Dark",
         true,
-        GRUVBOX_DARK_RECIPE_V1_FINGERPRINT,
+        GRUVBOX_DARK_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#282828",
             surface: "#3c3836",
@@ -411,7 +413,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-light",
         "Ayu Light",
         false,
-        AYU_LIGHT_RECIPE_V1_FINGERPRINT,
+        AYU_LIGHT_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
@@ -446,7 +448,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-dark",
         "Ayu Dark",
         true,
-        AYU_DARK_RECIPE_V1_FINGERPRINT,
+        AYU_DARK_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#0b0e14",
             surface: "#11151c",
@@ -481,7 +483,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "brutalist",
         "Brutalist",
         false,
-        BRUTALIST_RECIPE_V1_FINGERPRINT,
+        BRUTALIST_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#f4f0e6",
             surface: "#fffdf5",
@@ -516,7 +518,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "spotless",
         "Spotless",
         false,
-        SPOTLESS_RECIPE_V1_FINGERPRINT,
+        SPOTLESS_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#f7f5ef",
             surface: "#ffffff",
@@ -551,7 +553,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "cyberpunk",
         "Cyberpunk",
         true,
-        CYBERPUNK_RECIPE_V1_FINGERPRINT,
+        CYBERPUNK_RECIPE_V2_FINGERPRINT,
         PresetPalette {
             canvas: "#020617",
             surface: "#0f172a",
@@ -657,65 +659,151 @@ fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDefinitionV1 {
                 .map(|color| (*color).to_owned())
                 .collect(),
         );
-    ThemeDefinitionV1::new(tokens).with_styles(vec![
-        preset_rule("node", Some(palette.surface), None),
+    let first_series = palette
+        .series
+        .first()
+        .copied()
+        .expect("preset palettes must contain at least one series color");
+    let mut styles = Vec::new();
+
+    // Mindmap's direct palette needs the absence of a static fill winner. Keep the shared surface
+    // recipe on the other Node families instead of installing one cross-family rule that silently
+    // suppresses the Mindmap ordinal colors.
+    for family in [
+        DiagramFamilyId::FLOWCHART,
+        DiagramFamilyId::SWIMLANE,
+        DiagramFamilyId::CLASS,
+        DiagramFamilyId::TREE_VIEW,
+        DiagramFamilyId::BLOCK,
+    ] {
+        styles.push(preset_family_rule(
+            family,
+            ThemeTarget::Node,
+            Some(palette.surface),
+            None,
+        ));
+    }
+
+    styles.extend([
         preset_rule(
-            "edge-label-background",
+            ThemeTarget::EdgeLabelBackground,
             Some(palette.edge_label_background),
             None,
         ),
         preset_rule(
-            "cluster",
+            ThemeTarget::Cluster,
             Some(palette.cluster_background),
             Some(palette.cluster_border),
         ),
         preset_rule(
-            "actor",
+            ThemeTarget::Actor,
             Some(palette.actor_background),
             Some(palette.actor_border),
         ),
-        preset_rule("actor-label", Some(palette.actor_text), None),
+        preset_rule(ThemeTarget::ActorLabel, Some(palette.actor_text), None),
         preset_rule(
-            "lifeline",
+            ThemeTarget::Lifeline,
             Some(palette.actor_border),
             Some(palette.actor_border),
         ),
-        preset_rule("sequence-number", Some(palette.sequence_number_text), None),
-        preset_rule("message-label", Some(palette.text), None),
-        preset_rule("loop", Some(palette.surface_alt), Some(palette.border)),
-        preset_rule("loop-label", Some(palette.text), None),
         preset_rule(
-            "transition-label-background",
+            ThemeTarget::SequenceNumberLabel,
+            Some(palette.sequence_number_text),
+            None,
+        ),
+        preset_rule(ThemeTarget::MessageLabel, Some(palette.text), None),
+        preset_rule(
+            ThemeTarget::Loop,
+            Some(palette.surface_alt),
+            Some(palette.border),
+        ),
+        preset_rule(ThemeTarget::LoopLabel, Some(palette.text), None),
+        preset_rule(
+            ThemeTarget::TransitionLabelBackground,
             Some(palette.edge_label_background),
             None,
         ),
         preset_rule(
-            "note",
+            ThemeTarget::Note,
             Some(palette.note_background),
             Some(palette.note_border),
         ),
-        preset_rule("note-label", Some(palette.note_text), None),
-        preset_rule("packet-byte-label", Some(palette.text), None),
+        preset_rule(ThemeTarget::NoteLabel, Some(palette.note_text), None),
+        preset_rule(ThemeTarget::PacketByteLabel, Some(palette.text), None),
         preset_rule(
-            "packet-field-label",
+            ThemeTarget::PacketFieldLabel,
             Some(palette.packet_field_label_text),
             None,
         ),
         preset_rule(
-            "activation",
+            ThemeTarget::Activation,
             Some(palette.activation_background),
             Some(palette.activation_border),
         ),
-        preset_rule("axis", Some(palette.text), Some(palette.line)),
-        preset_rule("legend", Some(palette.subtle_text), None),
-        preset_palette_rule("task", palette.series),
-        preset_palette_rule("chart-series", palette.series),
-        preset_palette_rule("timeline-event", palette.series),
-        preset_palette_rule("journey-task", palette.series),
-    ])
+        preset_rule(ThemeTarget::Axis, Some(palette.text), Some(palette.line)),
+        preset_rule(ThemeTarget::Legend, Some(palette.subtle_text), None),
+        preset_family_rule(
+            DiagramFamilyId::ER,
+            ThemeTarget::Relation,
+            None,
+            Some(palette.line),
+        ),
+        preset_family_rule(
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTarget::Requirement,
+            Some(palette.surface),
+            None,
+        ),
+        preset_family_rule(
+            DiagramFamilyId::PIE,
+            ThemeTarget::PieSlice,
+            None,
+            Some(palette.border),
+        ),
+        preset_family_rule(
+            DiagramFamilyId::QUADRANT_CHART,
+            ThemeTarget::ChartSeries,
+            Some(first_series),
+            None,
+        ),
+        preset_family_rule(
+            DiagramFamilyId::GANTT,
+            ThemeTarget::Task,
+            Some(palette.surface),
+            None,
+        ),
+        preset_palette_rule(ThemeTarget::Task, palette.series),
+        preset_palette_rule(ThemeTarget::ChartSeries, palette.series),
+        preset_palette_rule(ThemeTarget::TimelineEvent, palette.series),
+        preset_palette_rule(ThemeTarget::JourneyTask, palette.series),
+    ]);
+
+    ThemeDefinitionV1::new(tokens).with_styles(styles)
 }
 
-fn preset_rule(target: &str, fill: Option<&str>, stroke: Option<&str>) -> ThemeRuleSetWireV1 {
+fn preset_rule(
+    target: ThemeTarget,
+    fill: Option<&str>,
+    stroke: Option<&str>,
+) -> ThemeRuleSetWireV1 {
+    preset_rule_for_family(None, target, fill, stroke)
+}
+
+fn preset_family_rule(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    fill: Option<&str>,
+    stroke: Option<&str>,
+) -> ThemeRuleSetWireV1 {
+    preset_rule_for_family(Some(family), target, fill, stroke)
+}
+
+fn preset_rule_for_family(
+    family: Option<DiagramFamilyId>,
+    target: ThemeTarget,
+    fill: Option<&str>,
+    stroke: Option<&str>,
+) -> ThemeRuleSetWireV1 {
     let mut style = ThemeStylePatchWireV1::default();
     if let Some(fill) = fill {
         style.fill = SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned()));
@@ -727,17 +815,17 @@ fn preset_rule(target: &str, fill: Option<&str>, stroke: Option<&str>) -> ThemeR
         });
     }
     ThemeRuleSetWireV1::Rule {
-        target: target.to_owned(),
-        family: None,
+        target: target.id().to_owned(),
+        family: family.map(|family| family.as_str().to_owned()),
         variant: None,
         ordinal: None,
         style,
     }
 }
 
-fn preset_palette_rule(target: &str, colors: &[&str]) -> ThemeRuleSetWireV1 {
+fn preset_palette_rule(target: ThemeTarget, colors: &[&str]) -> ThemeRuleSetWireV1 {
     ThemeRuleSetWireV1::OrdinalPalette {
-        target: target.to_owned(),
+        target: target.id().to_owned(),
         colors: colors.iter().map(|color| (*color).to_owned()).collect(),
     }
 }

@@ -556,7 +556,7 @@ fn gitgraph_node_palette_surface_ownership(
         if node_palette.surface_is_visible(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot)
             && node_palette.mermaid_source_is_owned(sources.branch_slot(slot))
         {
-            ownership.mark_owned(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot);
+            ownership.mark_stroke_owned(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot);
         }
         if node_palette.surface_is_visible(
             crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
@@ -565,7 +565,7 @@ fn gitgraph_node_palette_surface_ownership(
             .branch_label_background(slot)
             .is_some_and(|source| node_palette.mermaid_source_is_owned(source))
         {
-            ownership.mark_owned(
+            ownership.mark_fill_owned(
                 crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
                 slot,
             );
@@ -573,15 +573,26 @@ fn gitgraph_node_palette_surface_ownership(
     }
 
     for (slot, role) in node_palette.commit_palette_elements() {
-        let source = match role {
-            crate::gitgraph::GitGraphCommitPaletteRole::BranchSlot => sources.branch_slot(slot),
-            crate::gitgraph::GitGraphCommitPaletteRole::State => sources.state(),
+        let (fill_source, stroke_source) = match role {
+            crate::gitgraph::GitGraphCommitPaletteRole::BranchSlot => (
+                Some(sources.branch_slot(slot)),
+                Some(sources.branch_slot(slot)),
+            ),
+            crate::gitgraph::GitGraphCommitPaletteRole::State => {
+                let source = sources.state();
+                (Some(source), Some(source))
+            }
         };
-        if node_palette.mermaid_source_is_owned(source) {
+        if fill_source.is_some_and(|source| node_palette.mermaid_source_is_owned(source)) {
             // A single `.commitN` selector covers every palette-bearing element in the slot. If
-            // any concrete element has a higher-priority Mermaid owner, suppress the shared direct
-            // rule rather than overwrite that owner while claiming only the unowned siblings.
-            ownership.mark_owned(crate::gitgraph::GitGraphPaletteSurface::Commit, slot);
+            // any concrete element has a higher-priority Mermaid fill owner, suppress only the
+            // shared fill declaration while leaving an independently unowned stroke available.
+            ownership.mark_fill_owned(crate::gitgraph::GitGraphPaletteSurface::Commit, slot);
+        }
+        if stroke_source.is_some_and(|source| node_palette.mermaid_source_is_owned(source)) {
+            // Stroke ownership is independent from fill ownership because the two properties can
+            // reach the commit through different explicit or inherited terminal declarations.
+            ownership.mark_stroke_owned(crate::gitgraph::GitGraphPaletteSurface::Commit, slot);
         }
     }
 
@@ -598,26 +609,26 @@ fn gitgraph_node_palette_css(
     let mut css = String::new();
     for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
         for surface in crate::gitgraph::GitGraphPaletteSurface::ALL {
-            let Some(fill) = node_palette.terminal_fill_css(surface, slot, ownership) else {
+            let fill = node_palette.terminal_fill_css(surface, slot, ownership);
+            let stroke = node_palette.terminal_stroke_css(surface, slot, ownership);
+            if fill.is_none() && stroke.is_none() {
                 continue;
-            };
-            match surface {
-                crate::gitgraph::GitGraphPaletteSurface::Commit => {
-                    let _ = write!(
-                        &mut css,
-                        r#"#{} .commit{}{{stroke:{};fill:{};}}"#,
-                        id, slot, fill, fill
-                    );
-                }
-                crate::gitgraph::GitGraphPaletteSurface::Arrow => {
-                    let _ = write!(&mut css, r#"#{} .arrow{}{{stroke:{};}}"#, id, slot, fill);
-                }
-                crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground => {
-                    let _ = write!(&mut css, r#"#{} .label{}{{fill:{};}}"#, id, slot, fill);
-                }
             }
+            let class_name = match surface {
+                crate::gitgraph::GitGraphPaletteSurface::Commit => "commit",
+                crate::gitgraph::GitGraphPaletteSurface::Arrow => "arrow",
+                crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground => "label",
+            };
+            let _ = write!(&mut css, "#{id} .{class_name}{slot}{{");
+            if let Some(stroke) = stroke {
+                let _ = write!(&mut css, "stroke:{stroke};");
+            }
+            if let Some(fill) = fill {
+                let _ = write!(&mut css, "fill:{fill};");
+            }
+            css.push('}');
             if let Some(receipt) = receipt.as_mut() {
-                receipt.record_stylesheet_rule(node_palette, surface, slot, fill);
+                receipt.record_stylesheet_rule(node_palette, surface, slot, fill, stroke);
             }
         }
     }

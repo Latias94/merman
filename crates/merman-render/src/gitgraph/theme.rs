@@ -145,26 +145,41 @@ impl GitGraphPaletteSurfaceSet {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct GitGraphPaletteSurfaceOwnership {
-    owned_by_slot: [GitGraphPaletteSurfaceSet; GITGRAPH_PALETTE_SLOT_COUNT],
+    fill_owned_by_slot: [GitGraphPaletteSurfaceSet; GITGRAPH_PALETTE_SLOT_COUNT],
+    stroke_owned_by_slot: [GitGraphPaletteSurfaceSet; GITGRAPH_PALETTE_SLOT_COUNT],
 }
 
 impl Default for GitGraphPaletteSurfaceOwnership {
     fn default() -> Self {
         Self {
-            owned_by_slot: [GitGraphPaletteSurfaceSet::default(); GITGRAPH_PALETTE_SLOT_COUNT],
+            fill_owned_by_slot: [GitGraphPaletteSurfaceSet::default(); GITGRAPH_PALETTE_SLOT_COUNT],
+            stroke_owned_by_slot: [GitGraphPaletteSurfaceSet::default();
+                GITGRAPH_PALETTE_SLOT_COUNT],
         }
     }
 }
 
 impl GitGraphPaletteSurfaceOwnership {
-    pub(crate) fn mark_owned(&mut self, surface: GitGraphPaletteSurface, slot: usize) {
-        if let Some(owned) = self.owned_by_slot.get_mut(slot) {
+    pub(crate) fn mark_fill_owned(&mut self, surface: GitGraphPaletteSurface, slot: usize) {
+        if let Some(owned) = self.fill_owned_by_slot.get_mut(slot) {
             owned.insert(surface);
         }
     }
 
-    fn owns(self, surface: GitGraphPaletteSurface, slot: usize) -> bool {
-        self.owned_by_slot
+    pub(crate) fn mark_stroke_owned(&mut self, surface: GitGraphPaletteSurface, slot: usize) {
+        if let Some(owned) = self.stroke_owned_by_slot.get_mut(slot) {
+            owned.insert(surface);
+        }
+    }
+
+    fn owns_fill(self, surface: GitGraphPaletteSurface, slot: usize) -> bool {
+        self.fill_owned_by_slot
+            .get(slot)
+            .is_some_and(|owned| owned.contains(surface))
+    }
+
+    fn owns_stroke(self, surface: GitGraphPaletteSurface, slot: usize) -> bool {
+        self.stroke_owned_by_slot
             .get(slot)
             .is_some_and(|owned| owned.contains(surface))
     }
@@ -263,6 +278,7 @@ struct ExpectedStylesheetRule {
 #[derive(Debug)]
 pub(crate) struct GitGraphNodePalettePlan {
     fills_by_slot: [Option<GitGraphNodePaletteFill>; GITGRAPH_PALETTE_SLOT_COUNT],
+    fill_winner_by_slot: [bool; GITGRAPH_PALETTE_SLOT_COUNT],
     branch_stroke: GitGraphBranchStrokePlan,
     evidence: FamilyThemeEvidence,
     palette_key: Option<FamilyThemeMechanismKey>,
@@ -333,9 +349,8 @@ impl GitGraphNodePalettePlan {
                         Some(slot + 1),
                         work_meter,
                     )?;
-                    if style.fill_resolution().winner().is_some()
-                        || style.stroke_resolution().winner().is_some()
-                    {
+                    self.fill_winner_by_slot[slot] = style.fill_resolution().winner().is_some();
+                    if !self.slot_has_palette_terminal(slot) {
                         continue;
                     }
 
@@ -425,6 +440,7 @@ impl GitGraphNodePalettePlan {
 
         Self {
             fills_by_slot: std::array::from_fn(|_| None),
+            fill_winner_by_slot: [false; GITGRAPH_PALETTE_SLOT_COUNT],
             branch_stroke: GitGraphBranchStrokePlan::baseline(if layout.show_branches {
                 layout.branches.len()
             } else {
@@ -460,7 +476,29 @@ impl GitGraphNodePalettePlan {
         slot: usize,
         ownership: GitGraphPaletteSurfaceOwnership,
     ) -> Option<&str> {
-        if !self.surface_is_visible(surface, slot) || ownership.owns(surface, slot) {
+        if !self.surface_is_visible(surface, slot)
+            || ownership.owns_fill(surface, slot)
+            || surface == GitGraphPaletteSurface::Arrow
+            || self.fill_winner_by_slot.get(slot).copied().unwrap_or(false)
+        {
+            return None;
+        }
+        self.fills_by_slot
+            .get(slot)
+            .and_then(Option::as_ref)
+            .map(|fill| fill.css.as_str())
+    }
+
+    pub(crate) fn terminal_stroke_css(
+        &self,
+        surface: GitGraphPaletteSurface,
+        slot: usize,
+        ownership: GitGraphPaletteSurfaceOwnership,
+    ) -> Option<&str> {
+        if !self.surface_is_visible(surface, slot)
+            || ownership.owns_stroke(surface, slot)
+            || surface == GitGraphPaletteSurface::BranchLabelBackground
+        {
             return None;
         }
         self.fills_by_slot
@@ -547,13 +585,27 @@ impl GitGraphNodePalettePlan {
         slot: usize,
         ownership: GitGraphPaletteSurfaceOwnership,
     ) -> Option<ThemeCapability> {
-        if self.terminal_fill_css(surface, slot, ownership).is_none() {
+        if self.terminal_fill_css(surface, slot, ownership).is_none()
+            && self.terminal_stroke_css(surface, slot, ownership).is_none()
+        {
             return None;
         }
         self.fills_by_slot
             .get(slot)
             .and_then(Option::as_ref)
             .map(|fill| fill.capability)
+    }
+
+    fn slot_has_palette_terminal(&self, slot: usize) -> bool {
+        let Some(visible) = self.visible_surfaces.get(slot).copied() else {
+            return false;
+        };
+        let fill_available = !self.fill_winner_by_slot.get(slot).copied().unwrap_or(false)
+            && (visible.contains(GitGraphPaletteSurface::Commit)
+                || visible.contains(GitGraphPaletteSurface::BranchLabelBackground));
+        let stroke_available = visible.contains(GitGraphPaletteSurface::Commit)
+            || visible.contains(GitGraphPaletteSurface::Arrow);
+        fill_available || stroke_available
     }
 }
 
@@ -579,8 +631,9 @@ impl GitGraphNodePaletteReceipt {
                 GitGraphPaletteSurface::ALL
                     .into_iter()
                     .filter_map(move |surface| {
-                        plan.terminal_fill_css(surface, slot, ownership)
-                            .map(|_| ExpectedStylesheetRule { surface, slot })
+                        (plan.terminal_fill_css(surface, slot, ownership).is_some()
+                            || plan.terminal_stroke_css(surface, slot, ownership).is_some())
+                        .then_some(ExpectedStylesheetRule { surface, slot })
                     })
             })
             .collect();
@@ -609,12 +662,14 @@ impl GitGraphNodePaletteReceipt {
         plan: &GitGraphNodePalettePlan,
         surface: GitGraphPaletteSurface,
         slot: usize,
-        emitted_fill: &str,
+        emitted_fill: Option<&str>,
+        emitted_stroke: Option<&str>,
     ) {
         self.initialize();
         self.values_match &= self.expected_rules.get(self.next_rule).copied()
             == Some(ExpectedStylesheetRule { surface, slot })
-            && plan.terminal_fill_css(surface, slot, self.ownership) == Some(emitted_fill);
+            && plan.terminal_fill_css(surface, slot, self.ownership) == emitted_fill
+            && plan.terminal_stroke_css(surface, slot, self.ownership) == emitted_stroke;
         self.next_rule += 1;
     }
 
@@ -716,6 +771,7 @@ mod tests {
                 }),
                 _ => None,
             }),
+            fill_winner_by_slot: [false; GITGRAPH_PALETTE_SLOT_COUNT],
             branch_stroke: GitGraphBranchStrokePlan::baseline(0),
             evidence: FamilyThemeEvidence::default(),
             palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
@@ -748,20 +804,40 @@ mod tests {
         let plan = receipt_plan();
         let mut receipt =
             GitGraphNodePaletteReceipt::new(&plan, GitGraphPaletteSurfaceOwnership::default());
-        receipt.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Commit, 0, "#123456");
+        receipt.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#123456"),
+            Some("#123456"),
+        );
         receipt.record_stylesheet_rule(
             &plan,
             GitGraphPaletteSurface::BranchLabelBackground,
             0,
-            "#123456",
+            Some("#123456"),
+            None,
         );
-        receipt.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Commit, 1, "transparent");
-        receipt.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Arrow, 1, "transparent");
+        receipt.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            1,
+            Some("transparent"),
+            Some("transparent"),
+        );
+        receipt.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Arrow,
+            1,
+            None,
+            Some("transparent"),
+        );
         receipt.record_stylesheet_rule(
             &plan,
             GitGraphPaletteSurface::BranchLabelBackground,
             1,
-            "transparent",
+            Some("transparent"),
+            None,
         );
         receipt.record_branch_label(&plan, 0);
         receipt.record_branch_label(&plan, 1);
@@ -785,31 +861,69 @@ mod tests {
 
         let mut missing =
             GitGraphNodePaletteReceipt::new(&plan, GitGraphPaletteSurfaceOwnership::default());
-        missing.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Commit, 0, "#123456");
+        missing.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#123456"),
+            Some("#123456"),
+        );
         assert!(!missing.proves(&plan));
 
         let mut duplicate =
             GitGraphNodePaletteReceipt::new(&plan, GitGraphPaletteSurfaceOwnership::default());
-        duplicate.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Commit, 0, "#123456");
-        duplicate.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Commit, 0, "#123456");
+        duplicate.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#123456"),
+            Some("#123456"),
+        );
+        duplicate.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#123456"),
+            Some("#123456"),
+        );
         assert!(!duplicate.proves(&plan));
 
         let mut mismatch =
             GitGraphNodePaletteReceipt::new(&plan, GitGraphPaletteSurfaceOwnership::default());
-        mismatch.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Commit, 0, "#abcdef");
+        mismatch.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#abcdef"),
+            Some("#123456"),
+        );
         mismatch.record_stylesheet_rule(
             &plan,
             GitGraphPaletteSurface::BranchLabelBackground,
             0,
-            "#123456",
+            Some("#123456"),
+            None,
         );
-        mismatch.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Commit, 1, "transparent");
-        mismatch.record_stylesheet_rule(&plan, GitGraphPaletteSurface::Arrow, 1, "transparent");
+        mismatch.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            1,
+            Some("transparent"),
+            Some("transparent"),
+        );
+        mismatch.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Arrow,
+            1,
+            None,
+            Some("transparent"),
+        );
         mismatch.record_stylesheet_rule(
             &plan,
             GitGraphPaletteSurface::BranchLabelBackground,
             1,
-            "transparent",
+            Some("transparent"),
+            None,
         );
         mismatch.record_branch_label(&plan, 0);
         mismatch.record_branch_label(&plan, 1);
@@ -817,6 +931,81 @@ mod tests {
         mismatch.record_commit_element(&plan, 0, 0, 0, GitGraphCommitPaletteRole::BranchSlot);
         mismatch.record_commit_element(&plan, 1, 0, 1, GitGraphCommitPaletteRole::BranchSlot);
         assert!(!mismatch.proves(&plan));
+    }
+
+    #[test]
+    fn terminal_receipt_rejects_wrong_fill_or_stroke_for_a_partially_owned_surface() {
+        let mut plan = receipt_plan();
+        plan.fills_by_slot[1] = None;
+        plan.visible_surfaces[1] = GitGraphPaletteSurfaceSet::default();
+        plan.visible_surfaces[0].insert(GitGraphPaletteSurface::Arrow);
+        plan.expected_branch_label_slots = vec![0];
+        plan.expected_arrow_slots = vec![0];
+        plan.expected_commit_elements.truncate(1);
+
+        let mut ownership = GitGraphPaletteSurfaceOwnership::default();
+        ownership.mark_stroke_owned(GitGraphPaletteSurface::Commit, 0);
+        ownership.mark_stroke_owned(GitGraphPaletteSurface::Arrow, 0);
+
+        let record_occurrences = |receipt: &mut GitGraphNodePaletteReceipt| {
+            receipt.record_branch_label(&plan, 0);
+            receipt.record_arrow(&plan, 0);
+            receipt.record_commit_element(&plan, 0, 0, 0, GitGraphCommitPaletteRole::BranchSlot);
+        };
+
+        let mut correct = GitGraphNodePaletteReceipt::new(&plan, ownership);
+        correct.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#123456"),
+            None,
+        );
+        correct.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::BranchLabelBackground,
+            0,
+            Some("#123456"),
+            None,
+        );
+        record_occurrences(&mut correct);
+        assert!(correct.proves(&plan));
+
+        let mut wrong_fill = GitGraphNodePaletteReceipt::new(&plan, ownership);
+        wrong_fill.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#abcdef"),
+            None,
+        );
+        wrong_fill.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::BranchLabelBackground,
+            0,
+            Some("#123456"),
+            None,
+        );
+        record_occurrences(&mut wrong_fill);
+        assert!(!wrong_fill.proves(&plan));
+
+        let mut wrong_stroke = GitGraphNodePaletteReceipt::new(&plan, ownership);
+        wrong_stroke.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::Commit,
+            0,
+            Some("#123456"),
+            Some("#123456"),
+        );
+        wrong_stroke.record_stylesheet_rule(
+            &plan,
+            GitGraphPaletteSurface::BranchLabelBackground,
+            0,
+            Some("#123456"),
+            None,
+        );
+        record_occurrences(&mut wrong_stroke);
+        assert!(!wrong_stroke.proves(&plan));
     }
 
     #[test]
