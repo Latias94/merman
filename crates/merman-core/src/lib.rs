@@ -60,7 +60,8 @@ pub use family::{
 };
 pub use operation::{
     CancelReason, OperationCancelled, OperationControl, OperationControlResult,
-    OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
+    OperationLedgerError, OperationPhase, OperationResourceDomain, OperationResourceLimitExceeded,
+    OperationResourceOverride, OperationResourceProvenance,
 };
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,

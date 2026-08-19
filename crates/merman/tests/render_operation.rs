@@ -10,7 +10,8 @@ use merman::{
 
 #[cfg(feature = "ascii")]
 use merman::{
-    AsciiRequest, RenderTarget,
+    AsciiRequest, OperationResourceDomain, OperationResourceLimitExceeded,
+    OperationResourceOverride, OperationResourceProvenance, RenderTarget,
     ascii::{AsciiResourceLimitId, AsciiResourcePolicy},
 };
 
@@ -500,6 +501,16 @@ fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {
                 && limit.phase == "ascii_layout"
                 && limit.actual == EXACT_GRID_CELLS as u64
                 && limit.maximum == (EXACT_GRID_CELLS - 1) as u64
+                && limit.provenance.as_ref().is_some_and(|provenance| {
+                    provenance.domain == OperationResourceDomain::Ascii
+                        && provenance.profile
+                            == Some(merman::resources::ResourceProfile::Interactive)
+                        && provenance.explicit_overrides.as_ref()
+                            == [OperationResourceOverride {
+                                id: "max_ascii_grid_cells",
+                                value: (EXACT_GRID_CELLS - 1) as u64,
+                            }]
+                })
     ));
 }
 
@@ -563,5 +574,48 @@ fn ascii_target_deadline_precedes_option_validation() {
         RenderError::Cancelled(cancelled)
             if cancelled.phase == OperationPhase::Admission
                 && cancelled.reason == merman::CancelReason::DeadlineExceeded
+    ));
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn ascii_target_resource_terminal_precedes_option_validation_without_rewriting_provenance() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should produce a semantic artifact");
+    let provenance = OperationResourceProvenance::new(
+        OperationResourceDomain::Render,
+        Some(merman::resources::ResourceProfile::Constrained),
+        [OperationResourceOverride {
+            id: "max_svg_bytes",
+            value: 17,
+        }],
+    );
+    control.terminate_resource_limit(OperationResourceLimitExceeded {
+        id: "max_svg_bytes",
+        phase: OperationPhase::Emit,
+        resource_phase: "svg_output",
+        limit: 17,
+        consumed: 17,
+        requested: 1,
+        provenance: provenance.clone(),
+    });
+
+    let mut request = AsciiRequest::default();
+    request.options.flowchart_node_label_wrap_width = 0;
+    let error = artifact
+        .render(RenderTarget::Ascii(request))
+        .expect_err("the sticky render resource terminal must win before ASCII option validation");
+
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(details)
+            if details.id == "max_svg_bytes"
+                && details.phase == "svg_output"
+                && details.actual == 18
+                && details.maximum == 17
+                && details.provenance == Some(provenance)
     ));
 }

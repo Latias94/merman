@@ -13,7 +13,8 @@ use merman_core::resources::{
 };
 use merman_core::{
     OperationCancelled, OperationControl, OperationLedgerError, OperationPhase,
-    OperationResourceLimitExceeded, ParsedDiagramRender, RenderSemanticModel,
+    OperationResourceDomain, OperationResourceLimitExceeded, OperationResourceOverride,
+    OperationResourceProvenance, ParsedDiagramRender, RenderSemanticModel,
 };
 
 const KIB: usize = 1024;
@@ -657,6 +658,8 @@ pub(crate) enum OperationWorkError {
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
+    #[error(transparent)]
+    ForeignResourceTerminal(OperationLedgerError),
 }
 
 pub(crate) struct OperationWorkMeter {
@@ -917,6 +920,7 @@ impl OperationWorkMeter {
         consumed: usize,
         requested: usize,
     ) -> OperationWorkError {
+        let provenance = self.operation_resource_provenance();
         let terminal = match error.cause {
             ResourceLimitCause::Ceiling => {
                 self.control
@@ -927,6 +931,7 @@ impl OperationWorkMeter {
                         limit: saturating_u64(error.max),
                         consumed: saturating_u64(consumed),
                         requested: saturating_u64(requested),
+                        provenance,
                     })
             }
             ResourceLimitCause::ArithmeticOverflow => self.control.terminate_resource_overflow(
@@ -935,73 +940,84 @@ impl OperationWorkMeter {
                 error.phase.as_str(),
                 saturating_u64(error.actual),
                 saturating_u64(error.max),
+                provenance,
             ),
         };
         self.map_terminal_error(terminal)
     }
 
+    fn operation_resource_provenance(&self) -> OperationResourceProvenance {
+        OperationResourceProvenance::new(
+            OperationResourceDomain::Render,
+            Some(self.policy.profile()),
+            self.policy
+                .explicit_overrides()
+                .map(|(id, value)| OperationResourceOverride {
+                    id: id.as_str(),
+                    value: saturating_u64(value),
+                }),
+        )
+    }
+
     fn map_terminal_error(&self, error: OperationLedgerError) -> OperationWorkError {
         match error {
             OperationLedgerError::Cancelled(error) => OperationWorkError::Cancelled(error),
-            OperationLedgerError::ResourceLimitExceeded(error) => {
-                OperationWorkError::ResourceLimitExceeded(self.project_resource_limit(error))
-            }
-            OperationLedgerError::ArithmeticOverflow {
-                id,
-                phase,
-                resource_phase,
-                actual,
-                maximum,
-            } => OperationWorkError::ResourceLimitExceeded(self.project_resource_overflow(
-                id,
-                phase,
-                resource_phase,
-                actual,
-                maximum,
-            )),
+            OperationLedgerError::ResourceLimitExceeded(error) => self
+                .project_resource_limit(&error)
+                .map(OperationWorkError::ResourceLimitExceeded)
+                .unwrap_or_else(|| {
+                    OperationWorkError::ForeignResourceTerminal(
+                        OperationLedgerError::ResourceLimitExceeded(error),
+                    )
+                }),
+            OperationLedgerError::ArithmeticOverflow { .. } => self
+                .project_resource_overflow(&error)
+                .map(OperationWorkError::ResourceLimitExceeded)
+                .unwrap_or(OperationWorkError::ForeignResourceTerminal(error)),
         }
     }
 
     fn project_resource_limit(
         &self,
-        error: OperationResourceLimitExceeded,
-    ) -> ResourceLimitExceeded {
-        ResourceLimitExceeded {
+        error: &OperationResourceLimitExceeded,
+    ) -> Option<ResourceLimitExceeded> {
+        let (profile, explicit_overrides) = project_render_provenance(&error.provenance)?;
+        Some(ResourceLimitExceeded {
             cause: ResourceLimitCause::Ceiling,
-            phase: resource_phase_from_stable_id(error.resource_phase, error.id, error.phase),
+            phase: ResourceLimitPhase::from_stable_id(error.resource_phase)?,
             limit: error.id,
             actual: saturating_usize(error.consumed.saturating_add(error.requested)),
             max: saturating_usize(error.limit),
-            profile: self.policy.profile(),
-            explicit_overrides: self
-                .policy
-                .explicit_overrides()
-                .map(|(id, value)| ResourceLimitOverride { id, value })
-                .collect(),
-        }
+            profile,
+            explicit_overrides,
+        })
     }
 
     fn project_resource_overflow(
         &self,
-        id: &'static str,
-        phase: OperationPhase,
-        stored_resource_phase: &'static str,
-        actual: u64,
-        maximum: u64,
-    ) -> ResourceLimitExceeded {
-        ResourceLimitExceeded {
+        error: &OperationLedgerError,
+    ) -> Option<ResourceLimitExceeded> {
+        let OperationLedgerError::ArithmeticOverflow {
+            id,
+            resource_phase,
+            actual,
+            maximum,
+            provenance,
+            ..
+        } = error
+        else {
+            return None;
+        };
+        let (profile, explicit_overrides) = project_render_provenance(provenance)?;
+        Some(ResourceLimitExceeded {
             cause: ResourceLimitCause::ArithmeticOverflow,
-            phase: resource_phase_from_stable_id(stored_resource_phase, id, phase),
+            phase: ResourceLimitPhase::from_stable_id(resource_phase)?,
             limit: id,
-            actual: saturating_usize(actual),
-            max: saturating_usize(maximum),
-            profile: self.policy.profile(),
-            explicit_overrides: self
-                .policy
-                .explicit_overrides()
-                .map(|(id, value)| ResourceLimitOverride { id, value })
-                .collect(),
-        }
+            actual: saturating_usize(*actual),
+            max: saturating_usize(*maximum),
+            profile,
+            explicit_overrides,
+        })
     }
 
     /// Returns the unreserved SVG budget for bounded policies after all successful charges.
@@ -1106,29 +1122,23 @@ impl OperationWorkMeter {
     }
 }
 
-fn resource_phase(id: &str, phase: OperationPhase) -> ResourceLimitPhase {
-    if matches!(phase, OperationPhase::Postprocess | OperationPhase::Export) {
-        return ResourceLimitPhase::SvgPostprocess;
+fn project_render_provenance(
+    provenance: &OperationResourceProvenance,
+) -> Option<(RenderResourceProfile, Vec<ResourceLimitOverride>)> {
+    if provenance.domain != OperationResourceDomain::Render {
+        return None;
     }
-
-    if let Some(id) = ResourceLimitId::from_stable_id(id) {
-        return id.descriptor().phase;
-    }
-
-    match phase {
-        OperationPhase::Parse => ResourceLimitPhase::Source,
-        OperationPhase::Emit => ResourceLimitPhase::SvgOutput,
-        _ => ResourceLimitPhase::LayoutModel,
-    }
-}
-
-fn resource_phase_from_stable_id(
-    stored: &str,
-    id: &str,
-    operation_phase: OperationPhase,
-) -> ResourceLimitPhase {
-    ResourceLimitPhase::from_stable_id(stored)
-        .unwrap_or_else(|| resource_phase(id, operation_phase))
+    let explicit_overrides = provenance
+        .explicit_overrides
+        .iter()
+        .map(|override_| {
+            Some(ResourceLimitOverride {
+                id: ResourceLimitId::from_stable_id(override_.id)?,
+                value: saturating_usize(override_.value),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some((provenance.profile?, explicit_overrides))
 }
 
 fn saturating_usize(value: u64) -> usize {
@@ -1515,6 +1525,77 @@ mod tests {
         control.cancel();
         assert_eq!(meter.charge(2).unwrap_err(), first);
         assert_eq!(meter.used(), 8);
+    }
+
+    #[test]
+    fn operation_work_meter_replays_the_originating_policy_provenance() {
+        let originating_policy = RenderResourcePolicy::constrained()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 17)
+            .unwrap();
+        let observing_policy = RenderResourcePolicy::interactive()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 99)
+            .unwrap();
+        let control = OperationControl::new();
+        let originating = OperationWorkMeter::new_with_control(originating_policy, control.clone());
+        let observing = OperationWorkMeter::new_with_control(observing_policy, control);
+
+        let OperationWorkError::ResourceLimitExceeded(first) = originating.charge(2).unwrap_err()
+        else {
+            panic!("expected the originating ceiling");
+        };
+        let OperationWorkError::ResourceLimitExceeded(replayed) =
+            observing.checkpoint(OperationPhase::Emit).unwrap_err()
+        else {
+            panic!("expected the stored render terminal to retain its typed projection");
+        };
+
+        assert_eq!(replayed, first);
+        assert_eq!(replayed.profile, RenderResourceProfile::Constrained);
+        assert_eq!(
+            replayed.explicit_overrides,
+            vec![
+                ResourceLimitOverride {
+                    id: ResourceLimitId::MaxLayoutWorkUnits,
+                    value: 1,
+                },
+                ResourceLimitOverride {
+                    id: ResourceLimitId::MaxSvgBytes,
+                    value: 17,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn operation_work_meter_preserves_a_foreign_ascii_domain() {
+        let control = OperationControl::new();
+        let terminal = control.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "max_ascii_output_bytes",
+            phase: OperationPhase::Emit,
+            resource_phase: "ascii_output",
+            limit: 7,
+            consumed: 7,
+            requested: 1,
+            provenance: OperationResourceProvenance::new(
+                OperationResourceDomain::Ascii,
+                Some(RenderResourceProfile::Constrained),
+                [OperationResourceOverride {
+                    id: "max_ascii_output_bytes",
+                    value: 7,
+                }],
+            ),
+        });
+        let observing =
+            OperationWorkMeter::new_with_control(RenderResourcePolicy::interactive(), control);
+
+        assert_eq!(
+            observing
+                .checkpoint(OperationPhase::Layout)
+                .expect_err("render must not project an ASCII resource terminal"),
+            OperationWorkError::ForeignResourceTerminal(terminal)
+        );
     }
 
     #[test]

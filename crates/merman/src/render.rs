@@ -7,7 +7,9 @@
 #[cfg(feature = "ascii")]
 use merman_core::OperationPhase;
 use merman_core::{
-    Engine, OperationCancelled, OperationControl, ParseOptions, resources::InputResourcePolicy,
+    Engine, OperationCancelled, OperationControl, OperationResourceDomain,
+    OperationResourceOverride, OperationResourceProvenance, ParseOptions,
+    resources::InputResourcePolicy,
 };
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -329,6 +331,9 @@ impl From<merman_render::Error> for RenderError {
             merman_render::Error::ResourceLimitExceeded(resource) => {
                 Self::from(ResourceLimitExceeded::from(resource))
             }
+            merman_render::Error::OperationResourceTerminal(error) => {
+                crate::operation_runner::operation_terminal_error(error)
+            }
             other => Self::Svg(other),
         }
     }
@@ -339,7 +344,7 @@ impl From<merman_render::Error> for RenderError {
 /// Target adapters retain their richer policy types internally. Hosts can classify every
 /// source, layout, output, ASCII-grid, and export quota through this stable descriptor without
 /// matching backend-specific errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
     "resource limit `{id}` exceeded during {phase}: actual={actual} maximum={maximum} cause={cause}"
 )]
@@ -350,6 +355,7 @@ pub struct ResourceLimitExceeded {
     pub actual: u64,
     pub maximum: u64,
     pub cause: ResourceLimitCause,
+    pub provenance: Option<OperationResourceProvenance>,
 }
 
 /// Stable facade-level reason for a resource rejection.
@@ -382,6 +388,17 @@ impl ResourceLimitExceeded {
             actual: error.actual as u64,
             maximum: error.max as u64,
             cause: ResourceLimitCause::Ceiling,
+            provenance: Some(OperationResourceProvenance::new(
+                OperationResourceDomain::Input,
+                Some(error.profile),
+                error
+                    .explicit_overrides
+                    .into_iter()
+                    .map(|override_| OperationResourceOverride {
+                        id: override_.id.as_str(),
+                        value: override_.value as u64,
+                    }),
+            )),
         }
     }
 
@@ -399,6 +416,7 @@ impl ResourceLimitExceeded {
                 }
                 _ => ResourceLimitCause::Ceiling,
             },
+            provenance: None,
         }
     }
 
@@ -416,6 +434,17 @@ impl ResourceLimitExceeded {
                 }
                 _ => ResourceLimitCause::Ceiling,
             },
+            provenance: Some(OperationResourceProvenance::new(
+                OperationResourceDomain::Render,
+                Some(error.profile),
+                error
+                    .explicit_overrides
+                    .into_iter()
+                    .map(|override_| OperationResourceOverride {
+                        id: override_.id.as_str(),
+                        value: override_.value as u64,
+                    }),
+            )),
         }
     }
 
@@ -433,6 +462,7 @@ impl ResourceLimitExceeded {
                 }
                 _ => ResourceLimitCause::Ceiling,
             },
+            provenance: None,
         }
     }
 }
@@ -451,6 +481,9 @@ impl From<AsciiError> for RenderError {
             AsciiError::Cancelled(cancelled) => Self::Cancelled(cancelled),
             AsciiError::ResourceLimitExceeded(resource) => {
                 Self::from(ResourceLimitExceeded::from_ascii(resource))
+            }
+            AsciiError::OperationResourceTerminal(error) => {
+                crate::operation_runner::operation_terminal_error(error)
             }
             other => Self::Ascii(other),
         }
@@ -925,20 +958,29 @@ fn render_ascii_target(
     request: AsciiRequest,
 ) -> Result<Option<String>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
-    operation
-        .control
-        .checkpoint_at(OperationPhase::Admission)
-        .map_err(RenderError::Cancelled)?;
-    let renderer = merman_ascii::AsciiRenderer::new(request.options).map_err(map_ascii_error)?;
-    renderer
-        .render_model(
-            parsed.model(),
-            &operation.control,
-            &operation.context,
-            request.resources,
-        )
-        .map(Some)
-        .map_err(map_ascii_error)
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let renderer = merman_ascii::AsciiRenderer::new(request.options);
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let renderer = renderer.map_err(map_ascii_error)?;
+    let result = renderer.render_model(
+        parsed.model(),
+        &operation.control,
+        &operation.context,
+        request.resources,
+    );
+    match result {
+        Ok(output) => Ok(Some(output)),
+        Err(error @ AsciiError::ResourceLimitExceeded(_)) => {
+            match operation
+                .control
+                .terminal_checkpoint_at(OperationPhase::Emit)
+            {
+                Err(terminal) => Err(crate::operation_runner::operation_terminal_error(terminal)),
+                Ok(()) => Err(map_ascii_error(error)),
+            }
+        }
+        Err(error) => Err(map_ascii_error(error)),
+    }
 }
 
 #[cfg(feature = "png")]

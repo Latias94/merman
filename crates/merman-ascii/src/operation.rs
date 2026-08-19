@@ -69,7 +69,7 @@ impl<'a> AsciiExecution<'a> {
     pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
         self.control
             .terminal_checkpoint_at(phase)
-            .map_err(|error| operation_terminal_error(*self.resources, error))
+            .map_err(operation_terminal_error)
     }
 
     /// Checks caller-owned cancellation at a bounded cadence inside deterministic long loops.

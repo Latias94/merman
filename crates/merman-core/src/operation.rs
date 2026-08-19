@@ -8,6 +8,8 @@ use std::fmt;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
+
+use crate::resources::ResourceProfile;
 #[cfg(any(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     feature = "operation-deadlines",
@@ -135,7 +137,7 @@ impl OperationState {
     }
 
     fn latch_terminal(&self, error: OperationLedgerError) -> OperationLedgerError {
-        *self.terminal.get_or_init(|| error)
+        self.terminal.get_or_init(|| error).clone()
     }
 }
 
@@ -260,10 +262,10 @@ impl OperationControl {
         phase: OperationPhase,
     ) -> Result<(), OperationLedgerError> {
         if let Some(error) = self.state.terminal.get() {
-            return Err(*error);
+            return Err(error.clone());
         }
         let Some(cancellation) = self.observe_cancellation_at(phase) else {
-            return self.state.terminal.get().copied().map_or(Ok(()), Err);
+            return self.state.terminal.get().cloned().map_or(Ok(()), Err);
         };
         Err(self.latch_terminal_error(OperationLedgerError::Cancelled(cancellation)))
     }
@@ -404,6 +406,7 @@ impl OperationControl {
         resource_phase: &'static str,
         actual: u64,
         maximum: u64,
+        provenance: OperationResourceProvenance,
     ) -> OperationLedgerError {
         self.latch_terminal_error(OperationLedgerError::ArithmeticOverflow {
             id,
@@ -411,6 +414,7 @@ impl OperationControl {
             resource_phase,
             actual,
             maximum,
+            provenance,
         })
     }
 
@@ -467,8 +471,64 @@ fn default_clock() -> Clock {
     }
 }
 
+/// Stable adapter domain that owns an operation resource terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum OperationResourceDomain {
+    Input,
+    Render,
+    Ascii,
+    Export,
+}
+
+impl OperationResourceDomain {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Input => "input",
+            Self::Render => "render",
+            Self::Ascii => "ascii",
+            Self::Export => "export",
+        }
+    }
+}
+
+impl fmt::Display for OperationResourceDomain {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// One explicit policy override captured when a resource terminal is first recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OperationResourceOverride {
+    pub id: &'static str,
+    pub value: u64,
+}
+
+/// Immutable policy provenance attached to the first operation resource terminal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperationResourceProvenance {
+    pub domain: OperationResourceDomain,
+    pub profile: Option<ResourceProfile>,
+    pub explicit_overrides: Arc<[OperationResourceOverride]>,
+}
+
+impl OperationResourceProvenance {
+    pub fn new(
+        domain: OperationResourceDomain,
+        profile: Option<ResourceProfile>,
+        explicit_overrides: impl IntoIterator<Item = OperationResourceOverride>,
+    ) -> Self {
+        Self {
+            domain,
+            profile,
+            explicit_overrides: explicit_overrides.into_iter().collect::<Vec<_>>().into(),
+        }
+    }
+}
+
 /// Target-neutral description of a checked operation resource rejection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
     "operation resource limit `{id}` exceeded during {phase}: {consumed} + {requested} > {limit}"
 )]
@@ -479,10 +539,11 @@ pub struct OperationResourceLimitExceeded {
     pub limit: u64,
     pub consumed: u64,
     pub requested: u64,
+    pub provenance: OperationResourceProvenance,
 }
 
 /// Sticky terminal failure shared by operation controls and target-owned resource adapters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum OperationLedgerError {
     #[error(transparent)]
     Cancelled(#[from] OperationCancelled),
@@ -497,6 +558,7 @@ pub enum OperationLedgerError {
         resource_phase: &'static str,
         actual: u64,
         maximum: u64,
+        provenance: OperationResourceProvenance,
     },
 }
 
@@ -506,6 +568,14 @@ mod tests {
     use std::sync::Barrier;
     use std::sync::atomic::AtomicU64;
     use std::thread;
+
+    fn test_resource_provenance() -> OperationResourceProvenance {
+        OperationResourceProvenance::new(
+            OperationResourceDomain::Render,
+            Some(ResourceProfile::Interactive),
+            [],
+        )
+    }
 
     #[test]
     fn clones_and_children_observe_shared_cancellation() {
@@ -698,11 +768,12 @@ mod tests {
             resource_phase: "layout",
             actual: u64::MAX,
             maximum: u64::MAX,
+            provenance: test_resource_provenance(),
         };
 
         parent.cancel();
         assert_eq!(
-            parent.latch_terminal_error(parent_terminal),
+            parent.latch_terminal_error(parent_terminal.clone()),
             parent_terminal
         );
         let observed = OperationControl::resolve_latched_cancellation(
@@ -743,10 +814,12 @@ mod tests {
             resource_phase: "layout",
             actual: u64::MAX,
             maximum: u64::MAX,
+            provenance: test_resource_provenance(),
         };
+        let clock_terminal = parent_terminal.clone();
         let clock = Arc::new(move || {
             if let Some(parent) = clock_parent.get() {
-                parent.latch_terminal_error(parent_terminal);
+                parent.latch_terminal_error(clock_terminal.clone());
             }
             base + Duration::from_millis(clock_now.load(Ordering::Relaxed))
         });
@@ -835,6 +908,7 @@ mod tests {
             limit: 2,
             consumed: 2,
             requested: 1,
+            provenance: test_resource_provenance(),
         });
         assert_eq!(
             first,
@@ -845,6 +919,7 @@ mod tests {
                 limit: 2,
                 consumed: 2,
                 requested: 1,
+                provenance: test_resource_provenance(),
             })
         );
 
@@ -876,6 +951,7 @@ mod tests {
                 "emit",
                 u64::MAX,
                 u64::MAX,
+                test_resource_provenance(),
             ),
             first
         );
@@ -891,6 +967,7 @@ mod tests {
             limit: 0,
             consumed: 0,
             requested: 1,
+            provenance: test_resource_provenance(),
         });
 
         let child = parent.child();
@@ -902,6 +979,7 @@ mod tests {
             limit: 0,
             consumed: 0,
             requested: 1,
+            provenance: test_resource_provenance(),
         });
         assert_ne!(child_terminal, parent_terminal);
         assert_eq!(
@@ -941,6 +1019,7 @@ mod tests {
                 limit: 0,
                 consumed: 0,
                 requested: 1,
+                provenance: test_resource_provenance(),
             }),
             first
         );
@@ -961,6 +1040,7 @@ mod tests {
             "layout",
             u64::MAX,
             u64::MAX,
+            test_resource_provenance(),
         );
         assert_eq!(
             first,
@@ -970,6 +1050,7 @@ mod tests {
                 resource_phase: "layout",
                 actual: u64::MAX,
                 maximum: u64::MAX,
+                provenance: test_resource_provenance(),
             }
         );
         assert_eq!(
@@ -980,6 +1061,7 @@ mod tests {
                 limit: 0,
                 consumed: 0,
                 requested: 1,
+                provenance: test_resource_provenance(),
             }),
             first
         );
@@ -1009,6 +1091,7 @@ mod tests {
                         limit: 0,
                         consumed: 0,
                         requested: 1,
+                        provenance: test_resource_provenance(),
                     })
                 })
             };

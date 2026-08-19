@@ -201,6 +201,8 @@ pub enum Error {
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[error(transparent)]
+    OperationResourceTerminal(merman_core::OperationLedgerError),
+    #[error(transparent)]
     Color(#[from] merman_core::theme_color::ColorError),
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
@@ -224,6 +226,9 @@ impl From<crate::resources::OperationWorkError> for Error {
             crate::resources::OperationWorkError::Cancelled(error) => Self::Cancelled(error),
             crate::resources::OperationWorkError::ResourceLimitExceeded(error) => {
                 Self::ResourceLimitExceeded(error)
+            }
+            crate::resources::OperationWorkError::ForeignResourceTerminal(error) => {
+                Self::OperationResourceTerminal(error)
             }
         }
     }

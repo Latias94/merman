@@ -4,7 +4,8 @@
 //! completed operation projection and must not create a replacement runtime context or control.
 
 use merman_core::{
-    Engine, OperationControl, OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
+    Engine, OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
+    OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
     ParseMetadata, ParseOptions, ParsedDiagramRender,
     resources::{InputResourceLimitExceeded, InputResourcePolicy},
     runtime::OperationContext,
@@ -90,7 +91,10 @@ impl Operation {
     }
 }
 
-fn checkpoint(control: &OperationControl, phase: OperationPhase) -> Result<(), RenderError> {
+pub(crate) fn checkpoint(
+    control: &OperationControl,
+    phase: OperationPhase,
+) -> Result<(), RenderError> {
     control
         .terminal_checkpoint_at(phase)
         .map_err(operation_terminal_error)
@@ -109,15 +113,26 @@ fn terminate_input_resource_error(
         limit: saturating_u64(error.max),
         consumed: 0,
         requested: saturating_u64(error.actual),
+        provenance: OperationResourceProvenance::new(
+            OperationResourceDomain::Input,
+            Some(error.profile),
+            error
+                .explicit_overrides
+                .iter()
+                .map(|override_| OperationResourceOverride {
+                    id: override_.id.as_str(),
+                    value: saturating_u64(override_.value),
+                }),
+        ),
     };
-    let terminal = control.terminate_resource_limit(operation_error);
+    let terminal = control.terminate_resource_limit(operation_error.clone());
     if terminal == OperationLedgerError::ResourceLimitExceeded(operation_error) {
         return RenderError::ResourceLimitExceeded(projected);
     }
     operation_terminal_error(terminal)
 }
 
-fn operation_terminal_error(error: OperationLedgerError) -> RenderError {
+pub(crate) fn operation_terminal_error(error: OperationLedgerError) -> RenderError {
     match error {
         OperationLedgerError::Cancelled(error) => RenderError::Cancelled(error),
         OperationLedgerError::ResourceLimitExceeded(error) => {
@@ -127,6 +142,7 @@ fn operation_terminal_error(error: OperationLedgerError) -> RenderError {
                 actual: error.consumed.saturating_add(error.requested),
                 maximum: error.limit,
                 cause: ResourceLimitCause::Ceiling,
+                provenance: Some(error.provenance),
             })
         }
         OperationLedgerError::ArithmeticOverflow {
@@ -134,6 +150,7 @@ fn operation_terminal_error(error: OperationLedgerError) -> RenderError {
             resource_phase,
             actual,
             maximum,
+            provenance,
             ..
         } => RenderError::ResourceLimitExceeded(ResourceLimitExceeded {
             id,
@@ -141,6 +158,7 @@ fn operation_terminal_error(error: OperationLedgerError) -> RenderError {
             actual,
             maximum,
             cause: ResourceLimitCause::ArithmeticOverflow,
+            provenance: Some(provenance),
         }),
     }
 }
@@ -207,6 +225,17 @@ impl SemanticArtifact {
 mod tests {
     use super::*;
 
+    fn test_provenance(domain: OperationResourceDomain) -> OperationResourceProvenance {
+        OperationResourceProvenance::new(
+            domain,
+            Some(merman_core::resources::ResourceProfile::Interactive),
+            [OperationResourceOverride {
+                id: "max_svg_bytes",
+                value: 17,
+            }],
+        )
+    }
+
     #[test]
     fn facade_terminal_mapper_replays_original_target_resource_metadata() {
         let ceiling_control = OperationControl::new();
@@ -217,6 +246,7 @@ mod tests {
             limit: 17,
             consumed: 10,
             requested: 8,
+            provenance: test_provenance(OperationResourceDomain::Render),
         });
         assert_resource_error(
             checkpoint(&ceiling_control, OperationPhase::Postprocess)
@@ -245,6 +275,7 @@ mod tests {
             "ascii_output",
             u64::from(u32::MAX),
             123,
+            test_provenance(OperationResourceDomain::Ascii),
         );
         assert_resource_error(
             checkpoint(&overflow_control, OperationPhase::Layout)

@@ -11,7 +11,7 @@ use cssparser::{Delimiter, Parser, ParserInput, Token};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_core::{
     OperationCancelled, OperationControl, OperationLedgerError, OperationPhase,
-    OperationResourceLimitExceeded,
+    OperationResourceDomain, OperationResourceLimitExceeded, OperationResourceProvenance,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_render::svg::ResvgCompatibleSvg;
@@ -247,9 +247,10 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 limit: details.max,
                 consumed: 0,
                 requested: details.actual,
+                provenance: export_operation_resource_provenance(),
             };
             (
-                control.terminate_resource_limit(error),
+                control.terminate_resource_limit(error.clone()),
                 OperationLedgerError::ResourceLimitExceeded(error),
             )
         }
@@ -260,6 +261,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 resource_phase: details.phase,
                 actual: details.actual,
                 maximum: details.max,
+                provenance: export_operation_resource_provenance(),
             };
             (
                 control.terminate_resource_overflow(
@@ -268,6 +270,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                     details.phase,
                     details.actual,
                     details.max,
+                    export_operation_resource_provenance(),
                 ),
                 expected,
             )
@@ -278,6 +281,11 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
     } else {
         export_terminal_error(terminal)
     }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn export_operation_resource_provenance() -> OperationResourceProvenance {
+    OperationResourceProvenance::new(OperationResourceDomain::Export, None, [])
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

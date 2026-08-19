@@ -25,6 +25,8 @@ pub enum AsciiError {
     AllocationFailed { phase: &'static str },
     #[error(transparent)]
     ResourceLimitExceeded(#[from] AsciiResourceLimitExceeded),
+    #[error(transparent)]
+    OperationResourceTerminal(merman_core::OperationLedgerError),
 }
 
 impl AsciiError {

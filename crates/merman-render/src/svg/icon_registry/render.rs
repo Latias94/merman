@@ -208,7 +208,9 @@ pub(super) fn render_resolved_icon(
     if let Err(error) = validation {
         if matches!(
             &error,
-            crate::Error::Cancelled(_) | crate::Error::ResourceLimitExceeded(_)
+            crate::Error::Cancelled(_)
+                | crate::Error::ResourceLimitExceeded(_)
+                | crate::Error::OperationResourceTerminal(_)
         ) {
             return Err(error);
         }

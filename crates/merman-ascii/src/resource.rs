@@ -1,7 +1,8 @@
 use crate::error::{AsciiError, Result};
 use merman_core::resources::{GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, ResourceProfile};
 use merman_core::{
-    OperationControl, OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
+    OperationControl, OperationLedgerError, OperationPhase, OperationResourceDomain,
+    OperationResourceLimitExceeded, OperationResourceOverride, OperationResourceProvenance,
 };
 use std::cell::Cell;
 use std::fmt;
@@ -704,6 +705,16 @@ impl ResourceContext {
         let AsciiError::ResourceLimitExceeded(details) = error else {
             return error;
         };
+        let provenance = OperationResourceProvenance::new(
+            OperationResourceDomain::Ascii,
+            Some(details.profile),
+            self.policy
+                .explicit_overrides()
+                .map(|(id, value)| OperationResourceOverride {
+                    id: id.as_str(),
+                    value: u64::try_from(value).unwrap_or(u64::MAX),
+                }),
+        );
         let terminal = match details.cause {
             AsciiResourceLimitCause::Ceiling => {
                 operation
@@ -715,6 +726,7 @@ impl ResourceContext {
                         limit: details.max as u64,
                         consumed: 0,
                         requested: details.actual as u64,
+                        provenance,
                     })
             }
             AsciiResourceLimitCause::ArithmeticOverflow => {
@@ -724,6 +736,7 @@ impl ResourceContext {
                     details.limit.descriptor().phase.as_str(),
                     u64::try_from(details.actual).unwrap_or(u64::MAX),
                     u64::try_from(details.max).unwrap_or(u64::MAX),
+                    provenance,
                 )
             }
         };
@@ -731,7 +744,7 @@ impl ResourceContext {
     }
 
     fn operation_error(&self, error: OperationLedgerError) -> AsciiError {
-        operation_terminal_error(self.policy, error)
+        operation_terminal_error(error)
     }
 
     fn checked_total(
@@ -748,18 +761,14 @@ impl ResourceContext {
     }
 }
 
-pub(crate) fn operation_terminal_error(
-    policy: AsciiResourcePolicy,
-    error: OperationLedgerError,
-) -> AsciiError {
+pub(crate) fn operation_terminal_error(error: OperationLedgerError) -> AsciiError {
     match error {
         OperationLedgerError::Cancelled(error) => AsciiError::Cancelled(error),
         OperationLedgerError::ResourceLimitExceeded(error) => {
-            let Some(limit) = AsciiResourceLimitId::from_stable_id(error.id) else {
-                return AsciiError::InvalidOption {
-                    field: "operation_control",
-                    message: "resource terminal does not belong to the ASCII renderer",
-                };
+            let Some((limit, profile)) = project_ascii_provenance(&error) else {
+                return AsciiError::OperationResourceTerminal(
+                    OperationLedgerError::ResourceLimitExceeded(error),
+                );
             };
             AsciiResourceLimitExceeded {
                 cause: AsciiResourceLimitCause::Ceiling,
@@ -767,7 +776,7 @@ pub(crate) fn operation_terminal_error(
                 actual: usize::try_from(error.consumed.saturating_add(error.requested))
                     .unwrap_or(usize::MAX),
                 max: usize::try_from(error.limit).unwrap_or(usize::MAX),
-                profile: policy.profile(),
+                profile,
             }
             .into()
         }
@@ -775,24 +784,73 @@ pub(crate) fn operation_terminal_error(
             id,
             actual,
             maximum,
-            ..
+            provenance,
+            phase,
+            resource_phase,
         } => {
-            let Some(limit) = AsciiResourceLimitId::from_stable_id(id) else {
-                return AsciiError::InvalidOption {
-                    field: "operation_control",
-                    message: "resource terminal does not belong to the ASCII renderer",
-                };
+            let Some((limit, profile)) =
+                project_ascii_overflow_provenance(id, resource_phase, &provenance)
+            else {
+                return AsciiError::OperationResourceTerminal(
+                    OperationLedgerError::ArithmeticOverflow {
+                        id,
+                        phase,
+                        resource_phase,
+                        actual,
+                        maximum,
+                        provenance,
+                    },
+                );
             };
             AsciiResourceLimitExceeded {
                 cause: AsciiResourceLimitCause::ArithmeticOverflow,
                 limit,
                 actual: usize::try_from(actual).unwrap_or(usize::MAX),
                 max: usize::try_from(maximum).unwrap_or(usize::MAX),
-                profile: policy.profile(),
+                profile,
             }
             .into()
         }
     }
+}
+
+fn project_ascii_provenance(
+    error: &OperationResourceLimitExceeded,
+) -> Option<(AsciiResourceLimitId, ResourceProfile)> {
+    let limit = AsciiResourceLimitId::from_stable_id(error.id)?;
+    if error.provenance.domain != OperationResourceDomain::Ascii
+        || error.resource_phase != limit.descriptor().phase.as_str()
+    {
+        return None;
+    }
+    validate_ascii_overrides(&error.provenance)?;
+    Some((limit, error.provenance.profile?))
+}
+
+fn project_ascii_overflow_provenance(
+    id: &'static str,
+    resource_phase: &'static str,
+    provenance: &OperationResourceProvenance,
+) -> Option<(AsciiResourceLimitId, ResourceProfile)> {
+    let limit = AsciiResourceLimitId::from_stable_id(id)?;
+    if provenance.domain != OperationResourceDomain::Ascii
+        || resource_phase != limit.descriptor().phase.as_str()
+    {
+        return None;
+    }
+    validate_ascii_overrides(provenance)?;
+    Some((limit, provenance.profile?))
+}
+
+fn validate_ascii_overrides(provenance: &OperationResourceProvenance) -> Option<()> {
+    provenance
+        .explicit_overrides
+        .iter()
+        .all(|override_| {
+            AsciiResourceLimitId::from_stable_id(override_.id).is_some()
+                && usize::try_from(override_.value).is_ok()
+        })
+        .then_some(())
 }
 
 #[derive(Debug)]
@@ -1091,6 +1149,84 @@ mod tests {
         assert_eq!(replayed, first);
         assert_eq!(resources.layout_work_used(), 0);
         assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn controlled_resource_terminal_replays_the_originating_policy_provenance() {
+        let originating_policy =
+            AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+                .expect("valid originating work limit");
+        let observing_policy = AsciiResourcePolicy::for_profile(ResourceProfile::Interactive);
+        let control = OperationControl::new();
+        let originating = ResourceContext::new(originating_policy)
+            .controlled(control.clone(), OperationPhase::Layout);
+        let observing = ResourceContext::new(observing_policy)
+            .controlled(control.clone(), OperationPhase::Emit);
+
+        let first = originating
+            .charge_layout_work(2)
+            .expect_err("the originating policy must reject the charge");
+        let replayed = observing
+            .checkpoint()
+            .expect_err("the observing policy must replay the stored terminal");
+
+        assert_eq!(replayed, first);
+        assert!(matches!(
+            replayed,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                profile: ResourceProfile::UnboundedForTrustedInput,
+                ..
+            })
+        ));
+        let terminal = control
+            .terminal_checkpoint_at(OperationPhase::Postprocess)
+            .expect_err("the core ledger must retain the exact originating provenance");
+        assert!(matches!(
+            terminal,
+            OperationLedgerError::ResourceLimitExceeded(OperationResourceLimitExceeded {
+                provenance: OperationResourceProvenance {
+                    domain: OperationResourceDomain::Ascii,
+                    profile: Some(ResourceProfile::UnboundedForTrustedInput),
+                    explicit_overrides,
+                },
+                ..
+            }) if explicit_overrides.as_ref()
+                == [OperationResourceOverride {
+                    id: MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID,
+                    value: 1,
+                }]
+        ));
+    }
+
+    #[test]
+    fn controlled_resource_terminal_preserves_a_foreign_render_domain() {
+        let control = OperationControl::new();
+        let terminal = control.terminate_resource_limit(OperationResourceLimitExceeded {
+            id: "max_svg_bytes",
+            phase: OperationPhase::Emit,
+            resource_phase: "svg_output",
+            limit: 17,
+            consumed: 17,
+            requested: 1,
+            provenance: OperationResourceProvenance::new(
+                OperationResourceDomain::Render,
+                Some(ResourceProfile::Constrained),
+                [OperationResourceOverride {
+                    id: "max_svg_bytes",
+                    value: 17,
+                }],
+            ),
+        });
+        let observing = ResourceContext::new(AsciiResourcePolicy::default())
+            .controlled(control, OperationPhase::Layout);
+
+        assert_eq!(
+            observing
+                .checkpoint()
+                .expect_err("ASCII must not reclassify a render resource terminal"),
+            AsciiError::OperationResourceTerminal(terminal)
+        );
     }
 
     #[test]
