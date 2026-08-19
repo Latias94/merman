@@ -104,7 +104,10 @@ class PlannerTests(unittest.TestCase):
     def test_svg_parity_selector_uses_explicit_input_boundaries(self) -> None:
         fixtures = {
             "crates/dugong/src/lib.rs": True,
+            "crates/merman/Cargo.toml": True,
+            "crates/merman/src/operation.rs": True,
             "crates/merman/src/render.rs": True,
+            "crates/merman/src/svg/mod.rs": True,
             "crates/merman-core/src/diagram/mod.rs": True,
             "crates/merman-render/src/lib.rs": True,
             "crates/xtask/src/cmd/compare/xml.rs": True,
@@ -121,6 +124,9 @@ class PlannerTests(unittest.TestCase):
             "playground/tests/root-viewport-oracle.ts": True,
             "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": True,
             "crates/merman/benches/ascii_pipeline.rs": False,
+            "crates/merman/examples/render_terminal.rs": False,
+            "crates/merman/src/ascii.rs": False,
+            "crates/merman/tests/ascii_api.rs": False,
             "crates/merman-ascii/src/safe_text/wrapped.rs": False,
             "crates/merman-cli/src/main.rs": False,
             "crates/xtask/src/cmd/native_abi.rs": False,
@@ -228,7 +234,7 @@ class PlannerTests(unittest.TestCase):
                 self.assertFalse(plan["fallback"])
                 self.assertEqual(selected, expected)
 
-    def test_fixture_upstream_and_script_changes_use_narrow_explicit_owners(self) -> None:
+    def test_fixture_and_script_changes_use_narrow_explicit_owners(self) -> None:
         fixtures = {
             "fixtures/flowchart/basic.mmd": {"core", "hygiene"},
             "fixtures/bindings/errors.json": {
@@ -238,12 +244,6 @@ class PlannerTests(unittest.TestCase):
                 "npm",
                 "platform",
                 "python",
-                "web",
-            },
-            "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json": {
-                "core",
-                "hygiene",
-                "npm",
                 "web",
             },
             "scripts/build-python-uniffi-wheel.py": {"hygiene", "python"},
@@ -262,6 +262,23 @@ class PlannerTests(unittest.TestCase):
                 selected = {name for name, enabled in plan["owners"].items() if enabled}
                 self.assertFalse(plan["fallback"])
                 self.assertEqual(selected, expected)
+
+    def test_pinned_upstream_authorities_select_every_owner(self) -> None:
+        for path in (
+            "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json",
+            "tools/upstreams/REPOS.lock.json",
+        ):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+
+                selected = {name for name, enabled in plan["owners"].items() if enabled}
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(selected, set(OWNER_NAMES))
+                self.assertTrue(plan["svg_parity"])
 
     def test_owner_local_changes_select_their_narrow_jobs(self) -> None:
         fixtures = {

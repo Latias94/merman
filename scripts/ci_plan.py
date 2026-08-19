@@ -39,7 +39,6 @@ _SVG_PARITY_CRATE_PREFIXES = (
     "crates/dugong/",
     "crates/dugong-graphlib/",
     "crates/manatee/",
-    "crates/merman/",
     "crates/merman-core/",
     "crates/merman-elk-layered/",
     "crates/merman-fixture-render-context/",
@@ -54,6 +53,10 @@ _SVG_PARITY_PREFIXES = (
 )
 _SVG_PARITY_EXACT_PATHS = frozenset(
     {
+        "crates/merman/Cargo.toml",
+        "crates/merman/src/operation.rs",
+        "crates/merman/src/render.rs",
+        "crates/merman/src/svg/mod.rs",
         "crates/xtask/src/cmd/admission.rs",
         "crates/xtask/src/cmd/fixtures.rs",
         "crates/xtask/src/cmd/flowchart_elk_corpus.rs",
@@ -591,7 +594,7 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         return _CORE_OWNERS, f"renderer fixture owner changed: {path}", False
     if path.startswith("tools/upstreams/"):
         return (
-            frozenset({"core", "hygiene", "npm", "web"}),
+            _ALL_OWNERS,
             f"upstream runtime authority changed: {path}",
             False,
         )
