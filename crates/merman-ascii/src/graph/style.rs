@@ -344,31 +344,27 @@ fn apply_style_property(
                 prepared.edge_arrow = Some(color);
             }
         }
-        Some(StyleProperty::Border) => {
-            if targets.node || targets.group {
-                charge_style_value_parse(resources, value, 2)?;
-                let color = parse_border_color(value);
-                if targets.node {
-                    prepared.node_border = Some(color);
-                }
-                if targets.group {
-                    prepared.group_border = Some(color);
-                }
+        Some(StyleProperty::Border) if targets.node || targets.group => {
+            charge_style_value_parse(resources, value, 2)?;
+            let color = parse_border_color(value);
+            if targets.node {
+                prepared.node_border = Some(color);
+            }
+            if targets.group {
+                prepared.group_border = Some(color);
             }
         }
-        Some(StyleProperty::Fill | StyleProperty::Background) => {
-            if targets.node || targets.group {
-                charge_style_value_parse(resources, value, 1)?;
-                let color = parse_css_color(value);
-                if targets.node {
-                    prepared.node_background = Some(color);
-                }
-                if targets.group {
-                    prepared.group_background = Some(color);
-                }
+        Some(StyleProperty::Fill | StyleProperty::Background) if targets.node || targets.group => {
+            charge_style_value_parse(resources, value, 1)?;
+            let color = parse_css_color(value);
+            if targets.node {
+                prepared.node_background = Some(color);
+            }
+            if targets.group {
+                prepared.group_background = Some(color);
             }
         }
-        None => {}
+        Some(StyleProperty::Border | StyleProperty::Fill | StyleProperty::Background) | None => {}
     }
     Ok(())
 }
