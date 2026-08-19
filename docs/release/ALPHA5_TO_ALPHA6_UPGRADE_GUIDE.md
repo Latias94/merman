@@ -75,7 +75,10 @@ Flowchart, Sequence, State, Class, ER, and XYChart.
 
 ## UniFFI and browser WASM
 
-- UniFFI binding API advances from `3` to `4`.
+- UniFFI binding API advances from `3` to `5`. API 5 replaces the API 4
+  `transport_api_version` / `transportApiVersion` probe with
+  `binding_api_version_v5` / `bindingApiVersionV5`, so stale generated bindings fail before
+  decoding revised capability or structured-error records.
 - Browser WASM transport API advances from `3` to `4`.
 - Generated ASCII capability records expose `semantic_coverage`, `primary_projection`, and
   `structured_text_fallback`.

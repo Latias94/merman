@@ -635,6 +635,8 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
+    func bindingApiVersionV5()  -> UInt32
+
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
     func diagramFamilyCapabilities()  -> [MermanDiagramFamilyCapability]
@@ -692,8 +694,6 @@ public protocol MermanProtocol: AnyObject, Sendable {
     func supportedThemes()  -> [String]
 
     func svgPlanJson(source: String, optionsJson: String?) throws  -> String
-
-    func transportApiVersion()  -> UInt32
 
     func validate(source: String, optionsJson: String?) throws  -> MermanValidationResult
 
@@ -809,6 +809,15 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
     return try!  FfiConverterSequenceTypeMermanAsciiCapability.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_ascii_capabilities(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
+open func bindingApiVersionV5() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v5(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1039,15 +1048,6 @@ open func svgPlanJson(source: String, optionsJson: String?)throws  -> String  {
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
         FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
-    )
-})
-}
-
-open func transportApiVersion() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_transport_api_version(
-            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -5255,6 +5255,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5() != 32101) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5316,9 +5319,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_svg_plan_json() != 24509) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_merman_uniffi_checksum_method_merman_transport_api_version() != 40640) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_validate() != 18871) {

@@ -47,7 +47,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.transportApiVersion() == 4 else {
+guard merman.bindingApiVersionV5() == 5 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 

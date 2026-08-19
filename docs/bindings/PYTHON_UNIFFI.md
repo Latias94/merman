@@ -70,11 +70,11 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.transport_api_version() == 4
+assert api.binding_api_version_v5() == 5
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == api.transport_api_version()
+assert catalog["transport_api_version"] == api.binding_api_version_v5()
 assert "svg" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -163,15 +163,18 @@ The optional `options_json` argument uses the shared contract documented in
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.
 
-The direct UniFFI binding API is `4`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `5`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
 names or copy an ID table into Python; inspect the loaded catalog instead.
 
-When migrating from API 3, replace `MermanAsciiCapability.summary_fallback` with
-`structured_text_fallback`. Use `semantic_coverage` and `primary_projection` for product logic;
-`support_level` remains a derived compatibility label.
+When migrating from API 4, replace `transport_api_version()` with
+`binding_api_version_v5()` and regenerate the complete package with its matching native library.
+The API 5 symbol change makes stale generated bindings fail before decoding revised capability or
+structured-error records. `MermanAsciiCapability.summary_fallback` is also replaced by
+`structured_text_fallback`; use `semantic_coverage` and `primary_projection` for product logic,
+while `support_level` remains a derived compatibility label.
 
 ## Text Measurement
 
@@ -226,8 +229,9 @@ mutation lifecycle.
   `with_icon_registry(...)`. Each call returns a new immutable bundle; the constructor no longer
   takes positional optional services.
 - Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
-- Move API 3 generated modules and native libraries together to API 4. Generic request constructors
-  now require `control`; pass `None` until the host adopts `MermanOperationControl`.
+- Move API 4 generated modules and native libraries together to API 5 before consuming the revised
+  ASCII capability or structured-error records. Generic request constructors require `control`;
+  pass `None` until the host adopts `MermanOperationControl`.
 - Use the result-returning binary methods when callers need typed operation metadata or the
   effective output plan. Switch on `output_plan.kind`; read `raster` or `pdf_filter_images` when
   present, and retain `raw_json` for unknown future kinds.

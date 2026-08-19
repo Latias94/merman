@@ -28,14 +28,14 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 4;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 5;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 3 therefore
-// did not reject a newer `MermanLintRuleCatalogEntry` after `tags` changed its wire layout. API 4
-// replaces the API 3 version-probe symbol so every API 3 generated binding fails to load or link
-// before it can decode any API 4 records.
+// UniFFI 0.32 method checksums include a record's type name but not its fields. API 4 therefore did
+// not reject changed `MermanAsciiCapability` and `MermanError` wire layouts. API 5 replaces the API
+// 4 version-probe symbol so every API 4 generated binding fails to load or link before decoding any
+// API 5 records.
 #[cfg(test)]
-const UNIFFI_BINDING_API_V3_VERSION_METHOD_CHECKSUM: u16 = 18_722;
+const UNIFFI_BINDING_API_V4_VERSION_METHOD_CHECKSUM: u16 = 40_640;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -677,7 +677,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn transport_api_version(&self) -> u32 {
+    pub fn binding_api_version_v5(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -2514,16 +2514,16 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 4);
-        assert_eq!(engine.transport_api_version(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 5);
+        assert_eq!(engine.binding_api_version_v5(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v3_generated_bindings_are_rejected_before_record_decoding() {
+    fn api_v4_generated_bindings_are_rejected_before_record_decoding() {
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_transport_api_version(),
-            UNIFFI_BINDING_API_V3_VERSION_METHOD_CHECKSUM
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5(),
+            UNIFFI_BINDING_API_V4_VERSION_METHOD_CHECKSUM
         );
         let generated_header = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -2531,20 +2531,21 @@ mod tests {
         ));
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_transport_api_version")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v5")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_transport_api_version")
-        );
-        assert!(
-            !generated_header.contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version"),
-            "API 3 probe symbol must stay absent so stale bindings fail before record decoding"
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5")
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version"),
-            "API 3 checksum symbol must stay absent from generated bindings"
+                .contains("uniffi_merman_uniffi_fn_method_merman_transport_api_version"),
+            "API 4 probe symbol must stay absent so stale bindings fail before record decoding"
+        );
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_checksum_method_merman_transport_api_version"),
+            "API 4 checksum symbol must stay absent from generated bindings"
         );
     }
 
