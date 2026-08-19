@@ -1,8 +1,5 @@
 use crate::error::{AsciiError, Result};
-use crate::graph::style::{
-    apply_group_declaration, apply_group_declarations, apply_node_declaration,
-    apply_node_declarations,
-};
+use crate::graph::style::prepare_state_style;
 use crate::graph::{
     AsciiGraph, DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan, GraphDirection,
     GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle, GraphNodeSemantics,
@@ -43,6 +40,52 @@ enum StateParentVisit {
 struct StateDirectionProjection {
     node_by_index: Vec<GraphDirection>,
     group_by_index: Vec<Option<GraphDirection>>,
+}
+
+struct StateStylePlan {
+    node_by_index: Vec<GraphNodeStyle>,
+    group_by_index: Vec<GraphGroupStyle>,
+}
+
+impl StateStylePlan {
+    fn try_new(
+        model: &StateDiagramRenderModel,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        let mut node_by_index = Vec::new();
+        node_by_index
+            .try_reserve_exact(model.nodes.len())
+            .map_err(|_| projection_allocation_failed())?;
+        let mut group_by_index = Vec::new();
+        group_by_index
+            .try_reserve_exact(model.nodes.len())
+            .map_err(|_| projection_allocation_failed())?;
+
+        for (index, node) in model.nodes.iter().enumerate() {
+            checkpoint_projection(execution, index)?;
+            let prepared = prepare_state_style(
+                node.css_compiled_styles
+                    .iter()
+                    .chain(&node.css_styles)
+                    .map(String::as_str)
+                    .chain(std::iter::once(node.label_style.as_str())),
+                resources,
+                execution,
+            )?;
+            let mut node_style = GraphNodeStyle::default();
+            prepared.apply_node(&mut node_style);
+            node_by_index.push(node_style);
+            let mut group_style = GraphGroupStyle::default();
+            prepared.apply_group(&mut group_style);
+            group_by_index.push(group_style);
+        }
+
+        Ok(Self {
+            node_by_index,
+            group_by_index,
+        })
+    }
 }
 
 struct StateGroupOrderEntry<'a> {
@@ -102,6 +145,7 @@ fn from_state_model_transactional(
     preflight_state_projection_text(model, resources, execution)?;
     let projection_work = state_projection_work(model, resources, execution)?;
     resources.charge_layout_work(projection_work)?;
+    let style_plan = StateStylePlan::try_new(model, resources, execution)?;
     let parent_projection = validate_supported_state_model(model, resources, execution)?;
 
     let direction = parse_state_direction(&model.direction)?;
@@ -153,7 +197,11 @@ fn from_state_model_transactional(
                     .copied()
                     .unwrap_or_else(|| direction.canonical()),
             )?,
-            state_node_style(node),
+            style_plan
+                .node_by_index
+                .get(index)
+                .copied()
+                .ok_or_else(|| unsupported("missing state node style plan"))?,
             GraphNodeSemantics { side_constraint },
         );
     }
@@ -195,7 +243,11 @@ fn from_state_model_transactional(
                 .flatten(),
             members,
             state_group_kind(node),
-            state_group_style(node),
+            style_plan
+                .group_by_index
+                .get(node_index)
+                .copied()
+                .ok_or_else(|| unsupported("missing state group style plan"))?,
         );
     }
 
@@ -501,8 +553,6 @@ fn state_projection_work(
             .unwrap_or_default();
         let node_items = label_items
             .checked_add(node.description.as_ref().map_or(0, |items| items.len()))
-            .and_then(|items| items.checked_add(node.css_compiled_styles.len()))
-            .and_then(|items| items.checked_add(node.css_styles.len()))
             .and_then(|items| items.checked_add(usize::from(node.position.is_some())))
             .ok_or_else(|| {
                 resources
@@ -1120,22 +1170,6 @@ fn state_node_shape(
     }
 }
 
-fn state_node_style(node: &StateDiagramRenderNode) -> GraphNodeStyle {
-    let mut style = GraphNodeStyle::default();
-    apply_node_declarations(&mut style, &node.css_compiled_styles);
-    apply_node_declarations(&mut style, &node.css_styles);
-    apply_node_declaration(&mut style, &node.label_style);
-    style
-}
-
-fn state_group_style(node: &StateDiagramRenderNode) -> GraphGroupStyle {
-    let mut style = GraphGroupStyle::default();
-    apply_group_declarations(&mut style, &node.css_compiled_styles);
-    apply_group_declarations(&mut style, &node.css_styles);
-    apply_group_declaration(&mut style, &node.label_style);
-    style
-}
-
 fn state_group_kind(node: &StateDiagramRenderNode) -> GraphGroupKind {
     if is_state_divider_group(node) {
         GraphGroupKind::Divider
@@ -1243,6 +1277,20 @@ mod tests {
         let model = StateDiagramRenderModel {
             direction: "TB".to_string(),
             nodes: vec![state_node("a")],
+            ..StateDiagramRenderModel::default()
+        };
+        assert_projection_accepts_exact_work(&model);
+    }
+
+    #[test]
+    fn state_style_bytes_are_admitted_at_the_exact_work_boundary() {
+        let mut node = state_node("a");
+        node.css_compiled_styles = vec!["fill:#112233".to_string()];
+        node.css_styles = vec!["fill:transparent".to_string()];
+        node.label_style = "border:#445566".to_string();
+        let model = StateDiagramRenderModel {
+            direction: "TB".to_string(),
+            nodes: vec![node],
             ..StateDiagramRenderModel::default()
         };
         assert_projection_accepts_exact_work(&model);

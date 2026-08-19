@@ -4,7 +4,7 @@ use super::model::{
     GraphNodeSemantics,
 };
 use super::shape::{ResolvedGraphNodeShape, resolve_flowchart_node_shape};
-use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
+use super::style::FlowchartStylePlan;
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
@@ -58,6 +58,7 @@ fn from_flowchart_model_transactional(
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     let memberships = preflight_flowchart_projection(model, resources, execution)?;
+    let style_plan = FlowchartStylePlan::try_new(model, resources, execution)?;
     validate_supported_flowchart_model(model, &memberships, resources, execution)?;
 
     let direction = if let Some(direction) = model.direction.as_deref() {
@@ -89,8 +90,16 @@ fn from_flowchart_model_transactional(
         edge_labels,
         groups,
     } = projection_plan;
+    let FlowchartStylePlan {
+        nodes: node_styles,
+        edges: edge_styles,
+        groups: group_styles,
+    } = style_plan;
     debug_assert_eq!(model.nodes.len(), nodes.len());
+    debug_assert_eq!(model.nodes.len(), node_styles.len());
     debug_assert_eq!(model.edges.len(), edge_labels.len());
+    debug_assert_eq!(model.edges.len(), edge_styles.len());
+    debug_assert_eq!(model.subgraphs.len(), group_styles.len());
     debug_assert_eq!(memberships.canonical_group_indices().len(), groups.len());
 
     let mut graph = AsciiGraph::new(direction);
@@ -101,7 +110,9 @@ fn from_flowchart_model_transactional(
         memberships.canonical_group_indices().len(),
     )?;
 
-    for (index, (node, node_plan)) in model.nodes.iter().zip(nodes).enumerate() {
+    for (index, ((node, node_plan), style)) in
+        model.nodes.iter().zip(nodes).zip(node_styles).enumerate()
+    {
         checkpoint_projection(execution, index)?;
         let Some(node_plan) = node_plan else {
             continue;
@@ -112,12 +123,18 @@ fn from_flowchart_model_transactional(
             id,
             text,
             node_plan.shape.shape,
-            resolve_node_style(model, node),
+            style,
             GraphNodeSemantics::default(),
         );
     }
 
-    for (index, (edge, label_plan)) in model.edges.iter().zip(edge_labels).enumerate() {
+    for (index, ((edge, label_plan), style)) in model
+        .edges
+        .iter()
+        .zip(edge_labels)
+        .zip(edge_styles)
+        .enumerate()
+    {
         checkpoint_projection(execution, index)?;
         let from = try_clone_projection_string(&edge.from, resources)?;
         let to = try_clone_projection_string(&edge.to, resources)?;
@@ -138,7 +155,7 @@ fn from_flowchart_model_transactional(
                 start_marker: parse_flow_edge_marker(edge.start_marker),
                 end_marker: parse_flow_edge_marker(edge.end_marker),
                 length: edge.length,
-                style: resolve_edge_style(model, edge),
+                style,
             },
         );
     }
@@ -151,6 +168,14 @@ fn from_flowchart_model_transactional(
         checkpoint_projection(execution, index)?;
         debug_assert_eq!(group_plan.canonical_index, canonical_index);
         let subgraph = &model.subgraphs[canonical_index];
+        let style =
+            group_styles
+                .get(canonical_index)
+                .copied()
+                .ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type: "flowchart",
+                    feature: "missing group style plan",
+                })?;
         let mut members = Vec::new();
         members
             .try_reserve_exact(canonical_members.len())
@@ -168,7 +193,7 @@ fn from_flowchart_model_transactional(
                 })?,
             group_plan.direction,
             members,
-            resolve_group_style(model, subgraph),
+            style,
         );
     }
 
@@ -219,8 +244,7 @@ fn preflight_flowchart_projection<'a>(
         if let Some(shape) = node.layout_shape.as_deref() {
             charge_text_layout(resources, shape)?;
         }
-        for (declaration_index, declaration) in node.classes.iter().chain(&node.styles).enumerate()
-        {
+        for (declaration_index, declaration) in node.classes.iter().enumerate() {
             checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
@@ -240,7 +264,7 @@ fn preflight_flowchart_projection<'a>(
         if let Some(stroke) = edge.stroke.as_deref() {
             charge_text_layout(resources, stroke)?;
         }
-        for (declaration_index, declaration) in edge.classes.iter().chain(&edge.style).enumerate() {
+        for (declaration_index, declaration) in edge.classes.iter().enumerate() {
             checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
@@ -256,24 +280,17 @@ fn preflight_flowchart_projection<'a>(
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, member)?;
         }
-        for (declaration_index, declaration) in
-            subgraph.classes.iter().chain(&subgraph.styles).enumerate()
-        {
+        for (declaration_index, declaration) in subgraph.classes.iter().enumerate() {
             checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
         }
     }
 
-    for (index, (class_name, declarations)) in model.class_defs.iter().enumerate() {
+    for (index, class_name) in model.class_defs.keys().enumerate() {
         checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, class_name)?;
-        for (declaration_index, declaration) in declarations.iter().enumerate() {
-            checkpoint_projection(execution, declaration_index)?;
-            resources.charge_layout_work(1)?;
-            charge_text_layout(resources, declaration)?;
-        }
     }
 
     let memberships = FlowchartMembershipIndex::try_new(model, resources, execution)?;
@@ -1197,6 +1214,95 @@ mod tests {
         assert_eq!(edge.start_marker, GraphEdgeMarker::Circle);
         assert_eq!(edge.end_marker, GraphEdgeMarker::Cross);
         assert_eq!(edge.stroke, GraphEdgeStroke::Invisible);
+    }
+
+    #[test]
+    fn flowchart_style_plan_charges_shared_class_once_and_keeps_exact_boundary() {
+        const NODE_COUNT: usize = 16;
+        let mut model = FlowchartModel {
+            keyword: "flowchart".to_string(),
+            acc_descr: None,
+            acc_title: None,
+            class_defs: Default::default(),
+            direction: Some("LR".to_string()),
+            edge_defaults: None,
+            vertex_calls: Vec::new(),
+            nodes: (0..NODE_COUNT)
+                .map(|index| {
+                    let mut node = flow_node(&format!("node-{index}"));
+                    node.classes.push("shared".to_string());
+                    node
+                })
+                .collect(),
+            edges: Vec::new(),
+            subgraphs: Vec::new(),
+            tooltips: Default::default(),
+            warning_facts: Vec::new(),
+        };
+        model.class_defs.insert(
+            "shared".to_string(),
+            vec![format!("fill:#112233;unused:{}", "x".repeat(8 * 1024))],
+        );
+
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut measured = ResourceContext::new(unbounded);
+        let graph = from_flowchart_model(&model, &AsciiRenderOptions::default(), &mut measured)
+            .expect("shared class style should render");
+        assert_eq!(
+            graph.nodes[0].style.background,
+            Some(crate::AsciiRgb::new(0x11, 0x22, 0x33))
+        );
+
+        let exact = measured.layout_work_used();
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
+            .expect("exact style work limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        from_flowchart_model(&model, &AsciiRenderOptions::default(), &mut exact_resources)
+            .expect("exact style work should pass");
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+            .expect("max-minus-one style work limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let error =
+            from_flowchart_model(&model, &AsciiRenderOptions::default(), &mut below_resources)
+                .expect_err("max-minus-one style work should fail");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == exact
+                    && details.max == exact - 1
+        ));
+        assert_eq!(below_resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn flowchart_style_scan_observes_cancellation_inside_a_large_declaration() {
+        let mut model = model_with_edge(flow_edge("A", "B"));
+        model.edges.clear();
+        model.class_defs.insert(
+            "large".to_string(),
+            vec![format!("unused:{}", "x".repeat(64 * 1024))],
+        );
+        for node in &mut model.nodes {
+            node.classes.push("large".to_string());
+        }
+
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(64);
+        let error = from_flowchart_model_with_execution(
+            &model,
+            &AsciiRenderOptions::default(),
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("large style scans must remain cancellable");
+        assert!(matches!(error, AsciiError::Cancelled(_)));
+        assert_eq!(resources.layout_work_used(), 0);
     }
 
     #[test]
