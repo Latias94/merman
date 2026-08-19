@@ -1026,7 +1026,7 @@ pub(crate) fn run_canonical_svg_compare(
         observed_operations,
     };
 
-    run_svg_compare(
+    run_svg_compare_with_parsed_dom(
         CompareHarnessOptions::new(CompareRunOptions {
             diagram: fact.diagram,
             out_path: request.out_path.clone(),
@@ -1165,23 +1165,21 @@ pub(crate) fn run_canonical_svg_compare(
             }
 
             let mut issues = Vec::new();
-            if let Err(error) = super::record_fixture_root_evidence(
-                &mut state.root_coverage,
-                &mut state.root_deltas,
-                input.stem,
-                input.upstream_svg,
-                &local_svg,
-                super::RootEvidencePolicy {
-                    parity_root_requested,
-                    browser_math_dimensions_are_diagnostic,
-                    report_delta: should_report_root,
-                },
-            ) {
-                issues.push(if parity_root_requested {
-                    format!("[parity-root] {error}")
-                } else {
-                    format!("[root-report] {error}")
-                });
+            if !request.check_dom
+                && let Err(error) = super::record_fixture_root_evidence(
+                    &mut state.root_coverage,
+                    &mut state.root_deltas,
+                    input.stem,
+                    input.upstream_svg,
+                    &local_svg,
+                    super::RootEvidencePolicy {
+                        parity_root_requested,
+                        browser_math_dimensions_are_diagnostic,
+                        report_delta: should_report_root,
+                    },
+                )
+            {
+                issues.push(format!("[root-report] {error}"));
             }
 
             Ok(
@@ -1222,6 +1220,28 @@ pub(crate) fn run_canonical_svg_compare(
                     }
                 },
             )
+        },
+        |state, stem, upstream_document, local_document, browser_math_dimensions_are_diagnostic| {
+            super::record_fixture_root_evidence_from_dom(
+                &mut state.root_coverage,
+                &mut state.root_deltas,
+                stem,
+                upstream_document,
+                local_document,
+                super::RootEvidencePolicy {
+                    parity_root_requested,
+                    browser_math_dimensions_are_diagnostic,
+                    report_delta: should_report_root,
+                },
+            )
+            .err()
+            .map(|error| {
+                if parity_root_requested {
+                    format!("[parity-root] {error}")
+                } else {
+                    format!("[root-report] {error}")
+                }
+            })
         },
         |_, report, fixture| {
             if fact.report_policy == FixtureReportPolicy::StatusLines {
@@ -1344,9 +1364,58 @@ fn write_fixture_status_line(report: &mut String, fixture: &CompareFixtureReport
 pub(crate) fn run_svg_compare<S, Header, Skip, Render, FixtureReport, Report>(
     harness: CompareHarnessOptions<'_>,
     state: &mut S,
+    write_header: Header,
+    skip_fixture: Skip,
+    render_fixture: Render,
+    write_fixture_report: FixtureReport,
+    write_report: Report,
+) -> CompareRunResult
+where
+    Header: FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>),
+    Skip: FnMut(&mut S, &str, &CompareRunPaths) -> Option<String>,
+    Render: FnMut(&mut S, &CompareFixtureInput<'_>) -> Result<CompareFixtureResult, String>,
+    FixtureReport: FnMut(&mut S, &mut String, &CompareFixtureReportInput<'_>),
+    Report:
+        FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>, &[String], &[String]),
+{
+    run_svg_compare_with_parsed_dom(
+        harness,
+        state,
+        write_header,
+        skip_fixture,
+        render_fixture,
+        ignore_parsed_dom::<S>,
+        write_fixture_report,
+        write_report,
+    )
+}
+
+fn ignore_parsed_dom<S>(
+    _state: &mut S,
+    _stem: &str,
+    _upstream_document: &svgdom::ParsedSvgDom<'_>,
+    _local_document: &svgdom::ParsedSvgDom<'_>,
+    _browser_math_dimensions_are_diagnostic: bool,
+) -> Option<String> {
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_svg_compare_with_parsed_dom<
+    S,
+    Header,
+    Skip,
+    Render,
+    InspectDom,
+    FixtureReport,
+    Report,
+>(
+    harness: CompareHarnessOptions<'_>,
+    state: &mut S,
     mut write_header: Header,
     mut skip_fixture: Skip,
     mut render_fixture: Render,
+    mut inspect_dom: InspectDom,
     mut write_fixture_report: FixtureReport,
     mut write_report: Report,
 ) -> CompareRunResult
@@ -1354,6 +1423,13 @@ where
     Header: FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>),
     Skip: FnMut(&mut S, &str, &CompareRunPaths) -> Option<String>,
     Render: FnMut(&mut S, &CompareFixtureInput<'_>) -> Result<CompareFixtureResult, String>,
+    InspectDom: for<'upstream, 'local> FnMut(
+        &mut S,
+        &str,
+        &svgdom::ParsedSvgDom<'upstream>,
+        &svgdom::ParsedSvgDom<'local>,
+        bool,
+    ) -> Option<String>,
     FixtureReport: FnMut(&mut S, &mut String, &CompareFixtureReportInput<'_>),
     Report:
         FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>, &[String], &[String]),
@@ -1507,7 +1583,7 @@ where
                 notes: fixture_notes,
             } => {
                 evidence.record_render(render_evidence);
-                let comparison = write_rendered_fixture(
+                let comparison = write_rendered_fixture_with_parsed_dom(
                     &local_out_path,
                     &local_svg,
                     &text,
@@ -1525,6 +1601,9 @@ where
                     &run.dom_plan,
                     false,
                     run.dom_decimals,
+                    |upstream_document, local_document| {
+                        inspect_dom(state, stem, upstream_document, local_document, false)
+                    },
                 )
                 .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
                 evidence.record_comparison(comparison);
@@ -1539,7 +1618,7 @@ where
                 notes: fixture_notes,
             } => {
                 evidence.record_render(render_evidence);
-                let comparison = write_rendered_fixture(
+                let comparison = write_rendered_fixture_with_parsed_dom(
                     &local_out_path,
                     &local_svg,
                     &text,
@@ -1557,6 +1636,15 @@ where
                     &run.dom_plan,
                     browser_math_dimensions_are_diagnostic,
                     run.dom_decimals,
+                    |upstream_document, local_document| {
+                        inspect_dom(
+                            state,
+                            stem,
+                            upstream_document,
+                            local_document,
+                            browser_math_dimensions_are_diagnostic,
+                        )
+                    },
                 )
                 .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
                 evidence.record_comparison(comparison);
@@ -1622,7 +1710,7 @@ struct FixtureComparisonEvidence {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn write_rendered_fixture(
+fn write_rendered_fixture_with_parsed_dom<InspectDom>(
     local_out_path: &Path,
     local_svg: &str,
     input_text: &str,
@@ -1640,7 +1728,14 @@ fn write_rendered_fixture(
     dom_plan: &DomComparisonPlan,
     browser_math_dimensions_are_diagnostic: bool,
     dom_decimals: u32,
-) -> Result<FixtureComparisonEvidence, XtaskError> {
+    mut inspect_dom: InspectDom,
+) -> Result<FixtureComparisonEvidence, XtaskError>
+where
+    InspectDom: for<'upstream, 'local> FnMut(
+        &svgdom::ParsedSvgDom<'upstream>,
+        &svgdom::ParsedSvgDom<'local>,
+    ) -> Option<String>,
+{
     fs::write(local_out_path, local_svg).map_err(|source| XtaskError::WriteFile {
         path: local_out_path.display().to_string(),
         source,
@@ -1718,6 +1813,9 @@ fn write_rendered_fixture(
         } else {
             let mut upstream_document = upstream_document.expect("checked upstream DOM parse");
             let mut local_document = local_document.expect("checked local DOM parse");
+            if let Some(issue) = inspect_dom(&upstream_document, &local_document) {
+                issues.push(issue);
+            }
             let mut descendant_comparisons: Vec<((svgdom::DomMode, bool, bool), Option<String>)> =
                 Vec::new();
             for (requested_mode, profile, _) in evaluations {
@@ -2616,7 +2714,7 @@ mod tests {
         let mut failures = Vec::new();
         let mut notes = Vec::new();
 
-        let comparison = write_rendered_fixture(
+        let comparison = write_rendered_fixture_with_parsed_dom(
             &local_path,
             &local,
             &source,
@@ -2634,6 +2732,7 @@ mod tests {
             &DomComparisonPlan::single(svgdom::DomMode::Structure),
             false,
             3,
+            |_, _| None,
         )
         .expect("writing the local SVG should succeed");
 
@@ -2651,7 +2750,7 @@ mod tests {
     }
 
     #[test]
-    fn dom_suite_attributes_root_only_failures_to_parity_root() {
+    fn dom_suite_reuses_parsed_dom_for_root_evidence() {
         let root = unique_test_root("dom-suite-mode-attribution");
         fs::create_dir_all(&root).expect("test output root should be created");
         let upstream_path = root.join("upstream.svg");
@@ -2661,9 +2760,11 @@ mod tests {
         fs::write(&upstream_path, upstream).expect("upstream SVG should be written");
         let mut failures = Vec::new();
         let mut notes = Vec::new();
+        let mut root_coverage = super::super::RootCoverageSummary::default();
+        let mut root_deltas = Vec::new();
         svgdom::reset_dom_comparator_work_counts();
 
-        let comparison = write_rendered_fixture(
+        let comparison = write_rendered_fixture_with_parsed_dom(
             &local_path,
             local,
             "info",
@@ -2685,6 +2786,22 @@ mod tests {
             ]),
             false,
             3,
+            |upstream_document, local_document| {
+                super::super::record_fixture_root_evidence_from_dom(
+                    &mut root_coverage,
+                    &mut root_deltas,
+                    "root-only",
+                    upstream_document,
+                    local_document,
+                    super::super::RootEvidencePolicy {
+                        parity_root_requested: true,
+                        browser_math_dimensions_are_diagnostic: false,
+                        report_delta: true,
+                    },
+                )
+                .err()
+                .map(|error| format!("[parity-root] {error}"))
+            },
         )
         .expect("one rendered SVG should support every DOM evaluation mode");
 
@@ -2697,6 +2814,10 @@ mod tests {
             },
             "the multi-policy comparator should parse each SVG side once and reuse parity descendants"
         );
+        assert_eq!(root_deltas.len(), 1);
+        let mut root_report = String::new();
+        root_coverage.write_report(&mut root_report);
+        assert!(root_report.contains("Exact root-gated rendered fixtures: `1`"));
         assert!(!failures.is_empty());
         assert!(
             failures

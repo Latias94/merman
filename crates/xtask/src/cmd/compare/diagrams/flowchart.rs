@@ -9,8 +9,9 @@ use crate::cmd::compare::{
     RootDelta, RootDeltaReportLimit, RootEvidencePolicy, begin_math_evidence,
     browser_measured_math_root_note, collect_label_metric_deltas, finish_math_evidence,
     parse_label_delta_report_limit, parse_root_delta_report_limit, record_fixture_root_evidence,
-    render_semantic_svg, run_svg_compare, sanitize_svg_id, svg_compare_engine_with_site_config,
-    svg_request, write_compare_result_section, write_label_deltas_report, write_notes_section,
+    record_fixture_root_evidence_from_dom, render_semantic_svg, run_svg_compare_with_parsed_dom,
+    sanitize_svg_id, svg_compare_engine_with_site_config, svg_request,
+    write_compare_result_section, write_label_deltas_report, write_notes_section,
     write_root_deltas_report, write_verification_policy_metadata,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -273,7 +274,7 @@ fn run_flowchart_compare_with_math_renderer(
         observed_operations,
     };
 
-    run_svg_compare(
+    run_svg_compare_with_parsed_dom(
         CompareHarnessOptions {
             run: CompareRunOptions {
                 diagram: fact.diagram,
@@ -434,23 +435,21 @@ fn run_flowchart_compare_with_math_renderer(
                 }
             }
 
-            if let Err(error) = record_fixture_root_evidence(
-                &mut state.root_coverage,
-                &mut state.root_deltas,
-                input.stem,
-                input.upstream_svg,
-                &local_svg,
-                RootEvidencePolicy {
-                    parity_root_requested,
-                    browser_math_dimensions_are_diagnostic,
-                    report_delta: should_report_root,
-                },
-            ) {
-                issues.push(if parity_root_requested {
-                    format!("[parity-root] {error}")
-                } else {
-                    format!("[root-report] {error}")
-                });
+            if !check_dom
+                && let Err(error) = record_fixture_root_evidence(
+                    &mut state.root_coverage,
+                    &mut state.root_deltas,
+                    input.stem,
+                    input.upstream_svg,
+                    &local_svg,
+                    RootEvidencePolicy {
+                        parity_root_requested,
+                        browser_math_dimensions_are_diagnostic,
+                        report_delta: should_report_root,
+                    },
+                )
+            {
+                issues.push(format!("[root-report] {error}"));
             }
 
             Ok(if browser_math_dimensions_are_diagnostic {
@@ -470,6 +469,28 @@ fn run_flowchart_compare_with_math_renderer(
                     compare_dom: true,
                     issues,
                     notes,
+                }
+            })
+        },
+        |state, stem, upstream_document, local_document, browser_math_dimensions_are_diagnostic| {
+            record_fixture_root_evidence_from_dom(
+                &mut state.root_coverage,
+                &mut state.root_deltas,
+                stem,
+                upstream_document,
+                local_document,
+                RootEvidencePolicy {
+                    parity_root_requested,
+                    browser_math_dimensions_are_diagnostic,
+                    report_delta: should_report_root,
+                },
+            )
+            .err()
+            .map(|error| {
+                if parity_root_requested {
+                    format!("[parity-root] {error}")
+                } else {
+                    format!("[root-report] {error}")
                 }
             })
         },

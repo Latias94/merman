@@ -155,6 +155,13 @@ impl<'input> ParsedSvgDom<'input> {
         self.document.root_element()
     }
 
+    pub(crate) fn svg_root(&self) -> roxmltree::Node<'_, '_> {
+        self.document
+            .descendants()
+            .find(|node| node.has_tag_name("svg"))
+            .expect("parsed SVG document invariant")
+    }
+
     pub(crate) fn signature_for_comparison(
         &mut self,
         profile: DomComparisonProfile,
