@@ -133,7 +133,10 @@ one-dark\t''
 gruvbox-light\t''
 gruvbox-dark\t''
 ayu-light\t''
-ayu-dark\t''"
+ayu-dark\t''
+brutalist\t''
+spotless\t''
+cyberpunk\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
@@ -225,7 +228,10 @@ one-dark\t''
 gruvbox-light\t''
 gruvbox-dark\t''
 ayu-light\t''
-ayu-dark\t''"
+ayu-dark\t''
+brutalist\t''
+spotless\t''
+cyberpunk\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''

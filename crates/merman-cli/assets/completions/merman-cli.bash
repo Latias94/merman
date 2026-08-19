@@ -278,7 +278,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --theme-preset)
-                    COMPREPLY=($(compgen -W "editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark brutalist spotless cyberpunk" -- "${cur}"))
                     return 0
                     ;;
                 --theme-file)
@@ -1374,7 +1374,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --theme-preset)
-                    COMPREPLY=($(compgen -W "editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark brutalist spotless cyberpunk" -- "${cur}"))
                     return 0
                     ;;
                 --theme-file)

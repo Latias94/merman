@@ -282,9 +282,9 @@ validates the bounded recipe and reports its requirements; it is not proof of th
 cross-family, cross-target portability matrix.
 
 `theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
-`gruvbox-dark`, `ayu-light`, and `ayu-dark`. The value compiles the corresponding Rust
-`ThemePreset`. It does not select `look: neo`, Flowchart ELK, an SVG pipeline, or a product
-profile.
+`gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. The value
+compiles the corresponding Rust `ThemePreset`. It does not select `look: neo`, Flowchart ELK, an
+SVG pipeline, or a product profile.
 
 `theme.spec` compiles one complete `DiagramThemeSpec`. Its supported top-level fields are:
 

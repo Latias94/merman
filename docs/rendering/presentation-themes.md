@@ -55,9 +55,10 @@ let RenderOutput::Svg(Some(svg)) = output else {
 ```
 
 `ThemePreset` currently contains `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
-`gruvbox-dark`, `ayu-light`, and `ayu-dark`. Presets are visual theme data. They do not select
-`look: neo`, an ELK renderer, an SVG pipeline, or a product behavior profile. The preset's
-Mermaid compatibility values are limited to the explicit compatibility lane owned by the theme.
+`gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. Presets are
+visual theme data. They do not select `look: neo`, an ELK renderer, an SVG pipeline, or a product
+behavior profile. The preset's Mermaid compatibility values are limited to the explicit
+compatibility lane owned by the theme.
 
 Use the versioned authoring contract for compact cross-family tokens. The materializer expands one
 definition into a complete editable spec; the ordinary compiler remains the only semantic compiler:

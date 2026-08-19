@@ -481,7 +481,7 @@ jobs:
             --no-default-features --features png --test c6_runtime \
             --cargo-quiet
           cargo nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png --test route_cutover_runtime \
+            --no-default-features --features png,layout-cytoscape --test route_cutover_runtime \
             --cargo-quiet
           cargo nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png,jpeg,pdf --test native_export_smoke \
@@ -659,8 +659,8 @@ jobs:
 
       - name: Test Typst plugin crate
         run: |
-          cargo test --locked -p merman-typst-plugin --no-default-features
-          cargo test --locked -p merman-typst-plugin --no-default-features \
+          cargo nextest run --locked -p merman-typst-plugin --no-default-features
+          cargo nextest run --locked -p merman-typst-plugin --no-default-features \
             --features analysis,layout-cytoscape,layout-elk,svg
 
       - name: Check exact Typst WASM size budget
