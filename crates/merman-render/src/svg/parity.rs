@@ -492,6 +492,90 @@ impl std::ops::Deref for SvgExecution<'_> {
     }
 }
 
+const DIAGRAM_ID_FANOUT_PROBE: &str = concat!(
+    "mmerman-diagram-id-fanout-probe-",
+    "0123456789abcdefghijklmnopqrstuvwxyz-",
+    "0123456789abcdefghijklmnopqrstuvwxyz-",
+    "0123456789abcdefghijklmnop"
+);
+const DIAGRAM_ID_PROBE_CHECKPOINT_BYTES: usize = 4096;
+
+fn preflight_family_diagram_id_fanout(
+    family: crate::family::RenderFamilyKind,
+    options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
+    session: &RenderSession,
+    render_probe: impl FnOnce(&SvgExecution<'_>) -> Result<root_svg::RootedSvg>,
+) -> Result<()> {
+    // IDs no longer than the fixed probe already have a caller-independent amplification bound.
+    // Longer IDs take the family-specific discovery path before their first materialization.
+    let Some(diagram_id) = options
+        .diagram_id
+        .as_deref()
+        .filter(|diagram_id| diagram_id.len() > DIAGRAM_ID_FANOUT_PROBE.len())
+    else {
+        return Ok(());
+    };
+    if session
+        .work_meter()
+        .policy()
+        .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+        .is_none()
+    {
+        return Ok(());
+    }
+
+    // A fixed ID bounds this discovery render independently of caller-controlled ID
+    // length. Every family then exposes its real fanout through the production writer instead of
+    // maintaining a second set of brittle occurrence constants.
+    let probe_options = SvgRenderOptions {
+        viewbox_padding: options.viewbox_padding,
+        diagram_id: Some(DIAGRAM_ID_FANOUT_PROBE.to_string()),
+    };
+    let mut probe_debug = debug.clone();
+    probe_debug.include_timing_diagnostics = false;
+    probe_debug.flowchart_edge_trace = None;
+    let probe_execution = SvgExecution::new(&probe_options, &probe_debug, session)?;
+    let probe_render = render_probe(&probe_execution);
+    session.checkpoint(OperationPhase::Emit)?;
+    let probe_svg = probe_render?.into_string_for(family);
+    session.checkpoint(OperationPhase::Emit)?;
+    let probe_svg = probe_svg?;
+    for _ in probe_svg
+        .as_bytes()
+        .chunks(DIAGRAM_ID_PROBE_CHECKPOINT_BYTES)
+    {
+        session.checkpoint(OperationPhase::Emit)?;
+    }
+    let occurrences = probe_svg.match_indices(DIAGRAM_ID_FANOUT_PROBE).count();
+    session.checkpoint(OperationPhase::Emit)?;
+    let projected_bytes = DIAGRAM_ID_FANOUT_PROBE
+        .len()
+        .checked_mul(occurrences)
+        .and_then(|probe_id_bytes| probe_svg.len().checked_sub(probe_id_bytes))
+        .and_then(|base_bytes| {
+            diagram_id
+                .len()
+                .checked_mul(occurrences)
+                .and_then(|id_bytes| base_bytes.checked_add(id_bytes))
+        });
+    let Some(projected_bytes) = projected_bytes else {
+        return Err(session
+            .work_meter()
+            .terminate_svg_byte_count_overflow(
+                crate::resources::ResourceLimitPhase::SvgOutput,
+                OperationPhase::Emit,
+            )
+            .into());
+    };
+    session.work_meter().preflight_svg_byte_count(
+        projected_bytes,
+        crate::resources::ResourceLimitPhase::SvgOutput,
+        OperationPhase::Emit,
+    )?;
+    session.checkpoint(OperationPhase::Emit)
+}
+
 #[cfg(test)]
 pub(crate) fn with_test_svg_execution<T>(
     request: &SvgRenderOptions,
@@ -513,6 +597,13 @@ pub(crate) fn render_builtin_family_artifact(
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
+    preflight_family_diagram_id_fanout(
+        family.kind(),
+        options,
+        debug,
+        session,
+        |probe_execution| render_builtin_family_artifact_raw(family, metadata, probe_execution),
+    )?;
     let execution = SvgExecution::new(options, debug, session)?;
     let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution)?;
     let svg = rooted_svg.into_string_for(family.kind())?;
@@ -533,6 +624,20 @@ pub(crate) fn render_architecture_family_artifact(
 ) -> Result<String> {
     // Keep the deep-group Architecture path out of the heterogeneous dispatcher so it fits in
     // the renderer's supported low-stack worker budget.
+    preflight_family_diagram_id_fanout(
+        crate::family::RenderFamilyKind::Architecture,
+        options,
+        debug,
+        session,
+        |probe_execution| {
+            architecture::render_architecture_diagram_svg_typed_with_config(
+                pair.layout(),
+                pair.semantic(),
+                effective_config,
+                probe_execution,
+            )
+        },
+    )?;
     let execution = SvgExecution::new(options, debug, session)?;
     let rooted_svg = architecture::render_architecture_diagram_svg_typed_with_config(
         pair.layout(),

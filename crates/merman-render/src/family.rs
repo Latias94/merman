@@ -1724,6 +1724,43 @@ mod tests {
     }
 
     #[test]
+    fn family_diagram_id_fanout_is_admitted_before_the_requested_id_is_materialized() {
+        let maximum = 1_024;
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
+            .unwrap();
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .expect("parse info diagram")
+            .expect("detect info diagram");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        let artifact =
+            prepare(parsed, &LayoutOptions::default(), session).expect("prepare info diagram");
+        let diagram_id = "d".repeat(4_096);
+
+        let error = match artifact.render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.clone()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        ) {
+            Ok(_) => panic!("the diagram ID fanout must exceed the SVG byte ceiling"),
+            Err(error) => error,
+        };
+
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected the family fanout preflight to reject");
+        };
+        assert_eq!(details.limit, "max_svg_bytes");
+        assert_eq!(details.max, maximum);
+        assert!(details.actual > diagram_id.len());
+    }
+
+    #[test]
     fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync("info", ParseOptions::strict())

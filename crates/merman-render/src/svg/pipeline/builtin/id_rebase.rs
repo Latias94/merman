@@ -8,7 +8,7 @@ use cssparser::{
     serialize_identifier, serialize_name,
 };
 use quick_xml::XmlVersion;
-use quick_xml::events::{BytesCData, BytesStart, BytesText, Event};
+use quick_xml::events::{BytesRef, BytesStart, BytesText, Event};
 use quick_xml::reader::Reader;
 use quick_xml::writer::Writer;
 use std::borrow::Cow;
@@ -192,55 +192,114 @@ impl IoWrite for ProjectedByteCounter {
     }
 }
 
-#[derive(Clone, Copy)]
-enum ProjectedTextEncoding {
-    Raw,
-    XmlEscaped,
-}
-
 struct ProjectedTextCounter<'a> {
     bytes: &'a mut ProjectedByteCounter,
-    encoding: ProjectedTextEncoding,
 }
 
 impl<'a> ProjectedTextCounter<'a> {
-    fn raw(bytes: &'a mut ProjectedByteCounter) -> Self {
-        Self {
-            bytes,
-            encoding: ProjectedTextEncoding::Raw,
-        }
-    }
-
     fn xml_escaped(bytes: &'a mut ProjectedByteCounter) -> Self {
-        Self {
-            bytes,
-            encoding: ProjectedTextEncoding::XmlEscaped,
-        }
+        Self { bytes }
     }
 }
 
 impl fmt::Write for ProjectedTextCounter<'_> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
-        match self.encoding {
-            ProjectedTextEncoding::Raw => self.bytes.add(value.len()),
-            ProjectedTextEncoding::XmlEscaped => {
-                let mut plain_start = 0usize;
-                for (index, byte) in value.bytes().enumerate() {
-                    let escaped_bytes = match byte {
-                        b'<' | b'>' => 4,
-                        b'&' => 5,
-                        b'\'' | b'"' => 6,
-                        _ => continue,
-                    };
-                    self.bytes.add(index - plain_start);
-                    self.bytes.add(escaped_bytes);
-                    plain_start = index + 1;
-                }
-                self.bytes.add(value.len() - plain_start);
-            }
+        let mut plain_start = 0usize;
+        for (index, byte) in value.bytes().enumerate() {
+            let escaped_bytes = match byte {
+                b'<' | b'>' => 4,
+                b'&' => 5,
+                b'\'' | b'"' => 6,
+                _ => continue,
+            };
+            self.bytes.add(index - plain_start);
+            self.bytes.add(escaped_bytes);
+            plain_start = index + 1;
         }
+        self.bytes.add(value.len() - plain_start);
         Ok(())
     }
+}
+
+#[derive(Default)]
+struct LogicalStyleText {
+    css: String,
+}
+
+impl LogicalStyleText {
+    fn push_text(&mut self, text: &BytesText<'_>, cadence: &mut RebaseCadence<'_>) -> Result<()> {
+        let text = text
+            .xml10_content()
+            .map_err(|error| rebase_error(format!("invalid style text: {error}")))?;
+        self.push_str(&text, cadence)
+    }
+
+    fn push_cdata(
+        &mut self,
+        text: &quick_xml::events::BytesCData<'_>,
+        cadence: &mut RebaseCadence<'_>,
+    ) -> Result<()> {
+        let text = text
+            .xml10_content()
+            .map_err(|error| rebase_error(format!("invalid style CDATA: {error}")))?;
+        self.push_str(&text, cadence)
+    }
+
+    fn push_reference(
+        &mut self,
+        reference: &BytesRef<'_>,
+        cadence: &mut RebaseCadence<'_>,
+    ) -> Result<()> {
+        cadence.checkpoint()?;
+        self.css.push(resolve_style_reference(reference)?);
+        cadence.checkpoint()
+    }
+
+    fn push_str(&mut self, value: &str, cadence: &mut RebaseCadence<'_>) -> Result<()> {
+        cadence.checkpoint()?;
+        self.css.try_reserve(value.len()).map_err(|error| {
+            rebase_error(format!("failed to allocate logical style text: {error}"))
+        })?;
+        self.css.push_str(value);
+        cadence.checkpoint()
+    }
+
+    fn rewrite_to<W: fmt::Write>(
+        &self,
+        ids: &CollectedIds,
+        prefix: &str,
+        output: &mut W,
+        cadence: &mut RebaseCadence<'_>,
+    ) -> Result<()> {
+        rewrite_stylesheet_to(&self.css, ids, prefix, output, cadence)
+    }
+}
+
+fn resolve_style_reference(reference: &BytesRef<'_>) -> Result<char> {
+    if let Some(value) = reference
+        .resolve_char_ref()
+        .map_err(|error| rebase_error(format!("invalid style character reference: {error}")))?
+    {
+        return Ok(value);
+    }
+
+    let name = reference
+        .decode()
+        .map_err(|error| rebase_error(format!("invalid style entity reference: {error}")))?;
+    match name.as_ref() {
+        "amp" => Ok('&'),
+        "apos" => Ok('\''),
+        "gt" => Ok('>'),
+        "lt" => Ok('<'),
+        "quot" => Ok('"'),
+        _ => Err(rebase_error(format!(
+            "invalid style entity reference: unknown entity &{name};"
+        ))),
+    }
+}
+
+fn nested_style_xml_error() -> Error {
+    rebase_error("a <style> element contains nested XML elements")
 }
 
 fn projected_rebased_xml_bytes(
@@ -252,7 +311,7 @@ fn projected_rebased_xml_bytes(
     let mut writer = Writer::new(ProjectedByteCounter::default());
     let mut reader = Reader::from_str(svg);
     reader.config_mut().check_end_names = true;
-    let mut style_depth = 0usize;
+    let mut style_text = None::<LogicalStyleText>;
 
     loop {
         cadence.tick()?;
@@ -261,6 +320,9 @@ fn projected_rebased_xml_bytes(
         let event = event.map_err(|error| rebase_error(format!("invalid SVG XML: {error}")))?;
         match event {
             Event::Start(start) => {
+                if style_text.is_some() {
+                    return Err(nested_style_xml_error());
+                }
                 let is_style = start.local_name().as_ref().eq_ignore_ascii_case(b"style");
                 project_start(
                     &start,
@@ -272,10 +334,13 @@ fn projected_rebased_xml_bytes(
                     cadence,
                 )?;
                 if is_style {
-                    style_depth += 1;
+                    style_text = Some(LogicalStyleText::default());
                 }
             }
             Event::Empty(start) => {
+                if style_text.is_some() {
+                    return Err(nested_style_xml_error());
+                }
                 project_start(
                     &start,
                     &reader,
@@ -287,28 +352,37 @@ fn projected_rebased_xml_bytes(
                 )?;
             }
             Event::End(end) => {
-                if end.local_name().as_ref().eq_ignore_ascii_case(b"style") {
-                    style_depth = style_depth.saturating_sub(1);
+                if let Some(style) = style_text.take() {
+                    if !end.local_name().as_ref().eq_ignore_ascii_case(b"style") {
+                        return Err(nested_style_xml_error());
+                    }
+                    let mut output = ProjectedTextCounter::xml_escaped(writer.get_mut());
+                    style.rewrite_to(ids, prefix, &mut output, cadence)?;
                 }
                 writer.write_event(Event::End(end)).map_err(write_error)?;
             }
-            Event::Text(text) if style_depth > 0 => {
-                let encoded = text
-                    .decode()
-                    .map_err(|error| rebase_error(format!("invalid style text: {error}")))?;
-                let css = quick_xml::escape::unescape(&encoded)
-                    .map_err(|error| rebase_error(format!("invalid style entity: {error}")))?;
-                let mut output = ProjectedTextCounter::xml_escaped(writer.get_mut());
-                rewrite_stylesheet_to(&css, ids, prefix, &mut output, cadence)?;
+            Event::Text(text) if style_text.is_some() => {
+                style_text
+                    .as_mut()
+                    .expect("guarded above")
+                    .push_text(&text, cadence)?;
             }
-            Event::CData(text) if style_depth > 0 => {
-                let css = text
-                    .decode()
-                    .map_err(|error| rebase_error(format!("invalid style CDATA: {error}")))?;
-                writer.get_mut().add(b"<![CDATA[".len());
-                let mut output = ProjectedTextCounter::raw(writer.get_mut());
-                rewrite_stylesheet_to(&css, ids, prefix, &mut output, cadence)?;
-                writer.get_mut().add(b"]]>".len());
+            Event::CData(text) if style_text.is_some() => {
+                style_text
+                    .as_mut()
+                    .expect("guarded above")
+                    .push_cdata(&text, cadence)?;
+            }
+            Event::GeneralRef(reference) if style_text.is_some() => {
+                style_text
+                    .as_mut()
+                    .expect("guarded above")
+                    .push_reference(&reference, cadence)?;
+            }
+            Event::Comment(_) if style_text.is_some() => {
+                // XML comments are not part of the effective CSS text. Waiting until </style>
+                // lets selectors and url() tokens span Text/CDATA/comment boundaries exactly as
+                // they do in the browser.
             }
             Event::Eof => break,
             other => writer.write_event(other).map_err(write_error)?,
@@ -386,7 +460,7 @@ fn write_rebased_xml<W: IoWrite>(
 ) -> Result<()> {
     let mut reader = Reader::from_str(svg);
     reader.config_mut().check_end_names = true;
-    let mut style_depth = 0usize;
+    let mut style_text = None::<LogicalStyleText>;
 
     loop {
         cadence.tick()?;
@@ -395,6 +469,9 @@ fn write_rebased_xml<W: IoWrite>(
         let event = event.map_err(|error| rebase_error(format!("invalid SVG XML: {error}")))?;
         match event {
             Event::Start(start) => {
+                if style_text.is_some() {
+                    return Err(nested_style_xml_error());
+                }
                 let is_style = start.local_name().as_ref().eq_ignore_ascii_case(b"style");
                 let rewritten = rewrite_start(start, &reader, ids, prefix, cadence)?;
                 writer
@@ -402,10 +479,13 @@ fn write_rebased_xml<W: IoWrite>(
                     .map_err(write_error)?;
                 cadence.checkpoint()?;
                 if is_style {
-                    style_depth += 1;
+                    style_text = Some(LogicalStyleText::default());
                 }
             }
             Event::Empty(start) => {
+                if style_text.is_some() {
+                    return Err(nested_style_xml_error());
+                }
                 let rewritten = rewrite_start(start, &reader, ids, prefix, cadence)?;
                 writer
                     .write_event(Event::Empty(rewritten))
@@ -413,32 +493,39 @@ fn write_rebased_xml<W: IoWrite>(
                 cadence.checkpoint()?;
             }
             Event::End(end) => {
-                if end.local_name().as_ref().eq_ignore_ascii_case(b"style") {
-                    style_depth = style_depth.saturating_sub(1);
+                if let Some(style) = style_text.take() {
+                    if !end.local_name().as_ref().eq_ignore_ascii_case(b"style") {
+                        return Err(nested_style_xml_error());
+                    }
+                    let mut css = String::new();
+                    style.rewrite_to(ids, prefix, &mut css, cadence)?;
+                    writer
+                        .write_event(Event::Text(BytesText::new(&css)))
+                        .map_err(write_error)?;
+                    cadence.checkpoint()?;
                 }
                 writer.write_event(Event::End(end)).map_err(write_error)?;
             }
-            Event::Text(text) if style_depth > 0 => {
-                let encoded = text
-                    .decode()
-                    .map_err(|error| rebase_error(format!("invalid style text: {error}")))?;
-                let css = quick_xml::escape::unescape(&encoded)
-                    .map_err(|error| rebase_error(format!("invalid style entity: {error}")))?;
-                let css = rewrite_stylesheet(&css, ids, prefix, cadence)?;
-                writer
-                    .write_event(Event::Text(BytesText::new(&css)))
-                    .map_err(write_error)?;
-                cadence.checkpoint()?;
+            Event::Text(text) if style_text.is_some() => {
+                style_text
+                    .as_mut()
+                    .expect("guarded above")
+                    .push_text(&text, cadence)?;
             }
-            Event::CData(text) if style_depth > 0 => {
-                let css = text
-                    .decode()
-                    .map_err(|error| rebase_error(format!("invalid style CDATA: {error}")))?;
-                let css = rewrite_stylesheet(&css, ids, prefix, cadence)?;
-                writer
-                    .write_event(Event::CData(BytesCData::new(&css)))
-                    .map_err(write_error)?;
-                cadence.checkpoint()?;
+            Event::CData(text) if style_text.is_some() => {
+                style_text
+                    .as_mut()
+                    .expect("guarded above")
+                    .push_cdata(&text, cadence)?;
+            }
+            Event::GeneralRef(reference) if style_text.is_some() => {
+                style_text
+                    .as_mut()
+                    .expect("guarded above")
+                    .push_reference(&reference, cadence)?;
+            }
+            Event::Comment(_) if style_text.is_some() => {
+                // See the projection pass: comments do not contribute to style text.
             }
             Event::Eof => break,
             other => writer.write_event(other).map_err(write_error)?,
@@ -652,17 +739,6 @@ fn rewrite_smil_timing_to<W: fmt::Write>(
         write_rebased(output, &trimmed[index..])?;
     }
     Ok(())
-}
-
-fn rewrite_stylesheet(
-    css: &str,
-    ids: &CollectedIds,
-    prefix: &str,
-    cadence: &mut RebaseCadence<'_>,
-) -> Result<String> {
-    let mut output = String::new();
-    rewrite_stylesheet_to(css, ids, prefix, &mut output, cadence)?;
-    Ok(output)
 }
 
 fn rewrite_stylesheet_to<W: fmt::Write>(
@@ -1167,6 +1243,19 @@ mod tests {
             output.contains("u\\72l( &quot;#fragment-light-paint&quot; /* trailing */)"),
             "{output}"
         );
+    }
+
+    #[test]
+    fn rebases_css_tokens_across_xml_text_cdata_and_comment_boundaries() {
+        let svg = r##"<svg><style>#no<![CDATA[de]]><!-- not CSS text -->{fill:url(#pa<![CDATA[int]]>)}</style><defs><linearGradient id="paint"/></defs><path id="node"/></svg>"##;
+        let output = rebase(svg);
+
+        assert!(
+            output.contains("#fragment-light-node{fill:url(#fragment-light-paint)}"),
+            "{output}"
+        );
+        assert!(!output.contains("not CSS text"), "{output}");
+        assert!(!output.contains("<![CDATA["), "{output}");
     }
 
     #[test]
