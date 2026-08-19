@@ -26,13 +26,12 @@ use merman_core::common::GenericTypesPlan;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 mod namespace;
 
 use namespace::{
-    NamespaceFacadeAliases, has_renderable_namespaces, namespace_facade_aliases,
-    render_namespace_container_box, render_namespaced_class_diagram,
+    has_renderable_namespaces, render_namespace_container_box, render_namespaced_class_diagram,
     validate_class_namespace_ownership,
 };
 
@@ -144,6 +143,88 @@ impl<'a> ClassNoteIndex<'a> {
     fn get(&self, id: &str, resources: &mut ResourceContext) -> Result<Option<&'a ClassNote>> {
         resources.charge_layout_work(1)?;
         Ok(self.by_id.get(id).copied())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResolvedClassEndpoint<'a> {
+    authored_id: &'a str,
+    resolved_id: &'a str,
+    owner: Option<&'a str>,
+}
+
+impl<'a> ResolvedClassEndpoint<'a> {
+    const fn into_layout_endpoint(self) -> RelationEndpoint<'a> {
+        RelationEndpoint {
+            authored_id: self.authored_id,
+            resolved_id: self.resolved_id,
+            render_id: self.resolved_id,
+            owner: self.owner,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClassEndpointMetadata<'a> {
+    owner: Option<&'a str>,
+}
+
+#[derive(Debug)]
+struct ClassEndpointIndex<'a> {
+    endpoints: HashMap<&'a str, ClassEndpointMetadata<'a>>,
+    facade_aliases: &'a BTreeMap<String, String>,
+}
+
+impl<'a> ClassEndpointIndex<'a> {
+    fn new(model: &'a ClassDiagram, resources: &mut ResourceContext) -> Result<Self> {
+        let capacity = model
+            .classes
+            .len()
+            .checked_add(model.interfaces.len())
+            .ok_or_else(|| work_overflow(resources))?;
+        resources.charge_layout_work(capacity)?;
+
+        let mut endpoints = HashMap::new();
+        endpoints
+            .try_reserve(capacity)
+            .map_err(|_| layout_allocation_failed())?;
+        endpoints.extend(model.classes.values().map(|class| {
+            (
+                class.id.as_str(),
+                ClassEndpointMetadata {
+                    owner: class.parent.as_deref(),
+                },
+            )
+        }));
+        endpoints.extend(
+            model
+                .interfaces
+                .iter()
+                .map(|interface| (interface.id.as_str(), ClassEndpointMetadata { owner: None })),
+        );
+        Ok(Self {
+            endpoints,
+            facade_aliases: &model.namespace_facade_aliases,
+        })
+    }
+
+    fn resolve(&self, authored_id: &'a str) -> Option<ResolvedClassEndpoint<'a>> {
+        let resolved_id = self
+            .facade_aliases
+            .get(authored_id)
+            .map(String::as_str)
+            .unwrap_or(authored_id);
+        self.endpoints
+            .get(resolved_id)
+            .map(|metadata| ResolvedClassEndpoint {
+                authored_id,
+                resolved_id,
+                owner: metadata.owner,
+            })
+    }
+
+    fn is_facade(&self, id: &str) -> bool {
+        self.facade_aliases.contains_key(id)
     }
 }
 
@@ -282,8 +363,8 @@ enum RelationLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RelationLayout<'a> {
-    top_id: &'a str,
-    bottom_id: &'a str,
+    top: RelationEndpoint<'a>,
+    bottom: RelationEndpoint<'a>,
     top_marker: Option<RelationMarker>,
     bottom_marker: Option<RelationMarker>,
     line: RelationLine,
@@ -295,11 +376,27 @@ struct RelationLayout<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct RelationRouteEndpoints<'a> {
-    pub(super) top_id: &'a str,
-    pub(super) bottom_id: &'a str,
-    pub(super) top_facade_member: Option<&'a str>,
-    pub(super) bottom_facade_member: Option<&'a str>,
+pub(super) struct RelationEndpoint<'a> {
+    authored_id: &'a str,
+    resolved_id: &'a str,
+    render_id: &'a str,
+    owner: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct RelationRouteEndpoint<'a> {
+    pub(super) render_id: &'a str,
+    pub(super) facade_member: Option<&'a str>,
+}
+
+impl<'a> RelationEndpoint<'a> {
+    fn disclosure_id(self) -> Option<&'a str> {
+        if self.authored_id == self.resolved_id {
+            None
+        } else {
+            Some(self.authored_id)
+        }
+    }
 }
 
 impl<'a> RelationLayout<'a> {
@@ -307,7 +404,7 @@ impl<'a> RelationLayout<'a> {
         if direction != ClassDirection::BottomUp {
             return;
         }
-        std::mem::swap(&mut self.top_id, &mut self.bottom_id);
+        std::mem::swap(&mut self.top, &mut self.bottom);
         std::mem::swap(&mut self.top_marker, &mut self.bottom_marker);
         std::mem::swap(
             &mut self.top_endpoint_label,
@@ -316,25 +413,40 @@ impl<'a> RelationLayout<'a> {
         std::mem::swap(&mut self.top_endpoint_role, &mut self.bottom_endpoint_role);
     }
 
-    pub(super) fn with_route_endpoints(
+    pub(super) fn with_render_endpoints(
         mut self,
-        endpoints: RelationRouteEndpoints<'a>,
+        top: RelationRouteEndpoint<'a>,
+        bottom: RelationRouteEndpoint<'a>,
         width_profile: TerminalWidthProfile,
         deferred_text: &mut DeferredTextRegistry<'a>,
         resources: &ResourceContext,
     ) -> Result<Self> {
         resources.transaction(|resources| {
-            self.top_id = endpoints.top_id;
-            self.bottom_id = endpoints.bottom_id;
+            self.top.render_id = top.render_id;
+            self.bottom.render_id = bottom.render_id;
+            self.top_endpoint_label = join_endpoint_label_with_authored_ref(
+                self.top.disclosure_id(),
+                self.top_endpoint_label.take(),
+                width_profile,
+                deferred_text,
+                resources,
+            )?;
+            self.bottom_endpoint_label = join_endpoint_label_with_authored_ref(
+                self.bottom.disclosure_id(),
+                self.bottom_endpoint_label.take(),
+                width_profile,
+                deferred_text,
+                resources,
+            )?;
             self.top_endpoint_label = join_endpoint_label_with_facade(
-                endpoints.top_facade_member,
+                top.facade_member,
                 self.top_endpoint_label.take(),
                 width_profile,
                 deferred_text,
                 resources,
             )?;
             self.bottom_endpoint_label = join_endpoint_label_with_facade(
-                endpoints.bottom_facade_member,
+                bottom.facade_member,
                 self.bottom_endpoint_label.take(),
                 width_profile,
                 deferred_text,
@@ -390,6 +502,50 @@ fn join_endpoint_label_with_facade<'a>(
     RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
 }
 
+fn join_endpoint_label_with_authored_ref<'a>(
+    authored_ref: Option<&'a str>,
+    label: Option<RelationGraphLabel>,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<Option<RelationGraphLabel>> {
+    let Some(authored_ref) = authored_ref else {
+        return Ok(label);
+    };
+    let framed = deferred_text.try_register_framed_value(
+        "endpointRef(bytes=",
+        authored_ref,
+        width_profile,
+        resources,
+    )?;
+    let Some(label) = label else {
+        let mut lines = Vec::new();
+        lines
+            .try_reserve_exact(1)
+            .map_err(|_| layout_allocation_failed())?;
+        lines.push(framed);
+        return RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some);
+    };
+    let separator = deferred_text.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push(": "))?,
+        width_profile,
+        resources,
+    )?;
+    let first = label
+        .lines()
+        .first()
+        .map(|line| DeferredTextLine::try_concat(&[&framed, &separator, line], resources))
+        .transpose()?
+        .unwrap_or(framed);
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(label.line_count().max(1))
+        .map_err(|_| layout_allocation_failed())?;
+    lines.push(first);
+    lines.extend(label.lines().iter().skip(1).cloned());
+    RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
+}
+
 pub(crate) fn render_class_diagram_with_execution(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
@@ -422,15 +578,15 @@ fn render_class_diagram_impl(
     };
     let mut deferred_text = DeferredTextRegistry::new();
     validate_class_namespace_ownership(model, &mut resources)?;
-    let namespace_facade_aliases = namespace_facade_aliases(model);
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
-    validate_class_references(model, namespace_facade_aliases, &mut resources)?;
+    let endpoint_index = ClassEndpointIndex::new(model, &mut resources)?;
+    validate_class_references(model, &endpoint_index, &mut resources)?;
     if has_renderable_namespaces(model) {
         let rendered = render_namespaced_class_diagram(
             model,
             settings,
-            namespace_facade_aliases,
+            &endpoint_index,
             &mut deferred_text,
             &mut resources,
             execution,
@@ -442,7 +598,7 @@ fn render_class_diagram_impl(
     let boxes = render_class_boxes(
         model,
         settings,
-        namespace_facade_aliases,
+        &endpoint_index,
         &mut deferred_text,
         &mut resources,
         execution,
@@ -478,7 +634,7 @@ fn render_class_diagram_impl(
         layouts.push(relation_layout(
             model,
             relation,
-            namespace_facade_aliases,
+            &endpoint_index,
             options.terminal_width_profile,
             &mut deferred_text,
             &resources,
@@ -486,8 +642,10 @@ fn render_class_diagram_impl(
     }
     layouts.extend(note_relation_layouts(
         model,
-        namespace_facade_aliases,
+        &endpoint_index,
         &box_by_id,
+        options.terminal_width_profile,
+        &mut deferred_text,
         &mut resources,
     )?);
     for layout in &mut layouts {
@@ -612,33 +770,14 @@ fn validate_unique_class_render_ids(
 
 fn validate_class_references(
     model: &ClassDiagram,
-    namespace_facade_aliases: &NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'_>,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    let endpoint_capacity = model
-        .classes
-        .len()
-        .checked_add(model.interfaces.len())
-        .ok_or_else(|| work_overflow(resources))?;
-    resources.charge_layout_work(endpoint_capacity)?;
-
-    let mut endpoint_ids = HashSet::new();
-    endpoint_ids
-        .try_reserve(endpoint_capacity)
-        .map_err(|_| layout_allocation_failed())?;
-    endpoint_ids.extend(model.classes.values().map(|class| class.id.as_str()));
-    endpoint_ids.extend(
-        model
-            .interfaces
-            .iter()
-            .map(|interface| interface.id.as_str()),
-    );
-
     for relation in &model.relations {
         resources.charge_layout_work(2)?;
-        let left_id = relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str());
-        let right_id = relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str());
-        if !endpoint_ids.contains(left_id) || !endpoint_ids.contains(right_id) {
+        let left = endpoint_index.resolve(relation.id1.as_str());
+        let right = endpoint_index.resolve(relation.id2.as_str());
+        if left.is_none() || right.is_none() {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "relationships with missing endpoint classes",
@@ -651,8 +790,7 @@ fn validate_class_references(
             continue;
         };
         resources.charge_layout_work(1)?;
-        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
-        if !endpoint_ids.contains(target_id) {
+        if endpoint_index.resolve(target_id).is_none() {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "notes with missing target classes",
@@ -666,7 +804,7 @@ fn validate_class_references(
 fn render_class_boxes<'a>(
     model: &'a ClassDiagram,
     settings: ClassRenderSettings<'_>,
-    namespace_facade_aliases: &NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'_>,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -685,7 +823,7 @@ fn render_class_boxes<'a>(
     for class in model
         .classes
         .values()
-        .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
+        .filter(|class| !endpoint_index.is_facade(class.id.as_str()))
     {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_class_box(
@@ -1169,11 +1307,25 @@ fn generic_materialization_scan_work(
 fn relation_layout<'a>(
     model: &'a ClassDiagram,
     relation: &'a ClassRelation,
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'a>,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<RelationLayout<'a>> {
+    let left_endpoint =
+        endpoint_index
+            .resolve(relation.id1.as_str())
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "relationships with missing endpoint classes",
+            })?;
+    let right_endpoint =
+        endpoint_index
+            .resolve(relation.id2.as_str())
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "relationships with missing endpoint classes",
+            })?;
     let line = if relation.relation.line_type == model.constants.line_type.line {
         RelationLine::Solid
     } else if relation.relation.line_type == model.constants.line_type.dotted_line {
@@ -1214,8 +1366,8 @@ fn relation_layout<'a>(
 
     if left_marker == Some(RelationMarker::Extension) && right_marker.is_none() {
         return Ok(RelationLayout {
-            top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
-            bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
+            top: left_endpoint.into_layout_endpoint(),
+            bottom: right_endpoint.into_layout_endpoint(),
             top_marker: left_marker,
             bottom_marker: None,
             line,
@@ -1229,8 +1381,8 @@ fn relation_layout<'a>(
 
     if right_marker == Some(RelationMarker::Extension) && left_marker.is_none() {
         return Ok(RelationLayout {
-            top_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
-            bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
+            top: right_endpoint.into_layout_endpoint(),
+            bottom: left_endpoint.into_layout_endpoint(),
             top_marker: right_marker,
             bottom_marker: None,
             line,
@@ -1243,8 +1395,8 @@ fn relation_layout<'a>(
     }
 
     Ok(RelationLayout {
-        top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
-        bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
+        top: left_endpoint.into_layout_endpoint(),
+        bottom: right_endpoint.into_layout_endpoint(),
         top_marker: left_marker,
         bottom_marker: right_marker,
         line,
@@ -1256,34 +1408,10 @@ fn relation_layout<'a>(
     })
 }
 
-fn relation_endpoint_id<'a>(
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
-    id: &'a str,
-) -> &'a str {
-    namespace_facade_aliases
-        .get(id)
-        .map(String::as_str)
-        .unwrap_or(id)
-}
-
-fn class_explicit_namespace_id<'a>(
-    model: &'a ClassDiagram,
-    id: &'a str,
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
-) -> Option<&'a str> {
-    let class_id = relation_endpoint_id(namespace_facade_aliases, id);
-    let parent = model.classes.get(class_id)?.parent.as_deref()?;
-    model
-        .namespaces
-        .get(parent)
-        .filter(|namespace| namespace.explicit)
-        .map(|namespace| namespace.id.as_str())
-}
-
 fn note_explicit_namespace_id<'a>(
     model: &'a ClassDiagram,
     note: &'a ClassNote,
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'a>,
 ) -> Option<&'a str> {
     let note_parent = note.parent.as_deref()?;
     let note_namespace = model
@@ -1291,7 +1419,11 @@ fn note_explicit_namespace_id<'a>(
         .get(note_parent)
         .filter(|namespace| namespace.explicit)?;
     let target_id = note.class_id.as_deref()?;
-    let target_parent = class_explicit_namespace_id(model, target_id, namespace_facade_aliases)?;
+    let target_parent = endpoint_index.resolve(target_id)?.owner?;
+    model
+        .namespaces
+        .get(target_parent)
+        .filter(|namespace| namespace.explicit)?;
     (note_namespace.id == target_parent).then_some(note_namespace.id.as_str())
 }
 
@@ -1327,22 +1459,28 @@ fn marker_for_relation_type(
 
 fn note_relation_layouts<'a>(
     model: &'a ClassDiagram,
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'a>,
     box_by_id: &RenderedClassBoxIndex<'_>,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationLayout<'a>>> {
     note_relation_layouts_for_notes(
         model.notes.iter(),
-        namespace_facade_aliases,
+        endpoint_index,
         box_by_id,
+        width_profile,
+        deferred_text,
         resources,
     )
 }
 
 fn note_relation_layouts_for_notes<'a>(
     notes: impl Iterator<Item = &'a ClassNote>,
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'a>,
     box_by_id: &RenderedClassBoxIndex<'_>,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationLayout<'a>>> {
     let notes = notes;
@@ -1354,17 +1492,31 @@ fn note_relation_layouts_for_notes<'a>(
         let Some(target_id) = note.class_id.as_deref() else {
             continue;
         };
-        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
-        if box_by_id.get(target_id, resources)?.is_some() {
+        let Some(target) = endpoint_index.resolve(target_id) else {
+            continue;
+        };
+        if box_by_id.get(target.resolved_id, resources)?.is_some() {
+            let bottom_endpoint_label = join_endpoint_label_with_authored_ref(
+                target.into_layout_endpoint().disclosure_id(),
+                None,
+                width_profile,
+                deferred_text,
+                resources,
+            )?;
             layouts.push(RelationLayout {
-                top_id: note.id.as_str(),
-                bottom_id: target_id,
+                top: RelationEndpoint {
+                    authored_id: note.id.as_str(),
+                    resolved_id: note.id.as_str(),
+                    render_id: note.id.as_str(),
+                    owner: note.parent.as_deref(),
+                },
+                bottom: target.into_layout_endpoint(),
                 top_marker: None,
                 bottom_marker: None,
                 line: RelationLine::Dotted,
                 label: None,
                 top_endpoint_label: None,
-                bottom_endpoint_label: None,
+                bottom_endpoint_label,
                 top_endpoint_role: EndpointLabelRole::First,
                 bottom_endpoint_role: EndpointLabelRole::Second,
             });
@@ -1375,7 +1527,7 @@ fn note_relation_layouts_for_notes<'a>(
 
 fn external_namespace_note_summary_rows<'a>(
     model: &'a ClassDiagram,
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'a>,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
@@ -1383,44 +1535,63 @@ fn external_namespace_note_summary_rows<'a>(
     let mut rows = Vec::new();
     rows.try_reserve_exact(model.notes.len())
         .map_err(|_| layout_allocation_failed())?;
-    for (declaration_index, note) in model.notes.iter().enumerate().filter(|(_, note)| {
-        note_explicit_namespace_id(model, note, namespace_facade_aliases).is_none()
-    }) {
+    for (declaration_index, note) in model
+        .notes
+        .iter()
+        .enumerate()
+        .filter(|(_, note)| note_explicit_namespace_id(model, note, endpoint_index).is_none())
+    {
         let Some(target_id) = note.class_id.as_deref() else {
             continue;
         };
-        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
-        if model.classes.contains_key(target_id) {
-            let declaration_ordinal = declaration_index
-                .checked_add(1)
-                .ok_or_else(|| work_overflow(resources))?;
-            let source = deferred_text.try_register_parts(width_profile, resources, 7, |push| {
-                push(DeferredTextPart::Static("note(index="))?;
-                push(DeferredTextPart::Decimal(declaration_ordinal))?;
-                push(DeferredTextPart::Static(", text(bytes="))?;
-                push(DeferredTextPart::Decimal(note.text.len()))?;
-                push(DeferredTextPart::Static(")="))?;
-                push(DeferredTextPart::QuotedText(&note.text))?;
-                push(DeferredTextPart::Static(")"))
-            })?;
-            let connector = deferred_text.try_register(
-                ComposedTextPlan::try_new(resources, 1, |push| push(".."))?,
-                width_profile,
-                resources,
-            )?;
-            let target = deferred_text.try_register_framed_value(
+        let Some(target_endpoint) = endpoint_index.resolve(target_id) else {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "notes with missing target classes",
+            });
+        };
+        let declaration_ordinal = declaration_index
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
+        let source = deferred_text.try_register_parts(width_profile, resources, 7, |push| {
+            push(DeferredTextPart::Static("note(index="))?;
+            push(DeferredTextPart::Decimal(declaration_ordinal))?;
+            push(DeferredTextPart::Static(", text(bytes="))?;
+            push(DeferredTextPart::Decimal(note.text.len()))?;
+            push(DeferredTextPart::Static(")="))?;
+            push(DeferredTextPart::QuotedText(&note.text))?;
+            push(DeferredTextPart::Static(")"))
+        })?;
+        let connector = deferred_text.try_register(
+            ComposedTextPlan::try_new(resources, 1, |push| push(".."))?,
+            width_profile,
+            resources,
+        )?;
+        let target = if target_endpoint.authored_id == target_endpoint.resolved_id {
+            deferred_text.try_register_framed_value(
                 "id(bytes=",
-                target_id,
+                target_endpoint.resolved_id,
                 width_profile,
                 resources,
-            )?;
-            rows.push(RelationGraphSummaryRow::new(
-                source,
-                connector,
-                target,
-                std::rc::Rc::new(Vec::new()),
-            ));
-        }
+            )?
+        } else {
+            deferred_text.try_register_parts(width_profile, resources, 8, |push| {
+                push(DeferredTextPart::Static("id(bytes="))?;
+                push(DeferredTextPart::Decimal(target_endpoint.resolved_id.len()))?;
+                push(DeferredTextPart::Static(")="))?;
+                push(DeferredTextPart::QuotedText(target_endpoint.resolved_id))?;
+                push(DeferredTextPart::Static(" targetRef(bytes="))?;
+                push(DeferredTextPart::Decimal(target_endpoint.authored_id.len()))?;
+                push(DeferredTextPart::Static(")="))?;
+                push(DeferredTextPart::QuotedText(target_endpoint.authored_id))
+            })?
+        };
+        rows.push(RelationGraphSummaryRow::new(
+            source,
+            connector,
+            target,
+            std::rc::Rc::new(Vec::new()),
+        ));
     }
     Ok(rows)
 }
@@ -1660,13 +1831,13 @@ fn plan_parallel_vertical_relations<'plan, 'text>(
             diagram_type: "class",
             feature: "empty parallel class relationship layout",
         })?;
-    let top = relation_graph::find_box_ref(&boxes, first.top_id).ok_or(
+    let top = relation_graph::find_box_ref(&boxes, first.top.render_id).ok_or(
         AsciiError::UnsupportedFeature {
             diagram_type: "class",
             feature: "relationships with missing endpoint classes",
         },
     )?;
-    let bottom = relation_graph::find_box_ref(&boxes, first.bottom_id).ok_or(
+    let bottom = relation_graph::find_box_ref(&boxes, first.bottom.render_id).ok_or(
         AsciiError::UnsupportedFeature {
             diagram_type: "class",
             feature: "relationships with missing endpoint classes",
@@ -1920,7 +2091,7 @@ fn class_relation_summary_row<'a>(
 ) -> Result<RelationGraphSummaryRow> {
     let source = deferred_text.try_register_framed_value(
         "id(bytes=",
-        layout.top_id,
+        layout.top.render_id,
         width_profile,
         resources,
     )?;
@@ -1928,7 +2099,7 @@ fn class_relation_summary_row<'a>(
         class_relation_summary_connector(layout, width_profile, resources, deferred_text)?;
     let target = deferred_text.try_register_framed_value(
         "id(bytes=",
-        layout.bottom_id,
+        layout.bottom.render_id,
         width_profile,
         resources,
     )?;
@@ -2041,8 +2212,8 @@ fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
         layout.bottom_endpoint_label.as_ref(),
     ];
     LayeredRelationEdge::new(
-        layout.top_id,
-        layout.bottom_id,
+        layout.top.render_id,
+        layout.bottom.render_id,
         labels
             .iter()
             .flatten()
@@ -2078,7 +2249,7 @@ impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayo
     }
 
     fn is_self_relation(&self, layout: &RelationLayout<'relation>) -> bool {
-        layout.top_id == layout.bottom_id
+        layout.top.render_id == layout.bottom.render_id
     }
 
     fn self_loop_metrics(
@@ -2225,13 +2396,13 @@ impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayo
         layout: &'plan RelationLayout<'relation>,
         resources: &mut ResourceContext,
     ) -> Result<RelationRegionPlan<'plan>> {
-        let top = relation_graph::find_box_ref(boxes, layout.top_id).ok_or(
+        let top = relation_graph::find_box_ref(boxes, layout.top.render_id).ok_or(
             AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "relationships with missing endpoint classes",
             },
         )?;
-        let bottom = relation_graph::find_box_ref(boxes, layout.bottom_id).ok_or(
+        let bottom = relation_graph::find_box_ref(boxes, layout.bottom.render_id).ok_or(
             AsciiError::UnsupportedFeature {
                 diagram_type: "class",
                 feature: "relationships with missing endpoint classes",
@@ -2923,12 +3094,13 @@ mod tests {
             charset,
             direction,
         };
-        let aliases = namespace_facade_aliases(model);
         let mut deferred = DeferredTextRegistry::new();
+        let endpoint_index =
+            ClassEndpointIndex::new(model, &mut resources).expect("class endpoints should plan");
         let boxes = render_class_boxes(
             model,
             settings,
-            aliases,
+            &endpoint_index,
             &mut deferred,
             &mut resources,
             execution,
@@ -2943,7 +3115,7 @@ mod tests {
                 relation_layout(
                     model,
                     relation,
-                    aliases,
+                    &endpoint_index,
                     options.terminal_width_profile,
                     &mut deferred,
                     &resources,

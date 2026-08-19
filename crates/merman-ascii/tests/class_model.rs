@@ -1209,9 +1209,16 @@ fn class_local_semantic_fixture_covers_namespace_qualified_relationships() {
     let rendered = render_class(&input, &AsciiRenderOptions::unicode())
         .expect("namespace-qualified class relationships should render");
 
-    assert!(!rendered.contains("Platform.FFI.DartBinding"));
-    assert!(!rendered.contains("Platform.FFI.PythonBinding"));
-    assert!(!rendered.contains("Platform.Core.Renderer"));
+    for (framing, authored_endpoint) in [
+        ("endpointRef(bytes=24)=", "Platform.FFI.DartBinding"),
+        ("endpointRef(bytes=26)=", "Platform.FFI.PythonBinding"),
+        ("endpointRef(bytes=22)=", "Platform.Core.Renderer"),
+    ] {
+        assert!(
+            rendered.contains(framing) && rendered.contains(authored_endpoint),
+            "qualified relation endpoint should retain {authored_endpoint:?}:\n{rendered}"
+        );
+    }
     assert!(rendered.contains("Platform Layer"));
     assert!(rendered.contains("FFI"));
     assert!(rendered.contains("Core"));
@@ -1220,9 +1227,9 @@ fn class_local_semantic_fixture_covers_namespace_qualified_relationships() {
     assert!(rendered.contains("Renderer"));
     assert!(rendered.contains("relations:"), "{rendered}");
     for endpoint in [
-        "endpoint1=[bytes=30 \"member(bytes=11)=\\\"DartBinding\\\"\"]",
-        "endpoint1=[bytes=32 \"member(bytes=13)=\\\"PythonBinding\\\"\"]",
-        "endpoint2=[bytes=26 \"member(bytes=8)=\\\"Renderer\\\"\"]",
+        "member(bytes=11)=\\\"DartBinding\\\"",
+        "member(bytes=13)=\\\"PythonBinding\\\"",
+        "member(bytes=8)=\\\"Renderer\\\"",
     ] {
         assert!(
             rendered.contains(endpoint),
@@ -1304,6 +1311,85 @@ fn class_parser_namespace_aliases_disclose_utf8_authored_identity() {
             "nested namespace identity should retain its owning authored id {expected:?}:\n{boundary}"
         );
     }
+}
+
+#[test]
+fn class_typed_root_dotted_namespace_discloses_full_identity_behind_leaf_label() {
+    let render = |namespace_id: &str| {
+        let mut model = parse_class_model("classDiagram\nnamespace Root {\n  class Member\n}");
+        let mut namespace = model
+            .namespaces
+            .shift_remove("Root")
+            .expect("Root namespace should exist");
+        namespace.id = namespace_id.to_string();
+        namespace.label = "C".to_string();
+        model
+            .classes
+            .get_mut("Member")
+            .expect("Member class should exist")
+            .parent = Some(namespace.id.clone());
+        model.namespaces.insert(namespace.id.clone(), namespace);
+
+        render_class_model(&model, &AsciiRenderOptions::ascii()).unwrap_or_else(|error| {
+            panic!("dotted namespace {namespace_id:?} should render: {error}")
+        })
+    };
+
+    let left = render("A.C");
+    let right = render("B.C");
+
+    assert_ne!(
+        left, right,
+        "root dotted namespaces with the same leaf label must retain distinct identities"
+    );
+    assert!(left.contains(r#"namespaceId(bytes=3)="A.C""#), "{left}");
+    assert!(right.contains(r#"namespaceId(bytes=3)="B.C""#), "{right}");
+}
+
+#[test]
+fn class_typed_nested_namespace_discloses_identity_when_parent_path_cannot_recover_it() {
+    let render = |namespace_id: &str| {
+        let mut model = parse_class_model(
+            "classDiagram\nnamespace Parent {\n  namespace Child {\n    class Member\n  }\n}",
+        );
+        let child_key = model
+            .namespaces
+            .keys()
+            .find(|id| id.as_str() != "Parent")
+            .cloned()
+            .expect("nested Child namespace should exist");
+        let mut namespace = model
+            .namespaces
+            .shift_remove(&child_key)
+            .expect("nested Child namespace should exist");
+        namespace.id = namespace_id.to_string();
+        namespace.label = "Child".to_string();
+        namespace.dom_id = "namespace-child".to_string();
+        namespace.parent = Some("Parent".to_string());
+        model
+            .classes
+            .get_mut("Member")
+            .expect("Member class should exist")
+            .parent = Some(namespace.id.clone());
+        model.namespaces.insert(namespace.id.clone(), namespace);
+
+        render_class_model(&model, &AsciiRenderOptions::ascii()).unwrap_or_else(|error| {
+            panic!("nested namespace {namespace_id:?} should render: {error}")
+        })
+    };
+
+    let foreign = render("Foreign.Child");
+    let other = render("Other.Child");
+
+    assert_ne!(foreign, other);
+    assert!(
+        foreign.contains(r#"namespaceId(bytes=13)="Foreign.Child""#),
+        "{foreign}"
+    );
+    assert!(
+        other.contains(r#"namespaceId(bytes=11)="Other.Child""#),
+        "{other}"
+    );
 }
 
 #[test]
@@ -1450,6 +1536,32 @@ fn class_parser_sibling_namespace_relation_routes_through_facades() {
             "missing {expected:?}:\n{rendered}"
         );
     }
+}
+
+#[test]
+fn class_typed_relation_preserves_authored_facade_endpoint() {
+    let mut model = parse_class_model(
+        "classDiagram\nnamespace Domain {\n  class T\n}\nclass Outside\nT --> Outside",
+    );
+    let mut facade = model.classes["T"].clone();
+    facade.id = "Domain.T".to_string();
+    facade.dom_id = "classDomain.T-facade".to_string();
+    facade.parent = None;
+    model.classes.insert(facade.id.clone(), facade);
+    model
+        .namespace_facade_aliases
+        .insert("Domain.T".to_string(), "T".to_string());
+
+    let resolved = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("resolved relation endpoint should render");
+    model.relations[0].id1 = "Domain.T".to_string();
+    let authored = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("authored facade relation endpoint should render");
+
+    assert_ne!(resolved, authored);
+    assert!(!resolved.contains("endpointRef(bytes="), "{resolved}");
+    assert!(authored.contains("endpointRef(bytes=8)="), "{authored}");
+    assert!(authored.contains("Domain.T"), "{authored}");
 }
 
 #[test]
@@ -1611,6 +1723,31 @@ namespace Domain {
 }
 
 #[test]
+fn class_typed_namespace_note_preserves_authored_facade_target() {
+    let mut model =
+        parse_class_model("classDiagram\nnamespace Domain {\n  class T\n  note for T \"same\"\n}");
+    let mut facade = model.classes["T"].clone();
+    facade.id = "Domain.T".to_string();
+    facade.dom_id = "classDomain.T-facade".to_string();
+    facade.parent = None;
+    model.classes.insert(facade.id.clone(), facade);
+    model
+        .namespace_facade_aliases
+        .insert("Domain.T".to_string(), "T".to_string());
+
+    let resolved = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("resolved namespace note target should render");
+    model.notes[0].class_id = Some("Domain.T".to_string());
+    let authored = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("authored facade namespace note target should render");
+
+    assert_ne!(resolved, authored);
+    assert!(!resolved.contains("endpointRef(bytes="), "{resolved}");
+    assert!(authored.contains("endpointRef(bytes=8)="), "{authored}");
+    assert!(authored.contains("Domain.T"), "{authored}");
+}
+
+#[test]
 fn class_external_namespace_note_summary_preserves_provenance_and_target_identity() {
     let render = |first_target: &str, second_target: &str| {
         let mut model = parse_class_model(
@@ -1654,6 +1791,61 @@ fn class_external_namespace_note_summary_preserves_provenance_and_target_identit
     assert!(
         authored_first.contains(r#"id(bytes=6)="\\u{1B}""#),
         "{authored_first}"
+    );
+}
+
+#[test]
+fn class_external_namespace_note_summary_discloses_authored_facade_target() {
+    let mut model =
+        parse_class_model("classDiagram\nnamespace Domain {\n  class T\n}\nnote for T \"same\"");
+    let mut facade = model.classes["T"].clone();
+    facade.id = "Domain.T".to_string();
+    facade.dom_id = "classDomain.T-facade".to_string();
+    facade.parent = None;
+    model.classes.insert(facade.id.clone(), facade);
+    model
+        .namespace_facade_aliases
+        .insert("Domain.T".to_string(), "T".to_string());
+
+    let resolved = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("resolved note target should render");
+    model.notes[0].class_id = Some("Domain.T".to_string());
+    let authored = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("qualified authored note target should render through its facade");
+
+    assert_ne!(
+        resolved, authored,
+        "qualified and unqualified authored note targets must not collapse"
+    );
+    assert!(!resolved.contains("targetRef(bytes="), "{resolved}");
+    assert!(
+        authored.contains(r#"id(bytes=1)="T" targetRef(bytes=8)="Domain.T""#),
+        "{authored}"
+    );
+}
+
+#[test]
+fn class_external_namespace_note_summary_keeps_interface_endpoint() {
+    let mut model = parse_class_model(concat!(
+        "classDiagram\n",
+        "namespace Domain {\n  class Marker\n}\n",
+        "IService ()-- Service\n",
+        "note for Marker \"interface note\"",
+    ));
+    model.relations.clear();
+    model.notes[0].class_id = Some("interface0".to_string());
+
+    let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("validated interface note target should remain in the summary");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    assert!(
+        rendered.contains(r#"note(index=1, text(bytes=14)="interface note")"#),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains(r#"id(bytes=10)="interface0""#),
+        "{rendered}"
     );
 }
 

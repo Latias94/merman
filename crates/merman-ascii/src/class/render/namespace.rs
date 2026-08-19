@@ -1,8 +1,8 @@
 use super::{
-    CLASS_LEVEL_HORIZONTAL_GAP, ClassDirection, ClassNoteIndex, ClassRenderSettings,
-    RenderedClassBox, RenderedClassBoxIndex, authored_display_projection_is_lossy,
-    external_namespace_note_summary_rows, grid_overflow, layout_allocation_failed,
-    nesting_overflow, note_relation_layouts_for_notes, relation_endpoint_id, relation_layout,
+    CLASS_LEVEL_HORIZONTAL_GAP, ClassDirection, ClassEndpointIndex, ClassNoteIndex,
+    ClassRenderSettings, RenderedClassBox, RenderedClassBoxIndex,
+    authored_display_projection_is_lossy, external_namespace_note_summary_rows, grid_overflow,
+    layout_allocation_failed, nesting_overflow, note_relation_layouts_for_notes, relation_layout,
     render_class_box, render_class_component_lines, render_class_document_lines_with_execution,
     render_horizontal_class_component_lines, render_interface_box, render_note_box, work_overflow,
 };
@@ -15,14 +15,12 @@ use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_
 use crate::{AsciiError, Result};
 use merman_core::OperationPhase;
 use merman_core::models::class_diagram::{ClassDiagram, Namespace};
-use std::collections::{BTreeMap, HashMap};
-
-pub(super) type NamespaceFacadeAliases = BTreeMap<String, String>;
+use std::collections::HashMap;
 
 struct NamespaceRenderContext<'model, 'render> {
     model: &'model ClassDiagram,
     settings: ClassRenderSettings<'render>,
-    namespace_facade_aliases: &'model NamespaceFacadeAliases,
+    endpoint_index: &'render ClassEndpointIndex<'model>,
     render_plan: &'render NamespaceRenderPlan<'model>,
     scope_index: &'render NamespaceScopeIndex<'model>,
     note_by_id: ClassNoteIndex<'model>,
@@ -173,41 +171,29 @@ impl<'a> NamespaceRenderPlan<'a> {
 struct NamespaceScopeIndex<'a> {
     namespace_parent: HashMap<&'a str, Option<&'a str>>,
     namespace_route_id: HashMap<&'a str, &'a str>,
-    endpoint_owner: HashMap<&'a str, Option<&'a str>>,
     relation_scope: Vec<Option<&'a str>>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ScopedEndpoint<'a> {
-    route_id: &'a str,
-    facade_member: Option<&'a str>,
 }
 
 impl<'a> NamespaceScopeIndex<'a> {
     fn new(
         model: &'a ClassDiagram,
-        namespace_facade_aliases: &NamespaceFacadeAliases,
+        endpoint_index: &ClassEndpointIndex<'a>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         resources.transaction(|resources| {
-            Self::new_in_transaction(model, namespace_facade_aliases, resources, execution)
+            Self::new_in_transaction(model, endpoint_index, resources, execution)
         })
     }
 
     fn new_in_transaction(
         model: &'a ClassDiagram,
-        namespace_facade_aliases: &NamespaceFacadeAliases,
+        endpoint_index: &ClassEndpointIndex<'a>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         checkpoint_layout(execution)?;
         let namespace_capacity = model.namespaces.len();
-        let endpoint_capacity = model
-            .classes
-            .len()
-            .checked_add(model.interfaces.len())
-            .ok_or_else(|| work_overflow(resources))?;
         let scope_walk_bound = namespace_capacity
             .checked_add(1)
             .ok_or_else(|| work_overflow(resources))?;
@@ -219,7 +205,6 @@ impl<'a> NamespaceScopeIndex<'a> {
             .ok_or_else(|| work_overflow(resources))?;
         let index_work = namespace_capacity
             .checked_mul(2)
-            .and_then(|value| value.checked_add(endpoint_capacity))
             .and_then(|value| value.checked_add(model.relations.len()))
             .and_then(|value| {
                 value.checked_add(model.relations.len().checked_mul(scope_work_per_relation)?)
@@ -244,30 +229,27 @@ impl<'a> NamespaceScopeIndex<'a> {
             namespace_route_id.insert(namespace.id.as_str(), namespace.dom_id.as_str());
         }
 
-        let mut endpoint_owner = HashMap::new();
-        endpoint_owner
-            .try_reserve(endpoint_capacity)
-            .map_err(|_| layout_allocation_failed())?;
-        for class in model.classes.values() {
-            checkpoint_layout(execution)?;
-            endpoint_owner.insert(class.id.as_str(), class.parent.as_deref());
-        }
-        for interface in &model.interfaces {
-            checkpoint_layout(execution)?;
-            endpoint_owner.insert(interface.id.as_str(), None);
-        }
-
         let mut relation_scope = Vec::new();
         relation_scope
             .try_reserve_exact(model.relations.len())
             .map_err(|_| layout_allocation_failed())?;
         for relation in &model.relations {
             checkpoint_layout(execution)?;
-            let left = relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str());
-            let right = relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str());
+            let left = endpoint_index.resolve(relation.id1.as_str()).ok_or(
+                AsciiError::UnsupportedFeature {
+                    diagram_type: "class",
+                    feature: "relationships with missing endpoint classes",
+                },
+            )?;
+            let right = endpoint_index.resolve(relation.id2.as_str()).ok_or(
+                AsciiError::UnsupportedFeature {
+                    diagram_type: "class",
+                    feature: "relationships with missing endpoint classes",
+                },
+            )?;
             relation_scope.push(Self::least_common_scope(
-                endpoint_owner.get(left).copied().flatten(),
-                endpoint_owner.get(right).copied().flatten(),
+                left.owner,
+                right.owner,
                 &namespace_parent,
                 scope_walk_bound,
                 execution,
@@ -277,7 +259,6 @@ impl<'a> NamespaceScopeIndex<'a> {
         Ok(Self {
             namespace_parent,
             namespace_route_id,
-            endpoint_owner,
             relation_scope,
         })
     }
@@ -354,23 +335,22 @@ impl<'a> NamespaceScopeIndex<'a> {
 
     fn endpoint_for_scope(
         &self,
-        endpoint_id: &'a str,
+        endpoint: super::RelationEndpoint<'a>,
         scope: Option<&'a str>,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
-    ) -> Result<ScopedEndpoint<'a>> {
+    ) -> Result<super::RelationRouteEndpoint<'a>> {
         checkpoint_layout(execution)?;
         resources.charge_layout_work(1)?;
-        let owner = self.endpoint_owner.get(endpoint_id).copied().flatten();
-        let Some(owner) = owner else {
-            return Ok(ScopedEndpoint {
-                route_id: endpoint_id,
+        let Some(owner) = endpoint.owner else {
+            return Ok(super::RelationRouteEndpoint {
+                render_id: endpoint.resolved_id,
                 facade_member: None,
             });
         };
         if Some(owner) == scope {
-            return Ok(ScopedEndpoint {
-                route_id: endpoint_id,
+            return Ok(super::RelationRouteEndpoint {
+                render_id: endpoint.resolved_id,
                 facade_member: None,
             });
         }
@@ -386,13 +366,13 @@ impl<'a> NamespaceScopeIndex<'a> {
                 .flatten()
                 .ok_or_else(inconsistent_class_namespace_ownership)?;
         }
-        Ok(ScopedEndpoint {
-            route_id: self
+        Ok(super::RelationRouteEndpoint {
+            render_id: self
                 .namespace_route_id
                 .get(child)
                 .copied()
                 .ok_or_else(inconsistent_class_namespace_ownership)?,
-            facade_member: Some(endpoint_id),
+            facade_member: Some(endpoint.resolved_id),
         })
     }
 }
@@ -407,20 +387,9 @@ fn route_layout_for_scope<'a>(
     execution: AsciiExecution<'_>,
 ) -> Result<super::RelationLayout<'a>> {
     resources.transaction(|resources| {
-        let top = scope_index.endpoint_for_scope(layout.top_id, scope, resources, execution)?;
-        let bottom =
-            scope_index.endpoint_for_scope(layout.bottom_id, scope, resources, execution)?;
-        layout.with_route_endpoints(
-            super::RelationRouteEndpoints {
-                top_id: top.route_id,
-                bottom_id: bottom.route_id,
-                top_facade_member: top.facade_member,
-                bottom_facade_member: bottom.facade_member,
-            },
-            width_profile,
-            deferred_text,
-            resources,
-        )
+        let top = scope_index.endpoint_for_scope(layout.top, scope, resources, execution)?;
+        let bottom = scope_index.endpoint_for_scope(layout.bottom, scope, resources, execution)?;
+        layout.with_render_endpoints(top, bottom, width_profile, deferred_text, resources)
     })
 }
 
@@ -554,20 +523,19 @@ fn inconsistent_class_namespace_ownership() -> AsciiError {
 pub(super) fn render_namespaced_class_diagram<'a>(
     model: &'a ClassDiagram,
     settings: ClassRenderSettings<'_>,
-    namespace_facade_aliases: &'a NamespaceFacadeAliases,
+    endpoint_index: &ClassEndpointIndex<'a>,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     checkpoint_layout(execution)?;
     let render_plan = NamespaceRenderPlan::new(model, resources, execution)?;
-    let scope_index =
-        NamespaceScopeIndex::new(model, namespace_facade_aliases, resources, execution)?;
+    let scope_index = NamespaceScopeIndex::new(model, endpoint_index, resources, execution)?;
     let note_by_id = ClassNoteIndex::new(&model.notes, resources)?;
     let context = NamespaceRenderContext {
         model,
         settings,
-        namespace_facade_aliases,
+        endpoint_index,
         render_plan: &render_plan,
         scope_index: &scope_index,
         note_by_id,
@@ -586,7 +554,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
         let layout = relation_layout(
             model,
             relation,
-            namespace_facade_aliases,
+            endpoint_index,
             settings.options.terminal_width_profile,
             deferred_text,
             resources,
@@ -607,7 +575,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
     }
     let summary_rows = external_namespace_note_summary_rows(
         model,
-        namespace_facade_aliases,
+        endpoint_index,
         settings.options.terminal_width_profile,
         deferred_text,
         resources,
@@ -826,10 +794,7 @@ fn render_namespaced_class_boxes<'a>(
     }
 
     for class in context.model.classes.values().filter(|class| {
-        !context
-            .namespace_facade_aliases
-            .contains_key(class.id.as_str())
-            && class.parent.is_none()
+        !context.endpoint_index.is_facade(class.id.as_str()) && class.parent.is_none()
     }) {
         checkpoint_layout(context.execution)?;
         boxes.push(render_class_box(
@@ -892,9 +857,7 @@ fn render_namespace_box<'model>(
     for class_id in &namespace.class_ids {
         checkpoint_layout(context.execution)?;
         if let Some(class) = context.model.classes.get(class_id)
-            && !context
-                .namespace_facade_aliases
-                .contains_key(class.id.as_str())
+            && !context.endpoint_index.is_facade(class.id.as_str())
         {
             direct_boxes.push(render_class_box(
                 class,
@@ -936,7 +899,7 @@ fn render_namespace_box<'model>(
         let layout = relation_layout(
             context.model,
             relation,
-            context.namespace_facade_aliases,
+            context.endpoint_index,
             context.settings.options.terminal_width_profile,
             deferred_text,
             resources,
@@ -968,8 +931,10 @@ fn render_namespace_box<'model>(
         context.model.notes.iter().filter(|note| {
             note.parent.as_deref() == Some(namespace.id.as_str()) && note.class_id.is_some()
         }),
-        context.namespace_facade_aliases,
+        context.endpoint_index,
         &box_by_id,
+        context.settings.options.terminal_width_profile,
+        deferred_text,
         resources,
     )?);
     for layout in &mut direct_layouts {
@@ -1320,17 +1285,20 @@ fn namespace_authored_identity<'a>(
         .rsplit('.')
         .next()
         .unwrap_or(namespace.id.as_str());
-    (fallback_projection_is_lossy
-        || (raw_title != namespace.id.as_str() && namespace.label.as_str() != leaf_id))
-        .then_some(namespace.id.as_str())
+    let identity_recoverable_from_parent = namespace.parent.as_deref().is_some_and(|parent_id| {
+        namespace
+            .id
+            .strip_prefix(parent_id)
+            .and_then(|remainder| remainder.strip_prefix('.'))
+            == Some(leaf_id)
+    });
+    let authored_title_hides_identity = raw_title != namespace.id.as_str()
+        && (namespace.label.as_str() != leaf_id || !identity_recoverable_from_parent);
+    (fallback_projection_is_lossy || authored_title_hides_identity).then_some(namespace.id.as_str())
 }
 
 fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
     execution.checkpoint(OperationPhase::Layout)
-}
-
-pub(super) fn namespace_facade_aliases(model: &ClassDiagram) -> &NamespaceFacadeAliases {
-    &model.namespace_facade_aliases
 }
 
 #[cfg(test)]
@@ -1457,14 +1425,16 @@ mod tests {
         let model = parsed_class_model(
             "classDiagram\nnamespace Platform {\n  namespace FFI {\n    class Dart\n  }\n  namespace Core {\n    class Renderer\n  }\n}\nDart --> Renderer",
         );
-        let aliases = namespace_facade_aliases(&model);
         let unbounded = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
+        let mut endpoint_resources = ResourceContext::new(unbounded);
+        let endpoint_index = ClassEndpointIndex::new(&model, &mut endpoint_resources)
+            .expect("class endpoint index should build");
         let measured = ResourceContext::new(unbounded);
         NamespaceScopeIndex::new(
             &model,
-            aliases,
+            &endpoint_index,
             &measured,
             AsciiExecution::for_test(&unbounded),
         )
@@ -1478,7 +1448,7 @@ mod tests {
         let exact = ResourceContext::new(exact_policy);
         NamespaceScopeIndex::new(
             &model,
-            aliases,
+            &endpoint_index,
             &exact,
             AsciiExecution::for_test(&exact_policy),
         )
@@ -1495,7 +1465,7 @@ mod tests {
         let checkpoint = below.layout_work_used();
         let error = NamespaceScopeIndex::new(
             &model,
-            aliases,
+            &endpoint_index,
             &below,
             AsciiExecution::for_test(&below_policy),
         )
@@ -1525,15 +1495,17 @@ mod tests {
             .get_mut("Right")
             .expect("Right namespace should exist")
             .parent = Some("Left".to_string());
-        let aliases = namespace_facade_aliases(&model);
         let policy = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
+        let mut endpoint_resources = ResourceContext::new(policy);
+        let endpoint_index = ClassEndpointIndex::new(&model, &mut endpoint_resources)
+            .expect("class endpoint index should build");
         let resources = ResourceContext::new(policy);
 
         let error = NamespaceScopeIndex::new(
             &model,
-            aliases,
+            &endpoint_index,
             &resources,
             AsciiExecution::for_test(&policy),
         )
