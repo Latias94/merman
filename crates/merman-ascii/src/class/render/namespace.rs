@@ -1407,15 +1407,18 @@ fn namespace_authored_identity<'a>(
         .rsplit('.')
         .next()
         .unwrap_or(namespace.id.as_str());
-    let identity_recoverable_from_parent = namespace.parent.as_deref().is_some_and(|parent_id| {
-        namespace
-            .id
-            .strip_prefix(parent_id)
-            .and_then(|remainder| remainder.strip_prefix('.'))
-            == Some(leaf_id)
-    });
-    let authored_title_hides_identity = raw_title != namespace.id.as_str()
-        && (namespace.label.as_str() != leaf_id || !identity_recoverable_from_parent);
+    let identity_recoverable = match namespace.parent.as_deref() {
+        None => raw_title == namespace.id.as_str(),
+        Some(parent_id) => {
+            namespace.label.as_str() == leaf_id
+                && namespace
+                    .id
+                    .strip_prefix(parent_id)
+                    .and_then(|remainder| remainder.strip_prefix('.'))
+                    == Some(leaf_id)
+        }
+    };
+    let authored_title_hides_identity = !identity_recoverable;
     (fallback_projection_is_lossy || authored_title_hides_identity).then_some(namespace.id.as_str())
 }
 
@@ -1607,7 +1610,7 @@ mod tests {
         let model = parsed_class_model(concat!(
             "classDiagram\n",
             "namespace Domain {\n  class Service\n}\n",
-            "IService ()-- Service",
+            "IService ()-- Domain.Service",
         ));
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(policy);
@@ -1620,6 +1623,14 @@ mod tests {
             .interfaces
             .first()
             .expect("lollipop relation should create an interface endpoint");
+        assert_eq!(interface.class_id, "Domain.Service");
+        assert_eq!(
+            model
+                .namespace_facade_aliases
+                .get("Domain.Service")
+                .map(String::as_str),
+            Some("Service")
+        );
         let endpoint = endpoint_index
             .resolve(interface.id.as_str())
             .expect("interface endpoint should be indexed");
@@ -1650,6 +1661,70 @@ mod tests {
         )
         .expect("interface relation scope should build");
         assert_eq!(scope_index.scope_for_relation(0), Some("Domain"));
+    }
+
+    #[test]
+    fn typed_lollipop_interface_resolves_qualified_target_alias_before_owner_lookup() {
+        let mut model = parsed_class_model("classDiagram\nnamespace Domain {\n  class Service\n}");
+        model
+            .namespace_facade_aliases
+            .insert("Domain.Service".to_string(), "Service".to_string());
+        model.interfaces.push(ClassInterface {
+            id: "interface0".to_string(),
+            label: "IService".to_string(),
+            class_id: "Domain.Service".to_string(),
+        });
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
+
+        let endpoint_index = ClassEndpointIndex::new(&model, &mut resources)
+            .expect("qualified typed lollipop target should resolve through its facade alias");
+        let endpoint = endpoint_index
+            .resolve("interface0")
+            .expect("typed lollipop interface should be indexed");
+
+        assert_eq!(endpoint.resolved_id, "interface0");
+        assert_eq!(endpoint.owner, Some("Domain"));
+    }
+
+    #[test]
+    fn nested_namespace_identity_omits_only_exact_parent_leaf_reconstruction() {
+        let ambiguous = Namespace {
+            id: "Child".to_string(),
+            label: "Child".to_string(),
+            dom_id: "namespace-child".to_string(),
+            class_ids: Vec::new(),
+            note_ids: Vec::new(),
+            parent: Some("Parent".to_string()),
+            explicit: true,
+        };
+        assert_eq!(
+            namespace_authored_identity(&ambiguous, "Child", false),
+            Some("Child")
+        );
+
+        let reconstructable = Namespace {
+            id: "Parent.Child".to_string(),
+            label: "Child".to_string(),
+            dom_id: "namespace-parent-child".to_string(),
+            class_ids: Vec::new(),
+            note_ids: Vec::new(),
+            parent: Some("Parent".to_string()),
+            explicit: true,
+        };
+        assert_eq!(
+            namespace_authored_identity(&reconstructable, "Child", false),
+            None
+        );
+
+        let prefixed_but_not_exact = Namespace {
+            id: "Parent.Child.Extra".to_string(),
+            ..reconstructable
+        };
+        assert_eq!(
+            namespace_authored_identity(&prefixed_but_not_exact, "Child", false),
+            Some("Parent.Child.Extra")
+        );
     }
 
     #[test]

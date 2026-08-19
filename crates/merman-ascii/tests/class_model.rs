@@ -2637,6 +2637,42 @@ fn class_parser_lollipop_relation_renders_interface_node() {
 }
 
 #[test]
+fn class_parser_qualified_lollipop_target_renders_inside_its_namespace() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "namespace Domain {\n  class Service\n}\n",
+            "IService ()-- Domain.Service",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("qualified lollipop target should resolve through its namespace facade alias");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for expected in ["Domain", "IService", "Service"] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_typed_endpoint_label_cannot_render_as_endpoint_ref_provenance() {
+    const SPOOF: &str = r#"endpointRef(bytes=8)="Domain.T""#;
+
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B");
+    model.relations[0].relation_title_1 = Some(SPOOF.to_string());
+    let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
+        .expect("typed authored endpoint label should render in its dedicated slot");
+
+    assert!(
+        rendered.contains(r#"endpointLabel=[bytes=31 "endpointRef"#),
+        "{rendered}"
+    );
+}
+
+#[test]
 fn class_local_semantic_fixture_covers_note_for_link() {
     let input = read_local_semantic_fixture("class/note_for_service.mmd");
     let rendered =

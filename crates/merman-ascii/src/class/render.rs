@@ -196,24 +196,25 @@ impl<'a> ClassEndpointIndex<'a> {
                 },
             )
         }));
+        let mut index = Self {
+            endpoints,
+            facade_aliases: &model.namespace_facade_aliases,
+        };
         for interface in &model.interfaces {
-            let target = model.classes.get(interface.class_id.as_str()).ok_or(
+            let target = index.resolve(interface.class_id.as_str()).ok_or(
                 AsciiError::UnsupportedFeature {
                     diagram_type: "class",
                     feature: "interfaces with missing target classes",
                 },
             )?;
-            endpoints.insert(
+            index.endpoints.insert(
                 interface.id.as_str(),
                 ClassEndpointMetadata {
-                    owner: target.parent.as_deref(),
+                    owner: target.owner,
                 },
             );
         }
-        Ok(Self {
-            endpoints,
-            facade_aliases: &model.namespace_facade_aliases,
-        })
+        Ok(index)
     }
 
     fn resolve(&self, authored_id: &'a str) -> Option<ResolvedClassEndpoint<'a>> {
@@ -330,8 +331,8 @@ struct RelationLayout<'a> {
     bottom_marker: Option<RelationMarker>,
     line: RelationLine,
     label: Option<RelationGraphLabel>,
-    top_endpoint_label: Option<RelationGraphLabel>,
-    bottom_endpoint_label: Option<RelationGraphLabel>,
+    top_endpoint_label: ClassEndpointLabels,
+    bottom_endpoint_label: ClassEndpointLabels,
     top_endpoint_role: EndpointLabelRole,
     bottom_endpoint_role: EndpointLabelRole,
 }
@@ -353,8 +354,16 @@ struct PhysicalRelationLayout<'layout, 'model> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ClassRelationLabels {
     label: Option<RelationGraphLabel>,
-    left_endpoint: Option<RelationGraphLabel>,
-    right_endpoint: Option<RelationGraphLabel>,
+    left_endpoint: ClassEndpointLabels,
+    right_endpoint: ClassEndpointLabels,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ClassEndpointLabels {
+    authored: Option<RelationGraphLabel>,
+    endpoint_ref: Option<RelationGraphLabel>,
+    facade_member: Option<RelationGraphLabel>,
+    rendered: Option<RelationGraphLabel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -388,8 +397,8 @@ impl<'a> RelationLayout<'a> {
             .transform
             .physical_vertical_pair(self.top_marker, self.bottom_marker);
         let (top_endpoint_label, bottom_endpoint_label) = self.transform.physical_vertical_pair(
-            self.top_endpoint_label.as_ref(),
-            self.bottom_endpoint_label.as_ref(),
+            self.top_endpoint_label.rendered(),
+            self.bottom_endpoint_label.rendered(),
         );
         let (top_endpoint_role, bottom_endpoint_role) = self
             .transform
@@ -419,30 +428,26 @@ impl<'a> RelationLayout<'a> {
         resources.transaction(|resources| {
             self.top.render_id = top.render_id;
             self.bottom.render_id = bottom.render_id;
-            self.top_endpoint_label = join_endpoint_label_with_authored_ref(
+            self.top_endpoint_label = self.top_endpoint_label.try_with_endpoint_ref(
                 self.top.disclosure_id(),
-                self.top_endpoint_label.take(),
                 width_profile,
                 deferred_text,
                 resources,
             )?;
-            self.bottom_endpoint_label = join_endpoint_label_with_authored_ref(
+            self.bottom_endpoint_label = self.bottom_endpoint_label.try_with_endpoint_ref(
                 self.bottom.disclosure_id(),
-                self.bottom_endpoint_label.take(),
                 width_profile,
                 deferred_text,
                 resources,
             )?;
-            self.top_endpoint_label = join_endpoint_label_with_facade(
+            self.top_endpoint_label = self.top_endpoint_label.try_with_facade_member(
                 top.facade_member,
-                self.top_endpoint_label.take(),
                 width_profile,
                 deferred_text,
                 resources,
             )?;
-            self.bottom_endpoint_label = join_endpoint_label_with_facade(
+            self.bottom_endpoint_label = self.bottom_endpoint_label.try_with_facade_member(
                 bottom.facade_member,
-                self.bottom_endpoint_label.take(),
                 width_profile,
                 deferred_text,
                 resources,
@@ -452,85 +457,160 @@ impl<'a> RelationLayout<'a> {
     }
 }
 
-fn join_endpoint_label_with_facade<'a>(
-    facade_member: Option<&'a str>,
-    label: Option<RelationGraphLabel>,
-    width_profile: TerminalWidthProfile,
-    deferred_text: &mut DeferredTextRegistry<'a>,
-    resources: &ResourceContext,
-) -> Result<Option<RelationGraphLabel>> {
-    let Some(facade_member) = facade_member else {
-        return Ok(label);
-    };
+impl ClassEndpointLabels {
+    fn from_authored(
+        authored: Option<RelationGraphLabel>,
+        raw: Option<&str>,
+        width_profile: TerminalWidthProfile,
+        deferred_text: &mut DeferredTextRegistry<'_>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let authored = match authored {
+            Some(label) if raw.is_some_and(authored_endpoint_label_uses_reserved_syntax) => Some(
+                frame_authored_endpoint_label(&label, width_profile, deferred_text, resources)?,
+            ),
+            authored => authored,
+        };
+        Ok(Self {
+            rendered: authored.clone(),
+            authored,
+            endpoint_ref: None,
+            facade_member: None,
+        })
+    }
 
-    let prefix = deferred_text.try_register_parts(width_profile, resources, 3, |push| {
-        push(DeferredTextPart::Static("member(bytes="))?;
-        push(DeferredTextPart::Decimal(facade_member.len()))?;
-        push(DeferredTextPart::Static(")="))
-    })?;
-    let quoted = deferred_text.try_register_quoted_text(facade_member, width_profile, resources)?;
-    let facade = DeferredTextLine::try_concat(&[&prefix, &quoted], resources)?;
+    fn rendered(&self) -> Option<&RelationGraphLabel> {
+        self.rendered.as_ref()
+    }
 
-    let Some(label) = label else {
+    fn as_ref(&self) -> Option<&RelationGraphLabel> {
+        self.rendered()
+    }
+
+    fn try_with_endpoint_ref<'a>(
+        mut self,
+        authored_ref: Option<&'a str>,
+        width_profile: TerminalWidthProfile,
+        deferred_text: &mut DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        self.endpoint_ref = authored_ref
+            .map(|authored_ref| {
+                framed_endpoint_provenance(
+                    "endpointRef(bytes=",
+                    authored_ref,
+                    width_profile,
+                    deferred_text,
+                    resources,
+                )
+            })
+            .transpose()?;
+        self.rebuild(width_profile, resources)?;
+        Ok(self)
+    }
+
+    fn try_with_facade_member<'a>(
+        mut self,
+        facade_member: Option<&'a str>,
+        width_profile: TerminalWidthProfile,
+        deferred_text: &mut DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        self.facade_member = facade_member
+            .map(|facade_member| {
+                framed_endpoint_provenance(
+                    "member(bytes=",
+                    facade_member,
+                    width_profile,
+                    deferred_text,
+                    resources,
+                )
+            })
+            .transpose()?;
+        self.rebuild(width_profile, resources)?;
+        Ok(self)
+    }
+
+    fn rebuild(
+        &mut self,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let line_count = [
+            self.endpoint_ref.as_ref(),
+            self.facade_member.as_ref(),
+            self.authored.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .try_fold(0usize, |count, label| {
+            resources.checked_grid_add(count, label.line_count())
+        })?;
+        if line_count == 0 {
+            self.rendered = None;
+            return Ok(());
+        }
         let mut lines = Vec::new();
         lines
-            .try_reserve_exact(1)
+            .try_reserve_exact(line_count)
             .map_err(|_| layout_allocation_failed())?;
-        lines.push(facade);
-        return RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some);
-    };
-    let separator = deferred_text.try_register_parts(width_profile, resources, 1, |push| {
-        push(DeferredTextPart::Static(": "))
-    })?;
-    let first = label
-        .lines()
-        .first()
-        .map(|line| DeferredTextLine::try_concat(&[&facade, &separator, line], resources))
-        .transpose()?
-        .unwrap_or(facade);
-    let mut lines = Vec::new();
-    lines
-        .try_reserve_exact(label.line_count().max(1))
-        .map_err(|_| layout_allocation_failed())?;
-    lines.push(first);
-    lines.extend(label.lines().iter().skip(1).cloned());
-    RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
+        for label in [
+            self.endpoint_ref.as_ref(),
+            self.facade_member.as_ref(),
+            self.authored.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            lines.extend(label.lines().iter().cloned());
+        }
+        self.rendered = Some(RelationGraphLabel::try_from_lines(
+            lines,
+            width_profile,
+            resources,
+        )?);
+        Ok(())
+    }
 }
 
-fn join_endpoint_label_with_authored_ref<'a>(
-    authored_ref: Option<&'a str>,
-    label: Option<RelationGraphLabel>,
+fn authored_endpoint_label_uses_reserved_syntax(raw: &str) -> bool {
+    [
+        "endpointRef(bytes=",
+        "member(bytes=",
+        "endpointLabel=[bytes=",
+    ]
+    .into_iter()
+    .any(|reserved| raw.contains(reserved))
+}
+
+fn framed_endpoint_provenance<'a>(
+    prefix: &'static str,
+    value: &'a str,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
-) -> Result<Option<RelationGraphLabel>> {
-    let Some(authored_ref) = authored_ref else {
-        return Ok(label);
-    };
-    let framed = deferred_text.try_register_framed_value(
-        "endpointRef(bytes=",
-        authored_ref,
-        width_profile,
-        resources,
-    )?;
-    let Some(label) = label else {
-        let mut lines = Vec::new();
-        lines
-            .try_reserve_exact(1)
-            .map_err(|_| layout_allocation_failed())?;
-        lines.push(framed);
-        return RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some);
-    };
-    let separator = deferred_text.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(": "))?,
-        width_profile,
-        resources,
-    )?;
+) -> Result<RelationGraphLabel> {
+    let framed =
+        deferred_text.try_register_framed_value(prefix, value, width_profile, resources)?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(1)
+        .map_err(|_| layout_allocation_failed())?;
+    lines.push(framed);
+    RelationGraphLabel::try_from_lines(lines, width_profile, resources)
+}
+
+fn frame_authored_endpoint_label<'a>(
+    label: &RelationGraphLabel,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<RelationGraphLabel> {
     let mut lines = Vec::new();
     lines
         .try_reserve_exact(label.line_count().max(1))
         .map_err(|_| layout_allocation_failed())?;
-    for (line_index, line) in label.lines().iter().enumerate() {
+    for line in label.lines() {
         let typed_label =
             deferred_text.try_register_parts(width_profile, resources, 5, |push| {
                 push(DeferredTextPart::Static("endpointLabel=[bytes="))?;
@@ -539,16 +619,9 @@ fn join_endpoint_label_with_authored_ref<'a>(
                 push(DeferredTextPart::QuotedLine(line))?;
                 push(DeferredTextPart::Static("]"))
             })?;
-        if line_index == 0 {
-            lines.push(DeferredTextLine::try_concat(
-                &[&framed, &separator, &typed_label],
-                resources,
-            )?);
-        } else {
-            lines.push(typed_label);
-        }
+        lines.push(typed_label);
     }
-    RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
+    RelationGraphLabel::try_from_lines(lines, width_profile, resources)
 }
 
 pub(crate) fn render_class_diagram_with_execution(
@@ -1476,11 +1549,26 @@ fn prepare_class_relation_labels<'a>(
         prepared
             .try_reserve_exact(model.relations.len())
             .map_err(|_| layout_allocation_failed())?;
-        for _ in &model.relations {
+        for relation in &model.relations {
+            let label = labels.next().ok_or_else(layout_allocation_failed)?;
+            let left_endpoint = ClassEndpointLabels::from_authored(
+                labels.next().ok_or_else(layout_allocation_failed)?,
+                relation.relation_title_1.as_deref(),
+                options.terminal_width_profile,
+                deferred_text,
+                resources,
+            )?;
+            let right_endpoint = ClassEndpointLabels::from_authored(
+                labels.next().ok_or_else(layout_allocation_failed)?,
+                relation.relation_title_2.as_deref(),
+                options.terminal_width_profile,
+                deferred_text,
+                resources,
+            )?;
             prepared.push(ClassRelationLabels {
-                label: labels.next().ok_or_else(layout_allocation_failed)?,
-                left_endpoint: labels.next().ok_or_else(layout_allocation_failed)?,
-                right_endpoint: labels.next().ok_or_else(layout_allocation_failed)?,
+                label,
+                left_endpoint,
+                right_endpoint,
             });
         }
         if labels.next().is_some() {
@@ -1578,9 +1666,8 @@ fn note_relation_layouts_for_notes<'a>(
             continue;
         };
         if box_by_id.get(target.resolved_id, resources)?.is_some() {
-            let bottom_endpoint_label = join_endpoint_label_with_authored_ref(
+            let bottom_endpoint_label = ClassEndpointLabels::default().try_with_endpoint_ref(
                 target.into_layout_endpoint().disclosure_id(),
-                None,
                 width_profile,
                 deferred_text,
                 resources,
@@ -1598,7 +1685,7 @@ fn note_relation_layouts_for_notes<'a>(
                 bottom_marker: None,
                 line: RelationLine::Dotted,
                 label: None,
-                top_endpoint_label: None,
+                top_endpoint_label: ClassEndpointLabels::default(),
                 bottom_endpoint_label,
                 top_endpoint_role: EndpointLabelRole::First,
                 bottom_endpoint_role: EndpointLabelRole::Second,
@@ -3405,36 +3492,61 @@ mod tests {
         let policy = unbounded_policy();
         let resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
-        let mut labels = prepare_class_relation_labels(&model, &options, &mut deferred, &resources)
+        let labels = prepare_class_relation_labels(&model, &options, &mut deferred, &resources)
             .expect("the authored endpoint label should plan");
-        let authored = join_endpoint_label_with_authored_ref(
-            Some(AUTHORED_REF),
-            labels[0].left_endpoint.take(),
-            options.terminal_width_profile,
-            &mut deferred,
-            &resources,
-        )
-        .expect("authored endpoint label plus provenance should plan")
-        .expect("authored endpoint label plus provenance should remain present");
-        let generated = join_endpoint_label_with_authored_ref(
-            Some(AUTHORED_REF),
-            None,
-            options.terminal_width_profile,
-            &mut deferred,
-            &resources,
-        )
-        .expect("generated endpoint provenance should plan")
-        .expect("generated endpoint provenance should be present");
+        let authored_only = labels[0]
+            .left_endpoint
+            .rendered()
+            .expect("the authored endpoint slot should be present");
+        let authored = labels[0]
+            .left_endpoint
+            .clone()
+            .try_with_endpoint_ref(
+                Some(AUTHORED_REF),
+                options.terminal_width_profile,
+                &mut deferred,
+                &resources,
+            )
+            .expect("authored endpoint label plus provenance should plan");
+        let generated = ClassEndpointLabels::default()
+            .try_with_endpoint_ref(
+                Some(AUTHORED_REF),
+                options.terminal_width_profile,
+                &mut deferred,
+                &resources,
+            )
+            .expect("generated endpoint provenance should plan");
 
-        let authored_lines =
-            relation_graph::label_lines_with_role(&authored, AsciiColorRole::EdgeLabel, &resources)
-                .expect("authored endpoint label rows should materialize");
+        let authored_only_lines = relation_graph::label_lines_with_role(
+            authored_only,
+            AsciiColorRole::EdgeLabel,
+            &resources,
+        )
+        .expect("authored endpoint slot should materialize");
+        let authored_lines = relation_graph::label_lines_with_role(
+            authored
+                .rendered()
+                .expect("combined endpoint slots should be present"),
+            AsciiColorRole::EdgeLabel,
+            &resources,
+        )
+        .expect("authored endpoint label rows should materialize");
         let generated_lines = relation_graph::label_lines_with_role(
-            &generated,
+            generated
+                .rendered()
+                .expect("generated endpoint provenance should be present"),
             AsciiColorRole::EdgeLabel,
             &resources,
         )
         .expect("generated endpoint provenance rows should materialize");
+        let mut authored_only_resources = ResourceContext::new(policy);
+        let authored_only_output = relation_graph::render_lines_with_deferred_options(
+            &authored_only_lines,
+            &options,
+            &mut authored_only_resources,
+            &deferred,
+        )
+        .expect("authored endpoint slot should render");
         let mut authored_resources = ResourceContext::new(policy);
         let authored_output = relation_graph::render_lines_with_deferred_options(
             &authored_lines,
@@ -3453,7 +3565,15 @@ mod tests {
         .expect("generated endpoint provenance should render");
 
         assert_ne!(authored_output, generated_output);
-        assert!(authored_output.contains(SPOOF));
+        assert!(!authored_only_output.lines().any(|line| line == SPOOF));
+        assert!(authored_only_output.contains(r#"endpointLabel=[bytes=31 "endpointRef"#));
+        assert_eq!(
+            authored_output
+                .lines()
+                .filter(|line| *line == SPOOF)
+                .count(),
+            1
+        );
         assert!(authored_output.contains(r#"endpointLabel=[bytes=31 "endpointRef"#));
         assert_eq!(generated_output, format!("{SPOOF}\n"));
     }
