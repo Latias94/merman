@@ -29,6 +29,8 @@ pub mod resources;
 pub mod runtime;
 pub mod sanitize;
 pub mod svg_security;
+#[doc(hidden)]
+pub mod terminal_text;
 mod theme;
 pub mod theme_color;
 pub mod time;

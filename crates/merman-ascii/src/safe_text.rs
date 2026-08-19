@@ -52,18 +52,7 @@ use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 #[cfg(test)]
 use crate::resource::ResourceContext;
 #[cfg(test)]
-use std::borrow::Cow;
-#[cfg(test)]
 use unicode_segmentation::UnicodeSegmentation;
-
-#[cfg(test)]
-const MAX_DIAGNOSTIC_GRAPHEMES: usize = normalization::diagnostic_limits().0;
-#[cfg(test)]
-const MAX_DIAGNOSTIC_INPUT_BYTES: usize = normalization::diagnostic_limits().1;
-#[cfg(test)]
-const MAX_DIAGNOSTIC_BYTES: usize = normalization::diagnostic_limits().2;
-#[cfg(test)]
-const DIAGNOSTIC_ELLIPSIS: &str = normalization::diagnostic_limits().3;
 
 #[cfg(test)]
 mod tests {
@@ -102,70 +91,6 @@ mod tests {
     }
 
     #[test]
-    fn printable_text_stays_borrowed() {
-        let input = "Cafe\u{301} 👩‍💻 🇺🇸 中文";
-        let normalized = normalize_terminal_text(input);
-
-        assert!(matches!(normalized, Cow::Borrowed(_)));
-        assert_eq!(normalized, input);
-    }
-
-    #[test]
-    fn crlf_is_structural_but_tab_and_lone_carriage_return_are_visible() {
-        assert_eq!(
-            normalize_terminal_text("one\r\ntwo\tthree\rfour"),
-            "one\ntwo\\u{9}three\\u{D}four"
-        );
-    }
-
-    #[test]
-    fn c0_c1_escape_del_and_bidi_controls_are_exhaustively_visible() {
-        let bidi = [
-            '\u{061c}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}',
-            '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
-        ];
-        let mut input = String::new();
-        input.extend(['\0', '\u{1b}', '\u{7f}', '\u{80}', '\u{9f}']);
-        input.extend(bidi);
-
-        let normalized = normalize_terminal_text(&input);
-
-        for control in input.chars() {
-            assert!(
-                !normalized.contains(control),
-                "raw control {control:?} leaked"
-            );
-            assert!(
-                normalized.contains(&format!("\\u{{{:X}}}", u32::from(control))),
-                "missing visible escape for {control:?}: {normalized}"
-            );
-        }
-    }
-
-    #[test]
-    fn standalone_zero_width_graphemes_are_visible() {
-        assert_eq!(
-            normalize_terminal_text("\u{301}\u{200d}\u{fe0f}"),
-            "\\u{301}\\u{200D}\\u{FE0F}"
-        );
-    }
-
-    #[test]
-    fn legal_joiners_and_variation_selectors_survive_inside_visible_graphemes() {
-        for input in ["👩‍💻", "✈️", "a\u{200c}b", "👍🏽"] {
-            assert_eq!(normalize_terminal_text(input), input);
-        }
-    }
-
-    #[test]
-    fn normalization_is_idempotent() {
-        let once = normalize_terminal_text("a\u{1b}\u{202e}\u{301}\r\nb").into_owned();
-        let twice = normalize_terminal_text(&once);
-
-        assert_eq!(twice, once);
-    }
-
-    #[test]
     fn budgeted_document_normalization_matches_safe_text_boundary() {
         let options = AsciiRenderOptions::ascii();
         for input in [
@@ -180,39 +105,6 @@ mod tests {
 
             assert_eq!(rendered, expected.as_ref());
         }
-    }
-
-    #[test]
-    fn diagnostics_truncate_only_at_grapheme_boundaries() {
-        let input = "👩‍💻".repeat(MAX_DIAGNOSTIC_GRAPHEMES + 1);
-        let normalized = normalize_terminal_diagnostic(&input);
-
-        assert_eq!(
-            normalized.graphemes(true).count(),
-            MAX_DIAGNOSTIC_GRAPHEMES + 3
-        );
-        assert!(normalized.ends_with("..."));
-    }
-
-    #[test]
-    fn diagnostics_bound_control_escape_expansion_by_bytes() {
-        let input = "\u{1b}".repeat(MAX_DIAGNOSTIC_INPUT_BYTES * 2);
-        let normalized = normalize_terminal_diagnostic(&input);
-
-        assert!(normalized.len() <= MAX_DIAGNOSTIC_BYTES);
-        assert!(normalized.ends_with(DIAGNOSTIC_ELLIPSIS));
-        assert!(!normalized.contains('\u{1b}'));
-    }
-
-    #[test]
-    fn diagnostics_reject_one_oversized_grapheme_without_splitting_it() {
-        let mut input = String::from("a");
-        input.extend(std::iter::repeat_n('\u{301}', MAX_DIAGNOSTIC_INPUT_BYTES));
-
-        let normalized = normalize_terminal_diagnostic(&input);
-
-        assert_eq!(normalized, DIAGNOSTIC_ELLIPSIS);
-        assert!(normalized.len() <= MAX_DIAGNOSTIC_BYTES);
     }
 
     #[test]
@@ -884,59 +776,6 @@ mod tests {
         assert_eq!(
             document.finish().expect("document should encode"),
             "- abc\n  d\n  e f"
-        );
-    }
-
-    #[test]
-    fn optional_text_escape_expansion_hits_layout_limit_at_exact_plus_one() {
-        const LINE_WORK: usize = 14;
-        const COMPLETE_WORK: usize = 28;
-
-        let complete_exact =
-            policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, COMPLETE_WORK);
-        let mut document = ascii_document(complete_exact);
-        document
-            .push_optional_line(Some("\u{1b}"))
-            .expect("raw scan plus streamed visible escape should fit");
-        assert_eq!(document.resources_mut().layout_work_used(), LINE_WORK);
-        assert_eq!(
-            document.finish().expect("document should encode"),
-            "\\u{1B}"
-        );
-
-        let line_exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, LINE_WORK);
-        let mut document = ascii_document(line_exact);
-        let error = document
-            .push_optional_line(Some("\u{1b}x"))
-            .expect_err("one additional streamed grapheme should exceed the exact limit");
-        assert_limit_error(
-            error,
-            AsciiResourceLimitId::MaxLayoutWorkUnits,
-            LINE_WORK + 1,
-            LINE_WORK,
-        );
-    }
-
-    #[test]
-    fn optional_text_trims_all_whitespace_without_an_invalid_drain_range() {
-        let mut document = ascii_document(unbounded_policy());
-
-        document
-            .push_optional_line(Some("  \n  "))
-            .expect("whitespace-only optional text should be ignored");
-        assert_eq!(document.finish().expect("document should encode"), "");
-    }
-
-    #[test]
-    fn optional_text_trims_structural_whitespace_without_materializing_it() {
-        let mut document = ascii_document(unbounded_policy());
-        document
-            .push_optional_prefixed_line("title: ", Some(" \r\n\tfoo\t \n"))
-            .expect("trimmed optional text should stream into the document");
-
-        assert_eq!(
-            document.finish().expect("document should encode"),
-            "title: \\u{9}foo\\u{9}"
         );
     }
 

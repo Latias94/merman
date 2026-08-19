@@ -632,8 +632,6 @@ dependencies = [
  "merman-render",
  "serde_json",
  "thiserror",
- "unicode-segmentation",
- "unicode-width",
 ]
 
 [[package]]
@@ -662,6 +660,8 @@ dependencies = [
  "serde_json",
  "thiserror",
  "unicode-general-category",
+ "unicode-segmentation",
+ "unicode-width",
  "url",
  "web-time",
 ]

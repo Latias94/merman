@@ -74,8 +74,6 @@ merman-export = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 serde_json.workspace = true
 thiserror.workspace = true
-unicode-segmentation.workspace = true
-unicode-width.workspace = true
 
 [dev-dependencies]
 base64.workspace = true

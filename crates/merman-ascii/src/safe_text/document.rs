@@ -50,15 +50,6 @@ pub(crate) struct BudgetedTextLine<'document> {
     current: String,
 }
 
-#[cfg(test)]
-#[derive(Debug, Clone, Copy)]
-struct NormalizedTextRange {
-    source_start: usize,
-    source_end: usize,
-    start: usize,
-    end: usize,
-}
-
 impl BudgetedTextDocument {
     #[cfg(test)]
     pub(crate) fn new(options: &AsciiRenderOptions, resources: AsciiResourcePolicy) -> Self {
@@ -77,30 +68,6 @@ impl BudgetedTextDocument {
 
     pub(crate) fn resources_mut(&mut self) -> &mut ResourceContext {
         &mut self.resources
-    }
-
-    #[cfg(test)]
-    pub(crate) fn push_optional_line(&mut self, value: Option<&str>) -> Result<()> {
-        self.push_optional_prefixed_line("", value)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn push_optional_prefixed_line(
-        &mut self,
-        prefix: &str,
-        value: Option<&str>,
-    ) -> Result<()> {
-        let Some(value) = value else {
-            return Ok(());
-        };
-        let Some(range) = self.trimmed_normalized_range(value)? else {
-            return Ok(());
-        };
-
-        self.push_line_with(|line| {
-            line.push_str(prefix)?;
-            line.push_normalized_range(value, range)
-        })
     }
 
     pub(crate) fn push_line(&mut self, line: impl AsRef<str>) -> Result<()> {
@@ -245,73 +212,6 @@ impl BudgetedTextDocument {
             .charge_document_cells(segment.display_width(self.width_profile))
     }
 
-    #[cfg(test)]
-    fn trimmed_normalized_range(&mut self, value: &str) -> Result<Option<NormalizedTextRange>> {
-        // Determine trim bounds over the normalized byte stream without retaining that stream. The
-        // second pass emits only the kept range through `BudgetedTextLine`, so arbitrarily large
-        // leading/trailing whitespace never becomes a temporary `String`.
-        let mut offset = 0usize;
-        let mut start = None;
-        let mut end = 0usize;
-        let mut source_start = 0usize;
-        let mut source_end = 0usize;
-        let mut source_normalized_base = 0usize;
-        let mut kept_normalized_base = 0usize;
-        let mut current_source = None;
-        self.resources.charge_layout_work(1)?;
-        visit_normalized_segments(value, |segment| {
-            self.budget_layout_segment(segment)?;
-            let mut buffer = [0u8; 10];
-            let text = segment.text(&mut buffer);
-            if current_source != Some(segment.source_start) {
-                current_source = Some(segment.source_start);
-                source_normalized_base = offset;
-            }
-            let segment_end = offset.checked_add(text.len()).ok_or_else(|| {
-                self.resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-            for (relative, ch) in text.char_indices() {
-                if !ch.is_whitespace() {
-                    let absolute = offset.checked_add(relative).ok_or_else(|| {
-                        self.resources
-                            .policy()
-                            .overflow(AsciiResourceLimitId::MaxDocumentCells)
-                    })?;
-                    if start.is_none() {
-                        source_start = segment.source_start;
-                        kept_normalized_base = source_normalized_base;
-                        start =
-                            Some(absolute.checked_sub(kept_normalized_base).ok_or_else(|| {
-                                self.resources
-                                    .policy()
-                                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-                            })?);
-                    }
-                    source_end = segment.source_end;
-                    end = absolute
-                        .checked_add(ch.len_utf8())
-                        .and_then(|end| end.checked_sub(kept_normalized_base))
-                        .ok_or_else(|| {
-                            self.resources
-                                .policy()
-                                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-                        })?;
-                }
-            }
-            offset = segment_end;
-            Ok::<(), AsciiError>(())
-        })?;
-
-        Ok(start.map(|start| NormalizedTextRange {
-            source_start,
-            source_end,
-            start,
-            end,
-        }))
-    }
-
     fn finish_prebudgeted_line(&mut self, line: String) -> Result<()> {
         self.lines
             .try_reserve(1)
@@ -403,29 +303,6 @@ impl BudgetedTextLine<'_> {
         let resources = self.document.resources.clone();
         super::framing::visit_quoted_terminal_text(value, &resources, |fragment| {
             self.push_str(fragment)
-        })
-    }
-
-    #[cfg(test)]
-    fn push_normalized_range(&mut self, value: &str, range: NormalizedTextRange) -> Result<()> {
-        let value = &value[range.source_start..range.source_end];
-        let mut offset = 0usize;
-        visit_normalized_segments(value, |segment| {
-            let mut buffer = [0u8; 10];
-            let text = segment.text(&mut buffer);
-            let segment_end = offset.checked_add(text.len()).ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-            let kept_start = range.start.max(offset);
-            let kept_end = range.end.min(segment_end);
-            if kept_start < kept_end {
-                self.push_str(&text[kept_start - offset..kept_end - offset])?;
-            }
-            offset = segment_end;
-            Ok(())
         })
     }
 
