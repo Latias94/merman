@@ -65,7 +65,7 @@ pub fn compile_theme_definition_json_with(
         .map_err(|error| definition_compile_error(compiler.resource_policy(), error))
 }
 
-fn definition_compile_error(
+pub(crate) fn definition_compile_error(
     policy: &ThemeResourcePolicy,
     error: ThemeDefinitionCompileError,
 ) -> BindingError {

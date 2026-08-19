@@ -2902,7 +2902,7 @@ mod tests {
         assert!(engine.supported_themes().contains(&"default".to_string()));
         let theme_catalog: serde_json::Value =
             serde_json::from_str(&engine.theme_catalog_json().unwrap()).unwrap();
-        assert_eq!(theme_catalog["schema_version"], 2);
+        assert_eq!(theme_catalog["schema_version"], 3);
         if has_svg {
             assert_eq!(theme_catalog["structured_spec_available"], true);
             assert!(

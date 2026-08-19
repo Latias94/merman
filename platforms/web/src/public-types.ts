@@ -77,7 +77,7 @@ export interface RuntimeCatalog {
 }
 
 export interface ThemeCatalog {
-  schema_version: 2;
+  schema_version: 3;
   structured_spec_available: boolean;
   supported_output_ids: string[];
   presets: ThemePresetCatalogEntry[];
@@ -100,9 +100,7 @@ export interface ThemePresetCatalogEntry {
   qualified_cells: ThemePresetQualifiedCell[];
   license_expression: string;
   required_attribution: string | null;
-  export_kind: string;
-  required_capability_ids: string[];
-  required_text_capability_ids: string[];
+  export_kind: "definition" | "complete_spec";
 }
 
 export interface ThemePresetQualifiedCell {

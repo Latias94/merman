@@ -51,6 +51,7 @@ export 'src/merman_ffi.dart'
         MermanOperationResult,
         MermanThemeCatalog,
         MermanThemePreset,
+        MermanThemePresetQualifiedCell,
         MermanThemeResourceLimit,
         MermanReentrantCallException,
         MermanResourceErrorDetails,

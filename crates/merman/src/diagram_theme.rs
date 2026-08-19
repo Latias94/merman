@@ -21,7 +21,7 @@ pub use merman_render::diagram_theme::{
 };
 pub use merman_theme_contract::{
     CanonicalJsonError, CanonicalJsonErrorKind, DiagramThemeSpecWireV1, MaterializedThemeWireV1,
-    SpecifiedWireV1, ThemeAuthoringTypographyV1, ThemeCanvasPaintObjectWireV1,
+    PresetExportV1, SpecifiedWireV1, ThemeAuthoringTypographyV1, ThemeCanvasPaintObjectWireV1,
     ThemeCanvasPaintWireV1, ThemeCapabilityDescriptorV1, ThemeColorTokenV1, ThemeDefinitionV1,
     ThemeGradientStopWireV1, ThemeInsetsWireV1, ThemeLengthWireV1, ThemeLineHeightWireV1,
     ThemeLinearGradientRepetitionWireV1, ThemeMaterializationDiagnosticV1,

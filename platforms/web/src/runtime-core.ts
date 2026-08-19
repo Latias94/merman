@@ -742,7 +742,7 @@ function validateRuntimeConstructorServiceProviders(
 }
 
 function normalizeThemeCatalog(value: unknown): ThemeCatalog {
-  if (!isRecord(value) || value.schema_version !== 2) {
+  if (!isRecord(value) || value.schema_version !== 3) {
     throw new Error("Merman WASM returned an unsupported theme catalog schema.");
   }
   assertRequiredRecordKeys(
@@ -766,7 +766,7 @@ function normalizeThemeCatalog(value: unknown): ThemeCatalog {
     throw new Error("Merman WASM returned an invalid theme catalog.");
   }
   return {
-    schema_version: 2,
+    schema_version: 3,
     structured_spec_available: assertBooleanField(
       value.structured_spec_available,
       "theme structured spec availability"
@@ -823,8 +823,6 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
         "maturity",
         "qualified_cells",
         "required_attribution",
-        "required_capability_ids",
-        "required_text_capability_ids",
       ],
       "Merman WASM theme preset"
     );
@@ -837,11 +835,8 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
     if (available !== (availabilityReasonIds.length === 0)) {
       throw new Error(`Merman WASM returned inconsistent availability for theme preset ${id}.`);
     }
-    const exportKind = assertRuntimeIdentifier(
-      entry.export_kind,
-      `theme preset ${id} export kind`
-    );
-    if (exportKind !== "definition" && exportKind !== "complete-spec") {
+    const exportKind = entry.export_kind;
+    if (exportKind !== "definition" && exportKind !== "complete_spec") {
       throw new Error(`Merman WASM returned an invalid export kind for theme preset ${id}.`);
     }
     return {
@@ -870,14 +865,6 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
         `theme preset ${id} required attribution`
       ),
       export_kind: exportKind,
-      required_capability_ids: normalizeSortedIdentifierIds(
-        entry.required_capability_ids,
-        `theme preset ${id} required capability IDs`
-      ),
-      required_text_capability_ids: normalizeSortedIdentifierIds(
-        entry.required_text_capability_ids,
-        `theme preset ${id} required text capability IDs`
-      ),
     };
   });
 }

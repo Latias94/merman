@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 /// First public schema for the artifact-owned runtime catalog.
 pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
-pub const THEME_CATALOG_SCHEMA_VERSION: u32 = 2;
+pub const THEME_CATALOG_SCHEMA_VERSION: u32 = 3;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
 pub const TEXT_MEASUREMENT_PROVIDER_VENDORED: &str = "vendored";
 
@@ -269,8 +269,6 @@ struct BindingThemePreset {
     license_expression: &'static str,
     required_attribution: Option<&'static str>,
     export_kind: &'static str,
-    required_capability_ids: Vec<&'static str>,
-    required_text_capability_ids: Vec<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -652,51 +650,7 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
                 merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
             ),
         );
-        let presets = merman::svg::theme_preset_descriptors()
-            .iter()
-            .map(|descriptor| {
-                let theme = compiler
-                    .compile_preset(descriptor.preset())
-                    .expect("built-in diagram theme presets must compile");
-                BindingThemePreset {
-                    id: descriptor.id(),
-                    display_name: descriptor.display_name(),
-                    appearance: if descriptor.is_dark() {
-                        "dark"
-                    } else {
-                        "light"
-                    },
-                    maturity: descriptor.maturity(),
-                    available: true,
-                    availability_reason_ids: Vec::new(),
-                    qualified_cells: descriptor
-                        .qualified_cells()
-                        .iter()
-                        .map(|cell| BindingThemePresetQualifiedCell {
-                            family_id: cell.family_id(),
-                            output_id: cell.output_id(),
-                        })
-                        .collect(),
-                    license_expression: descriptor.license_expression(),
-                    required_attribution: descriptor.required_attribution(),
-                    export_kind: descriptor.export_kind(),
-                    required_capability_ids: sorted_theme_ids(
-                        theme
-                            .report()
-                            .required_capabilities()
-                            .map(merman::svg::ThemeCapability::id)
-                            .collect(),
-                    ),
-                    required_text_capability_ids: sorted_theme_ids(
-                        theme
-                            .report()
-                            .required_text_capabilities()
-                            .map(merman::svg::TextLayoutCapability::id)
-                            .collect(),
-                    ),
-                }
-            })
-            .collect();
+        let presets = binding_theme_presets(&compiler);
         let supported_output_ids = sorted_theme_ids(
             artifact_contract
                 .output_keys()
@@ -792,6 +746,65 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
             known_variant_ids: Vec::new(),
             resource_limits: Vec::new(),
         }
+    }
+}
+
+#[cfg(feature = "svg")]
+fn binding_theme_presets(compiler: &merman::svg::DiagramThemeCompiler) -> Vec<BindingThemePreset> {
+    merman::svg::theme_preset_descriptors()
+        .iter()
+        .map(|descriptor| {
+            let availability_reason_ids = compiler
+                .compile_preset(descriptor.preset())
+                .err()
+                .map(|error| vec![theme_preset_unavailability_reason(&error)])
+                .unwrap_or_default();
+            BindingThemePreset {
+                id: descriptor.id(),
+                display_name: descriptor.display_name(),
+                appearance: if descriptor.is_dark() {
+                    "dark"
+                } else {
+                    "light"
+                },
+                maturity: descriptor.maturity(),
+                available: availability_reason_ids.is_empty(),
+                availability_reason_ids,
+                qualified_cells: descriptor
+                    .qualified_cells()
+                    .iter()
+                    .map(|cell| BindingThemePresetQualifiedCell {
+                        family_id: cell.family_id(),
+                        output_id: cell.output_id(),
+                    })
+                    .collect(),
+                license_expression: descriptor.license_expression(),
+                required_attribution: descriptor.required_attribution(),
+                export_kind: descriptor.export_kind(),
+            }
+        })
+        .collect()
+}
+
+#[cfg(feature = "svg")]
+fn theme_preset_unavailability_reason(
+    error: &merman::svg::ThemeDefinitionCompileError,
+) -> &'static str {
+    match error {
+        merman::svg::ThemeDefinitionCompileError::Materialization(error)
+            if error.diagnostic().code() == "theme-authoring.resource-limit-exceeded" =>
+        {
+            "theme-preset.resource-policy-rejected"
+        }
+        merman::svg::ThemeDefinitionCompileError::Compilation(
+            merman::svg::ThemeCompileError::ResourceLimit(_),
+        )
+        | merman::svg::ThemeDefinitionCompileError::Compilation(
+            merman::svg::ThemeCompileError::FontCatalog(
+                merman::svg::FontCatalogError::ResourceLimit(_),
+            ),
+        ) => "theme-preset.resource-policy-rejected",
+        _ => "theme-preset.recipe-unavailable",
     }
 }
 
@@ -1718,17 +1731,7 @@ mod tests {
                     .as_array()
                     .unwrap()
                     .iter()
-                    .all(|preset| preset["export_kind"] == "definition")
-            );
-            assert!(
-                catalog["presets"][1]["required_capability_ids"]
-                    .as_array()
-                    .unwrap()
-                    .contains(&serde_json::json!("semantic-rules"))
-            );
-            assert_eq!(
-                catalog["presets"][1]["required_text_capability_ids"],
-                serde_json::json!([])
+                    .all(|preset| preset["export_kind"] == "complete_spec")
             );
             assert!(
                 catalog["known_capability_ids"]
@@ -1788,6 +1791,24 @@ mod tests {
                 serde_json::from_slice(&theme_catalog_json_for(&empty_contract).unwrap()).unwrap();
             assert_eq!(empty_again, empty);
         }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_preset_availability_uses_the_effective_compiler_policy() {
+        let restrictive_policy = merman::svg::ThemeResourcePolicy::interactive()
+            .with_limit(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+            .expect("valid restrictive theme policy");
+        let compiler =
+            merman::svg::DiagramThemeCompiler::new().with_resource_policy(restrictive_policy);
+
+        let presets = binding_theme_presets(&compiler);
+
+        assert_eq!(presets.len(), 10);
+        assert!(presets.iter().all(|preset| !preset.available));
+        assert!(presets.iter().all(|preset| {
+            preset.availability_reason_ids == ["theme-preset.resource-policy-rejected"]
+        }));
     }
 
     #[cfg(feature = "svg")]

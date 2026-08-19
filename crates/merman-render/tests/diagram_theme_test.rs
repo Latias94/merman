@@ -66,7 +66,7 @@ fn preset_catalog_ids_round_trip_through_all_ten_enum_projections() {
         assert_eq!(parsed.id(), descriptor.id());
         assert_eq!(descriptor.display_name(), expected_display_name);
         assert_eq!(descriptor.maturity(), "alpha");
-        assert_eq!(descriptor.qualified_cell_count(), 0);
+        assert!(descriptor.qualified_cells().is_empty());
     }
 }
 

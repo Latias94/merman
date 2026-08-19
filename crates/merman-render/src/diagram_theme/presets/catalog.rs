@@ -1,16 +1,15 @@
-use std::sync::OnceLock;
-
 use merman_theme_contract::{
     DiagramThemeSpecWireV1, MermaidThemeCompatibilityWireV1, SpecifiedWireV1,
-    ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeRuleSetWireV1,
-    ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
+    ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializationErrorV1,
+    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
 };
 
 use super::{
     ThemePreset, ThemePresetDescriptor, ThemePresetQualificationInvalidation,
     ThemePresetQualifiedCell,
 };
-use crate::diagram_theme::definition_admission::materialize_theme;
+use crate::diagram_theme::ThemeResourcePolicy;
+use crate::diagram_theme::definition_admission::materialize_theme_with_resource_policy;
 
 const CATALOG_SCHEMA_VERSION: u32 = 1;
 const AUTHORING_SCHEMA_VERSION: u32 = 1;
@@ -22,17 +21,26 @@ const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
 const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
-
-static EDITOR_LIGHT_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static EDITOR_DARK_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static ONE_DARK_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static GRUVBOX_LIGHT_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static GRUVBOX_DARK_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static AYU_LIGHT_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static AYU_DARK_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static BRUTALIST_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static SPOTLESS_FINGERPRINT: OnceLock<String> = OnceLock::new();
-static CYBERPUNK_FINGERPRINT: OnceLock<String> = OnceLock::new();
+const EDITOR_LIGHT_RECIPE_V1_FINGERPRINT: &str =
+    "86d97c5535b6e6e18464f3021cfb3be32a2b67da626f4ce8156fa6226b622072";
+const EDITOR_DARK_RECIPE_V1_FINGERPRINT: &str =
+    "cce6fc1bb059dd0b4d4bc40f8059fab979b8e490dbc3a9b1f52d09a6ade3a48e";
+const ONE_DARK_RECIPE_V1_FINGERPRINT: &str =
+    "d13df7df39aa540ee4afe11402956a5ec49a3de15fe09e688294170f68b641b4";
+const GRUVBOX_LIGHT_RECIPE_V1_FINGERPRINT: &str =
+    "3937cd427248164757d6a91709c7a375acfaa058139477cadf3a37060e6b5eef";
+const GRUVBOX_DARK_RECIPE_V1_FINGERPRINT: &str =
+    "33cdb285bd8524ca3dc39439036c819d4f6d36c95a3443580e552ae30d2c7046";
+const AYU_LIGHT_RECIPE_V1_FINGERPRINT: &str =
+    "c2959559b5ee97d1d388fdb012e2295941bfc0064d273830ddc4d79adec7a8e0";
+const AYU_DARK_RECIPE_V1_FINGERPRINT: &str =
+    "8d8fd3d8188071d43b37fe0e1654a45dd830696eb15e1d69f0552fa3a0324671";
+const BRUTALIST_RECIPE_V1_FINGERPRINT: &str =
+    "d1d03d91fe664073afb7ab8fda1d7a02779c1cbefd1ae90496a3c939132a635a";
+const SPOTLESS_RECIPE_V1_FINGERPRINT: &str =
+    "4fc028b522105a59ba77aa548b49ec57ce22cfb9a1b6ebd386255bff607d9fdd";
+const CYBERPUNK_RECIPE_V1_FINGERPRINT: &str =
+    "665cea53a07936efbaf90d5880e993191dc6e036f2e0ac2cca2750aca2cad11d";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDefinitionV1;
 
 #[derive(Clone, Copy)]
@@ -73,7 +81,7 @@ pub(super) struct PresetCatalogEntry {
     expansion_version: u32,
     spec_schema_version: u32,
     recipe_revision: u32,
-    fingerprint_slot: &'static OnceLock<String>,
+    recipe_fingerprint: &'static str,
     resource_fingerprint: &'static str,
     recipe_builder: PresetRecipeBuilder,
     palette: PresetPalette,
@@ -129,10 +137,8 @@ impl PresetCatalogEntry {
         self.recipe_revision
     }
 
-    pub(super) fn recipe_fingerprint(&self) -> &'static str {
-        self.fingerprint_slot
-            .get_or_init(|| recipe_fingerprint(self))
-            .as_str()
+    pub(super) const fn recipe_fingerprint(&self) -> &'static str {
+        self.recipe_fingerprint
     }
 
     pub(super) const fn resource_fingerprint(&self) -> &'static str {
@@ -194,7 +200,7 @@ const fn entry(
     id: &'static str,
     display_name: &'static str,
     dark_mode: bool,
-    fingerprint_slot: &'static OnceLock<String>,
+    recipe_fingerprint: &'static str,
     palette: PresetPalette,
 ) -> PresetCatalogEntry {
     PresetCatalogEntry {
@@ -208,12 +214,12 @@ const fn entry(
         expansion_version: EXPANSION_VERSION,
         spec_schema_version: SPEC_SCHEMA_VERSION,
         recipe_revision: 1,
-        fingerprint_slot,
+        recipe_fingerprint,
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: build_cross_family_recipe,
         palette,
         qualified_cells: NO_QUALIFIED_CELLS,
-        export_kind: "definition",
+        export_kind: "complete_spec",
         qualification_invalidation: ThemePresetQualificationInvalidation::current(),
         required_feature_ids: NO_IDS,
         bundled_resource_ids: NO_IDS,
@@ -230,7 +236,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-light",
         "Editor Light",
         false,
-        &EDITOR_LIGHT_FINGERPRINT,
+        EDITOR_LIGHT_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#ffffff",
             surface: "#f8fafc",
@@ -265,7 +271,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-dark",
         "Editor Dark",
         true,
-        &EDITOR_DARK_FINGERPRINT,
+        EDITOR_DARK_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#0f172a",
             surface: "#111827",
@@ -300,7 +306,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "one-dark",
         "One Dark",
         true,
-        &ONE_DARK_FINGERPRINT,
+        ONE_DARK_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#282c34",
             surface: "#21252b",
@@ -335,7 +341,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-light",
         "Gruvbox Light",
         false,
-        &GRUVBOX_LIGHT_FINGERPRINT,
+        GRUVBOX_LIGHT_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
@@ -370,7 +376,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-dark",
         "Gruvbox Dark",
         true,
-        &GRUVBOX_DARK_FINGERPRINT,
+        GRUVBOX_DARK_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#282828",
             surface: "#3c3836",
@@ -405,7 +411,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-light",
         "Ayu Light",
         false,
-        &AYU_LIGHT_FINGERPRINT,
+        AYU_LIGHT_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
@@ -440,7 +446,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-dark",
         "Ayu Dark",
         true,
-        &AYU_DARK_FINGERPRINT,
+        AYU_DARK_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#0b0e14",
             surface: "#11151c",
@@ -475,7 +481,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "brutalist",
         "Brutalist",
         false,
-        &BRUTALIST_FINGERPRINT,
+        BRUTALIST_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#f4f0e6",
             surface: "#fffdf5",
@@ -510,7 +516,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "spotless",
         "Spotless",
         false,
-        &SPOTLESS_FINGERPRINT,
+        SPOTLESS_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#f7f5ef",
             surface: "#ffffff",
@@ -545,7 +551,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "cyberpunk",
         "Cyberpunk",
         true,
-        &CYBERPUNK_FINGERPRINT,
+        CYBERPUNK_RECIPE_V1_FINGERPRINT,
         PresetPalette {
             canvas: "#020617",
             surface: "#0f172a",
@@ -611,33 +617,27 @@ pub(super) fn entry_for_id(id: &str) -> Option<&'static PresetCatalogEntry> {
         .find(|entry| entry.id == id && is_discoverable(entry))
 }
 
-pub(super) fn build_spec_wire(preset: ThemePreset) -> DiagramThemeSpecWireV1 {
+pub(crate) fn materialize_spec_wire(
+    preset: ThemePreset,
+    resources: &ThemeResourcePolicy,
+) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
     let entry = entry_for_preset(preset);
     debug_assert!(
         entry.allowed_residual_ids.is_empty(),
         "unqualified alpha presets must not inherit qualification residual allowances"
     );
-    let mut spec = materialize_theme(&entry.definition())
-        .expect("built-in theme preset values must remain statically valid")
-        .into_spec();
+    let mut spec =
+        materialize_theme_with_resource_policy(&entry.definition(), resources)?.into_spec();
     spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
         theme: Some("base".to_owned()),
         dark_mode: Some(entry.dark_mode),
         variables: None,
     });
-    spec
+    Ok(spec)
 }
 
 fn is_discoverable(entry: &PresetCatalogEntry) -> bool {
     entry.retained && entry.required_feature_ids.is_empty() && entry.bundled_resource_ids.is_empty()
-}
-
-fn recipe_fingerprint(entry: &PresetCatalogEntry) -> String {
-    crate::diagram_theme::DiagramThemeCompiler::new()
-        .compile_spec_wire(build_spec_wire(entry.preset))
-        .expect("built-in catalog recipe must remain compilable")
-        .recipe_fingerprint()
-        .to_hex()
 }
 
 fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDefinitionV1 {

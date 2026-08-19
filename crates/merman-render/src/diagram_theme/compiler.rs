@@ -120,8 +120,23 @@ impl DiagramThemeCompiler {
     pub fn compile_preset(
         &self,
         preset: super::ThemePreset,
-    ) -> Result<super::DiagramTheme, ThemeCompileError> {
-        self.compile_spec_wire(preset.spec_wire())
+    ) -> Result<super::DiagramTheme, super::ThemeDefinitionCompileError> {
+        let spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
+        Ok(self.compile_spec_wire(spec)?)
+    }
+
+    /// Exports one built-in preset as a self-contained editable recipe under this compiler's
+    /// resource policy.
+    pub fn export_preset(
+        &self,
+        preset: super::ThemePreset,
+    ) -> Result<
+        merman_theme_contract::PresetExportV1,
+        merman_theme_contract::ThemeMaterializationErrorV1,
+    > {
+        Ok(merman_theme_contract::PresetExportV1::CompleteSpec {
+            complete_spec: super::presets::materialize_spec_wire(preset, &self.resources)?,
+        })
     }
 }
 

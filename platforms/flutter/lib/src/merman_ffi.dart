@@ -97,9 +97,9 @@ enum MermanErrorKind {
   final String wireName;
 
   static MermanErrorKind fromWireName(Object? value) => values.firstWhere(
-        (kind) => kind.wireName == value,
-        orElse: () => generic,
-      );
+    (kind) => kind.wireName == value,
+    orElse: () => generic,
+  );
 }
 
 /// Stable resource metadata attached to a native resource-limit failure.
@@ -168,10 +168,10 @@ class MermanException implements Exception {
   final MermanCancellationErrorDetails? cancellationDetails;
 
   factory MermanException.contract(String message) => MermanException(
-        code: -1,
-        codeName: 'DART_NATIVE_CONTRACT_ERROR',
-        message: message,
-      );
+    code: -1,
+    codeName: 'DART_NATIVE_CONTRACT_ERROR',
+    message: message,
+  );
 
   factory MermanException.fromNative(int status, Uint8List metadata) {
     var codeName = switch (status) {
@@ -394,11 +394,11 @@ class MermanUnknownOperationException
     required String codeName,
     required String message,
   }) : super(
-          code: code,
-          codeName: codeName,
-          message: message,
-          kind: MermanErrorKind.unknownOperation,
-        );
+         code: code,
+         codeName: codeName,
+         message: message,
+         kind: MermanErrorKind.unknownOperation,
+       );
 }
 
 /// A valid request requires a capability absent from the native artifact.
@@ -410,12 +410,12 @@ class MermanMissingCapabilityException
     required String message,
     required String capabilityId,
   }) : super(
-          code: code,
-          codeName: codeName,
-          message: message,
-          kind: MermanErrorKind.missingCapability,
-          capabilityId: capabilityId,
-        );
+         code: code,
+         codeName: codeName,
+         message: message,
+         kind: MermanErrorKind.missingCapability,
+         capabilityId: capabilityId,
+       );
 }
 
 /// A concise decoded validation response.
@@ -554,11 +554,7 @@ class MermanDiagramFamilyCapability {
         'diagram_type',
         'diagram family capability',
       ),
-      familyId: _requiredString(
-        json,
-        'family_id',
-        'diagram family capability',
-      ),
+      familyId: _requiredString(json, 'family_id', 'diagram family capability'),
       metadataId: metadataId as String?,
       hasDetector: _requiredBool(
         json,
@@ -621,48 +617,45 @@ class MermanLintRuleCatalogEntry {
 
   factory MermanLintRuleCatalogEntry.fromJson(
     Map<String, Object?> json,
-  ) =>
-      MermanLintRuleCatalogEntry(
-        id: _requiredString(json, 'id', 'lint rule catalog entry'),
-        description: _requiredString(
-          json,
-          'description',
-          'lint rule catalog entry',
-        ),
-        evidence: List.unmodifiable(
-          _requiredStringList(
-              json, 'evidence', 'lint rule catalog entry.evidence'),
-        ),
-        defaultSeverity: _requiredString(
-          json,
-          'default_severity',
-          'lint rule catalog entry',
-        ),
-        category: _requiredString(json, 'category', 'lint rule catalog entry'),
-        tags: List.unmodifiable(
-          json.containsKey('tags')
-              ? _requiredStringList(
-                  json, 'tags', 'lint rule catalog entry.tags')
-              : const <String>[],
-        ),
-        defaultEnabled: _requiredBool(
-          json,
-          'default_enabled',
-          'lint rule catalog entry',
-        ),
-        defaultProfile: _requiredString(
-          json,
-          'default_profile',
-          'lint rule catalog entry',
-        ),
-        origin: _requiredString(json, 'origin', 'lint rule catalog entry'),
-        configurable: _requiredBool(
-          json,
-          'configurable',
-          'lint rule catalog entry',
-        ),
-        fixable: _requiredBool(json, 'fixable', 'lint rule catalog entry'),
-      );
+  ) => MermanLintRuleCatalogEntry(
+    id: _requiredString(json, 'id', 'lint rule catalog entry'),
+    description: _requiredString(
+      json,
+      'description',
+      'lint rule catalog entry',
+    ),
+    evidence: List.unmodifiable(
+      _requiredStringList(json, 'evidence', 'lint rule catalog entry.evidence'),
+    ),
+    defaultSeverity: _requiredString(
+      json,
+      'default_severity',
+      'lint rule catalog entry',
+    ),
+    category: _requiredString(json, 'category', 'lint rule catalog entry'),
+    tags: List.unmodifiable(
+      json.containsKey('tags')
+          ? _requiredStringList(json, 'tags', 'lint rule catalog entry.tags')
+          : const <String>[],
+    ),
+    defaultEnabled: _requiredBool(
+      json,
+      'default_enabled',
+      'lint rule catalog entry',
+    ),
+    defaultProfile: _requiredString(
+      json,
+      'default_profile',
+      'lint rule catalog entry',
+    ),
+    origin: _requiredString(json, 'origin', 'lint rule catalog entry'),
+    configurable: _requiredBool(
+      json,
+      'configurable',
+      'lint rule catalog entry',
+    ),
+    fixable: _requiredBool(json, 'fixable', 'lint rule catalog entry'),
+  );
 }
 
 /// Artifact-owned typed theme metadata.
@@ -695,7 +688,7 @@ class MermanThemeCatalog {
 
   factory MermanThemeCatalog.fromJson(Map<String, Object?> json) {
     final schemaVersion = _requiredInt(json, 'schema_version');
-    if (schemaVersion != 2) {
+    if (schemaVersion != 3) {
       throw MermanException.contract(
         'unsupported theme catalog schema $schemaVersion',
       );
@@ -797,40 +790,127 @@ class MermanThemeCatalog {
 class MermanThemePreset {
   const MermanThemePreset({
     required this.id,
+    required this.displayName,
     required this.appearance,
     required this.maturity,
-    required this.requiredCapabilityIds,
-    required this.requiredTextCapabilityIds,
+    required this.available,
+    required this.availabilityReasonIds,
+    required this.qualifiedCells,
+    required this.licenseExpression,
+    required this.requiredAttribution,
+    required this.exportKind,
   });
 
   final String id;
+  final String displayName;
   final String appearance;
   final String maturity;
-  final List<String> requiredCapabilityIds;
-  final List<String> requiredTextCapabilityIds;
+  final bool available;
+  final List<String> availabilityReasonIds;
+  final List<MermanThemePresetQualifiedCell> qualifiedCells;
+  final String licenseExpression;
+  final String? requiredAttribution;
+  final String exportKind;
 
-  factory MermanThemePreset.fromJson(Map<String, Object?> json) =>
-      MermanThemePreset(
-        id: _requiredString(json, 'id', 'theme preset'),
-        appearance: _requiredString(json, 'appearance', 'theme preset'),
-        maturity: _requiredRuntimeIdentifier(
+  factory MermanThemePreset.fromJson(Map<String, Object?> json) {
+    final id = _requiredRuntimeIdentifier(json, 'id', 'theme preset');
+    final available = _requiredBool(json, 'available', 'theme preset $id');
+    final availabilityReasonIds = _requiredSortedUniqueStrings(
+      json,
+      'availability_reason_ids',
+      'theme preset $id.availability_reason_ids',
+    );
+    if (available != availabilityReasonIds.isEmpty) {
+      throw MermanException.contract(
+        'theme preset $id availability contradicts its reason IDs',
+      );
+    }
+    final rawQualifiedCells = json['qualified_cells'];
+    if (rawQualifiedCells is! List) {
+      throw MermanException.contract(
+        'theme preset $id.qualified_cells must be an array',
+      );
+    }
+    final qualifiedCells = <MermanThemePresetQualifiedCell>[];
+    String? previousCell;
+    for (final entry in rawQualifiedCells.indexed) {
+      final cell = MermanThemePresetQualifiedCell.fromJson(
+        _asObject(entry.$2, 'theme preset $id.qualified_cells[${entry.$1}]'),
+      );
+      final key = '${cell.familyId}\u0000${cell.outputId}';
+      if (previousCell != null && previousCell.compareTo(key) >= 0) {
+        throw MermanException.contract(
+          'theme preset $id.qualified_cells must be sorted and unique',
+        );
+      }
+      previousCell = key;
+      qualifiedCells.add(cell);
+    }
+    final requiredAttribution = json['required_attribution'];
+    if (requiredAttribution != null &&
+        (requiredAttribution is! String || requiredAttribution.isEmpty)) {
+      throw MermanException.contract(
+        'theme preset $id.required_attribution must be a non-empty string or null',
+      );
+    }
+    final exportKind = _requiredString(json, 'export_kind', 'theme preset $id');
+    if (exportKind != 'definition' && exportKind != 'complete_spec') {
+      throw MermanException.contract(
+        'theme preset $id.export_kind is unsupported',
+      );
+    }
+    return MermanThemePreset(
+      id: id,
+      displayName: _requiredNonEmptyString(
+        json,
+        'display_name',
+        'theme preset $id',
+      ),
+      appearance: _requiredRuntimeIdentifier(
+        json,
+        'appearance',
+        'theme preset $id',
+      ),
+      maturity: _requiredRuntimeIdentifier(
+        json,
+        'maturity',
+        'theme preset $id',
+      ),
+      available: available,
+      availabilityReasonIds: List.unmodifiable(availabilityReasonIds),
+      qualifiedCells: List.unmodifiable(qualifiedCells),
+      licenseExpression: _requiredNonEmptyString(
+        json,
+        'license_expression',
+        'theme preset $id',
+      ),
+      requiredAttribution: requiredAttribution as String?,
+      exportKind: exportKind,
+    );
+  }
+}
+
+/// One family/output cell freshly qualified for a preset recipe.
+class MermanThemePresetQualifiedCell {
+  const MermanThemePresetQualifiedCell({
+    required this.familyId,
+    required this.outputId,
+  });
+
+  final String familyId;
+  final String outputId;
+
+  factory MermanThemePresetQualifiedCell.fromJson(Map<String, Object?> json) =>
+      MermanThemePresetQualifiedCell(
+        familyId: _requiredRuntimeIdentifier(
           json,
-          'maturity',
-          'theme preset',
+          'family_id',
+          'theme preset qualified cell',
         ),
-        requiredCapabilityIds: List.unmodifiable(
-          _requiredSortedUniqueStrings(
-            json,
-            'required_capability_ids',
-            'theme preset.required_capability_ids',
-          ),
-        ),
-        requiredTextCapabilityIds: List.unmodifiable(
-          _requiredSortedUniqueStrings(
-            json,
-            'required_text_capability_ids',
-            'theme preset.required_text_capability_ids',
-          ),
+        outputId: _requiredRuntimeIdentifier(
+          json,
+          'output_id',
+          'theme preset qualified cell',
         ),
       );
 }
@@ -883,30 +963,30 @@ class MermanThemeResourceLimit {
 /// A Dart view of one synchronous text-measurement request.
 class MermanTextMeasureRequest {
   MermanTextMeasureRequest._(native.MermanNativeTextMeasureRequest request)
-      : text = _utf8FromSlice(request.text, 'text measurement text'),
-        fontFamily = _utf8FromSlice(
-          request.font_family,
-          'text measurement font family',
-        ),
-        fontSize = request.font_size,
-        fontWeight = _utf8FromSlice(
-          request.font_weight,
-          'text measurement font weight',
-        ),
-        fontStyle = _utf8FromSlice(
-          request.font_style,
-          'text measurement font style',
-        ),
-        maxWidth = request.has_max_width == 0 ? null : request.max_width,
-        lineHeight = request.line_height,
-        letterSpacing = request.letter_spacing,
-        wordSpacing = request.word_spacing,
-        wrapMode = MermanTextWrapMode.requireCode(request.wrap_mode),
-        direction = MermanTextDirection.requireCode(request.direction),
-        whiteSpace = MermanTextWhiteSpace.requireCode(request.white_space),
-        phase = MermanTextMeasurementPhase.requireCode(request.phase),
-        operationCode = request.operation,
-        operation = MermanTextMeasurementOperation.fromCode(request.operation) {
+    : text = _utf8FromSlice(request.text, 'text measurement text'),
+      fontFamily = _utf8FromSlice(
+        request.font_family,
+        'text measurement font family',
+      ),
+      fontSize = request.font_size,
+      fontWeight = _utf8FromSlice(
+        request.font_weight,
+        'text measurement font weight',
+      ),
+      fontStyle = _utf8FromSlice(
+        request.font_style,
+        'text measurement font style',
+      ),
+      maxWidth = request.has_max_width == 0 ? null : request.max_width,
+      lineHeight = request.line_height,
+      letterSpacing = request.letter_spacing,
+      wordSpacing = request.word_spacing,
+      wrapMode = MermanTextWrapMode.requireCode(request.wrap_mode),
+      direction = MermanTextDirection.requireCode(request.direction),
+      whiteSpace = MermanTextWhiteSpace.requireCode(request.white_space),
+      phase = MermanTextMeasurementPhase.requireCode(request.phase),
+      operationCode = request.operation,
+      operation = MermanTextMeasurementOperation.fromCode(request.operation) {
     if (request.text_measurement_protocol_version !=
         native.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION) {
       throw MermanException.contract(
@@ -1020,8 +1100,8 @@ class MermanTextMeasureResult {
 }
 
 /// Host callback invoked synchronously while native rendering measures text.
-typedef MermanTextMeasurer = MermanTextMeasureResult? Function(
-    MermanTextMeasureRequest request);
+typedef MermanTextMeasurer =
+    MermanTextMeasureResult? Function(MermanTextMeasureRequest request);
 
 /// One immutable IconifyJSON collection supplied during engine construction.
 final class MermanIconPack {
@@ -1049,7 +1129,7 @@ final class MermanIconPack {
 /// the engine owns the parsed registry after construction returns.
 final class MermanIconPackSet {
   MermanIconPackSet._(List<_EncodedMermanIconPack> encodedPacks)
-      : _encodedPacks = List.unmodifiable(encodedPacks);
+    : _encodedPacks = List.unmodifiable(encodedPacks);
 
   factory MermanIconPackSet.fromPacks(Iterable<MermanIconPack> packs) {
     final maxPacks = _iconRegistryResourceLimit('max_icon_registry_packs');
@@ -1173,11 +1253,11 @@ final class MermanResourceLimitDescriptor {
     required this.minimumValue,
     required List<String> operationIds,
     Map<String, Object?> additionalFields = const {},
-  })  : operationIds = List.unmodifiable(operationIds),
-        additionalFields = _deeplyUnmodifiableJsonObject(
-          additionalFields,
-          'resource limit additional fields',
-        );
+  }) : operationIds = List.unmodifiable(operationIds),
+       additionalFields = _deeplyUnmodifiableJsonObject(
+         additionalFields,
+         'resource limit additional fields',
+       );
 
   final MermanResourceLimitId id;
   final String phase;
@@ -1209,11 +1289,11 @@ final class MermanResourceProfileDescriptor {
     required this.recommendedBindingDefault,
     required Map<MermanResourceLimitId, int?> limits,
     Map<String, Object?> additionalFields = const {},
-  })  : limits = Map.unmodifiable(limits),
-        additionalFields = _deeplyUnmodifiableJsonObject(
-          additionalFields,
-          'resource profile additional fields',
-        );
+  }) : limits = Map.unmodifiable(limits),
+       additionalFields = _deeplyUnmodifiableJsonObject(
+         additionalFields,
+         'resource profile additional fields',
+       );
 
   final String id;
   final String purpose;
@@ -1316,10 +1396,10 @@ final class MermanRuntimeConstructorServiceContract {
     required this.id,
     required List<String> providedTextMeasurementProviderIds,
     required List<MermanRuntimeConstructorResourceLimit> resourceLimits,
-  })  : providedTextMeasurementProviderIds = List.unmodifiable(
-          providedTextMeasurementProviderIds,
-        ),
-        resourceLimits = List.unmodifiable(resourceLimits);
+  }) : providedTextMeasurementProviderIds = List.unmodifiable(
+         providedTextMeasurementProviderIds,
+       ),
+       resourceLimits = List.unmodifiable(resourceLimits);
 
   final String id;
   final List<String> providedTextMeasurementProviderIds;
@@ -1336,7 +1416,7 @@ class MermanRuntimeCatalog {
     required List<String> optionGroupIds,
     required List<String> constructorServiceIds,
     required List<MermanRuntimeConstructorServiceContract>
-        constructorServiceContracts,
+    constructorServiceContracts,
     required this.capabilityIds,
     required this.outputIds,
     required this.operationIds,
@@ -1348,43 +1428,40 @@ class MermanRuntimeCatalog {
     required List<MermanRuntimeOutputContract> outputContracts,
     required List<MermanResourceLimitDescriptor> resourceLimits,
     required List<MermanResourceProfileDescriptor> resourceProfiles,
-  })  : optionsSchemaVersions = List.unmodifiable(optionsSchemaVersions),
-        payloadSchemas = List.unmodifiable(payloadSchemas),
-        metadataIds = List.unmodifiable(metadataIds),
-        optionGroupIds = List.unmodifiable(optionGroupIds),
-        constructorServiceIds = List.unmodifiable(constructorServiceIds),
-        constructorServiceContracts = List.unmodifiable(
-          constructorServiceContracts,
-        ),
-        outputContracts = List.unmodifiable(outputContracts),
-        resourceLimits = List.unmodifiable(resourceLimits),
-        resourceProfiles = List.unmodifiable(resourceProfiles),
-        outputContractsById = Map.unmodifiable({
-          for (final contract in outputContracts) contract.id: contract,
-        }),
-        resourceLimitsById = Map.unmodifiable({
-          for (final limit in resourceLimits) limit.id: limit,
-        }),
-        resourceProfilesById = Map.unmodifiable({
-          for (final profile in resourceProfiles) profile.id: profile,
-        });
+  }) : optionsSchemaVersions = List.unmodifiable(optionsSchemaVersions),
+       payloadSchemas = List.unmodifiable(payloadSchemas),
+       metadataIds = List.unmodifiable(metadataIds),
+       optionGroupIds = List.unmodifiable(optionGroupIds),
+       constructorServiceIds = List.unmodifiable(constructorServiceIds),
+       constructorServiceContracts = List.unmodifiable(
+         constructorServiceContracts,
+       ),
+       outputContracts = List.unmodifiable(outputContracts),
+       resourceLimits = List.unmodifiable(resourceLimits),
+       resourceProfiles = List.unmodifiable(resourceProfiles),
+       outputContractsById = Map.unmodifiable({
+         for (final contract in outputContracts) contract.id: contract,
+       }),
+       resourceLimitsById = Map.unmodifiable({
+         for (final limit in resourceLimits) limit.id: limit,
+       }),
+       resourceProfilesById = Map.unmodifiable({
+         for (final profile in resourceProfiles) profile.id: profile,
+       });
 
   factory MermanRuntimeCatalog.fromJson(Map<String, Object?> catalog) {
-    _requireRequiredKeys(
-        catalog,
-        const {
-          'schema_version',
-          'transport_api_version',
-          'package_version',
-          'options_schema_versions',
-          'payload_schemas',
-          'metadata_ids',
-          'capabilities',
-          'output_contracts',
-          'registry',
-          'resources',
-        },
-        'runtime catalog');
+    _requireRequiredKeys(catalog, const {
+      'schema_version',
+      'transport_api_version',
+      'package_version',
+      'options_schema_versions',
+      'payload_schemas',
+      'metadata_ids',
+      'capabilities',
+      'output_contracts',
+      'registry',
+      'resources',
+    }, 'runtime catalog');
     if (_requiredInt(catalog, 'schema_version') !=
         mermanRuntimeCatalogSchemaVersion) {
       throw MermanException.contract(
@@ -1419,16 +1496,13 @@ class MermanRuntimeCatalog {
     );
 
     final runtimeCapabilities = _requiredObject(catalog, 'capabilities');
-    _requireRequiredKeys(
-        runtimeCapabilities,
-        const {
-          'capability_ids',
-          'operation_ids',
-          'output_ids',
-          'system_adapter_ids',
-          'text_measurement',
-        },
-        'runtime capabilities');
+    _requireRequiredKeys(runtimeCapabilities, const {
+      'capability_ids',
+      'operation_ids',
+      'output_ids',
+      'system_adapter_ids',
+      'text_measurement',
+    }, 'runtime capabilities');
     final capabilityIds = _requiredSortedUniqueStrings(
       runtimeCapabilities,
       'capability_ids',
@@ -1489,13 +1563,10 @@ class MermanRuntimeCatalog {
     final providers = <String>[];
     if (textMeasurement is Map) {
       final textMeasurementMap = _asObject(textMeasurement, 'text_measurement');
-      _requireRequiredKeys(
-          textMeasurementMap,
-          const {
-            'protocol_version',
-            'provider_ids',
-          },
-          'runtime text measurement');
+      _requireRequiredKeys(textMeasurementMap, const {
+        'protocol_version',
+        'provider_ids',
+      }, 'runtime text measurement');
       if (_requiredInt(textMeasurementMap, 'protocol_version') !=
           native.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION) {
         throw MermanException.contract(
@@ -1564,12 +1635,9 @@ class MermanRuntimeCatalog {
     }
 
     final registry = _requiredObject(catalog, 'registry');
-    _requireRequiredKeys(
-        registry,
-        const {
-          'diagram_family_count',
-        },
-        'runtime registry');
+    _requireRequiredKeys(registry, const {
+      'diagram_family_count',
+    }, 'runtime registry');
     final diagramFamilyCount = _requiredInt(registry, 'diagram_family_count');
     if (diagramFamilyCount < 0) {
       throw MermanException.contract(
@@ -1578,15 +1646,12 @@ class MermanRuntimeCatalog {
     }
 
     final resources = _requiredObject(catalog, 'resources');
-    _requireRequiredKeys(
-        resources,
-        const {
-          'general_binding_default_profile',
-          'cli_default_profile',
-          'limits',
-          'profiles',
-        },
-        'runtime resources');
+    _requireRequiredKeys(resources, const {
+      'general_binding_default_profile',
+      'cli_default_profile',
+      'limits',
+      'profiles',
+    }, 'runtime resources');
     final resourceContract = _parseRuntimeResources(resources, operationIds);
 
     return MermanRuntimeCatalog._(
@@ -1622,7 +1687,7 @@ class MermanRuntimeCatalog {
   final List<String> optionGroupIds;
   final List<String> constructorServiceIds;
   final List<MermanRuntimeConstructorServiceContract>
-      constructorServiceContracts;
+  constructorServiceContracts;
   final List<String> capabilityIds;
   final List<String> outputIds;
   final List<String> operationIds;
@@ -1636,7 +1701,7 @@ class MermanRuntimeCatalog {
   final List<MermanResourceProfileDescriptor> resourceProfiles;
   final Map<String, MermanRuntimeOutputContract> outputContractsById;
   final Map<MermanResourceLimitId, MermanResourceLimitDescriptor>
-      resourceLimitsById;
+  resourceLimitsById;
   final Map<String, MermanResourceProfileDescriptor> resourceProfilesById;
   Map<String, Object?>? _jsonObjectCache;
 
@@ -1656,8 +1721,8 @@ class MermanRuntimeCatalog {
   MermanResourceLimitDescriptor? resourceLimitById(String id) =>
       resourceLimitsById[MermanResourceLimitId.fromId(id)];
   bool supportsPayloadSchema(String id, int version) => payloadSchemas.any(
-        (schema) => schema.id == id && schema.version == version,
-      );
+    (schema) => schema.id == id && schema.version == version,
+  );
 
   void requireCurrentBindingSchemas() {
     if (!optionsSchemaVersions.contains(mermanBindingOptionsSchemaVersion)) {
@@ -1732,14 +1797,16 @@ final class _LoadedNativeLibrary {
   final MermanRuntimeCatalog runtimeCatalog;
 }
 
-typedef _MermanGetNativeApiNative = native.MermanNativeStatus Function(
-  ffi.Pointer<native.MermanNativeApiRequest>,
-  ffi.Pointer<native.MermanNativeApi>,
-);
-typedef _MermanGetNativeApiDart = int Function(
-  ffi.Pointer<native.MermanNativeApiRequest>,
-  ffi.Pointer<native.MermanNativeApi>,
-);
+typedef _MermanGetNativeApiNative =
+    native.MermanNativeStatus Function(
+      ffi.Pointer<native.MermanNativeApiRequest>,
+      ffi.Pointer<native.MermanNativeApi>,
+    );
+typedef _MermanGetNativeApiDart =
+    int Function(
+      ffi.Pointer<native.MermanNativeApiRequest>,
+      ffi.Pointer<native.MermanNativeApi>,
+    );
 
 _LoadedNativeLibrary _loadNativeEntry(
   _MermanGetNativeApiDart getNativeApi, {
@@ -1877,8 +1944,7 @@ class Merman {
   MermanOperationResult renderJpegResult(
     String source, {
     String? optionsJson,
-  }) =>
-      execute(MermanOperation.jpeg, source, optionsJson: optionsJson);
+  }) => execute(MermanOperation.jpeg, source, optionsJson: optionsJson);
 
   Uint8List renderPdf(String source, {String? optionsJson}) =>
       renderPdfResult(source, optionsJson: optionsJson).bytes;
@@ -1901,12 +1967,11 @@ class Merman {
   Map<String, Object?> analysisFactsJson(
     String source, {
     String? optionsJson,
-  }) =>
-      _json(
-        MermanOperation.analysisFactsJson,
-        source,
-        optionsJson: optionsJson,
-      );
+  }) => _json(
+    MermanOperation.analysisFactsJson,
+    source,
+    optionsJson: optionsJson,
+  );
 
   Map<String, Object?> svgPlanJson(String source, {String? optionsJson}) =>
       _json(MermanOperation.svgPlanJson, source, optionsJson: optionsJson);
@@ -1915,25 +1980,23 @@ class Merman {
     String source, {
     required String uri,
     String? optionsJson,
-  }) =>
-      _json(
-        MermanOperation.documentAnalysisJson,
-        source,
-        uri: uri,
-        optionsJson: optionsJson,
-      );
+  }) => _json(
+    MermanOperation.documentAnalysisJson,
+    source,
+    uri: uri,
+    optionsJson: optionsJson,
+  );
 
   Map<String, Object?> analyzeDocumentFactsJson(
     String source, {
     required String uri,
     String? optionsJson,
-  }) =>
-      _json(
-        MermanOperation.documentAnalysisFactsJson,
-        source,
-        uri: uri,
-        optionsJson: optionsJson,
-      );
+  }) => _json(
+    MermanOperation.documentAnalysisFactsJson,
+    source,
+    uri: uri,
+    optionsJson: optionsJson,
+  );
 
   MermanValidationResult validate(String source, {String? optionsJson}) =>
       MermanValidationResult._(
@@ -2065,12 +2128,11 @@ class MermanEngine {
     String path, {
     String? optionsJson,
     MermanEngineServices services = const MermanEngineServices(),
-  }) =>
-      MermanEngine.fromDynamicLibrary(
-        openMermanLibraryFromPath(path),
-        optionsJson: optionsJson,
-        services: services,
-      );
+  }) => MermanEngine.fromDynamicLibrary(
+    openMermanLibraryFromPath(path),
+    optionsJson: optionsJson,
+    services: services,
+  );
 
   final _NativeApi _native;
   final MermanRuntimeCatalog runtimeCatalog;
@@ -2127,8 +2189,7 @@ class MermanEngine {
   MermanOperationResult renderJpegResult(
     String source, {
     String? optionsJson,
-  }) =>
-      execute(MermanOperation.jpeg, source, optionsJson: optionsJson);
+  }) => execute(MermanOperation.jpeg, source, optionsJson: optionsJson);
 
   Uint8List renderPdf(String source, {String? optionsJson}) =>
       renderPdfResult(source, optionsJson: optionsJson).bytes;
@@ -2151,12 +2212,11 @@ class MermanEngine {
   Map<String, Object?> analysisFactsJson(
     String source, {
     String? optionsJson,
-  }) =>
-      _json(
-        MermanOperation.analysisFactsJson,
-        source,
-        optionsJson: optionsJson,
-      );
+  }) => _json(
+    MermanOperation.analysisFactsJson,
+    source,
+    optionsJson: optionsJson,
+  );
 
   Map<String, Object?> svgPlanJson(String source, {String? optionsJson}) =>
       _json(MermanOperation.svgPlanJson, source, optionsJson: optionsJson);
@@ -2165,25 +2225,23 @@ class MermanEngine {
     String source, {
     required String uri,
     String? optionsJson,
-  }) =>
-      _json(
-        MermanOperation.documentAnalysisJson,
-        source,
-        uri: uri,
-        optionsJson: optionsJson,
-      );
+  }) => _json(
+    MermanOperation.documentAnalysisJson,
+    source,
+    uri: uri,
+    optionsJson: optionsJson,
+  );
 
   Map<String, Object?> analyzeDocumentFactsJson(
     String source, {
     required String uri,
     String? optionsJson,
-  }) =>
-      _json(
-        MermanOperation.documentAnalysisFactsJson,
-        source,
-        uri: uri,
-        optionsJson: optionsJson,
-      );
+  }) => _json(
+    MermanOperation.documentAnalysisFactsJson,
+    source,
+    uri: uri,
+    optionsJson: optionsJson,
+  );
 
   MermanValidationResult validate(String source, {String? optionsJson}) =>
       MermanValidationResult._(
@@ -2274,44 +2332,44 @@ class _NativeApi {
     required _NativeEngineCloser engineCloser,
     required native.DartMermanNativeExecuteCollectFnFunction executeCollect,
     required native.DartMermanNativeExecuteCollectControlledFnFunction
-        executeCollectControlled,
+    executeCollectControlled,
     required native.DartMermanNativeResultFreeFnFunction resultFree,
     required native.DartMermanNativeMetadataCollectFnFunction metadataCollect,
     required native.DartMermanNativeEngineNewWithServicesFnFunction
-        engineNewWithServices,
+    engineNewWithServices,
     required native.DartMermanNativeOperationControlNewFnFunction
-        operationControlNew,
+    operationControlNew,
     required native.DartMermanNativeOperationControlCancelFnFunction
-        operationControlCancel,
+    operationControlCancel,
     required native.DartMermanNativeOperationControlReleaseFnFunction
-        operationControlRelease,
-  })  : _runtimeCatalog = runtimeCatalog,
-        _engineCloser = engineCloser,
-        _executeCollect = executeCollect,
-        _executeCollectControlled = executeCollectControlled,
-        _resultFree = resultFree,
-        _metadataCollect = metadataCollect,
-        _engineNewWithServices = engineNewWithServices,
-        _operationControlNew = operationControlNew,
-        _operationControlCancel = operationControlCancel,
-        _operationControlRelease = operationControlRelease;
+    operationControlRelease,
+  }) : _runtimeCatalog = runtimeCatalog,
+       _engineCloser = engineCloser,
+       _executeCollect = executeCollect,
+       _executeCollectControlled = executeCollectControlled,
+       _resultFree = resultFree,
+       _metadataCollect = metadataCollect,
+       _engineNewWithServices = engineNewWithServices,
+       _operationControlNew = operationControlNew,
+       _operationControlCancel = operationControlCancel,
+       _operationControlRelease = operationControlRelease;
 
   final String packageVersion;
   final native.DartMermanNativeRuntimeCatalogFnFunction _runtimeCatalog;
   final _NativeEngineCloser _engineCloser;
   final native.DartMermanNativeExecuteCollectFnFunction _executeCollect;
   final native.DartMermanNativeExecuteCollectControlledFnFunction
-      _executeCollectControlled;
+  _executeCollectControlled;
   final native.DartMermanNativeResultFreeFnFunction _resultFree;
   final native.DartMermanNativeMetadataCollectFnFunction _metadataCollect;
   final native.DartMermanNativeEngineNewWithServicesFnFunction
-      _engineNewWithServices;
+  _engineNewWithServices;
   final native.DartMermanNativeOperationControlNewFnFunction
-      _operationControlNew;
+  _operationControlNew;
   final native.DartMermanNativeOperationControlCancelFnFunction
-      _operationControlCancel;
+  _operationControlCancel;
   final native.DartMermanNativeOperationControlReleaseFnFunction
-      _operationControlRelease;
+  _operationControlRelease;
 
   factory _NativeApi.discover(_MermanGetNativeApiDart getNativeApi) {
     final request = calloc<native.MermanNativeApiRequest>();
@@ -2421,20 +2479,28 @@ class _NativeApi {
         ),
         executeCollect: table.execute_collect
             .asFunction<native.DartMermanNativeExecuteCollectFnFunction>(),
-        executeCollectControlled: table.execute_collect_controlled.asFunction<
-            native.DartMermanNativeExecuteCollectControlledFnFunction>(),
+        executeCollectControlled: table.execute_collect_controlled
+            .asFunction<
+              native.DartMermanNativeExecuteCollectControlledFnFunction
+            >(),
         resultFree: table.result_free
             .asFunction<native.DartMermanNativeResultFreeFnFunction>(),
         metadataCollect: table.metadata_collect
             .asFunction<native.DartMermanNativeMetadataCollectFnFunction>(),
-        engineNewWithServices: table.engine_new_with_services.asFunction<
-            native.DartMermanNativeEngineNewWithServicesFnFunction>(),
+        engineNewWithServices: table.engine_new_with_services
+            .asFunction<
+              native.DartMermanNativeEngineNewWithServicesFnFunction
+            >(),
         operationControlNew: table.operation_control_new
             .asFunction<native.DartMermanNativeOperationControlNewFnFunction>(),
-        operationControlCancel: table.operation_control_cancel.asFunction<
-            native.DartMermanNativeOperationControlCancelFnFunction>(),
-        operationControlRelease: table.operation_control_release.asFunction<
-            native.DartMermanNativeOperationControlReleaseFnFunction>(),
+        operationControlCancel: table.operation_control_cancel
+            .asFunction<
+              native.DartMermanNativeOperationControlCancelFnFunction
+            >(),
+        operationControlRelease: table.operation_control_release
+            .asFunction<
+              native.DartMermanNativeOperationControlReleaseFnFunction
+            >(),
       );
     } finally {
       allocations.dispose();
@@ -2523,8 +2589,8 @@ class _NativeApi {
       registration = services.textMeasurer == null
           ? null
           : _TextMeasurementRegistration.create(services.textMeasurer!);
-      servicesConfig.ref.struct_size =
-          ffi.sizeOf<native.MermanNativeEngineServicesConfig>();
+      servicesConfig.ref.struct_size = ffi
+          .sizeOf<native.MermanNativeEngineServicesConfig>();
       _initializeEngineConfig(
         servicesConfig.ref.engine_config,
         optionsJson,
@@ -2891,24 +2957,27 @@ class _TextMeasurementRegistration {
 
   final ffi.Pointer<ffi.Uint8> _key;
   final ffi.NativeCallable<native.MermanNativeTextMeasureCallbackFunction>
-      _callback;
+  _callback;
   bool _disposed = false;
 
   ffi.Pointer<ffi.Void> get userData => _key.cast<ffi.Void>();
 
   ffi.Pointer<
-          ffi.NativeFunction<native.MermanNativeTextMeasureCallbackFunction>>
-      get nativeFunction => _callback.nativeFunction;
+    ffi.NativeFunction<native.MermanNativeTextMeasureCallbackFunction>
+  >
+  get nativeFunction => _callback.nativeFunction;
 
   static _TextMeasurementRegistration create(MermanTextMeasurer measurer) {
     final key = calloc<ffi.Uint8>();
     _measurers[key.address] = measurer;
     try {
-      final callback = ffi.NativeCallable<
-          native.MermanNativeTextMeasureCallbackFunction>.isolateLocal(
-        _invoke,
-        exceptionalReturn: native.MERMAN_NATIVE_STATUS_CALLBACK_ERROR,
-      );
+      final callback =
+          ffi.NativeCallable<
+            native.MermanNativeTextMeasureCallbackFunction
+          >.isolateLocal(
+            _invoke,
+            exceptionalReturn: native.MERMAN_NATIVE_STATUS_CALLBACK_ERROR,
+          );
       return _TextMeasurementRegistration._(key, callback);
     } catch (_) {
       _measurers.remove(key.address);
@@ -2991,11 +3060,11 @@ final class _QuarantinedUnpublishedEngine {
     required this.token,
     required void Function()? releaseCallbackState,
     required int closeStatus,
-  })  : _releaseCallbackState = releaseCallbackState,
-        lastStatus = closeStatus,
-        state = _isRetryableEngineCloseStatus(closeStatus)
-            ? _QuarantinedEngineState.retryable
-            : _QuarantinedEngineState.poisoned;
+  }) : _releaseCallbackState = releaseCallbackState,
+       lastStatus = closeStatus,
+       state = _isRetryableEngineCloseStatus(closeStatus)
+           ? _QuarantinedEngineState.retryable
+           : _QuarantinedEngineState.poisoned;
 
   final _NativeEngineCloser closer;
   final int token;
@@ -3037,18 +3106,18 @@ final class _UnpublishedEngineBlocker {
   final bool poisoned;
 
   MermanException toException() => MermanException(
-        code: status,
-        codeName: poisoned
-            ? 'DART_UNPUBLISHED_ENGINE_QUARANTINE_POISONED'
-            : 'DART_UNPUBLISHED_ENGINE_QUARANTINED',
-        message: poisoned
-            ? 'native engine construction is disabled for this native '
-                'producer because a previously published token could not '
-                'establish callback quiescence; callback state remains retained'
-            : 'native engine construction is disabled for this native '
-                'producer because a previously published token has not yet '
-                'been rolled back',
-      );
+    code: status,
+    codeName: poisoned
+        ? 'DART_UNPUBLISHED_ENGINE_QUARANTINE_POISONED'
+        : 'DART_UNPUBLISHED_ENGINE_QUARANTINED',
+    message: poisoned
+        ? 'native engine construction is disabled for this native '
+              'producer because a previously published token could not '
+              'establish callback quiescence; callback state remains retained'
+        : 'native engine construction is disabled for this native '
+              'producer because a previously published token has not yet '
+              'been rolled back',
+  );
 }
 
 /// Retains callback state when a non-conforming producer publishes an engine
@@ -3071,7 +3140,9 @@ final class _UnpublishedEngineQuarantine {
         'a successfully closed engine must not enter quarantine',
       );
     }
-    _enginesByProducer.putIfAbsent(closer.identity, () => []).add(
+    _enginesByProducer
+        .putIfAbsent(closer.identity, () => [])
+        .add(
           _QuarantinedUnpublishedEngine(
             closer: closer,
             token: token,
@@ -3125,9 +3196,9 @@ final class _UnpublishedEngineQuarantine {
       _enginesByProducer[producerIdentity]?.length ?? 0;
 
   int get totalEntryCount => _enginesByProducer.values.fold(
-        0,
-        (total, engines) => total + engines.length,
-      );
+    0,
+    (total, engines) => total + engines.length,
+  );
 }
 
 final _unpublishedEngineQuarantine = _UnpublishedEngineQuarantine();
@@ -3194,9 +3265,12 @@ void _initializeEngineConfig(
     optionsJson == null ? const <int>[] : utf8.encode(optionsJson),
     allocations,
   );
-  config.text_measure = registration?.nativeFunction ??
-      ffi.nullptr.cast<
-          ffi.NativeFunction<native.MermanNativeTextMeasureCallbackFunction>>();
+  config.text_measure =
+      registration?.nativeFunction ??
+      ffi.nullptr
+          .cast<
+            ffi.NativeFunction<native.MermanNativeTextMeasureCallbackFunction>
+          >();
   config.text_measure_user_data =
       registration?.userData ?? ffi.nullptr.cast<ffi.Void>();
 }
@@ -3295,17 +3369,14 @@ _ParsedRuntimeResources _parseRuntimeResources(
   for (var index = 0; index < rawLimits.length; index += 1) {
     final label = 'runtime resources.limits[$index]';
     final limit = _asObject(rawLimits[index], label);
-    _requireRequiredKeys(
-        limit,
-        const {
-          'id',
-          'phase',
-          'description',
-          'overridable',
-          'hard_cap',
-          'minimum_value',
-        },
-        label);
+    _requireRequiredKeys(limit, const {
+      'id',
+      'phase',
+      'description',
+      'overridable',
+      'hard_cap',
+      'minimum_value',
+    }, label);
     final idText = _requiredNonEmptyString(limit, 'id', label);
     if (!_isRuntimeFieldIdentifier(idText)) {
       throw MermanException.contract(
@@ -3369,16 +3440,13 @@ _ParsedRuntimeResources _parseRuntimeResources(
   for (var index = 0; index < rawProfiles.length; index += 1) {
     final label = 'runtime resources.profiles[$index]';
     final profile = _asObject(rawProfiles[index], label);
-    _requireRequiredKeys(
-        profile,
-        const {
-          'id',
-          'purpose',
-          'trust_assumption',
-          'recommended_binding_default',
-          'limits',
-        },
-        label);
+    _requireRequiredKeys(profile, const {
+      'id',
+      'purpose',
+      'trust_assumption',
+      'recommended_binding_default',
+      'limits',
+    }, label);
     final id = _requiredNonEmptyString(profile, 'id', label);
     if (!_isRuntimeIdentifier(id)) {
       throw MermanException.contract(
@@ -3456,8 +3524,9 @@ _ParsedRuntimeResources _parseRuntimeResources(
       'runtime CLI default resource profile `$cliDefaultProfile` is not declared',
     );
   }
-  final recommendedProfiles =
-      profiles.where((profile) => profile.recommendedBindingDefault).toList();
+  final recommendedProfiles = profiles
+      .where((profile) => profile.recommendedBindingDefault)
+      .toList();
   if (recommendedProfiles.length != 1 ||
       recommendedProfiles.single.id != generalBindingDefaultProfile) {
     throw MermanException.contract(
@@ -3484,15 +3553,12 @@ List<MermanRuntimeOutputContract> _parseRuntimeOutputContracts(
   final contracts = <MermanRuntimeOutputContract>[];
   for (final item in value) {
     final contract = _asObject(item, 'runtime output contract');
-    _requireRequiredKeys(
-        contract,
-        const {
-          'id',
-          'media_type',
-          'system_fonts',
-          'embedded_images',
-        },
-        'runtime output contract');
+    _requireRequiredKeys(contract, const {
+      'id',
+      'media_type',
+      'system_fonts',
+      'embedded_images',
+    }, 'runtime output contract');
     final id = _requiredNonEmptyString(
       contract,
       'id',
@@ -3541,17 +3607,14 @@ MermanRuntimeSystemFontContract? _parseRuntimeSystemFontContract(
     return null;
   }
   final fonts = _asObject(value, 'runtime system font contract');
-  _requireRequiredKeys(
-      fonts,
-      const {
-        'source_id',
-        'discovery',
-        'cache_scope',
-        'host_dependent',
-        'caller_configurable',
-        'resource_bounded',
-      },
-      'runtime system font contract');
+  _requireRequiredKeys(fonts, const {
+    'source_id',
+    'discovery',
+    'cache_scope',
+    'host_dependent',
+    'caller_configurable',
+    'resource_bounded',
+  }, 'runtime system font contract');
   return MermanRuntimeSystemFontContract(
     sourceId: _requiredNonEmptyString(
       fonts,
@@ -3593,26 +3656,20 @@ MermanRuntimeEmbeddedImageContract? _parseRuntimeEmbeddedImageContract(
     return null;
   }
   final images = _asObject(value, 'runtime embedded image contract');
-  _requireRequiredKeys(
-      images,
-      const {
-        'source_ids',
-        'filesystem_access',
-        'network_access',
-        'caller_configurable',
-        'limits',
-      },
-      'runtime embedded image contract');
+  _requireRequiredKeys(images, const {
+    'source_ids',
+    'filesystem_access',
+    'network_access',
+    'caller_configurable',
+    'limits',
+  }, 'runtime embedded image contract');
   final limits = _asObject(images['limits'], 'runtime embedded image limits');
-  _requireRequiredKeys(
-      limits,
-      const {
-        'max_bytes_per_image',
-        'max_total_bytes',
-        'max_pixels_per_image',
-        'max_total_pixels',
-      },
-      'runtime embedded image limits');
+  _requireRequiredKeys(limits, const {
+    'max_bytes_per_image',
+    'max_total_bytes',
+    'max_pixels_per_image',
+    'max_total_pixels',
+  }, 'runtime embedded image limits');
   return MermanRuntimeEmbeddedImageContract(
     sourceIds: _requiredSortedUniqueStrings(
       images,
@@ -3727,11 +3784,10 @@ Map<String, Object?> _asObject(Object? value, String label) {
 Map<String, Object?> _additionalJsonFields(
   Map<String, Object?> source,
   Set<String> knownKeys,
-) =>
-    <String, Object?>{
-      for (final entry in source.entries)
-        if (!knownKeys.contains(entry.key)) entry.key: entry.value,
-    };
+) => <String, Object?>{
+  for (final entry in source.entries)
+    if (!knownKeys.contains(entry.key)) entry.key: entry.value,
+};
 
 String _encodePreservedJsonObject(Map<String, Object?> source, String label) {
   try {
@@ -3744,12 +3800,10 @@ String _encodePreservedJsonObject(Map<String, Object?> source, String label) {
 Map<String, Object?> _deeplyUnmodifiableJsonObject(
   Map<String, Object?> source,
   String label,
-) =>
-    Map.unmodifiable(<String, Object?>{
-      for (final entry in source.entries)
-        entry.key:
-            _deeplyUnmodifiableJsonValue(entry.value, '$label.${entry.key}'),
-    });
+) => Map.unmodifiable(<String, Object?>{
+  for (final entry in source.entries)
+    entry.key: _deeplyUnmodifiableJsonValue(entry.value, '$label.${entry.key}'),
+});
 
 Object? _deeplyUnmodifiableJsonValue(Object? value, String label) {
   if (value == null || value is String || value is num || value is bool) {
@@ -3984,16 +4038,17 @@ void _validateRuntimeOptionGroups(
       );
     }
   }
-  final expectedKnownIds = mermanBindingOptionGroupSpecs.values
-      .where(
-        (spec) =>
-            spec.alwaysAvailable ||
-            (spec.requiresSvgPipeline && usesSvgPipeline) ||
-            spec.anyCapabilityIds.any(capabilityIds.contains),
-      )
-      .map((spec) => spec.id)
-      .toList()
-    ..sort();
+  final expectedKnownIds =
+      mermanBindingOptionGroupSpecs.values
+          .where(
+            (spec) =>
+                spec.alwaysAvailable ||
+                (spec.requiresSvgPipeline && usesSvgPipeline) ||
+                spec.anyCapabilityIds.any(capabilityIds.contains),
+          )
+          .map((spec) => spec.id)
+          .toList()
+        ..sort();
   final actualKnownIds = ids
       .where(mermanBindingOptionGroupSpecs.containsKey)
       .toList(growable: false);
@@ -4069,15 +4124,16 @@ void _validateRuntimeConstructorServiceIds(
 }) {
   final candidates = mermanBindingTransportExposureSpecs['native-c']!
       .constructorServiceCandidateIds;
-  final expectedKnownIds = mermanBindingConstructorServiceSpecs.values
-      .where(
-        (spec) =>
-            candidates.contains(spec.id) &&
-            (!spec.requiresSvgPipeline || usesSvgPipeline),
-      )
-      .map((spec) => spec.id)
-      .toList()
-    ..sort();
+  final expectedKnownIds =
+      mermanBindingConstructorServiceSpecs.values
+          .where(
+            (spec) =>
+                candidates.contains(spec.id) &&
+                (!spec.requiresSvgPipeline || usesSvgPipeline),
+          )
+          .map((spec) => spec.id)
+          .toList()
+        ..sort();
   final actualKnownIds = ids.where(candidates.contains).toList(growable: false);
   if (!_sameStrings(actualKnownIds, expectedKnownIds)) {
     throw MermanException.contract(
@@ -4198,18 +4254,18 @@ Never _throwIconRegistryInvalidUtf16({
 
 final Map<String, MermanBindingOperationExpectation> _operationExpectationById =
     Map.unmodifiable({
-  for (final expectation in mermanBindingOperationExpectations)
-    expectation.operationId: expectation,
-});
+      for (final expectation in mermanBindingOperationExpectations)
+        expectation.operationId: expectation,
+    });
 
 final Map<String, String> _generatedConstructorResourceLimitOwners =
     Map.unmodifiable({
-  for (final service in mermanBindingConstructorServiceSpecs.values)
-    for (final limit in service.resourceLimits) limit.id: service.id,
-});
+      for (final service in mermanBindingConstructorServiceSpecs.values)
+        for (final limit in service.resourceLimits) limit.id: service.id,
+    });
 
 List<MermanRuntimeConstructorServiceContract>
-    _parseRuntimeConstructorServiceContracts(
+_parseRuntimeConstructorServiceContracts(
   Object? value,
   List<String> serviceIds,
   List<String> availableProviderIds,
@@ -4230,14 +4286,11 @@ List<MermanRuntimeConstructorServiceContract>
   for (var index = 0; index < value.length; index += 1) {
     final label = 'runtime constructor service contracts[$index]';
     final contract = _asObject(value[index], label);
-    _requireRequiredKeys(
-        contract,
-        const {
-          'id',
-          'provided_text_measurement_provider_ids',
-          'resource_limits',
-        },
-        label);
+    _requireRequiredKeys(contract, const {
+      'id',
+      'provided_text_measurement_provider_ids',
+      'resource_limits',
+    }, label);
     final id = _requiredNonEmptyString(contract, 'id', label);
     if (!_isRuntimeIdentifier(id)) {
       throw MermanException.contract('$label.id must be a stable identifier');
@@ -4313,7 +4366,7 @@ List<MermanRuntimeConstructorServiceContract>
 }
 
 List<MermanRuntimeConstructorResourceLimit>
-    _parseRuntimeConstructorResourceLimits(Object? value, String serviceId) {
+_parseRuntimeConstructorResourceLimits(Object? value, String serviceId) {
   if (value is! List) {
     throw MermanException.contract(
       'runtime constructor service `$serviceId` resource limits must be an array',
@@ -4325,16 +4378,13 @@ List<MermanRuntimeConstructorResourceLimit>
     final label =
         'runtime constructor service `$serviceId` resource limits[$index]';
     final limit = _asObject(value[index], label);
-    _requireRequiredKeys(
-        limit,
-        const {
-          'id',
-          'phase',
-          'unit',
-          'description',
-          'value',
-        },
-        label);
+    _requireRequiredKeys(limit, const {
+      'id',
+      'phase',
+      'unit',
+      'description',
+      'value',
+    }, label);
     final id = _requiredNonEmptyString(limit, 'id', label);
     if (!_isRuntimeFieldIdentifier(id)) {
       throw MermanException.contract('$label.id must be a field identifier');

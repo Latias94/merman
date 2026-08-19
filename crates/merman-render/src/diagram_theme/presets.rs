@@ -33,10 +33,6 @@ impl ThemePreset {
             .map(catalog::PresetCatalogEntry::preset)
             .ok_or_else(|| ThemePresetParseError { id: id.to_string() })
     }
-
-    pub(crate) fn spec_wire(self) -> merman_theme_contract::DiagramThemeSpecWireV1 {
-        catalog::build_spec_wire(self)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -117,68 +113,12 @@ impl ThemePresetDescriptor {
         self.entry().preset()
     }
 
-    pub const fn catalog_schema_version(self) -> u32 {
-        self.entry().catalog_schema_version()
-    }
-
-    pub const fn authoring_schema_version(self) -> u32 {
-        self.entry().authoring_schema_version()
-    }
-
-    pub const fn expansion_version(self) -> u32 {
-        self.entry().expansion_version()
-    }
-
-    pub const fn spec_schema_version(self) -> u32 {
-        self.entry().spec_schema_version()
-    }
-
-    pub const fn recipe_revision(self) -> u32 {
-        self.entry().recipe_revision()
-    }
-
-    pub fn recipe_fingerprint(self) -> &'static str {
-        self.entry().recipe_fingerprint()
-    }
-
-    pub const fn resource_fingerprint(self) -> &'static str {
-        self.entry().resource_fingerprint()
-    }
-
-    pub const fn qualified_cell_count(self) -> usize {
-        self.entry().qualified_cells().len()
-    }
-
     pub const fn qualified_cells(self) -> &'static [ThemePresetQualifiedCell] {
         self.entry().qualified_cells()
     }
 
     pub const fn export_kind(self) -> &'static str {
         self.entry().export_kind()
-    }
-
-    pub const fn qualification_schema_revision(self) -> u32 {
-        self.entry()
-            .qualification_invalidation()
-            .qualification_schema_revision()
-    }
-
-    pub const fn qualification_admission_revision(self) -> u32 {
-        self.entry()
-            .qualification_invalidation()
-            .admission_revision()
-    }
-
-    pub const fn qualification_invalidates_recipe_changes(self) -> bool {
-        self.entry()
-            .qualification_invalidation()
-            .invalidate_on_recipe_fingerprint_change()
-    }
-
-    pub const fn qualification_invalidates_resource_changes(self) -> bool {
-        self.entry()
-            .qualification_invalidation()
-            .invalidate_on_resource_fingerprint_change()
     }
 
     pub const fn license_expression(self) -> &'static str {
@@ -228,6 +168,8 @@ impl ThemePresetQualificationInvalidation {
 pub const fn theme_preset_descriptors() -> &'static [ThemePresetDescriptor] {
     catalog::descriptors()
 }
+
+pub(crate) use catalog::materialize_spec_wire;
 
 #[cfg(test)]
 fn preset_palette(preset: ThemePreset) -> catalog::PresetPalette {
@@ -392,19 +334,31 @@ mod tests {
     fn alpha_preset_metadata_starts_unqualified_and_fail_closed() {
         for descriptor in theme_preset_descriptors() {
             let entry = catalog::entry_for_preset(descriptor.preset());
-            assert_eq!(descriptor.catalog_schema_version(), 1);
-            assert_eq!(descriptor.authoring_schema_version(), 1);
-            assert_eq!(descriptor.expansion_version(), 1);
-            assert_eq!(descriptor.spec_schema_version(), 1);
-            assert_eq!(descriptor.recipe_revision(), 1);
+            assert_eq!(entry.catalog_schema_version(), 1);
+            assert_eq!(entry.authoring_schema_version(), 1);
+            assert_eq!(entry.expansion_version(), 1);
+            assert_eq!(entry.spec_schema_version(), 1);
+            assert_eq!(entry.recipe_revision(), 1);
             assert_eq!(descriptor.maturity(), "alpha");
-            assert_eq!(descriptor.qualified_cell_count(), 0);
             assert!(descriptor.qualified_cells().is_empty());
-            assert_eq!(descriptor.export_kind(), "definition");
-            assert_eq!(descriptor.qualification_schema_revision(), 1);
-            assert_eq!(descriptor.qualification_admission_revision(), 1);
-            assert!(descriptor.qualification_invalidates_recipe_changes());
-            assert!(descriptor.qualification_invalidates_resource_changes());
+            assert_eq!(descriptor.export_kind(), "complete_spec");
+            assert_eq!(
+                entry
+                    .qualification_invalidation()
+                    .qualification_schema_revision(),
+                1
+            );
+            assert_eq!(entry.qualification_invalidation().admission_revision(), 1);
+            assert!(
+                entry
+                    .qualification_invalidation()
+                    .invalidate_on_recipe_fingerprint_change()
+            );
+            assert!(
+                entry
+                    .qualification_invalidation()
+                    .invalidate_on_resource_fingerprint_change()
+            );
             assert_eq!(descriptor.license_expression(), "MIT OR Apache-2.0");
             assert_eq!(descriptor.required_attribution(), None);
             assert!(entry.required_feature_ids().is_empty());
@@ -418,12 +372,11 @@ mod tests {
     fn preset_catalog_fingerprints_match_the_exact_compiled_recipes() {
         let mut recipe_fingerprints = BTreeSet::new();
         for descriptor in theme_preset_descriptors() {
-            let first_catalog_fingerprint = descriptor.recipe_fingerprint();
-            let second_catalog_fingerprint = descriptor.recipe_fingerprint();
-            assert_eq!(first_catalog_fingerprint, second_catalog_fingerprint);
-            assert_eq!(first_catalog_fingerprint.len(), 64);
+            let entry = catalog::entry_for_preset(descriptor.preset());
+            let catalog_fingerprint = entry.recipe_fingerprint();
+            assert_eq!(catalog_fingerprint.len(), 64);
             assert!(
-                first_catalog_fingerprint
+                catalog_fingerprint
                     .bytes()
                     .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
             );
@@ -434,10 +387,10 @@ mod tests {
             let actual_recipe = theme.recipe_fingerprint().to_hex();
             let actual_resources = theme.report().font_catalog_fingerprint().to_hex();
 
-            assert_eq!(first_catalog_fingerprint, actual_recipe.as_str());
-            assert_eq!(descriptor.resource_fingerprint(), actual_resources.as_str());
+            assert_eq!(catalog_fingerprint, actual_recipe.as_str());
+            assert_eq!(entry.resource_fingerprint(), actual_resources.as_str());
             assert!(
-                recipe_fingerprints.insert(first_catalog_fingerprint),
+                recipe_fingerprints.insert(catalog_fingerprint),
                 "catalog recipes must have unique fingerprints"
             );
         }
@@ -446,7 +399,15 @@ mod tests {
     #[test]
     fn all_ten_catalog_recipes_round_trip_as_closed_complete_specs() {
         for descriptor in theme_preset_descriptors() {
-            let original = descriptor.preset().spec_wire();
+            let compiler = DiagramThemeCompiler::new();
+            let merman_theme_contract::PresetExportV1::CompleteSpec {
+                complete_spec: original,
+            } = compiler
+                .export_preset(descriptor.preset())
+                .expect("catalog preset must export")
+            else {
+                panic!("current catalog presets must export complete specs")
+            };
             let encoded = serde_json::to_vec(&original).expect("complete spec must serialize");
             let decoded: merman_theme_contract::DiagramThemeSpecWireV1 =
                 serde_json::from_slice(&encoded).expect("complete spec must deserialize");
@@ -456,8 +417,60 @@ mod tests {
 
             assert_eq!(
                 round_tripped.recipe_fingerprint().to_hex(),
-                descriptor.recipe_fingerprint()
+                catalog::entry_for_preset(descriptor.preset()).recipe_fingerprint()
             );
+        }
+    }
+
+    #[test]
+    fn preset_materialization_obeys_the_callers_resource_policy() {
+        let policy = crate::diagram_theme::ThemeResourcePolicy::interactive()
+            .with_limit(
+                crate::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes,
+                1,
+            )
+            .expect("valid restrictive theme input limit");
+        let compiler = DiagramThemeCompiler::new().with_resource_policy(policy);
+
+        let compile_error = compiler
+            .compile_preset(ThemePreset::EditorLight)
+            .expect_err("preset compilation must not bypass definition admission");
+        assert!(matches!(
+            compile_error,
+            crate::diagram_theme::ThemeDefinitionCompileError::Materialization(ref error)
+                if error.diagnostic().code() == "theme-authoring.resource-limit-exceeded"
+                    && error.diagnostic().limit_id() == Some("max_theme_encoded_bytes")
+        ));
+
+        let export_error = compiler
+            .export_preset(ThemePreset::EditorLight)
+            .expect_err("preset export must use the same caller-owned policy");
+        assert_eq!(
+            export_error.diagnostic().code(),
+            "theme-authoring.resource-limit-exceeded"
+        );
+        assert_eq!(
+            export_error.diagnostic().limit_id(),
+            Some("max_theme_encoded_bytes")
+        );
+    }
+
+    #[test]
+    fn preset_complete_spec_exports_preserve_mermaid_compatibility() {
+        let compiler = DiagramThemeCompiler::new();
+        for descriptor in theme_preset_descriptors() {
+            let merman_theme_contract::PresetExportV1::CompleteSpec { complete_spec } = compiler
+                .export_preset(descriptor.preset())
+                .expect("preset export must materialize")
+            else {
+                panic!("current preset recipes require the complete_spec export variant")
+            };
+            let mermaid = complete_spec
+                .mermaid
+                .as_ref()
+                .expect("preset export must retain Mermaid compatibility");
+            assert_eq!(mermaid.theme.as_deref(), Some("base"));
+            assert_eq!(mermaid.dark_mode, Some(descriptor.is_dark()));
         }
     }
 

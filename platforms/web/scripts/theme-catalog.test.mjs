@@ -17,7 +17,7 @@ function themeResourceLimit(overrides = {}) {
 
 function themeCatalogFixture(overrides = {}) {
   return {
-    schema_version: 2,
+    schema_version: 3,
     structured_spec_available: true,
     supported_output_ids: ["future-output", "svg"],
     presets: [
@@ -32,8 +32,6 @@ function themeCatalogFixture(overrides = {}) {
         license_expression: "MIT OR Apache-2.0",
         required_attribution: null,
         export_kind: "definition",
-        required_capability_ids: ["semantic-rules"],
-        required_text_capability_ids: [],
       },
       {
         id: "future-theme",
@@ -45,9 +43,7 @@ function themeCatalogFixture(overrides = {}) {
         qualified_cells: [{ family_id: "flowchart", output_id: "svg" }],
         license_expression: "LicenseRef-Future",
         required_attribution: "Future Theme authors",
-        export_kind: "complete-spec",
-        required_capability_ids: ["future-capability", "semantic-rules"],
-        required_text_capability_ids: ["opentype-shaping"],
+        export_kind: "complete_spec",
       },
     ],
     known_capability_ids: ["future-capability", "semantic-rules"],
@@ -132,14 +128,12 @@ test("theme catalog accepts future IDs, caches per surface, and returns defensiv
   ]);
   assert.equal(firstFull.known_semantic_target_ids[0], "future-target");
   assert.equal(firstFull.resource_limits[0].hard_cap, true);
-  firstFull.presets[0].required_capability_ids[0] = "mutated-by-caller";
+  firstFull.presets[0].display_name = "mutated-by-caller";
   firstFull.presets[1].qualified_cells[0].family_id = "mutated-by-caller";
   firstFull.resource_limits[0].description = "mutated-by-caller";
 
   assert.equal(analysis.themeCatalog().presets.length, 0);
-  assert.deepEqual(full.themeCatalog().presets[0].required_capability_ids, [
-    "semantic-rules",
-  ]);
+  assert.equal(full.themeCatalog().presets[0].display_name, "Editor Light");
   assert.equal(full.themeCatalog().presets[1].qualified_cells[0].family_id, "flowchart");
   assert.notEqual(full.themeCatalog().resource_limits[0].description, "mutated-by-caller");
   assert.equal(fullCalls, 1);
@@ -232,12 +226,6 @@ test("theme catalog requires every ID array to be sorted and unique", async () =
     assert.throws(() => runtime.themeCatalog(), /must be sorted and unique/, field);
   }
 
-  for (const field of ["required_capability_ids", "required_text_capability_ids"]) {
-    const presets = themeCatalogFixture().presets;
-    presets[0] = { ...presets[0], [field]: ["duplicate", "duplicate"] };
-    const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
-    assert.throws(() => runtime.themeCatalog(), /must be sorted and unique/, field);
-  }
 });
 
 test("theme catalog validates sorted resource limits and their values", async () => {

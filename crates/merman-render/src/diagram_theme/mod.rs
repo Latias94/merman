@@ -89,6 +89,7 @@ pub(crate) use family_mechanism_matrix::{
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };
+pub use merman_theme_contract::PresetExportV1;
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemePresetQualifiedCell,
     theme_preset_descriptors,

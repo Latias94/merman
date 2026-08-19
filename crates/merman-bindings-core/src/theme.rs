@@ -140,9 +140,9 @@ pub(crate) fn compile_theme_with(
             let preset = merman::svg::ThemePreset::from_id(id.trim()).map_err(|_| {
                 invalid_theme("theme.preset", format!("unknown theme preset `{id}`"))
             })?;
-            compiler
-                .compile_preset(preset)
-                .map_err(theme_compile_error)?
+            compiler.compile_preset(preset).map_err(|error| {
+                crate::theme_definition::definition_compile_error(compiler.resource_policy(), error)
+            })?
         }
         (None, Some(spec)) => compiler
             .compile_spec_wire(spec.clone())
