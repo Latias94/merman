@@ -684,9 +684,11 @@ fn render_svg_target(
     request: SvgRequest,
 ) -> Result<Option<SvgOutput>, RenderError> {
     let (rendered, _operation) = prepare_rendered_family_svg(semantic, &request)?;
-    let finalized = rendered
-        .finalize_standalone(request.pipeline.as_ref())
-        .map_err(map_svg_error)?;
+    let finalized = merman_render::__private::finalize_standalone_for_target_admission(
+        rendered,
+        request.pipeline.as_ref(),
+    )
+    .map_err(map_svg_error)?;
     let (svg, family) = finalized.into_completion().into_output_and_report();
     finish_standalone_svg_target(svg, family).map(Some)
 }

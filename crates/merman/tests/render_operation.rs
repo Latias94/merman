@@ -830,6 +830,87 @@ fn rendered_document_retains_terminal_resource_identity() {
     );
 }
 
+#[cfg(all(feature = "svg", feature = "math"))]
+#[test]
+fn rendered_document_binds_prepared_math_terminal_proof() {
+    let output = Renderer::new()
+        .render(RenderRequest::document(
+            "flowchart TD\nA[$$x^2$$]",
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("prepared-math document should render");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a rendered document");
+    };
+
+    assert!(document.portability().prepared_math_evidence_valid());
+    assert!(
+        document
+            .portability()
+            .prepared_math_terminal_proof_complete()
+    );
+    assert!(
+        !document
+            .portability()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::PreparedMathEvidenceInvalid)
+    );
+    assert!(
+        !document
+            .portability()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::PreparedMathTerminalProofIncomplete)
+    );
+    assert!(document.svg().contains("merman-prepared-math-native"));
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn native_root_capability_whitelist_admits_emitted_canvas_layers() {
+    let layer = merman::svg::CanvasLayer::new(
+        merman::svg::CanvasPaint::solid("#22d3ee").expect("valid root layer paint"),
+    )
+    .with_opacity(0.45)
+    .expect("valid root layer opacity")
+    .with_offset(3.0, 5.0)
+    .expect("valid root layer offset")
+    .with_blend_mode(merman::svg::BlendMode::Screen);
+    let canvas = merman::svg::CanvasSpec::solid("#0f172a")
+        .expect("valid root base paint")
+        .with_layer(layer)
+        .expect("valid root canvas layer");
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(merman::svg::DiagramThemeSpec::new().with_canvas(canvas))
+        .expect("root canvas theme should compile");
+    let output = Renderer::new()
+        .render(
+            RenderRequest::document(
+                "flowchart TD\nA[Root canvas]",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme),
+        )
+        .expect("root canvas document should render");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a rendered document");
+    };
+
+    assert!(document.svg().contains("mix-blend-mode:screen"));
+    let png = document
+        .export_png(
+            &merman::svg::export::RasterOptions::default(),
+            OperationControl::new(),
+        )
+        .expect("qualified root canvas capabilities should export to PNG");
+    assert!(
+        !png.admission()
+            .reasons()
+            .contains(&merman::TargetAdmissionReason::NativeRootCapabilityUnsupported)
+    );
+}
+
 #[cfg(feature = "svg")]
 #[test]
 fn sequence_document_seals_prepared_text_with_the_embedded_full_font() {

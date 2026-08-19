@@ -505,6 +505,7 @@ mod tests {
             standalone_target_evidence_digest(
                 &document.svg,
                 document.evidence(),
+                document.portability(),
                 receipt.status(),
                 receipt.reasons(),
                 font_source,

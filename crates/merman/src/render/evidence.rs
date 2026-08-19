@@ -125,6 +125,7 @@ pub struct RenderEvidence {
     session: merman_render::environment::RenderSessionReport,
     family_id: merman_core::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
+    root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     #[cfg(feature = "internal-theme-acceptance")]
     theme_acceptance: ThemeAcceptanceEvidenceSnapshot,
@@ -146,11 +147,14 @@ impl RenderEvidence {
             compatibility_residual_count,
             mermaid_compatibility_residual_count,
         );
+        let root_applied_capabilities =
+            merman_render::__private::root_applied_capabilities(&family);
         let native_filter_receipt = merman_render::__private::family_native_filter_receipt(&family);
         Self {
             session,
             family_id,
             theme_evidence,
+            root_applied_capabilities,
             native_filter_receipt,
             #[cfg(feature = "internal-theme-acceptance")]
             theme_acceptance: ThemeAcceptanceEvidenceSnapshot {
@@ -239,6 +243,12 @@ impl RenderEvidence {
 
     pub const fn theme_evidence(&self) -> ThemeEvidenceSummary {
         self.theme_evidence
+    }
+
+    pub(crate) fn root_applied_capabilities(
+        &self,
+    ) -> &[merman_render::diagram_theme::ThemeCapability] {
+        &self.root_applied_capabilities
     }
 
     #[cfg(feature = "internal-theme-acceptance")]

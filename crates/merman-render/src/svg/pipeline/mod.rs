@@ -330,6 +330,10 @@ impl ResvgCompatibleSvg {
         self.prepared_math_terminal_receipt.as_ref()
     }
 
+    pub(crate) fn prepared_math_evidence_count(&self) -> usize {
+        self.prepared_math_evidence.entries().len()
+    }
+
     pub(crate) const fn prepared_math_evidence_valid(&self) -> bool {
         self.prepared_math_evidence_valid
     }

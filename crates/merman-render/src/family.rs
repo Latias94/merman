@@ -2847,13 +2847,29 @@ impl RenderedFamilySvg {
         self,
         pipeline: Option<&SvgPipeline>,
     ) -> Result<RenderedStandaloneSvg> {
+        self.finalize_standalone_with_portability(pipeline, true)
+    }
+
+    pub(crate) fn finalize_standalone_for_target_admission(
+        self,
+        pipeline: Option<&SvgPipeline>,
+    ) -> Result<RenderedStandaloneSvg> {
+        self.finalize_standalone_with_portability(pipeline, false)
+    }
+
+    fn finalize_standalone_with_portability(
+        self,
+        pipeline: Option<&SvgPipeline>,
+        enforce_portability: bool,
+    ) -> Result<RenderedStandaloneSvg> {
         match pipeline {
             Some(pipeline) if pipeline.preset() == SvgPipelinePreset::ResvgSafe => {
-                let finalized = self.finalize_resvg(pipeline)?;
+                let finalized =
+                    self.finalize_resvg_with_portability(pipeline, enforce_portability)?;
                 Ok(finalized.into_standalone())
             }
             Some(pipeline) => self
-                .apply_pipeline(pipeline)?
+                .apply_pipeline_with_portability(pipeline, enforce_portability)?
                 .finalize_observed_standalone(pipeline),
             None => {
                 let pipeline = SvgPipeline::parity();

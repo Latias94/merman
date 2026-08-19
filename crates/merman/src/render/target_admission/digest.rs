@@ -6,7 +6,7 @@ use super::{
 };
 use crate::render::{RenderEvidence, ThemeEvidenceStatus, ThemeEvidenceSummary};
 
-const TARGET_EVIDENCE_DIGEST_DOMAIN: &[u8] = b"merman-target-evidence-experimental-v3";
+const TARGET_EVIDENCE_DIGEST_DOMAIN: &[u8] = b"merman-target-evidence-experimental-v4";
 
 #[cfg(feature = "svg")]
 fn render_digest(domain: &[u8], update: impl FnOnce(&mut Sha256)) -> [u8; 32] {
@@ -86,7 +86,7 @@ pub(in crate::render) fn document_digest(
     evidence: &RenderEvidence,
     portability: &DocumentPortabilityReport,
 ) -> [u8; 32] {
-    render_digest(b"merman-rendered-document-experimental-v4", |hasher| {
+    render_digest(b"merman-rendered-document-experimental-v5", |hasher| {
         update_digest_field(hasher, &public_svg_digest);
         update_digest_field(hasher, &native_svg_digest);
         update_digest_field(hasher, resource_fingerprint.as_bytes());
@@ -100,6 +100,7 @@ pub(in crate::render) fn document_digest(
         }
         update_operation_context_digest(hasher, evidence);
         update_theme_summary_digest(hasher, evidence.theme_evidence());
+        update_root_capability_digest(hasher, evidence.root_applied_capabilities());
         update_portability_requirement_digest(hasher, evidence.portability_requirement());
         update_host_admission_digest(hasher, evidence.session().theme_host_admission_report());
         update_text_measurement_digest(hasher, evidence.measurement());
@@ -111,6 +112,7 @@ pub(in crate::render) fn document_digest(
         update_native_filter_digest(hasher, evidence.native_filter_receipt());
         update_digest_bool(hasher, portability.resource_closure_complete());
         update_digest_bool(hasher, portability.prepared_text_evidence_valid());
+        update_prepared_math_digest(hasher, portability.prepared_math_evidence());
         update_digest_bool(hasher, portability.is_evidence_valid());
         update_digest_bool(hasher, portability.is_host_dependent());
         update_digest_sequence(
@@ -120,6 +122,53 @@ pub(in crate::render) fn document_digest(
             |hasher, reason| update_digest_field(hasher, reason.id().as_bytes()),
         );
     })
+}
+
+#[cfg(feature = "svg")]
+fn update_root_capability_digest(
+    hasher: &mut Sha256,
+    capabilities: &[merman_render::diagram_theme::ThemeCapability],
+) {
+    update_digest_sequence(
+        hasher,
+        b"root-applied-capabilities",
+        capabilities.iter().copied(),
+        |hasher, capability| update_digest_field(hasher, capability.id().as_bytes()),
+    );
+}
+
+#[cfg(feature = "svg")]
+fn update_prepared_math_digest(
+    hasher: &mut Sha256,
+    summary: merman_render::__private::PreparedMathEvidenceSummary,
+) {
+    update_prepared_math_digest_fields(
+        hasher,
+        summary.evidence_valid(),
+        summary.expected_occurrence_count(),
+        summary.terminal_occurrence_count(),
+        summary.terminal_proof_complete(),
+        summary.terminal_artifact_digest(),
+    );
+}
+
+#[cfg(feature = "svg")]
+fn update_prepared_math_digest_fields(
+    hasher: &mut Sha256,
+    evidence_valid: bool,
+    expected_occurrence_count: usize,
+    terminal_occurrence_count: usize,
+    terminal_proof_complete: bool,
+    artifact_digest: Option<[u8; 32]>,
+) {
+    update_digest_bool(hasher, evidence_valid);
+    update_digest_usize(hasher, expected_occurrence_count);
+    update_digest_usize(hasher, terminal_occurrence_count);
+    update_digest_bool(hasher, terminal_proof_complete);
+    update_digest_bool(hasher, artifact_digest.is_some());
+    if let Some(artifact_digest) = artifact_digest {
+        update_digest_field(hasher, &artifact_digest);
+    }
 }
 
 #[cfg(feature = "svg")]
@@ -352,6 +401,7 @@ pub(in crate::render) fn target_admission_receipt_digest(
 pub(in crate::render) fn standalone_target_evidence_digest(
     svg: &merman_render::svg::StandaloneSvgArtifact,
     evidence: &RenderEvidence,
+    document: &DocumentPortabilityReport,
     status: TargetAdmissionStatus,
     reasons: &[TargetAdmissionReason],
     font_source: TargetFontSource,
@@ -405,7 +455,9 @@ pub(in crate::render) fn standalone_target_evidence_digest(
             update_digest_usize(hasher, report.text_element_count());
         }
         update_digest_bool(hasher, svg.prepared_text_evidence_valid());
+        update_prepared_math_digest(hasher, document.prepared_math_evidence());
         update_digest_bool(hasher, svg.text_fonts_are_self_contained());
+        update_root_capability_digest(hasher, evidence.root_applied_capabilities());
         update_native_filter_digest(hasher, evidence.native_filter_receipt());
     })
 }
@@ -473,12 +525,16 @@ pub(super) fn raster_target_evidence_digest(
     artifact_kind: RenderArtifactKind,
     report: merman_export::RasterExportReport,
     expected_native_filter: Option<merman_render::__private::NativeSvgFilterReceipt>,
+    root_applied_capabilities: &[merman_render::diagram_theme::ThemeCapability],
+    prepared_math: merman_render::__private::PreparedMathEvidenceSummary,
     status: TargetAdmissionStatus,
     reasons: &[TargetAdmissionReason],
 ) -> [u8; 32] {
     render_digest(TARGET_EVIDENCE_DIGEST_DOMAIN, |hasher| {
         update_target_admission_digest(hasher, artifact_kind, status, reasons);
         update_digest_field(hasher, report.resource_fingerprint().as_bytes());
+        update_root_capability_digest(hasher, root_applied_capabilities);
+        update_prepared_math_digest(hasher, prepared_math);
         update_native_filter_digest(hasher, expected_native_filter);
         update_native_filter_digest(hasher, report.native_filter_receipt());
         let output = match report.output() {
@@ -507,12 +563,16 @@ pub(super) fn raster_target_evidence_digest(
 pub(super) fn pdf_target_evidence_digest(
     report: merman_export::PdfExportReport,
     expected_native_filter: Option<merman_render::__private::NativeSvgFilterReceipt>,
+    root_applied_capabilities: &[merman_render::diagram_theme::ThemeCapability],
+    prepared_math: merman_render::__private::PreparedMathEvidenceSummary,
     status: TargetAdmissionStatus,
     reasons: &[TargetAdmissionReason],
 ) -> [u8; 32] {
     render_digest(TARGET_EVIDENCE_DIGEST_DOMAIN, |hasher| {
         update_target_admission_digest(hasher, RenderArtifactKind::Pdf, status, reasons);
         update_digest_field(hasher, report.resource_fingerprint().as_bytes());
+        update_root_capability_digest(hasher, root_applied_capabilities);
+        update_prepared_math_digest(hasher, prepared_math);
         update_native_filter_digest(hasher, expected_native_filter);
         update_native_filter_digest(hasher, report.native_filter_receipt());
         update_digest_bool(hasher, report.native_filter_fully_localized());
@@ -541,12 +601,62 @@ pub(super) fn pdf_target_evidence_digest(
 mod tests {
     use super::{
         render_digest, target_admission_receipt_digest, update_digest_field,
-        update_digest_sequence, update_native_filter_digest,
+        update_digest_sequence, update_native_filter_digest, update_prepared_math_digest_fields,
+        update_root_capability_digest,
     };
     use crate::render::{
         RenderArtifactKind, TargetAdmissionReason, TargetAdmissionStatus, TargetFontSource,
     };
     use merman_render::__private::{NativeSvgFilterReceipt, NativeSvgHardShadow};
+    use merman_render::diagram_theme::ThemeCapability;
+
+    #[test]
+    fn prepared_math_digest_binds_every_terminal_proof_field() {
+        fn digest(
+            evidence_valid: bool,
+            expected: usize,
+            terminal: usize,
+            proof_complete: bool,
+            artifact: Option<[u8; 32]>,
+        ) -> [u8; 32] {
+            render_digest(b"prepared-math-digest-test", |hasher| {
+                update_prepared_math_digest_fields(
+                    hasher,
+                    evidence_valid,
+                    expected,
+                    terminal,
+                    proof_complete,
+                    artifact,
+                );
+            })
+        }
+
+        let baseline = digest(true, 2, 2, true, Some([7; 32]));
+        assert_ne!(baseline, digest(false, 2, 2, true, Some([7; 32])));
+        assert_ne!(baseline, digest(true, 3, 2, true, Some([7; 32])));
+        assert_ne!(baseline, digest(true, 2, 1, true, Some([7; 32])));
+        assert_ne!(baseline, digest(true, 2, 2, false, Some([7; 32])));
+        assert_ne!(baseline, digest(true, 2, 2, true, None));
+        assert_ne!(baseline, digest(true, 2, 2, true, Some([8; 32])));
+    }
+
+    #[test]
+    fn root_capability_digest_binds_the_terminal_capability_set() {
+        fn digest(capabilities: &[ThemeCapability]) -> [u8; 32] {
+            render_digest(b"root-capability-digest-test", |hasher| {
+                update_root_capability_digest(hasher, capabilities);
+            })
+        }
+
+        assert_ne!(
+            digest(&[ThemeCapability::SolidPaint]),
+            digest(&[ThemeCapability::SolidPaint, ThemeCapability::Opacity])
+        );
+        assert_ne!(
+            digest(&[ThemeCapability::SolidPaint]),
+            digest(&[ThemeCapability::TransparentPaint])
+        );
+    }
 
     #[test]
     fn native_filter_digest_distinguishes_equal_counts_with_different_blur() {

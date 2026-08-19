@@ -268,6 +268,17 @@ pub mod __private {
         }
     }
 
+    /// Returns the bounded set of root capabilities proved by the terminal SVG consumer.
+    pub fn root_applied_capabilities(
+        report: &FamilyRenderReport,
+    ) -> Box<[crate::diagram_theme::ThemeCapability]> {
+        report
+            .root_theme_report()
+            .applied_capabilities()
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
     /// Returns the exact State hard-shadow receipt frozen after SVG emission.
     pub fn family_native_filter_receipt(
         report: &FamilyRenderReport,
@@ -309,6 +320,70 @@ pub mod __private {
     /// Reports whether the terminal pipeline preserved prepared-label locators.
     pub const fn prepared_text_evidence_valid(svg: &crate::svg::ResvgCompatibleSvg) -> bool {
         svg.prepared_text_evidence_valid()
+    }
+
+    /// Bounded prepared-math projection used by document and target admission.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct PreparedMathEvidenceSummary {
+        evidence_valid: bool,
+        expected_occurrence_count: usize,
+        terminal_occurrence_count: usize,
+        terminal_artifact_digest: Option<[u8; 32]>,
+    }
+
+    impl PreparedMathEvidenceSummary {
+        pub const fn not_applicable() -> Self {
+            Self {
+                evidence_valid: true,
+                expected_occurrence_count: 0,
+                terminal_occurrence_count: 0,
+                terminal_artifact_digest: None,
+            }
+        }
+
+        pub const fn evidence_valid(self) -> bool {
+            self.evidence_valid
+        }
+
+        pub const fn expected_occurrence_count(self) -> usize {
+            self.expected_occurrence_count
+        }
+
+        pub const fn terminal_occurrence_count(self) -> usize {
+            self.terminal_occurrence_count
+        }
+
+        pub const fn terminal_artifact_digest(self) -> Option<[u8; 32]> {
+            self.terminal_artifact_digest
+        }
+
+        pub const fn terminal_proof_complete(self) -> bool {
+            self.evidence_valid
+                && self.expected_occurrence_count == self.terminal_occurrence_count
+                && (self.expected_occurrence_count == 0 || self.terminal_artifact_digest.is_some())
+        }
+    }
+
+    /// Projects renderer-owned prepared-math evidence from the sealed native SVG.
+    pub fn prepared_math_evidence(
+        svg: &crate::svg::ResvgCompatibleSvg,
+    ) -> PreparedMathEvidenceSummary {
+        let receipt = svg.prepared_math_terminal_receipt();
+        PreparedMathEvidenceSummary {
+            evidence_valid: svg.prepared_math_evidence_valid(),
+            expected_occurrence_count: svg.prepared_math_evidence_count(),
+            terminal_occurrence_count: receipt.map_or(0, |receipt| receipt.occurrence_count()),
+            terminal_artifact_digest: receipt.map(|receipt| receipt.artifact_digest()),
+        }
+    }
+
+    /// Finalizes a standalone SVG while deferring the caller's portability requirement to the
+    /// workspace facade's target-owned admission receipt.
+    pub fn finalize_standalone_for_target_admission(
+        rendered: crate::family::RenderedFamilySvg,
+        pipeline: Option<&crate::svg::SvgPipeline>,
+    ) -> crate::Result<crate::family::RenderedStandaloneSvg> {
+        rendered.finalize_standalone_for_target_admission(pipeline)
     }
 
     /// Reports whether terminal SVG text is fully resolved by a renderer-owned font seal.
