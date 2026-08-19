@@ -1117,6 +1117,8 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.19",
  "unicode-general-category",
+ "unicode-segmentation",
+ "unicode-width",
  "url",
 ]
 

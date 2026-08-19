@@ -539,6 +539,9 @@ jobs:
           cargo check --locked --no-default-features --lib \
             -p merman -p merman-bindings-core -p merman-uniffi -p merman-wasm \
             --features merman/ascii,merman-bindings-core/ascii,merman-uniffi/ascii,merman-wasm/ascii
+          cargo check --locked -p merman-cli --no-default-features --features ascii
+          cargo check --locked -p merman-wasm --target wasm32-unknown-unknown \
+            --no-default-features --features ascii
 
       - name: Test representative ASCII public contracts
         if: matrix.parity

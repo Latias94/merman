@@ -172,6 +172,22 @@ class PlannerTests(unittest.TestCase):
                 self.assertFalse(plan["fallback"])
                 self.assertEqual(selected, expected)
 
+    def test_artifact_profile_recipe_selects_every_real_consumer(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(
+                b"M\0scripts/artifact_profile_recipe.py\0"
+            ),
+            base="a" * 40,
+            head="b" * 40,
+        )
+
+        selected = {name for name, enabled in plan["owners"].items() if enabled}
+        self.assertFalse(plan["fallback"])
+        self.assertEqual(
+            selected,
+            {"cli", "core", "hygiene", "platform", "python"},
+        )
+
     def test_xtask_changes_select_their_artifact_consumers(self) -> None:
         fixtures = {
             "crates/xtask/src/cmd/typst_package.rs": {

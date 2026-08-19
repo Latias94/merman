@@ -134,6 +134,9 @@ _CRATE_OWNER_RULES = (
 )
 _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/audit_plan.py": frozenset({"hygiene", "npm", "security"}),
+    "scripts/artifact_profile_recipe.py": frozenset(
+        {"cli", "core", "hygiene", "platform", "python"}
+    ),
     "scripts/strict_json.py": frozenset({"hygiene"}),
     "scripts/test_audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/test_build_android.py": frozenset({"hygiene", "platform"}),
