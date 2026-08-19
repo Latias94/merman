@@ -2,7 +2,6 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
-use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
@@ -14,6 +13,10 @@ use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, WrapMode};
+use merman_render::{
+    Error, LayoutOptions, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+    ResourceLimitPhase,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -590,8 +593,24 @@ fn sequence_layout_json_from_fixture(fixture: &str) -> serde_json::Value {
 }
 
 fn render_sequence_svg_from_text(text: &str) -> String {
+    render_sequence_svg_from_text_with_options(text, &SvgRenderOptions::default())
+}
+
+fn render_sequence_svg_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
     let engine = Engine::new();
-    render_sequence_svg_from_text_with_engine(engine, text)
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let parsed = parse_sequence_for_render(&engine, text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
 fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
@@ -608,6 +627,77 @@ fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> Stri
         .expect("render Sequence artifact")
         .svg()
         .to_string()
+}
+
+#[test]
+fn sequence_root_id_is_safe_for_direct_css_selectors() {
+    for raw_id in ["a.b", "a:b"] {
+        let svg = render_sequence_svg_from_text_with_options(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
+            &SvgRenderOptions {
+                diagram_id: Some(raw_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+        );
+
+        assert!(svg.contains(r#"id="a-b""#), "{raw_id}: {svg}");
+        assert!(svg.contains("<style>#a-b{"), "{raw_id}: {svg}");
+        assert!(!svg.contains(&format!("#{raw_id}{{")), "{raw_id}: {svg}");
+    }
+}
+
+#[test]
+fn sequence_large_diagram_id_preflight_accepts_exact_and_rejects_n_minus_one() {
+    fn render_error(diagram_id: &str, maximum: usize) -> Error {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .unwrap();
+        let parsed = parse_sequence_for_render(
+            &Engine::new(),
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
+        );
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare Sequence artifact");
+        match artifact.render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        ) {
+            Ok(_) => panic!("bounded Sequence SVG must exceed the test budget"),
+            Err(error) => error,
+        }
+    }
+
+    let diagram_id = "diagram".repeat(128);
+    let Error::ResourceLimitExceeded(initial) = render_error(&diagram_id, 1) else {
+        panic!("expected initial SVG byte projection error");
+    };
+    let projected = initial.actual;
+    assert!(projected > 1);
+
+    let Error::ResourceLimitExceeded(n_minus_one) = render_error(&diagram_id, projected - 1) else {
+        panic!("expected N-1 SVG byte projection error");
+    };
+    assert_eq!(n_minus_one.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(n_minus_one.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(n_minus_one.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(n_minus_one.actual, projected);
+    assert_eq!(n_minus_one.max, projected - 1);
+
+    let Error::ResourceLimitExceeded(exact) = render_error(&diagram_id, projected) else {
+        panic!("expected final whole-document SVG byte error");
+    };
+    assert_eq!(exact.max, projected);
+    assert!(
+        exact.actual > projected,
+        "the exact static projection must pass early admission and reach final output admission"
+    );
 }
 
 #[test]

@@ -96,8 +96,8 @@ mod sanitize_svg_id_tests {
     }
 
     #[test]
-    fn sanitize_svg_id_keeps_allowed_punctuation() {
-        assert_eq!(sanitize_svg_id("a:b.c_d"), "a:b.c_d");
+    fn sanitize_svg_id_keeps_css_safe_punctuation() {
+        assert_eq!(sanitize_svg_id("a:b.c_d"), "a-b-c_d");
     }
 
     #[test]

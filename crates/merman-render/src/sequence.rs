@@ -174,7 +174,10 @@ fn sequence_label_text_work_units(byte_len: usize, wraps: bool) -> Option<usize>
 
 fn sequence_message_text_work_units(message: &SequenceMessage) -> Option<usize> {
     if let Some(semantics) = message.control_semantics() {
-        if semantics.kind == SequenceControlKind::Rect || !semantics.consumes_text() {
+        if semantics.kind == SequenceControlKind::Rect {
+            return sequence_label_text_work_units(message.message_text().len(), false);
+        }
+        if !semantics.consumes_text() {
             return Some(0);
         }
         let byte_len = message.message_text().len().checked_add(2)?;
@@ -204,13 +207,24 @@ fn sequence_text_work_units_controlled(
     };
 
     for actor_id in &model.actor_order {
-        if let Some(actor) = model.actors.get(actor_id)
-            && !include(sequence_label_text_work_units(
+        if let Some(actor) = model.actors.get(actor_id) {
+            if !include(sequence_label_text_work_units(
                 actor.description.len(),
                 actor.wrap,
-            ))?
-        {
-            return Ok(None);
+            ))? {
+                return Ok(None);
+            }
+            for (label, url) in &actor.links {
+                let Some(url) = url.as_str() else {
+                    continue;
+                };
+                let Some(link_bytes) = label.len().checked_add(url.len()) else {
+                    return Ok(None);
+                };
+                if !include(sequence_label_text_work_units(link_bytes, false))? {
+                    return Ok(None);
+                }
+            }
         }
     }
     for message in &model.messages {
@@ -530,7 +544,7 @@ pub(crate) fn sequence_render_title<'a>(
 #[cfg(test)]
 mod resource_tests {
     use super::{
-        SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS, SequenceControlKind, SequenceLayoutWorkShape,
+        SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS, SequenceLayoutWorkShape,
         prepare_sequence_diagram_typed_with_title_and_work_meter, sequence_block_widths_for_render,
         sequence_label_text_work_units, sequence_layout_work_units,
         sequence_message_text_work_units,
@@ -661,12 +675,25 @@ mod resource_tests {
         for (message, semantics) in controls {
             let work = sequence_message_text_work_units(message)
                 .expect("control label work should remain representable");
-            if semantics.kind == SequenceControlKind::Rect || !semantics.consumes_text() {
+            if !semantics.consumes_text() {
                 assert_eq!(work, 0, "{semantics:?}");
             } else {
                 assert!(work > 0, "{semantics:?}");
             }
         }
+    }
+
+    #[test]
+    fn actor_link_labels_and_urls_are_included_in_sequence_work() {
+        let without_link = sequence_model("sequenceDiagram\nparticipant A\n");
+        let with_link = sequence_model(
+            "sequenceDiagram\nparticipant A\nlink A: Documentation @ https://example.test/docs\n",
+        );
+
+        assert!(
+            sequence_layout_work_units(&with_link).unwrap()
+                > sequence_layout_work_units(&without_link).unwrap()
+        );
     }
 
     #[test]

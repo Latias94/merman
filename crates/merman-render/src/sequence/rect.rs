@@ -34,21 +34,15 @@ impl SequenceRectOpen {
         }
     }
 
-    pub(super) fn close(self, actor_centers_x: &[f64]) -> ClosedSequenceRect {
-        let rect_left = self.bounds.map(|b| b.min_x()).unwrap_or_else(|| {
-            actor_centers_x
-                .iter()
-                .copied()
-                .fold(f64::INFINITY, f64::min)
-                - SEQUENCE_FRAME_SIDE_PAD_PX
-        });
-        let rect_right = self.bounds.map(|b| b.max_x()).unwrap_or_else(|| {
-            actor_centers_x
-                .iter()
-                .copied()
-                .fold(f64::NEG_INFINITY, f64::max)
-                + SEQUENCE_FRAME_SIDE_PAD_PX
-        });
+    pub(super) fn close(self, actor_center_bounds: (f64, f64)) -> ClosedSequenceRect {
+        let rect_left = self
+            .bounds
+            .map(|b| b.min_x())
+            .unwrap_or(actor_center_bounds.0 - SEQUENCE_FRAME_SIDE_PAD_PX);
+        let rect_right = self
+            .bounds
+            .map(|b| b.max_x())
+            .unwrap_or(actor_center_bounds.1 + SEQUENCE_FRAME_SIDE_PAD_PX);
         let rect_bottom = self
             .bounds
             .map(|b| b.max_y() + SEQUENCE_FRAME_GEOM_PAD_PX)
@@ -285,7 +279,7 @@ fn message_x_range(
 
 #[cfg(test)]
 mod tests {
-    use super::{StackFrame, close_stack_frame};
+    use super::{SEQUENCE_FRAME_SIDE_PAD_PX, SequenceRectOpen, StackFrame, close_stack_frame};
     use std::collections::HashMap;
 
     #[test]
@@ -308,5 +302,14 @@ mod tests {
 
         assert_eq!(rect_bounds["inner"], (90.0, 210.0));
         assert_eq!(rect_bounds["outer"], (70.0, 230.0));
+    }
+
+    #[test]
+    fn empty_rect_uses_precomputed_actor_extrema() {
+        let closed = SequenceRectOpen::new("empty".to_string(), 20.0).close((100.0, 300.0));
+
+        assert_eq!(closed.left, 100.0 - SEQUENCE_FRAME_SIDE_PAD_PX);
+        assert_eq!(closed.right, 300.0 + SEQUENCE_FRAME_SIDE_PAD_PX);
+        assert_eq!(closed.node.width, 200.0 + 2.0 * SEQUENCE_FRAME_SIDE_PAD_PX);
     }
 }

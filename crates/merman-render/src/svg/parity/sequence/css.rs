@@ -1,5 +1,11 @@
 use super::super::*;
 
+/// Number of times the root diagram id is interpolated into the static Sequence stylesheet.
+///
+/// Keep the regression test below in sync so the early SVG byte projection cannot silently
+/// undercount future selectors.
+pub(super) const SEQUENCE_CSS_DIAGRAM_ID_OCCURRENCES: usize = 47;
+
 pub(super) fn sequence_css(
     diagram_id: &str,
     font_size_px: f64,
@@ -219,6 +225,17 @@ mod tests {
             r#"#seq{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:#333;}"#
         ));
         assert!(css.contains(r#"#seq svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;}#seq p{margin:0;}"#));
+    }
+
+    #[test]
+    fn sequence_css_diagram_id_projection_tracks_every_selector() {
+        let short = sequence_css("a", 16.0, &json!({}));
+        let long = sequence_css("aa", 16.0, &json!({}));
+
+        assert_eq!(
+            long.len() - short.len(),
+            SEQUENCE_CSS_DIAGRAM_ID_OCCURRENCES
+        );
     }
 
     #[test]

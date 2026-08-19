@@ -77,6 +77,7 @@ struct SequenceLayoutLoopState<'a> {
     rect_stack: Vec<SequenceRectOpen>,
     activation_state: SequenceActivationState,
     actor_lifecycle: SequenceActorLifecycle<'a>,
+    actor_center_bounds: (f64, f64),
     bounds_start_x: f64,
     bounds_stop_x: f64,
 }
@@ -92,6 +93,7 @@ impl<'a> SequenceLayoutLoopState<'a> {
             checkpoints: ctx.checkpoints,
         });
         let mut bounds = None;
+        let mut actor_center_bounds = None;
         for (actor_position, (center_x, width)) in ctx
             .actor_centers_x
             .iter()
@@ -104,9 +106,15 @@ impl<'a> SequenceLayoutLoopState<'a> {
             bounds = Some(bounds.map_or(actor_bounds, |current: (f64, f64)| {
                 (current.0.min(actor_bounds.0), current.1.max(actor_bounds.1))
             }));
+            actor_center_bounds = Some(
+                actor_center_bounds.map_or((center_x, center_x), |current: (f64, f64)| {
+                    (current.0.min(center_x), current.1.max(center_x))
+                }),
+            );
         }
         let (bounds_start_x, bounds_stop_x) =
             bounds.unwrap_or((0.0, ctx.sequence_default_width.max(1.0)));
+        let actor_center_bounds = actor_center_bounds.unwrap_or((bounds_start_x, bounds_stop_x));
 
         Ok(Self {
             cursor_y: ctx.actor_top_offset_y + ctx.max_actor_layout_height,
@@ -116,6 +124,7 @@ impl<'a> SequenceLayoutLoopState<'a> {
             rect_stack: Vec::new(),
             activation_state,
             actor_lifecycle,
+            actor_center_bounds,
             bounds_start_x,
             bounds_stop_x,
         })
@@ -240,7 +249,6 @@ fn handle_sequence_rect(
     state: &mut SequenceLayoutLoopState<'_>,
     box_margin: f64,
     rect_step_start: f64,
-    actor_centers_x: &[f64],
     nodes: &mut Vec<LayoutNode>,
 ) -> bool {
     match msg.control_semantics() {
@@ -262,7 +270,7 @@ fn handle_sequence_rect(
         {
             state.close_content_block(box_margin);
             if let Some(open) = state.rect_stack.pop() {
-                let closed = open.close(actor_centers_x);
+                let closed = open.close(state.actor_center_bounds);
                 nodes.push(closed.node);
 
                 if let Some(parent) = state.rect_stack.last_mut() {
@@ -463,14 +471,7 @@ pub(super) fn build_sequence_layout_graph(
             continue;
         }
 
-        if handle_sequence_rect(
-            msg,
-            &mut state,
-            ctx.box_margin,
-            rect_step_start,
-            ctx.actor_centers_x,
-            &mut nodes,
-        ) {
+        if handle_sequence_rect(msg, &mut state, ctx.box_margin, rect_step_start, &mut nodes) {
             continue;
         }
 

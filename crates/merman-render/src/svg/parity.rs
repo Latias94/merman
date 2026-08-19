@@ -93,8 +93,11 @@ use util::{
     theme_token,
 };
 
-/// Converts arbitrary host input into the single conservative SVG id grammar used by every
+/// Converts arbitrary host input into the conservative SVG/CSS identifier grammar used by every
 /// family renderer.
+///
+/// The result is safe to interpolate directly after `#` in generated stylesheets without CSS
+/// escaping changing its selector meaning.
 pub fn sanitize_svg_id(raw: &str) -> String {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -107,7 +110,7 @@ pub fn sanitize_svg_id(raw: &str) -> String {
     };
 
     let sanitize_char = |ch: char| {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':' | '.') {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
             ch
         } else {
             '-'
