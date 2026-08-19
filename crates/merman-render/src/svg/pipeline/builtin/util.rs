@@ -235,23 +235,6 @@ fn find_markup_end_with_checkpoints<E>(
     find_tag_end_with_checkpoints(input, start, checkpoint)
 }
 
-pub(crate) fn find_matching_brace(text: &str, open: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for (offset, ch) in text[open..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
-                    return Some(open + offset);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 pub(crate) use crate::svg::scanner::find_tag_end;
 
 #[derive(Debug, Clone, Copy)]
