@@ -521,41 +521,6 @@ impl<'a> DeferredTextRegistry<'a> {
         })
     }
 
-    pub(crate) fn try_register_quoted_text(
-        &mut self,
-        text: &'a str,
-        width_profile: TerminalWidthProfile,
-        resources: &ResourceContext,
-    ) -> Result<DeferredTextLine> {
-        resources.transaction(|resources| {
-            let metrics = quoted_text_metrics_and_charge(text, width_profile, resources)?;
-            let entry_index = self.entries.len();
-            self.entries
-                .try_reserve(1)
-                .map_err(|_| layout_allocation_failed())?;
-            let mut glyphs = Vec::new();
-            glyphs
-                .try_reserve_exact(1)
-                .map_err(|_| layout_allocation_failed())?;
-            glyphs.push(DeferredTextGlyph {
-                id: DeferredTextId::try_from_index(entry_index)?,
-                width: metrics.width,
-            });
-            self.entries.push(DeferredTextEntry::QuotedBorrowed {
-                text,
-                replay_work_units: metrics.replay_work_units,
-                plain_bytes: metrics.plain_bytes,
-                html_bytes: metrics.html_bytes,
-            });
-            Ok(DeferredTextLine {
-                glyphs,
-                width: metrics.width,
-                plain_bytes: metrics.plain_bytes,
-                html_bytes: metrics.html_bytes,
-            })
-        })
-    }
-
     pub(crate) fn try_register_framed_value(
         &mut self,
         prefix: &'static str,
@@ -1198,7 +1163,9 @@ mod tests {
         let mut deferred = DeferredTextRegistry::new();
 
         let error = deferred
-            .try_register_quoted_text("👩‍💻", TerminalWidthProfile::Unicode, &resources)
+            .try_register_parts(TerminalWidthProfile::Unicode, &resources, 1, |push| {
+                push(DeferredTextPart::QuotedText("👩‍💻"))
+            })
             .expect_err("exhausted work must reject before scanning the authored grapheme");
 
         assert!(matches!(
@@ -1330,7 +1297,9 @@ mod tests {
         let setup = ResourceContext::new(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
         let quoted = deferred
-            .try_register_quoted_text(&raw, TerminalWidthProfile::Unicode, &setup)
+            .try_register_parts(TerminalWidthProfile::Unicode, &setup, 1, |push| {
+                push(DeferredTextPart::QuotedText(&raw))
+            })
             .expect("the quoted fixture should register");
         let nested = deferred
             .try_register_parts(TerminalWidthProfile::Unicode, &setup, 1, |push| {
@@ -1370,7 +1339,9 @@ mod tests {
         let setup = ResourceContext::new(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
         let quoted = deferred
-            .try_register_quoted_text(&raw, TerminalWidthProfile::Unicode, &setup)
+            .try_register_parts(TerminalWidthProfile::Unicode, &setup, 1, |push| {
+                push(DeferredTextPart::QuotedText(&raw))
+            })
             .expect("the quoted fixture should register");
 
         let control = OperationControl::new();
