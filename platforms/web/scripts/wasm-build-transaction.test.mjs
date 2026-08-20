@@ -148,6 +148,27 @@ describe("WASM output transaction", () => {
     );
   });
 
+  it("retries immediately when a stale lock disappears before retirement", () => {
+    const root = fixtureRoot();
+    const output = path.join(root, "pkg");
+    const lock = outputLockDirectory(output);
+    writeOwner(lock, {
+      pid: 4242,
+      token: "dead",
+    });
+
+    const release = acquireOutputLock(output, {
+      timeoutMs: 0,
+      processAlive() {
+        rmSync(lock, { recursive: true });
+        return false;
+      },
+    });
+    release();
+
+    assert.equal(lockExists(output), false);
+  });
+
   it("keeps an incomplete owner during its grace period, then recovers it", () => {
     const root = fixtureRoot();
     const output = path.join(root, "pkg");
