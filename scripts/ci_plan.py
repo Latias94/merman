@@ -219,6 +219,9 @@ _GENERATED_CONTRACT_EXACT_RULES = {
         "platform",
     },
 }
+_PLAYGROUND_EXAMPLE_CATALOG_OWNERS = frozenset({"core", "hygiene", "npm", "web"})
+_PLAYGROUND_EXAMPLE_CATALOG_INPUT_PREFIX = "playground/examples/"
+_PLAYGROUND_EXAMPLE_CATALOG_OUTPUT = "playground/src/generated/examples.ts"
 _HYGIENE_SCRIPT_PREFIXES = (
     "scripts/adr_",
     "scripts/artifact_",
@@ -644,9 +647,16 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"shared SVG safety policy changed: {path}",
             False,
         )
+    if path == _PLAYGROUND_EXAMPLE_CATALOG_OUTPUT or path.startswith(
+        _PLAYGROUND_EXAMPLE_CATALOG_INPUT_PREFIX
+    ):
+        return (
+            _PLAYGROUND_EXAMPLE_CATALOG_OWNERS,
+            f"Playground example catalog authority changed: {path}",
+            False,
+        )
     if path in {
         "playground/src/generated/ascii-capabilities.ts",
-        "playground/src/generated/examples.ts",
         "playground/src/generated/mermaid-reference.ts",
     }:
         return (
@@ -667,12 +677,6 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
                 f"generated binding contract changed: {path}",
                 False,
             )
-    if path == "playground/examples/manifest.json":
-        return (
-            frozenset({"hygiene", "npm", "vscode", "web"}),
-            f"shared editor example manifest changed: {path}",
-            False,
-        )
     if path.startswith(("platforms/web/", "playground/")):
         return frozenset({"hygiene", "npm", "web"}), f"web owner changed: {path}", False
     if path.startswith(("platforms/node/", "packages/node")):

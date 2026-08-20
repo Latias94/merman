@@ -422,22 +422,10 @@ class PlannerTests(unittest.TestCase):
                 "npm",
                 "web",
             },
-            "playground/src/generated/examples.ts": {
-                "core",
-                "hygiene",
-                "npm",
-                "web",
-            },
             "playground/src/generated/mermaid-reference.ts": {
                 "core",
                 "hygiene",
                 "npm",
-                "web",
-            },
-            "playground/examples/manifest.json": {
-                "hygiene",
-                "npm",
-                "vscode",
                 "web",
             },
             "playground/editor-artifact-receipt-v2.json": {
@@ -481,6 +469,25 @@ class PlannerTests(unittest.TestCase):
                     head="b" * 40,
                 )
                 selected = {name for name, enabled in plan["owners"].items() if enabled}
+                self.assertEqual(selected, expected)
+
+    def test_playground_example_catalog_inputs_and_output_share_freshness_owner(self) -> None:
+        expected = {"core", "hygiene", "npm", "web"}
+        paths = (
+            "playground/examples/manifest.json",
+            "playground/examples/fixtures/flowchart/basic.mmd",
+            "playground/src/generated/examples.ts",
+        )
+
+        for path in paths:
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {name for name, enabled in plan["owners"].items() if enabled}
+                self.assertFalse(plan["fallback"])
                 self.assertEqual(selected, expected)
 
     def test_workflow_classifier_and_unknown_paths_fail_broad(self) -> None:
