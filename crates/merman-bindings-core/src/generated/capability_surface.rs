@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:e7f5e5a52f713290910801ee7c802c17983bc3ef07249b9ec884e76e0b628c6f";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:6e909309a8df8f7af2d059b18a072a12d9d568c3313a6deb7509ef0d5be10387";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -369,7 +369,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         input_kind: "mermaid-source",
         media_type: "application/json",
         requires_uri: false,
-        targets: &[TargetKey::Native, TargetKey::Web, ],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::Ascii,
@@ -393,7 +393,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         input_kind: "theme-support-query-json",
         media_type: "application/json",
         requires_uri: false,
-        targets: &[TargetKey::Native, TargetKey::Web, ],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::DocumentAnalysisFactsJson,
@@ -429,7 +429,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         input_kind: "theme-preset-id",
         media_type: "application/json",
         requires_uri: false,
-        targets: &[TargetKey::Native, TargetKey::Web, ],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::Jpeg,
@@ -465,7 +465,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         input_kind: "theme-definition-json",
         media_type: "application/json",
         requires_uri: false,
-        targets: &[TargetKey::Native, TargetKey::Web, ],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::Pdf,

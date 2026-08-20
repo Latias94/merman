@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:e7f5e5a52f713290910801ee7c802c17983bc3ef07249b9ec884e76e0b628c6f"
+    "digest": "sha256:6e909309a8df8f7af2d059b18a072a12d9d568c3313a6deb7509ef0d5be10387"
   },
   "profiles": [
     {
@@ -823,7 +823,7 @@
     },
     {
       "id": "typst-wasm",
-      "description": "Published Typst WASM build for SVG and canonical analysis without uncallable export or math closures.",
+      "description": "Published Typst WASM build for SVG, canonical analysis, and theme authoring without uncallable binary-export or math closures.",
       "semantic_target": "typst",
       "cargo": {
         "package": "merman-typst-plugin",

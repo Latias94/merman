@@ -361,7 +361,7 @@
       "input_kind": "mermaid-source",
       "media_type": "application/json",
       "requires_uri": false,
-      "targets": ["native", "web"]
+      "targets": ["native", "web", "typst"]
     },
     {
       "id": "analysis-facts-json",
@@ -416,7 +416,7 @@
       "input_kind": "theme-definition-json",
       "media_type": "application/json",
       "requires_uri": false,
-      "targets": ["native", "web"]
+      "targets": ["native", "web", "typst"]
     },
     {
       "id": "describe-theme-support-json",
@@ -427,7 +427,7 @@
       "input_kind": "theme-support-query-json",
       "media_type": "application/json",
       "requires_uri": false,
-      "targets": ["native", "web"]
+      "targets": ["native", "web", "typst"]
     },
     {
       "id": "export-theme-preset-json",
@@ -438,7 +438,7 @@
       "input_kind": "theme-preset-id",
       "media_type": "application/json",
       "requires_uri": false,
-      "targets": ["native", "web"]
+      "targets": ["native", "web", "typst"]
     }
   ]
 }

@@ -61,7 +61,7 @@ complete host reference build for ABI verification rather than a downloadable de
 See [ADR-0079](../docs/adr/0079-default-native-prebuilt-capability-sku.md) for the product decision.
 
 Other cross-language artifacts are interface-shaped rather than forced into that native SKU.
-Typst publishes SVG plus canonical analysis and both layout backends. The private Node candidates
+Typst publishes SVG, canonical analysis, theme authoring, and both layout backends. The private Node candidates
 compile SVG plus both layout backends only. Browser WASM keeps package-specific full and slim
 profiles because npm package identity is its capability-selection mechanism.
 

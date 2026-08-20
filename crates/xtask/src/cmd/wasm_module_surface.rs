@@ -11,6 +11,7 @@ const TYPST_ABI_FUNCTIONS: &[FunctionContract] = &[
     FunctionContract::export("capabilities_json", 0),
     FunctionContract::export("render_svg_json", 2),
     FunctionContract::export("analyze_json", 2),
+    FunctionContract::export("theme_operation_json", 3),
 ];
 const TYPST_LINKER_METADATA_EXPORTS: &[&str] = &["__data_end", "__heap_base"];
 
@@ -496,6 +497,10 @@ mod tests {
                 WasmExport {
                     name: "analyze_json".to_string(),
                     ty: function_type(2, 1),
+                },
+                WasmExport {
+                    name: "theme_operation_json".to_string(),
+                    ty: function_type(3, 1),
                 },
                 WasmExport {
                     name: "__data_end".to_string(),

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "plugin_abi_version": 2,
+  "plugin_abi_version": 3,
   "package": "merman-typst-plugin",
   "manifest_path": "crates/merman-typst-plugin/Cargo.toml",
   "artifact_name": "merman_typst_plugin.wasm",

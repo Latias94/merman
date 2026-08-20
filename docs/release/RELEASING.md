@@ -374,9 +374,8 @@ release artifacts. The exact dependency gate admits `json5`, `lol_html`, and `ur
 pure-Rust dependencies of invariant Mermaid language, configuration, and sanitization semantics.
 They remain covered by the exact artifact size budget and final WASM import gate; browser bindings,
 randomness, clocks, and other system adapters remain forbidden. Release validation requires Typst
-plugin ABI 2, independently from native ABI 3,
-the closed export surface including
-`analyze_json`, and the descriptor-owned `publish` artifact. Its private directory contains the
+plugin ABI 3, independently from native ABI 3, the closed export surface including `analyze_json`
+and `theme_operation_json`, and the descriptor-owned `publish` artifact. Its private directory contains the
 stripped WASM and provenance manifest; `--skip-wasm-build` is allowed only because it validates the manifest's
 exact artifact profile, package feature bundle, default-feature policy, inputs, tools, versions,
 flags, and artifact digest before package

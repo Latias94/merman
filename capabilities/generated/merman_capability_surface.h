@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:e7f5e5a52f713290910801ee7c802c17983bc3ef07249b9ec884e76e0b628c6f"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:6e909309a8df8f7af2d059b18a072a12d9d568c3313a6deb7509ef0d5be10387"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -250,6 +250,7 @@ static const char *const MERMAN_BINDING_OPERATION_ANALYSIS_FACTS_JSON_TARGETS[] 
 
 static const char *const MERMAN_BINDING_OPERATION_ANALYSIS_JSON_TARGETS[] = {
     "native",
+    "typst",
     "web",
 };
 
@@ -260,6 +261,7 @@ static const char *const MERMAN_BINDING_OPERATION_ASCII_TARGETS[] = {
 
 static const char *const MERMAN_BINDING_OPERATION_DESCRIBE_THEME_SUPPORT_JSON_TARGETS[] = {
     "native",
+    "typst",
     "web",
 };
 
@@ -275,6 +277,7 @@ static const char *const MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS
 
 static const char *const MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON_TARGETS[] = {
     "native",
+    "typst",
     "web",
 };
 
@@ -293,6 +296,7 @@ static const char *const MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS[] = {
 
 static const char *const MERMAN_BINDING_OPERATION_MATERIALIZE_THEME_JSON_TARGETS[] = {
     "native",
+    "typst",
     "web",
 };
 
@@ -335,15 +339,15 @@ static const char *const MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS[] = {
 
 static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
     { "analysis-facts-json", "analysis", "Analyze Mermaid input and return semantic facts JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_FACTS_JSON_TARGETS, 2, NULL, NULL, 0 },
-    { "analysis-json", "analysis", "Analyze Mermaid input and return diagnostics JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "analysis-json", "analysis", "Analyze Mermaid input and return diagnostics JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "ascii", "ascii", "Render Mermaid input as terminal text.", "mermaid-source", "text/plain; charset=utf-8", 0, MERMAN_BINDING_OPERATION_ASCII_TARGETS, 2, "ascii", NULL, 0 },
-    { "describe-theme-support-json", "svg", "Describe the static support bound for a versioned theme query.", "theme-support-query-json", "application/json", 0, MERMAN_BINDING_OPERATION_DESCRIBE_THEME_SUPPORT_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "describe-theme-support-json", "svg", "Describe the static support bound for a versioned theme query.", "theme-support-query-json", "application/json", 0, MERMAN_BINDING_OPERATION_DESCRIBE_THEME_SUPPORT_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "document-analysis-facts-json", "analysis", "Analyze a URI-backed Mermaid document and return semantic facts JSON.", "mermaid-source", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS, 2, NULL, NULL, 0 },
     { "document-analysis-json", "analysis", "Analyze a URI-backed Mermaid document and return diagnostics JSON.", "mermaid-source", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS, 2, NULL, NULL, 0 },
-    { "export-theme-preset-json", "svg", "Export a built-in theme preset as a self-contained editable recipe.", "theme-preset-id", "application/json", 0, MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "export-theme-preset-json", "svg", "Export a built-in theme preset as a self-contained editable recipe.", "theme-preset-id", "application/json", 0, MERMAN_BINDING_OPERATION_EXPORT_THEME_PRESET_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "jpeg", "jpeg", "Render Mermaid input as JPEG.", "mermaid-source", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1, "jpeg", MERMAN_BINDING_OPERATION_JPEG_COMPILED_PREREQUISITES, 1 },
     { "layout-json", "svg", "Render Mermaid input into layout model JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2, NULL, NULL, 0 },
-    { "materialize-theme-json", "svg", "Materialize a versioned theme definition into a complete theme specification.", "theme-definition-json", "application/json", 0, MERMAN_BINDING_OPERATION_MATERIALIZE_THEME_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "materialize-theme-json", "svg", "Materialize a versioned theme definition into a complete theme specification.", "theme-definition-json", "application/json", 0, MERMAN_BINDING_OPERATION_MATERIALIZE_THEME_JSON_TARGETS, 3, NULL, NULL, 0 },
     { "pdf", "pdf", "Render Mermaid input as PDF.", "mermaid-source", "application/pdf", 0, MERMAN_BINDING_OPERATION_PDF_TARGETS, 1, "pdf", MERMAN_BINDING_OPERATION_PDF_COMPILED_PREREQUISITES, 1 },
     { "png", "png", "Render Mermaid input as PNG.", "mermaid-source", "image/png", 0, MERMAN_BINDING_OPERATION_PNG_TARGETS, 1, "png", MERMAN_BINDING_OPERATION_PNG_COMPILED_PREREQUISITES, 1 },
     { "semantic-json", NULL, "Parse Mermaid input into canonical semantic JSON.", "mermaid-source", "application/json", 0, MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS, 2, NULL, NULL, 0 },

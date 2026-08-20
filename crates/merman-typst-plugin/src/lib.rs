@@ -1,8 +1,8 @@
 //! Typst WebAssembly plugin bridge for `merman`.
 //!
 //! This crate exposes one versioned Typst transport contract. The package wrapper may present
-//! convenient render and analysis helpers, but every plugin operation returns the same closed
-//! transport envelope so hosts can handle failures without depending on trap behavior.
+//! convenient render, analysis, and theme-authoring helpers, but every plugin operation returns the
+//! same closed transport envelope so hosts can handle failures without depending on trap behavior.
 
 use merman_bindings_core::{
     ArtifactContractSpec, BindingOperationRequest, BindingTransportKey, CapabilityKey,
@@ -18,13 +18,30 @@ pub const TYPST_RUNTIME_CATALOG_SCHEMA_VERSION: u32 =
 /// These are semantic operation IDs from the shared capability descriptor, not WebAssembly export
 /// names. Artifact profiles may select a subset, but must never infer additional operations merely
 /// because their capabilities could support them.
-pub const TYPST_TRANSPORT_OPERATION_KEYS: &[OperationKey] =
-    &[OperationKey::AnalysisJson, OperationKey::Svg];
+pub const TYPST_TRANSPORT_OPERATION_KEYS: &[OperationKey] = &[
+    OperationKey::AnalysisJson,
+    OperationKey::DescribeThemeSupportJson,
+    OperationKey::ExportThemePresetJson,
+    OperationKey::MaterializeThemeJson,
+    OperationKey::Svg,
+];
 const RENDER_OPERATION: &str = "render-svg";
 const ANALYZE_OPERATION: &str = "analyze";
+const THEME_OPERATION: &str = "theme-operation";
+const THEME_OPERATION_KEYS: &[OperationKey] = &[
+    OperationKey::DescribeThemeSupportJson,
+    OperationKey::ExportThemePresetJson,
+    OperationKey::MaterializeThemeJson,
+];
 const TYPST_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::AnalysisJson,
+    #[cfg(feature = "svg")]
+    OperationKey::DescribeThemeSupportJson,
+    #[cfg(feature = "svg")]
+    OperationKey::ExportThemePresetJson,
+    #[cfg(feature = "svg")]
+    OperationKey::MaterializeThemeJson,
     OperationKey::Svg,
 ];
 const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
@@ -115,6 +132,46 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
     }
 }
 
+/// Executes one versioned theme-authoring operation through the shared binding contract.
+///
+/// The operation ID is restricted to the three theme-authoring rows advertised by the Typst
+/// artifact. Rendering and analysis keep their dedicated exports.
+#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
+pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u8]) -> Vec<u8> {
+    let operation_id = match std::str::from_utf8(operation_id) {
+        Ok(operation_id) => operation_id,
+        Err(_) => {
+            let error = merman_bindings_core::BindingError::invalid_argument(
+                "theme operation id must be valid UTF-8",
+            );
+            return typst_binding_error_payload(THEME_OPERATION, &error);
+        }
+    };
+    let operation = match OperationKey::from_id(operation_id) {
+        Some(operation) if THEME_OPERATION_KEYS.contains(&operation) => operation,
+        _ => {
+            let error = merman_bindings_core::BindingError::unsupported_operation(format!(
+                "operation `{operation_id}` is not a Typst theme authoring operation"
+            ));
+            return typst_binding_error_payload(operation_id, &error);
+        }
+    };
+    let options_json = match typst_options_json(options_json) {
+        Ok(options_json) => options_json,
+        Err(error) => return typst_binding_error_payload(operation.id(), &error),
+    };
+    match execute_typst_operation(operation.id(), input, &options_json) {
+        Ok(output) => match serde_json::from_slice::<Value>(&output) {
+            Ok(result) => typst_success_payload(operation.id(), json!({ "result": result })),
+            Err(error) => typst_internal_error_payload(
+                operation.id(),
+                format!("theme operation returned invalid canonical JSON: {error}"),
+            ),
+        },
+        Err(error) => typst_binding_error_payload(operation.id(), &error),
+    }
+}
+
 fn typst_success_payload(operation: &str, data: Value) -> Vec<u8> {
     serde_json::to_vec(&typst_result_payload(
         operation,
@@ -128,7 +185,7 @@ fn typst_success_payload(operation: &str, data: Value) -> Vec<u8> {
 }
 
 fn execute_typst_operation(
-    operation_id: &'static str,
+    operation_id: &str,
     source: &[u8],
     options_json: &[u8],
 ) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
@@ -293,9 +350,9 @@ mod tests {
 
     #[test]
     fn abi_version_is_stable() {
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 2);
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"2");
-        assert_eq!(abi_version(), b"2");
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 3);
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"3");
+        assert_eq!(abi_version(), b"3");
     }
 
     #[test]
@@ -358,13 +415,31 @@ mod tests {
                 .copied()
                 .map(OperationKey::id)
                 .collect::<Vec<_>>(),
-            ["analysis-json", "svg"]
+            [
+                "analysis-json",
+                "describe-theme-support-json",
+                "export-theme-preset-json",
+                "materialize-theme-json",
+                "svg",
+            ]
         );
         assert_eq!(
             projected.has_operation("analysis-json"),
             cfg!(feature = "analysis")
         );
         assert_eq!(projected.has_operation("svg"), cfg!(feature = "svg"));
+        assert_eq!(
+            projected.has_operation("materialize-theme-json"),
+            cfg!(feature = "svg")
+        );
+        assert_eq!(
+            projected.has_operation("describe-theme-support-json"),
+            cfg!(feature = "svg")
+        );
+        assert_eq!(
+            projected.has_operation("export-theme-preset-json"),
+            cfg!(feature = "svg")
+        );
         #[cfg(feature = "svg")]
         {
             assert_eq!(
@@ -388,6 +463,43 @@ mod tests {
             merman_bindings_core::BindingStatus::UnsupportedOperation
         );
         assert!(error.message().contains("not exposed by target `typst`"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_operation_json_materializes_the_shared_definition_contract() {
+        let definition = br##"{
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": {"canvas": "#0f172a", "text": "#e5e7eb"}
+        }"##;
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"materialize-theme-json",
+            definition,
+            b"",
+        ))
+        .expect("valid theme-operation envelope");
+
+        assert_success_envelope(&payload, "materialize-theme-json");
+        assert_eq!(payload["data"]["result"]["authoring_schema_version"], 1);
+        assert_eq!(payload["data"]["result"]["expansion_version"], 1);
+        assert_eq!(payload["data"]["result"]["spec_schema_version"], 1);
+        assert!(payload["data"]["result"]["spec"]["styles"]
+            .as_array()
+            .is_some_and(|styles| !styles.is_empty()));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_operation_json_rejects_non_theme_operations() {
+        let payload: Value =
+            serde_json::from_slice(&theme_operation_json(b"svg", b"flowchart TD\nA --> B", b""))
+                .expect("valid theme-operation error envelope");
+
+        assert_error_envelope(&payload, "svg", "MERMAN_UNSUPPORTED_OPERATION");
+        assert!(payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("theme authoring")));
     }
 
     #[test]

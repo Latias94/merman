@@ -116,6 +116,113 @@ pub(crate) fn validate_typst_plugin_with_input(
         "MERMAN_OPTIONS_JSON_ERROR",
     )?;
 
+    let materialized_theme = instance.call(
+        "theme_operation_json",
+        vec![
+            b"materialize-theme-json".to_vec(),
+            br##"{
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": {"text": "#123456", "accent": "#abcdef"}
+            }"##
+            .to_vec(),
+            options_json.to_vec(),
+        ],
+    )?;
+    let materialized_theme = parse_json("materialize-theme-json", &materialized_theme)?;
+    let materialized_theme =
+        assert_theme_operation_payload(&materialized_theme, "materialize-theme-json")?;
+    if materialized_theme
+        .get("schema_version")
+        .and_then(JsonValue::as_u64)
+        != Some(1)
+        || materialized_theme
+            .get("authoring_schema_version")
+            .and_then(JsonValue::as_u64)
+            != Some(1)
+        || materialized_theme
+            .get("expansion_version")
+            .and_then(JsonValue::as_u64)
+            != Some(1)
+        || materialized_theme
+            .get("spec_schema_version")
+            .and_then(JsonValue::as_u64)
+            != Some(1)
+        || !materialized_theme
+            .pointer("/spec/styles")
+            .and_then(JsonValue::as_array)
+            .is_some_and(|styles| !styles.is_empty())
+    {
+        return Err(smoke_error(format!(
+            "materialize-theme-json returned an invalid materialized theme: {materialized_theme}"
+        )));
+    }
+
+    let theme_support = instance.call(
+        "theme_operation_json",
+        vec![
+            b"describe-theme-support-json".to_vec(),
+            br#"{
+                "schema_version": 2,
+                "family": "sequence",
+                "output": "standalone-svg",
+                "subject": {"kind": "base-typography", "property": "font-stack"}
+            }"#
+            .to_vec(),
+            options_json.to_vec(),
+        ],
+    )?;
+    let theme_support = parse_json("describe-theme-support-json", &theme_support)?;
+    let theme_support =
+        assert_theme_operation_payload(&theme_support, "describe-theme-support-json")?;
+    if theme_support
+        .get("schema_version")
+        .and_then(JsonValue::as_u64)
+        != Some(2)
+        || theme_support
+            .pointer("/query/family")
+            .and_then(JsonValue::as_str)
+            != Some("sequence")
+    {
+        return Err(smoke_error(format!(
+            "describe-theme-support-json returned an invalid descriptor: {theme_support}"
+        )));
+    }
+
+    let preset_export = instance.call(
+        "theme_operation_json",
+        vec![
+            b"export-theme-preset-json".to_vec(),
+            b"editor-light".to_vec(),
+            options_json.to_vec(),
+        ],
+    )?;
+    let preset_export = parse_json("export-theme-preset-json", &preset_export)?;
+    let preset_export = assert_theme_operation_payload(&preset_export, "export-theme-preset-json")?;
+    if preset_export.get("kind").and_then(JsonValue::as_str) != Some("complete_spec")
+        || !preset_export
+            .get("complete_spec")
+            .is_some_and(JsonValue::is_object)
+    {
+        return Err(smoke_error(format!(
+            "export-theme-preset-json returned an invalid preset export: {preset_export}"
+        )));
+    }
+
+    let rejected_theme_operation = instance.call(
+        "theme_operation_json",
+        vec![b"svg".to_vec(), source.to_vec(), options_json.to_vec()],
+    )?;
+    let rejected_theme_operation = parse_json(
+        "theme_operation_json non-theme probe",
+        &rejected_theme_operation,
+    )?;
+    assert_error_payload(
+        &rejected_theme_operation,
+        "svg",
+        "MERMAN_UNSUPPORTED_OPERATION",
+    )?;
+
     for (function, operation, label, malicious_options) in [
         (
             "render_svg_json",
@@ -988,6 +1095,47 @@ fn assert_error_payload(
         )));
     }
     Ok(())
+}
+
+fn assert_theme_operation_payload<'a>(
+    payload: &'a JsonValue,
+    operation: &str,
+) -> Result<&'a JsonValue, XtaskError> {
+    let object = exact_object(
+        payload,
+        &[
+            "version",
+            "operation",
+            "ok",
+            "code",
+            "code_name",
+            "kind",
+            "capability_id",
+            "message",
+            "data",
+        ],
+        "theme operation payload",
+    )?;
+    if object.get("version").and_then(JsonValue::as_u64)
+        != Some(TYPST_RESULT_PAYLOAD_SCHEMA_VERSION)
+        || object.get("operation").and_then(JsonValue::as_str) != Some(operation)
+        || object.get("ok").and_then(JsonValue::as_bool) != Some(true)
+        || object.get("code").and_then(JsonValue::as_i64) != Some(0)
+        || object.get("code_name").and_then(JsonValue::as_str) != Some("MERMAN_OK")
+        || !object.get("kind").is_some_and(JsonValue::is_null)
+        || !object.get("capability_id").is_some_and(JsonValue::is_null)
+        || !object.get("message").is_some_and(JsonValue::is_null)
+    {
+        return Err(smoke_error(format!(
+            "{operation} returned an invalid success payload: {payload}"
+        )));
+    }
+    let data = object
+        .get("data")
+        .ok_or_else(|| smoke_error(format!("{operation} payload is missing data")))?;
+    let data = exact_object(data, &["result"], "theme operation payload data")?;
+    data.get("result")
+        .ok_or_else(|| smoke_error(format!("{operation} payload data is missing result")))
 }
 
 fn exact_object<'a>(

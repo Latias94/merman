@@ -27,10 +27,10 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.2.0` (source tree, unreleased) | `0.8.0-alpha.5` | `2` | Requires a local package build and Typst `--package-path`. |
+| `0.2.0` (source tree, unreleased) | `0.8.0-alpha.5` | `3` | Requires a local package build and Typst `--package-path`. |
 | `0.1.0` (Typst Universe) | `0.8.0-alpha.1` | `1` | Current published wrapper. |
 
-The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 3 and native ABI 3.
 
 The remaining API and example sections describe the unreleased `0.2.0` source tree. Build the
 package as described in [Development](#development) and compile with the generated local package
@@ -47,6 +47,7 @@ path before running those examples.
 - [print.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/print.typ): print-friendly white-background output.
 - [presentation.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/presentation.typ): dark slide-sized output using a compiled theme preset.
 - [svg-export.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/svg-export.typ): raw SVG and structured render payloads.
+- [theme-authoring.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/theme-authoring.typ): materialize a shared definition, inspect support, and copy an editable preset recipe.
 
 Package fixtures are grouped by behavior family under [tests](https://github.com/Latias94/merman/tree/main/distribution/typst/merman/tests): API, option normalization, render environments, context, errors, figures, raw blocks, README examples, historical issues, and visual smoke coverage. These links point to the source repository because examples and tests are not included in the published Typst package.
 
@@ -295,6 +296,37 @@ Returns the canonical analysis schema 1 payload produced by the Rust bindings:
 #analysis.diagnostics
 ```
 
+### Theme authoring
+
+`materialize-theme`, `describe-theme-support`, and `export-theme-preset` are thin projections of
+the shared Rust-owned theme operations. The Typst wrapper encodes inputs and unwraps successful
+results; it does not expand tokens or infer support locally.
+
+These functions remain Alpha while the C7a authoring qualification gate is open. Their presence in
+Typst plugin ABI 3 makes the callable transport explicit; it is not a stability commitment for the
+theme authoring payloads.
+
+```typst
+#let definition = (
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: (canvas: "#0f172a", text: "#e5e7eb", accent: "#38bdf8"),
+)
+#let materialized = materialize-theme(definition)
+#let support = describe-theme-support((
+  schema_version: 2,
+  family: "sequence",
+  output: "standalone-svg",
+  subject: (kind: "base-typography", property: "font-stack"),
+))
+#let preset = export-theme-preset("editor-dark")
+```
+
+Each function returns the canonical result dictionary on success. On failure it returns the same
+structured operation envelope used by rendering, including `ok`, `code_name`, `kind`, `message`,
+and an optional `capability_id`. The plugin always applies its constrained resource policy; caller
+options may tighten that policy but cannot loosen it.
+
 ### `merman-capabilities()`
 
 Returns the compiled plugin capability payload, including the current text measurement boundary:
@@ -304,7 +336,7 @@ Returns the compiled plugin capability payload, including the current text measu
 #capabilities.capabilities.text_measurement.provider_ids
 ```
 
-The flat catalog reports the artifact's current capability, output, operation, registry, and resource sets. The plugin independently applies a fixed constrained resource ceiling to every render and analysis operation. Raw binding options may tighten individual resource limits but cannot loosen or silently replace that transport-owned policy. The options root and any `analysis` or `merman` wrapper must be JSON objects; malformed wrapper values return a structured options error before rendering or analysis begins.
+The flat catalog reports the artifact's current capability, output, operation, registry, and resource sets. The plugin independently applies a fixed constrained resource ceiling to every render, analysis, and theme-authoring operation. Raw binding options may tighten individual resource limits but cannot loosen or silently replace that transport-owned policy. The options root and any `analysis` or `merman` wrapper must be JSON objects; malformed wrapper values return a structured options error before an operation begins.
 
 ### `show-mermaid-blocks(..)`
 

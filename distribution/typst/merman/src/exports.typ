@@ -3,3 +3,4 @@
 #import "options.typ": mermaid-profile
 #import "raw.typ": show-mermaid-blocks
 #import "render.typ": analyze-mermaid, mermaid, mermaid-result, mermaid-svg
+#import "theme.typ": describe-theme-support, export-theme-preset, materialize-theme

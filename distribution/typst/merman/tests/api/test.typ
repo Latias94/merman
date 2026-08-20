@@ -1,5 +1,8 @@
 #import "@preview/merman:0.2.0": (
   analyze-mermaid,
+  describe-theme-support,
+  export-theme-preset,
+  materialize-theme,
   mermaid,
   mermaid-figure,
   mermaid-profile,
@@ -146,15 +149,46 @@
 
 #let capabilities = merman-capabilities()
 #assert.eq(capabilities.schema_version, 1)
-#assert.eq(capabilities.transport_api_version, 2)
+#assert.eq(capabilities.transport_api_version, 3)
 #assert(
   capabilities.capabilities.capability_ids.contains("svg"),
   message: "capabilities should stay exported",
 )
 #assert.eq(
   capabilities.capabilities.operation_ids,
-  ("analysis-json", "svg"),
+  (
+    "analysis-json",
+    "describe-theme-support-json",
+    "export-theme-preset-json",
+    "materialize-theme-json",
+    "svg",
+  ),
 )
+
+#let theme-definition = (
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: (text: "#123456", accent: "#abcdef"),
+)
+#let materialized-theme = materialize-theme(theme-definition)
+#assert.eq(materialized-theme.schema_version, 1)
+#assert.eq(materialized-theme.authoring_schema_version, 1)
+#assert.eq(materialized-theme.expansion_version, 1)
+#assert.eq(materialized-theme.spec_schema_version, 1)
+#assert(materialized-theme.spec.styles.len() > 0)
+
+#let theme-support = describe-theme-support((
+  schema_version: 2,
+  family: "sequence",
+  output: "standalone-svg",
+  subject: (kind: "base-typography", property: "font-stack"),
+))
+#assert.eq(theme-support.schema_version, 2)
+#assert.eq(theme-support.query.family, "sequence")
+
+#let preset-export = export-theme-preset("editor-light")
+#assert.eq(preset-export.kind, "complete_spec")
+#assert(type(preset-export.complete_spec) == dictionary)
 #assert(
   capabilities.capabilities.text_measurement.provider_ids.contains("vendored"),
   message: "capabilities should keep text measurement boundary",
