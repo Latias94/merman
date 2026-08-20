@@ -1,9 +1,6 @@
 use super::super::*;
-use crate::flowchart::{
-    FlowchartLabelMetricsRequest, FlowchartShapeFacetEmissionReceipt,
-    flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
-};
-use crate::model::{SwimlaneDirection, SwimlaneLaneLayout};
+use crate::flowchart::{FlowchartShapeFacetEmissionReceipt, flowchart_label_is_empty_for_render};
+use crate::model::SwimlaneLaneLayout;
 
 const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const SWIMLANE_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
@@ -118,61 +115,6 @@ fn write_swimlane_rect(
     FlowchartShapeFacetEmissionReceipt::all()
 }
 
-fn lane_label_metrics(
-    ctx: &FlowchartRenderCtx<'_>,
-    cluster_id: &str,
-    lane: &SwimlaneLaneLayout,
-    render_title: &str,
-) -> crate::text::TextMetrics {
-    if flowchart_label_is_empty_for_render(render_title) {
-        return crate::text::TextMetrics {
-            width: 0.0,
-            height: 0.0,
-            line_count: 0,
-        };
-    }
-
-    let style = if ctx.swimlane_title_html_labels {
-        &ctx.html_label_text_style
-    } else {
-        &ctx.text_style
-    };
-    let wrap_mode = if ctx.swimlane_title_html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    let prepared_math = ctx
-        .svg_label_sidecar
-        .and_then(|sidecar| {
-            sidecar
-                .swimlane_group_title_owner(cluster_id)
-                .map(|owner| sidecar.prepared_math_for_terminal(owner, render_title))
-        })
-        .unwrap_or_default();
-    if let crate::flowchart::FlowchartPreparedMathResolution::Prepared(prepared) = prepared_math {
-        return prepared.metrics();
-    }
-    let math_renderer = matches!(
-        prepared_math,
-        crate::flowchart::FlowchartPreparedMathResolution::NotPrepared
-    )
-    .then_some(ctx.math_renderer)
-    .flatten();
-    flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-        measurer: ctx.measurer,
-        raw_label: render_title,
-        // Mermaid's dedicated Swimlane renderer omits createText's `markdown` option, so its
-        // default `true` applies independently of FlowDB's public subgraph labelType.
-        label_type: "markdown",
-        style,
-        max_width_px: Some(lane.width.max(1.0)),
-        wrap_mode,
-        config: ctx.config,
-        math_renderer,
-    })
-}
-
 pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
@@ -196,9 +138,17 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             )
         })
         .unwrap_or(lane.title.as_str());
-    let label_metrics = lane_label_metrics(ctx, cluster.id.as_str(), lane, render_title);
-    let label_width = label_metrics.width.max(0.0);
-    let label_height = label_metrics.height.max(0.0);
+    let direction = ctx
+        .swimlane_direction
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: format!(
+                "missing Swimlane direction while rendering lane `{}`",
+                lane.id
+            ),
+        })?;
+    let geometry = super::swimlane_terminal_geometry(lane, direction);
+    let label_width = lane.title_label_width.max(0.0);
+    let label_height = lane.title_label_height.max(0.0);
     let title_owner = ctx
         .svg_label_sidecar
         .and_then(|sidecar| sidecar.swimlane_group_title_owner(cluster.id.as_str()));
@@ -209,19 +159,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
                 false,
             );
 
-    let padding = lane.padding.max(0.0);
-    let width = lane.width.max(label_width + padding);
-    let height = lane.height.max(0.0);
+    let width = geometry.width;
+    let height = geometry.height;
     let lane_top = lane.y - height / 2.0 + ctx.ty - origin_y;
     let lane_bottom = lane.y + height / 2.0 + ctx.ty - origin_y;
     let lane_left = lane.x - width / 2.0 + ctx.tx - origin_x;
-    let content_top = lane
-        .content_top
-        .map(|value| value + ctx.ty - origin_y)
-        .unwrap_or(lane_top + height / 3.0);
-    let is_lr = ctx.swimlane_direction == Some(SwimlaneDirection::Lr);
-    let title_padding_y = if is_lr { 4.0 } else { 0.0 };
-    let desired_title_size = label_height + 2.0 * title_padding_y;
+    let is_lr = direction == crate::model::SwimlaneDirection::Lr;
 
     let theme = MermaidThemeAdapter::new(ctx.config.as_value()).node_diagram();
     let mut classes = String::from("cluster swimlane");
@@ -256,7 +199,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
 
     let mut shape_source_receipt = FlowchartShapeFacetEmissionReceipt::none();
     let (label_x, label_y, label_transform) = if is_lr {
-        let title_width = desired_title_size.max(label_height + 2.0 * title_padding_y);
+        let title_width = geometry.title_band_width;
         let body_x = lane_left + title_width;
         let body_width = (width - title_width).max(0.0);
         shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
@@ -285,8 +228,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             Some(&theme.cluster_bkg),
             &theme.cluster_border,
         ));
-        let center_x = lane_left + title_width / 2.0;
-        let center_y = lane.y + ctx.ty - origin_y;
+        let center_x = geometry.title_label.x + ctx.tx - origin_x;
+        let center_y = geometry.title_label.y + ctx.ty - origin_y;
         (
             0.0,
             0.0,
@@ -299,8 +242,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             ),
         )
     } else {
-        let header_max_height = (content_top - lane_top).max(0.0);
-        let title_height = desired_title_size.min(header_max_height);
+        let title_height = geometry.title_band_height;
         let body_y = lane_top + title_height;
         let body_height = (lane_bottom - body_y).max(0.0);
         shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
@@ -330,8 +272,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             &theme.cluster_border,
         ));
         (
-            lane.x - label_width / 2.0 + ctx.tx - origin_x,
-            lane_top + (title_height - label_height) / 2.0,
+            geometry.title_label.x - label_width / 2.0 + ctx.tx - origin_x,
+            geometry.title_label.y - label_height / 2.0 + ctx.ty - origin_y,
             String::new(),
         )
     };

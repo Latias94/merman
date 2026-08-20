@@ -550,6 +550,100 @@ fn swimlane_generated_edge_label_nodes_receive_document_owned_ids() {
 }
 
 #[test]
+fn swimlane_title_foreign_object_reuses_layout_text_metrics() {
+    let source = r#"swimlane-beta TB
+subgraph Lane[Large Lane Title]
+  A[Node]
+end
+classDef huge font-size:40px,font-family:Arial
+class Lane huge
+"#;
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse Swimlane source")
+            .expect("detect Swimlane diagram");
+    let artifact = family::prepare(
+        parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin Swimlane session"),
+    )
+    .expect("prepare Swimlane artifact");
+    let projection = artifact.layout_json().expect("project Swimlane layout");
+    let layout: SwimlaneLayout =
+        serde_json::from_value(projection["layout"]["SwimlaneDiagram"].clone())
+            .expect("decode Swimlane layout");
+    let lane = layout.lanes.first().expect("prepared Swimlane lane");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Swimlane SVG");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
+    let foreign_object = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "swimlane-label")
+                })
+        })
+        .and_then(|group| {
+            group
+                .children()
+                .find(|node| node.has_tag_name("foreignObject"))
+        })
+        .expect("Swimlane title foreignObject");
+    let width = foreign_object
+        .attribute("width")
+        .expect("title foreignObject width")
+        .parse::<f64>()
+        .expect("numeric title foreignObject width");
+    let height = foreign_object
+        .attribute("height")
+        .expect("title foreignObject height")
+        .parse::<f64>()
+        .expect("numeric title foreignObject height");
+    assert!((width - lane.title_label_width).abs() <= 1.0e-6);
+    assert!((height - lane.title_label_height).abs() <= 1.0e-6);
+
+    let title_rect = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "swimlane-title")
+                })
+        })
+        .expect("Swimlane title rect");
+    let rendered_lane_width = title_rect
+        .attribute("width")
+        .expect("title rect width")
+        .parse::<f64>()
+        .expect("numeric title rect width");
+    assert!(
+        rendered_lane_width >= lane.title_label_width + lane.padding,
+        "rendered lane must contain the prepared title: {}",
+        rendered.svg()
+    );
+
+    let [viewbox_x, _, viewbox_width, _] = flowchart_svg_viewbox_values(rendered.svg());
+    let title_x = title_rect
+        .attribute("x")
+        .expect("title rect x")
+        .parse::<f64>()
+        .expect("numeric title rect x");
+    assert!(
+        viewbox_x <= title_x && viewbox_x + viewbox_width >= title_x + rendered_lane_width,
+        "viewBox must contain the rendered Swimlane title band: {}",
+        rendered.svg()
+    );
+}
+
+#[test]
 fn flowchart_root_gradient_and_same_named_cluster_use_distinct_document_ids() {
     let svg = render_flowchart_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),

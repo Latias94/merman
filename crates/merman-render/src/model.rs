@@ -652,10 +652,9 @@ pub struct SwimlaneLaneLayout {
     pub width: f64,
     pub height: f64,
     pub padding: f64,
-    /// Layout-phase label width. SVG rendering must remeasure the emitted title with its
-    /// `SvgBBox` measurer rather than treating this as a browser `<text>.getBBox()` fact.
+    /// Prepared terminal label width shared by Swimlane layout and SVG rendering.
     pub title_label_width: f64,
-    /// Layout-phase label height; see `title_label_width` for the phase boundary.
+    /// Prepared terminal label height shared by Swimlane layout and SVG rendering.
     pub title_label_height: f64,
     #[serde(default)]
     pub content_top: Option<f64>,

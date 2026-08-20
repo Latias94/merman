@@ -9,6 +9,64 @@ pub(super) mod line_hops;
 
 pub(super) use cluster::render_swimlane_cluster;
 
+#[derive(Debug, Clone)]
+pub(super) struct SwimlaneTerminalGeometry {
+    pub width: f64,
+    pub height: f64,
+    pub title_band_width: f64,
+    pub title_band_height: f64,
+    pub title_label: LayoutLabel,
+}
+
+pub(super) fn swimlane_terminal_geometry(
+    lane: &crate::model::SwimlaneLaneLayout,
+    direction: crate::model::SwimlaneDirection,
+) -> SwimlaneTerminalGeometry {
+    let label_width = lane.title_label_width.max(0.0);
+    let label_height = lane.title_label_height.max(0.0);
+    let padding = lane.padding.max(0.0);
+    let is_lr = direction == crate::model::SwimlaneDirection::Lr;
+    let title_padding_y = if is_lr { 4.0 } else { 0.0 };
+    let desired_title_size = label_height + 2.0 * title_padding_y;
+    let width =
+        lane.width
+            .max(label_width + padding)
+            .max(if is_lr { desired_title_size } else { 0.0 });
+    let height = lane.height.max(0.0);
+    let lane_top = lane.y - height / 2.0;
+
+    if is_lr {
+        let title_band_width = desired_title_size;
+        SwimlaneTerminalGeometry {
+            width,
+            height,
+            title_band_width,
+            title_band_height: height,
+            title_label: LayoutLabel {
+                x: lane.x - width / 2.0 + title_band_width / 2.0,
+                y: lane.y,
+                width: label_height,
+                height: label_width,
+            },
+        }
+    } else {
+        let content_top = lane.content_top.unwrap_or(lane_top + height / 3.0);
+        let title_band_height = desired_title_size.min((content_top - lane_top).max(0.0));
+        SwimlaneTerminalGeometry {
+            width,
+            height,
+            title_band_width: width,
+            title_band_height,
+            title_label: LayoutLabel {
+                x: lane.x,
+                y: lane_top + title_band_height / 2.0,
+                width: label_width,
+                height: label_height,
+            },
+        }
+    }
+}
+
 pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
     artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
     metadata: &merman_core::ParseMetadata,
@@ -97,26 +155,24 @@ fn adapt_swimlane_layout(
     let clusters = layout
         .lanes
         .iter()
-        .map(|lane| LayoutCluster {
-            id: lane.id.clone(),
-            x: lane.x,
-            y: lane.y,
-            width: lane.width,
-            height: lane.height,
-            diff: 0.0,
-            offset_y: 0.0,
-            title: lane.title.clone(),
-            title_label: LayoutLabel {
+        .map(|lane| {
+            let geometry = swimlane_terminal_geometry(lane, layout.direction);
+            LayoutCluster {
+                id: lane.id.clone(),
                 x: lane.x,
                 y: lane.y,
-                width: 0.0,
-                height: 0.0,
-            },
-            requested_dir: lane.requested_dir.clone(),
-            effective_dir: layout.direction.as_str().to_string(),
-            padding: lane.padding,
-            title_margin_top: 0.0,
-            title_margin_bottom: 0.0,
+                width: geometry.width,
+                height: geometry.height,
+                diff: 0.0,
+                offset_y: 0.0,
+                title: lane.title.clone(),
+                title_label: geometry.title_label,
+                requested_dir: lane.requested_dir.clone(),
+                effective_dir: layout.direction.as_str().to_string(),
+                padding: lane.padding,
+                title_margin_top: 0.0,
+                title_margin_bottom: 0.0,
+            }
         })
         .collect();
 
