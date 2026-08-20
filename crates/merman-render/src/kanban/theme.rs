@@ -101,6 +101,7 @@ impl FromIterator<KanbanTaskLabelRole> for KanbanTaskLabelRoles {
 pub(crate) struct KanbanTaskOccurrence {
     semantic_id: Box<str>,
     visible_labels: KanbanTaskLabelRoles,
+    inheriting_labels: KanbanTaskLabelRoles,
 }
 
 impl KanbanTaskOccurrence {
@@ -108,14 +109,29 @@ impl KanbanTaskOccurrence {
         semantic_id: impl Into<Box<str>>,
         visible_labels: impl IntoIterator<Item = KanbanTaskLabelRole>,
     ) -> Self {
+        let visible_labels = visible_labels.into_iter().collect();
         Self {
             semantic_id: semantic_id.into(),
-            visible_labels: visible_labels.into_iter().collect(),
+            visible_labels,
+            inheriting_labels: visible_labels,
         }
+    }
+
+    pub(crate) fn with_inheriting_labels(
+        mut self,
+        labels: impl IntoIterator<Item = KanbanTaskLabelRole>,
+    ) -> Self {
+        self.inheriting_labels = labels.into_iter().collect();
+        debug_assert!(self.inheriting_labels.0 & !self.visible_labels.0 == 0);
+        self
     }
 
     fn has_visible_labels(&self) -> bool {
         !self.visible_labels.is_empty()
+    }
+
+    fn has_inheriting_labels(&self) -> bool {
+        !self.inheriting_labels.is_empty()
     }
 }
 
@@ -145,6 +161,7 @@ impl KanbanTaskTheme {
         );
         let mut items = Vec::with_capacity(item_count);
         let mut label_rule_visible = BTreeSet::new();
+        let mut label_rule_shadowed = BTreeSet::new();
         let mut winner_properties = BTreeSet::new();
         for (item_index, occurrence) in occurrences.into_iter().enumerate() {
             let style = theme.style_with_work_meter(
@@ -195,9 +212,17 @@ impl KanbanTaskTheme {
                         .map(|(property, origin)| (origin.rule_index(), property)),
                 );
             }
-            let label_foreground = if has_visible_labels && !source_owned_label {
+            let label_candidate = if has_visible_labels && !source_owned_label {
                 typed_label_foreground(theme, &label_style)
             } else {
+                None
+            };
+            let label_foreground = if occurrence.has_inheriting_labels() {
+                label_candidate
+            } else {
+                if let Some(label) = label_candidate.as_ref() {
+                    label_rule_shadowed.insert(label.rule_index);
+                }
                 None
             };
             if let Some(label) = label_foreground.as_ref() {
@@ -244,6 +269,8 @@ impl KanbanTaskTheme {
                                 observation.suppressed = true;
                             } else if label_rule_visible.contains(&rule_index) {
                                 observation.label_pending = true;
+                            } else if label_rule_shadowed.contains(&rule_index) {
+                                observation.suppressed = true;
                             } else {
                                 observation.residual =
                                     Some(FamilyThemeResidualReason::UnsupportedPaint);
@@ -566,7 +593,7 @@ impl KanbanTaskThemeReceipt {
                     rect_checkpointed: false,
                     expected_labels: decision
                         .label_css()
-                        .map(|_| item.occurrence.visible_labels)
+                        .map(|_| item.occurrence.inheriting_labels)
                         .unwrap_or_default(),
                     emitted_labels: KanbanTaskLabelRoles::default(),
                 })
@@ -606,6 +633,7 @@ impl KanbanTaskThemeReceipt {
         role: KanbanTaskLabelRole,
         actual_group_style: &str,
         actual_div_style: &str,
+        inherited_color_run_count: usize,
         decision: &KanbanTaskTerminalDecision,
     ) {
         let Some(item) = self.items.get_mut(item_index) else {
@@ -623,6 +651,7 @@ impl KanbanTaskThemeReceipt {
         self.schema_valid &= item.semantic_id.as_ref() == semantic_id;
         self.schema_valid &= item.expected_labels.contains(role);
         self.schema_valid &= item.emitted_labels.insert(role);
+        self.schema_valid &= inherited_color_run_count > 0;
         self.schema_valid &=
             terminal_style_property(actual_group_style, "color") == Some(expected_css);
         self.schema_valid &=
@@ -731,6 +760,7 @@ mod tests {
             KanbanTaskLabelRole::Title,
             "color:#000000;fill:#000000;text-align:left !important",
             "color: #000000; text-align:center",
+            1,
             &decision,
         );
         assert!(!incomplete.proves(1));
@@ -747,6 +777,7 @@ mod tests {
                 role,
                 "color:#ffffff;fill:#000000;text-align:left !important",
                 "color: #000000; text-align:center",
+                1,
                 &decision,
             );
         }
@@ -761,6 +792,7 @@ mod tests {
                 role,
                 "color:#000000;fill:#000000;text-align:left !important",
                 "color: #000000; text-align:center",
+                1,
                 &decision,
             );
         }
@@ -773,6 +805,7 @@ mod tests {
             KanbanTaskLabelRole::Title,
             "color:#000000;fill:#000000;text-align:left !important",
             "color: #000000; text-align:center",
+            1,
             &decision,
         );
         assert!(!complete.proves(1));

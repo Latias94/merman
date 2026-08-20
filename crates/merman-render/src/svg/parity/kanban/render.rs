@@ -136,12 +136,14 @@ struct KanbanLabelGroup<'a> {
     div_class: Option<&'a str>,
     wrap_title: bool,
     foreground: Option<&'a str>,
+    inherited_color_run_count: usize,
 }
 
 struct KanbanLabelGroupEmission {
     visible: bool,
     group_style: String,
     div_style: String,
+    inherited_color_run_count: usize,
 }
 
 struct KanbanTaskRectEmission {
@@ -202,6 +204,7 @@ fn write_kanban_label_group(
         div_class,
         wrap_title,
         foreground,
+        inherited_color_run_count,
     } = group;
     let max_width = context.max_width;
     let div_style_overrides = match text {
@@ -268,6 +271,7 @@ fn write_kanban_label_group(
         visible,
         group_style,
         div_style,
+        inherited_color_run_count,
     })
 }
 
@@ -279,7 +283,8 @@ fn record_kanban_label_emission(
     emission: &KanbanLabelGroupEmission,
     decision: &crate::kanban::KanbanTaskTerminalDecision,
 ) {
-    if emission.visible && decision.label_css().is_some() {
+    if emission.visible && emission.inherited_color_run_count > 0 && decision.label_css().is_some()
+    {
         if let Some(receipt) = receipt {
             receipt.record_label(
                 item_index,
@@ -287,6 +292,7 @@ fn record_kanban_label_emission(
                 role,
                 &emission.group_style,
                 &emission.div_style,
+                emission.inherited_color_run_count,
                 decision,
             );
         }
@@ -465,6 +471,10 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: n.icon.as_deref().map(|_| "labelBkg"),
                 wrap_title: true,
                 foreground: terminal_decision.label_css(),
+                inherited_color_run_count: prepared_item
+                    .title
+                    .visible_style_facts
+                    .inherited_color_run_count(),
             },
         )?;
         record_kanban_label_emission(
@@ -499,6 +509,9 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         wrap_title: false,
                         foreground: terminal_decision.label_css(),
+                        inherited_color_run_count: prepared_item
+                            .ticket_style_facts
+                            .inherited_color_run_count(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -523,6 +536,9 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         wrap_title: false,
                         foreground: terminal_decision.label_css(),
+                        inherited_color_run_count: prepared_item
+                            .ticket_style_facts
+                            .inherited_color_run_count(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -546,6 +562,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     div_class: None,
                     wrap_title: false,
                     foreground: terminal_decision.label_css(),
+                    inherited_color_run_count: 0,
                 },
             )?;
         }
@@ -562,6 +579,9 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: None,
                 wrap_title: false,
                 foreground: terminal_decision.label_css(),
+                inherited_color_run_count: prepared_item
+                    .assigned_style_facts
+                    .inherited_color_run_count(),
             },
         )?;
         record_kanban_label_emission(

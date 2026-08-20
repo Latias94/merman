@@ -15,6 +15,7 @@ mod prepared;
 mod svg_metrics;
 mod terminal_receipt;
 mod types;
+mod visible_style;
 mod whitespace;
 mod wrap;
 
@@ -77,6 +78,7 @@ pub(crate) use prepared::{
 #[cfg(test)]
 pub(crate) use prepared::{PreparedTextLine, TextByteRange};
 pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
+pub(crate) use visible_style::VisibleTextStyleFacts;
 
 /// Workspace-internal native-export evidence scheduled for replacement by a compact export plan.
 #[doc(hidden)]

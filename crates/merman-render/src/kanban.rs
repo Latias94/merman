@@ -95,6 +95,7 @@ impl KanbanPreparedArtifact {
 pub(crate) struct KanbanPreparedMarkdownLabel {
     pub(crate) html: String,
     pub(crate) geometry: KanbanPreparedLabelGeometry,
+    pub(crate) visible_style_facts: crate::text::VisibleTextStyleFacts,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -117,6 +118,8 @@ impl KanbanPreparedLabelGeometry {
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedItem {
     pub(crate) title: KanbanPreparedMarkdownLabel,
+    pub(crate) ticket_style_facts: crate::text::VisibleTextStyleFacts,
+    pub(crate) assigned_style_facts: crate::text::VisibleTextStyleFacts,
     pub(crate) ticket_link: Option<KanbanPreparedTicketLink>,
 }
 
@@ -191,6 +194,7 @@ fn prepare_kanban_markdown_label(
 
     (
         KanbanPreparedMarkdownLabel {
+            visible_style_facts: crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html),
             html,
             geometry: KanbanPreparedLabelGeometry {
                 content_height: metrics.height,
@@ -306,33 +310,71 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 .count()
         })
         .sum();
-    let task_occurrences = section_inputs
-        .iter()
-        .flat_map(|(_, items)| {
-            model.nodes[items.start..items.end]
-                .iter()
-                .filter(|node| node.parent_id.is_some())
-                .map(|node| {
-                    KanbanTaskOccurrence::new(
-                        node.id.clone(),
-                        [
-                            (!node.label.is_empty()).then_some(KanbanTaskLabelRole::Title),
-                            node.ticket
-                                .as_deref()
-                                .is_some_and(|ticket| !ticket.is_empty())
-                                .then_some(KanbanTaskLabelRole::Ticket),
-                            node.assigned
-                                .as_deref()
-                                .is_some_and(|assigned| !assigned.is_empty())
-                                .then_some(KanbanTaskLabelRole::Assigned),
-                        ]
-                        .into_iter()
-                        .flatten(),
-                    )
-                })
-        })
-        .collect::<Vec<_>>();
+    let item_width = (section_width - 1.5 * padding).max(1.0);
+    let item_inner_max_width = (item_width - padding).max(0.0);
+    let mut task_occurrences = Vec::with_capacity(item_capacity);
+    let mut prepared_task_titles = Vec::with_capacity(item_capacity);
+    for (_, items) in &section_inputs {
+        for node in model.nodes[items.start..items.end]
+            .iter()
+            .filter(|node| node.parent_id.is_some())
+        {
+            let (prepared_title, title_metrics) = prepare_kanban_title_label(
+                &markdown,
+                measurer,
+                &node.label,
+                &legend_style,
+                item_inner_max_width,
+            );
+            let ticket_style_facts = crate::text::VisibleTextStyleFacts::plain_text(
+                node.ticket.as_deref().unwrap_or_default(),
+            );
+            let assigned_style_facts = crate::text::VisibleTextStyleFacts::plain_text(
+                node.assigned.as_deref().unwrap_or_default(),
+            );
+            let visible_labels = [
+                prepared_title
+                    .visible_style_facts
+                    .has_visible_runs()
+                    .then_some(KanbanTaskLabelRole::Title),
+                ticket_style_facts
+                    .has_visible_runs()
+                    .then_some(KanbanTaskLabelRole::Ticket),
+                assigned_style_facts
+                    .has_visible_runs()
+                    .then_some(KanbanTaskLabelRole::Assigned),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+            let inheriting_labels = [
+                (prepared_title.visible_style_facts.parse_valid()
+                    && prepared_title
+                        .visible_style_facts
+                        .inherited_color_run_count()
+                        > 0)
+                .then_some(KanbanTaskLabelRole::Title),
+                (ticket_style_facts.inherited_color_run_count() > 0)
+                    .then_some(KanbanTaskLabelRole::Ticket),
+                (assigned_style_facts.inherited_color_run_count() > 0)
+                    .then_some(KanbanTaskLabelRole::Assigned),
+            ]
+            .into_iter()
+            .flatten();
+            task_occurrences.push(
+                KanbanTaskOccurrence::new(node.id.clone(), visible_labels)
+                    .with_inheriting_labels(inheriting_labels),
+            );
+            prepared_task_titles.push((
+                prepared_title,
+                title_metrics,
+                ticket_style_facts,
+                assigned_style_facts,
+            ));
+        }
+    }
     debug_assert_eq!(task_occurrences.len(), item_capacity);
+    debug_assert_eq!(prepared_task_titles.len(), item_capacity);
     let task_theme =
         KanbanTaskTheme::resolve(theme, task_occurrences, effective_config, work_meter)?;
     let mut max_label_height = section_label_height_baseline;
@@ -340,6 +382,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     let mut items: Vec<KanbanItemLayout> = Vec::with_capacity(item_capacity);
     let mut prepared_sections = Vec::with_capacity(section_inputs.len());
     let mut prepared_items = Vec::with_capacity(item_capacity);
+    let mut prepared_task_titles = prepared_task_titles.into_iter();
 
     for (i, (section, _)) in section_inputs.iter().enumerate() {
         let index = (i + 1) as i64;
@@ -381,19 +424,15 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
             .iter()
             .filter(|node| node.parent_id.is_some())
         {
-            let width = (section_width - 1.5 * padding).max(1.0);
-            let inner_max_w = (width - padding).max(0.0);
+            let width = item_width;
 
             // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
             // that behavior so item heights match the upstream bbox-based layout.
-            let (prepared_title, title_metrics) = prepare_kanban_title_label(
-                &markdown,
-                measurer,
-                &item.label,
-                &legend_style,
-                inner_max_w,
-            );
+            let (prepared_title, title_metrics, ticket_style_facts, assigned_style_facts) =
+                prepared_task_titles
+                    .next()
+                    .expect("Kanban task title preparation must match visible item order");
 
             let has_details_row = item.ticket.is_some() || item.assigned.is_some();
             let base_height = if has_details_row {
@@ -428,6 +467,8 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
             });
             prepared_items.push(KanbanPreparedItem {
                 title: prepared_title,
+                ticket_style_facts,
+                assigned_style_facts,
                 ticket_link: prepare_kanban_ticket_link(
                     ticket_base_url.as_deref(),
                     item.ticket.as_deref(),
@@ -443,6 +484,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
             + (max_label_height - section_label_height_baseline);
         section.rect_height = height.max(1.0);
     }
+    debug_assert!(prepared_task_titles.next().is_none());
 
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -536,6 +578,12 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
             )
             .0,
+            ticket_style_facts: crate::text::VisibleTextStyleFacts::plain_text(
+                item.ticket.as_deref().unwrap_or_default(),
+            ),
+            assigned_style_facts: crate::text::VisibleTextStyleFacts::plain_text(
+                item.assigned.as_deref().unwrap_or_default(),
+            ),
             ticket_link: prepare_kanban_ticket_link(
                 ticket_base_url.as_deref(),
                 item.ticket.as_deref(),

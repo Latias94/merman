@@ -709,6 +709,79 @@ fn kanban_task_label_foreground_respects_only_the_terminal_text_color_owner() {
 }
 
 #[test]
+fn kanban_task_label_inline_html_color_owns_its_visible_text_run() {
+    let theme = kanban_task_label_theme("#123456");
+    let rendered = render_kanban_with_theme_and_engine(
+        concat!(
+            "%%{init: {\"securityLevel\": \"loose\"}}%%\n",
+            "kanban\n  todo[Todo]\n",
+            "    task[\"<span style='color:transparent'>Hidden</span>\"]\n",
+        ),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid source-owned Kanban label SVG");
+
+    assert_eq!(
+        kanban_task_label_style(&document, "kanban-palette-task"),
+        "text-align:left !important",
+        "an inline descendant color owns the only visible run, so the typed foreground is N/A"
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn kanban_task_label_foreground_applies_to_inheriting_runs_beside_inline_color() {
+    let theme = kanban_task_label_theme("#123456");
+    let rendered = render_kanban_with_theme_and_engine(
+        concat!(
+            "%%{init: {\"securityLevel\": \"loose\"}}%%\n",
+            "kanban\n  todo[Todo]\n",
+            "    task[\"Visible <span style='color:transparent'>Hidden</span>\"]\n",
+        ),
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid mixed-owner Kanban label SVG");
+
+    assert_eq!(
+        kanban_task_label_style(&document, "kanban-palette-task"),
+        "color:#123456;fill:#123456;text-align:left !important"
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node.attribute("style").is_some_and(|style| {
+                    style.split(';').any(|declaration| {
+                        declaration
+                            .split_once(':')
+                            .is_some_and(|(property, value)| {
+                                property.trim().eq_ignore_ascii_case("color")
+                                    && value.trim().eq_ignore_ascii_case("transparent")
+                            })
+                    })
+                })
+        }),
+        "the source-owned descendant run must remain intact"
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn kanban_typed_icon_task_label_preserves_the_label_background_class() {
     let theme = kanban_task_label_theme("#123456");
     let rendered = render_kanban_with_theme_and_engine(
