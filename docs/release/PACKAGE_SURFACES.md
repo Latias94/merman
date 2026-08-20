@@ -156,7 +156,7 @@ differ:
 | Surface | Compiled capabilities | Product rationale |
 | --- | --- | --- |
 | Android, Apple, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
-| Typst | analysis, SVG, theme authoring, Cytoscape, ELK | Matches the six-function Typst ABI; no callable ASCII or binary-export operation, and no admitted math backend. |
+| Typst | analysis, SVG, Cytoscape, ELK | Matches the six-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
 | Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
 | Browser packages | package-specific | `web-full` and `web-render` keep math, while dedicated packages own analysis, editor, and ASCII workflows. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |

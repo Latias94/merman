@@ -1402,7 +1402,13 @@ mod tests {
         assert_eq!(artifact.runtime_ids, artifact.capabilities);
         assert_eq!(
             expected_typst_operation_ids(&artifact),
-            [OperationKey::AnalysisJson.id(), OperationKey::Svg.id()]
+            [
+                OperationKey::AnalysisJson.id(),
+                OperationKey::DescribeThemeSupportJson.id(),
+                OperationKey::ExportThemePresetJson.id(),
+                OperationKey::MaterializeThemeJson.id(),
+                OperationKey::Svg.id(),
+            ]
         );
     }
 
@@ -1424,7 +1430,12 @@ mod tests {
         svg_only.outputs = vec!["svg".to_string()];
         assert_eq!(
             expected_typst_operation_ids(&svg_only),
-            [OperationKey::Svg.id()]
+            [
+                OperationKey::DescribeThemeSupportJson.id(),
+                OperationKey::ExportThemePresetJson.id(),
+                OperationKey::MaterializeThemeJson.id(),
+                OperationKey::Svg.id(),
+            ]
         );
 
         let mut svg_with_layouts = svg_only;
@@ -1435,7 +1446,12 @@ mod tests {
         ];
         assert_eq!(
             expected_typst_operation_ids(&svg_with_layouts),
-            [OperationKey::Svg.id()],
+            [
+                OperationKey::DescribeThemeSupportJson.id(),
+                OperationKey::ExportThemePresetJson.id(),
+                OperationKey::MaterializeThemeJson.id(),
+                OperationKey::Svg.id(),
+            ],
             "supplemental capabilities must not expand the closed Typst transport"
         );
     }

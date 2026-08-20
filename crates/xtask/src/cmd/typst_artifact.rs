@@ -1755,7 +1755,7 @@ mod tests {
                 artifact_name: "merman_typst_plugin.wasm".to_string(),
                 cargo_package_version: "0.8.0-alpha.3".to_string(),
                 typst_package_version: "0.2.0".to_string(),
-                plugin_abi_version: 2,
+                plugin_abi_version: merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION,
                 mermaid_version: "11.16.0".to_string(),
                 mermaid_source_commit: "7c0cafcf42e76bfaf79d0cbbd12edb986612f014".to_string(),
             }
@@ -1941,7 +1941,10 @@ mod tests {
         assert_eq!(manifest.profile, "publish");
         assert!(!manifest.default_features);
         assert_eq!(manifest.features, ["analysis", "svg"]);
-        assert_eq!(manifest.plugin_abi_version, 2);
+        assert_eq!(
+            manifest.plugin_abi_version,
+            merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION
+        );
         assert_eq!(
             manifest
                 .input

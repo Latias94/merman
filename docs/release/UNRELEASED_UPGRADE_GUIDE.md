@@ -68,7 +68,7 @@ by the one-shot call.
 
 ## Rust rendering migration
 
-### Theme authoring candidate corrections
+### Theme authoring Alpha corrections
 
 Development snapshots briefly exposed `ThemeMaterializer` as a public constructor. It is now a
 private deterministic lowering step behind the host-admitted operations below:
