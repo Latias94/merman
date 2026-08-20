@@ -1750,13 +1750,35 @@ mod tests {
         let engine = BindingEngine::from_options(b"").unwrap();
 
         for operation in BindingOperationKind::all().filter(|operation| operation.is_compiled()) {
+            let input = match operation.input_kind() {
+                "mermaid-source" => b"flowchart TD\nA --> B".as_slice(),
+                "theme-definition-json" => br##"{
+                    "authoring_schema_version": 1,
+                    "expansion_version": 1,
+                    "tokens": {"series": ["#123456"]}
+                }"##
+                .as_slice(),
+                "theme-support-query-json" => br#"{
+                    "schema_version": 1,
+                    "family": "flowchart",
+                    "output": "standalone-svg",
+                    "target": "node",
+                    "facet": "fill"
+                }"#
+                .as_slice(),
+                "theme-preset-id" => b"editor-light".as_slice(),
+                other => panic!(
+                    "compiled operation `{}` has no representative input for `{other}`",
+                    operation.operation_id()
+                ),
+            };
             for options_json in [
                 b"".as_slice(),
                 br#"{"parse":{"suppress_errors":false}}"#.as_slice(),
             ] {
                 let request = BindingOperationRequest {
                     operation_id: operation.operation_id(),
-                    source: b"flowchart TD\nA --> B",
+                    source: input,
                     uri: operation
                         .requires_uri()
                         .then_some(b"file:///diagram.mmd".as_slice()),

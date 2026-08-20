@@ -1384,7 +1384,17 @@ mod tests {
             .iter()
             .find(|limit| limit.id == "max_source_bytes")
             .expect("source descriptor");
-        assert_eq!(source.operation_ids, catalog.capabilities.operation_ids);
+        let expected_source_operations = catalog
+            .capabilities
+            .operation_ids
+            .iter()
+            .copied()
+            .filter(|operation_id| {
+                crate::BindingOperationKind::from_id(operation_id)
+                    .is_ok_and(|operation| operation.input_kind() == "mermaid-source")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(source.operation_ids, expected_source_operations);
         let layout = resources
             .limits
             .iter()

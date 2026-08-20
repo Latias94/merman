@@ -471,7 +471,7 @@ mod tests {
 
         let unknown_v2_subject = json!({
             "schema_version": 2,
-            "family": "future-family",
+            "family": "flowchart",
             "output": "standalone-svg",
             "subject": {
                 "kind": "future-subject",
