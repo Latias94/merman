@@ -1,17 +1,12 @@
 use super::super::*;
 use super::model::SequenceSvgModel;
 
-pub(super) struct SequenceRootMetrics {
-    pub(super) viewbox_width: f64,
-    pub(super) document: root_svg::RootDocument,
-}
-
 pub(super) fn write_sequence_svg_root_open(
     out: &mut impl SvgOutput,
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     diagram_id: &str,
-) -> Result<SequenceRootMetrics> {
+) -> Result<root_svg::RootDocument> {
     let diagram_id_esc = escape_xml(diagram_id);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -61,8 +56,5 @@ pub(super) fn write_sequence_svg_root_open(
         );
     }
 
-    Ok(SequenceRootMetrics {
-        viewbox_width: root_bounds.width,
-        document,
-    })
+    Ok(document)
 }

@@ -563,6 +563,15 @@ impl SequenceTypographyPlan {
         self.base_typography.font_size_px
     }
 
+    pub(crate) fn base_measurement_style(&self) -> TextStyle {
+        TextStyle {
+            font_family: Some(self.base_typography.font_family_css.clone()),
+            font_size: self.base_typography.font_size_px,
+            font_weight: None,
+            font_style: None,
+        }
+    }
+
     pub(crate) fn base_prepared_typography(&self) -> ThemeTextStyle {
         ThemeTextStyle::default()
             .with_font_stack(self.base_typography.font_stack.font_stack().clone())

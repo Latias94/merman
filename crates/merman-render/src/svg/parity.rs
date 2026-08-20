@@ -648,7 +648,6 @@ fn render_builtin_family_artifact_raw(
                 pair.layout(),
                 pair.semantic(),
                 effective_config,
-                title,
                 measurer,
                 options,
             )

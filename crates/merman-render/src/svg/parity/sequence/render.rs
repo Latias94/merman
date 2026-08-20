@@ -79,7 +79,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared: &crate::sequence::SequencePreparedArtifact,
     model: &SequenceSvgModel,
     effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -88,7 +87,6 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         model,
         effective_config.as_value(),
         effective_config,
-        diagram_title,
         measurer,
         options,
     )
@@ -99,13 +97,10 @@ fn render_sequence_diagram_svg_inner(
     model: &SequenceSvgModel,
     effective_config: &serde_json::Value,
     sanitize_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let layout = prepared.layout();
-    let effective_title =
-        crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
     let mut settings = SequenceRenderSettings::from_effective_config(effective_config);
     settings.apply_typography_plan(prepared.typography());
@@ -187,7 +182,7 @@ fn render_sequence_diagram_svg_inner(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
+    let root_document = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
@@ -482,17 +477,13 @@ fn render_sequence_diagram_svg_inner(
         out.checkpoint()?;
     }
 
-    if let Some(title) = effective_title {
-        // Mermaid sequence titles are currently emitted as a plain `<text>` node.
-        // Mermaid positions the title using the inner (content) box width:
-        // `x = (box.stopx - box.startx) / 2 - 2 * diagramMarginX`.
-        let title_x = ((root_metrics.viewbox_width - 2.0 * settings.diagram_margin_x) / 2.0)
-            - 2.0 * settings.diagram_margin_x;
+    if let Some(title) = prepared.diagram_title() {
         let _ = write!(
             &mut out,
-            r#"<text x="{x}" y="-25">{text}</text>"#,
-            x = fmt(title_x),
-            text = escape_xml_display(title)
+            r#"<text x="{x}" y="{y}">{text}</text>"#,
+            x = fmt(title.x()),
+            y = fmt(title.y()),
+            text = escape_xml_display(title.text())
         );
         out.checkpoint()?;
     }
@@ -503,7 +494,7 @@ fn render_sequence_diagram_svg_inner(
     prepared
         .theme_evidence()
         .record_typography_emission(typography_receipt);
-    root_metrics.document.complete(svg)
+    root_document.complete(svg)
 }
 
 struct SequenceActorThemeResolution {

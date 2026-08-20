@@ -37,6 +37,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) has_boxes: bool,
     pub(super) mirror_actors: bool,
     pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) base_text_style: &'a TextStyle,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_sidecar: &'a super::SequenceMathSidecarBuilder<'a>,
@@ -44,19 +45,47 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) block_label_box_metrics: super::SequenceBlockLabelBoxMetrics,
 }
 
-pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SequenceDiagramTitleGeometry {
+    text: String,
+    x: f64,
+    y: f64,
+    bounds: Bounds,
+}
+
+impl SequenceDiagramTitleGeometry {
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub(crate) const fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub(crate) const fn y(&self) -> f64 {
+        self.y
+    }
+}
+
+pub(super) struct SequenceRootGeometry {
+    pub(super) bounds: Bounds,
+    pub(super) diagram_title: Option<SequenceDiagramTitleGeometry>,
+}
+
+pub(super) fn prepare_sequence_root_geometry(
+    ctx: SequenceRootBoundsContext<'_>,
+) -> SequenceRootGeometry {
     let mut content = sequence_content_bounds(&ctx);
 
     include_actor_popup_bounds(&mut content, &ctx);
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
-    let extra_vert_for_title =
-        if super::sequence_render_title(ctx.model.title.as_deref(), ctx.diagram_title).is_some() {
-            40.0
-        } else {
-            0.0
-        };
+    let extra_vert_for_title = if ctx.diagram_title.is_some() {
+        40.0
+    } else {
+        0.0
+    };
 
     // Mermaid's sequence renderer sets the viewBox y origin to
     // `-(diagramMarginY + extraVertForTitle)` regardless of diagram contents.
@@ -84,12 +113,49 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds
     include_self_message_bounds(&mut bounds_box, &ctx);
     include_resolved_block_label_box_bounds(&mut bounds_box, &ctx);
 
-    Bounds {
+    let diagram_title = prepare_diagram_title_geometry(&ctx, &bounds_box);
+    let mut bounds = Bounds {
         min_x: bounds_box.start_x - ctx.diagram_margin_x,
         min_y: vb_min_y,
         max_x: bounds_box.stop_x + ctx.diagram_margin_x,
         max_y: bounds_box_stopy + ctx.diagram_margin_y,
+    };
+    if let Some(title) = diagram_title.as_ref() {
+        bounds.min_x = bounds.min_x.min(title.bounds.min_x);
+        bounds.min_y = bounds.min_y.min(title.bounds.min_y);
+        bounds.max_x = bounds.max_x.max(title.bounds.max_x);
+        bounds.max_y = bounds.max_y.max(title.bounds.max_y);
     }
+
+    SequenceRootGeometry {
+        bounds,
+        diagram_title,
+    }
+}
+
+fn prepare_diagram_title_geometry(
+    ctx: &SequenceRootBoundsContext<'_>,
+    bounds_box: &ActorHorizontalBounds,
+) -> Option<SequenceDiagramTitleGeometry> {
+    let text = ctx.diagram_title?;
+    let x = (bounds_box.stop_x - bounds_box.start_x) / 2.0 - 2.0 * ctx.diagram_margin_x;
+    let y = -25.0;
+    let (left, right) = ctx
+        .measurer
+        .measure_svg_title_bbox_x(text, ctx.base_text_style);
+    let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(ctx.base_text_style);
+
+    Some(SequenceDiagramTitleGeometry {
+        text: text.to_owned(),
+        x,
+        y,
+        bounds: Bounds {
+            min_x: x - left,
+            min_y: y - ascent,
+            max_x: x + right,
+            max_y: y + descent,
+        },
+    })
 }
 
 fn include_resolved_block_label_box_bounds(

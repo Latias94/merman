@@ -1707,6 +1707,59 @@ fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() 
 }
 
 #[test]
+fn sequence_diagram_title_expands_the_root_for_typed_base_font_size() {
+    let font_size = 256.0_f32;
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::SEQUENCE,
+                    ThemeTextStyle::default()
+                        .with_font_size_px(font_size)
+                        .expect("valid large Sequence base font size"),
+                ),
+            ),
+        )
+        .expect("compile large Sequence base typography");
+    let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin portable Sequence title session");
+    let artifact = family::prepare(
+        parse_sequence_for_render(
+            &engine,
+            "sequenceDiagram\ntitle Large Diagram Title\nparticipant A\nparticipant B\nA->>B: hello\n",
+        ),
+        &LayoutOptions::default(),
+        session,
+    )
+    .expect("prepare large Sequence title");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render large Sequence title");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Sequence title SVG");
+    let title = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_none()
+                && node.text() == Some("Large Diagram Title")
+        })
+        .expect("Sequence diagram title");
+    let title_y = title
+        .attribute("y")
+        .expect("Sequence title y")
+        .parse::<f64>()
+        .expect("numeric Sequence title y");
+    let (view_box, _) = root_view_box_and_max_width(rendered.svg());
+    assert!(
+        view_box[1] <= title_y - f64::from(font_size) * 0.8,
+        "typed base font size must expand the root above the title baseline: viewBox={view_box:?}, title={title:?}"
+    );
+}
+
+#[test]
 fn sequence_block_root_width_replays_upstream_bounds_insert_lifecycle() {
     for (fixture, expected_min_x, expected_width) in [
         ("stress_create_destroy_inside_alt_030.mmd", -50.0, 734.0),

@@ -66,7 +66,10 @@ use config::SequenceLayoutSettings;
 use message_metrics::SequenceMessageMetricSidecar;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::sequence_rect_stack_x_bounds;
-use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
+use root_bounds::{
+    SequenceDiagramTitleGeometry, SequenceRootBoundsContext, SequenceRootGeometry,
+    prepare_sequence_root_geometry,
+};
 pub(crate) use theme_evidence::{
     SequenceActorThemeReceipt, SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt,
     SequenceLoopThemeEmission, SequenceLoopThemeReceipt, SequenceMessageThemeEmission,
@@ -92,6 +95,7 @@ pub(crate) struct SequencePreparedArtifact {
     math_sidecar: SequenceMathSidecar,
     theme_evidence: SequenceThemeEvidenceRecorder,
     typography: Arc<SequenceTypographyPlan>,
+    diagram_title: Option<SequenceDiagramTitleGeometry>,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
 
@@ -114,6 +118,10 @@ impl SequencePreparedArtifact {
 
     pub(crate) fn typography(&self) -> &SequenceTypographyPlan {
         self.typography.as_ref()
+    }
+
+    pub(crate) const fn diagram_title(&self) -> Option<&SequenceDiagramTitleGeometry> {
+        self.diagram_title.as_ref()
     }
 
     pub(crate) const fn block_label_box_metrics(&self) -> SequenceBlockLabelBoxMetrics {
@@ -301,6 +309,8 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         resolved_theme,
         work_meter.as_ref(),
     )?);
+    let effective_title = sequence_render_title(model.title.as_deref(), diagram_title);
+    let base_text_style = typography.base_measurement_style();
     let effective_config_value = effective_config.as_value();
     let settings =
         SequenceLayoutSettings::from_effective_config(effective_config_value, typography.as_ref());
@@ -420,9 +430,12 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         }
     }
 
-    let bounds = Some(sequence_root_bounds(SequenceRootBoundsContext {
-        model,
+    let SequenceRootGeometry {
+        bounds,
         diagram_title,
+    } = prepare_sequence_root_geometry(SequenceRootBoundsContext {
+        model,
+        diagram_title: effective_title,
         nodes: &nodes,
         edges: &edges,
         block_layouts_by_id: &block_layouts_by_id,
@@ -445,12 +458,13 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         has_boxes,
         mirror_actors: settings.mirror_actors,
         measurer,
+        base_text_style: &base_text_style,
         msg_text_style: &settings.msg_text_style,
         math_config: effective_config,
         math_sidecar: &math_sidecar_builder,
         message_metrics: message_metric_view,
         block_label_box_metrics,
-    }));
+    });
 
     let math_sidecar = math_sidecar_builder.finish()?;
 
@@ -459,7 +473,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
             nodes,
             edges,
             clusters,
-            bounds,
+            bounds: Some(bounds),
             block_layouts_by_id,
         },
         actor_popup_widths,
@@ -472,6 +486,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         math_sidecar,
         theme_evidence: SequenceThemeEvidenceRecorder::default(),
         typography,
+        diagram_title,
         block_label_box_metrics,
     })
 }
