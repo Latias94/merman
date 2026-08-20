@@ -28,6 +28,7 @@ pub const TYPST_TRANSPORT_OPERATION_KEYS: &[OperationKey] = &[
 const RENDER_OPERATION: &str = "render-svg";
 const ANALYZE_OPERATION: &str = "analyze";
 const THEME_OPERATION: &str = "theme-operation";
+const TYPST_OPERATION_ID_MAX_UTF8_BYTES: usize = 128;
 const THEME_OPERATION_KEYS: &[OperationKey] = &[
     OperationKey::DescribeThemeSupportJson,
     OperationKey::ExportThemePresetJson,
@@ -42,6 +43,7 @@ const TYPST_OPERATIONS: &[OperationKey] = &[
     OperationKey::ExportThemePresetJson,
     #[cfg(feature = "svg")]
     OperationKey::MaterializeThemeJson,
+    #[cfg(feature = "svg")]
     OperationKey::Svg,
 ];
 const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
@@ -138,22 +140,23 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 /// artifact. Rendering and analysis keep their dedicated exports.
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u8]) -> Vec<u8> {
-    let operation_id = match std::str::from_utf8(operation_id) {
+    let operation_id = match admit_typst_operation_id(operation_id) {
         Ok(operation_id) => operation_id,
-        Err(_) => {
-            let error = merman_bindings_core::BindingError::invalid_argument(
-                "theme operation id must be valid UTF-8",
-            );
-            return typst_binding_error_payload(THEME_OPERATION, &error);
-        }
+        Err(error) => return typst_binding_error_payload(THEME_OPERATION, &error),
     };
     let operation = match OperationKey::from_id(operation_id) {
         Some(operation) if THEME_OPERATION_KEYS.contains(&operation) => operation,
-        _ => {
-            let error = merman_bindings_core::BindingError::unsupported_operation(format!(
-                "operation `{operation_id}` is not a Typst theme authoring operation"
-            ));
-            return typst_binding_error_payload(operation_id, &error);
+        Some(operation) => {
+            let error = merman_bindings_core::BindingError::unsupported_operation(
+                "the requested operation is not a Typst theme authoring operation",
+            );
+            return typst_binding_error_payload(operation.id(), &error);
+        }
+        None => {
+            let error = merman_bindings_core::BindingError::unsupported_operation(
+                "unknown Typst theme authoring operation",
+            );
+            return typst_binding_error_payload(THEME_OPERATION, &error);
         }
     };
     let options_json = match typst_options_json(options_json) {
@@ -170,6 +173,29 @@ pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u
         },
         Err(error) => typst_binding_error_payload(operation.id(), &error),
     }
+}
+
+fn admit_typst_operation_id(
+    operation_id: &[u8],
+) -> Result<&str, merman_bindings_core::BindingError> {
+    if operation_id.is_empty() || operation_id.len() > TYPST_OPERATION_ID_MAX_UTF8_BYTES {
+        return Err(merman_bindings_core::BindingError::invalid_argument(
+            format!(
+            "theme operation id must contain 1 to {TYPST_OPERATION_ID_MAX_UTF8_BYTES} UTF-8 bytes"
+        ),
+        ));
+    }
+    let operation_id = std::str::from_utf8(operation_id).map_err(|_| {
+        merman_bindings_core::BindingError::invalid_argument(
+            "theme operation id must be valid UTF-8",
+        )
+    })?;
+    if operation_id.chars().any(char::is_control) {
+        return Err(merman_bindings_core::BindingError::invalid_argument(
+            "theme operation id must not contain control characters",
+        ));
+    }
+    Ok(operation_id)
 }
 
 fn typst_success_payload(operation: &str, data: Value) -> Vec<u8> {
@@ -208,8 +234,22 @@ fn typst_binding_error_payload(
         Some(error.message()),
         None,
     );
+    let mut details = serde_json::Map::new();
     if let Some(resource) = error.resource_details() {
-        payload["details"] = json!({ "resource": resource });
+        details.insert("resource".to_string(), json!(resource));
+    }
+    if let Some(icon_registry) = error.icon_registry_details() {
+        details.insert("icon_registry".to_string(), json!(icon_registry));
+    }
+    if let Some(cancellation) = error.cancellation_details() {
+        details.insert("cancellation".to_string(), json!(cancellation));
+    }
+    #[cfg(feature = "svg")]
+    if let Some(theme_authoring) = error.theme_authoring_details() {
+        details.insert("theme_authoring".to_string(), json!(theme_authoring));
+    }
+    if !details.is_empty() {
+        payload["details"] = Value::Object(details);
     }
     serde_json::to_vec(&payload).expect("Typst result envelope is serializable")
 }
@@ -500,6 +540,62 @@ mod tests {
         assert!(payload["message"]
             .as_str()
             .is_some_and(|message| message.contains("theme authoring")));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_operation_json_bounds_untrusted_operation_ids_before_echoing_them() {
+        let oversized = vec![b'x'; TYPST_OPERATION_ID_MAX_UTF8_BYTES + 1];
+        let payload: Value =
+            serde_json::from_slice(&theme_operation_json(&oversized, br#"{}"#, b""))
+                .expect("valid bounded operation-id error envelope");
+
+        assert_error_envelope(&payload, THEME_OPERATION, "MERMAN_INVALID_ARGUMENT");
+        assert!(!payload.to_string().contains(&"x".repeat(32)));
+
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"materialize-theme-json\nforged",
+            br#"{}"#,
+            b"",
+        ))
+        .expect("valid control-character error envelope");
+
+        assert_error_envelope(&payload, THEME_OPERATION, "MERMAN_INVALID_ARGUMENT");
+        assert!(!payload.to_string().contains("forged"));
+
+        let unknown = b"future-theme-operation-identifier";
+        let payload: Value = serde_json::from_slice(&theme_operation_json(unknown, br#"{}"#, b""))
+            .expect("valid unknown-operation error envelope");
+
+        assert_error_envelope(&payload, THEME_OPERATION, "MERMAN_UNSUPPORTED_OPERATION");
+        assert!(!payload
+            .to_string()
+            .contains("future-theme-operation-identifier"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_operation_json_preserves_contract_owned_authoring_details() {
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"materialize-theme-json",
+            br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"series":[]}}"#,
+            b"",
+        ))
+        .expect("valid theme-authoring error envelope");
+
+        assert_error_envelope(
+            &payload,
+            "materialize-theme-json",
+            "MERMAN_INVALID_ARGUMENT",
+        );
+        assert_eq!(
+            payload["details"]["theme_authoring"]["diagnostics"][0]["code"],
+            "theme-authoring.empty-series"
+        );
+        assert_eq!(
+            payload["details"]["theme_authoring"]["diagnostics"][0]["path"],
+            "/tokens/series"
+        );
     }
 
     #[test]
