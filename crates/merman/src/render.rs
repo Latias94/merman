@@ -449,7 +449,10 @@ impl ResourceLimitExceeded {
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    fn from_export(details: merman_export::ExportResourceLimitDetails) -> Self {
+    fn from_export(
+        details: merman_export::ExportResourceLimitDetails,
+        provenance: OperationResourceProvenance,
+    ) -> Self {
         Self {
             id: details.limit_id,
             phase: details.phase,
@@ -462,7 +465,7 @@ impl ResourceLimitExceeded {
                 }
                 _ => ResourceLimitCause::Ceiling,
             },
-            provenance: None,
+            provenance: Some(provenance),
         }
     }
 }
@@ -498,12 +501,20 @@ fn map_ascii_error(error: AsciiError) -> RenderError {
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 impl From<ExportError> for RenderError {
     fn from(error: ExportError) -> Self {
-        if let Some(details) = error.resource_limit_details() {
-            return Self::from(ResourceLimitExceeded::from_export(details));
-        }
         match error {
+            ExportError::OperationResourceTerminal(error) => {
+                crate::operation_runner::operation_terminal_error(error)
+            }
             ExportError::Cancelled(cancelled) => Self::Cancelled(cancelled),
-            other => Self::Export(other),
+            other => match other.resource_limit_details() {
+                Some(details) => match other.resource_limit_provenance() {
+                    Some(provenance) => {
+                        Self::from(ResourceLimitExceeded::from_export(details, provenance))
+                    }
+                    None => Self::Export(other),
+                },
+                None => Self::Export(other),
+            },
         }
     }
 }

@@ -400,6 +400,11 @@ fn export_backend_errors_use_canonical_render_error_classification() {
                 && limit.actual == 2
                 && limit.maximum == 1
                 && limit.cause == merman::ResourceLimitCause::Ceiling
+                && limit.provenance.as_ref().is_some_and(|provenance| {
+                    provenance.domain == merman::OperationResourceDomain::Export
+                        && provenance.profile.is_none()
+                        && provenance.explicit_overrides.is_empty()
+                })
     ));
 
     let error = RenderError::from(merman::svg::export::ExportError::SvgParse);
@@ -420,6 +425,11 @@ fn export_backend_errors_use_canonical_render_error_classification() {
                 && limit.phase == "svg_postprocess"
                 && limit.actual == 2
                 && limit.maximum == 1
+                && limit.provenance.as_ref().is_some_and(|provenance| {
+                    provenance.domain == merman::OperationResourceDomain::Render
+                        && provenance.profile.is_none()
+                        && provenance.explicit_overrides.is_empty()
+                })
     ));
 
     let error = RenderError::from(
@@ -438,6 +448,41 @@ fn export_backend_errors_use_canonical_render_error_classification() {
                 && limit.actual == u64::MAX
                 && limit.maximum == 1024
                 && limit.cause == merman::ResourceLimitCause::ArithmeticOverflow
+                && limit.provenance.as_ref().is_some_and(|provenance| {
+                    provenance.domain == merman::OperationResourceDomain::Export
+                        && provenance.profile.is_none()
+                        && provenance.explicit_overrides.is_empty()
+                })
+    ));
+
+    let provenance = merman::OperationResourceProvenance::new(
+        merman::OperationResourceDomain::Render,
+        Some(merman::resources::ResourceProfile::Constrained),
+        [merman::OperationResourceOverride {
+            id: "max_svg_bytes",
+            value: 17,
+        }],
+    );
+    let terminal = merman::OperationLedgerError::ArithmeticOverflow {
+        id: "max_svg_bytes",
+        phase: OperationPhase::Postprocess,
+        resource_phase: "svg_postprocess",
+        actual: u64::MAX,
+        maximum: 17,
+        provenance: provenance.clone(),
+    };
+    let error = RenderError::from(merman::svg::export::ExportError::OperationResourceTerminal(
+        terminal,
+    ));
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_svg_bytes"
+                && limit.phase == "svg_postprocess"
+                && limit.actual == u64::MAX
+                && limit.maximum == 17
+                && limit.cause == merman::ResourceLimitCause::ArithmeticOverflow
+                && limit.provenance == Some(provenance)
     ));
 }
 

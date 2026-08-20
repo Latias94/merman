@@ -80,6 +80,9 @@ pub enum ExportError {
         actual: u64,
         max: u64,
     },
+    #[doc(hidden)]
+    #[error(transparent)]
+    OperationResourceTerminal(OperationLedgerError),
     #[error("failed to start the recursive SVG backend worker")]
     BackendWorkerSpawn,
     #[error("the recursive SVG backend worker panicked")]
@@ -208,6 +211,9 @@ impl ExportError {
                 *max,
                 ExportResourceLimitCause::ArithmeticOverflow,
             ),
+            Self::OperationResourceTerminal(error) => {
+                return operation_resource_limit_details(error);
+            }
             _ => return None,
         };
         Some(ExportResourceLimitDetails {
@@ -217,6 +223,53 @@ impl ExportError {
             max,
             cause,
         })
+    }
+
+    /// Returns the resource owner recorded by the originating adapter.
+    #[must_use]
+    pub fn resource_limit_provenance(&self) -> Option<OperationResourceProvenance> {
+        match self {
+            Self::OperationResourceTerminal(OperationLedgerError::Cancelled(_)) => None,
+            Self::OperationResourceTerminal(OperationLedgerError::ResourceLimitExceeded(error)) => {
+                Some(error.provenance.clone())
+            }
+            Self::OperationResourceTerminal(OperationLedgerError::ArithmeticOverflow {
+                provenance,
+                ..
+            }) => Some(provenance.clone()),
+            _ => self
+                .resource_limit_details()
+                .map(|details| export_operation_resource_provenance(details.limit_id)),
+        }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn operation_resource_limit_details(
+    error: &OperationLedgerError,
+) -> Option<ExportResourceLimitDetails> {
+    match error {
+        OperationLedgerError::Cancelled(_) => None,
+        OperationLedgerError::ResourceLimitExceeded(error) => Some(ExportResourceLimitDetails {
+            limit_id: error.id,
+            phase: error.resource_phase,
+            actual: error.consumed.saturating_add(error.requested),
+            max: error.limit,
+            cause: ExportResourceLimitCause::Ceiling,
+        }),
+        OperationLedgerError::ArithmeticOverflow {
+            id,
+            resource_phase,
+            actual,
+            maximum,
+            ..
+        } => Some(ExportResourceLimitDetails {
+            limit_id: *id,
+            phase: *resource_phase,
+            actual: *actual,
+            max: *maximum,
+            cause: ExportResourceLimitCause::ArithmeticOverflow,
+        }),
     }
 }
 
@@ -235,6 +288,9 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
     let Some(details) = error.resource_limit_details() else {
         return error;
     };
+    let Some(provenance) = error.resource_limit_provenance() else {
+        return error;
+    };
     if let Err(terminal) = control.terminal_checkpoint_at(OperationPhase::Export) {
         return export_terminal_error(terminal);
     }
@@ -247,7 +303,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 limit: details.max,
                 consumed: 0,
                 requested: details.actual,
-                provenance: export_operation_resource_provenance(),
+                provenance: provenance.clone(),
             };
             (
                 control.terminate_resource_limit(error.clone()),
@@ -261,7 +317,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 resource_phase: details.phase,
                 actual: details.actual,
                 maximum: details.max,
-                provenance: export_operation_resource_provenance(),
+                provenance: provenance.clone(),
             };
             (
                 control.terminate_resource_overflow(
@@ -270,7 +326,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                     details.phase,
                     details.actual,
                     details.max,
-                    export_operation_resource_provenance(),
+                    provenance,
                 ),
                 expected,
             )
@@ -284,107 +340,42 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn export_operation_resource_provenance() -> OperationResourceProvenance {
-    OperationResourceProvenance::new(OperationResourceDomain::Export, None, [])
+fn export_operation_resource_provenance(limit_id: &str) -> OperationResourceProvenance {
+    let domain = match limit_id {
+        merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID
+        | merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID => {
+            OperationResourceDomain::Render
+        }
+        _ => OperationResourceDomain::Export,
+    };
+    OperationResourceProvenance::new(domain, None, [])
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn settle_export_result<T>(control: &OperationControl, result: Result<T>) -> Result<T> {
-    result.map_err(|error| terminate_export_resource_error(control, error))
+    let result = result.map_err(|error| terminate_export_resource_error(control, error));
+    observe_after_export_result(control, result)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn observe_after_export_result<T>(control: &OperationControl, result: Result<T>) -> Result<T> {
+    match result {
+        Err(error) if error.resource_limit_details().is_some() => Err(error),
+        result => {
+            export_checkpoint(control)?;
+            result
+        }
+    }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn export_terminal_error(error: OperationLedgerError) -> ExportError {
     match error {
         OperationLedgerError::Cancelled(error) => ExportError::Cancelled(error),
-        OperationLedgerError::ResourceLimitExceeded(error) => export_resource_limit_terminal(error),
-        OperationLedgerError::ArithmeticOverflow {
-            id,
-            resource_phase,
-            actual,
-            maximum,
-            ..
-        } => ExportError::ResourceArithmeticOverflow {
-            limit_id: id,
-            phase: resource_phase,
-            actual,
-            max: maximum,
-        },
-    }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn export_resource_limit_terminal(error: OperationResourceLimitExceeded) -> ExportError {
-    let actual = error.consumed.saturating_add(error.requested);
-    match error.id {
-        MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID => ExportError::EmbeddedImageLimit {
-            limit_name: "max_bytes_per_image",
-            actual,
-            max: error.limit,
-        },
-        MAX_TOTAL_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID => ExportError::EmbeddedImageLimit {
-            limit_name: "max_total_bytes",
-            actual,
-            max: error.limit,
-        },
-        MAX_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID => ExportError::EmbeddedImageLimit {
-            limit_name: "max_pixels_per_image",
-            actual,
-            max: error.limit,
-        },
-        MAX_TOTAL_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID => ExportError::EmbeddedImageLimit {
-            limit_name: "max_total_pixels",
-            actual,
-            max: error.limit,
-        },
-        MAX_SVG_CONVERSION_ISOLATION_DEPTH_RESOURCE_LIMIT_ID => ExportError::SvgConversionLimit {
-            limit_name: "max_isolation_depth",
-            actual,
-            max: error.limit,
-        },
-        MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER_RESOURCE_LIMIT_ID => {
-            ExportError::SvgConversionLimit {
-                limit_name: "max_filter_primitives_per_filter",
-                actual,
-                max: error.limit,
-            }
+        terminal @ (OperationLedgerError::ResourceLimitExceeded(_)
+        | OperationLedgerError::ArithmeticOverflow { .. }) => {
+            ExportError::OperationResourceTerminal(terminal)
         }
-        MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID => {
-            ExportError::SvgConversionLimit {
-                limit_name: "max_total_filter_primitives",
-                actual,
-                max: error.limit,
-            }
-        }
-        MAX_SVG_CONVERSION_SUBROOTS_RESOURCE_LIMIT_ID => ExportError::SvgConversionLimit {
-            limit_name: "max_subroots",
-            actual,
-            max: error.limit,
-        },
-        MAX_NESTED_SVG_IMAGES_RESOURCE_LIMIT_ID => ExportError::SvgConversionLimit {
-            limit_name: "max_nested_svg_images",
-            actual,
-            max: error.limit,
-        },
-        merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID
-        | merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID => {
-            ExportError::SvgConversionLimit {
-                limit_name: error.id,
-                actual,
-                max: error.limit,
-            }
-        }
-        #[cfg(feature = "pdf")]
-        MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID => ExportError::PdfFilterImageLimit {
-            actual,
-            max: error.limit,
-        },
-        _ => ExportError::ResourceLimitTerminal {
-            limit_id: error.id,
-            phase: error.resource_phase,
-            actual,
-            max: error.limit,
-        },
     }
 }
 
@@ -713,9 +704,7 @@ where
         .stack_size(RECURSIVE_SVG_BACKEND_STACK_BYTES)
         .spawn(move || {
             export_checkpoint(&worker_control)?;
-            let result = settle_export_result(&worker_control, job(&worker_control));
-            export_checkpoint(&worker_control)?;
-            result
+            settle_export_result(&worker_control, job(&worker_control))
         });
     let worker = match worker {
         Ok(worker) => worker,
@@ -724,10 +713,10 @@ where
             return Err(ExportError::BackendWorkerSpawn);
         }
     };
-    let result = worker.join().map_err(|_| ExportError::BackendWorkerPanic);
-    export_checkpoint(control)?;
-    let result = result?;
-    result
+    let result = worker
+        .join()
+        .unwrap_or(Err(ExportError::BackendWorkerPanic));
+    observe_after_export_result(control, result)
 }
 
 #[cfg(all(
@@ -740,9 +729,7 @@ where
     F: FnOnce(&OperationControl) -> Result<T> + Send + 'static,
 {
     export_checkpoint(control)?;
-    let result = settle_export_result(control, job(control));
-    export_checkpoint(control)?;
-    result
+    settle_export_result(control, job(control))
 }
 
 /// Optional display box for target-aware rasterization.
@@ -3323,6 +3310,17 @@ mod tests {
             assert_eq!(details.phase, "svg_postprocess");
             assert_eq!(details.actual, 2);
             assert_eq!(details.max, 1);
+            assert_eq!(
+                ExportError::SvgConversionLimit {
+                    limit_name,
+                    actual: 2,
+                    max: 1,
+                }
+                .resource_limit_provenance()
+                .expect("backend hard cap provenance")
+                .domain,
+                OperationResourceDomain::Render
+            );
             assert_eq!(export_resource_limit_output_ids(limit_name), None);
             assert_eq!(
                 export_resource_profile_value(
@@ -3379,6 +3377,20 @@ mod tests {
         let first_details = first
             .resource_limit_details()
             .expect("the first rejection must expose resource metadata");
+        let first_terminal = control
+            .terminal_checkpoint_at(OperationPhase::Export)
+            .expect_err("the first export resource rejection must latch the operation terminal");
+        assert!(matches!(
+            &first_terminal,
+            OperationLedgerError::ResourceLimitExceeded(error)
+                if error.id == MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID
+                    && error.resource_phase == "embedded_image_decode"
+                    && error.limit == first_details.max
+                    && error.consumed.saturating_add(error.requested) == first_details.actual
+                    && error.provenance.domain == OperationResourceDomain::Export
+                    && error.provenance.profile.is_none()
+                    && error.provenance.explicit_overrides.is_empty()
+        ));
 
         control.cancel();
         let replay = match super::prepare_raster_controlled(
@@ -3393,12 +3405,45 @@ mod tests {
         };
 
         assert_eq!(replay.resource_limit_details(), Some(first_details));
+        assert!(matches!(
+            replay,
+            ExportError::OperationResourceTerminal(error) if error == first_terminal
+        ));
         assert_eq!(
             first_details.limit_id,
             MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID
         );
         assert_eq!(first_details.phase, "embedded_image_decode");
         assert_eq!(first_details.cause, ExportResourceLimitCause::Ceiling);
+    }
+
+    #[test]
+    fn export_checkpoint_preserves_foreign_resource_terminal_provenance() {
+        let control = OperationControl::new();
+        let provenance = OperationResourceProvenance::new(
+            OperationResourceDomain::Render,
+            Some(merman_core::resources::ResourceProfile::Constrained),
+            [merman_core::OperationResourceOverride {
+                id: "max_svg_bytes",
+                value: 17,
+            }],
+        );
+        let terminal = control.terminate_resource_overflow(
+            "max_svg_bytes",
+            OperationPhase::Postprocess,
+            "svg_postprocess",
+            u64::MAX,
+            17,
+            provenance,
+        );
+
+        let error = export_checkpoint(&control)
+            .expect_err("the export adapter must replay the foreign terminal");
+
+        assert!(matches!(
+            error,
+            ExportError::OperationResourceTerminal(actual) if actual == terminal
+        ));
     }
 
     #[test]
