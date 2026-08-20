@@ -487,6 +487,13 @@ jobs:
             --no-default-features --features png,jpeg,pdf --test native_export_smoke \
             --cargo-quiet
 
+      - name: Test theme authoring across SVG and PNG
+        if: matrix.parity
+        run: |
+          cargo nextest run --locked -p merman \
+            --no-default-features --features svg,png --test theme_authoring \
+            --cargo-quiet
+
       - name: Test exact Rustdoc artifact recipe
         if: matrix.parity
         run: |
