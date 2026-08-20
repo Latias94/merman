@@ -4,10 +4,12 @@ use std::sync::OnceLock;
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability,
-    ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
+    ThemeCapability, ThemeTarget, ThemeVariant,
 };
-use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use crate::family::{
+    FamilyThemeEvidence, FamilyThemeResidualReason, unsupported_residual_for_facet,
+};
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -305,6 +307,7 @@ impl GitGraphNodePalettePlan {
         };
 
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        plan.resolve_terminal_less_routes(theme);
         plan.resolve_node_palette(theme, work_meter)?;
         plan.branch_stroke = GitGraphBranchStrokePlan::resolve(
             theme,
@@ -318,6 +321,35 @@ impl GitGraphNodePalettePlan {
             &mut plan.evidence,
         )?;
         Ok(plan)
+    }
+
+    fn resolve_terminal_less_routes(&mut self, theme: &ResolvedDiagramTheme) {
+        for route in theme.family_mechanism_routes().iter().copied() {
+            if route.disposition() != FamilyThemeDisposition::Unsupported {
+                continue;
+            }
+
+            let reason = match route.mechanism() {
+                FamilyThemeMechanism::RuleFacet { target, facet, .. }
+                    if gitgraph_target_has_no_terminal(target) =>
+                {
+                    unsupported_residual_for_facet(facet)
+                }
+                FamilyThemeMechanism::OrdinalPalette { target }
+                    if gitgraph_target_has_no_terminal(target) =>
+                {
+                    FamilyThemeResidualReason::UnsupportedOrdinalPalette
+                }
+                FamilyThemeMechanism::EffectBinding { target, .. }
+                    if gitgraph_target_has_no_terminal(target) =>
+                {
+                    FamilyThemeResidualReason::UnsupportedEffect
+                }
+                _ => continue,
+            };
+            self.evidence
+                .mark_residual(theme.family_mechanism_key(route), reason);
+        }
     }
 
     fn resolve_node_palette(
@@ -607,6 +639,13 @@ impl GitGraphNodePalettePlan {
             || visible.contains(GitGraphPaletteSurface::Arrow);
         fill_available || stroke_available
     }
+}
+
+const fn gitgraph_target_has_no_terminal(target: ThemeTarget) -> bool {
+    matches!(
+        target,
+        ThemeTarget::Title | ThemeTarget::Marker | ThemeTarget::Cluster | ThemeTarget::ClusterLabel
+    )
 }
 
 /// Writer-owned proof that all GitGraph palette rules and visible occurrences reached terminal

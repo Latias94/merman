@@ -90,6 +90,41 @@ fn gitgraph_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
     .for_family(DiagramFamilyId::GIT_GRAPH)])
 }
 
+fn gitgraph_legacy_paint_theme() -> DiagramTheme {
+    let solid = |color| CanvasPaint::solid(color).expect("valid GitGraph compatibility color");
+    let rules = [
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(solid("#101112"))
+                .with_stroke(solid("#131415")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(solid("#191a1b")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(solid("#161718")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_fill(solid("#1c1d1e")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::EdgeLabel,
+            ThemeStylePatch::default().with_fill(solid("#1f2021")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::EdgeLabelBackground,
+            ThemeStylePatch::default().with_fill(solid("#222324")),
+        ),
+    ]
+    .map(|rule| rule.for_family(DiagramFamilyId::GIT_GRAPH));
+
+    gitgraph_edge_rules_theme(rules)
+}
+
 fn try_render_gitgraph_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -285,6 +320,139 @@ fn gitgraph_edge_stroke_and_node_palette_keep_independent_terminal_receipts() {
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_retained_compatibility_routes_reach_writer_consumed_terminals() {
+    let source = r#"---
+title: GitGraph compatibility surfaces
+---
+gitGraph
+  commit id: "1" tag: "v1"
+"#;
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+        source,
+        &gitgraph_legacy_paint_theme(),
+        Engine::new(),
+        "git-legacy-paint",
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render GitGraph compatibility surfaces");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+    let css = stylesheet(rendered.svg());
+
+    for expected in [
+        "#git-legacy-paint .branch{stroke-width:1;stroke:#1c1d1e;",
+        "#git-legacy-paint .commit-label{font-size:10px;fill:#1f2021;",
+        "#git-legacy-paint .commit-label-bkg{font-size:10px;fill:#222324;",
+        "#git-legacy-paint .tag-label{font-size:10px;fill:#161718;}",
+        "#git-legacy-paint .tag-label-bkg{fill:#101112;stroke:#131415;",
+        "#git-legacy-paint .gitTitleText{text-anchor:middle;font-size:18px;fill:#191a1b;}",
+    ] {
+        assert!(css.contains(expected), "missing terminal CSS: {expected}");
+    }
+    for class in [
+        "branch",
+        "commit-label",
+        "commit-label-bkg",
+        "tag-label",
+        "tag-label-bkg",
+        "gitTitleText",
+    ] {
+        assert!(
+            document.descendants().any(|node| has_class(&node, class)),
+            "GitGraph must emit a terminal occurrence for {class}"
+        );
+    }
+}
+
+#[test]
+fn gitgraph_terminal_less_routes_fail_closed_as_unsupported_residuals() {
+    let source = r#"---
+title: GitGraph unsupported surfaces
+---
+gitGraph
+  commit id: "1" tag: "v1"
+"#;
+    let solid = || CanvasPaint::solid("#123456").expect("valid GitGraph unsupported paint");
+    let cases = [
+        (
+            "title-fill",
+            ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(solid()),
+            ),
+        ),
+        (
+            "marker-fill",
+            ThemeRule::new(
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_fill(solid()),
+            ),
+        ),
+        (
+            "marker-stroke",
+            ThemeRule::new(
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_stroke(solid()),
+            ),
+        ),
+        (
+            "cluster-fill",
+            ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default().with_fill(solid()),
+            ),
+        ),
+        (
+            "cluster-stroke",
+            ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default().with_stroke(solid()),
+            ),
+        ),
+        (
+            "cluster-label-fill",
+            ThemeRule::new(
+                ThemeTarget::ClusterLabel,
+                ThemeStylePatch::default().with_fill(solid()),
+            ),
+        ),
+    ];
+
+    for (case, rule) in cases {
+        let theme = gitgraph_edge_rules_theme([rule.for_family(DiagramFamilyId::GIT_GRAPH)]);
+        let portable_error = match try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            &format!("git-unsupported-{case}"),
+            ThemePortabilityRequirement::RequirePortable,
+        ) {
+            Ok(_) => panic!("terminal-less GitGraph route must fail closed: {case}"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            portable_error.unverified_family_theme(),
+            Some((DiagramFamilyId::GIT_GRAPH, 1)),
+            "case={case}"
+        );
+
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            &format!("git-unsupported-best-effort-{case}"),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .expect("best-effort GitGraph should retain unsupported evidence");
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "case={case}");
+        assert_eq!(evidence.applied_count(), 0, "case={case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
+        assert_eq!(evidence.theme_residual_count(), 1, "case={case}");
+    }
 }
 
 #[test]
@@ -493,7 +661,10 @@ fn gitgraph_edge_stroke_rejects_ordinal_variant_clear_gradient_and_pattern_route
             residual_count,
         } => {
             assert_eq!(family_id, DiagramFamilyId::GIT_GRAPH);
-            assert_eq!(residual_count, 2);
+            assert_eq!(
+                residual_count, 1,
+                "the qualified branch route must not resurrect the dead marker fallback"
+            );
         }
         other => panic!("expected GitGraph legacy compatibility residual, got {other}"),
     }

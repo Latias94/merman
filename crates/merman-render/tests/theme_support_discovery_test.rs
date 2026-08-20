@@ -469,6 +469,40 @@ fn gitgraph_text_fill_remains_an_explicit_legacy_compatibility_route() {
 }
 
 #[test]
+fn gitgraph_terminal_less_paint_claims_are_unsupported() {
+    for (target, facet) in [
+        (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Marker, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Marker, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Cluster, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            DiagramFamilyId::GIT_GRAPH.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            facet,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(
+            support.state(),
+            ThemeSupportStateV1::Unsupported,
+            "target={} facet={facet:?}",
+            target.id()
+        );
+        assert_eq!(
+            support.reason_ids(),
+            ["theme-support.no-supported-route"],
+            "target={} facet={facet:?}",
+            target.id()
+        );
+    }
+}
+
+#[test]
 fn fully_rejected_known_domain_is_unsupported() {
     let query = ThemeSupportQueryV1::known(
         DiagramFamilyId::SEQUENCE.as_str(),

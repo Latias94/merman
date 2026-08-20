@@ -137,8 +137,7 @@ fn compile_selected_family(
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
-        | DiagramFamilyId::BLOCK
-        | DiagramFamilyId::GIT_GRAPH => {
+        | DiagramFamilyId::BLOCK => {
             compile_node_family(&mut builder, family_programs, family);
         }
         DiagramFamilyId::TREE_VIEW => {
@@ -146,6 +145,9 @@ fn compile_selected_family(
         }
         DiagramFamilyId::MINDMAP => {
             compile_mindmap_family(&mut builder, family_programs);
+        }
+        DiagramFamilyId::GIT_GRAPH => {
+            compile_gitgraph_family(&mut builder, family_programs);
         }
         DiagramFamilyId::SEQUENCE => {
             compile_sequence_family(&mut builder, family_programs);
@@ -238,20 +240,10 @@ fn compile_node_family(
         );
     }
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
-    if family == DiagramFamilyId::GIT_GRAPH {
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-            [
-                ("lineColor", edge_paint.clone()),
-                ("commitLineColor", edge_paint),
-            ],
-        );
-    } else {
-        contributions.add_theme_variables(
-            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-            [("lineColor", edge_paint)],
-        );
-    }
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+        [("lineColor", edge_paint)],
+    );
     let marker_paint = reader.marker_paint_contribution();
     contributions.add_theme_variables(
         marker_paint.contribution_id,
@@ -298,21 +290,6 @@ fn compile_node_family(
                 [
                     ("classText", reader.text_fill(ThemeTarget::NodeLabel)),
                     ("labelColor", reader.text_fill(ThemeTarget::NodeLabel)),
-                ],
-            );
-        }
-        DiagramFamilyId::GIT_GRAPH => {
-            contributions.add_theme_variables(
-                "git.commit",
-                [
-                    ("commitLabelColor", reader.text_fill(ThemeTarget::EdgeLabel)),
-                    (
-                        "commitLabelBackground",
-                        reader.fill(ThemeTarget::EdgeLabelBackground),
-                    ),
-                    ("tagLabelColor", reader.text_fill(ThemeTarget::NodeLabel)),
-                    ("tagLabelBackground", reader.fill(ThemeTarget::Node)),
-                    ("tagLabelBorder", reader.stroke(ThemeTarget::Node)),
                 ],
             );
         }
@@ -364,6 +341,60 @@ fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &Family
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
         [("lineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
+    );
+
+    contributions.finish_into(builder);
+}
+
+fn compile_gitgraph_family(
+    builder: &mut OverlayBuilder,
+    family_programs: &FamilyThemeProgramCache,
+) {
+    let family = DiagramFamilyId::GIT_GRAPH;
+    let reader = FamilyStyleReader::new(family_programs, family);
+    let mut contributions = FamilyContributions::new(family);
+
+    contributions.add_typography(&reader);
+    let node_fill = reader.fill(ThemeTarget::Node);
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
+        [
+            ("primaryColor", node_fill.clone()),
+            ("mainBkg", node_fill.clone()),
+            ("tagLabelBackground", node_fill),
+        ],
+    );
+    let node_stroke = reader.stroke(ThemeTarget::Node);
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
+        [
+            ("primaryBorderColor", node_stroke.clone()),
+            ("nodeBorder", node_stroke.clone()),
+            ("tagLabelBorder", node_stroke),
+        ],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::TextFill.contribution_id(),
+        [("textColor", reader.text_fill(ThemeTarget::Text))],
+    );
+    contributions.add_theme_variables(
+        "node-label.fill",
+        [("tagLabelColor", reader.text_fill(ThemeTarget::NodeLabel))],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+        [("commitLineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
+    );
+    contributions.add_theme_variables(
+        "edge-label.fill",
+        [("commitLabelColor", reader.text_fill(ThemeTarget::EdgeLabel))],
+    );
+    contributions.add_theme_variables(
+        "edge-label-background.fill",
+        [(
+            "commitLabelBackground",
+            reader.fill(ThemeTarget::EdgeLabelBackground),
+        )],
     );
 
     contributions.finish_into(builder);
@@ -1638,6 +1669,150 @@ mod tests {
     }
 
     #[test]
+    fn gitgraph_terminal_less_paint_rules_do_not_create_a_compatibility_overlay() {
+        let color = "#123456";
+        let mut styles = ThemeRuleSet::default();
+        for target in [ThemeTarget::Title, ThemeTarget::ClusterLabel] {
+            styles = styles.with_rule(
+                ThemeRule::new(target, ThemeStylePatch::default().with_fill(solid(color)))
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+            );
+        }
+        for target in [ThemeTarget::Marker, ThemeTarget::Cluster] {
+            styles = styles.with_rule(
+                ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default()
+                        .with_fill(solid(color))
+                        .with_stroke(solid(color)),
+                )
+                .for_family(DiagramFamilyId::GIT_GRAPH),
+            );
+        }
+
+        let artifact = bridge(&DiagramThemeSpec::new().with_styles(styles))
+            .compile_for_family(DiagramFamilyId::GIT_GRAPH);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+    }
+
+    #[test]
+    fn gitgraph_legacy_paint_projects_only_consumed_tokens() {
+        let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
+        let node_fill = "#101112";
+        let node_stroke = "#131415";
+        let node_label = "#161718";
+        let text = "#191a1b";
+        let edge = "#1c1d1e";
+        let edge_label = "#1f2021";
+        let edge_label_background = "#222324";
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(solid(node_fill))
+                            .with_stroke(solid(node_stroke)),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid(text)),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default().with_fill(solid(node_label)),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_fill(solid(edge)),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::EdgeLabel,
+                        ThemeStylePatch::default().with_fill(solid(edge_label)),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::EdgeLabelBackground,
+                        ThemeStylePatch::default().with_fill(solid(edge_label_background)),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH),
+                ),
+        );
+
+        let parsed = parse(&spec, source);
+
+        for (path, value) in [
+            ("themeVariables.primaryColor", node_fill),
+            ("themeVariables.mainBkg", node_fill),
+            ("themeVariables.tagLabelBackground", node_fill),
+            ("themeVariables.primaryBorderColor", node_stroke),
+            ("themeVariables.nodeBorder", node_stroke),
+            ("themeVariables.tagLabelBorder", node_stroke),
+            ("themeVariables.textColor", text),
+            ("themeVariables.tagLabelColor", node_label),
+            ("themeVariables.commitLineColor", edge),
+            ("themeVariables.commitLabelColor", edge_label),
+            (
+                "themeVariables.commitLabelBackground",
+                edge_label_background,
+            ),
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                Some(value),
+                "path={path}"
+            );
+        }
+
+        let evidence = theme_parse_evidence(&parsed);
+        let mut assignments = std::collections::BTreeMap::new();
+        for contribution in evidence.fallback_contributions() {
+            for path in contribution.surviving_assignment_paths() {
+                let value = contribution
+                    .surviving_assignment_value(path)
+                    .and_then(Value::as_str)
+                    .expect("paint compatibility assignments should be strings");
+                assert_eq!(assignments.insert(path, value), None, "path={path}");
+            }
+        }
+        assert_eq!(
+            assignments,
+            std::collections::BTreeMap::from([
+                (
+                    "themeVariables.commitLabelBackground",
+                    edge_label_background
+                ),
+                ("themeVariables.commitLabelColor", edge_label),
+                ("themeVariables.commitLineColor", edge),
+                ("themeVariables.mainBkg", node_fill),
+                ("themeVariables.nodeBorder", node_stroke),
+                ("themeVariables.primaryBorderColor", node_stroke),
+                ("themeVariables.primaryColor", node_fill),
+                ("themeVariables.tagLabelBackground", node_fill),
+                ("themeVariables.tagLabelBorder", node_stroke),
+                ("themeVariables.tagLabelColor", node_label),
+                ("themeVariables.textColor", text),
+            ])
+        );
+    }
+
+    #[test]
     fn generic_text_fill_reaches_gitgraph_legacy_text_variables() {
         let color = "#123456";
         let family = DiagramFamilyId::GIT_GRAPH;
@@ -1663,6 +1838,19 @@ mod tests {
                 "family={family} path={path}"
             );
         }
+        let evidence = theme_parse_evidence(&parsed);
+        let paths = evidence
+            .fallback_contributions()
+            .flat_map(|contribution| contribution.surviving_assignment_paths())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            paths,
+            BTreeSet::from([
+                "themeVariables.commitLabelColor",
+                "themeVariables.tagLabelColor",
+                "themeVariables.textColor",
+            ])
+        );
     }
 
     #[test]

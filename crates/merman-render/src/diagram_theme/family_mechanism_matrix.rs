@@ -1576,10 +1576,26 @@ fn legacy_paint_variants(
         };
     }
 
-    let node_family = matches!(
-        family,
-        Family::FLOWCHART | Family::SWIMLANE | Family::BLOCK | Family::GIT_GRAPH
-    );
+    if family == Family::GIT_GRAPH {
+        return match channel {
+            Fill if matches!(
+                target,
+                Target::Node
+                    | Target::NodeLabel
+                    | Target::Text
+                    | Target::Edge
+                    | Target::EdgeLabel
+                    | Target::EdgeLabelBackground
+            ) =>
+            {
+                DEFAULT
+            }
+            Stroke if matches!(target, Target::Node | Target::Edge) => DEFAULT,
+            Fill | Stroke => &[],
+        };
+    }
+
+    let node_family = matches!(family, Family::FLOWCHART | Family::SWIMLANE | Family::BLOCK);
     if node_family {
         let common = match channel {
             Fill => {
@@ -1594,7 +1610,7 @@ fn legacy_paint_variants(
                         | Target::EdgeLabelBackground
                         | Target::Cluster
                         | Target::ClusterLabel
-                ) || (family == Family::GIT_GRAPH && target == Target::EdgeLabel)
+                )
             }
             Stroke => matches!(
                 target,
@@ -1931,6 +1947,39 @@ mod tests {
                 assert_eq!(
                     classify_rule_facet(
                         DiagramFamilyId::TREE_VIEW,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::Unsupported,
+                    "target={} channel={channel:?} paint_kind={paint_kind:?}",
+                    target.id()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn gitgraph_terminal_less_paint_routes_are_unsupported() {
+        for (target, channel) in [
+            (ThemeTarget::Title, PaintChannel::Fill),
+            (ThemeTarget::Marker, PaintChannel::Fill),
+            (ThemeTarget::Marker, PaintChannel::Stroke),
+            (ThemeTarget::Cluster, PaintChannel::Fill),
+            (ThemeTarget::Cluster, PaintChannel::Stroke),
+            (ThemeTarget::ClusterLabel, PaintChannel::Fill),
+        ] {
+            for paint_kind in [
+                FamilyThemePaintKind::Transparent,
+                FamilyThemePaintKind::Solid,
+            ] {
+                let facet = match channel {
+                    PaintChannel::Fill => FamilyThemeRuleFacet::Fill(paint_kind),
+                    PaintChannel::Stroke => FamilyThemeRuleFacet::Stroke(paint_kind),
+                };
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::GIT_GRAPH,
                         target,
                         FamilyThemeSelectorShape::Static { variant: None },
                         facet,
