@@ -1555,11 +1555,17 @@ fn legacy_paint_variants(
         };
     }
 
+    if family == Family::MINDMAP {
+        return match channel {
+            Fill | Stroke if matches!(target, Target::Node | Target::Edge) => DEFAULT,
+            Fill | Stroke => &[],
+        };
+    }
+
     let node_family = matches!(
         family,
         Family::FLOWCHART
             | Family::SWIMLANE
-            | Family::MINDMAP
             | Family::TREE_VIEW
             | Family::BLOCK
             | Family::GIT_GRAPH
@@ -1855,6 +1861,42 @@ mod tests {
             DiagramFamilyId::MINDMAP,
             ThemeTarget::Node
         ));
+    }
+
+    #[test]
+    fn mindmap_terminal_less_paint_routes_are_unsupported() {
+        for (target, channel) in [
+            (ThemeTarget::NodeLabel, PaintChannel::Fill),
+            (ThemeTarget::Text, PaintChannel::Fill),
+            (ThemeTarget::Title, PaintChannel::Fill),
+            (ThemeTarget::Marker, PaintChannel::Fill),
+            (ThemeTarget::Marker, PaintChannel::Stroke),
+            (ThemeTarget::EdgeLabelBackground, PaintChannel::Fill),
+            (ThemeTarget::Cluster, PaintChannel::Fill),
+            (ThemeTarget::Cluster, PaintChannel::Stroke),
+            (ThemeTarget::ClusterLabel, PaintChannel::Fill),
+        ] {
+            for paint_kind in [
+                FamilyThemePaintKind::Transparent,
+                FamilyThemePaintKind::Solid,
+            ] {
+                let facet = match channel {
+                    PaintChannel::Fill => FamilyThemeRuleFacet::Fill(paint_kind),
+                    PaintChannel::Stroke => FamilyThemeRuleFacet::Stroke(paint_kind),
+                };
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::MINDMAP,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::Unsupported,
+                    "target={} channel={channel:?} paint_kind={paint_kind:?}",
+                    target.id()
+                );
+            }
+        }
     }
 
     #[test]

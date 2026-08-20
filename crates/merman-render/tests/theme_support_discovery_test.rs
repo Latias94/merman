@@ -376,27 +376,61 @@ fn compatibility_only_route_is_conditional_without_claiming_direct_support() {
 }
 
 #[test]
-fn mindmap_and_gitgraph_text_fill_remain_explicit_legacy_compatibility_routes() {
-    for family in [DiagramFamilyId::MINDMAP, DiagramFamilyId::GIT_GRAPH] {
+fn mindmap_terminal_less_paint_claims_are_unsupported() {
+    for (target, facet) in [
+        (ThemeTarget::NodeLabel, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Text, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Marker, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Marker, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::EdgeLabelBackground, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Cluster, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
+    ] {
         let query = ThemeSupportQueryV1::known(
-            family.as_str(),
+            DiagramFamilyId::MINDMAP.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
-            ThemeTarget::Text.id(),
-            ThemeRuleFacetV1::Fill,
+            target.id(),
+            facet,
         );
 
         let support = describe_theme_support(&query);
 
-        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.state(),
+            ThemeSupportStateV1::Unsupported,
+            "target={} facet={facet:?}",
+            target.id()
+        );
         assert_eq!(
             support.reason_ids(),
-            [
-                "theme-support.legacy-compatibility-only",
-                "theme-support.public-value-domain-partial",
-            ],
-            "family={family}"
+            ["theme-support.no-supported-route"],
+            "target={} facet={facet:?}",
+            target.id()
         );
     }
+}
+
+#[test]
+fn gitgraph_text_fill_remains_an_explicit_legacy_compatibility_route() {
+    let query = ThemeSupportQueryV1::known(
+        DiagramFamilyId::GIT_GRAPH.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Text.id(),
+        ThemeRuleFacetV1::Fill,
+    );
+
+    let support = describe_theme_support(&query);
+
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.legacy-compatibility-only",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
 }
 
 #[test]

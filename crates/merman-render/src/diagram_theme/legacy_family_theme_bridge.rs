@@ -137,11 +137,13 @@ fn compile_selected_family(
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
-        | DiagramFamilyId::MINDMAP
         | DiagramFamilyId::TREE_VIEW
         | DiagramFamilyId::BLOCK
         | DiagramFamilyId::GIT_GRAPH => {
             compile_node_family(&mut builder, family_programs, family);
+        }
+        DiagramFamilyId::MINDMAP => {
+            compile_mindmap_family(&mut builder, family_programs);
         }
         DiagramFamilyId::SEQUENCE => {
             compile_sequence_family(&mut builder, family_programs);
@@ -327,6 +329,28 @@ fn compile_node_family(
         }
         _ => {}
     }
+
+    contributions.finish_into(builder);
+}
+
+fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
+    let family = DiagramFamilyId::MINDMAP;
+    let reader = FamilyStyleReader::new(family_programs, family);
+    let mut contributions = FamilyContributions::new(family);
+
+    contributions.add_typography(&reader);
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
+        [("mainBkg", reader.fill(ThemeTarget::Node))],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
+        [("nodeBorder", reader.stroke(ThemeTarget::Node))],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+        [("lineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
+    );
 
     contributions.finish_into(builder);
 }
@@ -1389,42 +1413,105 @@ mod tests {
     }
 
     #[test]
-    fn generic_text_fill_reaches_mindmap_and_gitgraph_legacy_text_variables() {
+    fn mindmap_terminal_less_paint_rules_do_not_create_a_compatibility_overlay() {
         let color = "#123456";
-        for (family, source, expected_paths) in [
-            (
-                DiagramFamilyId::MINDMAP,
-                "mindmap\nroot(Root)\n Child(Child)\n",
-                &["themeVariables.textColor"][..],
-            ),
-            (
-                DiagramFamilyId::GIT_GRAPH,
-                "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
-                &[
-                    "themeVariables.textColor",
-                    "themeVariables.commitLabelColor",
-                    "themeVariables.tagLabelColor",
-                ][..],
-            ),
+        let mut styles = ThemeRuleSet::default();
+        for target in [
+            ThemeTarget::NodeLabel,
+            ThemeTarget::Text,
+            ThemeTarget::Title,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeTarget::ClusterLabel,
         ] {
-            let spec = DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default().with_fill(solid(color)),
-                    )
-                    .for_family(family),
-                ),
+            styles = styles.with_rule(
+                ThemeRule::new(target, ThemeStylePatch::default().with_fill(solid(color)))
+                    .for_family(DiagramFamilyId::MINDMAP),
             );
+        }
+        for target in [ThemeTarget::Marker, ThemeTarget::Cluster] {
+            styles = styles.with_rule(
+                ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default()
+                        .with_fill(solid(color))
+                        .with_stroke(solid(color)),
+                )
+                .for_family(DiagramFamilyId::MINDMAP),
+            );
+        }
 
-            let parsed = parse(&spec, source);
-            for path in expected_paths {
-                assert_eq!(
-                    parsed.effective_config.get_str(path),
-                    Some(color),
-                    "family={family} path={path}"
-                );
-            }
+        let artifact = bridge(&DiagramThemeSpec::new().with_styles(styles))
+            .compile_for_family(DiagramFamilyId::MINDMAP);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+    }
+
+    #[test]
+    fn mindmap_legacy_node_paint_projects_only_consumed_tokens() {
+        let source = "mindmap\nroot(Root)\n Child(Child)\n";
+        let baseline = parse(&DiagramThemeSpec::new(), source);
+        let fill = "#123456";
+        let stroke = "#654321";
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(solid(fill))
+                        .with_stroke(solid(stroke)),
+                )
+                .for_family(DiagramFamilyId::MINDMAP),
+            ),
+        );
+
+        let parsed = parse(&spec, source);
+
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.mainBkg"),
+            Some(fill)
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.nodeBorder"),
+            Some(stroke)
+        );
+        for path in [
+            "themeVariables.primaryColor",
+            "themeVariables.primaryBorderColor",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "path={path}"
+            );
+        }
+    }
+
+    #[test]
+    fn generic_text_fill_reaches_gitgraph_legacy_text_variables() {
+        let color = "#123456";
+        let family = DiagramFamilyId::GIT_GRAPH;
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(solid(color)),
+                )
+                .for_family(family),
+            ),
+        );
+
+        let parsed = parse(&spec, "gitGraph\n  commit id: \"A\" tag: \"v1\"\n");
+        for path in [
+            "themeVariables.textColor",
+            "themeVariables.commitLabelColor",
+            "themeVariables.tagLabelColor",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                Some(color),
+                "family={family} path={path}"
+            );
         }
     }
 
