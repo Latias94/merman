@@ -73,6 +73,37 @@ pub fn describe_theme_support_json_with_resource_policy(
     }
 }
 
+/// Exports one built-in preset as a closed, self-contained version 1 recipe envelope.
+pub fn export_theme_preset_json(bytes: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let compiler =
+        DiagramThemeCompiler::new().with_resource_policy(general_binding_theme_resource_policy());
+    export_theme_preset_json_with(&compiler, bytes)
+}
+
+/// Exports one built-in preset under the caller-owned compiler resource policy.
+pub fn export_theme_preset_json_with(
+    compiler: &DiagramThemeCompiler,
+    bytes: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    compiler
+        .resource_policy()
+        .check_theme_encoded_bytes(bytes.len())
+        .map_err(crate::theme::theme_resource_error)?;
+    let id = std::str::from_utf8(bytes)
+        .map_err(|_| BindingError::invalid_argument("theme preset id must be valid UTF-8"))?;
+    if id.is_empty() {
+        return Err(BindingError::invalid_argument(
+            "theme preset id must not be empty",
+        ));
+    }
+    let preset = merman::svg::ThemePreset::from_id(id)
+        .map_err(|error| BindingError::invalid_argument(error.to_string()))?;
+    let export = compiler
+        .export_preset(preset)
+        .map_err(|error| materialization_error(compiler.resource_policy(), error))?;
+    serde_json::to_vec(&export).map_err(crate::common::internal_json_error)
+}
+
 /// Compiles one versioned authoring definition with the general binding resource profile.
 pub fn compile_theme_definition_json(bytes: &[u8]) -> Result<DiagramTheme, BindingError> {
     let compiler =
@@ -141,7 +172,7 @@ fn materialization_error(
 mod tests {
     use crate::BindingError;
     use merman::diagram_theme::{
-        MaterializedThemeWireV1, ThemeDefinitionV1, ThemeRuleFacetV1,
+        MaterializedThemeWireV1, PresetExportV1, ThemeDefinitionV1, ThemeRuleFacetV1,
         ThemeSupportBaseTypographyPropertyV2, ThemeSupportOutputV1, ThemeSupportQueryV1,
         ThemeSupportQueryV2, ThemeTokensV1, describe_theme_support, describe_theme_support_v2,
         materialize_theme_with_resource_policy,
@@ -231,6 +262,47 @@ mod tests {
                 .expect("binding output should retain the complete contract wire"),
             expected
         );
+    }
+
+    #[test]
+    fn preset_export_uses_the_same_policy_aware_compiler_contract() {
+        let policy = ThemeResourcePolicy::for_profile(
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        );
+        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy);
+        let actual = crate::export_theme_preset_json_with(&compiler, b"editor-light")
+            .expect("a built-in preset should export under the active compiler policy");
+        let export: PresetExportV1 =
+            serde_json::from_slice(&actual).expect("preset export should use the contract wire");
+
+        assert_eq!(export.kind(), "complete_spec");
+        assert_eq!(
+            crate::export_theme_preset_json(b"editor-light")
+                .expect("the default binding policy should export the same preset"),
+            actual
+        );
+
+        let unknown = crate::export_theme_preset_json_with(&compiler, b"future-preset")
+            .expect_err("unknown preset ids must fail closed");
+        assert_eq!(unknown.status(), crate::BindingStatus::InvalidArgument);
+    }
+
+    #[test]
+    fn preset_export_checks_the_active_encoded_input_ceiling_before_utf8() {
+        let policy = ThemeResourcePolicy::default()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)
+            .expect("one byte is a valid caller-owned ceiling");
+        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy);
+        let error = crate::export_theme_preset_json_with(&compiler, &[0xff, 0xff])
+            .expect_err("the byte ceiling must run before UTF-8 decoding");
+
+        assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
+        let resource = error
+            .resource_details()
+            .expect("preset-id admission should retain resource details");
+        assert_eq!(resource.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(resource.actual, 2);
+        assert_eq!(resource.max, 1);
     }
 
     #[test]
@@ -463,6 +535,6 @@ mod tests {
         .expect_err("unknown support schema must fail closed");
 
         assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
-        assert!(error.to_string().contains("schema version 99"));
+        assert!(error.message().contains("schema version 99"));
     }
 }

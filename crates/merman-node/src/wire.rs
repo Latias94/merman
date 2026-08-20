@@ -25,7 +25,13 @@ const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
 };
 const NODE_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
+    OperationKey::DescribeThemeSupportJson,
+    #[cfg(feature = "svg")]
+    OperationKey::ExportThemePresetJson,
+    #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
+    #[cfg(feature = "svg")]
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
@@ -466,6 +472,13 @@ pub(crate) fn metadata_wire(id: &str) -> Result<String, BindingError> {
     binding_boundary(|| metadata_wire_inner(id))
 }
 
+pub(crate) fn metadata_wire_for_engine(
+    engine: &BindingEngine,
+    id: &str,
+) -> Result<String, BindingError> {
+    binding_boundary(|| metadata_wire_inner_for_engine(engine, id))
+}
+
 fn metadata_wire_inner(id: &str) -> Result<String, BindingError> {
     let contract = node_wire_contract();
     if id.is_empty() {
@@ -476,6 +489,26 @@ fn metadata_wire_inner(id: &str) -> Result<String, BindingError> {
     ensure_field(id, "metadata id", contract.fields.metadata_id_utf8_bytes)
         .map_err(caller_argument_error)?;
     let bytes = node_artifact_contract().metadata_json(id)?;
+    let text = String::from_utf8(bytes)
+        .map_err(|error| BindingError::internal(format!("Node metadata was not UTF-8: {error}")))?;
+    deserialize_bounded_json::<Value>(&text, "metadata", contract.documents.metadata)
+        .map_err(producer_error)?;
+    Ok(text)
+}
+
+fn metadata_wire_inner_for_engine(
+    engine: &BindingEngine,
+    id: &str,
+) -> Result<String, BindingError> {
+    let contract = node_wire_contract();
+    if id.is_empty() {
+        return Err(BindingError::invalid_argument(
+            "Node metadata id must be non-empty",
+        ));
+    }
+    ensure_field(id, "metadata id", contract.fields.metadata_id_utf8_bytes)
+        .map_err(caller_argument_error)?;
+    let bytes = engine.metadata_json(id)?;
     let text = String::from_utf8(bytes)
         .map_err(|error| BindingError::internal(format!("Node metadata was not UTF-8: {error}")))?;
     deserialize_bounded_json::<Value>(&text, "metadata", contract.documents.metadata)

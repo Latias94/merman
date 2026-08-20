@@ -148,7 +148,8 @@ pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with}
 #[cfg(feature = "svg")]
 pub use theme_definition::{
     compile_theme_definition_json, compile_theme_definition_json_with, describe_theme_support_json,
-    describe_theme_support_json_with_resource_policy, materialize_theme_definition_json,
+    describe_theme_support_json_with_resource_policy, export_theme_preset_json,
+    export_theme_preset_json_with, materialize_theme_definition_json,
     materialize_theme_definition_json_with_resource_policy,
 };
 pub use transport_contract::{

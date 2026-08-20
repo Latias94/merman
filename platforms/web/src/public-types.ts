@@ -219,6 +219,102 @@ export type DiagramThemeSelection =
   | { preset: string; spec?: never }
   | { preset?: never; spec: DiagramThemeSpec };
 
+export interface ThemeDefinitionV1 {
+  authoring_schema_version: 1;
+  expansion_version: 1;
+  tokens: ThemeTokensV1;
+  styles?: ThemeStyleEntry[];
+}
+
+export interface ThemeTokensV1 {
+  canvas?: string;
+  surface?: string;
+  surface_alt?: string;
+  surface_muted?: string;
+  text?: string;
+  border?: string;
+  line?: string;
+  accent?: string;
+  series?: string[];
+  typography?: ThemeAuthoringTypographyV1;
+}
+
+export interface ThemeAuthoringTypographyV1 {
+  font_stack?: string[];
+  font_size_px?: number;
+  font_weight?: number;
+  line_height?: ThemeLineHeight;
+}
+
+export interface MaterializedThemeWireV1 {
+  schema_version: 1;
+  authoring_schema_version: 1;
+  expansion_version: 1;
+  spec_schema_version: 1;
+  spec: DiagramThemeSpec;
+}
+
+export type ThemeSupportOutputId =
+  | "standalone-svg"
+  | "browser-svg"
+  | "png"
+  | "jpeg"
+  | "pdf"
+  | "ascii"
+  | (string & {});
+
+export interface ThemeSupportQueryV1 {
+  schema_version: 1;
+  family: string;
+  output: ThemeSupportOutputId;
+  target: string;
+  facet: string;
+}
+
+export type ThemeSupportSubjectV2 =
+  | { kind: "rule"; target: string; facet: string }
+  | { kind: "ordinal-palette"; target: string }
+  | { kind: "base-typography"; property: string }
+  | ({ kind: string } & Record<string, unknown>);
+
+export interface ThemeSupportQueryV2 {
+  schema_version: 2;
+  family: string;
+  output: ThemeSupportOutputId;
+  subject: ThemeSupportSubjectV2;
+}
+
+export type ThemeSupportState =
+  | "unconditional"
+  | "conditional"
+  | "not-applicable"
+  | "unsupported"
+  | "unverified";
+
+export interface ThemeCapabilityDescriptorV1 {
+  schema_version: 1;
+  claim_revision: number;
+  query: ThemeSupportQueryV1;
+  state: ThemeSupportState;
+  reason_ids: string[];
+}
+
+export interface ThemeCapabilityDescriptorV2 {
+  schema_version: 2;
+  claim_revision: number;
+  query: ThemeSupportQueryV2;
+  state: ThemeSupportState;
+  reason_ids: string[];
+}
+
+export type ThemeCapabilityDescriptor =
+  | ThemeCapabilityDescriptorV1
+  | ThemeCapabilityDescriptorV2;
+
+export type PresetExportV1 =
+  | { kind: "definition"; definition: ThemeDefinitionV1 }
+  | { kind: "complete_spec"; complete_spec: DiagramThemeSpec };
+
 export interface DiagramThemeSpec {
   mermaid?: MermaidThemeCompatibility;
   typography?: ThemeTypographySpec;
@@ -1288,6 +1384,18 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   asciiCapabilities: () => AsciiCapability[];
   runtimeCatalog: () => RuntimeCatalog;
   themeCatalog: () => ThemeCatalog;
+  materializeTheme: (
+    definitionJson: string,
+    optionsJson?: string | null
+  ) => MaterializedThemeWireV1;
+  describeThemeSupport: (
+    queryJson: string,
+    optionsJson?: string | null
+  ) => ThemeCapabilityDescriptor;
+  exportThemePreset: (
+    presetId: string,
+    optionsJson?: string | null
+  ) => PresetExportV1;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];

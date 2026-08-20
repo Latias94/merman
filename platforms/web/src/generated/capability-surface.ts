@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e7f5e5a52f713290910801ee7c802c17983bc3ef07249b9ec884e76e0b628c6f" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -65,6 +65,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
@@ -73,6 +74,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
@@ -81,7 +83,17 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "ascii",
     "output": "ascii",
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "text/plain; charset=utf-8",
+    "requires_uri": false
+  },
+  {
+    "id": "describe-theme-support-json",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "input_kind": "theme-support-query-json",
+    "media_type": "application/json",
     "requires_uri": false
   },
   {
@@ -89,6 +101,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": true
   },
@@ -97,14 +110,34 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": true
+  },
+  {
+    "id": "export-theme-preset-json",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "input_kind": "theme-preset-id",
+    "media_type": "application/json",
+    "requires_uri": false
   },
   {
     "id": "layout-json",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
+    "media_type": "application/json",
+    "requires_uri": false
+  },
+  {
+    "id": "materialize-theme-json",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "input_kind": "theme-definition-json",
     "media_type": "application/json",
     "requires_uri": false
   },
@@ -113,6 +146,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": null,
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
@@ -121,6 +155,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "svg",
     "output": "svg",
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "image/svg+xml",
     "requires_uri": false
   },
@@ -129,6 +164,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
@@ -137,6 +173,7 @@ export const WEB_BINDING_OPERATIONS = [
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   }
@@ -165,9 +202,12 @@ export const WEB_BINDING_OPERATION_IDS = [
   "analysis-facts-json",
   "analysis-json",
   "ascii",
+  "describe-theme-support-json",
   "document-analysis-facts-json",
   "document-analysis-json",
+  "export-theme-preset-json",
   "layout-json",
+  "materialize-theme-json",
   "semantic-json",
   "svg",
   "svg-plan-json",

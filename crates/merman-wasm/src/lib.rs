@@ -53,7 +53,13 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::DocumentAnalysisJson,
     #[cfg(feature = "svg")]
+    OperationKey::DescribeThemeSupportJson,
+    #[cfg(feature = "svg")]
+    OperationKey::ExportThemePresetJson,
+    #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
+    #[cfg(feature = "svg")]
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
@@ -294,6 +300,45 @@ pub fn supported_themes() -> Result<JsValue, JsValue> {
 #[wasm_bindgen(js_name = themeCatalog)]
 pub fn theme_catalog() -> Result<JsValue, JsValue> {
     json_value_result(wasm_artifact_contract().metadata_json("theme-catalog"))
+}
+
+#[wasm_bindgen(js_name = materializeTheme)]
+pub fn materialize_theme(
+    definition_json: &str,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    json_value_result(execute_wasm_operation(
+        "materialize-theme-json",
+        definition_json.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
+#[wasm_bindgen(js_name = describeThemeSupport)]
+pub fn describe_theme_support(
+    query_json: &str,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    json_value_result(execute_wasm_operation(
+        "describe-theme-support-json",
+        query_json.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
+#[wasm_bindgen(js_name = exportThemePreset)]
+pub fn export_theme_preset(
+    preset_id: &str,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    json_value_result(execute_wasm_operation(
+        "export-theme-preset-json",
+        preset_id.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
 }
 
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]
@@ -804,6 +849,53 @@ mod tests {
         assert_eq!(plan["planned_operation_id"], "svg");
         assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
         assert_eq!(plan["ready"], true);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_theme_authoring_operations_share_the_canonical_operation_surface() {
+        let operation_ids = &wasm_runtime_catalog().capabilities.operation_ids;
+        for operation_id in [
+            "materialize-theme-json",
+            "describe-theme-support-json",
+            "export-theme-preset-json",
+        ] {
+            assert!(
+                operation_ids.contains(&operation_id),
+                "the Web catalog must advertise {operation_id}"
+            );
+        }
+
+        let materialized = execute_wasm_operation(
+            "materialize-theme-json",
+            br##"{
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": { "text": "#123456", "accent": "#abcdef" }
+            }"##,
+            b"",
+            None,
+        )
+        .expect("WASM should materialize a theme definition");
+        let materialized: serde_json::Value = serde_json::from_slice(&materialized).unwrap();
+        assert_eq!(materialized["schema_version"], 1);
+        assert!(materialized["spec"]["styles"].is_array());
+
+        let support = execute_wasm_operation(
+            "describe-theme-support-json",
+            br#"{"schema_version":2,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
+            b"",
+            None,
+        )
+        .expect("WASM should expose theme support discovery");
+        let support: serde_json::Value = serde_json::from_slice(&support).unwrap();
+        assert_eq!(support["schema_version"], 2);
+        assert_eq!(support["query"]["family"], "sequence");
+
+        let preset = execute_wasm_operation("export-theme-preset-json", b"editor-light", b"", None)
+            .expect("WASM should export a built-in preset");
+        let preset: serde_json::Value = serde_json::from_slice(&preset).unwrap();
+        assert_eq!(preset["kind"], "complete_spec");
     }
 
     #[cfg(all(

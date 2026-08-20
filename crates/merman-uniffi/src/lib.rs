@@ -1082,6 +1082,15 @@ impl MermanEngine {
         })
     }
 
+    /// Returns metadata projected through this reusable engine's resource policy.
+    pub fn metadata_json(&self, id: String) -> Result<String, MermanError> {
+        self.with_reusable_operation(|engine| string_output(engine.metadata_json(&id)))
+    }
+
+    pub fn theme_catalog_json(&self) -> Result<String, MermanError> {
+        self.metadata_json("theme-catalog".to_string())
+    }
+
     pub fn render_ascii(
         &self,
         source: String,

@@ -101,9 +101,12 @@ export {
 } from "./runtime-ascii.js";
 export {
   createBrowserTextMeasurementSession,
+  describeThemeSupport,
+  exportThemePreset,
   layoutJson,
   layoutJsonWithTextMeasurer,
   layoutObject,
+  materializeTheme,
   parseJson,
   parseObject,
   renderSvg,

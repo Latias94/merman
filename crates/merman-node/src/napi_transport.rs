@@ -46,8 +46,7 @@ impl NativeEngine {
 
     #[napi(js_name = "metadataJson")]
     pub fn metadata_json(&self, id: String) -> napi::Result<String> {
-        self.engine()?;
-        wire::metadata_wire(&id)
+        wire::metadata_wire_for_engine(self.engine()?, &id)
             .map_err(|error| napi::Error::from_reason(wire::error_envelope(&error)))
     }
 

@@ -2,65 +2,93 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e7f5e5a52f713290910801ee7c802c17983bc3ef07249b9ec884e76e0b628c6f";
 
 export const NODE_BINDING_OPERATIONS = [
   {
     "id": "analysis-facts-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "analysis-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "ascii",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
+  },
+  {
+    "id": "describe-theme-support-json",
+    "compiled_prerequisites": [],
+    "input_kind": "theme-support-query-json"
   },
   {
     "id": "document-analysis-facts-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "document-analysis-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
+  },
+  {
+    "id": "export-theme-preset-json",
+    "compiled_prerequisites": [],
+    "input_kind": "theme-preset-id"
   },
   {
     "id": "jpeg",
     "compiled_prerequisites": [
       "svg"
-    ]
+    ],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "layout-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
+  },
+  {
+    "id": "materialize-theme-json",
+    "compiled_prerequisites": [],
+    "input_kind": "theme-definition-json"
   },
   {
     "id": "pdf",
     "compiled_prerequisites": [
       "svg"
-    ]
+    ],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "png",
     "compiled_prerequisites": [
       "svg"
-    ]
+    ],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "semantic-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "svg",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "svg-plan-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "validation-json",
-    "compiled_prerequisites": []
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   }
 ];

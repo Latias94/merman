@@ -76,10 +76,13 @@ internal object MermanBindingOperationId {
     internal const val ANALYSIS_FACTS_JSON: String = "analysis-facts-json"
     internal const val ANALYSIS_JSON: String = "analysis-json"
     internal const val ASCII: String = "ascii"
+    internal const val DESCRIBE_THEME_SUPPORT_JSON: String = "describe-theme-support-json"
     internal const val DOCUMENT_ANALYSIS_FACTS_JSON: String = "document-analysis-facts-json"
     internal const val DOCUMENT_ANALYSIS_JSON: String = "document-analysis-json"
+    internal const val EXPORT_THEME_PRESET_JSON: String = "export-theme-preset-json"
     internal const val JPEG: String = "jpeg"
     internal const val LAYOUT_JSON: String = "layout-json"
+    internal const val MATERIALIZE_THEME_JSON: String = "materialize-theme-json"
     internal const val PDF: String = "pdf"
     internal const val PNG: String = "png"
     internal const val SEMANTIC_JSON: String = "semantic-json"
@@ -171,10 +174,13 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
     MermanBindingOperationExpectation("analysis-facts-json", null, "application/json", 1, false, "analysis"),
     MermanBindingOperationExpectation("analysis-json", null, "application/json", 1, false, "analysis"),
     MermanBindingOperationExpectation("ascii", "ascii", "text/plain; charset=utf-8", 1, false, "ascii"),
+    MermanBindingOperationExpectation("describe-theme-support-json", null, "application/json", 1, false, "svg"),
     MermanBindingOperationExpectation("document-analysis-facts-json", null, "application/json", 1, true, "analysis"),
     MermanBindingOperationExpectation("document-analysis-json", null, "application/json", 1, true, "analysis"),
+    MermanBindingOperationExpectation("export-theme-preset-json", null, "application/json", 1, false, "svg"),
     MermanBindingOperationExpectation("jpeg", "jpeg", "image/jpeg", 1, false, "jpeg"),
     MermanBindingOperationExpectation("layout-json", null, "application/json", 1, false, "svg"),
+    MermanBindingOperationExpectation("materialize-theme-json", null, "application/json", 1, false, "svg"),
     MermanBindingOperationExpectation("pdf", "pdf", "application/pdf", 1, false, "pdf"),
     MermanBindingOperationExpectation("png", "png", "image/png", 1, false, "png"),
     MermanBindingOperationExpectation("semantic-json", null, "application/json", 1, false, null),
@@ -187,7 +193,7 @@ internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectat
     capabilityIds = listOf("analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"),
     outputIds = listOf("ascii", "svg"),
     systemAdapterIds = listOf(),
-    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "layout-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
+    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "describe-theme-support-json", "document-analysis-facts-json", "document-analysis-json", "export-theme-preset-json", "layout-json", "materialize-theme-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
     metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "supported-diagrams", "supported-themes", "theme-catalog"),
 )
 

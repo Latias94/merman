@@ -81,6 +81,21 @@ final class MermanOperation {
     native.MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON,
     false,
   );
+  static const describeThemeSupportJson = MermanOperation._(
+    native.MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
+    native.MERMAN_NATIVE_OPERATION_ID_DESCRIBE_THEME_SUPPORT_JSON,
+    false,
+  );
+  static const exportThemePresetJson = MermanOperation._(
+    native.MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON,
+    native.MERMAN_NATIVE_OPERATION_ID_EXPORT_THEME_PRESET_JSON,
+    false,
+  );
+  static const materializeThemeJson = MermanOperation._(
+    native.MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON,
+    native.MERMAN_NATIVE_OPERATION_ID_MATERIALIZE_THEME_JSON,
+    false,
+  );
 
   static const List<MermanOperation> knownValues = <MermanOperation>[
     svg,
@@ -96,6 +111,9 @@ final class MermanOperation {
     documentAnalysisJson,
     documentAnalysisFactsJson,
     svgPlanJson,
+    describeThemeSupportJson,
+    exportThemePresetJson,
+    materializeThemeJson,
   ];
 
   factory MermanOperation.fromNativeCode(int nativeCode) {

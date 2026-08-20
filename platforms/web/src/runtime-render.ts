@@ -9,8 +9,16 @@ import type {
   HostTextMeasureResult,
   HostTextMetricsResult,
   HostTextMeasurer,
+  MaterializedThemeWireV1,
+  PresetExportV1,
   SvgBindingOptions,
   SvgPlanResult,
+  ThemeCapabilityDescriptor,
+  ThemeCapabilityDescriptorV1,
+  ThemeCapabilityDescriptorV2,
+  ThemeDefinitionV1,
+  ThemeSupportQueryV1,
+  ThemeSupportQueryV2,
 } from "./public-types.js";
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
@@ -22,6 +30,59 @@ export function svgPlanJson(
   options?: SvgBindingOptions | string
 ): SvgPlanResult {
   return getMerman().svgPlanJson(source, encodeOptions(options));
+}
+
+export function materializeTheme(
+  definition: ThemeDefinitionV1 | string,
+  options?: SvgBindingOptions | string
+): MaterializedThemeWireV1 {
+  return getMerman().materializeTheme(
+    encodeThemeAuthoringInput(definition, "theme definition"),
+    encodeOptions(options)
+  );
+}
+
+export function describeThemeSupport(
+  query: ThemeSupportQueryV1,
+  options?: SvgBindingOptions | string
+): ThemeCapabilityDescriptorV1;
+export function describeThemeSupport(
+  query: ThemeSupportQueryV2,
+  options?: SvgBindingOptions | string
+): ThemeCapabilityDescriptorV2;
+export function describeThemeSupport(
+  query: ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
+  options?: SvgBindingOptions | string
+): ThemeCapabilityDescriptor;
+export function describeThemeSupport(
+  query: ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
+  options?: SvgBindingOptions | string
+): ThemeCapabilityDescriptor {
+  return getMerman().describeThemeSupport(
+    encodeThemeAuthoringInput(query, "theme support query"),
+    encodeOptions(options)
+  );
+}
+
+export function exportThemePreset(
+  presetId: string,
+  options?: SvgBindingOptions | string
+): PresetExportV1 {
+  return getMerman().exportThemePreset(presetId, encodeOptions(options));
+}
+
+function encodeThemeAuthoringInput(
+  value: ThemeDefinitionV1 | ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
+  label: string
+): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) {
+    throw new TypeError(`${label} must be JSON-serializable`);
+  }
+  return encoded;
 }
 
 export function renderSvgWithTextMeasurer(

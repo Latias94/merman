@@ -75,6 +75,12 @@ impl BindingOperationKind {
         self.0.spec().media_type
     }
 
+    /// Returns the stable semantic kind of bytes carried in the request's physical `source` slot.
+    #[must_use]
+    pub const fn input_kind(self) -> &'static str {
+        self.0.spec().input_kind
+    }
+
     /// Returns the optional public capability that gates this operation's availability.
     ///
     /// Semantic JSON deliberately returns `None`: canonical parsing is a base binding operation,
@@ -100,6 +106,9 @@ impl BindingOperationKind {
             OperationKey::DocumentAnalysisJson | OperationKey::DocumentAnalysisFactsJson => {
                 BindingResourceScope::DocumentAnalysis
             }
+            OperationKey::DescribeThemeSupportJson
+            | OperationKey::ExportThemePresetJson
+            | OperationKey::MaterializeThemeJson => BindingResourceScope::ThemeAuthoring,
             OperationKey::SemanticJson => BindingResourceScope::Model,
             OperationKey::SvgPlanJson => BindingResourceScope::Svg,
             OperationKey::Ascii => BindingResourceScope::Ascii,
@@ -204,6 +213,14 @@ impl<'a> BindingOperationRequest<'a> {
 
     #[must_use]
     pub const fn source(&self) -> &'a [u8] {
+        self.source
+    }
+
+    /// Returns the operation input bytes using the descriptor-owned input semantics.
+    ///
+    /// `source()` remains as the physical wire-field compatibility projection.
+    #[must_use]
+    pub const fn input(&self) -> &'a [u8] {
         self.source
     }
 
@@ -944,6 +961,22 @@ impl BindingEngine {
             .map_err(BindingError::cancelled)?;
         let operation = admitted.operation();
         let output = match operation.key() {
+            OperationKey::DescribeThemeSupportJson
+            | OperationKey::ExportThemePresetJson
+            | OperationKey::MaterializeThemeJson => {
+                #[cfg(feature = "svg")]
+                {
+                    self.execute_theme_authoring_data(operation.key(), source)
+                        .map(BindingOperationOutput::plain)
+                }
+                #[cfg(not(feature = "svg"))]
+                {
+                    Err(crate::common::feature_required_error(
+                        "theme authoring",
+                        "svg",
+                    ))
+                }
+            }
             OperationKey::Png => self.render_png_output(source, control.clone()),
             OperationKey::Jpeg => self.render_jpeg_output(source, control.clone()),
             OperationKey::Pdf => self.render_pdf_output(source, control.clone()),
@@ -1067,6 +1100,7 @@ mod tests {
 
         assert_eq!(request.operation_id(), "document-analysis-json");
         assert_eq!(request.source(), b"flowchart TD\nA");
+        assert_eq!(request.input(), b"flowchart TD\nA");
         assert_eq!(request.uri(), Some(b"file:///diagram.mmd".as_slice()));
         assert_eq!(
             request.options_json(),
@@ -1305,7 +1339,7 @@ mod tests {
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
         let operations = BindingOperationKind::all().collect::<Vec<_>>();
-        assert_eq!(operations.len(), 13);
+        assert_eq!(operations.len(), 16);
         for operation in operations {
             assert_eq!(
                 BindingOperationKind::from_id(operation.operation_id()).unwrap(),

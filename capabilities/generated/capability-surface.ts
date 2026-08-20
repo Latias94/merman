@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e7f5e5a52f713290910801ee7c802c17983bc3ef07249b9ec884e76e0b628c6f" as const;
 
 export const TARGETS = [
   {
@@ -268,6 +268,7 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze Mermaid input and return semantic facts JSON.",
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false,
     "targets": [
@@ -281,11 +282,11 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze Mermaid input and return diagnostics JSON.",
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false,
     "targets": [
       "native",
-      "typst",
       "web"
     ]
   },
@@ -295,7 +296,22 @@ export const BINDING_OPERATIONS = [
     "output": "ascii",
     "compiled_prerequisites": [],
     "description": "Render Mermaid input as terminal text.",
+    "input_kind": "mermaid-source",
     "media_type": "text/plain; charset=utf-8",
+    "requires_uri": false,
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
+    "id": "describe-theme-support-json",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "description": "Describe the static support bound for a versioned theme query.",
+    "input_kind": "theme-support-query-json",
+    "media_type": "application/json",
     "requires_uri": false,
     "targets": [
       "native",
@@ -308,6 +324,7 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": true,
     "targets": [
@@ -321,8 +338,23 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": true,
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
+    "id": "export-theme-preset-json",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "description": "Export a built-in theme preset as a self-contained editable recipe.",
+    "input_kind": "theme-preset-id",
+    "media_type": "application/json",
+    "requires_uri": false,
     "targets": [
       "native",
       "web"
@@ -336,6 +368,7 @@ export const BINDING_OPERATIONS = [
       "svg"
     ],
     "description": "Render Mermaid input as JPEG.",
+    "input_kind": "mermaid-source",
     "media_type": "image/jpeg",
     "requires_uri": false,
     "targets": [
@@ -348,6 +381,21 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Render Mermaid input into layout model JSON.",
+    "input_kind": "mermaid-source",
+    "media_type": "application/json",
+    "requires_uri": false,
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
+    "id": "materialize-theme-json",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "description": "Materialize a versioned theme definition into a complete theme specification.",
+    "input_kind": "theme-definition-json",
     "media_type": "application/json",
     "requires_uri": false,
     "targets": [
@@ -363,6 +411,7 @@ export const BINDING_OPERATIONS = [
       "svg"
     ],
     "description": "Render Mermaid input as PDF.",
+    "input_kind": "mermaid-source",
     "media_type": "application/pdf",
     "requires_uri": false,
     "targets": [
@@ -377,6 +426,7 @@ export const BINDING_OPERATIONS = [
       "svg"
     ],
     "description": "Render Mermaid input as PNG.",
+    "input_kind": "mermaid-source",
     "media_type": "image/png",
     "requires_uri": false,
     "targets": [
@@ -389,6 +439,7 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Parse Mermaid input into canonical semantic JSON.",
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false,
     "targets": [
@@ -402,6 +453,7 @@ export const BINDING_OPERATIONS = [
     "output": "svg",
     "compiled_prerequisites": [],
     "description": "Render Mermaid input as SVG.",
+    "input_kind": "mermaid-source",
     "media_type": "image/svg+xml",
     "requires_uri": false,
     "targets": [
@@ -416,6 +468,7 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Plan the capabilities required to render Mermaid input as SVG.",
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false,
     "targets": [
@@ -429,6 +482,7 @@ export const BINDING_OPERATIONS = [
     "output": null,
     "compiled_prerequisites": [],
     "description": "Validate Mermaid input and return validation JSON.",
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false,
     "targets": [
@@ -484,10 +538,13 @@ export const BINDING_OPERATION_IDS = [
   "analysis-facts-json",
   "analysis-json",
   "ascii",
+  "describe-theme-support-json",
   "document-analysis-facts-json",
   "document-analysis-json",
+  "export-theme-preset-json",
   "jpeg",
   "layout-json",
+  "materialize-theme-json",
   "pdf",
   "png",
   "semantic-json",

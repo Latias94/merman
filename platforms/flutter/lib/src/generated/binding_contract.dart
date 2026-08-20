@@ -632,6 +632,14 @@ const List<MermanBindingOperationExpectation>
     availabilityCapabilityId: "ascii",
   ),
   MermanBindingOperationExpectation(
+    operationId: "describe-theme-support-json",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+  ),
+  MermanBindingOperationExpectation(
     operationId: "document-analysis-facts-json",
     outputId: null,
     mediaType: "application/json",
@@ -648,6 +656,14 @@ const List<MermanBindingOperationExpectation>
     availabilityCapabilityId: "analysis",
   ),
   MermanBindingOperationExpectation(
+    operationId: "export-theme-preset-json",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+  ),
+  MermanBindingOperationExpectation(
     operationId: "jpeg",
     outputId: "jpeg",
     mediaType: "image/jpeg",
@@ -657,6 +673,14 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "layout-json",
+    outputId: null,
+    mediaType: "application/json",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "svg",
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "materialize-theme-json",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,

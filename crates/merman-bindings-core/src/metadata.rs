@@ -375,6 +375,24 @@ impl ValidatedArtifactContract {
         }
         collect_metadata(self, key)
     }
+
+    #[cfg(feature = "svg")]
+    pub(crate) fn metadata_json_with_theme_compiler(
+        &self,
+        id: &str,
+        compiler: &merman::svg::DiagramThemeCompiler,
+    ) -> Result<Vec<u8>, BindingError> {
+        let key = MetadataKey::from_id(id).ok_or_else(|| {
+            BindingError::invalid_argument(format!("unknown binding metadata catalog `{id}`"))
+        })?;
+        if !self.exposes_metadata(key) {
+            return Err(BindingError::unsupported_operation(format!(
+                "binding metadata catalog `{id}` is not exposed by target `{}`",
+                self.target().id()
+            )));
+        }
+        collect_metadata_with_theme_compiler(self, key, Some(compiler))
+    }
 }
 
 fn assert_runtime_catalog_json_safe_integers(catalog: &RuntimeCatalog) {
@@ -626,7 +644,33 @@ pub fn supported_themes() -> &'static [&'static str] {
     merman::supported_themes()
 }
 
+#[cfg(feature = "svg")]
 fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingThemeCatalog {
+    theme_catalog_for_with_compiler(artifact_contract, None)
+}
+
+#[cfg(not(feature = "svg"))]
+fn theme_catalog_for(_artifact_contract: &ValidatedArtifactContract) -> BindingThemeCatalog {
+    BindingThemeCatalog {
+        schema_version: THEME_CATALOG_SCHEMA_VERSION,
+        structured_spec_available: false,
+        supported_output_ids: Vec::new(),
+        presets: Vec::new(),
+        known_capability_ids: Vec::new(),
+        known_text_capability_ids: Vec::new(),
+        known_font_container_ids: Vec::new(),
+        known_font_source_ids: Vec::new(),
+        known_semantic_target_ids: Vec::new(),
+        known_variant_ids: Vec::new(),
+        resource_limits: Vec::new(),
+    }
+}
+
+#[cfg(feature = "svg")]
+fn theme_catalog_for_with_compiler(
+    artifact_contract: &ValidatedArtifactContract,
+    compiler: Option<&merman::svg::DiagramThemeCompiler>,
+) -> BindingThemeCatalog {
     if !artifact_contract.exposes_capability(crate::CapabilityKey::Svg) {
         return BindingThemeCatalog {
             schema_version: THEME_CATALOG_SCHEMA_VERSION,
@@ -643,109 +687,90 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
         };
     }
 
-    #[cfg(feature = "svg")]
-    {
-        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
-            merman::svg::ThemeResourcePolicy::for_profile(
-                merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
-            ),
-        );
-        let presets = binding_theme_presets(&compiler);
-        let supported_output_ids = sorted_theme_ids(
-            artifact_contract
-                .output_keys()
-                .filter(|output| {
-                    matches!(
-                        output,
-                        crate::OutputKey::Svg
-                            | crate::OutputKey::Png
-                            | crate::OutputKey::Jpeg
-                            | crate::OutputKey::Pdf
-                    )
-                })
-                .map(crate::OutputKey::id)
-                .collect(),
-        );
-        let resources = compiler.resource_policy();
-        let mut resource_limits = merman::svg::theme_resource_limit_descriptors()
-            .iter()
-            .map(|descriptor| BindingThemeResourceLimit {
-                id: descriptor.stable_id,
-                phase: descriptor.phase.as_str(),
-                description: descriptor.description,
-                effective_value: resources
-                    .value(descriptor.id)
-                    .map(|value| u64::try_from(value).expect("theme limits fit in u64")),
-                hard_cap: descriptor.hard_cap,
+    let default_compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+        merman::svg::ThemeResourcePolicy::for_profile(
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        ),
+    );
+    let compiler = compiler.unwrap_or(&default_compiler);
+    let presets = binding_theme_presets(compiler);
+    let supported_output_ids = sorted_theme_ids(
+        artifact_contract
+            .output_keys()
+            .filter(|output| {
+                matches!(
+                    output,
+                    crate::OutputKey::Svg
+                        | crate::OutputKey::Png
+                        | crate::OutputKey::Jpeg
+                        | crate::OutputKey::Pdf
+                )
             })
-            .collect::<Vec<_>>();
-        resource_limits.sort_unstable_by_key(|limit| limit.id);
-        BindingThemeCatalog {
-            schema_version: THEME_CATALOG_SCHEMA_VERSION,
-            structured_spec_available: true,
-            supported_output_ids,
-            presets,
-            known_capability_ids: sorted_theme_ids(
-                merman::svg::ThemeCapability::ALL
-                    .iter()
-                    .copied()
-                    .map(merman::svg::ThemeCapability::id)
-                    .collect(),
-            ),
-            known_text_capability_ids: sorted_theme_ids(
-                merman::svg::TextLayoutCapability::ALL
-                    .iter()
-                    .copied()
-                    .map(merman::svg::TextLayoutCapability::id)
-                    .collect(),
-            ),
-            known_font_container_ids: sorted_theme_ids(
-                merman::svg::FontContainer::ALL
-                    .iter()
-                    .copied()
-                    .map(merman::svg::FontContainer::id)
-                    .collect(),
-            ),
-            known_font_source_ids: sorted_theme_ids(
-                merman::svg::FontSource::ALL
-                    .iter()
-                    .copied()
-                    .map(merman::svg::FontSource::id)
-                    .collect(),
-            ),
-            known_semantic_target_ids: sorted_theme_ids(
-                merman::svg::ThemeTarget::ALL
-                    .iter()
-                    .copied()
-                    .map(merman::svg::ThemeTarget::id)
-                    .collect(),
-            ),
-            known_variant_ids: sorted_theme_ids(
-                merman::svg::ThemeVariant::ALL
-                    .iter()
-                    .copied()
-                    .map(merman::svg::ThemeVariant::id)
-                    .collect(),
-            ),
-            resource_limits,
-        }
-    }
-
-    #[cfg(not(feature = "svg"))]
-    {
-        BindingThemeCatalog {
-            schema_version: THEME_CATALOG_SCHEMA_VERSION,
-            structured_spec_available: false,
-            supported_output_ids: Vec::new(),
-            presets: Vec::new(),
-            known_capability_ids: Vec::new(),
-            known_text_capability_ids: Vec::new(),
-            known_font_container_ids: Vec::new(),
-            known_font_source_ids: Vec::new(),
-            known_semantic_target_ids: Vec::new(),
-            known_variant_ids: Vec::new(),
-            resource_limits: Vec::new(),
-        }
+            .map(crate::OutputKey::id)
+            .collect(),
+    );
+    let resources = compiler.resource_policy();
+    let mut resource_limits = merman::svg::theme_resource_limit_descriptors()
+        .iter()
+        .map(|descriptor| BindingThemeResourceLimit {
+            id: descriptor.stable_id,
+            phase: descriptor.phase.as_str(),
+            description: descriptor.description,
+            effective_value: resources
+                .value(descriptor.id)
+                .map(|value| u64::try_from(value).expect("theme limits fit in u64")),
+            hard_cap: descriptor.hard_cap,
+        })
+        .collect::<Vec<_>>();
+    resource_limits.sort_unstable_by_key(|limit| limit.id);
+    BindingThemeCatalog {
+        schema_version: THEME_CATALOG_SCHEMA_VERSION,
+        structured_spec_available: true,
+        supported_output_ids,
+        presets,
+        known_capability_ids: sorted_theme_ids(
+            merman::svg::ThemeCapability::ALL
+                .iter()
+                .copied()
+                .map(merman::svg::ThemeCapability::id)
+                .collect(),
+        ),
+        known_text_capability_ids: sorted_theme_ids(
+            merman::svg::TextLayoutCapability::ALL
+                .iter()
+                .copied()
+                .map(merman::svg::TextLayoutCapability::id)
+                .collect(),
+        ),
+        known_font_container_ids: sorted_theme_ids(
+            merman::svg::FontContainer::ALL
+                .iter()
+                .copied()
+                .map(merman::svg::FontContainer::id)
+                .collect(),
+        ),
+        known_font_source_ids: sorted_theme_ids(
+            merman::svg::FontSource::ALL
+                .iter()
+                .copied()
+                .map(merman::svg::FontSource::id)
+                .collect(),
+        ),
+        known_semantic_target_ids: sorted_theme_ids(
+            merman::svg::ThemeTarget::ALL
+                .iter()
+                .copied()
+                .map(merman::svg::ThemeTarget::id)
+                .collect(),
+        ),
+        known_variant_ids: sorted_theme_ids(
+            merman::svg::ThemeVariant::ALL
+                .iter()
+                .copied()
+                .map(merman::svg::ThemeVariant::id)
+                .collect(),
+        ),
+        resource_limits,
     }
 }
 
@@ -888,6 +913,18 @@ fn theme_catalog_json_for(
     serde_json::to_vec(&theme_catalog_for(artifact_contract)).map_err(internal_json_error)
 }
 
+#[cfg(feature = "svg")]
+pub(crate) fn theme_catalog_json_for_compiler(
+    artifact_contract: &ValidatedArtifactContract,
+    compiler: &merman::svg::DiagramThemeCompiler,
+) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&theme_catalog_for_with_compiler(
+        artifact_contract,
+        Some(compiler),
+    ))
+    .map_err(internal_json_error)
+}
+
 pub fn lint_rule_catalog() -> Result<Vec<RuleCatalogEntry>, BindingError> {
     #[cfg(feature = "analysis")]
     {
@@ -980,13 +1017,40 @@ fn collect_metadata(
     artifact_contract: &ValidatedArtifactContract,
     key: MetadataKey,
 ) -> Result<Vec<u8>, BindingError> {
+    #[cfg(feature = "svg")]
+    {
+        return collect_metadata_with_theme_compiler(artifact_contract, key, None);
+    }
+
+    #[cfg(not(feature = "svg"))]
+    {
+        match key.spec().handler() {
+            MetadataHandlerKey::AsciiCapabilities => ascii_capabilities_json(),
+            MetadataHandlerKey::DiagramFamilyCapabilities => diagram_family_capabilities_json(),
+            MetadataHandlerKey::LintRuleCatalog => lint_rule_catalog_json(),
+            MetadataHandlerKey::SupportedDiagrams => supported_diagrams_json(),
+            MetadataHandlerKey::SupportedThemes => supported_themes_json(),
+            MetadataHandlerKey::ThemeCatalog => theme_catalog_json_for(artifact_contract),
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+pub(crate) fn collect_metadata_with_theme_compiler(
+    artifact_contract: &ValidatedArtifactContract,
+    key: MetadataKey,
+    compiler: Option<&merman::svg::DiagramThemeCompiler>,
+) -> Result<Vec<u8>, BindingError> {
     match key.spec().handler() {
         MetadataHandlerKey::AsciiCapabilities => ascii_capabilities_json(),
         MetadataHandlerKey::DiagramFamilyCapabilities => diagram_family_capabilities_json(),
         MetadataHandlerKey::LintRuleCatalog => lint_rule_catalog_json(),
         MetadataHandlerKey::SupportedDiagrams => supported_diagrams_json(),
         MetadataHandlerKey::SupportedThemes => supported_themes_json(),
-        MetadataHandlerKey::ThemeCatalog => theme_catalog_json_for(artifact_contract),
+        MetadataHandlerKey::ThemeCatalog => match compiler {
+            Some(compiler) => theme_catalog_json_for_compiler(artifact_contract, compiler),
+            None => theme_catalog_json_for(artifact_contract),
+        },
     }
 }
 

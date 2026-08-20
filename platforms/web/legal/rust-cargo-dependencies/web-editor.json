@@ -36,13 +36,13 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "e481a7d5eece6a1282526ceaad258a35378537e6b9a57851417229a06c2322d9",
+    "cargo_lock_sha256": "2298f13e17a7158896a54308ee514f4ec8ef69689454f26ce7e1c2d038a0d7b4",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "40ed32809ff00898cd9c49a8b9df98f373ccb0651f770d881f9a8891ed74c565"
   },
   "dependency_closure": {
     "package_count": 99,
-    "packages_sha256": "2747acaa6f614c3f4dcf985e08efbf74e9ec5d41cf89231e253f19f10cc735be"
+    "packages_sha256": "620b326d1449e1c8d744fc765a5c6a5fb3d97229490af0305c02e352c5607ca5"
   },
   "licenses": [
     {
@@ -249,7 +249,7 @@
         },
         {
           "name": "thiserror",
-          "version": "2.0.19",
+          "version": "2.0.20",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -259,7 +259,7 @@
         },
         {
           "name": "thiserror-impl",
-          "version": "2.0.19",
+          "version": "2.0.20",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -287,7 +287,7 @@
       "packages": [
         {
           "name": "futures-core",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -295,7 +295,7 @@
         },
         {
           "name": "futures-task",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -303,7 +303,7 @@
         },
         {
           "name": "futures-util",
-          "version": "0.3.33",
+          "version": "0.3.34",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -353,7 +353,7 @@
       "packages": [
         {
           "name": "base64",
-          "version": "0.23.0",
+          "version": "0.23.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -477,7 +477,7 @@
         },
         {
           "name": "js-sys",
-          "version": "0.3.103",
+          "version": "0.3.104",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -597,7 +597,7 @@
         },
         {
           "name": "wasm-bindgen",
-          "version": "0.2.126",
+          "version": "0.2.127",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -607,7 +607,7 @@
         },
         {
           "name": "wasm-bindgen-macro",
-          "version": "0.2.126",
+          "version": "0.2.127",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -617,7 +617,7 @@
         },
         {
           "name": "wasm-bindgen-macro-support",
-          "version": "0.2.126",
+          "version": "0.2.127",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -627,7 +627,7 @@
         },
         {
           "name": "wasm-bindgen-shared",
-          "version": "0.2.126",
+          "version": "0.2.127",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [

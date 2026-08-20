@@ -25,7 +25,6 @@ const ANALYZE_OPERATION: &str = "analyze";
 const TYPST_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::AnalysisJson,
-    #[cfg(feature = "svg")]
     OperationKey::Svg,
 ];
 const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[

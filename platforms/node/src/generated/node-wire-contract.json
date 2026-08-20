@@ -23,7 +23,10 @@
     ],
     "system_adapter_ids": [],
     "operation_ids": [
+      "describe-theme-support-json",
+      "export-theme-preset-json",
       "layout-json",
+      "materialize-theme-json",
       "semantic-json",
       "svg",
       "svg-plan-json"

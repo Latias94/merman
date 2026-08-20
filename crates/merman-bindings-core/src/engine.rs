@@ -286,6 +286,30 @@ impl BindingEngine {
             .map_err(BindingError::cancelled)?;
         let operation = admitted.operation();
         match operation.key() {
+            crate::OperationKey::DescribeThemeSupportJson
+            | crate::OperationKey::ExportThemePresetJson
+            | crate::OperationKey::MaterializeThemeJson => {
+                #[cfg(feature = "svg")]
+                {
+                    control
+                        .checkpoint_at(OperationPhase::Parse)
+                        .map_err(BindingError::cancelled)?;
+                    let output = execute_theme_authoring_with_compiler(
+                        operation.key(),
+                        &configs.theme_compiler,
+                        source,
+                    )?;
+                    control
+                        .checkpoint_at(OperationPhase::Postprocess)
+                        .map_err(BindingError::cancelled)?;
+                    Ok(BindingOperationOutput::plain(output))
+                }
+                #[cfg(not(feature = "svg"))]
+                {
+                    let _ = configs;
+                    Err(common::feature_required_error("theme authoring", "svg"))
+                }
+            }
             crate::OperationKey::SemanticJson => configs
                 .semantic
                 .materialize()
@@ -481,8 +505,54 @@ impl BindingEngine {
         self.artifact_contract.admit_operation(operation)
     }
 
+    #[cfg(feature = "svg")]
+    pub(crate) fn execute_theme_authoring_data(
+        &self,
+        operation: crate::OperationKey,
+        input: &[u8],
+    ) -> Result<Vec<u8>, BindingError> {
+        execute_theme_authoring_with_compiler(operation, &self.theme_compiler, input)
+    }
+
     pub fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         self.execute_data(crate::BindingOperationRequest::new("svg", source))
+    }
+
+    /// Returns metadata projected through this engine's immutable resource policy.
+    pub fn metadata_json(&self, id: &str) -> Result<Vec<u8>, BindingError> {
+        #[cfg(feature = "svg")]
+        {
+            self.artifact_contract
+                .metadata_json_with_theme_compiler(id, &self.theme_compiler)
+        }
+        #[cfg(not(feature = "svg"))]
+        {
+            self.artifact_contract.metadata_json(id)
+        }
+    }
+
+    /// Materializes one versioned theme definition under this engine's resource policy.
+    pub fn materialize_theme(&self, definition_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "materialize-theme-json",
+            definition_json,
+        ))
+    }
+
+    /// Describes the static support bound for one versioned theme query.
+    pub fn describe_theme_support(&self, query_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "describe-theme-support-json",
+            query_json,
+        ))
+    }
+
+    /// Exports one built-in preset as a closed self-contained recipe envelope.
+    pub fn export_theme_preset(&self, preset_id: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "export-theme-preset-json",
+            preset_id,
+        ))
     }
 
     pub(crate) fn render_svg_output(
@@ -929,6 +999,8 @@ pub(crate) struct BindingOperationConfigs {
     analysis: merman_analysis::AnalysisOptions,
     #[cfg(feature = "svg")]
     render: crate::render::RenderOperationConfig,
+    #[cfg(feature = "svg")]
+    theme_compiler: merman::svg::DiagramThemeCompiler,
     #[cfg(feature = "ascii")]
     ascii: crate::ascii::AsciiOperationConfig,
 }
@@ -946,6 +1018,9 @@ impl BindingOperationConfigs {
         #[cfg(feature = "analysis")]
         let analysis =
             common::artifact_analysis_options(options)?.with_runtime_policy(runtime_policy.clone());
+        #[cfg(feature = "svg")]
+        let theme_compiler =
+            merman::svg::DiagramThemeCompiler::new().with_resource_policy(theme_resources.clone());
         #[cfg(feature = "svg")]
         let render = crate::render::RenderOperationConfig::compile(
             options,
@@ -965,9 +1040,37 @@ impl BindingOperationConfigs {
             analysis,
             #[cfg(feature = "svg")]
             render,
+            #[cfg(feature = "svg")]
+            theme_compiler,
             #[cfg(feature = "ascii")]
             ascii,
         })
+    }
+}
+
+#[cfg(feature = "svg")]
+pub(crate) fn execute_theme_authoring_with_compiler(
+    operation: crate::OperationKey,
+    compiler: &merman::svg::DiagramThemeCompiler,
+    input: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    match operation {
+        crate::OperationKey::MaterializeThemeJson => {
+            crate::theme_definition::materialize_theme_definition_json_with_resource_policy(
+                input,
+                compiler.resource_policy(),
+            )
+        }
+        crate::OperationKey::DescribeThemeSupportJson => {
+            crate::theme_definition::describe_theme_support_json_with_resource_policy(
+                input,
+                compiler.resource_policy(),
+            )
+        }
+        crate::OperationKey::ExportThemePresetJson => {
+            crate::theme_definition::export_theme_preset_json_with(compiler, input)
+        }
+        _ => unreachable!("theme authoring dispatch requires a theme authoring operation"),
     }
 }
 
@@ -1380,6 +1483,66 @@ mod tests {
             assert_eq!(details.profile, "constrained");
             assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
         }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_engine_exposes_theme_authoring_under_one_resource_policy() {
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"constrained"}}"#)
+            .expect("constrained engine");
+        let definition = br##"{
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": { "text": "#123456", "accent": "#abcdef" }
+        }"##;
+        let materialized = engine
+            .materialize_theme(definition)
+            .expect("the reusable engine should materialize definitions");
+        let generic = engine
+            .execute_data(crate::BindingOperationRequest::new(
+                "materialize-theme-json",
+                definition,
+            ))
+            .expect("the generic operation should share the same implementation");
+        assert_eq!(materialized, generic);
+        let materialized: Value = serde_json::from_slice(&materialized).unwrap();
+        assert_eq!(materialized["schema_version"], 1);
+        assert_eq!(materialized["spec"]["styles"].is_array(), true);
+
+        let support = engine
+            .describe_theme_support(
+                br#"{"schema_version":2,"family":"sequence","output":"standalone-svg","subject":{"kind":"base-typography","property":"font-stack"}}"#,
+            )
+            .expect("the reusable engine should expose support discovery");
+        let support: Value = serde_json::from_slice(&support).unwrap();
+        assert_eq!(support["schema_version"], 2);
+        assert_eq!(support["query"]["family"], "sequence");
+
+        let preset = engine
+            .export_theme_preset(b"editor-light")
+            .expect("the reusable engine should export built-in presets");
+        let preset: Value = serde_json::from_slice(&preset).unwrap();
+        assert_eq!(preset["kind"], "complete_spec");
+
+        let catalog = engine
+            .metadata_json("theme-catalog")
+            .expect("engine metadata should use the same policy");
+        let catalog: Value = serde_json::from_slice(&catalog).unwrap();
+        let encoded_limit = catalog["resource_limits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|limit| limit["id"] == "max_theme_encoded_bytes")
+            .expect("theme encoded-byte limit");
+        assert_eq!(
+            encoded_limit["effective_value"],
+            u64::try_from(
+                merman::svg::ThemeResourcePolicy::constrained()
+                    .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+                    .unwrap()
+            )
+            .unwrap()
+        );
     }
 
     #[cfg(feature = "svg")]

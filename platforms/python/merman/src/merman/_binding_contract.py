@@ -110,6 +110,12 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
+        "operation_id": "describe-theme-support-json",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
         "operation_id": "document-analysis-facts-json",
         "availability_capability_id": "analysis",
         "output_id": None,
@@ -122,6 +128,12 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
+        "operation_id": "export-theme-preset-json",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
         "operation_id": "jpeg",
         "availability_capability_id": "jpeg",
         "output_id": "jpeg",
@@ -129,6 +141,12 @@ BINDING_OPERATION_RELATION_SPECS = (
     },
     {
         "operation_id": "layout-json",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
+        "operation_id": "materialize-theme-json",
         "availability_capability_id": "svg",
         "output_id": None,
         "compiled_prerequisite_ids": (),

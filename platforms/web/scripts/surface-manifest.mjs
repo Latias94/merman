@@ -53,6 +53,9 @@ const analysisMetadataRuntimeExportNames = ["lintRuleCatalog"];
 const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 
 const renderRuntimeExportNames = [
+  "materializeTheme",
+  "describeThemeSupport",
+  "exportThemePreset",
   "renderSvg",
   "svgPlanJson",
   "renderSvgWithTextMeasurer",
@@ -66,6 +69,9 @@ const renderRuntimeExportNames = [
 ];
 
 const renderWasmExportNames = [
+  "materializeTheme",
+  "describeThemeSupport",
+  "exportThemePreset",
   "renderSvg",
   "svgPlanJson",
   "renderSvgWithTextMeasurer",

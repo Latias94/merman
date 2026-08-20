@@ -384,6 +384,21 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
+    "operation_id": "describe-theme-support-json",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
+    }
+  },
+  {
     "operation_id": "document-analysis-facts-json",
     "output_id": null,
     "media_type": "application/json",
@@ -414,6 +429,21 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
+    "operation_id": "export-theme-preset-json",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
+    }
+  },
+  {
     "operation_id": "jpeg",
     "output_id": "jpeg",
     "media_type": "image/jpeg",
@@ -432,6 +462,21 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "layout-json",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
+    }
+  },
+  {
+    "operation_id": "materialize-theme-json",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,

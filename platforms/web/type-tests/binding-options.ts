@@ -1,4 +1,9 @@
 import { withResourceOptions } from "../src/runtime-core.js";
+import {
+  describeThemeSupport,
+  exportThemePreset,
+  materializeTheme,
+} from "../src/runtime-render.js";
 import type {
   AsciiBindingOptions,
   CommonBindingOptions,
@@ -9,6 +14,9 @@ import type {
   ThemeLinearGradientRepetition,
   ThemePaint,
   ThemeRadialGradientRepetition,
+  ThemeCapabilityDescriptorV2,
+  ThemeDefinitionV1,
+  ThemeSupportQueryV2,
 } from "../src/public-types.js";
 
 const resources: ResourceOptions = { profile: "interactive" };
@@ -42,6 +50,31 @@ const svgOptions: SvgBindingOptions = {
   parse: { suppress_errors: true },
   svg: { diagram_id: "example" },
 };
+
+const themeDefinition: ThemeDefinitionV1 = {
+  authoring_schema_version: 1,
+  expansion_version: 1,
+  tokens: { text: "#123456", accent: "#abcdef" },
+};
+const materializedTheme = materializeTheme(themeDefinition, {
+  resources: { profile: "constrained" },
+});
+materializedTheme.spec.styles;
+
+const supportQuery: ThemeSupportQueryV2 = {
+  schema_version: 2,
+  family: "sequence",
+  output: "standalone-svg",
+  subject: { kind: "base-typography", property: "font-stack" },
+};
+const supportDescriptor: ThemeCapabilityDescriptorV2 =
+  describeThemeSupport(supportQuery);
+supportDescriptor.state;
+
+const presetExport = exportThemePreset("editor-light");
+if (presetExport.kind === "complete_spec") {
+  presetExport.complete_spec;
+}
 
 const tightenedSvgOptions = withResourceOptions(
   {
@@ -132,6 +165,11 @@ void mermanWrappedEditorOptions;
 void commonOptions;
 void asciiOptions;
 void svgOptions;
+void themeDefinition;
+void materializedTheme;
+void supportQuery;
+void supportDescriptor;
+void presetExport;
 void mixedAnalysisRoot;
 void mixedMermanRoot;
 void duplicateWrapperRoot;

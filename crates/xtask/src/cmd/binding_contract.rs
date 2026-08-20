@@ -30,7 +30,10 @@ const PYTHON_OUTPUT: &str = "platforms/python/merman/src/merman/_binding_contrac
 const KOTLIN_OUTPUT: &str = "platforms/android/src/main/kotlin/io/merman/MermanBindingContract.kt";
 const DART_OUTPUT: &str = "platforms/flutter/lib/src/generated/binding_contract.dart";
 const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
+    OperationKey::DescribeThemeSupportJson,
+    OperationKey::ExportThemePresetJson,
     OperationKey::LayoutJson,
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
@@ -43,7 +46,10 @@ const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
     OperationKey::Ascii,
     OperationKey::DocumentAnalysisFactsJson,
     OperationKey::DocumentAnalysisJson,
+    OperationKey::DescribeThemeSupportJson,
+    OperationKey::ExportThemePresetJson,
     OperationKey::LayoutJson,
+    OperationKey::MaterializeThemeJson,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
@@ -2065,7 +2071,7 @@ mod tests {
     fn shared_operation_projection_consumes_the_complete_typed_matrix() {
         let projection = shared_operation_contract_projection();
         assert_eq!(projection.schema_version, 1);
-        assert_eq!(projection.operation_expectations.len(), 13);
+        assert_eq!(projection.operation_expectations.len(), 16);
         assert_eq!(
             projection.operation_metadata_contract,
             operation_metadata_contract()

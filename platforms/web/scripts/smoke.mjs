@@ -393,6 +393,59 @@ if (hasCapability("svg")) {
         id === "max_theme_encoded_bytes" && effective_value > 0 && !hard_cap,
     ),
   );
+
+  for (const operationId of [
+    "materialize-theme-json",
+    "describe-theme-support-json",
+    "export-theme-preset-json",
+  ]) {
+    assert.ok(
+      capabilities.operation_ids.includes(operationId),
+      `Web runtime catalog must advertise ${operationId}`,
+    );
+  }
+
+  const themeDefinition = {
+    authoring_schema_version: 1,
+    expansion_version: 1,
+    tokens: { text: "#123456", accent: "#abcdef" },
+  };
+  const themeResourceOptions = { resources: { profile: "constrained" } };
+  const materializedTheme = api.materializeTheme(
+    themeDefinition,
+    themeResourceOptions,
+  );
+  assert.equal(materializedTheme.schema_version, 1);
+  assert.ok(Array.isArray(materializedTheme.spec.styles));
+  assert.deepEqual(
+    exportedWasmModule.materializeTheme(
+      JSON.stringify(themeDefinition),
+      JSON.stringify(themeResourceOptions),
+    ),
+    materializedTheme,
+  );
+
+  const supportQuery = {
+    schema_version: 2,
+    family: "sequence",
+    output: "standalone-svg",
+    subject: { kind: "base-typography", property: "font-stack" },
+  };
+  const support = api.describeThemeSupport(supportQuery);
+  assert.equal(support.schema_version, 2);
+  assert.equal(support.query.family, "sequence");
+  assert.deepEqual(
+    exportedWasmModule.describeThemeSupport(JSON.stringify(supportQuery)),
+    support,
+  );
+
+  const presetExport = api.exportThemePreset("editor-light");
+  assert.equal(presetExport.kind, "complete_spec");
+  assert.equal(typeof presetExport.complete_spec, "object");
+  assert.deepEqual(
+    exportedWasmModule.exportThemePreset("editor-light"),
+    presetExport,
+  );
 } else {
   assert.equal(themeCatalog.structured_spec_available, false);
   assert.deepEqual(themeCatalog.supported_output_ids, []);
@@ -400,6 +453,9 @@ if (hasCapability("svg")) {
   assert.deepEqual(themeCatalog.known_capability_ids, []);
   assert.deepEqual(themeCatalog.known_semantic_target_ids, []);
   assert.deepEqual(themeCatalog.resource_limits, []);
+  assert.equal(typeof api.materializeTheme, "undefined");
+  assert.equal(typeof api.describeThemeSupport, "undefined");
+  assert.equal(typeof api.exportThemePreset, "undefined");
 }
 const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
@@ -411,6 +467,7 @@ const expectedResourceLimitIds = [
   "max_model_items",
   "max_model_nesting_depth",
   "max_model_text_bytes",
+  ...(hasCapability("svg") ? ["max_prepared_text_retained_bytes"] : []),
   "max_source_bytes",
   ...(hasCapability("svg") ? ["max_svg_bytes", "max_svg_elements"] : []),
 ].sort();

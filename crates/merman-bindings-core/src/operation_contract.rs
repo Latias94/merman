@@ -321,11 +321,12 @@ impl BindingUnavailableOperationExpectation {
     }
 }
 
-/// One descriptor-derived row in the shared 13-operation expectation matrix.
+/// One descriptor-derived row in the shared operation expectation matrix.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct BindingOperationExpectation {
     operation_id: &'static str,
+    input_kind: &'static str,
     output_id: Option<&'static str>,
     media_type: &'static str,
     metadata_schema_version: u32,
@@ -340,6 +341,11 @@ impl BindingOperationExpectation {
     #[must_use]
     pub const fn operation_id(&self) -> &'static str {
         self.operation_id
+    }
+
+    #[must_use]
+    pub const fn input_kind(&self) -> &'static str {
+        self.input_kind
     }
 
     #[must_use]
@@ -401,6 +407,7 @@ pub fn binding_operation_expectations() -> &'static [BindingOperationExpectation
                 });
                 BindingOperationExpectation {
                     operation_id: operation.operation_id(),
+                    input_kind: operation.input_kind(),
                     output_id: operation.key().spec().output.map(crate::OutputKey::id),
                     media_type: operation.media_type(),
                     metadata_schema_version: BINDING_OPERATION_SCHEMA_VERSION,
@@ -468,9 +475,10 @@ mod tests {
     #[test]
     fn shared_expectation_matrix_covers_every_descriptor_operation() {
         let rows = binding_operation_expectations();
-        assert_eq!(rows.len(), 13);
+        assert_eq!(rows.len(), 16);
         for (row, operation) in rows.iter().zip(BindingOperationKind::all()) {
             assert_eq!(row.operation_id(), operation.operation_id());
+            assert_eq!(row.input_kind(), operation.input_kind());
             assert_eq!(
                 row.output_id(),
                 operation.key().spec().output.map(crate::OutputKey::id)
@@ -532,8 +540,9 @@ mod tests {
 
         let matrix: serde_json::Value =
             serde_json::from_slice(&binding_operation_expectations_json().unwrap()).unwrap();
-        assert_eq!(matrix.as_array().unwrap().len(), 13);
+        assert_eq!(matrix.as_array().unwrap().len(), 16);
         assert_eq!(matrix[0]["operation_id"], "analysis-facts-json");
+        assert_eq!(matrix[0]["input_kind"], "mermaid-source");
         let png = matrix
             .as_array()
             .unwrap()
@@ -543,6 +552,6 @@ mod tests {
         assert_eq!(png["output_id"], "png");
         assert_eq!(png["availability_capability_id"], "png");
         assert_eq!(png["compiled_prerequisite_ids"], serde_json::json!(["svg"]));
-        assert_eq!(matrix[12]["operation_id"], "validation-json");
+        assert_eq!(matrix[15]["operation_id"], "validation-json");
     }
 }
