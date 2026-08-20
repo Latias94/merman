@@ -16,7 +16,9 @@ import type {
   ThemeRadialGradientRepetition,
   ThemeCapabilityDescriptorV2,
   ThemeDefinitionV1,
+  ThemeStylePatch,
   ThemeSupportQueryV2,
+  ThemeSupportUnknownSubjectKindV2,
 } from "../src/public-types.js";
 
 const resources: ResourceOptions = { profile: "interactive" };
@@ -70,6 +72,44 @@ const supportQuery: ThemeSupportQueryV2 = {
 const supportDescriptor: ThemeCapabilityDescriptorV2 =
   describeThemeSupport(supportQuery);
 supportDescriptor.state;
+
+const futureSubjectKind = "future-subject" as ThemeSupportUnknownSubjectKindV2;
+const futureSupportQuery: ThemeSupportQueryV2 = {
+  schema_version: 2,
+  family: "sequence",
+  output: "standalone-svg",
+  subject: { kind: futureSubjectKind, future_option: true },
+};
+
+const incompleteRuleSupportQuery = {
+  schema_version: 2,
+  family: "sequence",
+  output: "standalone-svg",
+  // @ts-expect-error known rule subjects require both target and facet.
+  subject: { kind: "rule" },
+} satisfies ThemeSupportQueryV2;
+
+const incompleteOrdinalSupportQuery = {
+  schema_version: 2,
+  family: "sequence",
+  output: "standalone-svg",
+  // @ts-expect-error known ordinal-palette subjects require target.
+  subject: { kind: "ordinal-palette" },
+} satisfies ThemeSupportQueryV2;
+
+const incompleteTypographySupportQuery = {
+  schema_version: 2,
+  family: "sequence",
+  output: "standalone-svg",
+  // @ts-expect-error known base-typography subjects require property.
+  subject: { kind: "base-typography" },
+} satisfies ThemeSupportQueryV2;
+
+// @ts-expect-error the Rust authoring wire rejects null for the outer stroke patch.
+const nullOuterStroke = { stroke: null } satisfies ThemeStylePatch;
+
+// @ts-expect-error the Rust authoring wire rejects null for the outer typography patch.
+const nullOuterTypography = { typography: null } satisfies ThemeStylePatch;
 
 const presetExport = exportThemePreset("editor-light");
 if (presetExport.kind === "complete_spec") {
@@ -169,6 +209,12 @@ void themeDefinition;
 void materializedTheme;
 void supportQuery;
 void supportDescriptor;
+void futureSupportQuery;
+void incompleteRuleSupportQuery;
+void incompleteOrdinalSupportQuery;
+void incompleteTypographySupportQuery;
+void nullOuterStroke;
+void nullOuterTypography;
 void presetExport;
 void mixedAnalysisRoot;
 void mixedMermanRoot;

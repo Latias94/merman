@@ -271,11 +271,28 @@ export interface ThemeSupportQueryV1 {
   facet: string;
 }
 
+declare const themeSupportUnknownSubjectKind: unique symbol;
+
+/**
+ * A subject kind not understood by this Web contract revision.
+ *
+ * The brand prevents an incomplete known subject such as `{ kind: "rule" }` from falling through
+ * to the forward-compatible branch. Values decoded from a newer runtime can retain their unknown
+ * kind, while authored known subjects remain checked against their exact required fields.
+ */
+export type ThemeSupportUnknownSubjectKindV2 = string & {
+  readonly [themeSupportUnknownSubjectKind]: "unknown-theme-support-subject";
+};
+
+export type ThemeSupportUnknownSubjectV2 = {
+  kind: ThemeSupportUnknownSubjectKindV2;
+} & Record<string, unknown>;
+
 export type ThemeSupportSubjectV2 =
   | { kind: "rule"; target: string; facet: string }
   | { kind: "ordinal-palette"; target: string }
   | { kind: "base-typography"; property: string }
-  | ({ kind: string } & Record<string, unknown>);
+  | ThemeSupportUnknownSubjectV2;
 
 export interface ThemeSupportQueryV2 {
   schema_version: 2;
@@ -420,10 +437,10 @@ export interface ThemeStylePatch {
   fill?: ThemePatch<ThemePaint>;
   opacity?: ThemePatch<number>;
   fill_opacity?: ThemePatch<number>;
-  stroke?: ThemePatch<ThemeStrokePatch>;
+  stroke?: ThemeStrokePatch;
   radius?: ThemePatch<number>;
   padding?: ThemePatch<ThemeInsets>;
-  typography?: ThemePatch<ThemeTextStylePatch>;
+  typography?: ThemeTextStylePatch;
   effect?: ThemePatch<string>;
 }
 
