@@ -5280,20 +5280,29 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
 }
 
 #[test]
-fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
-    // Mermaid CLI (mmdc) currently does not reflect `sequence.messageFontSize` overrides in the
-    // emitted SVG; it sticks to the global `fontSize` defaults. Keep our Stage B output aligned
-    // with the upstream baselines under `fixtures/upstream-svgs/sequence`.
+fn sequence_message_font_size_override_reaches_each_message_terminal() {
     let svg = render_sequence_svg_from_fixture(
         "upstream_cypress_sequencediagram_spec_should_render_different_message_fonts_when_configured_011.mmd",
     );
-    assert!(
-        svg.contains("font-size: 16px"),
-        "expected message/actor text to use the global fontSize (16px) like Mermaid CLI baselines"
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+
+    assert_sequence_role_text_style(
+        &document,
+        "messageText",
+        "I'm short",
+        "Arial",
+        "18px",
+        "400",
+        "normal",
     );
-    assert!(
-        !svg.contains("font-size: 18px"),
-        "expected sequence.messageFontSize (18px) to not affect SVG output under the pinned upstream baselines"
+    assert_sequence_role_text_style(
+        &document,
+        "messageText",
+        "Short as well",
+        "Arial",
+        "18px",
+        "400",
+        "normal",
     );
 }
 
