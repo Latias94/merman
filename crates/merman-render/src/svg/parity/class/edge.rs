@@ -10,6 +10,7 @@ use super::label::{
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
+use crate::svg::parity::SvgDiagramId;
 use crate::svg::parity::edge_label_geometry::position_edge_label;
 use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use base64::Engine as _;
@@ -32,8 +33,8 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edges: &'a [LayoutEdge],
     pub relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
-    pub marker_url_prefix: &'a str,
-    pub diagram_id: &'a str,
+    pub diagram_marker_class: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -296,7 +297,6 @@ pub(super) fn render_class_edge_groups(
         }
         edge_class_buf.push_str(" relation");
 
-        let edge_id_attr = format!("{}-{}", ctx.diagram_id, edge_dom_id_buf);
         let _ = write!(out, r#"<path d="{}""#, escape_attr_display(render_d));
         if ctx.look == "handDrawn" {
             let _ = write!(
@@ -307,8 +307,9 @@ pub(super) fn render_class_edge_groups(
         }
         let _ = write!(
             out,
-            r#" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-            escape_attr_display(&edge_id_attr),
+            r#" id="{}-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+            ctx.diagram_id,
+            escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_class_buf),
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_points_b64_buf),
@@ -318,16 +319,22 @@ pub(super) fn render_class_edge_groups(
             && let Some(rel) = ctx.relations_by_id.get(e.id.as_str())
         {
             if let Some(name) = class_marker_name(rel.relation.type1, true) {
-                out.push_str(r#" marker-start="url(#"#);
-                out.push_str(ctx.marker_url_prefix);
-                out.push_str(name);
-                out.push_str(r#")""#);
+                let _ = write!(
+                    out,
+                    r#" marker-start="url(#{}_{}-{})""#,
+                    ctx.diagram_id,
+                    escape_attr_display(ctx.diagram_marker_class),
+                    name,
+                );
             }
             if let Some(name) = class_marker_name(rel.relation.type2, false) {
-                out.push_str(r#" marker-end="url(#"#);
-                out.push_str(ctx.marker_url_prefix);
-                out.push_str(name);
-                out.push_str(r#")""#);
+                let _ = write!(
+                    out,
+                    r#" marker-end="url(#{}_{}-{})""#,
+                    ctx.diagram_id,
+                    escape_attr_display(ctx.diagram_marker_class),
+                    name,
+                );
             }
         }
         let _ = write!(

@@ -16,7 +16,7 @@ fn render_error_diagram_svg_inner(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_view_box(

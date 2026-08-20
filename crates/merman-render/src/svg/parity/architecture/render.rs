@@ -118,7 +118,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
+    let diagram_id = options.diagram_id_or("architecture");
     let settings = ArchitectureRenderSettings::from_config(diagram_id, effective_config);
     let css = settings.css.as_str();
     let icon_size_px = settings.icon_size_px;

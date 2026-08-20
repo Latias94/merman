@@ -1,9 +1,12 @@
+use std::fmt::Write as _;
+
+use super::super::SvgDiagramId;
 use super::super::root_svg;
-use super::super::util::{escape_attr_into, escape_xml_into};
+use super::super::util::escape_xml_into;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub family_kind: crate::family::RenderFamilyKind,
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
     pub use_max_width: bool,
@@ -15,7 +18,7 @@ pub(super) struct FlowchartSvgDocumentRequest<'a> {
 }
 
 pub(super) struct FlowchartSvgDocument<'a> {
-    diagram_id: &'a str,
+    diagram_id: SvgDiagramId<'a>,
     diagram_type: &'a str,
     use_max_width: bool,
     root_viewport: root_svg::RootViewportContext<'a>,
@@ -88,17 +91,13 @@ impl FlowchartSvgDocument<'_> {
     }
 
     pub(super) fn push_accessibility_metadata(&self, out: &mut String) {
-        if let (Some(id), Some(title)) = (self.aria_labelledby.as_deref(), self.acc_title) {
-            out.push_str(r#"<title id=""#);
-            escape_attr_into(out, id);
-            out.push_str(r#"">"#);
+        if let Some(title) = self.acc_title {
+            let _ = write!(out, r#"<title id="chart-title-{}">"#, self.diagram_id);
             escape_xml_into(out, title);
             out.push_str("</title>");
         }
-        if let (Some(id), Some(descr)) = (self.aria_describedby.as_deref(), self.acc_descr) {
-            out.push_str(r#"<desc id=""#);
-            escape_attr_into(out, id);
-            out.push_str(r#"">"#);
+        if let Some(descr) = self.acc_descr {
+            let _ = write!(out, r#"<desc id="chart-desc-{}">"#, self.diagram_id);
             escape_xml_into(out, descr);
             out.push_str("</desc>");
         }

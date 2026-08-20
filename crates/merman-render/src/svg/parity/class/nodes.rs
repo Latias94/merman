@@ -48,7 +48,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
     pub(super) settings: &'a ClassRenderSettings,
     pub(super) effective_config: &'a serde_json::Value,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
@@ -578,7 +578,7 @@ fn render_class_split_edges_for_namespace(
         edges,
         relations_by_id: edge_ctx.relations_by_id,
         relation_index_by_id: edge_ctx.relation_index_by_id,
-        marker_url_prefix: edge_ctx.marker_url_prefix,
+        diagram_marker_class: edge_ctx.diagram_marker_class,
         diagram_id: edge_ctx.diagram_id,
         content_tx: if in_namespace_root {
             // The recursive Class root's x origin already folds in Dagre's fixed graph margin.

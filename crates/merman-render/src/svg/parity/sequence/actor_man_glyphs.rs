@@ -18,7 +18,7 @@ struct ActorManGlyphContext<'a> {
     label_y: f64,
     width: f64,
     height: f64,
-    diagram_id: &'a str,
+    diagram_id: SvgDiagramId<'a>,
 }
 
 fn actor_man_participant_data_attrs(ctx: &ActorManGlyphContext<'_>) -> String {
@@ -41,7 +41,7 @@ pub(super) fn write_actor_man_top_glyph(
     n: &LayoutNode,
     idx: usize,
     actor_height: f64,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -140,7 +140,7 @@ pub(super) fn write_actor_man_bottom_glyph(
     n: &LayoutNode,
     idx: usize,
     metrics: ActorManBottomGlyphMetrics,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -298,8 +298,8 @@ fn write_control_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,
-        marker_id = escape_attr(&marker_id),
-        marker_url = escape_attr(&marker_url),
+        marker_id = escape_attr_display(marker_id),
+        marker_url = escape_attr_display(marker_url),
         cx = fmt(ctx.cx),
         cy = fmt(ctx.cy),
         ly = fmt(ctx.cy - r),

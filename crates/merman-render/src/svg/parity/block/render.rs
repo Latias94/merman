@@ -76,16 +76,16 @@ pub(crate) fn render_block_diagram_svg_model(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
 
-    fn marker_id(diagram_id: &str, marker: &str) -> String {
+    fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
     }
 
-    fn marker_url(diagram_id: &str, marker: &str) -> String {
+    fn marker_url(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("url(#{})", marker_id(diagram_id, marker))
     }
 
-    fn dom_id(diagram_id: &str, raw_id: &str) -> String {
-        if diagram_id.is_empty() {
+    fn dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+        if diagram_id.semantic_str().is_empty() {
             raw_id.to_string()
         } else {
             format!("{diagram_id}-{raw_id}")
@@ -206,7 +206,7 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     fn block_class_css(
-        diagram_id: &str,
+        diagram_id: SvgDiagramId<'_>,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
@@ -223,7 +223,6 @@ pub(crate) fn render_block_diagram_svg_model(
             out
         }
 
-        let id = escape_xml(diagram_id);
         let mut out = String::new();
         for class_def in class_defs.values() {
             let class = escape_xml(&class_def.id);
@@ -232,10 +231,10 @@ pub(crate) fn render_block_diagram_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                    id.as_str(),
+                    diagram_id,
                     class.as_str(),
                     shape_style,
-                    id.as_str(),
+                    diagram_id,
                     class.as_str(),
                     shape_style
                 );
@@ -246,7 +245,7 @@ pub(crate) fn render_block_diagram_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"#{} .{} tspan{{{}}}"#,
-                    id.as_str(),
+                    diagram_id,
                     class.as_str(),
                     text_style
                 );
@@ -256,14 +255,13 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     fn block_css(
-        diagram_id: &str,
+        diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
     ) -> Result<String> {
-        let id = escape_xml(diagram_id);
         let theme = PresentationTheme::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
         let font_size = theme.common.font_size_px;
@@ -285,7 +283,7 @@ pub(crate) fn render_block_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-            id.as_str(),
+            diagram_id,
             font_family,
             fmt(font_size),
             node_text_color
@@ -293,95 +291,85 @@ pub(crate) fn render_block_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-            id.as_str(),
-            stroke_width,
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str()
+            diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
         );
         let _ = write!(
             &mut out,
             r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
-            id.as_str(),
+            diagram_id,
             font_family,
             node_text_color,
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
             node_text_color,
             node_text_color
         );
         let _ = write!(
             &mut out,
             r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span,#{} .cluster-label p{{color:{};}}"#,
-            id.as_str(),
-            title_color,
-            id.as_str(),
-            id.as_str(),
-            title_color
+            diagram_id, title_color, diagram_id, diagram_id, title_color
         );
         let _ = write!(
             &mut out,
             r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
             main_bkg,
             node_border,
-            id.as_str(),
-            id.as_str(),
-            id.as_str()
+            diagram_id,
+            diagram_id,
+            diagram_id
         );
         let _ = write!(
             &mut out,
             r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePath .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
             arrowhead_color,
             line_color,
-            id.as_str(),
+            diagram_id,
             line_color,
-            id.as_str(),
+            diagram_id,
             line_color
         );
         let _ = write!(
             &mut out,
             r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
-            id.as_str(),
+            diagram_id,
             edge_label_background,
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
             edge_label_background,
             edge_label_background,
-            id.as_str(),
+            diagram_id,
             edge_label_background
         );
         let _ = write!(
             &mut out,
             r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
-            id.as_str(),
+            diagram_id,
             cluster_bkg,
             cluster_border,
-            id.as_str(),
+            diagram_id,
             title_color,
-            id.as_str(),
-            id.as_str(),
+            diagram_id,
+            diagram_id,
             title_color,
-            id.as_str(),
+            diagram_id,
             text_color,
-            id.as_str(),
+            diagram_id,
             font_family
         );
         out.push_str(&block_class_css(diagram_id, class_defs));
         Ok(out)
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,

@@ -8,8 +8,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("cynefin");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("cynefin");
     let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
@@ -23,8 +22,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         .as_deref()
         .filter(|value| !value.is_empty())
         .or_else(|| diagram_title.filter(|value| !value.is_empty()));
-    let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id);
-    let marker_id = format!("cynefin-arrow-{diagram_id}");
+    let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id.semantic_str());
 
     let mut out = String::new();
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "cynefin");
@@ -38,16 +36,14 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{}">{}</title>"#,
-            diagram_id_esc,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml_display(title)
         );
     }
     if let Some(descr) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{}">{}</desc>"#,
-            diagram_id_esc,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml_display(descr)
         );
     }
@@ -78,7 +74,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         push_subtitles(&mut out, layout);
     }
     push_items(&mut out, layout, &theme);
-    push_transitions(&mut out, layout, &marker_id);
+    push_transitions(&mut out, layout, diagram_id);
     if let Some(title) = title {
         let _ = write!(
             &mut out,
@@ -93,8 +89,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     if !layout.transitions.is_empty() {
         let _ = write!(
             &mut out,
-            r#"<defs><marker id="{}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead"></path></marker></defs>"#,
-            escape_attr_display(&marker_id)
+            r#"<defs><marker id="cynefin-arrow-{diagram_id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead"></path></marker></defs>"#,
         );
     }
     out.push_str("</svg>\n");
@@ -270,7 +265,7 @@ fn push_items(
     out.push_str("</g>");
 }
 
-fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: &str) {
+fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, diagram_id: SvgDiagramId<'_>) {
     if layout.transitions.is_empty() {
         return;
     }
@@ -287,9 +282,8 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: 
         );
         let _ = write!(
             out,
-            r#"<path class="cynefinArrowLine" d="{}" fill="none" marker-end="url(#{})"></path>"#,
+            r#"<path class="cynefinArrowLine" d="{}" fill="none" marker-end="url(#cynefin-arrow-{diagram_id})"></path>"#,
             escape_attr_display(&d),
-            escape_attr_display(marker_id)
         );
         if let Some(label) = transition
             .label
@@ -308,29 +302,31 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: 
     out.push_str("</g>");
 }
 
-fn cynefin_css(
-    diagram_id: &str,
+fn cynefin_css<I>(
+    diagram_id: I,
     effective_config: &serde_json::Value,
     theme: &crate::cynefin::CynefinTheme,
-) -> String {
-    let id = escape_xml(diagram_id);
+) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
-        "#{id} .cynefinDomain{{stroke:none;}}\
-#{id} .cynefinDomainLabel{{font-size:{}px;font-weight:bold;fill:{};}}\
-#{id} .cynefinSubtitle{{font-size:{}px;fill:{};font-style:italic;}}\
-#{id} .cynefinItem{{fill-opacity:0.95;stroke:{};stroke-width:1;}}\
-#{id} .cynefinItemText{{font-size:{}px;fill:{};}}\
-#{id} .cynefinItemOverflow{{fill-opacity:0.6;stroke:{};stroke-width:1;stroke-dasharray:3 2;}}\
-#{id} .cynefinBoundary{{stroke:{};stroke-width:{};stroke-dasharray:6 3;}}\
-#{id} .cynefinCliff{{stroke:{};stroke-width:{};}}\
-#{id} .cynefinConfusion{{stroke:{};stroke-width:1.5;stroke-dasharray:4 2;}}\
-#{id} .cynefinArrowLine{{stroke:{};stroke-width:{};fill:none;}}\
-#{id} .cynefinArrowHead{{fill:{};stroke:none;}}\
-#{id} .cynefinArrowLabel{{font-size:{}px;fill:{};}}\
-#{id} .cynefinTitle{{font-size:{}px;font-weight:bold;fill:{};}}",
+        "#{diagram_id} .cynefinDomain{{stroke:none;}}\
+#{diagram_id} .cynefinDomainLabel{{font-size:{}px;font-weight:bold;fill:{};}}\
+#{diagram_id} .cynefinSubtitle{{font-size:{}px;fill:{};font-style:italic;}}\
+#{diagram_id} .cynefinItem{{fill-opacity:0.95;stroke:{};stroke-width:1;}}\
+#{diagram_id} .cynefinItemText{{font-size:{}px;fill:{};}}\
+#{diagram_id} .cynefinItemOverflow{{fill-opacity:0.6;stroke:{};stroke-width:1;stroke-dasharray:3 2;}}\
+#{diagram_id} .cynefinBoundary{{stroke:{};stroke-width:{};stroke-dasharray:6 3;}}\
+#{diagram_id} .cynefinCliff{{stroke:{};stroke-width:{};}}\
+#{diagram_id} .cynefinConfusion{{stroke:{};stroke-width:1.5;stroke-dasharray:4 2;}}\
+#{diagram_id} .cynefinArrowLine{{stroke:{};stroke-width:{};fill:none;}}\
+#{diagram_id} .cynefinArrowHead{{fill:{};stroke:none;}}\
+#{diagram_id} .cynefinArrowLabel{{font-size:{}px;fill:{};}}\
+#{diagram_id} .cynefinTitle{{font-size:{}px;font-weight:bold;fill:{};}}",
         fmt(theme.domain_font_size),
         theme.label_color,
         fmt((theme.item_font_size - 1.0).max(1.0)),

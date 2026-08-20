@@ -12,7 +12,7 @@ pub(super) fn render_sequence_actor_man_tops(
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
     // Actor-man variants (actor/boundary/control/entity) are emitted after `<defs>`.
@@ -49,7 +49,7 @@ pub(super) fn render_sequence_actor_man_bottoms(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     actor_height: f64,
     label_box_height: f64,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
     // Actor-man footers (actor/boundary/control/entity) are emitted after messages.

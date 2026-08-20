@@ -16,7 +16,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("zenuml");
+    let diagram_id = options.diagram_id_or("zenuml");
     let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
     let view_width =
         layout.width + content_left + CONTENT_PADDING + layout.frame_border_right + 1.0;

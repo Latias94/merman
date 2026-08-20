@@ -23,7 +23,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) actor_height: f64,
     pub(super) actor_label_font_size: f64,
     pub(super) sequence_width: f64,
@@ -34,10 +34,10 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
-fn marker_attr(attr_name: &str, diagram_id: &str, local_id: &str) -> String {
+fn marker_attr(attr_name: &str, diagram_id: SvgDiagramId<'_>, local_id: &str) -> String {
     format!(
         r#" {attr_name}="{}""#,
-        escape_attr(&scoped_svg_url(diagram_id, local_id))
+        escape_attr_display(scoped_svg_url(diagram_id, local_id))
     )
 }
 
@@ -505,7 +505,8 @@ pub(super) fn render_sequence_messages(
                 r#"<line x1="{x}" y1="{y}" x2="{x}" y2="{y}" stroke-width="0" marker-start="{marker_start}"/>"#,
                 x = fmt(x),
                 y = fmt(y),
-                marker_start = escape_attr(&scoped_svg_url(ctx.diagram_id, "sequencenumber")),
+                marker_start =
+                    escape_attr_display(scoped_svg_url(ctx.diagram_id, "sequencenumber")),
             );
             let _ = write!(
                 out,
@@ -519,65 +520,6 @@ pub(super) fn render_sequence_messages(
         let _ = (from, to);
     }
     ctx.checkpoints.checkpoint()
-}
-
-pub(super) fn sequence_message_diagram_id_occurrences(
-    model: &SequenceSvgModel,
-    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    checkpoints: SequenceEmitCheckpoints<'_>,
-) -> Result<Option<usize>> {
-    let mut sequence_number_visible = false;
-    let mut occurrences = 0usize;
-
-    for (message_index, msg) in model.messages.iter().enumerate() {
-        checkpoints.checkpoint_loop(message_index)?;
-        match msg.semantic_kind() {
-            SequenceMessageKind::Autonumber => {
-                if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
-                    sequence_number_visible = autonumber.visible;
-                }
-                continue;
-            }
-            SequenceMessageKind::Signal => {}
-            SequenceMessageKind::ActivationStart
-            | SequenceMessageKind::ActivationEnd
-            | SequenceMessageKind::Note
-            | SequenceMessageKind::CentralDecorationRecord
-            | SequenceMessageKind::Control
-            | SequenceMessageKind::Unknown => continue,
-        }
-
-        let Some(signal_semantics) = msg.signal_semantics() else {
-            continue;
-        };
-        let (Some(_from), Some(_to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-            continue;
-        };
-        let edge_id = format!("msg-{}", msg.id);
-        let Some(edge) = edges_by_id.get(edge_id.as_str()).copied() else {
-            continue;
-        };
-        if edge.points.len() < 2 {
-            continue;
-        }
-
-        let message_occurrences =
-            usize::from(endpoint_marker_local_id(signal_semantics.source_marker, true).is_some())
-                .checked_add(usize::from(
-                    endpoint_marker_local_id(signal_semantics.target_marker, false).is_some(),
-                ))
-                .and_then(|count| count.checked_add(usize::from(sequence_number_visible)));
-        let Some(message_occurrences) = message_occurrences else {
-            return Ok(None);
-        };
-        let Some(next) = occurrences.checked_add(message_occurrences) else {
-            return Ok(None);
-        };
-        occurrences = next;
-    }
-
-    checkpoints.checkpoint()?;
-    Ok(Some(occurrences))
 }
 
 fn round_sequence_number(value: f64) -> f64 {

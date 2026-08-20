@@ -45,7 +45,7 @@ pub(in crate::svg::parity::flowchart) const FLOWCHART_EDGE_LABEL_WRAP_WIDTH: f64
 // In flowchart SVG emission, many attribute payloads are known to be short-lived (colors, inline
 // `d` strings, etc). Avoid allocating an owned `String` for attribute escaping by default.
 #[inline]
-fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
+fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<&str> {
     escape_attr_display(text)
 }
 

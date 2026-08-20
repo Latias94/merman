@@ -255,7 +255,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
 }
 
 pub(super) fn swimlane_css(
-    diagram_id: &str,
+    diagram_id: super::super::SvgDiagramId<'_>,
     effective_config: &merman_core::MermaidConfig,
 ) -> String {
     let theme = PresentationTheme::new(effective_config.as_value()).node_diagram();

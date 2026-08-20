@@ -19,12 +19,8 @@ fn fmt_allow_nan(v: f64) -> String {
     fmt_string(v)
 }
 
-fn gantt_dom_id(diagram_id: &str, raw_id: &str) -> String {
-    if diagram_id.is_empty() {
-        raw_id.to_string()
-    } else {
-        format!("{diagram_id}-{raw_id}")
-    }
+fn gantt_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+    format!("{diagram_id}-{raw_id}")
 }
 
 fn gantt_insert_before_width(base: &str, insert: &str) -> String {
@@ -119,8 +115,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
 
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
@@ -159,7 +154,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(title)
         );
     }
@@ -167,7 +162,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(descr)
         );
     }

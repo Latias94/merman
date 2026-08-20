@@ -499,7 +499,7 @@ fn write_state_edge_path(
         out,
         r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
         geometry.rendered_d,
-        escape_xml_display(&state_scoped_dom_id(ctx, edge_id)),
+        state_scoped_dom_id(ctx, edge_id),
         escape_xml_display(classes),
         escape_xml_display(edge_id),
         data_points,

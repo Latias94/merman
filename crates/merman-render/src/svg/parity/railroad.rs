@@ -9,8 +9,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("railroad");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("railroad");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -40,16 +39,14 @@ pub(crate) fn render_railroad_diagram_svg_model(
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{}">{}</title>"#,
-            diagram_id_esc,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml_display(title)
         );
     }
     if let Some(descr) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{}">{}</desc>"#,
-            diagram_id_esc,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml_display(descr)
         );
     }
@@ -190,20 +187,31 @@ fn push_element(out: &mut String, element: &RailroadElementLayout, transform: Op
     );
 }
 
-fn railroad_css_scope(diagram_id: &str) -> String {
-    let mut scope = String::with_capacity(diagram_id.len() + 1);
-    scope.push('#');
-    for ch in diagram_id.chars() {
-        if matches!(ch, '.' | ':') {
-            scope.push('\\');
+#[derive(Clone, Copy)]
+struct RailroadCssScope<I>(I);
+
+impl<I> std::fmt::Display for RailroadCssScope<I>
+where
+    I: Copy + std::fmt::Display,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("#")?;
+        for ch in self.0.to_string().chars() {
+            if matches!(ch, '.' | ':') {
+                formatter.write_str("\\")?;
+            }
+            let mut encoded = [0_u8; 4];
+            formatter.write_str(ch.encode_utf8(&mut encoded))?;
         }
-        scope.push(ch);
+        Ok(())
     }
-    scope
 }
 
-fn railroad_css(style: &crate::railroad::RailroadStyle, diagram_id: &str) -> String {
-    let scope = railroad_css_scope(diagram_id);
+fn railroad_css<I>(style: &crate::railroad::RailroadStyle, diagram_id: I) -> String
+where
+    I: Copy + std::fmt::Display,
+{
+    let scope = RailroadCssScope(diagram_id);
     format!(
         "{scope} .railroad-diagram{{font-family:{};font-size:{}px;}}\
 {scope} .railroad-terminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\

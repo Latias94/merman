@@ -179,7 +179,7 @@ fn write_area_label(
 
 fn root_open(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     layout: &VennDiagramLayout,
     aria_labelledby: Option<&str>,
     aria_describedby: Option<&str>,
@@ -204,13 +204,15 @@ fn root_open(
         )
 }
 
-fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
-    let id = escape_xml(diagram_id);
+fn venn_css<I>(diagram_id: I, theme: &VennTheme) -> String
+where
+    I: Copy + std::fmt::Display,
+{
     format!(
-        "#{id} .venn-title{{font-size:32px;fill:{title_color};font-family:{font_family};}}\
-#{id} .venn-circle text{{font-size:48px;font-family:{font_family};}}\
-#{id} .venn-intersection text{{font-size:48px;fill:{set_text_color};font-family:{font_family};}}\
-#{id} .venn-text-node{{font-family:{font_family};color:{set_text_color};}}",
+        "#{diagram_id} .venn-title{{font-size:32px;fill:{title_color};font-family:{font_family};}}\
+#{diagram_id} .venn-circle text{{font-size:48px;font-family:{font_family};}}\
+#{diagram_id} .venn-intersection text{{font-size:48px;fill:{set_text_color};font-family:{font_family};}}\
+#{diagram_id} .venn-text-node{{font-family:{font_family};color:{set_text_color};}}",
         title_color = theme.title_color,
         font_family = theme.font_family_css,
         set_text_color = theme.set_text_color,
@@ -224,8 +226,7 @@ pub(crate) fn render_venn_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("venn");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("venn");
     let title = model
         .title
         .as_deref()
@@ -260,7 +261,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(model.acc_title.as_deref().unwrap_or_default())
         );
     }
@@ -268,7 +269,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(model.acc_descr.as_deref().unwrap_or_default())
         );
     }

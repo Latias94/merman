@@ -248,8 +248,67 @@ impl Default for RootDomProfile {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum RootDiagramId<'a> {
+    Projected(SvgDiagramId<'a>),
+    Raw(&'a str),
+}
+
+impl<'a> RootDiagramId<'a> {
+    fn as_str(self) -> &'a str {
+        match self {
+            Self::Projected(diagram_id) => diagram_id.semantic_str(),
+            Self::Raw(diagram_id) => diagram_id,
+        }
+    }
+
+    fn write_escaped(self, out: &mut String) {
+        match self {
+            Self::Projected(diagram_id) => {
+                let _ = write!(out, "{diagram_id}");
+            }
+            Self::Raw(diagram_id) => escape_attr_into(out, diagram_id),
+        }
+    }
+}
+
+impl std::fmt::Debug for RootDiagramId<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("RootDiagramId")
+            .field(&self.as_str())
+            .finish()
+    }
+}
+
+impl std::fmt::Display for RootDiagramId<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl PartialEq for RootDiagramId<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for RootDiagramId<'_> {}
+
+impl<'a> From<SvgDiagramId<'a>> for RootDiagramId<'a> {
+    fn from(diagram_id: SvgDiagramId<'a>) -> Self {
+        Self::Projected(diagram_id)
+    }
+}
+
+impl<'a> From<&'a str> for RootDiagramId<'a> {
+    fn from(diagram_id: &'a str) -> Self {
+        Self::Raw(diagram_id)
+    }
+}
+
 pub(super) struct RootChrome<'a> {
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: RootDiagramId<'a>,
     pub(super) class: Option<&'a str>,
     pub(super) extra_attrs: &'a [(&'a str, &'a str)],
     pub(super) aria_roledescription: &'a str,
@@ -261,9 +320,12 @@ pub(super) struct RootChrome<'a> {
 }
 
 impl<'a> RootChrome<'a> {
-    pub(super) fn new(diagram_id: &'a str, aria_roledescription: &'a str) -> Self {
+    pub(super) fn new(
+        diagram_id: impl Into<RootDiagramId<'a>>,
+        aria_roledescription: &'a str,
+    ) -> Self {
         Self {
-            diagram_id,
+            diagram_id: diagram_id.into(),
             class: None,
             extra_attrs: &[],
             aria_roledescription,
@@ -335,12 +397,15 @@ pub(super) struct RootedSvg {
 #[derive(Debug, Clone)]
 pub(super) struct RootViewportContext<'a> {
     family: RenderFamilyKind,
-    diagram_id: &'a str,
+    diagram_id: RootDiagramId<'a>,
 }
 
 impl<'a> RootViewportContext<'a> {
-    pub(super) fn new(family: RenderFamilyKind, diagram_id: &'a str) -> Self {
-        Self { family, diagram_id }
+    pub(super) fn new(family: RenderFamilyKind, diagram_id: impl Into<RootDiagramId<'a>>) -> Self {
+        Self {
+            family,
+            diagram_id: diagram_id.into(),
+        }
     }
 
     pub(super) fn begin_document(
@@ -436,7 +501,7 @@ impl<'a> RootViewportContext<'a> {
 
         Ok(RootDocument {
             family: self.family,
-            diagram_id: self.diagram_id.to_string(),
+            diagram_id: self.diagram_id.as_str().to_string(),
             state: RootDocumentState::Deferred {
                 view_box_range,
                 max_width_range,
@@ -454,7 +519,7 @@ impl<'a> RootViewportContext<'a> {
         document: RootDocument,
         spec: RootViewportSpec,
     ) -> Result<RootDocument> {
-        if document.family != self.family || document.diagram_id != self.diagram_id {
+        if document.family != self.family || document.diagram_id != self.diagram_id.as_str() {
             return Err(Error::InvalidModel {
                 message: "deferred root document belongs to a different render context".to_string(),
             });
@@ -525,7 +590,7 @@ impl<'a> RootViewportContext<'a> {
             .to_string();
         Ok(RootDocument {
             family: self.family,
-            diagram_id: self.diagram_id.to_string(),
+            diagram_id: self.diagram_id.as_str().to_string(),
             state: RootDocumentState::Ready { root_open },
         })
     }
@@ -556,7 +621,7 @@ impl<'a> RootViewportContext<'a> {
     ) -> Result<RootDocument> {
         self.require_empty_document(out)?;
         if plan.family != self.family
-            || plan.diagram_id != self.diagram_id
+            || plan.diagram_id != self.diagram_id.as_str()
             || chrome.diagram_id != self.diagram_id
         {
             return Err(Error::InvalidModel {
@@ -600,7 +665,7 @@ impl<'a> RootViewportContext<'a> {
         );
         Ok(RootDocument {
             family: self.family,
-            diagram_id: self.diagram_id.to_string(),
+            diagram_id: self.diagram_id.as_str().to_string(),
             state: RootDocumentState::Ready {
                 root_open: out.clone(),
             },
@@ -608,7 +673,7 @@ impl<'a> RootViewportContext<'a> {
     }
 
     fn complete_document(&self, out: String, document: RootDocument) -> Result<RootedSvg> {
-        if document.family != self.family || document.diagram_id != self.diagram_id {
+        if document.family != self.family || document.diagram_id != self.diagram_id.as_str() {
             return Err(Error::InvalidModel {
                 message: "root document belongs to a different render context".to_string(),
             });
@@ -631,7 +696,7 @@ impl<'a> RootViewportContext<'a> {
         Ok(RootedSvg {
             svg: out,
             family: self.family,
-            diagram_id: self.diagram_id.to_string(),
+            diagram_id: self.diagram_id.as_str().to_string(),
         })
     }
 
@@ -705,7 +770,7 @@ impl<'a> RootViewportContext<'a> {
 
         Ok(RootViewportPlan {
             family: self.family,
-            diagram_id: self.diagram_id.to_string(),
+            diagram_id: self.diagram_id.as_str().to_string(),
             view_box,
             width,
             height,
@@ -748,7 +813,7 @@ impl RootDocument {
     pub(super) fn complete(self, out: String) -> Result<RootedSvg> {
         let family = self.family;
         let diagram_id = self.diagram_id.clone();
-        RootViewportContext::new(family, &diagram_id).complete_document(out, self)
+        RootViewportContext::new(family, diagram_id.as_str()).complete_document(out, self)
     }
 }
 
@@ -939,7 +1004,7 @@ struct SvgRootTrackedRanges {
 }
 
 struct SvgRootAttrs<'a> {
-    diagram_id: &'a str,
+    diagram_id: RootDiagramId<'a>,
     class: Option<&'a str>,
     width: SvgRootWidth<'a>,
     height_attr: Option<&'a str>,
@@ -1000,7 +1065,7 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrack
     let mut deferred_height_after_class: Option<&str> = None;
     let mut tracked_ranges = SvgRootTrackedRanges::default();
     out.push_str(r#"<svg id=""#);
-    escape_attr_into(out, diagram_id);
+    diagram_id.write_escaped(out);
     let responsive_height_attr = matches!(width, SvgRootWidth::Percent100)
         .then_some(height_attr)
         .flatten();
@@ -1371,8 +1436,8 @@ mod tests {
     #[test]
     fn deferred_document_tracks_root_attributes_when_a_valid_id_matches_markers() {
         let diagram_id = format!("valid_{VIEW_BOX_PLACEHOLDER}_{MAX_WIDTH_PLACEHOLDER}_diagram");
-        let context = RootViewportContext::new(RenderFamilyKind::State, &diagram_id);
-        let mut chrome = RootChrome::new(&diagram_id, "stateDiagram");
+        let context = RootViewportContext::new(RenderFamilyKind::State, diagram_id.as_str());
+        let mut chrome = RootChrome::new(diagram_id.as_str(), "stateDiagram");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
         let document = context

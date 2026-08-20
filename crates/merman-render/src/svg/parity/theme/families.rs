@@ -476,7 +476,6 @@ impl<'a> PresentationTheme<'a> {
             font_weight: self.raw.css_value("fontWeight", "normal"),
             main_bkg: self.raw.color("mainBkg", "#ECECFF"),
             node_border: self.raw.color("nodeBorder", "#9370DB"),
-            drop_shadow: self.raw.css_value("dropShadow", "none"),
             disabled_fill: self.raw.color("tertiaryColor", "lightgray"),
             disabled_text_fill: self.raw.color("clusterBorder", "#efefef"),
             root_fill: self.raw.color("git0", "hsl(240, 100%, 46.2745098039%)"),

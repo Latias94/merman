@@ -109,7 +109,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         out,
         r#"<path d="{}" id="{}-{}" class=""#,
         d,
-        escape_xml_display(ctx.diagram_id),
+        ctx.diagram_id,
         escape_xml_display(&edge.id),
     );
     css::write_flowchart_edge_class_attr(out, edge);

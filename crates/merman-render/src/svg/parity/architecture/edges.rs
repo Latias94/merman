@@ -7,7 +7,7 @@ use crate::architecture_metrics::{
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
-use super::super::{escape_xml_into, fmt, fmt_into, fmt_string};
+use super::super::{SvgDiagramId, escape_xml_into, fmt, fmt_into, fmt_string};
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
     svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
@@ -19,7 +19,7 @@ use crate::model::ArchitectureDiagramLayout;
 
 pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> {
     pub(super) out: &'a mut String,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) layout: &'a ArchitectureDiagramLayout,
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
@@ -99,13 +99,13 @@ struct ArchitectureArrowGeometry<'a> {
 
 fn write_architecture_edge_id_attr(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     prefix: &str,
     from: &str,
     to: &str,
     counter: usize,
 ) {
-    escape_xml_into(out, diagram_id);
+    let _ = write!(out, "{diagram_id}");
     out.push('-');
     escape_xml_into(out, prefix);
     out.push('_');
@@ -118,7 +118,7 @@ fn write_architecture_edge_id_attr(
 
 fn write_architecture_edge_path(
     out: &mut String,
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     edge: super::model::ArchitectureEdgeRef<'_>,
     points: ArchitectureEdgePoints,
 ) {

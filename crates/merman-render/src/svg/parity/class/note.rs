@@ -7,6 +7,7 @@ use crate::text::{
 use std::fmt::Write as _;
 use std::time::Duration;
 
+use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
 use super::ClassSvgNote;
@@ -18,7 +19,7 @@ use super::rough::{
 };
 
 pub(super) struct ClassNoteRenderContext<'a> {
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub effective_config: &'a serde_json::Value,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
@@ -111,7 +112,11 @@ pub(super) fn render_class_note_node(
                 .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
-    let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id, &note.id);
+    let rough_seed = class_rough_seed(
+        &ctx.hand_drawn_seed,
+        ctx.diagram_id.semantic_str(),
+        &note.id,
+    );
     include_xywh(
         content_bounds,
         position.node_bounds_tx + left,
@@ -170,7 +175,6 @@ pub(super) fn render_class_note_node(
     let note_data_look_attr = format!(r#" data-look="{}""#, escape_attr_display(ctx.look));
     let note_label_class = "label noteLabel";
     let note_span_class = "nodeLabel markdown-node-label";
-    let note_node_id = format!("{}-{}", ctx.diagram_id, note.id);
     let mut note_shape = String::new();
     if hand_drawn {
         let _ = write!(
@@ -206,9 +210,10 @@ pub(super) fn render_class_note_node(
             class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
+            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
             note_node_class,
-            escape_attr_display(&note_node_id),
+            ctx.diagram_id,
+            escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
             fmt(position.node_ty),
@@ -241,9 +246,10 @@ pub(super) fn render_class_note_node(
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="{}" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
+            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="{}" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
             note_node_class,
-            escape_attr_display(&note_node_id),
+            ctx.diagram_id,
+            escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
             fmt(position.node_ty),

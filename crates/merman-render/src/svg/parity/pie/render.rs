@@ -60,12 +60,13 @@ pub(crate) fn render_pie_diagram_svg_model(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     let css_plan = PieCss::new(effective_config);
-    let css = options.materialize_counted_svg_component("Pie stylesheet", |out| {
-        css_plan.write_for_normalized_id(out, diagram_id)
-    })?;
-    let diagram_id_esc = escape_xml(diagram_id);
+    let css = options.materialize_counted_svg_component(
+        "Pie stylesheet",
+        |out| css_plan.write_for_normalized_id(out, diagram_id.semantic_str()),
+        |out| css_plan.write_for_normalized_id(out, diagram_id),
+    )?;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -123,7 +124,7 @@ pub(crate) fn render_pie_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(t)
         );
     }
@@ -131,7 +132,7 @@ pub(crate) fn render_pie_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(d)
         );
     }

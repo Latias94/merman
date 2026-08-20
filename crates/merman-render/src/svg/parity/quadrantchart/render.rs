@@ -34,8 +34,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         )
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("quadrantchart");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -81,14 +80,14 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(title)
         );
     }
     if let Some(description) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(description)
         );
     }

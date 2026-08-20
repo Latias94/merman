@@ -4,7 +4,7 @@ pub(crate) fn render_info_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let mut out = String::new();
     let root_spec = root_svg::RootViewportSpec::responsive_without_view_box(400.0);

@@ -892,7 +892,7 @@ fn render_family_artifact_svg(
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
-    let options = request.normalized();
+    let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
     #[cfg(feature = "layout-cytoscape")]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
@@ -1724,8 +1724,9 @@ mod tests {
     }
 
     #[test]
-    fn requested_diagram_id_bytes_are_admitted_before_family_render() {
-        let maximum = 1_024;
+    fn requested_diagram_id_fanout_is_admitted_per_output_occurrence() {
+        let diagram_id = "d".repeat(256);
+        let maximum = diagram_id.len() * 4;
         let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
             .unwrap();
@@ -1739,8 +1740,6 @@ mod tests {
             .expect("begin render session");
         let artifact =
             prepare(parsed, &LayoutOptions::default(), session).expect("prepare info diagram");
-        let diagram_id = "d".repeat(4_096);
-
         let error = match artifact.render_svg(
             &SvgRenderOptions {
                 diagram_id: Some(diagram_id.clone()),
@@ -1757,7 +1756,7 @@ mod tests {
         };
         assert_eq!(details.limit, "max_svg_bytes");
         assert_eq!(details.max, maximum);
-        assert_eq!(details.actual, diagram_id.len());
+        assert_eq!(details.actual, maximum + diagram_id.len());
     }
 
     #[test]

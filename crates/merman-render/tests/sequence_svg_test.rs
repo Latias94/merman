@@ -648,34 +648,41 @@ fn sequence_root_id_is_safe_for_direct_css_selectors() {
 
 #[test]
 fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
-    fn render_error(text: &str, diagram_id: &str, maximum: usize) -> Error {
+    fn render_with_limit(text: &str, diagram_id: &str, maximum: usize) -> Result<String, Error> {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
             .unwrap();
         let session = RenderEnvironment::deterministic()
             .with_resource_policy(policy)
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
             .begin_session()
             .unwrap();
         let parsed = parse_sequence_for_render(&Engine::new(), text);
         let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
             .expect("prepare Sequence artifact");
-        match artifact.render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some(diagram_id.to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        ) {
-            Ok(_) => panic!("bounded Sequence SVG must exceed the test budget"),
-            Err(error) => error,
-        }
+        artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(diagram_id.to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .map(|rendered| rendered.svg().to_string())
     }
 
     let diagram_id = "diagram".repeat(128);
     let base = "sequenceDiagram\nparticipant A\nparticipant B\n";
-    let Error::ResourceLimitExceeded(base_error) = render_error(base, &diagram_id, 1) else {
-        panic!("expected base SVG byte projection error");
+    let options = SvgRenderOptions {
+        diagram_id: Some(diagram_id.clone()),
+        ..SvgRenderOptions::default()
     };
+    let base_svg = render_sequence_svg_from_text_with_options(base, &options);
+    let base_occurrences = base_svg.matches(&diagram_id).count();
+    assert!(
+        base_occurrences > 0,
+        "base Sequence SVG must use the diagram ID"
+    );
 
     let message_count = 96usize;
     let mut messages = String::from(base);
@@ -683,36 +690,38 @@ fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
     for _ in 0..message_count {
         messages.push_str("A->>B: hello\n");
     }
-    let Error::ResourceLimitExceeded(initial) = render_error(&messages, &diagram_id, 1) else {
-        panic!("expected initial SVG byte projection error");
-    };
-    let projected = initial.actual;
-    assert_eq!(
-        projected,
-        base_error.actual + 2 * message_count * diagram_id.len(),
-        "every message contributes one arrow marker and one autonumber marker"
-    );
-
-    let Error::ResourceLimitExceeded(n_minus_one) =
-        render_error(&messages, &diagram_id, projected - 1)
+    let fanout_ceiling = base_occurrences * diagram_id.len();
+    let Error::ResourceLimitExceeded(fanout) =
+        render_with_limit(&messages, &diagram_id, fanout_ceiling)
+            .expect_err("message ID fanout must exceed the base-only contribution")
     else {
+        panic!("expected dynamic diagram-ID projection error");
+    };
+    assert_eq!(fanout.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(fanout.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(fanout.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(fanout.actual, fanout_ceiling + diagram_id.len());
+    assert_eq!(fanout.max, fanout_ceiling);
+
+    let full_svg = render_sequence_svg_from_text_with_options(&messages, &options);
+    let exact_bytes = full_svg.len();
+    let exact = render_with_limit(&messages, &diagram_id, exact_bytes)
+        .expect("exact final SVG byte ceiling must succeed");
+    assert_eq!(exact, full_svg);
+
+    let Error::ResourceLimitExceeded(n_minus_one) = render_with_limit(
+        &messages,
+        &diagram_id,
+        exact_bytes.checked_sub(1).expect("non-empty Sequence SVG"),
+    )
+    .expect_err("N-1 final SVG byte ceiling must fail") else {
         panic!("expected N-1 SVG byte projection error");
     };
     assert_eq!(n_minus_one.cause, ResourceLimitCause::Ceiling);
     assert_eq!(n_minus_one.phase, ResourceLimitPhase::SvgOutput);
     assert_eq!(n_minus_one.limit, ResourceLimitId::MaxSvgBytes.as_str());
-    assert_eq!(n_minus_one.actual, projected);
-    assert_eq!(n_minus_one.max, projected - 1);
-
-    let Error::ResourceLimitExceeded(exact) = render_error(&messages, &diagram_id, projected)
-    else {
-        panic!("expected final whole-document SVG byte error");
-    };
-    assert_eq!(exact.max, projected);
-    assert!(
-        exact.actual > projected,
-        "the exact diagram-id projection must pass early admission and reach final output admission"
-    );
+    assert_eq!(n_minus_one.actual, exact_bytes);
+    assert_eq!(n_minus_one.max, exact_bytes - 1);
 }
 
 #[test]

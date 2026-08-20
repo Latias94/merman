@@ -3,6 +3,7 @@ use crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
+use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_display, fmt};
 use super::bounds::include_xywh;
@@ -10,7 +11,7 @@ use super::label::class_math_html_label;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ClassNamespaceClusterGroupContext<'a> {
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -91,7 +92,7 @@ fn render_class_namespace_cluster(
     let _ = write!(
         out,
         r#"<g class="cluster undefined" id="{}-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
-        escape_attr_display(ctx.diagram_id),
+        ctx.diagram_id,
         escape_attr_display(&cluster.id),
         escape_attr_display(ctx.look),
         fmt(left),
@@ -169,7 +170,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
         let _ = write!(
             out,
             r#"<g class="cluster undefined" id="{}-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style=""/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
-            escape_attr_display(ctx.diagram_id),
+            ctx.diagram_id,
             escape_attr_display(&c.id),
             escape_attr_display(ctx.look),
             fmt(left),

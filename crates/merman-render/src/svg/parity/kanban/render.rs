@@ -4,59 +4,61 @@ use crate::kanban::{
     KanbanPreparedLabelGeometry,
 };
 
-fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
-    let id = escape_xml(diagram_id);
+fn kanban_css(
+    diagram_id: impl Copy + std::fmt::Display,
+    effective_config: &serde_json::Value,
+) -> Result<String> {
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let theme = PresentationTheme::new(effective_config).kanban()?;
     let mut out = parts.css_prefix;
     let root_rule = parts.root_rule;
 
-    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
     for (i, section_theme) in theme.sections.iter().enumerate() {
         let section = i as i64 - 1;
         let sw = 17_i64 - 3_i64 * (i as i64);
         let _ = write!(
             &mut out,
             r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} polygon,#{} .section-{} path{{fill:{};stroke:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .kanban-ticket-link{{fill:{};stroke:{};text-decoration:underline;}}"#,
-            id,
+            diagram_id,
             section,
-            id,
+            diagram_id,
             section,
-            id,
+            diagram_id,
             section,
-            id,
+            diagram_id,
             section,
-            id,
+            diagram_id,
             section,
             section_theme.section_fill,
             section_theme.section_fill,
-            id,
+            diagram_id,
             section,
             section_theme.c_scale_label,
-            id,
+            diagram_id,
             section,
             section_theme.c_scale_label,
-            id,
+            diagram_id,
             section,
             section_theme.c_scale,
-            id,
+            diagram_id,
             section,
             sw,
-            id,
+            diagram_id,
             section,
             section_theme.c_scale_inv,
-            id,
-            id,
-            id,
-            id,
-            id,
-            id,
-            id,
-            id,
-            id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
+            diagram_id,
             theme.background,
             theme.node_border,
-            id,
+            diagram_id,
             theme.background,
             theme.node_border
         );
@@ -65,33 +67,29 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<
     let _ = write!(
         &mut out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:{};}}#{} .section-root text{{fill:{};}}#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}#{} .edge{{fill:none;}}#{} .cluster-label,#{} .label{{color:{};fill:{};}}#{} .kanban-label{{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
-        id,
-        id,
-        id,
-        id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
         theme.root_fill,
-        id,
+        diagram_id,
         theme.root_label,
-        id,
-        id,
-        id,
-        id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
         theme.text_color,
         theme.text_color,
-        id,
-        id,
-        id
+        diagram_id,
+        diagram_id,
+        diagram_id
     );
     out.push_str(&root_rule);
     Ok(out)
 }
 
-fn kanban_dom_id(diagram_id: &str, raw_id: &str) -> String {
-    if diagram_id.is_empty() {
-        raw_id.to_string()
-    } else {
-        format!("{diagram_id}-{raw_id}")
-    }
+fn kanban_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
+    format!("{diagram_id}-{raw_id}")
 }
 
 fn measure_kanban_plain_label(
@@ -199,7 +197,7 @@ pub(crate) fn render_kanban_diagram_svg(
     debug_assert_eq!(layout.items.len(), prepared_items.len());
     let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
     let effective_config = effective_config.as_value();
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,

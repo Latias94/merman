@@ -2,7 +2,7 @@ use super::super::*;
 
 fn write_class_marker_css(
     out: &mut String,
-    id: &str,
+    id: SvgDiagramId<'_>,
     marker_id_suffix: &str,
     marker_class: &str,
     fill: &str,
@@ -15,7 +15,7 @@ fn write_class_marker_css(
     );
 }
 
-fn write_class_icon_css(out: &mut String, id: &str) {
+fn write_class_icon_css(out: &mut String, id: SvgDiagramId<'_>) {
     let _ = write!(
         out,
         r#"#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
@@ -24,12 +24,11 @@ fn write_class_icon_css(out: &mut String, id: &str) {
 }
 
 pub(super) fn class_css(
-    diagram_id: &str,
+    diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
     render_font_family: &str,
     _render_font_size_css: &str,
 ) -> String {
-    let id = escape_xml(diagram_id);
     // Mermaid compiles this stylesheet from resolved theme variables; render metrics have a
     // separate legacy precedence and must not replace the CSS font-size spelling.
     let parts =
@@ -62,66 +61,66 @@ pub(super) fn class_css(
     let _ = write!(
         &mut out,
         r#"#{} g.classGroup text{{fill:{};stroke:none;font-family:{};font-size:10px;}}#{} g.classGroup text .title{{font-weight:bolder;}}#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} .nodeLabel,#{} .edgeLabel{{color:{};}}#{} .noteLabel .nodeLabel,#{} .noteLabel .edgeLabel{{color:{};}}#{} .edgeLabel .label rect{{fill:{};}}#{} .label text{{fill:{};}}#{} .labelBkg{{background:{};}}#{} .edgeLabel .label span{{background:{};}}#{} .classTitle{{font-weight:bolder;}}"#,
-        id.as_str(),
+        diagram_id,
         class_group_text,
         font_family,
-        id.as_str(),
-        id.as_str(),
+        diagram_id,
+        diagram_id,
         title_color,
-        id.as_str(),
+        diagram_id,
         title_color,
-        id.as_str(),
-        id.as_str(),
+        diagram_id,
+        diagram_id,
         cluster_bkg,
         cluster_border,
-        id.as_str(),
+        diagram_id,
         title_color,
-        id.as_str(),
+        diagram_id,
         title_color,
-        id.as_str(),
-        id.as_str(),
+        diagram_id,
+        diagram_id,
         class_text,
-        id.as_str(),
-        id.as_str(),
+        diagram_id,
+        diagram_id,
         note_text,
-        id.as_str(),
+        diagram_id,
         main_bkg,
-        id.as_str(),
+        diagram_id,
         class_text,
-        id.as_str(),
+        diagram_id,
         main_bkg,
-        id.as_str(),
+        diagram_id,
         main_bkg,
-        id.as_str()
+        diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:{};}}#{} .divider{{stroke:{};stroke-width:1;}}#{} g.clickable{{cursor:pointer;}}#{} g.classGroup rect{{fill:{};stroke:{};}}#{} g.classGroup line{{stroke:{};stroke-width:1;}}#{} .classLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}#{} .classLabel .label{{fill:{};font-size:10px;}}#{} .relation{{stroke:{};stroke-width:{};fill:none;}}#{} .dashed-line{{stroke-dasharray:3;}}#{} .dotted-line{{stroke-dasharray:1 2;}}"#,
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
-        id.as_str(),
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
         main_bkg,
         node_border,
         stroke_width,
-        id.as_str(),
+        diagram_id,
         node_border,
-        id.as_str(),
-        id.as_str(),
+        diagram_id,
+        diagram_id,
         main_bkg,
         node_border,
-        id.as_str(),
+        diagram_id,
         node_border,
-        id.as_str(),
+        diagram_id,
         main_bkg,
-        id.as_str(),
+        diagram_id,
         node_border,
-        id.as_str(),
+        diagram_id,
         line_color,
         stroke_width,
-        id.as_str(),
-        id.as_str()
+        diagram_id,
+        diagram_id
     );
 
     for (marker_id_suffix, marker_class, fill) in [
@@ -138,7 +137,7 @@ pub(super) fn class_css(
     ] {
         write_class_marker_css(
             &mut out,
-            &id,
+            diagram_id,
             marker_id_suffix,
             marker_class,
             fill,
@@ -149,19 +148,19 @@ pub(super) fn class_css(
     let _ = write!(
         &mut out,
         r#"#{} .edgeTerminals{{font-size:11px;line-height:initial;}}#{} .classTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} .edgeLabel[data-look="neo"]{{background-color:{};text-align:center;}}#{} .edgeLabel[data-look="neo"] p{{background-color:{};}}#{} .edgeLabel[data-look="neo"] rect{{opacity:0.5;background-color:{};fill:{};}}"#,
-        id.as_str(),
-        id.as_str(),
+        diagram_id,
+        diagram_id,
         text_color,
-        id.as_str(),
+        diagram_id,
         edge_label_background,
-        id.as_str(),
+        diagram_id,
         edge_label_background,
-        id.as_str(),
+        diagram_id,
         edge_label_background,
         edge_label_background
     );
 
-    write_class_icon_css(&mut out, &id);
+    write_class_icon_css(&mut out, diagram_id);
     out.push_str(&parts.root_rule);
     out
 }

@@ -12,7 +12,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let mut timings = super::timing::RenderTimings::default();
     let total_timer = timing.start();
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
 
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
@@ -111,7 +111,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
     let mut ctx = StateRenderCtx {
-        diagram_id: diagram_id.to_string(),
+        diagram_id,
         diagram_look: state_render_settings.diagram_look,
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
@@ -318,7 +318,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
@@ -327,7 +327,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml_display(diagram_id),
+            diagram_id,
             escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
@@ -585,7 +585,7 @@ fn render_state_root(
         let _ = write!(
             out,
             r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-            escape_xml_display(&dom_id),
+            dom_id,
             fmt_display(x),
             fmt_display(y),
             fmt_display(cluster.width.max(1.0)),
@@ -797,7 +797,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(data_look),
             fmt(x),
             fmt(y),
@@ -820,7 +820,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(cluster_id),
             escape_attr(data_look),
             fmt(x),
@@ -843,7 +843,7 @@ fn render_state_cluster(
             out,
             r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
-            escape_attr(&dom_id),
+            dom_id.attr(),
             escape_attr(cluster_id),
             escape_attr(data_look),
             fmt(x),

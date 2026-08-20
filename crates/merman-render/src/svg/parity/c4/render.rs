@@ -114,8 +114,10 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
     Ok(order)
 }
 
-fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    let id = escape_xml(diagram_id);
+fn c4_css(
+    diagram_id: impl std::fmt::Display + Copy,
+    effective_config: &serde_json::Value,
+) -> String {
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let person_border = theme_token(
@@ -127,7 +129,7 @@ fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let _ = write!(
         &mut out,
         r#"#{} .person{{stroke:{};fill:{};}}"#,
-        id, person_border, person_bkg
+        diagram_id, person_border, person_bkg
     );
     out.push_str(&parts.root_rule);
     out
@@ -203,8 +205,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
 
     let c4_cfg = C4ConfigView::new(effective_config);
     let diagram_margin_x = c4_cfg.diagram_margin_x();
@@ -274,7 +275,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(title)
         );
     }
@@ -287,7 +288,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(descr)
         );
     }
@@ -301,18 +302,18 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let _ = write!(
         &mut out,
         r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "computer"))
+        escape_attr_display(scoped_svg_id(diagram_id, "computer"))
     );
     let _ = write!(
         &mut out,
         r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "database")),
+        escape_attr_display(scoped_svg_id(diagram_id, "database")),
         escape_attr(PINNED_C4_DATABASE_SYMBOL_D.trim())
     );
     let _ = write!(
         &mut out,
         r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "clock"))
+        escape_attr_display(scoped_svg_id(diagram_id, "clock"))
     );
 
     let mut shape_meta: std::collections::HashMap<&str, &C4SvgModelShape> =
@@ -690,31 +691,25 @@ pub(crate) fn render_c4_diagram_svg_typed(
         }
     }
 
-    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
-    let arrowend_id = scoped_svg_id(diagram_id, "arrowend");
-    let crosshead_id = scoped_svg_id(diagram_id, "crosshead");
-    let filled_head_id = scoped_svg_id(diagram_id, "filled-head");
-    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
-    let arrowend_url = scoped_svg_url(diagram_id, "arrowend");
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
-        escape_attr(&arrowhead_id)
+        escape_attr_display(scoped_svg_id(diagram_id, "arrowhead"))
     );
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
-        escape_attr(&arrowend_id)
+        escape_attr_display(scoped_svg_id(diagram_id, "arrowend"))
     );
     let _ = write!(
         &mut out,
         r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
-        escape_attr(&crosshead_id)
+        escape_attr_display(scoped_svg_id(diagram_id, "crosshead"))
     );
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#,
-        escape_attr(&filled_head_id)
+        escape_attr_display(scoped_svg_id(diagram_id, "filled-head"))
     );
 
     out.push_str("<g>");
@@ -740,13 +735,17 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 escape_attr(&stroke_color)
             );
             if rel.rel_type != "rel_b" {
-                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
+                let _ = write!(
+                    &mut out,
+                    r#" marker-end="{}""#,
+                    escape_attr_display(scoped_svg_url(diagram_id, "arrowhead"))
+                );
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr(&arrowend_url)
+                    escape_attr_display(scoped_svg_url(diagram_id, "arrowend"))
                 );
             }
             out.push_str(r#" style="fill: none;"/>"#);
@@ -770,13 +769,17 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 escape_attr(&d)
             );
             if rel.rel_type != "rel_b" {
-                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
+                let _ = write!(
+                    &mut out,
+                    r#" marker-end="{}""#,
+                    escape_attr_display(scoped_svg_url(diagram_id, "arrowhead"))
+                );
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr(&arrowend_url)
+                    escape_attr_display(scoped_svg_url(diagram_id, "arrowend"))
                 );
             }
             out.push_str("/>");
@@ -880,5 +883,18 @@ mod tests {
         assert!(css.ends_with(
             r#"#c4 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
         ));
+    }
+
+    #[test]
+    fn c4_css_does_not_treat_authored_font_family_as_an_internal_placeholder() {
+        let authored_font_family = "__MERMAN_C4_DIAGRAM_ID_PROJECTION__";
+        let css = c4_css(
+            "c4",
+            &json!({
+                "fontFamily": authored_font_family,
+            }),
+        );
+
+        assert!(css.contains(authored_font_family));
     }
 }

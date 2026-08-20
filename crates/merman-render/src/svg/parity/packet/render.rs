@@ -1,16 +1,18 @@
 use super::super::*;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
-fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn packet_css(
+    diagram_id: impl std::fmt::Display + Copy,
+    effective_config: &serde_json::Value,
+) -> String {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
-    let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
     let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
     let mut out = String::new();
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        diagram_id, font
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -18,44 +20,44 @@ fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
     let _ = write!(
         &mut out,
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
+        diagram_id, diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
+        diagram_id, diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
+        diagram_id, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
+        diagram_id, diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
-        id, font, id
+        diagram_id, font, diagram_id
     );
     let _ = write!(
         &mut out,
         r#"#{} .packetByte{{font-size:{};}}#{} .packetByte.start{{fill:{};}}#{} .packetByte.end{{fill:{};}}#{} .packetLabel{{fill:{};font-size:{};}}#{} .packetTitle{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
-        id,
+        diagram_id,
         style.byte_font_size,
-        id,
+        diagram_id,
         style.start_byte_color,
-        id,
+        diagram_id,
         style.end_byte_color,
-        id,
+        diagram_id,
         style.label_color,
         style.label_font_size,
-        id,
+        diagram_id,
         style.title_color,
         style.title_font_size,
-        id,
+        diagram_id,
         style.block_stroke_color,
         style.block_stroke_width,
         style.block_fill_color
@@ -63,7 +65,7 @@ fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
     let _ = write!(
         &mut out,
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font
+        diagram_id, font
     );
     out
 }
@@ -75,8 +77,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -113,7 +114,7 @@ pub(crate) fn render_packet_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(t)
         );
     }
@@ -121,7 +122,7 @@ pub(crate) fn render_packet_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
+            id = diagram_id,
             text = escape_xml(d)
         );
     }

@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
-use super::super::{escape_xml_into, fmt};
+use super::super::{SvgDiagramId, escape_xml_into, fmt};
 use super::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
 };
@@ -20,7 +20,7 @@ use super::settings::ArchitectureRenderSettings;
 
 pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> {
     pub(super) out: &'a mut String,
-    pub(super) diagram_id: &'a str,
+    pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
@@ -31,14 +31,14 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) content_bounds: &'a mut Option<Bounds>,
 }
 
-fn write_diagram_service_id(out: &mut String, diagram_id: &str, service_id: &str) {
-    escape_xml_into(out, diagram_id);
+fn write_diagram_service_id(out: &mut String, diagram_id: SvgDiagramId<'_>, service_id: &str) {
+    let _ = write!(out, "{diagram_id}");
     out.push_str("-service-");
     escape_xml_into(out, service_id);
 }
 
-fn write_diagram_node_id(out: &mut String, diagram_id: &str, node_id: &str) {
-    escape_xml_into(out, diagram_id);
+fn write_diagram_node_id(out: &mut String, diagram_id: SvgDiagramId<'_>, node_id: &str) {
+    let _ = write!(out, "{diagram_id}");
     out.push_str("-node-");
     escape_xml_into(out, node_id);
 }
@@ -89,7 +89,8 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 (Some(icon), _) => {
                     out.push_str("<g>");
                     if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
-                        let id_scope = format!("{diagram_id}-service-{}-icon", svc.id);
+                        let id_scope =
+                            format!("{}-service-{}-icon", diagram_id.semantic_str(), svc.id);
                         write_arch_icon_svg_with_registry(
                             out,
                             icon,
@@ -190,7 +191,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             let y1 = y - settings.half_icon;
 
             out.push_str(r#"<rect id=""#);
-            escape_xml_into(out, ctx.diagram_id);
+            let _ = write!(out, "{}", ctx.diagram_id);
             out.push_str("-group-");
             escape_xml_into(out, grp.id);
             let _ = write!(
@@ -214,7 +215,8 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                     y = fmt(shifted_y1 + settings.half_icon + 1.0)
                 );
                 if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
-                    let id_scope = format!("{}-group-{}-icon", ctx.diagram_id, grp.id);
+                    let id_scope =
+                        format!("{}-group-{}-icon", ctx.diagram_id.semantic_str(), grp.id);
                     write_arch_icon_svg_with_registry(
                         out,
                         icon,

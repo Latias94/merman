@@ -12,6 +12,18 @@ use std::collections::{BTreeMap, BTreeSet};
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 
+#[derive(Clone)]
+struct TreeViewIconSymbolId<'a> {
+    diagram_id: SvgDiagramId<'a>,
+    local_id: String,
+}
+
+impl std::fmt::Display for TreeViewIconSymbolId<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "tv-icon-{}-{}", self.diagram_id, self.local_id)
+    }
+}
+
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
@@ -19,8 +31,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let effective_config_value = effective_config.as_value();
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("treeView");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("treeView");
     let acc_title = model
         .acc_title
         .as_deref()
@@ -54,16 +65,14 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{}">{}</title>"#,
-            diagram_id_esc,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml_display(title)
         );
     }
     if let Some(descr) = acc_descr {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{}">{}</desc>"#,
-            diagram_id_esc,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml_display(descr)
         );
     }
@@ -130,7 +139,7 @@ fn push_tree_view_node(
     out: &mut String,
     node: &TreeViewNodeLayout,
     layout: &TreeViewDiagramLayout,
-    icon_symbol_ids: &BTreeMap<&str, String>,
+    icon_symbol_ids: &BTreeMap<&str, TreeViewIconSymbolId<'_>>,
     emit_icon_use: bool,
     width_before_highlight: &mut f64,
 ) {
@@ -221,7 +230,7 @@ fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
 
 fn push_tree_view_icon_defs(
     out: &mut String,
-    icon_symbol_ids: &BTreeMap<&str, String>,
+    icon_symbol_ids: &BTreeMap<&str, TreeViewIconSymbolId<'_>>,
     icon_registry: Option<&crate::svg::IconRegistry>,
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
@@ -231,7 +240,11 @@ fn push_tree_view_icon_defs(
     }
     out.push_str("<defs>");
     for (icon, symbol_id) in icon_symbol_ids {
-        let _ = write!(out, r#"<g id="{symbol_id}">"#);
+        // The formatted scope accounts for the outer symbol definition. Registry-produced nested
+        // IDs use a validated fixed-width digest of this scope and preflight their exact bytes
+        // before materialization, so the authored diagram ID is not repeated inside the fragment.
+        let symbol_id_scope = symbol_id.to_string();
+        let _ = write!(out, r#"<g id="{symbol_id_scope}">"#);
         if let Some(body) = tree_view_icon_body(icon) {
             let _ = write!(
                 out,
@@ -248,7 +261,7 @@ fn push_tree_view_icon_defs(
                         height_px: TREE_VIEW_ICON_SIZE,
                         fallback_prefix: None,
                         extra_class: None,
-                        id_scope: symbol_id,
+                        id_scope: &symbol_id_scope,
                         effective_config,
                         work_meter,
                     })?
@@ -266,17 +279,17 @@ fn push_tree_view_icon_defs(
     Ok(())
 }
 
-fn tree_view_icon_symbol_ids<'a>(
-    layout: &'a TreeViewDiagramLayout,
-    diagram_id: &str,
-) -> BTreeMap<&'a str, String> {
+fn tree_view_icon_symbol_ids<'layout, 'id>(
+    layout: &'layout TreeViewDiagramLayout,
+    diagram_id: SvgDiagramId<'id>,
+) -> BTreeMap<&'layout str, TreeViewIconSymbolId<'id>> {
     let base_ids = layout
         .nodes
         .iter()
         .filter_map(|node| node.resolved_icon.as_deref())
         .collect::<BTreeSet<_>>()
         .into_iter()
-        .map(|icon| (icon, tree_view_icon_symbol_id_base(diagram_id, icon)))
+        .map(|icon| (icon, tree_view_icon_symbol_local_id(icon)))
         .collect::<Vec<_>>();
     let reserved_ids = base_ids
         .iter()
@@ -299,14 +312,20 @@ fn tree_view_icon_symbol_ids<'a>(
                 }
             }
         };
-        symbol_ids.insert(*icon, symbol_id);
+        symbol_ids.insert(
+            *icon,
+            TreeViewIconSymbolId {
+                diagram_id,
+                local_id: symbol_id,
+            },
+        );
     }
 
     symbol_ids
 }
 
-fn tree_view_icon_symbol_id_base(diagram_id: &str, icon: &str) -> String {
-    let mut id = format!("tv-icon-{diagram_id}-");
+fn tree_view_icon_symbol_local_id(icon: &str) -> String {
+    let mut id = String::with_capacity(icon.len());
     for ch in icon.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
             id.push(ch);

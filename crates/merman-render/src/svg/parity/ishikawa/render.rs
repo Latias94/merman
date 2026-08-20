@@ -24,7 +24,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("ishikawa");
+    let diagram_id = options.diagram_id_or("ishikawa");
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
@@ -57,23 +57,25 @@ pub(crate) fn render_ishikawa_diagram_svg(
         };
         push_hand_drawn_diagram(&mut out, layout, &rough);
     } else {
-        let marker_id = format!("ishikawa-arrow-{diagram_id}");
-        push_classic_diagram(&mut out, layout, &marker_id);
+        push_classic_diagram(&mut out, layout, diagram_id);
     }
 
     out.push_str("</g></svg>\n");
     root_document.complete(out)
 }
 
-fn push_classic_diagram(out: &mut String, layout: &IshikawaDiagramLayout, marker_id: &str) {
-    let _ = write!(out, r#"<defs><marker id=""#);
-    escape_xml_into(out, marker_id);
-    out.push_str(
-        r#"" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
+fn push_classic_diagram(
+    out: &mut String,
+    layout: &IshikawaDiagramLayout,
+    diagram_id: SvgDiagramId<'_>,
+) {
+    let _ = write!(
+        out,
+        r#"<defs><marker id="ishikawa-arrow-{diagram_id}" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
     );
 
     if let Some(spine) = &layout.spine {
-        push_line(out, spine, marker_id);
+        push_line(out, spine, diagram_id);
     }
     if let Some(head) = &layout.head {
         let _ = write!(
@@ -89,9 +91,9 @@ fn push_classic_diagram(out: &mut String, layout: &IshikawaDiagramLayout, marker
     }
     for pair in &layout.pairs {
         out.push_str(r#"<g class="ishikawa-pair">"#);
-        push_branch(out, &pair.upper, marker_id);
+        push_branch(out, &pair.upper, diagram_id);
         if let Some(lower) = &pair.lower {
-            push_branch(out, lower, marker_id);
+            push_branch(out, lower, diagram_id);
         }
         out.push_str("</g>");
     }
@@ -122,11 +124,11 @@ fn push_hand_drawn_diagram(out: &mut String, layout: &IshikawaDiagramLayout, rou
     }
 }
 
-fn push_branch(out: &mut String, branch: &IshikawaBranchLayout, marker_id: &str) {
-    push_line(out, &branch.line, marker_id);
+fn push_branch(out: &mut String, branch: &IshikawaBranchLayout, diagram_id: SvgDiagramId<'_>) {
+    push_line(out, &branch.line, diagram_id);
     push_cause_label_group(out, &branch.label_group);
     for sub_group in &branch.sub_groups {
-        push_sub_group(out, sub_group, marker_id);
+        push_sub_group(out, sub_group, diagram_id);
     }
 }
 
@@ -145,9 +147,9 @@ fn push_cause_label_group(out: &mut String, group: &IshikawaCauseLabelGroupLayou
     out.push_str("</g>");
 }
 
-fn push_sub_group(out: &mut String, group: &IshikawaSubGroupLayout, marker_id: &str) {
+fn push_sub_group(out: &mut String, group: &IshikawaSubGroupLayout, diagram_id: SvgDiagramId<'_>) {
     out.push_str(r#"<g class="ishikawa-sub-group">"#);
-    push_line(out, &group.line, marker_id);
+    push_line(out, &group.line, diagram_id);
     push_text_with_offset(out, &group.label, 0.0, 0.0);
     out.push_str("</g>");
 }
@@ -185,7 +187,7 @@ fn push_hand_drawn_sub_group(
     out.push_str("</g>");
 }
 
-fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
+fn push_line(out: &mut String, line: &IshikawaLineLayout, diagram_id: SvgDiagramId<'_>) {
     let _ = write!(
         out,
         r#"<line class="{}" x1="{}" y1="{}" x2="{}" y2="{}""#,
@@ -196,11 +198,7 @@ fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
         fmt(line.y2)
     );
     if line.marker_start {
-        let _ = write!(
-            out,
-            r#" marker-start="url(#{})""#,
-            escape_attr_display(marker_id)
-        );
+        let _ = write!(out, r#" marker-start="url(#ishikawa-arrow-{diagram_id})""#,);
     }
     out.push_str("></line>");
 }

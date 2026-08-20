@@ -203,8 +203,7 @@ pub(crate) fn render_treemap_diagram_svg(
         }
     }
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
-    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_id = options.diagram_id_or("treemap");
 
     let theme = PresentationTheme::new(effective_config).treemap()?;
 
@@ -392,14 +391,14 @@ pub(crate) fn render_treemap_diagram_svg(
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
         let _ = write!(
             &mut out,
-            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            r#"<title id="chart-title-{diagram_id}">{}</title>"#,
             escape_xml(title)
         );
     }
     if let (Some(descr), true) = (layout.acc_descr.as_deref(), has_acc_descr) {
         let _ = write!(
             &mut out,
-            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
             escape_xml(descr.trim_end_matches('\n'))
         );
     }
@@ -460,7 +459,7 @@ pub(crate) fn render_treemap_diagram_svg(
         let _ = write!(
             &mut out,
             r#"<clipPath id="clip-section-{id}-{i}"><rect width="{w}" height="{h}"/></clipPath>"#,
-            id = escape_attr(diagram_id),
+            id = diagram_id,
             i = i,
             w = fmt((w - 2.0 * section_label_inset_x).max(0.0)),
             h = fmt(section_header_height)
@@ -509,7 +508,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#clip-section-{id}-{i})" style="display: none;"/>"#,
                 x = fmt(section_label_inset_x),
                 y = fmt(section_header_center_y),
-                id = escape_attr(diagram_id),
+                id = diagram_id,
                 i = i
             );
         } else {
@@ -578,7 +577,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#clip-section-{id}-{i})" style="{style}">{text}</text>"#,
                 x = fmt(section_label_inset_x),
                 y = fmt(section_header_center_y),
-                id = escape_attr(diagram_id),
+                id = diagram_id,
                 i = i,
                 style = escape_attr(&section_label_style),
                 text = escape_xml(&label_text)
@@ -680,7 +679,7 @@ pub(crate) fn render_treemap_diagram_svg(
         let _ = write!(
             &mut out,
             r#"<clipPath id="clip-{id}-{i}"><rect width="{w}" height="{h}"/></clipPath>"#,
-            id = escape_attr(diagram_id),
+            id = diagram_id,
             i = i,
             w = fmt((w - 4.0).max(0.0)),
             h = fmt((h - 4.0).max(0.0))
@@ -780,7 +779,7 @@ pub(crate) fn render_treemap_diagram_svg(
             x = fmt(w / 2.0),
             y = fmt(h / 2.0),
             style = escape_attr(&label_style),
-            id = escape_attr(diagram_id),
+            id = diagram_id,
             i = i,
             text = escape_xml(&leaf.name)
         );
@@ -846,7 +845,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     x = fmt(w / 2.0),
                     y = fmt(value_y),
                     style = escape_attr(&value_style),
-                    id = escape_attr(diagram_id),
+                    id = diagram_id,
                     i = i,
                 );
             } else {
@@ -856,7 +855,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     x = fmt(w / 2.0),
                     y = fmt(value_y),
                     style = escape_attr(&value_style),
-                    id = escape_attr(diagram_id),
+                    id = diagram_id,
                     i = i,
                     text = escape_xml(&value_text)
                 );

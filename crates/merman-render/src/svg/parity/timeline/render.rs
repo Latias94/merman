@@ -4,23 +4,16 @@ use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 
 fn timeline_css(
-    diagram_id: &str,
+    diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
     theme: &TimelineTheme,
 ) -> String {
-    let id = escape_xml(diagram_id);
-
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let root_rule = parts.root_rule;
     let mut out = parts.css_prefix;
-    let scoped_drop_shadow = if diagram_id.is_empty() {
-        theme.drop_shadow.clone()
-    } else {
-        format!("url(#{id}-drop-shadow)")
-    };
 
-    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
     for (i, section_theme) in theme.sections.iter().enumerate() {
         let section = i as i64 - 1;
         let sw = 17 - 3 * (i as i64);
@@ -44,77 +37,77 @@ fn timeline_css(
             let _ = write!(
                 &mut out,
                 r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle{{fill:{};stroke:{};stroke-width:{};filter:{};}}#{} .section-{} text{{fill:{};font-weight:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};stroke-width:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
-                id,
+                diagram_id,
                 section,
-                id,
+                diagram_id,
                 section,
-                id,
+                diagram_id,
                 section,
                 redux_fill,
                 redux_stroke,
                 theme.stroke_width,
-                scoped_drop_shadow,
-                id,
+                scoped_svg_url(diagram_id, "drop-shadow"),
+                diagram_id,
                 section,
                 theme.node_border,
                 theme.font_weight,
-                id,
+                diagram_id,
                 section,
                 section_theme.c_scale_label,
-                id,
+                diagram_id,
                 section,
                 section_theme.c_scale,
-                id,
+                diagram_id,
                 section,
                 sw,
-                id,
+                diagram_id,
                 section,
                 section_theme.c_scale_inv,
-                id,
+                diagram_id,
                 theme.node_border,
                 theme.stroke_width,
-                id,
-                id,
-                id,
+                diagram_id,
+                diagram_id,
+                diagram_id,
                 theme.disabled_fill,
-                id,
+                diagram_id,
                 theme.disabled_text_fill,
             );
         } else {
             let _ = write!(
                 &mut out,
                 r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} path{{fill:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
-                id,
+                diagram_id,
                 section,
-                id,
+                diagram_id,
                 section,
-                id,
+                diagram_id,
                 section,
-                id,
-                section,
-                section_theme.c_scale,
-                id,
-                section,
-                section_theme.c_scale_label,
-                id,
-                section,
-                section_theme.c_scale_label,
-                id,
+                diagram_id,
                 section,
                 section_theme.c_scale,
-                id,
+                diagram_id,
+                section,
+                section_theme.c_scale_label,
+                diagram_id,
+                section,
+                section_theme.c_scale_label,
+                diagram_id,
+                section,
+                section_theme.c_scale,
+                diagram_id,
                 section,
                 sw,
-                id,
+                diagram_id,
                 section,
                 section_theme.c_scale_inv,
-                id,
+                diagram_id,
                 section_theme.c_scale_label,
-                id,
-                id,
-                id,
+                diagram_id,
+                diagram_id,
+                diagram_id,
                 theme.disabled_fill,
-                id,
+                diagram_id,
                 theme.disabled_text_fill,
             );
         }
@@ -123,7 +116,15 @@ fn timeline_css(
     let _ = write!(
         &mut out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle{{fill:{};}}#{} .section-root text{{fill:{};}}#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}#{} .edge{{fill:none;}}#{} .eventWrapper{{filter:brightness(120%);}}"#,
-        id, id, id, theme.root_fill, id, theme.root_label, id, id, id
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        theme.root_fill,
+        diagram_id,
+        theme.root_label,
+        diagram_id,
+        diagram_id,
+        diagram_id
     );
 
     out.push_str(&root_rule);
@@ -148,7 +149,7 @@ fn render_timeline_diagram_svg_inner(
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     let theme = PresentationTheme::new(effective_config).timeline();
     let is_redux_theme = theme.is_redux_theme;
 
@@ -168,13 +169,14 @@ fn render_timeline_diagram_svg_inner(
 
     fn render_node(
         out: &mut String,
-        diagram_id: &str,
+        diagram_id: SvgDiagramId<'_>,
         node_count: &mut usize,
         n: &crate::model::TimelineNodeLayout,
         is_redux_theme: bool,
         is_event: bool,
     ) {
-        let node_id = scoped_svg_id(diagram_id, &format!("node-{node_count}"));
+        let node_local_id = format!("node-{node_count}");
+        let node_id = scoped_svg_id(diagram_id, &node_local_id);
         *node_count += 1;
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
@@ -206,7 +208,7 @@ fn render_timeline_diagram_svg_inner(
         let _ = write!(
             out,
             r#"<path id="{node_id}" class="node-bkg node-undefined" d="{d}"/>"#,
-            node_id = escape_attr(&node_id),
+            node_id = escape_attr_display(node_id),
             d = escape_attr(&d)
         );
         if !is_redux_theme {
@@ -249,21 +251,37 @@ fn render_timeline_diagram_svg_inner(
         out.push_str("</text></g></g>");
     }
 
-    fn render_connector(out: &mut String, connector: &TimelineLineLayout, marker_url: &str) {
-        let _ = write!(
-            out,
-            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="{marker_end}" stroke-dasharray="5,5"/></g>"#,
-            x1 = fmt(connector.x1),
-            y1 = fmt(connector.y1),
-            x2 = fmt(connector.x2),
-            y2 = fmt(connector.y2),
-            marker_end = escape_attr(marker_url),
-        );
+    fn render_connector(
+        out: &mut String,
+        connector: &TimelineLineLayout,
+        diagram_id: Option<SvgDiagramId<'_>>,
+    ) {
+        fn write_connector(
+            out: &mut String,
+            connector: &TimelineLineLayout,
+            marker_end: impl std::fmt::Display,
+        ) {
+            let _ = write!(
+                out,
+                r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="{marker_end}" stroke-dasharray="5,5"/></g>"#,
+                x1 = fmt(connector.x1),
+                y1 = fmt(connector.y1),
+                x2 = fmt(connector.x2),
+                y2 = fmt(connector.y2),
+            );
+        }
+
+        match diagram_id {
+            Some(diagram_id) => {
+                write_connector(out, connector, scoped_svg_url(diagram_id, "arrowhead"))
+            }
+            None => write_connector(out, connector, "url(#arrowhead)"),
+        }
     }
 
     fn render_event(
         out: &mut String,
-        diagram_id: &str,
+        diagram_id: SvgDiagramId<'_>,
         node_count: &mut usize,
         event: &TimelineNodeLayout,
         is_redux_theme: bool,
@@ -280,12 +298,11 @@ fn render_timeline_diagram_svg_inner(
 
     fn render_task(
         out: &mut String,
-        diagram_id: &str,
+        diagram_id: SvgDiagramId<'_>,
         node_count: &mut usize,
         task: &TimelineTaskLayout,
         direction: merman_core::diagrams::timeline::TimelineDirection,
         is_redux_theme: bool,
-        arrowhead_url: &str,
     ) {
         let node = &task.node;
         let _ = write!(
@@ -300,7 +317,7 @@ fn render_timeline_diagram_svg_inner(
         match direction {
             merman_core::diagrams::timeline::TimelineDirection::LeftToRight => {
                 for connector in &task.connectors {
-                    render_connector(out, connector, arrowhead_url);
+                    render_connector(out, connector, Some(diagram_id));
                 }
                 for event in &task.events {
                     render_event(out, diagram_id, node_count, event, is_redux_theme);
@@ -310,11 +327,11 @@ fn render_timeline_diagram_svg_inner(
                 for (index, event) in task.events.iter().enumerate() {
                     render_event(out, diagram_id, node_count, event, is_redux_theme);
                     if let Some(connector) = task.connectors.get(index) {
-                        render_connector(out, connector, arrowhead_url);
+                        render_connector(out, connector, None);
                     }
                 }
                 for connector in task.connectors.iter().skip(task.events.len()) {
-                    render_connector(out, connector, arrowhead_url);
+                    render_connector(out, connector, None);
                 }
             }
         }
@@ -346,17 +363,11 @@ fn render_timeline_diagram_svg_inner(
                 ..root_svg::RootChrome::new(diagram_id, "timeline")
             },
         )?;
-    let (arrowhead_id, arrowhead_url) =
+    let arrowhead_id =
         if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
-            (
-                "undefined-arrowhead".to_string(),
-                "url(#arrowhead)".to_string(),
-            )
+            "undefined-arrowhead".to_string()
         } else {
-            (
-                scoped_svg_id(diagram_id, "arrowhead"),
-                scoped_svg_url(diagram_id, "arrowhead"),
-            )
+            scoped_svg_id(diagram_id, "arrowhead").to_string()
         };
 
     // Mermaid's vertical renderer lowers the activity axis to the first root child and invokes
@@ -364,12 +375,11 @@ fn render_timeline_diagram_svg_inner(
     if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
         let _ = write!(
             &mut out,
-            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="{marker_end}"/></g>"#,
+            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="url(#arrowhead)"/></g>"#,
             x1 = fmt(layout.activity_line.x1),
             y1 = fmt(layout.activity_line.y1),
             x2 = fmt(layout.activity_line.x2),
             y2 = fmt(layout.activity_line.y2),
-            marker_end = escape_attr(&arrowhead_url),
         );
     }
 
@@ -410,7 +420,6 @@ fn render_timeline_diagram_svg_inner(
                 task,
                 layout.direction,
                 is_redux_theme,
-                &arrowhead_url,
             );
         }
     }
@@ -423,7 +432,6 @@ fn render_timeline_diagram_svg_inner(
             task,
             layout.direction,
             is_redux_theme,
-            &arrowhead_url,
         );
     }
 
@@ -445,7 +453,7 @@ fn render_timeline_diagram_svg_inner(
             y1 = fmt(layout.activity_line.y1),
             x2 = fmt(layout.activity_line.x2),
             y2 = fmt(layout.activity_line.y2),
-            marker_end = escape_attr(&arrowhead_url),
+            marker_end = scoped_svg_url(diagram_id, "arrowhead"),
         );
     }
 

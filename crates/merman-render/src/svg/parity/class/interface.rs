@@ -3,6 +3,7 @@ use crate::model::{Bounds, LayoutNode};
 use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
 
+use super::super::SvgDiagramId;
 use super::super::{escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
@@ -10,7 +11,7 @@ use super::label::class_math_html_label;
 use super::node::ClassNodeRenderPosition;
 
 pub(super) struct ClassInterfaceRenderContext<'a> {
-    pub diagram_id: &'a str,
+    pub diagram_id: SvgDiagramId<'a>,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub line_height: f64,
@@ -70,7 +71,7 @@ pub(super) fn render_class_interface_node(
     let _ = write!(
         out,
         r#"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">"#,
-        escape_attr_display(ctx.diagram_id),
+        ctx.diagram_id,
         escape_attr_display(&iface.id),
         escape_attr_display(ctx.look),
         fmt(position.node_tx),

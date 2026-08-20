@@ -43,7 +43,7 @@ fn render_class_diagram_svg_model_inner(
 
     let mut detail = ClassRenderDetails::default();
 
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id = options.diagram_id_or("merman");
     let aria_roledescription = model.diagram_type.as_str();
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
@@ -123,15 +123,6 @@ fn render_class_diagram_svg_model_inner(
 
     drop(build_ctx_guard);
 
-    let marker_url_prefix = {
-        let mut out = String::new();
-        let _ = write!(&mut out, "{}", escape_attr_display(diagram_id));
-        out.push('_');
-        let _ = write!(&mut out, "{}", escape_attr_display(aria_roledescription));
-        out.push('-');
-        out
-    };
-
     let terminal_text_style = TextStyle {
         font_family: settings.text_style.font_family.clone(),
         font_size: 11.0,
@@ -142,7 +133,7 @@ fn render_class_diagram_svg_model_inner(
         edges: &layout.edges,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
-        marker_url_prefix: &marker_url_prefix,
+        diagram_marker_class: aria_roledescription,
         diagram_id,
         content_tx,
         content_ty,

@@ -28,6 +28,10 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
 }
 
 fn render_pie_from_text(text: &str) -> String {
+    render_pie_from_text_with_options(text, &SvgRenderOptions::default())
+}
+
+fn render_pie_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
     let engine = legacy_init_theme_compat_engine();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
@@ -40,7 +44,7 @@ fn render_pie_from_text(text: &str) -> String {
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
     artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .render_svg(options, &SvgDebugOptions::default())
         .expect("svg render ok")
         .svg()
         .to_owned()
@@ -134,16 +138,19 @@ fn pie_large_diagram_id_stylesheet_is_preflighted_at_exact_n() {
     // materialization share the same writer over the resulting CSS-safe ID rather than assuming
     // a byte slope.
     let diagram_id = "diagram<&:.id".repeat(128);
-    let Error::ResourceLimitExceeded(initial) =
-        render_pie_error_with_svg_limit(source, &diagram_id, 1)
-    else {
-        panic!("expected initial Pie CSS byte projection error");
-    };
-    assert_eq!(initial.cause, ResourceLimitCause::Ceiling);
-    assert_eq!(initial.phase, ResourceLimitPhase::SvgOutput);
-    assert_eq!(initial.limit, ResourceLimitId::MaxSvgBytes.as_str());
-    assert_eq!(initial.max, 1);
-    let projected_css_bytes = initial.actual;
+    let full_svg = render_pie_from_text_with_options(
+        source,
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.clone()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let style_start = full_svg.find("<style>").expect("Pie style open") + "<style>".len();
+    let style_end = full_svg[style_start..]
+        .find("</style>")
+        .map(|offset| style_start + offset)
+        .expect("Pie style close");
+    let projected_css_bytes = style_end - style_start;
     let n_minus_one_maximum = projected_css_bytes
         .checked_sub(1)
         .expect("Pie CSS projection must not be empty");
