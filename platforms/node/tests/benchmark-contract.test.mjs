@@ -15,6 +15,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { readBuildReceipt } from "../scripts/build-receipt.mjs";
+import { resolveCandidateRuntimeContract } from "../scripts/build-candidate.mjs";
 import { stageWasmPackage } from "../scripts/benchmark/footprint.mjs";
 import {
   computeCorpusDigest,
@@ -180,6 +181,7 @@ const CAPABILITY_RECIPE = {
   },
 };
 const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
+const CANDIDATE_RUNTIME_CONTRACT = resolveCandidateRuntimeContract();
 const RUNTIME_CATALOG = {
   schema_version: 1,
   transport_api_version: 1,
@@ -196,7 +198,7 @@ const RUNTIME_CATALOG = {
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
     output_ids: ["svg"],
-    operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+    operation_ids: CANDIDATE_RUNTIME_CONTRACT.operationIds,
     system_adapter_ids: [],
     text_measurement: {
       protocol_version: 1,
@@ -1242,11 +1244,8 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
   const phantomRuntimeOperation = structuredClone(receipt);
-  phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.splice(
-    1,
-    0,
-    "phantom-json",
-  );
+  phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.push("phantom-json");
+  phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.sort();
   phantomRuntimeOperation.runtime.catalog_digest = digestJson(
     phantomRuntimeOperation.runtime.catalog,
   );
