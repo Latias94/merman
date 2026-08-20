@@ -644,10 +644,14 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"shared SVG safety policy changed: {path}",
             False,
         )
-    if path == "playground/src/generated/ascii-capabilities.ts":
+    if path in {
+        "playground/src/generated/ascii-capabilities.ts",
+        "playground/src/generated/examples.ts",
+        "playground/src/generated/mermaid-reference.ts",
+    }:
         return (
             frozenset({"core", "hygiene", "npm", "web"}),
-            f"generated Playground ASCII capability authority changed: {path}",
+            f"generated Playground authority changed: {path}",
             False,
         )
     if path in _GENERATED_CONTRACT_EXACT_RULES:

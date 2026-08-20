@@ -422,6 +422,18 @@ class PlannerTests(unittest.TestCase):
                 "npm",
                 "web",
             },
+            "playground/src/generated/examples.ts": {
+                "core",
+                "hygiene",
+                "npm",
+                "web",
+            },
+            "playground/src/generated/mermaid-reference.ts": {
+                "core",
+                "hygiene",
+                "npm",
+                "web",
+            },
             "playground/examples/manifest.json": {
                 "hygiene",
                 "npm",
