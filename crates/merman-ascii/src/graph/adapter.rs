@@ -16,7 +16,7 @@ use crate::safe_text::{
 };
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
-    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
+    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowNode, FlowchartModel,
 };
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
@@ -114,6 +114,9 @@ fn from_flowchart_model_transactional(
         model.nodes.iter().zip(nodes).zip(node_styles).enumerate()
     {
         checkpoint_projection(execution, index)?;
+        let Some(node_plan) = node_plan else {
+            continue;
+        };
         let id = try_clone_projection_string(&node.id, resources)?;
         let text = node_plan.text.materialize_after_admission(resources)?;
         graph.add_node_with_prepared_text(
@@ -404,6 +407,13 @@ impl<'a> FlowchartMembershipIndex<'a> {
         self.group_ids.contains(endpoint_id)
     }
 
+    fn is_group_anchor_placeholder(&self, model: &FlowchartModel, node: &FlowNode) -> bool {
+        if !self.is_group_id(&node.id) || !is_default_group_anchor_node(node) {
+            return false;
+        }
+        model.subgraphs.iter().any(|group| group.id == node.id)
+    }
+
     fn canonical_group_indices(&self) -> &[usize] {
         &self.canonical_group_indices
     }
@@ -414,6 +424,31 @@ impl<'a> FlowchartMembershipIndex<'a> {
             .copied()
             .zip(self.canonical_group_members.iter().map(Vec::as_slice))
     }
+}
+
+fn is_default_group_anchor_node(node: &FlowNode) -> bool {
+    node.label.as_deref().is_none_or(|label| label == node.id)
+        && node
+            .label_type
+            .as_deref()
+            .is_none_or(|label_type| label_type == "text")
+        && node
+            .layout_shape
+            .as_deref()
+            .is_none_or(|layout_shape| layout_shape == "rect" || layout_shape == "squareRect")
+        && node.shape.is_none()
+        && node.icon.is_none()
+        && node.form.is_none()
+        && node.pos.is_none()
+        && node.img.is_none()
+        && node.constraint.is_none()
+        && node.asset_width.is_none()
+        && node.asset_height.is_none()
+        && node.classes.is_empty()
+        && node.styles.is_empty()
+        && node.link.is_none()
+        && node.link_target.is_none()
+        && !node.have_callback
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -511,7 +546,7 @@ fn preflight_subgraph_nesting(
 
 #[derive(Debug)]
 struct FlowchartProjectionPlan<'a> {
-    nodes: Vec<FlowchartNodeProjectionPlan<'a>>,
+    nodes: Vec<Option<FlowchartNodeProjectionPlan<'a>>>,
     edge_labels: Vec<Option<NormalizedTrimmedTextPlan<'a>>>,
     groups: Vec<FlowchartGroupProjectionPlan<'a>>,
 }
@@ -624,6 +659,10 @@ impl<'a> FlowchartProjectionPlan<'a> {
             .map_err(|_| projection_allocation_failed())?;
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_projection(execution, index)?;
+            if memberships.is_group_anchor_placeholder(model, node) {
+                nodes.push(None);
+                continue;
+            }
             let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
             let projected_label = shape.projected_label(node.label.as_deref().unwrap_or(&node.id));
             let text = DeferredGraphNodeLabelPlan::single(
@@ -641,7 +680,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
             )?;
             admission.include_copy(&node.id, resources)?;
             admission.include_node_label(&text, resources)?;
-            nodes.push(FlowchartNodeProjectionPlan { text, shape });
+            nodes.push(Some(FlowchartNodeProjectionPlan { text, shape }));
         }
 
         let mut edge_labels = Vec::new();
@@ -776,7 +815,9 @@ fn validate_supported_flowchart_model(
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
-        if memberships.is_group_id(&node.id) {
+        if memberships.is_group_id(&node.id)
+            && !memberships.is_group_anchor_placeholder(model, node)
+        {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
                 feature: "node ids colliding with subgraph ids",
@@ -1305,7 +1346,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_projection_rejects_colliding_node_and_subgraph_ids() {
+    fn flowchart_projection_hides_subgraph_endpoint_placeholder_node() {
         let model = FlowchartModel {
             keyword: "flowchart".to_string(),
             acc_descr: None,
@@ -1320,6 +1361,60 @@ mod tests {
                 flow_node("member"),
                 flow_node("B"),
             ],
+            edges: vec![flow_edge("A", "TOP"), flow_edge("TOP", "B")],
+            subgraphs: vec![FlowSubgraph {
+                id: "TOP".to_string(),
+                title: "Top Group".to_string(),
+                dir: Some("TB".to_string()),
+                has_explicit_dir: true,
+                label_type: None,
+                classes: Vec::new(),
+                styles: Vec::new(),
+                nodes: vec!["member".to_string()],
+            }],
+            tooltips: Default::default(),
+            warning_facts: Vec::new(),
+        };
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
+
+        let graph = from_flowchart_model(&model, &options, &mut resources)
+            .expect("subgraph endpoint placeholder should remain hidden");
+
+        assert!(
+            !graph.nodes.iter().any(|node| node.id == "TOP"),
+            "subgraph endpoint placeholder must not become a visible node"
+        );
+        assert!(graph.groups.iter().any(|group| group.id == "TOP"));
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|edge| edge.from == "A" && edge.to == "TOP")
+        );
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|edge| edge.from == "TOP" && edge.to == "B")
+        );
+    }
+
+    #[test]
+    fn flowchart_projection_rejects_colliding_node_and_subgraph_ids() {
+        let model = FlowchartModel {
+            keyword: "flowchart".to_string(),
+            acc_descr: None,
+            acc_title: None,
+            class_defs: Default::default(),
+            direction: Some("LR".to_string()),
+            edge_defaults: None,
+            vertex_calls: Vec::new(),
+            nodes: {
+                let mut top = flow_node("TOP");
+                top.classes.push("authored".to_string());
+                vec![flow_node("A"), top, flow_node("member"), flow_node("B")]
+            },
             edges: vec![flow_edge("A", "TOP"), flow_edge("TOP", "B")],
             subgraphs: vec![FlowSubgraph {
                 id: "TOP".to_string(),
