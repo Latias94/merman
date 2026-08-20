@@ -171,7 +171,8 @@ struct ClassEndpointMetadata<'a> {
 
 #[derive(Debug)]
 struct ClassEndpointIndex<'a> {
-    endpoints: HashMap<&'a str, ClassEndpointMetadata<'a>>,
+    class_endpoints: HashMap<&'a str, ClassEndpointMetadata<'a>>,
+    interface_endpoints: HashMap<&'a str, ClassEndpointMetadata<'a>>,
     facade_aliases: &'a BTreeMap<String, String>,
 }
 
@@ -184,11 +185,11 @@ impl<'a> ClassEndpointIndex<'a> {
             .ok_or_else(|| work_overflow(resources))?;
         resources.charge_layout_work(capacity)?;
 
-        let mut endpoints = HashMap::new();
-        endpoints
-            .try_reserve(capacity)
+        let mut class_endpoints = HashMap::new();
+        class_endpoints
+            .try_reserve(model.classes.len())
             .map_err(|_| layout_allocation_failed())?;
-        endpoints.extend(model.classes.values().map(|class| {
+        class_endpoints.extend(model.classes.values().map(|class| {
             (
                 class.id.as_str(),
                 ClassEndpointMetadata {
@@ -196,25 +197,35 @@ impl<'a> ClassEndpointIndex<'a> {
                 },
             )
         }));
-        let mut index = Self {
-            endpoints,
-            facade_aliases: &model.namespace_facade_aliases,
-        };
+
+        let mut interface_endpoints = HashMap::new();
+        interface_endpoints
+            .try_reserve(model.interfaces.len())
+            .map_err(|_| layout_allocation_failed())?;
         for interface in &model.interfaces {
-            let target = index.resolve(interface.class_id.as_str()).ok_or(
+            let resolved_target_id = model
+                .namespace_facade_aliases
+                .get(interface.class_id.as_str())
+                .map(String::as_str)
+                .unwrap_or(interface.class_id.as_str());
+            let target = class_endpoints.get(resolved_target_id).copied().ok_or(
                 AsciiError::UnsupportedFeature {
                     diagram_type: "class",
                     feature: "interfaces with missing target classes",
                 },
             )?;
-            index.endpoints.insert(
+            interface_endpoints.insert(
                 interface.id.as_str(),
                 ClassEndpointMetadata {
                     owner: target.owner,
                 },
             );
         }
-        Ok(index)
+        Ok(Self {
+            class_endpoints,
+            interface_endpoints,
+            facade_aliases: &model.namespace_facade_aliases,
+        })
     }
 
     fn resolve(&self, authored_id: &'a str) -> Option<ResolvedClassEndpoint<'a>> {
@@ -223,8 +234,9 @@ impl<'a> ClassEndpointIndex<'a> {
             .get(authored_id)
             .map(String::as_str)
             .unwrap_or(authored_id);
-        self.endpoints
+        self.class_endpoints
             .get(resolved_id)
+            .or_else(|| self.interface_endpoints.get(resolved_id))
             .map(|metadata| ResolvedClassEndpoint {
                 authored_id,
                 resolved_id,
@@ -3202,6 +3214,45 @@ mod tests {
             AsciiExecution::for_test(&policy),
         )
         .expect("class identity fixture should render")
+    }
+
+    #[test]
+    fn class_interface_targets_reject_interface_ids_independent_of_declaration_order() {
+        for reversed in [false, true] {
+            let mut model = parsed_class_model("classDiagram\nclass Target");
+            model.interfaces = vec![
+                ClassInterface {
+                    id: "interface0".to_string(),
+                    label: "IBase".to_string(),
+                    class_id: "Target".to_string(),
+                },
+                ClassInterface {
+                    id: "interface1".to_string(),
+                    label: "IForged".to_string(),
+                    class_id: "interface0".to_string(),
+                },
+            ];
+            if reversed {
+                model.interfaces.reverse();
+            }
+
+            let policy = unbounded_policy();
+            let error = render_class_diagram_with_execution(
+                &model,
+                &AsciiRenderOptions::ascii(),
+                AsciiExecution::for_test(&policy),
+            )
+            .expect_err("interface targets must resolve to authored classes");
+
+            assert_eq!(
+                error,
+                AsciiError::UnsupportedFeature {
+                    diagram_type: "class",
+                    feature: "interfaces with missing target classes",
+                },
+                "interface declaration order must not change validation"
+            );
+        }
     }
 
     #[test]
