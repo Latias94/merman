@@ -1536,11 +1536,29 @@ fn legacy_paint_variants(
         Variant::Warning,
     ];
 
+    if family == Family::CLASS {
+        return match channel {
+            Fill if matches!(
+                target,
+                Target::Node
+                    | Target::NodeLabel
+                    | Target::Text
+                    | Target::Edge
+                    | Target::EdgeLabelBackground
+                    | Target::Cluster
+            ) =>
+            {
+                DEFAULT
+            }
+            Stroke if matches!(target, Target::Node | Target::Edge | Target::Cluster) => DEFAULT,
+            Fill | Stroke => &[],
+        };
+    }
+
     let node_family = matches!(
         family,
         Family::FLOWCHART
             | Family::SWIMLANE
-            | Family::CLASS
             | Family::MINDMAP
             | Family::TREE_VIEW
             | Family::BLOCK
@@ -1569,9 +1587,6 @@ fn legacy_paint_variants(
         };
         if common {
             return DEFAULT;
-        }
-        if family == Family::CLASS && target == Target::Table && channel == Fill {
-            return ODD_EVEN;
         }
         return &[];
     }
@@ -2322,6 +2337,53 @@ mod tests {
                     .iter()
                     .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
             );
+        }
+    }
+
+    #[test]
+    fn class_terminal_less_paint_routes_are_unsupported() {
+        for paint_kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for (target, facet) in [
+                (ThemeTarget::Marker, FamilyThemeRuleFacet::Fill(paint_kind)),
+                (
+                    ThemeTarget::Marker,
+                    FamilyThemeRuleFacet::Stroke(paint_kind),
+                ),
+                (
+                    ThemeTarget::ClusterLabel,
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+                (ThemeTarget::Title, FamilyThemeRuleFacet::Fill(paint_kind)),
+            ] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    assert_eq!(
+                        classify_rule_facet(
+                            DiagramFamilyId::CLASS,
+                            target,
+                            FamilyThemeSelectorShape::Static { variant },
+                            facet,
+                        ),
+                        FamilyThemeDisposition::Unsupported,
+                        "target={target:?} facet={facet:?} variant={variant:?}"
+                    );
+                }
+            }
+
+            for variant in [None, Some(ThemeVariant::Odd), Some(ThemeVariant::Even)] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::CLASS,
+                        ThemeTarget::Table,
+                        FamilyThemeSelectorShape::Static { variant },
+                        FamilyThemeRuleFacet::Fill(paint_kind),
+                    ),
+                    FamilyThemeDisposition::Unsupported,
+                    "target=Table facet=Fill({paint_kind:?}) variant={variant:?}"
+                );
+            }
         }
     }
 

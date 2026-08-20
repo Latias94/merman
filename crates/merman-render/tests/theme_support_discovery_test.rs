@@ -240,6 +240,39 @@ fn final_four_terminal_less_paint_claims_are_unsupported() {
 }
 
 #[test]
+fn class_terminal_less_paint_claims_are_unsupported() {
+    for (target, facet) in [
+        (ThemeTarget::Marker, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Marker, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Table, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            DiagramFamilyId::CLASS.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            facet,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(
+            support.state(),
+            ThemeSupportStateV1::Unsupported,
+            "target={} facet={facet:?}",
+            target.id()
+        );
+        assert_eq!(
+            support.reason_ids(),
+            ["theme-support.no-supported-route"],
+            "target={} facet={facet:?}",
+            target.id()
+        );
+    }
+}
+
+#[test]
 fn state_support_discovery_uses_the_family_consumer_instead_of_route_ownership() {
     for (target, facet, expected_state, expected_reasons) in [
         (

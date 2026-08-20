@@ -227,10 +227,12 @@ fn compile_node_family(
             ("textColor", reader.text_fill(ThemeTarget::NodeLabel)),
         ],
     );
-    contributions.add_theme_variables(
-        "title.fill",
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
-    );
+    if family != DiagramFamilyId::CLASS {
+        contributions.add_theme_variables(
+            "title.fill",
+            [("titleColor", reader.text_fill(ThemeTarget::Title))],
+        );
+    }
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
     if family == DiagramFamilyId::GIT_GRAPH {
         contributions.add_theme_variables(
@@ -269,19 +271,21 @@ fn compile_node_family(
         ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
         [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
     );
-    contributions.add_theme_variables(
-        "cluster-label.fill",
-        [
-            (
-                "secondaryTextColor",
-                reader.text_fill(ThemeTarget::ClusterLabel),
-            ),
-            (
-                "tertiaryTextColor",
-                reader.text_fill(ThemeTarget::ClusterLabel),
-            ),
-        ],
-    );
+    if family != DiagramFamilyId::CLASS {
+        contributions.add_theme_variables(
+            "cluster-label.fill",
+            [
+                (
+                    "secondaryTextColor",
+                    reader.text_fill(ThemeTarget::ClusterLabel),
+                ),
+                (
+                    "tertiaryTextColor",
+                    reader.text_fill(ThemeTarget::ClusterLabel),
+                ),
+            ],
+        );
+    }
 
     match family {
         DiagramFamilyId::CLASS => {
@@ -290,32 +294,6 @@ fn compile_node_family(
                 [
                     ("classText", reader.text_fill(ThemeTarget::NodeLabel)),
                     ("labelColor", reader.text_fill(ThemeTarget::NodeLabel)),
-                ],
-            );
-            contributions.add_theme_variables(
-                "table.odd.fill",
-                [
-                    (
-                        "attributeBackgroundColorOdd",
-                        reader.fill_variant(ThemeTarget::Table, ThemeVariant::Odd),
-                    ),
-                    (
-                        "rowOdd",
-                        reader.fill_variant(ThemeTarget::Table, ThemeVariant::Odd),
-                    ),
-                ],
-            );
-            contributions.add_theme_variables(
-                "table.even.fill",
-                [
-                    (
-                        "attributeBackgroundColorEven",
-                        reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
-                    ),
-                    (
-                        "rowEven",
-                        reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
-                    ),
                 ],
             );
         }
@@ -2273,6 +2251,77 @@ mod tests {
     }
 
     #[test]
+    fn class_terminal_less_paint_rules_do_not_create_legacy_assignments() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Marker,
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#0f172a"))
+                            .with_stroke(solid("#22c55e")),
+                    )
+                    .for_family(DiagramFamilyId::CLASS),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::ClusterLabel,
+                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                    )
+                    .for_family(DiagramFamilyId::CLASS),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Table,
+                        ThemeStylePatch::default().with_fill(solid("#334155")),
+                    )
+                    .with_variant(ThemeVariant::Odd)
+                    .for_family(DiagramFamilyId::CLASS),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Table,
+                        ThemeStylePatch::default().with_fill(solid("#475569")),
+                    )
+                    .with_variant(ThemeVariant::Even)
+                    .for_family(DiagramFamilyId::CLASS),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(solid("#e2e8f0")),
+                    )
+                    .for_family(DiagramFamilyId::CLASS),
+                ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::CLASS);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+
+        let parsed = parse(&spec, "classDiagram\nclass Alpha\n");
+        let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
+        for path in [
+            "themeVariables.arrowheadColor",
+            "themeVariables.titleColor",
+            "themeVariables.secondaryTextColor",
+            "themeVariables.tertiaryTextColor",
+            "themeVariables.attributeBackgroundColorOdd",
+            "themeVariables.attributeBackgroundColorEven",
+            "themeVariables.rowOdd",
+            "themeVariables.rowEven",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "unsupported Class route must not mutate `{path}`"
+            );
+        }
+        assert_eq!(fallback_contribution_count(&parsed), 0);
+    }
+
+    #[test]
     fn typed_sequence_message_stroke_suppresses_only_its_legacy_projection() {
         let stroke_spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
@@ -2397,11 +2446,7 @@ mod tests {
 
     #[test]
     fn explicit_marker_paint_remains_legacy_when_edge_stroke_is_typed() {
-        for family in [
-            DiagramFamilyId::FLOWCHART,
-            DiagramFamilyId::SWIMLANE,
-            DiagramFamilyId::CLASS,
-        ] {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             let spec = DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default()
                     .with_rule(
