@@ -1569,6 +1569,7 @@ mod tests {
                 descriptor.capability.map(crate::CapabilityKey::id)
             );
             assert_eq!(operation.media_type(), descriptor.media_type);
+            assert_eq!(operation.maturity(), descriptor.maturity);
             assert_eq!(operation.requires_uri(), descriptor.requires_uri);
         }
 

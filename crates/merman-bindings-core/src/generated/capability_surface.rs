@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:6e909309a8df8f7af2d059b18a072a12d9d568c3313a6deb7509ef0d5be10387";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:532cdf1f02060f29eeff2d988fdc1bd7eda0c6e0eddea3ba8e6588b21ce0c548";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -336,6 +336,7 @@ impl OperationKey {
 pub struct OperationSpec {
     pub key: OperationKey,
     pub id: &'static str,
+    pub maturity: &'static str,
     pub capability: Option<CapabilityKey>,
     pub output: Option<OutputKey>,
     pub compiled_prerequisites: &'static [CapabilityKey],
@@ -350,6 +351,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::AnalysisFactsJson,
         id: "analysis-facts-json",
+        maturity: "stable",
         capability: Some(CapabilityKey::Analysis),
         output: None,
         compiled_prerequisites: &[],
@@ -362,6 +364,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::AnalysisJson,
         id: "analysis-json",
+        maturity: "stable",
         capability: Some(CapabilityKey::Analysis),
         output: None,
         compiled_prerequisites: &[],
@@ -374,6 +377,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::Ascii,
         id: "ascii",
+        maturity: "stable",
         capability: Some(CapabilityKey::Ascii),
         output: Some(OutputKey::Ascii),
         compiled_prerequisites: &[],
@@ -386,6 +390,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::DescribeThemeSupportJson,
         id: "describe-theme-support-json",
+        maturity: "alpha",
         capability: Some(CapabilityKey::Svg),
         output: None,
         compiled_prerequisites: &[],
@@ -398,6 +403,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::DocumentAnalysisFactsJson,
         id: "document-analysis-facts-json",
+        maturity: "stable",
         capability: Some(CapabilityKey::Analysis),
         output: None,
         compiled_prerequisites: &[],
@@ -410,6 +416,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::DocumentAnalysisJson,
         id: "document-analysis-json",
+        maturity: "stable",
         capability: Some(CapabilityKey::Analysis),
         output: None,
         compiled_prerequisites: &[],
@@ -422,6 +429,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::ExportThemePresetJson,
         id: "export-theme-preset-json",
+        maturity: "alpha",
         capability: Some(CapabilityKey::Svg),
         output: None,
         compiled_prerequisites: &[],
@@ -434,6 +442,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::Jpeg,
         id: "jpeg",
+        maturity: "stable",
         capability: Some(CapabilityKey::Jpeg),
         output: Some(OutputKey::Jpeg),
         compiled_prerequisites: &[CapabilityKey::Svg, ],
@@ -446,6 +455,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::LayoutJson,
         id: "layout-json",
+        maturity: "stable",
         capability: Some(CapabilityKey::Svg),
         output: None,
         compiled_prerequisites: &[],
@@ -458,6 +468,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::MaterializeThemeJson,
         id: "materialize-theme-json",
+        maturity: "alpha",
         capability: Some(CapabilityKey::Svg),
         output: None,
         compiled_prerequisites: &[],
@@ -470,6 +481,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::Pdf,
         id: "pdf",
+        maturity: "stable",
         capability: Some(CapabilityKey::Pdf),
         output: Some(OutputKey::Pdf),
         compiled_prerequisites: &[CapabilityKey::Svg, ],
@@ -482,6 +494,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::Png,
         id: "png",
+        maturity: "stable",
         capability: Some(CapabilityKey::Png),
         output: Some(OutputKey::Png),
         compiled_prerequisites: &[CapabilityKey::Svg, ],
@@ -494,6 +507,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::SemanticJson,
         id: "semantic-json",
+        maturity: "stable",
         capability: None,
         output: None,
         compiled_prerequisites: &[],
@@ -506,6 +520,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::Svg,
         id: "svg",
+        maturity: "stable",
         capability: Some(CapabilityKey::Svg),
         output: Some(OutputKey::Svg),
         compiled_prerequisites: &[],
@@ -518,6 +533,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::SvgPlanJson,
         id: "svg-plan-json",
+        maturity: "stable",
         capability: Some(CapabilityKey::Svg),
         output: None,
         compiled_prerequisites: &[],
@@ -530,6 +546,7 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::ValidationJson,
         id: "validation-json",
+        maturity: "stable",
         capability: Some(CapabilityKey::Analysis),
         output: None,
         compiled_prerequisites: &[],

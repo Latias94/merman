@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:6e909309a8df8f7af2d059b18a072a12d9d568c3313a6deb7509ef0d5be10387" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:532cdf1f02060f29eeff2d988fdc1bd7eda0c6e0eddea3ba8e6588b21ce0c548" as const;
 
 export const TARGETS = [
   {
@@ -264,6 +264,7 @@ export const OUTPUTS = [
 export const BINDING_OPERATIONS = [
   {
     "id": "analysis-facts-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
@@ -278,6 +279,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "analysis-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
@@ -293,6 +295,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "ascii",
+    "maturity": "stable",
     "capability": "ascii",
     "output": "ascii",
     "compiled_prerequisites": [],
@@ -307,6 +310,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "describe-theme-support-json",
+    "maturity": "alpha",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
@@ -322,6 +326,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "document-analysis-facts-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
@@ -336,6 +341,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "document-analysis-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
@@ -350,6 +356,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "export-theme-preset-json",
+    "maturity": "alpha",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
@@ -365,6 +372,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "jpeg",
+    "maturity": "stable",
     "capability": "jpeg",
     "output": "jpeg",
     "compiled_prerequisites": [
@@ -380,6 +388,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "layout-json",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
@@ -394,6 +403,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "materialize-theme-json",
+    "maturity": "alpha",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
@@ -409,6 +419,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "pdf",
+    "maturity": "stable",
     "capability": "pdf",
     "output": "pdf",
     "compiled_prerequisites": [
@@ -424,6 +435,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "png",
+    "maturity": "stable",
     "capability": "png",
     "output": "png",
     "compiled_prerequisites": [
@@ -439,6 +451,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "semantic-json",
+    "maturity": "stable",
     "capability": null,
     "output": null,
     "compiled_prerequisites": [],
@@ -453,6 +466,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "svg",
+    "maturity": "stable",
     "capability": "svg",
     "output": "svg",
     "compiled_prerequisites": [],
@@ -468,6 +482,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "svg-plan-json",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
@@ -482,6 +497,7 @@ export const BINDING_OPERATIONS = [
   },
   {
     "id": "validation-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],

@@ -28,11 +28,11 @@ fn metadata_serialization_count() -> u64 {
     METADATA_SERIALIZATION_COUNT.with(Cell::get)
 }
 
-/// A stable, transport-neutral operation selected from the canonical capability descriptor.
+/// A versioned, transport-neutral operation selected from the canonical capability descriptor.
 ///
-/// Operation IDs, capability prerequisites, media types, and URI requirements come exclusively
-/// from `capabilities/feature-surface-v1.json`. Transport-specific numeric codes are deliberately
-/// outside this type.
+/// Operation IDs, maturity, capability prerequisites, media types, and URI requirements come
+/// exclusively from `capabilities/feature-surface-v1.json`. Transport-specific numeric codes are
+/// deliberately outside this type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BindingOperationKind(OperationKey);
 
@@ -68,6 +68,12 @@ impl BindingOperationKind {
     #[must_use]
     pub const fn operation_id(self) -> &'static str {
         self.0.spec().id
+    }
+
+    /// Returns the open maturity identifier owned by the canonical capability descriptor.
+    #[must_use]
+    pub const fn maturity(self) -> &'static str {
+        self.0.spec().maturity
     }
 
     #[must_use]

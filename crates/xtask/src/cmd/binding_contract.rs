@@ -113,6 +113,7 @@ struct TransportExposureProjection {
 #[derive(Serialize)]
 struct OperationExpectationProjection {
     operation_id: &'static str,
+    maturity: &'static str,
     output_id: Option<&'static str>,
     media_type: &'static str,
     metadata_schema_version: u32,
@@ -240,6 +241,7 @@ fn operation_expectation_projections() -> Vec<OperationExpectationProjection> {
         .iter()
         .map(|expectation| OperationExpectationProjection {
             operation_id: expectation.operation_id(),
+            maturity: expectation.maturity(),
             output_id: expectation.output_id(),
             media_type: expectation.media_type(),
             metadata_schema_version: expectation.metadata_schema_version(),
@@ -824,7 +826,7 @@ fn render_kotlin() -> String {
         "internal data class MermanBindingConstructorServiceSpec(\n    val id: String,\n    val requiresSvgPipeline: Boolean,\n    val providedTextMeasurementProviderIds: Set<String>,\n    val resourceLimits: List<MermanBindingConstructorResourceLimitSpec>,\n)\n\n",
     );
     out.push_str(
-        "internal data class MermanBindingOperationExpectation(\n    val operationId: String,\n    val outputId: String?,\n    val mediaType: String,\n    val metadataSchemaVersion: Int,\n    val requiresUri: Boolean,\n    val availabilityCapabilityId: String?,\n)\n\n",
+        "internal data class MermanBindingOperationExpectation(\n    val operationId: String,\n    val maturity: String,\n    val outputId: String?,\n    val mediaType: String,\n    val metadataSchemaVersion: Int,\n    val requiresUri: Boolean,\n    val availabilityCapabilityId: String?,\n)\n\n",
     );
     out.push_str(
         "internal data class MermanBindingArtifactExpectation(\n    val capabilityIds: List<String>,\n    val outputIds: List<String>,\n    val systemAdapterIds: List<String>,\n    val operationIds: List<String>,\n    val metadataIds: List<String>,\n)\n\n",
@@ -966,8 +968,9 @@ fn render_kotlin() -> String {
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
         writeln!(
             out,
-            "    MermanBindingOperationExpectation({:?}, {}, {:?}, {}, {}, {}),",
+            "    MermanBindingOperationExpectation({:?}, {:?}, {}, {:?}, {}, {}, {}),",
             expectation.operation_id,
+            expectation.maturity,
             output,
             expectation.media_type,
             expectation.metadata_schema_version,
@@ -1276,6 +1279,7 @@ final class MermanBindingConstructorServiceSpec {
 final class MermanBindingOperationExpectation {
   const MermanBindingOperationExpectation({
     required this.operationId,
+    required this.maturity,
     required this.outputId,
     required this.mediaType,
     required this.metadataSchemaVersion,
@@ -1284,6 +1288,7 @@ final class MermanBindingOperationExpectation {
   });
 
   final String operationId;
+  final String maturity;
   final String? outputId;
   final String mediaType;
   final int metadataSchemaVersion;
@@ -1416,6 +1421,7 @@ final class MermanBindingOperationExpectation {
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
         out.push_str("  MermanBindingOperationExpectation(\n");
         writeln!(out, "    operationId: {:?},", expectation.operation_id).unwrap();
+        writeln!(out, "    maturity: {:?},", expectation.maturity).unwrap();
         let output = expectation
             .output_id
             .map_or_else(|| "null".to_owned(), |id| format!("{id:?}"));
@@ -1625,6 +1631,7 @@ fn render_python() -> String {
     for spec in &operation_expectations {
         out.push_str("    {\n");
         writeln!(out, "        \"operation_id\": {:?},", spec.operation_id).unwrap();
+        writeln!(out, "        \"maturity\": {:?},", spec.maturity).unwrap();
         match spec.availability_capability_id {
             Some(id) => writeln!(out, "        \"availability_capability_id\": {id:?},").unwrap(),
             None => out.push_str("        \"availability_capability_id\": None,\n"),
@@ -1938,6 +1945,7 @@ mod tests {
         let generated = render_node_javascript();
         assert!(generated.contains("BINDING_OPERATION_METADATA_CONTRACT"));
         assert!(generated.contains("BINDING_OPERATION_EXPECTATIONS"));
+        assert!(generated.contains("\"maturity\": \"alpha\""));
         assert!(generated.contains("CAPABILITY_SPECS"));
         assert!(generated.contains("implication_ids"));
         assert!(generated.contains("RUNTIME_CATALOG_IDENTIFIER_PATTERN"));
@@ -1969,6 +1977,7 @@ mod tests {
         assert!(generated.contains("RUNTIME_CATALOG_MAX_SAFE_INTEGER"));
         assert!(generated.contains("REQUIRED_PAYLOAD_SCHEMA_VERSIONS"));
         assert!(generated.contains("BINDING_OPERATION_RELATION_SPECS"));
+        assert!(generated.contains("\"maturity\": \"alpha\""));
         assert!(generated.contains("METADATA_SPECS"));
         assert!(generated.contains("BINDING_OPTION_GROUP_SPECS"));
         assert!(generated.contains("CONSTRUCTOR_SERVICE_SPECS"));
@@ -2015,6 +2024,7 @@ mod tests {
         assert!(kotlin.contains("decodeMermanOperationMetadata"));
         assert!(kotlin.contains("MermanUnknownOutputPlan"));
         assert!(kotlin.contains("MERMAN_BINDING_OPERATION_EXPECTATIONS"));
+        assert!(kotlin.contains("val maturity: String"));
         assert!(kotlin.contains("MermanBindingMetadataId"));
         assert!(
             kotlin
@@ -2026,6 +2036,7 @@ mod tests {
         assert!(dart.contains("decodeMermanOperationMetadata"));
         assert!(dart.contains("MermanUnknownOutputPlan"));
         assert!(dart.contains("mermanBindingOperationExpectations"));
+        assert!(dart.contains("final String maturity;"));
         assert!(dart.contains("abstract final class MermanBindingMetadataId"));
         assert!(dart.contains("static const String supportedDiagrams = \"supported-diagrams\";"));
         assert!(dart.contains(

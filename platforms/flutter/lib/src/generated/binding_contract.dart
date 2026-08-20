@@ -103,6 +103,7 @@ final class MermanBindingConstructorServiceSpec {
 final class MermanBindingOperationExpectation {
   const MermanBindingOperationExpectation({
     required this.operationId,
+    required this.maturity,
     required this.outputId,
     required this.mediaType,
     required this.metadataSchemaVersion,
@@ -111,6 +112,7 @@ final class MermanBindingOperationExpectation {
   });
 
   final String operationId;
+  final String maturity;
   final String? outputId;
   final String mediaType;
   final int metadataSchemaVersion;
@@ -609,6 +611,7 @@ const List<MermanBindingOperationExpectation>
     mermanBindingOperationExpectations = <MermanBindingOperationExpectation>[
   MermanBindingOperationExpectation(
     operationId: "analysis-facts-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -617,6 +620,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "analysis-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -625,6 +629,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "ascii",
+    maturity: "stable",
     outputId: "ascii",
     mediaType: "text/plain; charset=utf-8",
     metadataSchemaVersion: 1,
@@ -633,6 +638,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "describe-theme-support-json",
+    maturity: "alpha",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -641,6 +647,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "document-analysis-facts-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -649,6 +656,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "document-analysis-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -657,6 +665,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "export-theme-preset-json",
+    maturity: "alpha",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -665,6 +674,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "jpeg",
+    maturity: "stable",
     outputId: "jpeg",
     mediaType: "image/jpeg",
     metadataSchemaVersion: 1,
@@ -673,6 +683,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "layout-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -681,6 +692,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "materialize-theme-json",
+    maturity: "alpha",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -689,6 +701,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "pdf",
+    maturity: "stable",
     outputId: "pdf",
     mediaType: "application/pdf",
     metadataSchemaVersion: 1,
@@ -697,6 +710,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "png",
+    maturity: "stable",
     outputId: "png",
     mediaType: "image/png",
     metadataSchemaVersion: 1,
@@ -705,6 +719,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "semantic-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -713,6 +728,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "svg",
+    maturity: "stable",
     outputId: "svg",
     mediaType: "image/svg+xml",
     metadataSchemaVersion: 1,
@@ -721,6 +737,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "svg-plan-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,
@@ -729,6 +746,7 @@ const List<MermanBindingOperationExpectation>
   ),
   MermanBindingOperationExpectation(
     operationId: "validation-json",
+    maturity: "stable",
     outputId: null,
     mediaType: "application/json",
     metadataSchemaVersion: 1,

@@ -254,7 +254,7 @@ function runtimeCatalog(overrides = {}) {
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
       output_ids: ["svg"],
-      operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+      operation_ids: [...NODE_WIRE_CONTRACT.artifact.operation_ids],
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: TEXT_MEASUREMENT_PROTOCOL_VERSION,
@@ -1061,7 +1061,12 @@ test("runtime catalog follows descriptor-owned SVG compiled prerequisites", asyn
   assert.deepEqual(
     NODE_BINDING_OPERATIONS,
     descriptor.binding_operations
-      .map(({ id, compiled_prerequisites }) => ({ id, compiled_prerequisites }))
+      .map(({ id, maturity, compiled_prerequisites, input_kind }) => ({
+        id,
+        maturity,
+        compiled_prerequisites,
+        input_kind,
+      }))
       .sort((left, right) => left.id.localeCompare(right.id)),
   );
   assert.notEqual(pipelineOperations.length, 0);
@@ -1621,7 +1626,7 @@ test("capability-gated errors survive while advertised-operation contradictions 
   await engine.dispose();
 });
 
-test("generic execution covers the complete 13-operation matrix", async () => {
+test("generic execution covers the complete descriptor operation matrix", async () => {
   const expectations = new Map(
     BINDING_OPERATION_EXPECTATIONS.map((expectation) => [
       expectation.operation_id,

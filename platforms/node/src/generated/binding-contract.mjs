@@ -340,6 +340,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
 export const BINDING_OPERATION_EXPECTATIONS = [
   {
     "operation_id": "analysis-facts-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -355,6 +356,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "analysis-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -370,6 +372,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "ascii",
+    "maturity": "stable",
     "output_id": "ascii",
     "media_type": "text/plain; charset=utf-8",
     "metadata_schema_version": 1,
@@ -385,6 +388,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "describe-theme-support-json",
+    "maturity": "alpha",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -400,6 +404,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "document-analysis-facts-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -415,6 +420,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "document-analysis-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -430,6 +436,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "export-theme-preset-json",
+    "maturity": "alpha",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -445,6 +452,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "jpeg",
+    "maturity": "stable",
     "output_id": "jpeg",
     "media_type": "image/jpeg",
     "metadata_schema_version": 1,
@@ -462,6 +470,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "layout-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -477,6 +486,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "materialize-theme-json",
+    "maturity": "alpha",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -492,6 +502,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "pdf",
+    "maturity": "stable",
     "output_id": "pdf",
     "media_type": "application/pdf",
     "metadata_schema_version": 1,
@@ -509,6 +520,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "png",
+    "maturity": "stable",
     "output_id": "png",
     "media_type": "image/png",
     "metadata_schema_version": 1,
@@ -526,6 +538,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "semantic-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -536,6 +549,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "svg",
+    "maturity": "stable",
     "output_id": "svg",
     "media_type": "image/svg+xml",
     "metadata_schema_version": 1,
@@ -551,6 +565,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "svg-plan-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -566,6 +581,7 @@ export const BINDING_OPERATION_EXPECTATIONS = [
   },
   {
     "operation_id": "validation-json",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,

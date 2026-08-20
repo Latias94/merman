@@ -13,87 +13,104 @@ final class MermanOperation {
   const MermanOperation._(
     this.nativeCode,
     this.operationId,
+    this.maturity,
     this.requiresUri,
   );
 
   static const svg = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_SVG,
     native.MERMAN_NATIVE_OPERATION_ID_SVG,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_SVG,
     false,
   );
   static const png = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_PNG,
     native.MERMAN_NATIVE_OPERATION_ID_PNG,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_PNG,
     false,
   );
   static const jpeg = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_JPEG,
     native.MERMAN_NATIVE_OPERATION_ID_JPEG,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_JPEG,
     false,
   );
   static const pdf = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_PDF,
     native.MERMAN_NATIVE_OPERATION_ID_PDF,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_PDF,
     false,
   );
   static const ascii = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_ASCII,
     native.MERMAN_NATIVE_OPERATION_ID_ASCII,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_ASCII,
     false,
   );
   static const semanticJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_SEMANTIC_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_SEMANTIC_JSON,
     false,
   );
   static const layoutJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_LAYOUT_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_LAYOUT_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_LAYOUT_JSON,
     false,
   );
   static const analysisJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_ANALYSIS_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_ANALYSIS_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_ANALYSIS_JSON,
     false,
   );
   static const analysisFactsJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_ANALYSIS_FACTS_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_ANALYSIS_FACTS_JSON,
     false,
   );
   static const validationJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_VALIDATION_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_VALIDATION_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_VALIDATION_JSON,
     false,
   );
   static const documentAnalysisJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_DOCUMENT_ANALYSIS_JSON,
     true,
   );
   static const documentAnalysisFactsJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_FACTS_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_DOCUMENT_ANALYSIS_FACTS_JSON,
     true,
   );
   static const svgPlanJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_SVG_PLAN_JSON,
     false,
   );
   static const describeThemeSupportJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_DESCRIBE_THEME_SUPPORT_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_DESCRIBE_THEME_SUPPORT_JSON,
     false,
   );
   static const exportThemePresetJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_EXPORT_THEME_PRESET_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_EXPORT_THEME_PRESET_JSON,
     false,
   );
   static const materializeThemeJson = MermanOperation._(
     native.MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON,
     native.MERMAN_NATIVE_OPERATION_ID_MATERIALIZE_THEME_JSON,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON,
     false,
   );
 
@@ -142,6 +159,7 @@ final class MermanOperation {
 
   final int nativeCode;
   final String operationId;
+  final String maturity;
   final bool requiresUri;
 
   @override

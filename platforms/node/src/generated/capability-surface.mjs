@@ -2,46 +2,54 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:6e909309a8df8f7af2d059b18a072a12d9d568c3313a6deb7509ef0d5be10387";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:532cdf1f02060f29eeff2d988fdc1bd7eda0c6e0eddea3ba8e6588b21ce0c548";
 
 export const NODE_BINDING_OPERATIONS = [
   {
     "id": "analysis-facts-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "analysis-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "ascii",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "describe-theme-support-json",
+    "maturity": "alpha",
     "compiled_prerequisites": [],
     "input_kind": "theme-support-query-json"
   },
   {
     "id": "document-analysis-facts-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "document-analysis-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "export-theme-preset-json",
+    "maturity": "alpha",
     "compiled_prerequisites": [],
     "input_kind": "theme-preset-id"
   },
   {
     "id": "jpeg",
+    "maturity": "stable",
     "compiled_prerequisites": [
       "svg"
     ],
@@ -49,16 +57,19 @@ export const NODE_BINDING_OPERATIONS = [
   },
   {
     "id": "layout-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "materialize-theme-json",
+    "maturity": "alpha",
     "compiled_prerequisites": [],
     "input_kind": "theme-definition-json"
   },
   {
     "id": "pdf",
+    "maturity": "stable",
     "compiled_prerequisites": [
       "svg"
     ],
@@ -66,6 +77,7 @@ export const NODE_BINDING_OPERATIONS = [
   },
   {
     "id": "png",
+    "maturity": "stable",
     "compiled_prerequisites": [
       "svg"
     ],
@@ -73,21 +85,25 @@ export const NODE_BINDING_OPERATIONS = [
   },
   {
     "id": "semantic-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "svg",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "svg-plan-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   },
   {
     "id": "validation-json",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "mermaid-source"
   }

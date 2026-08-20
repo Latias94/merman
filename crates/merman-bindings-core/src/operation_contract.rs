@@ -326,6 +326,7 @@ impl BindingUnavailableOperationExpectation {
 #[non_exhaustive]
 pub struct BindingOperationExpectation {
     operation_id: &'static str,
+    maturity: &'static str,
     input_kind: &'static str,
     output_id: Option<&'static str>,
     media_type: &'static str,
@@ -341,6 +342,11 @@ impl BindingOperationExpectation {
     #[must_use]
     pub const fn operation_id(&self) -> &'static str {
         self.operation_id
+    }
+
+    #[must_use]
+    pub const fn maturity(&self) -> &'static str {
+        self.maturity
     }
 
     #[must_use]
@@ -407,6 +413,7 @@ pub fn binding_operation_expectations() -> &'static [BindingOperationExpectation
                 });
                 BindingOperationExpectation {
                     operation_id: operation.operation_id(),
+                    maturity: operation.maturity(),
                     input_kind: operation.input_kind(),
                     output_id: operation.key().spec().output.map(crate::OutputKey::id),
                     media_type: operation.media_type(),
@@ -478,6 +485,7 @@ mod tests {
         assert_eq!(rows.len(), 16);
         for (row, operation) in rows.iter().zip(BindingOperationKind::all()) {
             assert_eq!(row.operation_id(), operation.operation_id());
+            assert_eq!(row.maturity(), operation.maturity());
             assert_eq!(row.input_kind(), operation.input_kind());
             assert_eq!(
                 row.output_id(),
@@ -542,7 +550,15 @@ mod tests {
             serde_json::from_slice(&binding_operation_expectations_json().unwrap()).unwrap();
         assert_eq!(matrix.as_array().unwrap().len(), 16);
         assert_eq!(matrix[0]["operation_id"], "analysis-facts-json");
+        assert_eq!(matrix[0]["maturity"], "stable");
         assert_eq!(matrix[0]["input_kind"], "mermaid-source");
+        let materialize = matrix
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["operation_id"] == "materialize-theme-json")
+            .unwrap();
+        assert_eq!(materialize["maturity"], "alpha");
         let png = matrix
             .as_array()
             .unwrap()
