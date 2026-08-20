@@ -10,7 +10,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, unsupported_residual_for_facet,
+    InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
+    InheritedTextViewportFacts, unsupported_residual_for_facet,
 };
 use crate::model::ErrorDiagramLayout;
 use crate::text::TextMeasurer;
@@ -18,6 +19,16 @@ use crate::text::TextMeasurer;
 pub const UPSTREAM_MERMAID_VERSION: &str = merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
 
 const LEGACY_FAMILY_THEME_CONTRIBUTION_PREFIX: &str = "merman.legacy-family-theme.v1.";
+const ERROR_BASELINE_VIEWBOX_WIDTH: f64 = 2412.0;
+const ERROR_BASELINE_VIEWBOX_HEIGHT: f64 = 512.0;
+const ERROR_BASELINE_MAX_WIDTH_PX: f64 = 512.0;
+const ERROR_MESSAGE: &str = "Syntax error in text";
+const ERROR_MESSAGE_FONT_SIZE_PX: f64 = 150.0;
+const ERROR_MESSAGE_BASELINE_X_PX: f64 = 1440.0;
+const ERROR_MESSAGE_BASELINE_Y_PX: f64 = 250.0;
+const ERROR_VERSION_FONT_SIZE_PX: f64 = 100.0;
+const ERROR_VERSION_BASELINE_X_PX: f64 = 1250.0;
+const ERROR_VERSION_BASELINE_Y_PX: f64 = 400.0;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ErrorTextRole {
@@ -28,6 +39,8 @@ pub(crate) enum ErrorTextRole {
 #[derive(Debug)]
 pub(crate) struct ErrorSurfaceReceipt {
     expected_font_family_css: Box<str>,
+    expected_message: InheritedTextRunFacts,
+    expected_version: InheritedTextRunFacts,
     root_font_family_css: Option<Box<str>>,
     inherited_font_family_css: Option<Box<str>>,
     root_variable_font_family_css: Option<Box<str>>,
@@ -38,9 +51,15 @@ pub(crate) struct ErrorSurfaceReceipt {
 }
 
 impl ErrorSurfaceReceipt {
-    fn new(expected_font_family_css: &str) -> Self {
+    fn new(
+        expected_font_family_css: &str,
+        expected_message: &InheritedTextRunFacts,
+        expected_version: &InheritedTextRunFacts,
+    ) -> Self {
         Self {
             expected_font_family_css: expected_font_family_css.into(),
+            expected_message: expected_message.clone(),
+            expected_version: expected_version.clone(),
             root_font_family_css: None,
             inherited_font_family_css: None,
             root_variable_font_family_css: None,
@@ -79,9 +98,16 @@ impl ErrorSurfaceReceipt {
         role: ErrorTextRole,
         emitted_class: &str,
         text: &str,
+        font_size_px: f64,
+        x: f64,
+        y: f64,
     ) {
         self.terminal_matches &= emitted_class == "error-text";
-        self.terminal_matches &= !text.trim().is_empty();
+        let expected = match role {
+            ErrorTextRole::Message => &self.expected_message,
+            ErrorTextRole::Version => &self.expected_version,
+        };
+        self.terminal_matches &= expected.matches_terminal(text, font_size_px, x, y);
         if text.trim().is_empty() {
             return;
         }
@@ -112,6 +138,7 @@ impl ErrorSurfaceReceipt {
 #[derive(Debug)]
 pub(crate) struct ErrorTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
+    terminal_geometry: InheritedTextViewportFacts,
     evidence: FamilyThemeEvidence,
     unsupported_routes: Box<[ErrorUnsupportedRoute]>,
     terminal_receipt: OnceLock<ErrorSurfaceReceipt>,
@@ -127,10 +154,34 @@ impl ErrorTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
+        measurer: &dyn TextMeasurer,
     ) -> Self {
+        let inherited_font_stack = InheritedFontStackPlan::resolve(theme, effective_config);
+        let version = format!("mermaid version {UPSTREAM_MERMAID_VERSION}");
+        let terminal_geometry = InheritedTextViewportFacts::prepare(
+            ERROR_BASELINE_VIEWBOX_WIDTH,
+            ERROR_BASELINE_VIEWBOX_HEIGHT,
+            [
+                InheritedTextRunSpec::new(
+                    ERROR_MESSAGE,
+                    ERROR_MESSAGE_FONT_SIZE_PX,
+                    ERROR_MESSAGE_BASELINE_X_PX,
+                    ERROR_MESSAGE_BASELINE_Y_PX,
+                ),
+                InheritedTextRunSpec::new(
+                    &version,
+                    ERROR_VERSION_FONT_SIZE_PX,
+                    ERROR_VERSION_BASELINE_X_PX,
+                    ERROR_VERSION_BASELINE_Y_PX,
+                ),
+            ],
+            inherited_font_stack.font_family_css(),
+            measurer,
+        );
         let unsupported_routes = error_unsupported_routes(theme);
         Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve(theme, effective_config),
+            inherited_font_stack,
+            terminal_geometry,
             evidence: FamilyThemeEvidence::from_theme(theme),
             unsupported_routes,
             terminal_receipt: OnceLock::new(),
@@ -142,7 +193,27 @@ impl ErrorTypographyThemePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> ErrorSurfaceReceipt {
-        ErrorSurfaceReceipt::new(self.font_family_css())
+        ErrorSurfaceReceipt::new(
+            self.font_family_css(),
+            self.message_geometry(),
+            self.version_geometry(),
+        )
+    }
+
+    pub(crate) const fn viewport_width_px(&self) -> f64 {
+        self.terminal_geometry.width_px()
+    }
+
+    pub(crate) const fn viewport_height_px(&self) -> f64 {
+        self.terminal_geometry.height_px()
+    }
+
+    pub(crate) fn message_geometry(&self) -> &InheritedTextRunFacts {
+        self.terminal_geometry.run(0)
+    }
+
+    pub(crate) fn version_geometry(&self) -> &InheritedTextRunFacts {
+        self.terminal_geometry.run(1)
     }
 
     pub(crate) fn record_terminal(&self, receipt: ErrorSurfaceReceipt) -> bool {
@@ -299,12 +370,52 @@ fn error_typography_assignment_is_accounted(
 
 pub(crate) fn layout_error_diagram_typed(
     _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
-    _effective_config: &serde_json::Value,
-    _measurer: &dyn TextMeasurer,
+    typography_theme: &ErrorTypographyThemePlan,
 ) -> Result<ErrorDiagramLayout> {
+    let viewbox_width = typography_theme.viewport_width_px();
     Ok(ErrorDiagramLayout {
-        viewbox_width: 2412.0,
-        viewbox_height: 512.0,
-        max_width_px: 512.0,
+        viewbox_width,
+        viewbox_height: typography_theme.viewport_height_px(),
+        max_width_px: ERROR_BASELINE_MAX_WIDTH_PX * (viewbox_width / ERROR_BASELINE_VIEWBOX_WIDTH),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::text::DeterministicTextMeasurer;
+
+    #[test]
+    fn error_layout_preserves_upstream_canvas_and_anchors_for_the_default_font() {
+        let measurer = DeterministicTextMeasurer::default();
+        let config = MermaidConfig::default();
+        let typography_theme = ErrorTypographyThemePlan::resolve(None, &config, &measurer);
+        let layout = layout_error_diagram_typed(
+            &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel {
+                diagram_type: "error".to_string(),
+            },
+            &typography_theme,
+        )
+        .expect("Error layout");
+
+        assert_eq!(layout.viewbox_width, ERROR_BASELINE_VIEWBOX_WIDTH);
+        assert_eq!(layout.viewbox_height, ERROR_BASELINE_VIEWBOX_HEIGHT);
+        assert_eq!(layout.max_width_px, ERROR_BASELINE_MAX_WIDTH_PX);
+        assert_eq!(
+            typography_theme.message_geometry().x(),
+            ERROR_MESSAGE_BASELINE_X_PX
+        );
+        assert_eq!(
+            typography_theme.message_geometry().y(),
+            ERROR_MESSAGE_BASELINE_Y_PX
+        );
+        assert_eq!(
+            typography_theme.version_geometry().x(),
+            ERROR_VERSION_BASELINE_X_PX
+        );
+        assert_eq!(
+            typography_theme.version_geometry().y(),
+            ERROR_VERSION_BASELINE_Y_PX
+        );
+    }
 }

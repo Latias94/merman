@@ -7,7 +7,10 @@ pub use capability::{RenderCapabilityPlan, plan_render};
 pub(crate) use evidence_support::{
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
-pub(crate) use inherited_font_stack::{InheritedFontStackOutcome, InheritedFontStackPlan};
+pub(crate) use inherited_font_stack::{
+    InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
+    InheritedTextViewportFacts,
+};
 
 use crate::diagram_theme::{
     FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,

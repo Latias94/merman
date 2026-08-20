@@ -64,20 +64,42 @@ fn render_error_diagram_svg_inner(
     out.push_str(r#"<path class="error-icon" d="m496,96.586h-32c-8.844,0-16,7.164-16,16 0,8.836 7.156,16 16,16h32c8.844,0 16-7.164 16-16 0-8.836-7.156-16-16-16z"/>"#);
     out.push_str(r#"<path class="error-icon" d="m436.98,75.605c3.125,3.125 7.219,4.688 11.313,4.688 4.094,0 8.188-1.563 11.313-4.688l32-32c6.25-6.25 6.25-16.375 0-22.625s-16.375-6.25-22.625,0l-32,32c-6.251,6.25-6.251,16.375-0.001,22.625z"/>"#);
     out.checkpoint()?;
-    let message = "Syntax error in text";
+    let message = typography_theme.message_geometry();
     let _ = write!(
         &mut out,
-        r#"<text class="error-text" x="1440" y="250" font-size="150px" style="text-anchor: middle;">{message}</text>"#
+        r#"<text class="error-text" x="{}" y="{}" font-size="{}px" style="text-anchor: middle;">{}</text>"#,
+        fmt(message.x()),
+        fmt(message.y()),
+        fmt(message.font_size_px()),
+        escape_xml(message.text())
     );
     out.checkpoint()?;
-    surface_receipt.record_error_text(crate::error::ErrorTextRole::Message, "error-text", message);
-    let version = format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION);
+    surface_receipt.record_error_text(
+        crate::error::ErrorTextRole::Message,
+        "error-text",
+        message.text(),
+        message.font_size_px(),
+        message.x(),
+        message.y(),
+    );
+    let version = typography_theme.version_geometry();
     let _ = write!(
         &mut out,
-        r#"<text class="error-text" x="1250" y="400" font-size="100px" style="text-anchor: middle;">{version}</text>"#
+        r#"<text class="error-text" x="{}" y="{}" font-size="{}px" style="text-anchor: middle;">{}</text>"#,
+        fmt(version.x()),
+        fmt(version.y()),
+        fmt(version.font_size_px()),
+        escape_xml(version.text())
     );
     out.checkpoint()?;
-    surface_receipt.record_error_text(crate::error::ErrorTextRole::Version, "error-text", &version);
+    surface_receipt.record_error_text(
+        crate::error::ErrorTextRole::Version,
+        "error-text",
+        version.text(),
+        version.font_size_px(),
+        version.x(),
+        version.y(),
+    );
     out.push_str("</g></svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
     if !typography_theme.record_terminal(surface_receipt) {

@@ -9,7 +9,19 @@ pub(crate) fn render_info_diagram_svg(
     let mut surface_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_spec = root_svg::RootViewportSpec::responsive_without_view_box(400.0);
+    let bounds = layout
+        .bounds
+        .as_ref()
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: "Info layout is missing its prepared viewport bounds".to_string(),
+        })?;
+    let mut root_spec = root_svg::RootViewportSpec::responsive_without_view_box(
+        (bounds.max_x - bounds.min_x).max(0.0),
+    );
+    if typography_theme.requires_explicit_viewport_height() {
+        root_spec =
+            root_spec.with_mermaid_responsive_height(true, (bounds.max_y - bounds.min_y).max(0.0));
+    }
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "info");
     root_chrome.dom.trailing_newline = false;
     let root_document = root_svg::RootViewportContext::new(
@@ -33,13 +45,28 @@ pub(crate) fn render_info_diagram_svg(
     );
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
+    let version = typography_theme.version_geometry();
+    if layout.version != version.text() {
+        return Err(crate::Error::InvalidModel {
+            message: "Info layout version diverged from prepared terminal geometry".to_string(),
+        });
+    }
     let _ = write!(
         &mut out,
-        r#"<g><text x="100" y="40" class="version" font-size="32" style="text-anchor: middle;">{}</text></g>"#,
-        escape_xml(&layout.version)
+        r#"<g><text x="{}" y="{}" class="version" font-size="{}" style="text-anchor: middle;">{}</text></g>"#,
+        fmt(version.x()),
+        fmt(version.y()),
+        fmt(version.font_size_px()),
+        escape_xml(version.text())
     );
     out.checkpoint()?;
-    surface_receipt.record_version_text("version", &layout.version);
+    surface_receipt.record_version_text(
+        "version",
+        version.text(),
+        version.font_size_px(),
+        version.x(),
+        version.y(),
+    );
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
     if !typography_theme.record_terminal(surface_receipt) {
@@ -65,8 +92,9 @@ mod tests {
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
         let effective_config = merman_core::MermaidConfig::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
         let typography_theme =
-            crate::info::InfoTypographyThemePlan::resolve(None, &effective_config);
+            crate::info::InfoTypographyThemePlan::resolve(None, &effective_config, &measurer);
         let execution = SvgExecution::unthemed_for_test(
             &request,
             &debug,
@@ -74,11 +102,13 @@ mod tests {
             crate::DiagramFamilyId::INFO,
         )
         .expect("SVG execution");
+        let layout = crate::info::layout_info_diagram_typed(
+            &merman_core::diagrams::info::InfoDiagramRenderModel::default(),
+            &typography_theme,
+        )
+        .expect("Info layout");
         render_info_diagram_svg(
-            &InfoDiagramLayout {
-                bounds: None,
-                version: "v11.15.0".to_string(),
-            },
+            &layout,
             effective_config.as_value(),
             &typography_theme,
             &execution,

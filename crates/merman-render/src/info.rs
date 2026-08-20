@@ -7,7 +7,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, unsupported_residual_for_facet,
+    InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
+    InheritedTextViewportFacts, unsupported_residual_for_facet,
 };
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::text::TextMeasurer;
@@ -15,9 +16,16 @@ use merman_core::MermaidConfig;
 use merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
 use merman_core::diagrams::info::InfoDiagramRenderModel;
 
+const INFO_BASELINE_WIDTH_PX: f64 = 400.0;
+const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
+const INFO_VERSION_FONT_SIZE_PX: f64 = 32.0;
+const INFO_VERSION_BASELINE_X_PX: f64 = 100.0;
+const INFO_VERSION_BASELINE_Y_PX: f64 = 40.0;
+
 #[derive(Debug)]
 pub(crate) struct InfoSurfaceReceipt {
     expected_font_family_css: Box<str>,
+    expected_version: InheritedTextRunFacts,
     root_font_family_css: Option<Box<str>>,
     inherited_font_family_css: Option<Box<str>>,
     root_variable_font_family_css: Option<Box<str>>,
@@ -27,9 +35,10 @@ pub(crate) struct InfoSurfaceReceipt {
 }
 
 impl InfoSurfaceReceipt {
-    fn new(expected_font_family_css: &str) -> Self {
+    fn new(expected_font_family_css: &str, expected_version: &InheritedTextRunFacts) -> Self {
         Self {
             expected_font_family_css: expected_font_family_css.into(),
+            expected_version: expected_version.clone(),
             root_font_family_css: None,
             inherited_font_family_css: None,
             root_variable_font_family_css: None,
@@ -62,9 +71,18 @@ impl InfoSurfaceReceipt {
         self.root_variable_font_family_css = Some(root_variable_font_family_css.into());
     }
 
-    pub(crate) fn record_version_text(&mut self, emitted_class: &str, text: &str) {
+    pub(crate) fn record_version_text(
+        &mut self,
+        emitted_class: &str,
+        text: &str,
+        font_size_px: f64,
+        x: f64,
+        y: f64,
+    ) {
         self.terminal_matches &= emitted_class == "version";
-        self.terminal_matches &= !text.trim().is_empty();
+        self.terminal_matches &= self
+            .expected_version
+            .matches_terminal(text, font_size_px, x, y);
         if !text.trim().is_empty() {
             self.version_text_count = self.version_text_count.saturating_add(1);
         }
@@ -86,6 +104,7 @@ impl InfoSurfaceReceipt {
 #[derive(Debug)]
 pub(crate) struct InfoTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
+    terminal_geometry: InheritedTextViewportFacts,
     evidence: FamilyThemeEvidence,
     unsupported_routes: Box<[InfoUnsupportedRoute]>,
     terminal_receipt: OnceLock<InfoSurfaceReceipt>,
@@ -101,10 +120,26 @@ impl InfoTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
+        measurer: &dyn TextMeasurer,
     ) -> Self {
+        let inherited_font_stack = InheritedFontStackPlan::resolve(theme, effective_config);
+        let version = format!("v{PINNED_MERMAID_BASELINE_VERSION}");
+        let terminal_geometry = InheritedTextViewportFacts::prepare(
+            INFO_BASELINE_WIDTH_PX,
+            INFO_BASELINE_HEIGHT_PX,
+            [InheritedTextRunSpec::new(
+                &version,
+                INFO_VERSION_FONT_SIZE_PX,
+                INFO_VERSION_BASELINE_X_PX,
+                INFO_VERSION_BASELINE_Y_PX,
+            )],
+            inherited_font_stack.font_family_css(),
+            measurer,
+        );
         let unsupported_routes = info_unsupported_routes(theme);
         Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve(theme, effective_config),
+            inherited_font_stack,
+            terminal_geometry,
             evidence: FamilyThemeEvidence::from_theme(theme),
             unsupported_routes,
             terminal_receipt: OnceLock::new(),
@@ -116,7 +151,23 @@ impl InfoTypographyThemePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> InfoSurfaceReceipt {
-        InfoSurfaceReceipt::new(self.font_family_css())
+        InfoSurfaceReceipt::new(self.font_family_css(), self.version_geometry())
+    }
+
+    pub(crate) const fn viewport_width_px(&self) -> f64 {
+        self.terminal_geometry.width_px()
+    }
+
+    pub(crate) const fn viewport_height_px(&self) -> f64 {
+        self.terminal_geometry.height_px()
+    }
+
+    pub(crate) fn requires_explicit_viewport_height(&self) -> bool {
+        self.viewport_height_px() > INFO_BASELINE_HEIGHT_PX
+    }
+
+    pub(crate) fn version_geometry(&self) -> &InheritedTextRunFacts {
+        self.terminal_geometry.run(0)
     }
 
     pub(crate) fn record_terminal(&self, receipt: InfoSurfaceReceipt) -> bool {
@@ -185,8 +236,7 @@ fn info_unsupported_routes(theme: Option<&ResolvedDiagramTheme>) -> Box<[InfoUns
 
 pub(crate) fn layout_info_diagram_typed(
     model: &InfoDiagramRenderModel,
-    _effective_config: &serde_json::Value,
-    _measurer: &dyn TextMeasurer,
+    typography_theme: &InfoTypographyThemePlan,
 ) -> Result<InfoDiagramLayout> {
     let _ = model.show_info;
     Ok(InfoDiagramLayout {
@@ -196,10 +246,10 @@ pub(crate) fn layout_info_diagram_typed(
         bounds: Some(Bounds {
             min_x: 0.0,
             min_y: 0.0,
-            max_x: 400.0,
-            max_y: 100.0,
+            max_x: typography_theme.viewport_width_px(),
+            max_y: typography_theme.viewport_height_px(),
         }),
-        version: format!("v{PINNED_MERMAID_BASELINE_VERSION}"),
+        version: typography_theme.version_geometry().text().to_string(),
     })
 }
 
@@ -211,12 +261,11 @@ mod tests {
     #[test]
     fn info_layout_records_upstream_configured_canvas_size() {
         let measurer = DeterministicTextMeasurer::default();
-        let layout = layout_info_diagram_typed(
-            &InfoDiagramRenderModel::default(),
-            &serde_json::Value::Null,
-            &measurer,
-        )
-        .expect("info layout");
+        let config = MermaidConfig::default();
+        let typography_theme = InfoTypographyThemePlan::resolve(None, &config, &measurer);
+        let layout =
+            layout_info_diagram_typed(&InfoDiagramRenderModel::default(), &typography_theme)
+                .expect("info layout");
 
         assert_eq!(
             layout.bounds,
@@ -226,6 +275,14 @@ mod tests {
                 max_x: 400.0,
                 max_y: 100.0,
             })
+        );
+        assert_eq!(
+            typography_theme.version_geometry().x(),
+            INFO_VERSION_BASELINE_X_PX
+        );
+        assert_eq!(
+            typography_theme.version_geometry().y(),
+            INFO_VERSION_BASELINE_Y_PX
         );
     }
 }

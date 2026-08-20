@@ -177,12 +177,9 @@ fn prepare_error_family(
     let typography_theme = crate::error::ErrorTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
-    let layout = crate::error::layout_error_diagram_typed(
-        &model,
-        meta.effective_config.as_value(),
         execution.text_measurer(),
-    )?;
+    );
+    let layout = crate::error::layout_error_diagram_typed(&model, &typography_theme)?;
     Ok(BuiltinFamilyArtifact::Error(Box::new(
         ErrorFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -200,12 +197,9 @@ fn prepare_info_family(
     let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
-    let layout = crate::info::layout_info_diagram_typed(
-        &model,
-        meta.effective_config.as_value(),
         execution.text_measurer(),
-    )?;
+    );
+    let layout = crate::info::layout_info_diagram_typed(&model, &typography_theme)?;
     Ok(BuiltinFamilyArtifact::Info(Box::new(InfoFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         typography_theme,

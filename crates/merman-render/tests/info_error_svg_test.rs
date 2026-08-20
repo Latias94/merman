@@ -7,10 +7,61 @@ use merman_render::diagram_theme::{
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     ThemeTextStyle, ThemeVariant, TypographySpec,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{DiagramFamilyId, LayoutOptions};
+use std::sync::Arc;
+
+struct WideInheritedFontHost;
+
+impl HostTextMeasurer for WideInheritedFontHost {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        if request.style.font_family.as_deref() != Some("WideInheritedFont") {
+            return Ok(None);
+        }
+        Ok(match request.operation {
+            TextMeasurementOperation::BBoxX => {
+                let half_width = if request.text == "Syntax error in text" {
+                    1_800.0
+                } else if request.text.starts_with("mermaid version ") {
+                    1_400.0
+                } else if request.text.starts_with('v') {
+                    300.0
+                } else {
+                    return Ok(None);
+                };
+                Some(HostTextMeasurement::HorizontalExtents {
+                    left: half_width,
+                    right: half_width,
+                })
+            }
+            TextMeasurementOperation::RawBBoxHeight => {
+                Some(HostTextMeasurement::Length(request.style.font_size))
+            }
+            _ => None,
+        })
+    }
+}
+
+fn wide_inherited_font_environment() -> RenderEnvironment {
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.wide-inherited-font").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid profile identity");
+    RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(WideInheritedFontHost),
+            [TextMeasurementPhase::SvgBBox],
+        ),
+    )
+}
 
 #[derive(Debug, Clone, Copy)]
 enum InheritedTextFamily {
@@ -246,11 +297,31 @@ fn try_render_family_with_preinstalled_parse_compatibility(
     diagram_id: &str,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_family_with_environment(
+        family,
+        source,
+        theme,
+        engine,
+        diagram_id,
+        requirement,
+        RenderEnvironment::deterministic(),
+    )
+}
+
+fn try_render_family_with_environment(
+    family: InheritedTextFamily,
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+    requirement: ThemePortabilityRequirement,
+    environment: RenderEnvironment,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, family.parse_options())
         .expect("parse inherited text-family source")
         .expect("detect inherited text-family source");
-    let session = RenderEnvironment::deterministic()
+    let session = environment
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
         .expect("begin strict inherited text-family session");
@@ -261,6 +332,44 @@ fn try_render_family_with_preinstalled_parse_compatibility(
         },
         &SvgDebugOptions::default(),
     )
+}
+
+fn root_max_width_px(svg: &str) -> f64 {
+    let document = roxmltree::Document::parse(svg).expect("valid inherited-family SVG");
+    document
+        .root_element()
+        .attribute("style")
+        .expect("root max-width style")
+        .split(';')
+        .map(str::trim)
+        .find_map(|declaration| declaration.strip_prefix("max-width:"))
+        .map(str::trim)
+        .and_then(|value| value.strip_suffix("px"))
+        .and_then(|value| value.parse::<f64>().ok())
+        .expect("numeric root max-width")
+}
+
+fn root_view_box(svg: &str) -> [f64; 4] {
+    let document = roxmltree::Document::parse(svg).expect("valid inherited-family SVG");
+    document
+        .root_element()
+        .attribute("viewBox")
+        .expect("root viewBox")
+        .split_whitespace()
+        .map(|value| value.parse::<f64>().expect("numeric viewBox component"))
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("four viewBox components")
+}
+
+fn text_x(svg: &str, text: &str) -> f64 {
+    let document = roxmltree::Document::parse(svg).expect("valid inherited-family SVG");
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+        .and_then(|node| node.attribute("x"))
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("missing numeric x for {text:?}"))
 }
 
 fn assert_inherited_font_stack_surface(
@@ -403,6 +512,65 @@ fn info_and_error_direct_font_stack_above_legacy_limit_reaches_css_dom_and_evide
         .expect("render directly themed inherited text family");
 
         assert_inherited_font_stack_surface(family, &rendered, &diagram_id, &expected_font);
+        assert_font_stack_evidence(rendered, 1, 0);
+    }
+}
+
+#[test]
+fn info_and_error_direct_font_stack_drives_terminal_geometry_and_canvas_bounds() {
+    for family in InheritedTextFamily::ALL {
+        let theme = inherited_font_stack_theme(
+            family,
+            FontStack::single("WideInheritedFont").expect("valid wide inherited font"),
+        );
+        let diagram_id = format!("{}-wide-inherited-font", family.aria_roledescription());
+        let engine = merman_render::__private::install_parse_compatibility(&theme, Engine::new());
+        let rendered = try_render_family_with_environment(
+            family,
+            family.base_source(),
+            &theme,
+            engine,
+            &diagram_id,
+            ThemePortabilityRequirement::RequirePortable,
+            wide_inherited_font_environment(),
+        )
+        .expect("render inherited text family with host-measured typed font");
+
+        match family {
+            InheritedTextFamily::Info => {
+                assert!(
+                    root_max_width_px(rendered.svg()) >= 1_200.0,
+                    "Info canvas must expand for the measured terminal font: {}",
+                    rendered.svg()
+                );
+                assert!(
+                    text_x(
+                        rendered.svg(),
+                        &format!(
+                            "v{}",
+                            merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+                        )
+                    ) >= 300.0,
+                    "Info terminal anchor must follow the prepared canvas geometry"
+                );
+            }
+            InheritedTextFamily::Error => {
+                let view_box = root_view_box(rendered.svg());
+                assert!(
+                    view_box[2] >= 4_400.0,
+                    "Error viewBox must expand for the measured terminal font: {view_box:?}"
+                );
+                assert!(
+                    root_max_width_px(rendered.svg()) > 512.0,
+                    "Error max-width must preserve the expanded viewBox scale"
+                );
+                assert!(
+                    text_x(rendered.svg(), "Syntax error in text") > 1_440.0,
+                    "Error message anchor must follow the prepared canvas geometry"
+                );
+            }
+        }
+
         assert_font_stack_evidence(rendered, 1, 0);
     }
 }
