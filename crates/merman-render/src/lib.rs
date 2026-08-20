@@ -33,7 +33,7 @@ pub mod ishikawa;
 pub mod journey;
 pub mod kanban;
 mod layout_work;
-pub mod math;
+pub(crate) mod math;
 mod mermaid_style;
 pub mod mindmap;
 pub mod model;

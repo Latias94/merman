@@ -5,10 +5,8 @@ use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
     CompareRunOptions, CompareRunResult, DEFAULT_LABEL_DELTA_REPORT_LIMIT,
     DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact, LabelDeltaReportLimit,
-    LabelMetricDelta, ObservedNodeMathRenderer, ObservedRenderOperations, RootCoverageSummary,
-    RootDelta, RootDeltaReportLimit, RootEvidencePolicy, begin_required_math_evidence,
-    browser_measured_math_root_note, collect_label_metric_deltas,
-    comparison_mode_for_browser_measured_math, finish_required_math_evidence,
+    LabelMetricDelta, ObservedRenderOperations, RootCoverageSummary, RootDelta,
+    RootDeltaReportLimit, RootEvidencePolicy, collect_label_metric_deltas,
     parse_label_delta_report_limit, parse_root_delta_report_limit, record_fixture_root_evidence,
     render_semantic_svg, run_svg_compare, sanitize_svg_id, source_requires_math,
     svg_compare_engine_with_site_config, svg_request, write_compare_result_section,
@@ -19,7 +17,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FlowchartUpstreamTrust {
@@ -203,18 +200,6 @@ fn run_flowchart_compare(
     fact: DiagramVerificationFact,
     request: FlowchartCompareRequest,
 ) -> CompareRunResult {
-    let tools_root = crate::cmd::mermaid_cli_root();
-    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)
-        .map_err(CompareRunFailure::without_evidence)?;
-    let math_renderer = toolchain_read_guard.node_katex_math_renderer();
-    run_flowchart_compare_with_math_renderer(fact, request, math_renderer)
-}
-
-fn run_flowchart_compare_with_math_renderer(
-    fact: DiagramVerificationFact,
-    request: FlowchartCompareRequest,
-    flowchart_math_renderer: Option<Arc<dyn merman::svg::MathRenderer + Send + Sync>>,
-) -> CompareRunResult {
     let FlowchartCompareRequest {
         common,
         fixtures_root: fixtures_root_arg,
@@ -245,9 +230,6 @@ fn run_flowchart_compare_with_math_renderer(
         report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root");
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = merman_render::LayoutOptions::default();
-    let observed_math_renderer = flowchart_math_renderer
-        .clone()
-        .map(ObservedNodeMathRenderer::new);
     let text_measurement = match text_measurer.as_str() {
         "vendored" | "vendored-font" | "vendored-font-metrics" => {
             merman::svg::TextMeasurementPolicy::parity()
@@ -261,11 +243,8 @@ fn run_flowchart_compare_with_math_renderer(
             ));
         }
     };
-    let mut environment =
+    let environment =
         merman::SvgEnvironment::deterministic().with_text_measurement_policy(text_measurement);
-    if let Some(renderer) = observed_math_renderer.clone() {
-        environment = environment.with_math_renderer(renderer);
-    }
     let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
@@ -293,16 +272,11 @@ fn run_flowchart_compare_with_math_renderer(
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Forced ELK fixtures: `{}`\n",
+                "- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- External math host parity: `disabled`\n- Forced ELK fixtures: `{}`\n",
                 fact.command,
                 options.dom_mode,
                 options.dom_decimals,
                 text_measurer,
-                if flowchart_math_renderer.is_some() {
-                    "node-katex"
-                } else {
-                    "none"
-                },
                 if force_elk_fixture {
                     "enabled"
                 } else {
@@ -377,11 +351,12 @@ fn run_flowchart_compare_with_math_renderer(
                 input.text,
                 svg_request(environment.clone(), layout_opts.clone(), None),
             )?;
-            let required_math_evidence_before = requires_math
-                .then(|| {
-                    begin_required_math_evidence(input.stem, observed_math_renderer.as_deref())
-                })
-                .transpose()?;
+            if requires_math {
+                return Err(format!(
+                    "cannot compare math fixture {}: external host math backend injection is disabled; use the browser qualification lane",
+                    input.stem
+                ));
+            }
 
             let family_id = merman_core::diagram_type_family_id(semantic.diagram_type())
                 .ok_or_else(|| {
@@ -415,33 +390,6 @@ fn run_flowchart_compare_with_math_renderer(
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
-            let mut notes = Vec::new();
-            let browser_measured_math = if let Some(before) = required_math_evidence_before {
-                let observed = observed_math_renderer
-                    .as_deref()
-                    .expect("required math evidence checked renderer availability");
-                let evidence = finish_required_math_evidence(input.stem, observed, before)?;
-                notes.push(format!(
-                    "observed {}: Node KaTeX successful renders={} browser measurements={}",
-                    input.stem,
-                    evidence.successful_renders(),
-                    evidence.successful_measurements()
-                ));
-                true
-            } else {
-                false
-            };
-
-            let fixture_dom_mode = comparison_mode_for_browser_measured_math(
-                requested_dom_mode,
-                check_dom,
-                browser_measured_math,
-            );
-            let dom_mode_override =
-                (fixture_dom_mode != requested_dom_mode).then_some(fixture_dom_mode);
-            if dom_mode_override.is_some() {
-                notes.push(browser_measured_math_root_note(input.stem));
-            }
 
             let mut issues = Vec::new();
             if report_label {
@@ -463,30 +411,19 @@ fn run_flowchart_compare_with_math_renderer(
                 &local_svg,
                 RootEvidencePolicy {
                     parity_root_requested: parity_root_coverage,
-                    browser_math_dimensions_are_diagnostic: dom_mode_override.is_some(),
+                    browser_math_dimensions_are_diagnostic: false,
                     report_delta: should_report_root,
                 },
             ) {
                 issues.push(error);
             }
 
-            Ok(match dom_mode_override {
-                None => CompareFixtureResult::Rendered {
-                    measurement_route_count,
-                    local_svg,
-                    compare_dom: true,
-                    issues,
-                    notes,
-                },
-                dom_mode_override => CompareFixtureResult::RenderedWithPolicy {
-                    measurement_route_count,
-                    local_svg,
-                    compare_dom: true,
-                    compare_svg_when_dom_disabled: false,
-                    dom_mode_override,
-                    issues,
-                    notes,
-                },
+            Ok(CompareFixtureResult::Rendered {
+                measurement_route_count,
+                local_svg,
+                compare_dom: true,
+                issues,
+                notes: Vec::new(),
             })
         },
         |_, _, _| {},
@@ -1093,43 +1030,14 @@ fn normalize_flowchart_elk_directive(body: &str) -> String {
 mod tests {
     use super::{
         FlowchartCompareRequest, FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,
-        classify_flowchart_upstream_dir, compare_flowchart_args,
-        run_flowchart_compare_with_math_renderer, svg_request, write_flowchart_upstream_metadata,
+        classify_flowchart_upstream_dir, compare_flowchart_args, run_flowchart_compare,
+        svg_request, write_flowchart_upstream_metadata,
     };
     use crate::cmd::compare::{
         CompareRequest, DEFAULT_LABEL_DELTA_REPORT_LIMIT, DiagramVerificationFact,
         render_source_svg,
     };
     use std::path::Path;
-    use std::sync::Arc;
-
-    #[derive(Debug)]
-    struct SuccessfulMathRenderer;
-
-    impl merman::svg::MathRenderer for SuccessfulMathRenderer {
-        fn render_html_label(
-            &self,
-            _text: &str,
-            _config: &merman::MermaidConfig,
-        ) -> Option<String> {
-            Some("<span>math</span>".to_string())
-        }
-
-        fn measure_html_label(
-            &self,
-            _text: &str,
-            _config: &merman::MermaidConfig,
-            _style: &merman::svg::TextStyle,
-            _max_width_px: Option<f64>,
-            _wrap_mode: merman::svg::WrapMode,
-        ) -> Option<merman::svg::TextMetrics> {
-            Some(merman::svg::TextMetrics {
-                width: 40.0,
-                height: 20.0,
-                line_count: 1,
-            })
-        }
-    }
 
     fn compare_flowchart(args: Vec<String>) -> Result<(), crate::XtaskError> {
         let fact = super::super::diagram_verification_fact("flowchart")
@@ -1203,7 +1111,7 @@ mod tests {
 
         let mut request = flowchart_compare_request(temp.path());
         request.common.filter = Some("plain".to_string());
-        let evidence = run_flowchart_compare_with_math_renderer(fact, request, None)
+        let evidence = run_flowchart_compare(fact, request)
             .expect("plain fixtures must not require a math backend");
 
         assert_eq!(evidence.selected_fixtures(), 1);
@@ -1218,12 +1126,8 @@ mod tests {
         let source = "flowchart LR\n  A[\"$$x + y$$\"] --> B\n";
         write_flowchart_compare_fixture(temp.path(), "math_only", source, "<svg/>");
 
-        let failure = run_flowchart_compare_with_math_renderer(
-            fact,
-            flowchart_compare_request(temp.path()),
-            None,
-        )
-        .expect_err("math fixtures must require a math backend");
+        let failure = run_flowchart_compare(fact, flowchart_compare_request(temp.path()))
+            .expect_err("math fixtures must require a browser qualification lane");
         let evidence = failure.evidence();
         let message = failure.to_string();
 
@@ -1231,7 +1135,7 @@ mod tests {
         assert_eq!(evidence.rendered_fixtures(), 0);
         assert_eq!(evidence.comparisons(), 0);
         assert!(message.contains("cannot compare math fixture math_only"));
-        assert!(message.contains("Node KaTeX backend is unavailable"));
+        assert!(message.contains("external host math backend injection is disabled"));
     }
 
     #[test]
@@ -1248,12 +1152,8 @@ mod tests {
             "<svg/>",
         );
 
-        let failure = run_flowchart_compare_with_math_renderer(
-            fact,
-            flowchart_compare_request(temp.path()),
-            None,
-        )
-        .expect_err("a plain fixture's DOM evidence must not hide a math failure");
+        let failure = run_flowchart_compare(fact, flowchart_compare_request(temp.path()))
+            .expect_err("a plain fixture's DOM evidence must not hide a math residual");
         let evidence = failure.evidence();
         let message = failure.to_string();
 
@@ -1264,50 +1164,18 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_math_backend_must_produce_fixture_scoped_evidence() {
+    fn disabled_dom_check_does_not_require_a_math_exception() {
         let temp = tempfile::tempdir().expect("temporary compare root");
         let fact = flowchart_fact();
-        write_flowchart_compare_fixture(
-            temp.path(),
-            "declined_math",
-            "flowchart LR\n  A[\"$$x + y$$\"] --> B\n",
-            "<svg/>",
-        );
-        let declining: Arc<dyn merman::svg::MathRenderer + Send + Sync> =
-            Arc::new(merman::svg::NoopMathRenderer);
-
-        let failure = run_flowchart_compare_with_math_renderer(
-            fact,
-            flowchart_compare_request(temp.path()),
-            Some(declining),
-        )
-        .expect_err("a backend that declines every call must not count as math evidence");
-        let message = failure.to_string();
-
-        assert!(message.contains("math fixture declined_math"));
-        assert!(message.contains("no successful Node KaTeX browser measurement evidence"));
-    }
-
-    #[test]
-    fn disabled_dom_check_does_not_activate_the_math_root_exception() {
-        let temp = tempfile::tempdir().expect("temporary compare root");
-        let fact = flowchart_fact();
-        write_flowchart_compare_fixture(
-            temp.path(),
-            "math_without_dom_check",
-            "flowchart LR\n  A[\"$$x + y$$\"] --> B\n",
-            "<svg/>",
-        );
+        let source = "flowchart LR\n  A --> B\n";
+        let upstream = render_plain_flowchart(fact, "plain_without_dom_check", source);
+        write_flowchart_compare_fixture(temp.path(), "plain_without_dom_check", source, &upstream);
         let mut request = flowchart_compare_request(temp.path());
         request.common.check_dom = false;
         request.common.dom_mode = Some("parity-root".to_string());
 
-        let evidence = run_flowchart_compare_with_math_renderer(
-            fact,
-            request,
-            Some(Arc::new(SuccessfulMathRenderer)),
-        )
-        .expect("a disabled DOM check must not activate root comparison policy");
+        let evidence = run_flowchart_compare(fact, request)
+            .expect("a disabled DOM check must not activate root comparison policy");
 
         assert_eq!(evidence.selected_fixtures(), 1);
         assert_eq!(evidence.rendered_fixtures(), 1);

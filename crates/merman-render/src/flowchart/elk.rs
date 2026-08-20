@@ -585,7 +585,7 @@ fn polyline_midpoint(points: &[LayoutPoint]) -> Option<LayoutPoint> {
 /// model alone (for example an authored `&lt;` versus a literal `<`). Accepting the parsed artifact
 /// keeps that provenance paired with the effective configuration and prevents diagnostics from
 /// silently measuring a different createText payload than the normal render pipeline.
-pub fn build_flowchart_elk_graph(
+pub(crate) fn build_flowchart_elk_graph(
     parsed: &ParsedDiagramRender,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,

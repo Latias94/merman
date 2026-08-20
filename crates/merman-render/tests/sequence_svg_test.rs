@@ -1403,10 +1403,8 @@ A->>B: math-sidecar-sentinel $$x^2 + y^2$$ tail
         "math-message",
         SOURCE,
         "math-sidecar-sentinel",
-        RenderEnvironment::deterministic()
-            .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer)),
-        RenderEnvironment::deterministic()
-            .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer)),
+        RenderEnvironment::deterministic().with_compiled_math_renderer(),
+        RenderEnvironment::deterministic().with_compiled_math_renderer(),
     );
 }
 
@@ -3271,7 +3269,7 @@ fn sequence_math_role_paint_fails_closed_without_a_native_text_terminal() {
         .expect("parse Sequence math role paint source")
         .expect("detect Sequence math role paint source");
     let session = RenderEnvironment::deterministic()
-        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer))
+        .with_compiled_math_renderer()
         .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
         .begin_session_with_theme(&theme)
         .expect("begin strict Sequence math role paint session");
@@ -5316,7 +5314,7 @@ Note right of B: $$x^2$$
 "#;
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+        .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), text);
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
@@ -5355,7 +5353,7 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
 
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
-        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+        .with_compiled_math_renderer();
     let session = environment.begin_session().unwrap();
     let parsed = parse_sequence_for_render(&Engine::new(), &text);
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)

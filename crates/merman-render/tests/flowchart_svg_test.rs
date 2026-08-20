@@ -4616,9 +4616,8 @@ A["$$x^2$$"] -->|$$x^2$$| B[Done]
         .expect("parse ok")
         .expect("diagram detected");
 
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
     let session = RenderEnvironment::deterministic()
-        .with_math_renderer(math_renderer)
+        .with_compiled_math_renderer()
         .begin_session()
         .expect("begin render session");
     let svg = render_flowchart_artifact(
@@ -4655,9 +4654,8 @@ A["value: $$x^2$$"] -->|"Solve: $$\sqrt{2+2}$$"| B[Done]
         .expect("parse ok")
         .expect("diagram detected");
 
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
     let session = RenderEnvironment::deterministic()
-        .with_math_renderer(math_renderer)
+        .with_compiled_math_renderer()
         .begin_session()
         .expect("begin render session");
     let svg = render_flowchart_artifact(
@@ -4693,9 +4691,8 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
     let session = RenderEnvironment::deterministic()
-        .with_math_renderer(math_renderer)
+        .with_compiled_math_renderer()
         .begin_session()
         .expect("begin render session");
     let svg = render_flowchart_artifact(

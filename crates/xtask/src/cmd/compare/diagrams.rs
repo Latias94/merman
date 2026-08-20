@@ -113,7 +113,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "structure",
         "sequenceDiagram\nAlice->>Bob: Hello\n",
         SuppressErrors,
-        SequenceMath,
+        Standard,
         SanitizedStem,
         UpstreamBaseline,
         Dom,

@@ -43,9 +43,6 @@ pub use merman_render::environment::{
     TextMeasurementSummary, validate_host_text_measurement,
 };
 pub use merman_render::family::RenderCapabilityPlan;
-#[cfg(feature = "math")]
-pub use merman_render::math::RatexMathRenderer;
-pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,

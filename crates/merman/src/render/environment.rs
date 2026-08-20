@@ -3,7 +3,6 @@ use merman_render::{
     RenderCapabilityPolicy,
     diagram_theme::{DiagramTheme, ThemeResourcePolicy},
     environment::{RenderEnvironment as BackendRenderEnvironment, TextMeasurementPolicy},
-    math::MathRenderer,
     resources::RenderResourcePolicy,
 };
 
@@ -45,14 +44,6 @@ impl SvgEnvironment {
 
     pub fn with_compiled_math_renderer(mut self) -> Self {
         self.backend = self.backend.with_compiled_math_renderer();
-        self
-    }
-
-    pub fn with_math_renderer(
-        mut self,
-        renderer: std::sync::Arc<dyn MathRenderer + Send + Sync>,
-    ) -> Self {
-        self.backend = self.backend.with_math_renderer(renderer);
         self
     }
 

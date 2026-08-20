@@ -7,8 +7,6 @@ use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
 use serde_json::Value;
 use std::path::Path;
-#[cfg(feature = "svg")]
-use std::sync::Arc;
 
 #[cfg(feature = "svg")]
 use crate::cli::{MathRendererKind, RenderCliArgs, TextMeasurerKind};
@@ -21,7 +19,7 @@ use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{
     DiagramThemeCompiler, IconRegistry, LayoutOptions, MAX_THEME_ENCODED_BYTES_HARD_CAP,
-    MathRenderer, SvgRenderOptions, TextMeasurementPolicy, ThemeAdmissionPolicy, ThemePreset,
+    SvgRenderOptions, TextMeasurementPolicy, ThemeAdmissionPolicy, ThemePreset,
     ThemeResourcePolicy, TrustedThemeLane, TrustedThemeLanes,
 };
 #[cfg(feature = "svg")]
@@ -399,9 +397,10 @@ fn renderer_from_config(
             TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
         ));
     if let Some(kind) = render.math_renderer {
-        environment = match math_renderer(kind)? {
-            Some(renderer) => environment.with_math_renderer(renderer),
-            None => environment.without_math_renderer(),
+        environment = match kind {
+            MathRendererKind::None => environment.without_math_renderer(),
+            #[cfg(feature = "math")]
+            MathRendererKind::Ratex => environment.with_compiled_math_renderer(),
         };
     }
     if let Some(registry) = icon_registry {
@@ -467,17 +466,6 @@ fn text_measurement_policy(kind: TextMeasurerKind) -> TextMeasurementPolicy {
     match kind {
         TextMeasurerKind::Deterministic => TextMeasurementPolicy::deterministic(),
         TextMeasurerKind::Vendored => TextMeasurementPolicy::parity(),
-    }
-}
-
-#[cfg(feature = "svg")]
-fn math_renderer(
-    kind: MathRendererKind,
-) -> Result<Option<Arc<dyn MathRenderer + Send + Sync>>, CliError> {
-    match kind {
-        MathRendererKind::None => Ok(None),
-        #[cfg(feature = "math")]
-        MathRendererKind::Ratex => Ok(Some(Arc::new(merman::svg::RatexMathRenderer))),
     }
 }
 

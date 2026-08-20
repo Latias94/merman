@@ -363,8 +363,15 @@ impl fmt::Debug for ConfiguredMathBackend {
 #[cfg(feature = "math")]
 enum MathLabelClassification {
     NotMath,
-    Pure(Vec<String>),
+    Pure(Vec<ClassifiedPureMathLine>),
     Mixed(Vec<ClassifiedMathLine>),
+}
+
+#[cfg(feature = "math")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ClassifiedPureMathLine {
+    Formula(String),
+    Empty,
 }
 
 #[cfg(feature = "math")]
@@ -443,16 +450,22 @@ fn classify_math_label(
     Ok(if !saw_math {
         MathLabelClassification::NotMath
     } else if all_nonempty_lines_are_formulas {
-        let formulas = mixed_lines
+        let lines = mixed_lines
             .into_iter()
-            .filter_map(|line| {
-                line.segments.into_iter().find_map(|segment| match segment {
-                    ClassifiedMathSegment::Formula(formula) => Some(formula),
-                    ClassifiedMathSegment::Text(_) => None,
-                })
+            .map(|line| {
+                line.segments
+                    .into_iter()
+                    .find_map(|segment| match segment {
+                        ClassifiedMathSegment::Formula(formula) => Some(formula),
+                        ClassifiedMathSegment::Text(_) => None,
+                    })
+                    .map_or(
+                        ClassifiedPureMathLine::Empty,
+                        ClassifiedPureMathLine::Formula,
+                    )
             })
             .collect();
-        MathLabelClassification::Pure(formulas)
+        MathLabelClassification::Pure(lines)
     } else {
         MathLabelClassification::Mixed(mixed_lines)
     })
@@ -916,10 +929,14 @@ pub(super) struct CompiledRatexFormula {
 }
 
 #[cfg(feature = "math")]
-pub(super) fn render_compiled_ratex_formula(
-    latex: &str,
-    foreground: &str,
-) -> Option<CompiledRatexFormula> {
+struct CompiledRatexLayout {
+    display_list: ratex_types::DisplayList,
+    width_em: f64,
+    height_em: f64,
+}
+
+#[cfg(feature = "math")]
+fn layout_compiled_ratex_formula(latex: &str, foreground: &str) -> Option<CompiledRatexLayout> {
     let color = ratex_types::Color::parse(foreground)?;
     let ast = ratex_parser::parse(latex).ok()?;
     let layout_options = ratex_layout::LayoutOptions::default()
@@ -929,8 +946,27 @@ pub(super) fn render_compiled_ratex_formula(
     let display_list = ratex_layout::to_display_list(&layout_box);
     let width_em = emitted_em_dimension(display_list.width.max(0.0));
     let height_em = emitted_em_dimension(display_list.total_height().max(0.0));
+    Some(CompiledRatexLayout {
+        display_list,
+        width_em,
+        height_em,
+    })
+}
+
+#[cfg(feature = "math")]
+pub(super) fn measure_compiled_ratex_formula(latex: &str, foreground: &str) -> Option<(f64, f64)> {
+    let layout = layout_compiled_ratex_formula(latex, foreground)?;
+    Some((layout.width_em, layout.height_em))
+}
+
+#[cfg(feature = "math")]
+pub(super) fn render_compiled_ratex_formula(
+    latex: &str,
+    foreground: &str,
+) -> Option<CompiledRatexFormula> {
+    let layout = layout_compiled_ratex_formula(latex, foreground)?;
     let svg = ratex_svg::render_to_svg(
-        &display_list,
+        &layout.display_list,
         &ratex_svg::SvgOptions {
             font_size: 1.0,
             padding: 0.0,
@@ -940,9 +976,9 @@ pub(super) fn render_compiled_ratex_formula(
         },
     );
     Some(CompiledRatexFormula {
-        svg: svg_with_em_size(svg, width_em, height_em),
-        width_em,
-        height_em,
+        svg: svg_with_em_size(svg, layout.width_em, layout.height_em),
+        width_em: layout.width_em,
+        height_em: layout.height_em,
     })
 }
 
@@ -986,7 +1022,7 @@ fn prepare_compiled_ratex(
 
 #[cfg(feature = "math")]
 fn prepare_compiled_ratex_pure_html_label(
-    formulas: Vec<String>,
+    lines: Vec<ClassifiedPureMathLine>,
     request: PrepareMathLabelRequest<'_>,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<RawPreparedMathLabel>, OperationWorkError> {
@@ -999,39 +1035,71 @@ fn prepare_compiled_ratex_pure_html_label(
     let mut width_px = 0.0_f64;
     let mut height_px = 0.0_f64;
     let mut max_line_height_px = 0.0_f64;
-    let line_count = formulas.len();
+    let mut max_math_height_px = 0.0_f64;
+    let line_count = lines.len();
     let mut native_lines = Vec::with_capacity(line_count);
 
-    for formula in formulas {
-        charge_formula_work(Some(work_meter), &formula)?;
-        let Some(rendered) = render_compiled_ratex_formula(&formula, &applied_foreground) else {
-            return Ok(None);
-        };
-        let line_width_px = rendered.width_em * font_size_px;
-        let line_height_px = rendered.height_em * font_size_px;
-        let line_y_px = height_px;
-        width_px = width_px.max(line_width_px);
-        height_px += line_height_px;
-        max_line_height_px = max_line_height_px.max(line_height_px);
-        let Some(native_line) =
-            positioned_ratex_svg(&rendered, 0.0, line_y_px, line_width_px, line_height_px)
-        else {
-            return Ok(None);
-        };
-        let appended_bytes = r#"<div style="display:flex;align-items:center;justify-content:center;white-space:nowrap;"></div>"#
-            .len()
-            .saturating_add(rendered.svg.len());
-        preflight_raw_math_output(
-            request,
-            work_meter,
-            browser_html.len().saturating_add(appended_bytes),
-        )?;
-        let _ = write!(
-            &mut browser_html,
-            r#"<div style="display:flex;align-items:center;justify-content:center;white-space:nowrap;">{}</div>"#,
-            rendered.svg
-        );
-        native_lines.push((line_width_px, native_line));
+    for line in lines {
+        match line {
+            ClassifiedPureMathLine::Formula(formula) => {
+                charge_formula_work(Some(work_meter), &formula)?;
+                let Some(rendered) = render_compiled_ratex_formula(&formula, &applied_foreground)
+                else {
+                    return Ok(None);
+                };
+                let line_width_px = rendered.width_em * font_size_px;
+                let line_height_px = rendered.height_em * font_size_px;
+                let line_y_px = height_px;
+                width_px = width_px.max(line_width_px);
+                height_px += line_height_px;
+                max_line_height_px = max_line_height_px.max(line_height_px);
+                max_math_height_px = max_math_height_px.max(line_height_px);
+                let Some(native_line) =
+                    positioned_ratex_svg(&rendered, 0.0, line_y_px, line_width_px, line_height_px)
+                else {
+                    return Ok(None);
+                };
+                let appended_bytes = r#"<div style="display:flex;align-items:center;justify-content:center;white-space:nowrap;"></div>"#
+                    .len()
+                    .saturating_add(rendered.svg.len());
+                preflight_raw_math_output(
+                    request,
+                    work_meter,
+                    browser_html.len().saturating_add(appended_bytes),
+                )?;
+                let _ = write!(
+                    &mut browser_html,
+                    r#"<div style="display:flex;align-items:center;justify-content:center;white-space:nowrap;">{}</div>"#,
+                    rendered.svg
+                );
+                native_lines.push((line_width_px, native_line));
+            }
+            ClassifiedPureMathLine::Empty => {
+                let line_height_px = match request.shell {
+                    MathLabelShell::Flowchart => {
+                        crate::text::flowchart_html_line_height_px(font_size_px)
+                    }
+                    MathLabelShell::Sequence => {
+                        crate::sequence::sequence_text_line_step_px(font_size_px)
+                    }
+                };
+                height_px += line_height_px;
+                max_line_height_px = max_line_height_px.max(line_height_px);
+                let line_height = format_number(line_height_px);
+                let appended_bytes = r#"<div style="display:flex;align-items:center;justify-content:center;white-space:nowrap;height:px;"></div>"#
+                    .len()
+                    .saturating_add(line_height.len());
+                preflight_raw_math_output(
+                    request,
+                    work_meter,
+                    browser_html.len().saturating_add(appended_bytes),
+                )?;
+                let _ = write!(
+                    &mut browser_html,
+                    r#"<div style="display:flex;align-items:center;justify-content:center;white-space:nowrap;height:{line_height}px;"></div>"#,
+                );
+            }
+        }
     }
 
     let metrics = TextMetrics {
@@ -1049,7 +1117,7 @@ fn prepare_compiled_ratex_pure_html_label(
         browser_html,
         metrics,
         max_line_height_px,
-        max_line_height_px,
+        max_math_height_px,
         native_svg,
     )))
 }
@@ -1251,11 +1319,11 @@ fn charge_formula_work(
 }
 
 #[cfg(feature = "math")]
-pub(super) fn compiled_ratex_math_only_lines(text: &str) -> Option<Vec<(usize, String)>> {
-    let MathLabelClassification::Pure(formulas) = classify_math_label(text, None).ok()? else {
+pub(super) fn compiled_ratex_math_only_lines(text: &str) -> Option<Vec<ClassifiedPureMathLine>> {
+    let MathLabelClassification::Pure(lines) = classify_math_label(text, None).ok()? else {
         return None;
     };
-    Some(formulas.into_iter().enumerate().collect())
+    Some(lines)
 }
 
 #[cfg(feature = "math")]
@@ -1688,7 +1756,11 @@ mod tests {
     fn classification_distinguishes_pure_mixed_and_unmatched_delimiters_once() {
         assert!(matches!(
             classify_math_label("$$x$$<br>$$y$$", None).unwrap(),
-            MathLabelClassification::Pure(formulas) if formulas == ["x", "y"]
+            MathLabelClassification::Pure(lines)
+                if lines == [
+                    ClassifiedPureMathLine::Formula("x".to_string()),
+                    ClassifiedPureMathLine::Formula("y".to_string()),
+                ]
         ));
         assert!(matches!(
             classify_math_label("value: $$x$$", None).unwrap(),
@@ -1698,5 +1770,46 @@ mod tests {
             classify_math_label("literal $$", None).unwrap(),
             MathLabelClassification::NotMath
         ));
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn compiled_pure_math_preserves_empty_br_lines_in_terminal_geometry() {
+        let backend = ConfiguredMathBackend::compiled_ratex();
+        let style = TextStyle::default();
+        let outcome = backend
+            .prepare(
+                PrepareMathLabelRequest::sequence(
+                    "$$x$$<br><br>$$y$$",
+                    &MermaidConfig::default(),
+                    &style,
+                    "#334155",
+                ),
+                &meter(),
+            )
+            .unwrap();
+        let prepared = outcome.prepared().expect("compiled pure math artifact");
+        let compact = backend
+            .prepare(
+                PrepareMathLabelRequest::sequence(
+                    "$$x$$<br>$$y$$",
+                    &MermaidConfig::default(),
+                    &style,
+                    "#334155",
+                ),
+                &meter(),
+            )
+            .unwrap();
+        let compact = compact.prepared().expect("compact pure math artifact");
+
+        assert_eq!(prepared.metrics().line_count, 3);
+        assert!(prepared.metrics().height > compact.metrics().height);
+        assert_eq!(
+            prepared
+                .browser_xhtml()
+                .matches("display:flex;align-items:center")
+                .count(),
+            3
+        );
     }
 }

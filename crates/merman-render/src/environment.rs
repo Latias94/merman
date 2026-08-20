@@ -1670,7 +1670,10 @@ impl RenderEnvironment {
         self
     }
 
-    pub fn with_math_renderer(mut self, renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
+    pub(crate) fn with_math_renderer(
+        mut self,
+        renderer: Arc<dyn MathRenderer + Send + Sync>,
+    ) -> Self {
         self.math_backend = Some(ConfiguredMathBackend::external(renderer));
         self
     }
@@ -2339,14 +2342,8 @@ impl RenderSession {
         self.work_meter().checkpoint(phase).map_err(Into::into)
     }
 
-    pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
-        if self.supports_capability(RenderCapability::Math) {
-            self.math_backend
-                .as_ref()
-                .map(ConfiguredMathBackend::renderer)
-        } else {
-            None
-        }
+    pub(crate) fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
+        self.math_backend().map(ConfiguredMathBackend::renderer)
     }
 
     /// Returns the operation-selected math backend, retaining whether it is native-capable.
