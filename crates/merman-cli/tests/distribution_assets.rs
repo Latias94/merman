@@ -47,11 +47,15 @@ fn bash_option_values(script: &str, command: &str, option: &str) -> BTreeSet<Str
         .find(&marker)
         .unwrap_or_else(|| panic!("Bash completion omits {command} {option} values"));
     let rest = &block[start + marker.len()..];
-    let values = rest
+    let arm_end = rest.find("\n                    ;;").unwrap_or(rest.len());
+    let arm = &rest[..arm_end];
+    let Some(values) = arm
         .find("compgen -W \"")
-        .map(|index| &rest[index + "compgen -W \"".len()..])
-        .and_then(|rest| rest.split_once('"').map(|(values, _)| values))
-        .unwrap_or_else(|| panic!("Bash completion omits {command} {option} value candidates"));
+        .map(|index| &arm[index + "compgen -W \"".len()..])
+        .and_then(|arm| arm.split_once('"').map(|(values, _)| values))
+    else {
+        return BTreeSet::new();
+    };
     values.split_ascii_whitespace().map(str::to_owned).collect()
 }
 
@@ -113,12 +117,11 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         .collect::<BTreeSet<_>>();
     assert_eq!(native_themes, expected_native_themes);
 
-    let native_theme_presets = bash_option_values(&script, "render", "--theme-preset");
-    let expected_theme_presets = merman::svg::theme_preset_descriptors()
-        .iter()
-        .map(|descriptor| descriptor.id().to_owned())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(native_theme_presets, expected_theme_presets);
+    assert!(render.contains("--theme-preset"));
+    assert!(
+        bash_option_values(&script, "render", "--theme-preset").is_empty(),
+        "Bash cannot display per-value maturity, so it must not advertise alpha preset ids as stable-looking candidates"
+    );
 
     let mmdc_themes = bash_option_values(&script, "mmdc", "--theme");
     assert_eq!(
@@ -128,6 +131,47 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
             .map(str::to_owned)
             .collect()
     );
+}
+
+#[test]
+fn generated_cli_assets_do_not_publish_theme_presets_without_maturity() {
+    for relative in [
+        "completions/_merman-cli",
+        "completions/merman-cli.bash",
+        "completions/merman-cli.elv",
+        "completions/merman-cli.fish",
+        "completions/merman-cli.ps1",
+    ] {
+        let asset = read_asset(relative);
+        for descriptor in merman::svg::theme_preset_descriptors() {
+            if asset.contains(descriptor.id()) {
+                let maturity = descriptor.maturity().to_string();
+                assert!(
+                    asset.contains(&format!("[{maturity}]"))
+                        || asset.contains(&format!(r"\[{maturity}\]")),
+                    "generated CLI asset {relative} publishes preset `{}` without catalog maturity",
+                    descriptor.id()
+                );
+            }
+        }
+    }
+
+    for relative in ["man/merman-cli-batch.1", "man/merman-cli-render.1"] {
+        let manpage = read_asset(relative);
+        for descriptor in merman::svg::theme_preset_descriptors() {
+            let expected = format!(
+                "{}: [{}] {}",
+                descriptor.id().replace('-', "\\-"),
+                descriptor.maturity(),
+                descriptor.display_name()
+            );
+            assert!(
+                manpage.contains(&expected),
+                "generated manpage {relative} must label preset `{}` with catalog maturity",
+                descriptor.id()
+            );
+        }
+    }
 }
 
 #[test]

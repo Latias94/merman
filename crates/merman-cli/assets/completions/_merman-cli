@@ -125,7 +125,16 @@ _arguments "${_arguments_options[@]}" : \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--theme-preset=[Compiled diagram-theme preset applied below explicit Mermaid configuration]:THEME_PRESET:(editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark brutalist spotless cyberpunk)' \
+'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
+editor-dark\:"\[alpha\] Editor Dark"
+one-dark\:"\[alpha\] One Dark"
+gruvbox-light\:"\[alpha\] Gruvbox Light"
+gruvbox-dark\:"\[alpha\] Gruvbox Dark"
+ayu-light\:"\[alpha\] Ayu Light"
+ayu-dark\:"\[alpha\] Ayu Dark"
+brutalist\:"\[alpha\] Brutalist"
+spotless\:"\[alpha\] Spotless"
+cyberpunk\:"\[alpha\] Cyberpunk"))' \
 '(--theme-preset --theme-definition)--theme-file=[JSON theme selection file containing exactly one \`preset\` or \`spec\` member]:THEME_FILE:_files' \
 '(--theme-preset --theme-file)--theme-definition=[Shareable ThemeDefinitionV1 JSON materialized before rendering]:THEME_DEFINITION:_files' \
 '--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
@@ -207,7 +216,16 @@ _arguments "${_arguments_options[@]}" : \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--theme-preset=[Compiled diagram-theme preset applied below explicit Mermaid configuration]:THEME_PRESET:(editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark brutalist spotless cyberpunk)' \
+'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
+editor-dark\:"\[alpha\] Editor Dark"
+one-dark\:"\[alpha\] One Dark"
+gruvbox-light\:"\[alpha\] Gruvbox Light"
+gruvbox-dark\:"\[alpha\] Gruvbox Dark"
+ayu-light\:"\[alpha\] Ayu Light"
+ayu-dark\:"\[alpha\] Ayu Dark"
+brutalist\:"\[alpha\] Brutalist"
+spotless\:"\[alpha\] Spotless"
+cyberpunk\:"\[alpha\] Cyberpunk"))' \
 '(--theme-preset --theme-definition)--theme-file=[JSON theme selection file containing exactly one \`preset\` or \`spec\` member]:THEME_FILE:_files' \
 '(--theme-preset --theme-file)--theme-definition=[Shareable ThemeDefinitionV1 JSON materialized before rendering]:THEME_DEFINITION:_files' \
 '--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \

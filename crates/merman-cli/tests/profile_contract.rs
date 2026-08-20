@@ -1029,12 +1029,9 @@ fn workflow_completions() {
             );
 
             let theme_presets = bash_completion_values(&script, "render", "--theme-preset");
-            assert_eq!(
-                theme_presets,
-                merman::svg::theme_preset_descriptors()
-                    .iter()
-                    .map(|descriptor| descriptor.id().to_owned())
-                    .collect()
+            assert!(
+                theme_presets.is_empty(),
+                "Bash cannot display per-value maturity, so it must not advertise alpha preset ids as stable-looking candidates: {theme_presets:?}"
             );
         }
     }
@@ -1076,12 +1073,15 @@ fn bash_completion_values(script: &str, command: &str, option: &str) -> BTreeSet
         .split_once(&marker)
         .map(|(_, rest)| rest)
         .unwrap_or_else(|| panic!("Bash completion omits {command} {option}"));
-    rest.split_once("compgen -W \"")
-        .and_then(|(_, rest)| rest.split_once('"').map(|(values, _)| values))
-        .unwrap_or_else(|| panic!("Bash completion omits {command} {option} values"))
-        .split_ascii_whitespace()
-        .map(str::to_owned)
-        .collect()
+    let arm_end = rest.find("\n                    ;;").unwrap_or(rest.len());
+    let arm = &rest[..arm_end];
+    let Some(values) = arm
+        .split_once("compgen -W \"")
+        .and_then(|(_, arm)| arm.split_once('"').map(|(values, _)| values))
+    else {
+        return BTreeSet::new();
+    };
+    values.split_ascii_whitespace().map(str::to_owned).collect()
 }
 
 fn workflow_adapter(flag: &str) {

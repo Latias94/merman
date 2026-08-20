@@ -127,16 +127,16 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l runtime
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset applied below explicit Mermaid configuration' -r -f -a "editor-light\t''
-editor-dark\t''
-one-dark\t''
-gruvbox-light\t''
-gruvbox-dark\t''
-ayu-light\t''
-ayu-dark\t''
-brutalist\t''
-spotless\t''
-cyberpunk\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
+editor-dark\t'[alpha] Editor Dark'
+one-dark\t'[alpha] One Dark'
+gruvbox-light\t'[alpha] Gruvbox Light'
+gruvbox-dark\t'[alpha] Gruvbox Dark'
+ayu-light\t'[alpha] Ayu Light'
+ayu-dark\t'[alpha] Ayu Dark'
+brutalist\t'[alpha] Brutalist'
+spotless\t'[alpha] Spotless'
+cyberpunk\t'[alpha] Cyberpunk'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
@@ -222,16 +222,16 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l runtime 
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset applied below explicit Mermaid configuration' -r -f -a "editor-light\t''
-editor-dark\t''
-one-dark\t''
-gruvbox-light\t''
-gruvbox-dark\t''
-ayu-light\t''
-ayu-dark\t''
-brutalist\t''
-spotless\t''
-cyberpunk\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
+editor-dark\t'[alpha] Editor Dark'
+one-dark\t'[alpha] One Dark'
+gruvbox-light\t'[alpha] Gruvbox Light'
+gruvbox-dark\t'[alpha] Gruvbox Dark'
+ayu-light\t'[alpha] Ayu Light'
+ayu-dark\t'[alpha] Ayu Dark'
+brutalist\t'[alpha] Brutalist'
+spotless\t'[alpha] Spotless'
+cyberpunk\t'[alpha] Cyberpunk'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''

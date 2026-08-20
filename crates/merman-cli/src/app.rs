@@ -232,6 +232,7 @@ pub(crate) fn cli_command() -> clap::Command {
 pub(crate) fn completion_script(shell: clap_complete::aot::Shell) -> Vec<u8> {
     let mut command = cli_command();
     if shell == clap_complete::aot::Shell::Bash {
+        command = hide_bash_theme_preset_values(command);
         // The Bash generator uses different separators for the binary name and
         // command path. Give its internal root an already-normalized name so a
         // hyphenated executable reaches the generated subcommand branches.
@@ -241,6 +242,22 @@ pub(crate) fn completion_script(shell: clap_complete::aot::Shell) -> Vec<u8> {
     let mut output = Vec::new();
     clap_complete::aot::generate(shell, &mut command, "merman-cli", &mut output);
     output
+}
+
+#[cfg(feature = "shell-completions")]
+fn hide_bash_theme_preset_values(command: clap::Command) -> clap::Command {
+    command
+        .mut_args(|argument| {
+            if argument.get_id().as_str() == "theme_preset" {
+                argument
+                    .value_parser(clap::builder::StringValueParser::new())
+                    .hide_possible_values(true)
+                    .value_hint(clap::ValueHint::Other)
+            } else {
+                argument
+            }
+        })
+        .mut_subcommands(hide_bash_theme_preset_values)
 }
 
 struct ParsedCli {

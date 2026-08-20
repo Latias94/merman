@@ -600,7 +600,8 @@ pub(crate) enum RuntimePolicyKind {
 #[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
     #[cfg(feature = "svg")]
-    /// Compiled diagram-theme preset applied below explicit Mermaid configuration.
+    /// Compiled diagram-theme preset; each value reports its catalog maturity, and explicit
+    /// Mermaid configuration takes precedence.
     #[arg(
         long = "theme-preset",
         value_parser = theme_preset_value_parser(),
@@ -1499,7 +1500,13 @@ fn theme_preset_value_parser() -> impl TypedValueParser<Value = merman::svg::The
     PossibleValuesParser::new(
         merman::svg::theme_preset_descriptors()
             .iter()
-            .map(|descriptor| descriptor.id()),
+            .map(|descriptor| {
+                PossibleValue::new(descriptor.id()).help(format!(
+                    "[{}] {}",
+                    descriptor.maturity(),
+                    descriptor.display_name()
+                ))
+            }),
     )
     .map(|id| {
         merman::svg::ThemePreset::from_id(&id)
@@ -1920,6 +1927,37 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
 ))]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_preset_values_report_catalog_maturity() {
+        let parser = theme_preset_value_parser();
+        let actual = parser
+            .possible_values()
+            .expect("theme presets expose possible values")
+            .map(|value| {
+                (
+                    value.get_name().to_owned(),
+                    value.get_help().map(ToString::to_string),
+                )
+            })
+            .collect::<Vec<_>>();
+        let expected = merman::svg::theme_preset_descriptors()
+            .iter()
+            .map(|descriptor| {
+                (
+                    descriptor.id().to_owned(),
+                    Some(format!(
+                        "[{}] {}",
+                        descriptor.maturity(),
+                        descriptor.display_name()
+                    )),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual, expected);
+    }
 
     #[cfg(feature = "svg")]
     #[test]
