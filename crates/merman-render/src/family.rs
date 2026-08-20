@@ -1724,7 +1724,7 @@ mod tests {
     }
 
     #[test]
-    fn family_diagram_id_fanout_is_admitted_before_the_requested_id_is_materialized() {
+    fn requested_diagram_id_bytes_are_admitted_before_family_render() {
         let maximum = 1_024;
         let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
@@ -1757,7 +1757,7 @@ mod tests {
         };
         assert_eq!(details.limit, "max_svg_bytes");
         assert_eq!(details.max, maximum);
-        assert!(details.actual > diagram_id.len());
+        assert_eq!(details.actual, diagram_id.len());
     }
 
     #[test]
