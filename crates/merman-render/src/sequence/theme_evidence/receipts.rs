@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 
 use crate::diagram_theme::{
@@ -737,11 +737,18 @@ impl SequenceStaticRectThemeEmission {
 #[derive(Debug, Clone, Default)]
 struct SequenceTextSurfaceReceipt {
     fill_overridden: bool,
+    requires_prepared_math_terminal_evidence: bool,
+    required_typography_properties: BTreeSet<ThemeTypographyProperty>,
+    expected_font_size_bits: u64,
     stylesheet_fill: Option<String>,
     typed_stylesheet_emissions: usize,
     stylesheet_fill_mismatch: bool,
     label_candidates: Cell<usize>,
     emitted_labels: Cell<usize>,
+    paint_candidates: Cell<usize>,
+    emitted_paint_labels: Cell<usize>,
+    unverified_math_typography: RefCell<BTreeSet<ThemeTypographyProperty>>,
+    paint_terminal_mismatch: Cell<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -818,23 +825,84 @@ impl SequenceTextSurfaceReceipt {
     fn record_candidate(&self) {
         self.label_candidates
             .set(self.label_candidates.get().saturating_add(1));
+        self.paint_candidates
+            .set(self.paint_candidates.get().saturating_add(1));
+    }
+
+    fn record_prepared_math_emission(&self, assurance: &crate::math::PreparedMathStyleAssurance) {
+        if !self.requires_prepared_math_terminal_evidence {
+            return;
+        }
+        self.record_candidate();
+        self.emitted_labels
+            .set(self.emitted_labels.get().saturating_add(1));
+
+        let paint_verified = if self.typed_stylesheet_emissions == 0 {
+            true
+        } else {
+            self.stylesheet_fill
+                .as_deref()
+                .is_some_and(|fill| assurance.proves_default_foreground(fill))
+        };
+        if paint_verified {
+            self.emitted_paint_labels
+                .set(self.emitted_paint_labels.get().saturating_add(1));
+        } else {
+            self.paint_terminal_mismatch.set(true);
+        }
+
+        let mut unverified = self.unverified_math_typography.borrow_mut();
+        for property in &self.required_typography_properties {
+            let verified = match property {
+                ThemeTypographyProperty::FontSize => {
+                    assurance.proves_font_size_px(f64::from_bits(self.expected_font_size_bits))
+                }
+                ThemeTypographyProperty::FontStack
+                | ThemeTypographyProperty::FontWeight
+                | ThemeTypographyProperty::FontStyle
+                | ThemeTypographyProperty::LineHeight
+                | ThemeTypographyProperty::LetterSpacing
+                | ThemeTypographyProperty::WordSpacing
+                | ThemeTypographyProperty::Transform
+                | ThemeTypographyProperty::Decoration
+                | ThemeTypographyProperty::TextAlign
+                | ThemeTypographyProperty::WhiteSpace
+                | ThemeTypographyProperty::Wrap => false,
+            };
+            if !verified {
+                unverified.insert(*property);
+            }
+        }
     }
 
     fn record_emission(&self) {
         self.emitted_labels
             .set(self.emitted_labels.get().saturating_add(1));
+        self.emitted_paint_labels
+            .set(self.emitted_paint_labels.get().saturating_add(1));
     }
 
     fn complete(&self) -> bool {
-        self.label_candidates.get() != 0 && self.label_candidates.get() == self.emitted_labels.get()
+        self.label_candidates.get() != 0
+            && self.label_candidates.get() == self.emitted_labels.get()
+            && self.unverified_math_typography.borrow().is_empty()
+    }
+
+    fn typography_property_complete(&self, property: ThemeTypographyProperty) -> bool {
+        self.required_typography_properties.contains(&property)
+            && self.label_candidates.get() != 0
+            && self.label_candidates.get() == self.emitted_labels.get()
+            && !self.unverified_math_typography.borrow().contains(&property)
     }
 
     fn proves_typed_fill(&self) -> bool {
         !self.fill_overridden
-            && self.complete()
+            && self.paint_candidates.get() != 0
+            && self.paint_candidates.get() == self.emitted_paint_labels.get()
             && self.typed_stylesheet_emissions == 1
             && self.stylesheet_fill.is_some()
             && !self.stylesheet_fill_mismatch
+            && !self.paint_terminal_mismatch.get()
     }
 }
 
@@ -869,8 +937,17 @@ impl SequenceRoleTypographyReceipt {
         };
         for surface in crate::sequence::SequenceTextSurface::ALL {
             if surface.role() == role {
-                receipt.text_surfaces[surface.index()].fill_overridden =
-                    typography.fill_overridden(surface);
+                let surface_receipt = &mut receipt.text_surfaces[surface.index()];
+                surface_receipt.fill_overridden = typography.fill_overridden(surface);
+                surface_receipt.requires_prepared_math_terminal_evidence =
+                    typography.requires_terminal_evidence_for(surface);
+                surface_receipt.required_typography_properties = typography
+                    .typed_properties()
+                    .union(typography.base_typed_properties())
+                    .copied()
+                    .collect();
+                surface_receipt.expected_font_size_bits =
+                    typography.terminal_text_style().font_size.to_bits();
             }
         }
         receipt
@@ -889,6 +966,14 @@ impl SequenceRoleTypographyReceipt {
         self.text_surfaces[surface.index()].record_candidate();
     }
 
+    pub(super) fn record_prepared_math_emission(
+        &self,
+        surface: crate::sequence::SequenceTextSurface,
+        assurance: &crate::math::PreparedMathStyleAssurance,
+    ) {
+        self.text_surfaces[surface.index()].record_prepared_math_emission(assurance);
+    }
+
     pub(super) fn record_emission(&self, surface: crate::sequence::SequenceTextSurface) {
         self.text_surfaces[surface.index()].record_emission();
     }
@@ -904,15 +989,32 @@ impl SequenceRoleTypographyReceipt {
     }
 
     pub(super) fn complete(&self) -> bool {
-        let candidates = self.label_candidate_count();
-        candidates != 0 && candidates == self.emitted_label_count()
+        self.label_candidate_count() != 0
+            && self
+                .text_surfaces
+                .iter()
+                .filter(|surface| surface.label_candidates.get() != 0)
+                .all(SequenceTextSurfaceReceipt::complete)
+    }
+
+    pub(super) fn typography_property_complete(&self, property: ThemeTypographyProperty) -> bool {
+        let mut relevant = self.text_surfaces.iter().filter(|surface| {
+            surface.required_typography_properties.contains(&property)
+                && surface.label_candidates.get() != 0
+        });
+        let Some(first) = relevant.next() else {
+            return false;
+        };
+        first.typography_property_complete(property)
+            && relevant.all(|surface| surface.typography_property_complete(property))
     }
 
     pub(super) fn base_property_reached_complete_terminal(
         &self,
         property: ThemeTypographyProperty,
     ) -> bool {
-        self.base_typed_properties.contains(&property) && self.complete()
+        self.base_typed_properties.contains(&property)
+            && self.typography_property_complete(property)
     }
 
     pub(super) fn base_property_terminal_incomplete(
@@ -921,20 +1023,13 @@ impl SequenceRoleTypographyReceipt {
     ) -> bool {
         self.base_typed_properties.contains(&property)
             && self.label_candidate_count() != 0
-            && !self.complete()
+            && !self.typography_property_complete(property)
     }
 
     pub(super) fn label_candidate_count(&self) -> usize {
         self.text_surfaces
             .iter()
             .map(|surface| surface.label_candidates.get())
-            .sum()
-    }
-
-    fn emitted_label_count(&self) -> usize {
-        self.text_surfaces
-            .iter()
-            .map(|surface| surface.emitted_labels.get())
             .sum()
     }
 
@@ -999,15 +1094,29 @@ impl SequenceTypographyThemeReceipt {
         }
     }
 
-    pub(crate) fn record_terminal_svg(&mut self, svg: &str, diagram_id: &str) {
+    fn requires_terminal_svg_observation(&self) -> bool {
+        !self.base.typed_properties.is_empty()
+    }
+
+    pub(crate) fn record_terminal_svg(
+        &mut self,
+        svg: &str,
+        diagram_id: &str,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<(), crate::resources::OperationWorkError> {
+        if !self.requires_terminal_svg_observation() {
+            return Ok(());
+        }
+        work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
+        work_meter.charge(svg.len().div_ceil(64).max(1))?;
         let Ok(document) = roxmltree::Document::parse(svg) else {
-            return;
+            return Ok(());
         };
         let root = document.root_element();
         if !root.has_tag_name(("http://www.w3.org/2000/svg", "svg"))
             || root.attribute("id") != Some(diagram_id)
         {
-            return;
+            return Ok(());
         }
         let mut styles = document
             .descendants()
@@ -1047,6 +1156,7 @@ impl SequenceTypographyThemeReceipt {
                     self.base.inherited_font_size_occurrences.saturating_add(1);
             }
         }
+        Ok(())
     }
 
     pub(super) fn base_property_applied(&self, property: ThemeTypographyProperty) -> bool {
@@ -1095,6 +1205,15 @@ impl SequenceTypographyThemeReceipt {
 
     pub(crate) fn record_candidate(&self, surface: crate::sequence::SequenceTextSurface) {
         self.role(surface.role()).record_candidate(surface);
+    }
+
+    pub(crate) fn record_prepared_math_emission(
+        &self,
+        surface: crate::sequence::SequenceTextSurface,
+        assurance: &crate::math::PreparedMathStyleAssurance,
+    ) {
+        self.role(surface.role())
+            .record_prepared_math_emission(surface, assurance);
     }
 
     pub(crate) fn record_emission(&self, surface: crate::sequence::SequenceTextSurface) {
@@ -1253,4 +1372,133 @@ pub(super) fn record_style_winners(
             .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property)),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn math_receipt(
+        properties: impl IntoIterator<Item = ThemeTypographyProperty>,
+        typed_fill: Option<&str>,
+    ) -> SequenceTypographyThemeReceipt {
+        let mut receipt = SequenceTypographyThemeReceipt {
+            base: SequenceBaseTypographyReceipt::default(),
+            actor: SequenceRoleTypographyReceipt::default(),
+            message: SequenceRoleTypographyReceipt::default(),
+            note: SequenceRoleTypographyReceipt::default(),
+            loop_label: SequenceRoleTypographyReceipt::default(),
+        };
+        let surface = &mut receipt.message.text_surfaces
+            [crate::sequence::SequenceTextSurface::MessageLabel.index()];
+        surface.requires_prepared_math_terminal_evidence = true;
+        surface.required_typography_properties = properties.into_iter().collect();
+        surface.expected_font_size_bits = 18.0_f64.to_bits();
+        if let Some(fill) = typed_fill {
+            surface.record_stylesheet_emission(fill, Some(fill));
+        }
+        receipt
+    }
+
+    #[test]
+    fn prepared_math_fill_rejects_a_backend_foreground_that_disagrees_with_the_typed_winner() {
+        let surface = crate::sequence::SequenceTextSurface::MessageLabel;
+        let receipt = math_receipt([], Some("#e0f2fe"));
+        receipt.record_prepared_math_emission(
+            surface,
+            &crate::math::PreparedMathStyleAssurance::compiled_ratex("#000000", 18.0),
+        );
+
+        let fill = receipt.message.fill_summary();
+        assert!(!fill.typed_applied);
+        assert!(fill.incomplete);
+    }
+
+    #[test]
+    fn compiled_prepared_math_proves_matching_fill_and_font_size() {
+        let surface = crate::sequence::SequenceTextSurface::MessageLabel;
+        let receipt = math_receipt([ThemeTypographyProperty::FontSize], Some("#e0f2fe"));
+        receipt.record_prepared_math_emission(
+            surface,
+            &crate::math::PreparedMathStyleAssurance::compiled_ratex("#e0f2fe", 18.0),
+        );
+
+        let fill = receipt.message.fill_summary();
+        assert!(fill.typed_applied);
+        assert!(!fill.incomplete);
+        assert!(
+            receipt
+                .message
+                .typography_property_complete(ThemeTypographyProperty::FontSize)
+        );
+    }
+
+    #[test]
+    fn prepared_math_does_not_claim_a_font_stack_that_the_backend_did_not_use() {
+        let surface = crate::sequence::SequenceTextSurface::MessageLabel;
+        let receipt = math_receipt([ThemeTypographyProperty::FontStack], None);
+        receipt.record_prepared_math_emission(
+            surface,
+            &crate::math::PreparedMathStyleAssurance::compiled_ratex("#e0f2fe", 18.0),
+        );
+
+        assert!(
+            !receipt
+                .message
+                .typography_property_complete(ThemeTypographyProperty::FontStack)
+        );
+        assert!(!receipt.message.complete());
+    }
+
+    #[test]
+    fn opaque_html_math_backend_cannot_claim_typed_terminal_style() {
+        let surface = crate::sequence::SequenceTextSurface::MessageLabel;
+        let receipt = math_receipt([ThemeTypographyProperty::FontSize], Some("#e0f2fe"));
+        receipt.record_prepared_math_emission(
+            surface,
+            &crate::math::PreparedMathStyleAssurance::opaque_html("#e0f2fe", 18.0),
+        );
+
+        assert!(receipt.message.fill_summary().incomplete);
+        assert!(
+            !receipt
+                .message
+                .typography_property_complete(ThemeTypographyProperty::FontSize)
+        );
+    }
+
+    #[test]
+    fn terminal_svg_observation_skips_work_without_typed_base_typography() {
+        let mut receipt = math_receipt([], None);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+
+        receipt
+            .record_terminal_svg("not even xml", "sequence-test", &meter)
+            .expect("an irrelevant terminal SVG requires no observation");
+
+        assert_eq!(meter.used(), 0);
+        assert!(!receipt.base.terminal_svg_observed());
+    }
+
+    #[test]
+    fn terminal_svg_observation_is_charged_before_parsing() {
+        let mut receipt = math_receipt([], None);
+        receipt
+            .base
+            .typed_properties
+            .insert(ThemeTypographyProperty::FontStack);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let invalid_svg = "x".repeat(129);
+
+        receipt
+            .record_terminal_svg(&invalid_svg, "sequence-test", &meter)
+            .expect("an unbounded meter admits the observation");
+
+        assert_eq!(meter.used(), 3);
+        assert!(!receipt.base.terminal_svg_observed());
+    }
 }

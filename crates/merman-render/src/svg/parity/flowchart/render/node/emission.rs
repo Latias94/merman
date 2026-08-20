@@ -101,6 +101,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeShapeEmissionReceipt {
 pub(in crate::svg::parity::flowchart) struct FlowchartNodeLabelEmissionReceipt {
     source_typography: FlowchartNodeFacetReach,
     prepared_typography: Option<FlowchartNodeFacetReach>,
+    html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus,
+    html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus,
 }
 
 impl FlowchartNodeLabelEmissionReceipt {
@@ -108,6 +110,8 @@ impl FlowchartNodeLabelEmissionReceipt {
         Self {
             source_typography: FlowchartNodeFacetReach::Verified,
             prepared_typography: None,
+            html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
+            html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
         }
     }
 
@@ -115,6 +119,8 @@ impl FlowchartNodeLabelEmissionReceipt {
         Self {
             source_typography: FlowchartNodeFacetReach::Unverified,
             prepared_typography: None,
+            html_font_stack_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
+            html_font_size_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
         }
     }
 
@@ -136,14 +142,40 @@ impl FlowchartNodeLabelEmissionReceipt {
         self
     }
 
+    pub(in crate::svg::parity::flowchart) const fn with_html_typography_statuses(
+        mut self,
+        font_stack: crate::flowchart::FlowchartSourceFacetStatus,
+        font_size: crate::flowchart::FlowchartSourceFacetStatus,
+    ) -> Self {
+        self.html_font_stack_status = font_stack;
+        self.html_font_size_status = font_size;
+        self
+    }
+
     pub(in crate::svg::parity::flowchart) const fn typography_verified(self) -> bool {
         self.source_typography.is_verified()
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn typography_applicable(self) -> bool {
+        self.prepared_typography.is_some()
     }
 
     pub(in crate::svg::parity::flowchart) const fn prepared_typography_reach(
         self,
     ) -> Option<FlowchartNodeFacetReach> {
         self.prepared_typography
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn html_font_stack_status(
+        self,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        self.html_font_stack_status
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn html_font_size_status(
+        self,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        self.html_font_size_status
     }
 }
 

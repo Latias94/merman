@@ -261,16 +261,71 @@ pub mod __private {
 
     /// One bounded compatibility contribution and the assignments that survived finalization.
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct ThemeCompatibilityContributionEvidence(ConfigOverlayContributionProvenance);
+    pub struct ThemeCompatibilityContributionEvidence {
+        provenance: ConfigOverlayContributionProvenance,
+        surviving_assignments: Arc<[ThemeCompatibilityAssignmentEvidence]>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct ThemeCompatibilityAssignmentEvidence {
+        path: Arc<str>,
+        value: Arc<serde_json::Value>,
+    }
 
     impl ThemeCompatibilityContributionEvidence {
+        fn from_frozen(
+            provenance: ConfigOverlayContributionProvenance,
+            effective_config: &MermaidConfig,
+        ) -> Self {
+            let surviving_assignments = provenance
+                .surviving_assignment_paths()
+                .filter_map(|path| {
+                    config_value_at_path(effective_config, path).map(|value| {
+                        ThemeCompatibilityAssignmentEvidence {
+                            path: Arc::from(path),
+                            value: Arc::new(value.clone()),
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into();
+            Self {
+                provenance,
+                surviving_assignments,
+            }
+        }
+
         pub fn opaque_id(&self) -> &str {
-            self.0.opaque_id()
+            self.provenance.opaque_id()
         }
 
         pub fn surviving_assignment_paths(&self) -> impl ExactSizeIterator<Item = &str> {
-            self.0.surviving_assignment_paths()
+            self.surviving_assignments
+                .iter()
+                .map(|assignment| assignment.path.as_ref())
         }
+
+        /// Returns the post-finalization value owned by this contribution at one surviving path.
+        pub fn surviving_assignment_value(
+            &self,
+            assignment_path: &str,
+        ) -> Option<&serde_json::Value> {
+            self.surviving_assignments
+                .iter()
+                .find(|assignment| assignment.path.as_ref() == assignment_path)
+                .map(|assignment| assignment.value.as_ref())
+        }
+    }
+
+    fn config_value_at_path<'a>(
+        config: &'a MermaidConfig,
+        dotted_path: &str,
+    ) -> Option<&'a serde_json::Value> {
+        let mut current = config.as_value();
+        for segment in dotted_path.split('.') {
+            current = current.as_object()?.get(segment)?;
+        }
+        Some(current)
     }
 
     /// Conceptual Mermaid compatibility field retained after config precedence is finalized.
@@ -514,7 +569,12 @@ pub mod __private {
                 .overlay_provenance()
                 .fallback_contributions()
                 .cloned()
-                .map(ThemeCompatibilityContributionEvidence)
+                .map(|contribution| {
+                    ThemeCompatibilityContributionEvidence::from_frozen(
+                        contribution,
+                        &metadata.effective_config,
+                    )
+                })
                 .collect::<Vec<_>>()
                 .into(),
         }

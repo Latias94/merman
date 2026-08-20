@@ -277,7 +277,7 @@ fn record_kanban_label_emission(
     semantic_id: &str,
     role: KanbanTaskLabelRole,
     emission: &KanbanLabelGroupEmission,
-    decision: &crate::kanban::KanbanTaskPaletteTerminalDecision,
+    decision: &crate::kanban::KanbanTaskTerminalDecision,
 ) {
     if emission.visible && decision.label_css().is_some() {
         if let Some(receipt) = receipt {
@@ -300,10 +300,10 @@ pub(crate) fn render_kanban_diagram_svg(
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_sections, prepared_items) = prepared.render_parts();
     let task_theme = prepared.task_theme();
-    let task_palette_decisions = task_theme.palette_terminal_decisions(effective_config)?;
+    let task_terminal_decisions = task_theme.terminal_decisions(effective_config)?;
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
     debug_assert_eq!(layout.items.len(), prepared_items.len());
-    debug_assert_eq!(layout.items.len(), task_palette_decisions.len());
+    debug_assert_eq!(layout.items.len(), task_terminal_decisions.len());
     let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
     let effective_config = effective_config.as_value();
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -398,7 +398,7 @@ pub(crate) fn render_kanban_diagram_svg(
 
     out.push_str(r#"<g class="items">"#);
     out.checkpoint()?;
-    let mut task_theme_receipt = task_theme.begin_terminal_receipt(&task_palette_decisions);
+    let mut task_theme_receipt = task_theme.begin_terminal_receipt(&task_terminal_decisions);
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
     let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
@@ -444,9 +444,9 @@ pub(crate) fn render_kanban_diagram_svg(
             x = fmt(n.center_x),
             y = fmt(n.center_y),
         );
-        let palette_decision = &task_palette_decisions[item_index];
+        let terminal_decision = &task_terminal_decisions[item_index];
         let task_rect_emission =
-            write_kanban_task_rect(&mut out, n, rect_x, rect_y, palette_decision.fill_css());
+            write_kanban_task_rect(&mut out, n, rect_x, rect_y, terminal_decision.fill_css());
 
         let label_context = KanbanLabelRenderContext {
             max_width: max_w,
@@ -462,13 +462,9 @@ pub(crate) fn render_kanban_diagram_svg(
                 text: Some(n.label.as_str()),
                 html: Some(prepared_item.title.html.as_str()),
                 geometry: title_geometry,
-                div_class: if palette_decision.label_css().is_some() {
-                    None
-                } else {
-                    n.icon.as_deref().map(|_| "labelBkg")
-                },
+                div_class: n.icon.as_deref().map(|_| "labelBkg"),
                 wrap_title: true,
-                foreground: palette_decision.label_css(),
+                foreground: terminal_decision.label_css(),
             },
         )?;
         record_kanban_label_emission(
@@ -477,7 +473,7 @@ pub(crate) fn render_kanban_diagram_svg(
             &n.id,
             KanbanTaskLabelRole::Title,
             &title_emission,
-            palette_decision,
+            terminal_decision,
         );
 
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
@@ -502,7 +498,7 @@ pub(crate) fn render_kanban_diagram_svg(
                         geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
-                        foreground: palette_decision.label_css(),
+                        foreground: terminal_decision.label_css(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -511,7 +507,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     &n.id,
                     KanbanTaskLabelRole::Ticket,
                     &ticket_emission,
-                    palette_decision,
+                    terminal_decision,
                 );
                 out.push_str("</a>");
                 out.checkpoint()?;
@@ -526,7 +522,7 @@ pub(crate) fn render_kanban_diagram_svg(
                         geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
-                        foreground: palette_decision.label_css(),
+                        foreground: terminal_decision.label_css(),
                     },
                 )?;
                 record_kanban_label_emission(
@@ -535,7 +531,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     &n.id,
                     KanbanTaskLabelRole::Ticket,
                     &ticket_emission,
-                    palette_decision,
+                    terminal_decision,
                 );
             }
         } else {
@@ -549,7 +545,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     geometry: ticket_geometry,
                     div_class: None,
                     wrap_title: false,
-                    foreground: palette_decision.label_css(),
+                    foreground: terminal_decision.label_css(),
                 },
             )?;
         }
@@ -565,7 +561,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 geometry: assigned_geometry,
                 div_class: None,
                 wrap_title: false,
-                foreground: palette_decision.label_css(),
+                foreground: terminal_decision.label_css(),
             },
         )?;
         record_kanban_label_emission(
@@ -574,7 +570,7 @@ pub(crate) fn render_kanban_diagram_svg(
             &n.id,
             KanbanTaskLabelRole::Assigned,
             &assigned_emission,
-            palette_decision,
+            terminal_decision,
         );
 
         if let Some(p) = n.priority.as_deref() {
@@ -601,9 +597,9 @@ pub(crate) fn render_kanban_diagram_svg(
                 item_index,
                 &n.id,
                 task_theme.radius_px(item_index).is_some_and(|expected| {
-                    task_rect_emission.matches_theme(expected, palette_decision.fill_css())
+                    task_rect_emission.matches_theme(expected, terminal_decision.fill_css())
                 }),
-                palette_decision,
+                terminal_decision,
             );
         }
     }

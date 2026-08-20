@@ -38,7 +38,7 @@ const FLOWCHART_SOURCE_ENTRY_RECORD_BYTES: usize = 64;
 const FLOWCHART_RENDER_ID_RECORD_BYTES: usize = 32;
 const FLOWCHART_PREPARED_OWNER_SLOT_BYTES: usize = 192;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum FlowchartSvgLabelOwner {
     Node(usize),
     EmptySubgraphNode(usize),
@@ -1165,6 +1165,20 @@ impl FlowchartSvgLabelSidecarBuilder {
             || self.prepared_work_error.borrow().is_some()
         {
             return failed_prepared_metrics();
+        }
+        // Base typography evidence covers every visible label shell, including HTML labels that
+        // intentionally bypass native SVG source preparation. Retain their semantic owner before
+        // any measurement fast path so the terminal writer can bind source-local typography to
+        // the exact occurrence instead of falling back to an unidentified residual.
+        if self
+            .base_typography
+            .as_ref()
+            .is_some_and(super::FlowchartBaseTypographyPlan::requires_terminal_evidence)
+        {
+            self.pending
+                .borrow_mut()
+                .render_ids
+                .insert(owner, render_id.into());
         }
         match self.measure_prepared_math(
             owner,

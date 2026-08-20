@@ -428,6 +428,13 @@ pub(super) fn render_flowchart_svg_model(
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
 
+    if let Some(base_typography) = svg_label_sidecar
+        .base_typography()
+        .filter(|plan| plan.requires_terminal_evidence())
+    {
+        base_typography.begin_terminal_emission();
+    }
+
     let root_document = document.push_root_open(&mut out)?;
     document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
@@ -447,6 +454,12 @@ pub(super) fn render_flowchart_svg_model(
     }
     out.push_str("</style>");
     out.checkpoint()?;
+    if let Some(base_typography) = svg_label_sidecar
+        .base_typography()
+        .filter(|plan| plan.requires_terminal_evidence())
+    {
+        base_typography.record_stylesheet_emission(&font_family, font_size);
+    }
 
     let defs = prepare_flowchart_defs(
         document_ids.marker_scope(),
@@ -494,6 +507,11 @@ pub(super) fn render_flowchart_svg_model(
             fmt(title_y),
             escape_xml_display(title)
         );
+        if !title.trim().is_empty() {
+            ctx.record_base_typography_label_emission(
+                crate::flowchart::FlowchartBaseTypographyLabelEmission::diagram_title(),
+            );
+        }
     }
     out.push_str("</svg>\n");
     out.checkpoint()?;
@@ -533,11 +551,7 @@ pub(super) fn render_flowchart_svg_model(
             detail.nested_roots,
         );
     }
-    let rooted = root_document.complete(out.finish()?)?;
-    if let Some(base_typography) = svg_label_sidecar.base_typography() {
-        let _ = base_typography.record_terminal_svg(rooted.as_str(), diagram_id);
-    }
-    Ok(rooted)
+    root_document.complete(out.finish()?)
 }
 
 fn flowchart_node_theme_ordinals<'a>(

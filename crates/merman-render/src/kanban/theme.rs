@@ -23,9 +23,7 @@ const MERMAID_TASK_PALETTE_SLOT_COUNT: usize = 12;
 /// Kanban task geometry and evidence resolved once for concrete item occurrences.
 #[derive(Debug)]
 pub(crate) struct KanbanTaskTheme {
-    item_radii: Vec<f64>,
-    item_surfaces: Vec<Option<KanbanTaskSurface>>,
-    occurrences: Box<[KanbanTaskOccurrence]>,
+    items: Box<[KanbanTaskResolvedItem]>,
     evidence: FamilyThemeEvidence,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
     palette_key: Option<FamilyThemeMechanismKey>,
@@ -34,9 +32,11 @@ pub(crate) struct KanbanTaskTheme {
 }
 
 #[derive(Debug)]
-struct KanbanTaskSurface {
-    fill: KanbanTaskPaletteFill,
-    label: Option<KanbanTaskLabelForeground>,
+struct KanbanTaskResolvedItem {
+    occurrence: KanbanTaskOccurrence,
+    radius_px: f64,
+    palette_fill: Option<KanbanTaskPaletteFill>,
+    label_foreground: Option<KanbanTaskLabelForeground>,
 }
 
 #[derive(Debug)]
@@ -136,23 +136,17 @@ impl KanbanTaskTheme {
             effective_config,
             "themeVariables.background",
         );
-        // The generated family bridge is a fallback overlay and does not claim typed-default
-        // ownership. Explicit site/source or authored Mermaid compatibility still owns the whole
-        // visible task surface and suppresses the paired direct writer.
-        let source_owned_label = [
+        // Query only the terminal path consumed by the Kanban writer. Core provenance may carry
+        // derived ownership into `textColor`; upstream inputs such as `primaryTextColor` are not
+        // enumerated here as a second ownership authority.
+        let source_owned_label = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
             "themeVariables.textColor",
-            "themeVariables.primaryTextColor",
-        ]
-        .into_iter()
-        .any(|path| {
-            merman_core::__private::config_path_overrides_typed_default(effective_config, path)
-        });
-        let mut item_radii = Vec::with_capacity(item_count);
-        let mut item_surfaces = Vec::with_capacity(item_count);
+        );
+        let mut items = Vec::with_capacity(item_count);
         let mut label_rule_visible = BTreeSet::new();
-        let mut unpaired_palette = false;
         let mut winner_properties = BTreeSet::new();
-        for item_index in 0..item_count {
+        for (item_index, occurrence) in occurrences.into_iter().enumerate() {
             let style = theme.style_with_work_meter(
                 ThemeTarget::Task,
                 ThemeVariant::Default,
@@ -165,7 +159,7 @@ impl KanbanTaskTheme {
                     .into_iter()
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
-            item_radii.push(typed_radius_px(theme, &style));
+            let radius_px = typed_radius_px(theme, &style);
             let palette_fill = if !source_owned_palette
                 && palette_disposition == Some(FamilyThemeDisposition::TypedAdapter)
                 && matches!(style.fill_resolution().specified(), Specified::Unspecified)
@@ -192,7 +186,7 @@ impl KanbanTaskTheme {
                 Some(item_index + 1),
                 work_meter,
             )?;
-            let has_visible_labels = occurrences[item_index].has_visible_labels();
+            let has_visible_labels = occurrence.has_visible_labels();
             if has_visible_labels {
                 winner_properties.extend(
                     label_style
@@ -209,27 +203,13 @@ impl KanbanTaskTheme {
             if let Some(label) = label_foreground.as_ref() {
                 label_rule_visible.insert(label.rule_index);
             }
-
-            let surface = match (palette_fill, label_foreground, has_visible_labels) {
-                (Some(fill), Some(label), true) => Some(KanbanTaskSurface {
-                    fill,
-                    label: Some(label),
-                }),
-                (Some(fill), None, false) => Some(KanbanTaskSurface { fill, label: None }),
-                (None, None, false) => None,
-                (Some(_), None, true) | (None, Some(_), true) => {
-                    unpaired_palette = true;
-                    None
-                }
-                (None, None, true) => None,
-                (None, Some(_), false) | (Some(_), Some(_), false) => {
-                    unreachable!("invisible Kanban labels cannot resolve a typed foreground")
-                }
-            };
-            item_surfaces.push(surface);
-        }
-        if unpaired_palette {
-            item_surfaces.iter_mut().for_each(|surface| *surface = None);
+            debug_assert!(has_visible_labels || label_foreground.is_none());
+            items.push(KanbanTaskResolvedItem {
+                occurrence,
+                radius_px,
+                palette_fill,
+                label_foreground,
+            });
         }
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
@@ -260,10 +240,9 @@ impl KanbanTaskTheme {
                                 | crate::diagram_theme::FamilyThemePaintKind::Solid,
                             ),
                         ) => {
-                            if source_owned_label || source_owned_palette {
+                            if source_owned_label {
                                 observation.suppressed = true;
-                            } else if !unpaired_palette && label_rule_visible.contains(&rule_index)
-                            {
+                            } else if label_rule_visible.contains(&rule_index) {
                                 observation.label_pending = true;
                             } else {
                                 observation.residual =
@@ -296,16 +275,8 @@ impl KanbanTaskTheme {
                         evidence.mark_not_applicable(key);
                     } else {
                         match route.disposition() {
-                            FamilyThemeDisposition::TypedAdapter
-                                if source_owned_palette || source_owned_label =>
-                            {
+                            FamilyThemeDisposition::TypedAdapter if source_owned_palette => {
                                 evidence.mark_not_applicable(key);
-                            }
-                            FamilyThemeDisposition::TypedAdapter if unpaired_palette => {
-                                evidence.mark_residual(
-                                    key,
-                                    FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                                );
                             }
                             FamilyThemeDisposition::TypedAdapter => palette_key = Some(key),
                             FamilyThemeDisposition::Unsupported => evidence.mark_residual(
@@ -359,9 +330,7 @@ impl KanbanTaskTheme {
         }
 
         Ok(Self {
-            item_radii,
-            item_surfaces,
-            occurrences: occurrences.into_boxed_slice(),
+            items: items.into_boxed_slice(),
             evidence,
             pending_radius_key,
             palette_key,
@@ -379,11 +348,16 @@ impl KanbanTaskTheme {
     }
 
     fn baseline_occurrences(occurrences: Vec<KanbanTaskOccurrence>) -> Self {
-        let item_count = occurrences.len();
         Self {
-            item_radii: vec![MERMAID_TASK_RADIUS_PX; item_count],
-            item_surfaces: (0..item_count).map(|_| None).collect(),
-            occurrences: occurrences.into_boxed_slice(),
+            items: occurrences
+                .into_iter()
+                .map(|occurrence| KanbanTaskResolvedItem {
+                    occurrence,
+                    radius_px: MERMAID_TASK_RADIUS_PX,
+                    palette_fill: None,
+                    label_foreground: None,
+                })
+                .collect(),
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: None,
             palette_key: None,
@@ -393,65 +367,58 @@ impl KanbanTaskTheme {
     }
 
     pub(crate) fn radius_px(&self, item_index: usize) -> Option<f64> {
-        self.item_radii.get(item_index).copied()
+        self.items.get(item_index).map(|item| item.radius_px)
     }
 
-    pub(crate) fn palette_terminal_decisions(
+    pub(crate) fn terminal_decisions(
         &self,
         config: &MermaidConfig,
-    ) -> crate::Result<Vec<KanbanTaskPaletteTerminalDecision>> {
-        if self.palette_key.is_none() {
-            return Ok(vec![
-                KanbanTaskPaletteTerminalDecision::NotApplicable;
-                self.item_surfaces.len()
-            ]);
-        }
+    ) -> crate::Result<Vec<KanbanTaskTerminalDecision>> {
         let dark_mode = config
             .get_bool("darkMode")
             .or_else(|| config.get_bool("themeVariables.darkMode"))
             .unwrap_or(false);
-        (0..self.item_surfaces.len())
-            .map(|item_index| self.palette_terminal_decision(item_index, dark_mode))
+        self.items
+            .iter()
+            .map(|item| Self::terminal_decision(item, dark_mode))
             .collect()
     }
 
-    fn palette_terminal_decision(
-        &self,
-        item_index: usize,
+    fn terminal_decision(
+        item: &KanbanTaskResolvedItem,
         dark_mode: bool,
-    ) -> crate::Result<KanbanTaskPaletteTerminalDecision> {
-        let Some(surface) = self.item_surfaces.get(item_index).and_then(Option::as_ref) else {
-            return Ok(KanbanTaskPaletteTerminalDecision::NotApplicable);
+    ) -> crate::Result<KanbanTaskTerminalDecision> {
+        let fill = item.palette_fill.as_ref();
+        let fill_css = match fill {
+            Some(fill) if dark_mode => Some(darken(&fill.css, 10.0)?),
+            Some(fill) => Some(lighten(&fill.css, 10.0)?),
+            None => None,
         };
-        let css = if dark_mode {
-            darken(&surface.fill.css, 10.0)?
-        } else {
-            lighten(&surface.fill.css, 10.0)?
-        };
-        Ok(KanbanTaskPaletteTerminalDecision::Applied {
-            fill_css: css,
-            fill_capability: surface.fill.capability,
-            label_css: surface.label.as_ref().map(|label| label.css.clone()),
-            label_capability: surface.label.as_ref().map(|label| label.capability),
-            label_rule_index: surface.label.as_ref().map(|label| label.rule_index),
+        let label = item.label_foreground.as_ref();
+        Ok(KanbanTaskTerminalDecision {
+            fill_css,
+            fill_capability: fill.map(|fill| fill.capability),
+            label_css: label.map(|label| label.css.clone()),
+            label_capability: label.map(|label| label.capability),
+            label_rule_index: label.map(|label| label.rule_index),
         })
     }
 
     pub(crate) fn begin_terminal_receipt(
         &self,
-        decisions: &[KanbanTaskPaletteTerminalDecision],
+        decisions: &[KanbanTaskTerminalDecision],
     ) -> Option<KanbanTaskThemeReceipt> {
         (self.pending_radius_key.is_some()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty())
-        .then(|| KanbanTaskThemeReceipt::new(&self.occurrences, decisions))
+        .then(|| KanbanTaskThemeReceipt::new(&self.items, decisions))
     }
 
     pub(crate) fn record_terminal(&self, receipt: KanbanTaskThemeReceipt) -> bool {
         (self.pending_radius_key.is_some()
             || self.palette_key.is_some()
             || !self.pending_label_keys.is_empty())
-            && receipt.proves(self.item_radii.len())
+            && receipt.proves(self.items.len())
             && self.terminal_receipt.set(receipt).is_ok()
     }
 
@@ -498,30 +465,21 @@ impl KanbanTaskTheme {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum KanbanTaskPaletteTerminalDecision {
-    Applied {
-        fill_css: String,
-        fill_capability: ThemeCapability,
-        label_css: Option<String>,
-        label_capability: Option<ThemeCapability>,
-        label_rule_index: Option<usize>,
-    },
-    NotApplicable,
+pub(crate) struct KanbanTaskTerminalDecision {
+    fill_css: Option<String>,
+    fill_capability: Option<ThemeCapability>,
+    label_css: Option<String>,
+    label_capability: Option<ThemeCapability>,
+    label_rule_index: Option<usize>,
 }
 
-impl KanbanTaskPaletteTerminalDecision {
+impl KanbanTaskTerminalDecision {
     pub(crate) fn fill_css(&self) -> Option<&str> {
-        match self {
-            Self::Applied { fill_css, .. } => Some(fill_css),
-            Self::NotApplicable => None,
-        }
+        self.fill_css.as_deref()
     }
 
     pub(crate) fn label_css(&self) -> Option<&str> {
-        match self {
-            Self::Applied { label_css, .. } => label_css.as_deref(),
-            Self::NotApplicable => None,
-        }
+        self.label_css.as_deref()
     }
 }
 
@@ -597,21 +555,18 @@ struct KanbanTaskReceiptItem {
 }
 
 impl KanbanTaskThemeReceipt {
-    fn new(
-        occurrences: &[KanbanTaskOccurrence],
-        decisions: &[KanbanTaskPaletteTerminalDecision],
-    ) -> Self {
-        let schema_valid = occurrences.len() == decisions.len();
+    fn new(items: &[KanbanTaskResolvedItem], decisions: &[KanbanTaskTerminalDecision]) -> Self {
+        let schema_valid = items.len() == decisions.len();
         Self {
-            items: occurrences
+            items: items
                 .iter()
                 .zip(decisions)
-                .map(|(occurrence, decision)| KanbanTaskReceiptItem {
-                    semantic_id: occurrence.semantic_id.clone(),
+                .map(|(item, decision)| KanbanTaskReceiptItem {
+                    semantic_id: item.occurrence.semantic_id.clone(),
                     rect_checkpointed: false,
                     expected_labels: decision
                         .label_css()
-                        .map(|_| occurrence.visible_labels)
+                        .map(|_| item.occurrence.visible_labels)
                         .unwrap_or_default(),
                     emitted_labels: KanbanTaskLabelRoles::default(),
                 })
@@ -627,7 +582,7 @@ impl KanbanTaskThemeReceipt {
         item_index: usize,
         semantic_id: &str,
         attributes_match: bool,
-        palette_decision: &KanbanTaskPaletteTerminalDecision,
+        terminal_decision: &KanbanTaskTerminalDecision,
     ) {
         let Some(item) = self.items.get_mut(item_index) else {
             self.schema_valid = false;
@@ -639,11 +594,8 @@ impl KanbanTaskThemeReceipt {
         }
         item.rect_checkpointed = true;
         self.schema_valid &= item.semantic_id.as_ref() == semantic_id && attributes_match;
-        if let KanbanTaskPaletteTerminalDecision::Applied {
-            fill_capability, ..
-        } = palette_decision
-        {
-            self.palette_capabilities.insert(*fill_capability);
+        if let Some(fill_capability) = terminal_decision.fill_capability {
+            self.palette_capabilities.insert(fill_capability);
         }
     }
 
@@ -654,19 +606,17 @@ impl KanbanTaskThemeReceipt {
         role: KanbanTaskLabelRole,
         actual_group_style: &str,
         actual_div_style: &str,
-        decision: &KanbanTaskPaletteTerminalDecision,
+        decision: &KanbanTaskTerminalDecision,
     ) {
         let Some(item) = self.items.get_mut(item_index) else {
             self.schema_valid = false;
             return;
         };
-        let KanbanTaskPaletteTerminalDecision::Applied {
-            label_css: Some(expected_css),
-            label_capability: Some(capability),
-            label_rule_index: Some(rule_index),
-            ..
-        } = decision
-        else {
+        let (Some(expected_css), Some(capability), Some(rule_index)) = (
+            decision.label_css.as_deref(),
+            decision.label_capability,
+            decision.label_rule_index,
+        ) else {
             self.schema_valid = false;
             return;
         };
@@ -674,15 +624,15 @@ impl KanbanTaskThemeReceipt {
         self.schema_valid &= item.expected_labels.contains(role);
         self.schema_valid &= item.emitted_labels.insert(role);
         self.schema_valid &=
-            terminal_style_property(actual_group_style, "color") == Some(expected_css.as_str());
+            terminal_style_property(actual_group_style, "color") == Some(expected_css);
         self.schema_valid &=
-            terminal_style_property(actual_group_style, "fill") == Some(expected_css.as_str());
+            terminal_style_property(actual_group_style, "fill") == Some(expected_css);
         self.schema_valid &=
-            terminal_style_property(actual_div_style, "color") == Some(expected_css.as_str());
+            terminal_style_property(actual_div_style, "color") == Some(expected_css);
         self.label_capabilities
-            .entry(*rule_index)
+            .entry(rule_index)
             .or_default()
-            .insert(*capability);
+            .insert(capability);
     }
 
     fn proves_label_rule(&self, rule_index: usize) -> bool {
@@ -728,31 +678,50 @@ struct KanbanTaskRuleObservation {
 #[cfg(test)]
 mod tests {
     use super::{
-        KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskPaletteTerminalDecision,
-        KanbanTaskThemeReceipt,
+        KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskResolvedItem,
+        KanbanTaskTerminalDecision, KanbanTaskThemeReceipt, MERMAID_TASK_RADIUS_PX,
     };
     use crate::diagram_theme::ThemeCapability;
 
-    fn label_decision() -> KanbanTaskPaletteTerminalDecision {
-        KanbanTaskPaletteTerminalDecision::Applied {
-            fill_css: "#ffffff".to_string(),
-            fill_capability: ThemeCapability::SolidPaint,
+    fn label_decision() -> KanbanTaskTerminalDecision {
+        KanbanTaskTerminalDecision {
+            fill_css: None,
+            fill_capability: None,
             label_css: Some("#000000".to_string()),
             label_capability: Some(ThemeCapability::SolidPaint),
             label_rule_index: Some(7),
         }
     }
 
+    fn palette_decision() -> KanbanTaskTerminalDecision {
+        KanbanTaskTerminalDecision {
+            fill_css: Some("#ffffff".to_string()),
+            fill_capability: Some(ThemeCapability::SolidPaint),
+            label_css: None,
+            label_capability: None,
+            label_rule_index: None,
+        }
+    }
+
+    fn resolved_item(occurrence: KanbanTaskOccurrence) -> KanbanTaskResolvedItem {
+        KanbanTaskResolvedItem {
+            occurrence,
+            radius_px: MERMAID_TASK_RADIUS_PX,
+            palette_fill: None,
+            label_foreground: None,
+        }
+    }
+
     #[test]
     fn task_theme_receipt_requires_each_terminal_occurrence_once() {
-        let occurrence = KanbanTaskOccurrence::new(
+        let item = resolved_item(KanbanTaskOccurrence::new(
             "task",
             [KanbanTaskLabelRole::Title, KanbanTaskLabelRole::Ticket],
-        );
+        ));
         let decision = label_decision();
 
         let mut incomplete = KanbanTaskThemeReceipt::new(
-            std::slice::from_ref(&occurrence),
+            std::slice::from_ref(&item),
             std::slice::from_ref(&decision),
         );
         incomplete.record_checkpointed_item(0, "task", true, &decision);
@@ -767,7 +736,7 @@ mod tests {
         assert!(!incomplete.proves(1));
 
         let mut mismatched = KanbanTaskThemeReceipt::new(
-            std::slice::from_ref(&occurrence),
+            std::slice::from_ref(&item),
             std::slice::from_ref(&decision),
         );
         mismatched.record_checkpointed_item(0, "task", true, &decision);
@@ -783,8 +752,7 @@ mod tests {
         }
         assert!(!mismatched.proves(1));
 
-        let mut complete =
-            KanbanTaskThemeReceipt::new(&[occurrence], std::slice::from_ref(&decision));
+        let mut complete = KanbanTaskThemeReceipt::new(&[item], std::slice::from_ref(&decision));
         complete.record_checkpointed_item(0, "task", true, &decision);
         for role in [KanbanTaskLabelRole::Title, KanbanTaskLabelRole::Ticket] {
             complete.record_label(
@@ -808,5 +776,24 @@ mod tests {
             &decision,
         );
         assert!(!complete.proves(1));
+    }
+
+    #[test]
+    fn task_theme_receipt_does_not_require_labels_for_a_palette_only_route() {
+        let item = resolved_item(KanbanTaskOccurrence::new(
+            "task",
+            [KanbanTaskLabelRole::Title],
+        ));
+        let decision = palette_decision();
+        let mut receipt = KanbanTaskThemeReceipt::new(&[item], std::slice::from_ref(&decision));
+
+        receipt.record_checkpointed_item(0, "task", true, &decision);
+
+        assert!(receipt.proves(1));
+        assert_eq!(
+            receipt.palette_capabilities,
+            [ThemeCapability::SolidPaint].into_iter().collect()
+        );
+        assert!(!receipt.proves_label_rule(7));
     }
 }

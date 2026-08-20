@@ -1,6 +1,9 @@
 use super::super::*;
 use super::geometry::node_left_top;
-use super::math_label::{SequenceKatexLabel, write_sequence_katex_foreign_object};
+use super::math_label::{
+    SequenceKatexLabel, record_sequence_katex_terminal_emission,
+    write_sequence_katex_foreign_object,
+};
 
 pub(super) struct ActorManBottomGlyphMetrics {
     pub(super) actor_height: f64,
@@ -377,6 +380,11 @@ fn write_actor_man_label(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_
             ctx.cx - math_label.width / 2.0,
             ctx.label_y - math_label.height / 2.0,
         );
+        record_sequence_katex_terminal_emission(
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ParticipantLabel,
+            math_label,
+        );
     } else {
         let label_style = actor_man_label_style(ctx);
         let _ = write!(
@@ -387,9 +395,9 @@ fn write_actor_man_label(out: &mut impl SvgOutput, ctx: &ActorManGlyphContext<'_
             label_style = escape_attr_display(&label_style),
             label = escape_xml(ctx.label),
         );
+        ctx.typography_receipt
+            .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
     }
-    ctx.typography_receipt
-        .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
 }
 
 fn actor_man_label_style(ctx: &ActorManGlyphContext<'_>) -> String {

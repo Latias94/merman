@@ -177,6 +177,7 @@ pub(crate) struct PreparedMathLabel {
     max_line_height_px: f64,
     max_math_height_px: Option<f64>,
     browser_xhtml: Arc<str>,
+    style_assurance: super::PreparedMathStyleAssurance,
     occurrence_id: Option<super::PreparedMathOccurrenceId>,
     projection_fingerprint: Option<super::PreparedMathProjectionFingerprint>,
 }
@@ -189,6 +190,7 @@ impl PreparedMathLabel {
             max_line_height_px: metrics.height,
             max_math_height_px: None,
             browser_xhtml: Arc::from("<span/>"),
+            style_assurance: super::PreparedMathStyleAssurance::opaque_html("", 16.0),
             occurrence_id: None,
             projection_fingerprint: None,
         }
@@ -210,6 +212,10 @@ impl PreparedMathLabel {
         &self.browser_xhtml
     }
 
+    pub(crate) const fn style_assurance(&self) -> &super::PreparedMathStyleAssurance {
+        &self.style_assurance
+    }
+
     pub(crate) fn expectation(
         &self,
         expected_emissions: usize,
@@ -229,6 +235,7 @@ impl PreparedMathLabel {
     pub(crate) fn retained_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             .checked_add(self.browser_xhtml.len())
+            .and_then(|bytes| bytes.checked_add(self.style_assurance.retained_heap_bytes()))
             .and_then(|bytes| {
                 bytes.checked_add(
                     self.occurrence_id
@@ -536,12 +543,18 @@ fn prepare_external(
         .zip(html)
         .map(|(metrics, html)| RawPreparedMathLabel::new(html, metrics));
     Ok(match prepared {
-        Some(prepared) => match finish_external_preparation(prepared, request, work_meter)? {
-            Some(prepared) => MathPreparationOutcome::Prepared(Arc::new(prepared)),
-            None => {
-                MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined)
+        Some(prepared) => {
+            let style_assurance = super::PreparedMathStyleAssurance::opaque_html(
+                request.foreground,
+                request.style.font_size,
+            );
+            match finish_external_preparation(prepared, request, style_assurance, work_meter)? {
+                Some(prepared) => MathPreparationOutcome::Prepared(Arc::new(prepared)),
+                None => {
+                    MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined)
+                }
             }
-        },
+        }
         None => MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined),
     })
 }
@@ -549,6 +562,7 @@ fn prepare_external(
 fn finish_external_preparation(
     prepared: RawPreparedMathLabel,
     request: PrepareMathLabelRequest<'_>,
+    style_assurance: super::PreparedMathStyleAssurance,
     work_meter: &Arc<OperationWorkMeter>,
 ) -> Result<Option<PreparedMathLabel>, OperationWorkError> {
     let (html, metrics, max_line_height_px, max_math_height_px, native_svg) = prepared.into_parts();
@@ -573,6 +587,7 @@ fn finish_external_preparation(
         max_line_height_px,
         max_math_height_px,
         browser_xhtml: Arc::from(browser_xhtml),
+        style_assurance,
         occurrence_id: request.occurrence_id.cloned(),
         projection_fingerprint,
     };
@@ -1012,7 +1027,13 @@ fn prepare_compiled_ratex(
             MathPreparationUnavailable::BackendDeclined,
         ));
     };
-    let Some(prepared) = finish_external_preparation(prepared, request, work_meter)? else {
+    let style_assurance = super::PreparedMathStyleAssurance::compiled_ratex(
+        request.foreground,
+        request.style.font_size,
+    );
+    let Some(prepared) =
+        finish_external_preparation(prepared, request, style_assurance, work_meter)?
+    else {
         return Ok(MathPreparationOutcome::Unavailable(
             MathPreparationUnavailable::BackendDeclined,
         ));
@@ -1420,7 +1441,9 @@ mod tests {
         assert!(!artifact.browser_xhtml().contains("$$"));
         assert_eq!(
             artifact.retained_bytes(),
-            std::mem::size_of::<PreparedMathLabel>() + artifact.browser_xhtml().len()
+            std::mem::size_of::<PreparedMathLabel>()
+                + artifact.browser_xhtml().len()
+                + "#e5e7eb".len()
         );
     }
 

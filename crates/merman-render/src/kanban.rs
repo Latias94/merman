@@ -59,7 +59,7 @@ mod theme;
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 pub(crate) use theme::{
-    KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskPaletteTerminalDecision, KanbanTaskTheme,
+    KanbanTaskLabelRole, KanbanTaskOccurrence, KanbanTaskTerminalDecision, KanbanTaskTheme,
     KanbanTaskThemeReceipt,
 };
 

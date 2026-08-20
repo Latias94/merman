@@ -218,8 +218,10 @@ pub(crate) fn sequence_block_widths_for_render(
     measurer: &dyn TextMeasurer,
 ) -> FxHashMap<String, f64> {
     let layout = prepared.layout();
-    let mut settings = SequenceLayoutSettings::from_effective_config(effective_config.as_value());
-    settings.apply_typography_plan(prepared.typography());
+    let settings = SequenceLayoutSettings::from_effective_config(
+        effective_config.as_value(),
+        prepared.typography(),
+    );
     // SVG frame emission reconstructs Mermaid's `calculateLoopBounds` after Rust layout has
     // already completed. Only the built-in operation route may carry its earlier message bounds
     // across this private split; host and custom routes deliberately replay every callback.
@@ -294,17 +296,14 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         sequence_layout_work_units(model).ok_or_else(|| work_meter.arithmetic_overflow())?;
     work_meter.charge(work_units)?;
 
-    let effective_config_value = effective_config.as_value();
-    let mut settings = SequenceLayoutSettings::from_effective_config(effective_config_value);
     let typography = Arc::new(SequenceTypographyPlan::resolve(
         effective_config,
         resolved_theme,
         work_meter.as_ref(),
-        settings.actor_text_style.clone(),
-        settings.msg_text_style.clone(),
-        settings.note_text_style.clone(),
     )?);
-    settings.apply_typography_plan(typography.as_ref());
+    let effective_config_value = effective_config.as_value();
+    let settings =
+        SequenceLayoutSettings::from_effective_config(effective_config_value, typography.as_ref());
     let math_sidecar_builder = SequenceMathSidecarBuilder::new(
         math_backend,
         effective_config,

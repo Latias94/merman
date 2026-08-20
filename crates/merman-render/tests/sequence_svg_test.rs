@@ -3247,45 +3247,101 @@ end"#;
 
 #[cfg(feature = "math")]
 #[test]
-fn sequence_math_role_paint_fails_closed_without_a_native_text_terminal() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::MessageLabel,
-                        ThemeStylePatch::default().with_fill(
-                            CanvasPaint::solid("#22d3ee").expect("valid math message fill"),
-                        ),
-                    )
-                    .for_family(DiagramFamilyId::SEQUENCE),
+fn sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences() {
+    for (case, target, source, expected_math_occurrences) in [
+        (
+            "participant",
+            ThemeTarget::ActorLabel,
+            "sequenceDiagram\nparticipant A as $$x^2$$\nparticipant B\nA->>B: ok\n",
+            2,
+        ),
+        (
+            "actor-man",
+            ThemeTarget::ActorLabel,
+            "sequenceDiagram\nactor A as $$x^2$$\nparticipant B\nA->>B: ok\n",
+            2,
+        ),
+        (
+            "message",
+            ThemeTarget::MessageLabel,
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x^2$$\n",
+            1,
+        ),
+        (
+            "note",
+            ThemeTarget::NoteLabel,
+            "sequenceDiagram\nparticipant A\nparticipant B\nNote over A,B: $$x^2$$\n",
+            1,
+        ),
+        (
+            "control-primary-and-section",
+            ThemeTarget::LoopLabel,
+            "sequenceDiagram\nparticipant A\nparticipant B\nalt $$x^2$$\nA->>B: ok\nelse $$y^2$$\nB-->>A: no\nend\n",
+            2,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#22d3ee")
+                                    .expect("valid Sequence math role fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
                 ),
-            ),
-        )
-        .expect("compile Sequence math role paint theme");
-    let source = "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: $$x^2$$\n";
-    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse Sequence math role paint source")
-        .expect("detect Sequence math role paint source");
-    let session = RenderEnvironment::deterministic()
-        .with_compiled_math_renderer()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-        .begin_session_with_theme(&theme)
-        .expect("begin strict Sequence math role paint session");
-    let result = family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare Sequence math role paint")
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
-    let error = match result {
-        Ok(_) => panic!("KaTeX/HTML text cannot seal a native MessageLabel fill terminal"),
-        Err(error) => error,
-    };
+            )
+            .unwrap_or_else(|error| panic!("compile Sequence {case} math theme: {error}"));
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse Sequence {case} math source: {error}"))
+            .unwrap_or_else(|| panic!("detect Sequence {case} math source"));
+        let session = RenderEnvironment::deterministic()
+            .with_compiled_math_renderer()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap_or_else(|error| panic!("begin strict Sequence {case} math session: {error}"));
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap_or_else(|error| panic!("prepare Sequence {case} math: {error}"))
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("render strict Sequence {case} math: {error}"));
+        assert_eq!(
+            rendered
+                .svg()
+                .matches("class=\"merman-prepared-math\"")
+                .count(),
+            expected_math_occurrences,
+            "{case}: {}",
+            rendered.svg()
+        );
+        let document = roxmltree::Document::parse(rendered.svg())
+            .unwrap_or_else(|error| panic!("parse Sequence {case} math SVG: {error}"));
+        for literal_fallback in document
+            .descendants()
+            .filter(|node| node.is_text() && node.text().is_some_and(|text| text.contains("$$")))
+        {
+            assert!(
+                literal_fallback.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("switch")
+                        && ancestor.attribute("data-merman-prepared-math-switch") == Some("v1")
+                }),
+                "{case}: raw math text may only survive inside the renderer-owned switch fallback: {}",
+                rendered.svg()
+            );
+        }
+        drop(document);
 
-    assert_eq!(
-        error.incomplete_family_theme(),
-        Some((DiagramFamilyId::SEQUENCE, 1, 0))
-    );
-    assert_eq!(error.unverified_family_theme(), None);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.accounted_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
 }
 
 #[test]

@@ -45,44 +45,11 @@ impl SequenceTypographyRole {
         }
     }
 
-    fn config_paths(self, property: ThemeTypographyProperty) -> &'static [&'static str] {
-        match (self, property) {
-            (Self::Actor, ThemeTypographyProperty::FontStack) => &[
-                "fontFamily",
-                "themeVariables.fontFamily",
-                "sequence.actorFontFamily",
-            ],
-            (Self::Actor, ThemeTypographyProperty::FontSize) => {
-                &["fontSize", "sequence.actorFontSize"]
-            }
-            (Self::Actor, ThemeTypographyProperty::FontWeight) => {
-                &["fontWeight", "sequence.actorFontWeight"]
-            }
-            (Self::Message | Self::Loop, ThemeTypographyProperty::FontStack) => &[
-                "fontFamily",
-                "themeVariables.fontFamily",
-                "sequence.messageFontFamily",
-            ],
-            (Self::Message | Self::Loop, ThemeTypographyProperty::FontSize) => {
-                &["fontSize", "sequence.messageFontSize"]
-            }
-            (Self::Message | Self::Loop, ThemeTypographyProperty::FontWeight) => {
-                &["fontWeight", "sequence.messageFontWeight"]
-            }
-            (Self::Note, ThemeTypographyProperty::FontStack) => &[
-                "fontFamily",
-                "themeVariables.fontFamily",
-                "sequence.noteFontFamily",
-            ],
-            (Self::Note, ThemeTypographyProperty::FontSize) => {
-                &["fontSize", "sequence.noteFontSize"]
-            }
-            (Self::Note, ThemeTypographyProperty::FontWeight) => &[
-                "fontWeight",
-                "sequence.noteFontWeight",
-                "themeVariables.noteFontWeight",
-            ],
-            _ => &[],
+    const fn config_role(self) -> super::config::SequenceTypographyConfigRole {
+        match self {
+            Self::Actor => super::config::SequenceTypographyConfigRole::Actor,
+            Self::Message | Self::Loop => super::config::SequenceTypographyConfigRole::Message,
+            Self::Note => super::config::SequenceTypographyConfigRole::Note,
         }
     }
 }
@@ -174,8 +141,7 @@ impl SequenceBaseTypography {
 
     fn apply_to_role(
         &self,
-        role: SequenceTypographyRole,
-        effective_config: &MermaidConfig,
+        role_config: &super::config::SequenceRoleTypographyConfig,
         text_style: &mut TextStyle,
     ) -> BTreeSet<ThemeTypographyProperty> {
         let mut applied = BTreeSet::new();
@@ -183,9 +149,7 @@ impl SequenceBaseTypography {
             ThemeTypographyProperty::FontStack,
             ThemeTypographyProperty::FontSize,
         ] {
-            let overridden = role.config_paths(property).iter().any(|path| {
-                merman_core::__private::config_path_overrides_typed_default(effective_config, path)
-            });
+            let overridden = role_config.config_owns(property);
             if self.typed_properties.contains(&property) && !overridden {
                 apply_base_property(text_style, self, property);
                 applied.insert(property);
@@ -288,22 +252,16 @@ pub(crate) struct SequenceResolvedTypography {
 impl SequenceResolvedTypography {
     fn resolve(
         role: SequenceTypographyRole,
-        mut text_style: TextStyle,
         effective_config: &MermaidConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
         base_typography: &SequenceBaseTypography,
     ) -> Result<Self, OperationWorkError> {
+        let role_config = super::config::SequenceConfigView::from_mermaid_config(effective_config)
+            .resolve_role_typography(role.config_role());
         let config_overrides = DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES
             .into_iter()
-            .filter(|property| {
-                role.config_paths(*property).iter().any(|path| {
-                    merman_core::__private::config_path_overrides_typed_default(
-                        effective_config,
-                        path,
-                    )
-                })
-            })
+            .filter(|property| role_config.config_owns(*property))
             .collect::<BTreeSet<_>>();
         let fill_overrides = SequenceTextSurface::ALL
             .into_iter()
@@ -315,8 +273,9 @@ impl SequenceResolvedTypography {
                 )
             })
             .collect::<BTreeSet<_>>();
+        let mut text_style = role_config.measurement_style().clone();
         let mut base_typed_properties =
-            base_typography.apply_to_role(role, effective_config, &mut text_style);
+            base_typography.apply_to_role(&role_config, &mut text_style);
         let resolved_style = resolved_theme
             .filter(|theme| {
                 theme.family_mechanism_routes().iter().any(|route| {
@@ -401,6 +360,10 @@ impl SequenceResolvedTypography {
         &self.config_overrides
     }
 
+    pub(crate) const fn typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
+        &self.typed_properties
+    }
+
     pub(crate) const fn base_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
         &self.base_typed_properties
     }
@@ -425,6 +388,13 @@ impl SequenceResolvedTypography {
         self.has_typed_emission()
             || !self.base_typed_properties.is_empty()
             || !self.config_overrides.is_empty()
+    }
+
+    pub(crate) fn requires_terminal_evidence_for(&self, surface: SequenceTextSurface) -> bool {
+        debug_assert_eq!(surface.role(), self.role);
+        self.has_typed_emission()
+            || !self.base_typed_properties.is_empty()
+            || self.typed_fill_for(surface).is_some()
     }
 
     pub(crate) fn inline_style(&self, base: &str) -> String {
@@ -523,24 +493,10 @@ impl SequenceTypographyPlan {
         effective_config: &MermaidConfig,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
-        actor: TextStyle,
-        message: TextStyle,
-        mut note: TextStyle,
     ) -> Result<Self, OperationWorkError> {
-        if merman_core::__private::config_path_overrides_typed_default(
-            effective_config,
-            "themeVariables.noteFontWeight",
-        ) && let Some(weight) =
-            super::config::SequenceConfigView::new(effective_config.as_value())
-                .theme_variable_font_weight("noteFontWeight")
-        {
-            note.font_weight = Some(weight);
-        }
-        let loop_label = message.clone();
         let base_typography = SequenceBaseTypography::resolve(effective_config, resolved_theme);
         let actor = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Actor,
-            actor,
             effective_config,
             resolved_theme,
             work_meter,
@@ -548,7 +504,6 @@ impl SequenceTypographyPlan {
         )?;
         let message = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Message,
-            message,
             effective_config,
             resolved_theme,
             work_meter,
@@ -556,7 +511,6 @@ impl SequenceTypographyPlan {
         )?;
         let note = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Note,
-            note,
             effective_config,
             resolved_theme,
             work_meter,
@@ -564,7 +518,6 @@ impl SequenceTypographyPlan {
         )?;
         let loop_label = SequenceResolvedTypography::resolve(
             SequenceTypographyRole::Loop,
-            loop_label,
             effective_config,
             resolved_theme,
             work_meter,

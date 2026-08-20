@@ -1,3 +1,6 @@
+use merman_core::__private::{
+    ThemeCompatibilityPlan, ThemeFamilyCompatibilityOverlayBuilder, install_theme_compatibility,
+};
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
@@ -150,6 +153,55 @@ fn compile_flowchart_only_theme(
         .expect("compile Flowchart-only compatibility theme")
 }
 
+fn compile_flowchart_and_error_typography_theme(
+    flowchart_typography: ThemeTextStyle,
+    error_typography: ThemeTextStyle,
+) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default()
+                    .with_family_style(DiagramFamilyId::FLOWCHART, flowchart_typography)
+                    .with_family_style(DiagramFamilyId::ERROR, error_typography),
+            ),
+        )
+        .expect("compile distinct Flowchart and Error typography theme")
+}
+
+fn flowchart_typography_compatibility_plan(
+    theme: &DiagramTheme,
+    font_family_css: &str,
+) -> ThemeCompatibilityPlan {
+    let recipe_identity = *theme.recipe_fingerprint().as_bytes();
+    let font_family_css = font_family_css.to_string();
+    ThemeCompatibilityPlan::try_new(
+        recipe_identity,
+        MermaidConfig::empty_object(),
+        move |family, _control| {
+            if family != "flowchart" {
+                return Ok(None);
+            }
+            let mut builder = ThemeFamilyCompatibilityOverlayBuilder::new(
+                "flowchart",
+                "merman.legacy-family-theme.v1.",
+            );
+            builder
+                .try_push(
+                    "typography",
+                    MermaidConfig::from_value(serde_json::json!({
+                        "fontFamily": font_family_css.clone(),
+                        "themeVariables": {
+                            "fontFamily": font_family_css.clone(),
+                        }
+                    })),
+                )
+                .expect("valid test-only Flowchart typography contribution");
+            Ok(Some(builder.finish()))
+        },
+    )
+    .expect("test compatibility plan must match the theme recipe")
+}
+
 fn try_render_family(
     family: InheritedTextFamily,
     source: &str,
@@ -175,7 +227,26 @@ fn try_render_family_with_requirement(
     diagram_id: &str,
     requirement: ThemePortabilityRequirement,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+    let engine = merman_render::__private::install_parse_compatibility(theme, engine);
+    try_render_family_with_preinstalled_parse_compatibility(
+        family,
+        source,
+        theme,
+        engine,
+        diagram_id,
+        requirement,
+    )
+}
+
+fn try_render_family_with_preinstalled_parse_compatibility(
+    family: InheritedTextFamily,
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+    requirement: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = engine
         .parse_diagram_for_render_model_sync(source, family.parse_options())
         .expect("parse inherited text-family source")
         .expect("detect inherited text-family source");
@@ -649,29 +720,55 @@ fn lenient_error_keeps_non_typography_flowchart_compatibility_residuals() {
 }
 
 #[test]
-fn lenient_error_does_not_reconcile_flowchart_only_typography() {
+fn lenient_error_keeps_flowchart_typography_when_error_terminal_consumes_a_different_value() {
     let family = InheritedTextFamily::Error;
-    let theme = compile_flowchart_only_theme(
-        Some(
-            ThemeTextStyle::default().with_font_stack(
-                FontStack::single("FlowchartOnlyFont")
-                    .expect("valid Flowchart-only compatibility font"),
-            ),
-        ),
-        None,
+    let flowchart_font =
+        FontStack::single("FlowchartOnlyFont").expect("valid Flowchart-only compatibility font");
+    let flowchart_font_css = flowchart_font.as_css();
+    let error_font = FontStack::single("ErrorOnlyFont").expect("valid Error terminal font");
+    let expected_error_font = error_font.as_css();
+    let theme = compile_flowchart_and_error_typography_theme(
+        ThemeTextStyle::default().with_font_stack(flowchart_font),
+        ThemeTextStyle::default().with_font_stack(error_font),
     );
-    let rendered = try_render_family_with_requirement(
+    let compatibility = flowchart_typography_compatibility_plan(&theme, &flowchart_font_css);
+    let rendered = try_render_family_with_preinstalled_parse_compatibility(
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
-        "lenient-error-cross-family-typography",
+        install_theme_compatibility(Engine::new(), &compatibility),
+        "lenient-error-distinct-family-typography-best-effort",
         ThemePortabilityRequirement::BestEffort,
     )
-    .expect("BestEffort must retain cross-family typography compatibility evidence");
+    .expect("BestEffort must retain the differently valued Flowchart contribution");
+    assert_inherited_font_stack_surface(
+        family,
+        &rendered,
+        "lenient-error-distinct-family-typography-best-effort",
+        &expected_error_font,
+    );
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
 
-    assert_eq!(evidence.required_count(), 0);
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.compatibility_residual_count(), 1);
+
+    let error = try_render_family_with_preinstalled_parse_compatibility(
+        family,
+        family.base_source(),
+        &theme,
+        install_theme_compatibility(Engine::new(), &compatibility),
+        "lenient-error-distinct-family-typography-strict",
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .err()
+    .expect("RequirePortable must reject the differently valued Flowchart contribution");
+    assert!(matches!(
+        error,
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id: DiagramFamilyId::ERROR,
+            residual_count: 1
+        }
+    ));
 }

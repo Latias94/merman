@@ -1,6 +1,9 @@
 use super::super::*;
 use super::geometry::node_left_top;
-use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
+use super::math_label::{
+    record_sequence_katex_terminal_emission, sequence_katex_label,
+    write_sequence_katex_foreign_object,
+};
 use crate::sequence::{
     SequenceMathHeightMode, SequenceStaticRectThemeReceipt, sequence_note_final_wrapped_lines,
     sequence_text_line_step_px,
@@ -60,13 +63,16 @@ pub(super) fn render_sequence_note(
         ctx.note_text_style,
         SequenceMathHeightMode::Draw,
     ) {
-        ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTextSurface::NoteLabel);
         write_sequence_katex_foreign_object(
             out,
             &katex,
             (x + n.width / 2.0 - katex.width / 2.0).round(),
             (y + n.height / 2.0 - katex.height / 2.0).round(),
+        );
+        record_sequence_katex_terminal_emission(
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::NoteLabel,
+            &katex,
         );
     } else if msg.wrap {
         // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:

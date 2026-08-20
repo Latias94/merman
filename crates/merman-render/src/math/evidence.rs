@@ -52,6 +52,51 @@ impl PreparedMathProjectionFingerprint {
     }
 }
 
+/// Style facts the prepared-math backend can independently attest for one browser emission.
+///
+/// The compiled RaTeX backend owns both the wrapper and the default glyph paint, so it can attest
+/// the requested foreground and font size. Compatibility HTML backends return opaque markup and
+/// therefore remain unverified even though Merman still wraps their result in the requested CSS.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PreparedMathStyleAssurance {
+    requested_foreground: Arc<str>,
+    requested_font_size_bits: u64,
+    default_foreground_verified: bool,
+    font_size_verified: bool,
+}
+
+impl PreparedMathStyleAssurance {
+    pub(crate) fn compiled_ratex(requested_foreground: &str, requested_font_size_px: f64) -> Self {
+        Self {
+            requested_foreground: Arc::from(requested_foreground),
+            requested_font_size_bits: requested_font_size_px.to_bits(),
+            default_foreground_verified: true,
+            font_size_verified: true,
+        }
+    }
+
+    pub(crate) fn opaque_html(requested_foreground: &str, requested_font_size_px: f64) -> Self {
+        Self {
+            requested_foreground: Arc::from(requested_foreground),
+            requested_font_size_bits: requested_font_size_px.to_bits(),
+            default_foreground_verified: false,
+            font_size_verified: false,
+        }
+    }
+
+    pub(crate) fn proves_default_foreground(&self, expected: &str) -> bool {
+        self.default_foreground_verified && self.requested_foreground.as_ref() == expected
+    }
+
+    pub(crate) fn proves_font_size_px(&self, expected: f64) -> bool {
+        self.font_size_verified && self.requested_font_size_bits == expected.to_bits()
+    }
+
+    pub(crate) fn retained_heap_bytes(&self) -> usize {
+        self.requested_foreground.len()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PreparedMathExpectation {
     occurrence_id: PreparedMathOccurrenceId,
@@ -104,6 +149,7 @@ impl PreparedMathExpectation {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PreparedMathEvidenceLease {
     entries: Arc<[PreparedMathExpectation]>,
+    duplicate_occurrence_id: Option<PreparedMathOccurrenceId>,
     _retained_reservations: Arc<[PreparedTextRetainedReservation]>,
 }
 
@@ -121,8 +167,13 @@ impl PreparedMathEvidenceLease {
         retained_reservations: Vec<PreparedTextRetainedReservation>,
     ) -> Self {
         entries.sort_unstable_by(|left, right| left.occurrence_id().cmp(right.occurrence_id()));
+        let duplicate_occurrence_id = entries
+            .windows(2)
+            .find(|entries| entries[0].occurrence_id() == entries[1].occurrence_id())
+            .map(|entries| entries[0].occurrence_id().clone());
         Self {
             entries: entries.into(),
+            duplicate_occurrence_id,
             _retained_reservations: retained_reservations.into(),
         }
     }
@@ -133,6 +184,28 @@ impl PreparedMathEvidenceLease {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    pub(crate) fn validate_unique_occurrences(&self) -> Result<(), String> {
+        let Some(duplicate) = &self.duplicate_occurrence_id else {
+            return Ok(());
+        };
+        Err(format!(
+            "prepared-math evidence contains duplicate occurrence identity `{}`",
+            duplicate.as_str()
+        ))
+    }
+
+    pub(crate) fn expectation(
+        &self,
+        occurrence_id: &str,
+    ) -> Result<Option<(usize, &PreparedMathExpectation)>, String> {
+        self.validate_unique_occurrences()?;
+        Ok(self
+            .entries
+            .binary_search_by(|entry| entry.occurrence_id().as_str().cmp(occurrence_id))
+            .ok()
+            .map(|index| (index, &self.entries[index])))
     }
 }
 
@@ -156,6 +229,7 @@ impl PreparedMathTerminalReceipt {
         if evidence.is_empty() {
             return Ok(None);
         }
+        evidence.validate_unique_occurrences()?;
         if evidence
             .entries()
             .iter()
@@ -182,12 +256,8 @@ impl PreparedMathTerminalReceipt {
                 .ok_or_else(|| {
                     "prepared-math native terminal is missing its occurrence identity".to_owned()
                 })?;
-            let (expected_index, expected) = evidence
-                .entries()
-                .iter()
-                .enumerate()
-                .find(|(_, entry)| entry.occurrence_id().as_str() == occurrence_id)
-                .ok_or_else(|| {
+            let (expected_index, expected) =
+                evidence.expectation(occurrence_id)?.ok_or_else(|| {
                     format!("prepared-math terminal emitted unknown occurrence `{occurrence_id}`")
                 })?;
             emitted[expected_index] = emitted[expected_index].saturating_add(1);
@@ -226,7 +296,7 @@ impl PreparedMathTerminalReceipt {
             ));
         }
 
-        let mut occurrences = evidence
+        let occurrences = evidence
             .entries()
             .iter()
             .cloned()
@@ -238,11 +308,6 @@ impl PreparedMathTerminalReceipt {
                 },
             )
             .collect::<Vec<_>>();
-        occurrences.sort_unstable_by(|left, right| {
-            left.expectation
-                .occurrence_id()
-                .cmp(right.expectation.occurrence_id())
-        });
         Ok(Some(Self {
             artifact_digest: artifact_digest(svg),
             occurrences: occurrences.into(),
@@ -384,5 +449,25 @@ mod tests {
         )
         .expect_err("mismatched projection must fail closed");
         assert!(error.contains("mismatched projection"), "{error}");
+    }
+
+    #[test]
+    fn terminal_receipt_rejects_duplicate_renderer_occurrence_identities() {
+        let occurrence_id =
+            PreparedMathOccurrenceId::indexed(DiagramFamilyId::FLOWCHART, "node-label", 0);
+        let projection = r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9"><path d="M0 0h1"/></g>"#;
+        let fingerprint = PreparedMathProjectionFingerprint::from_projection(projection);
+        let evidence = PreparedMathEvidenceLease::new(
+            vec![
+                PreparedMathExpectation::available(occurrence_id.clone(), fingerprint, 1),
+                PreparedMathExpectation::available(occurrence_id, fingerprint, 1),
+            ],
+            Vec::new(),
+        );
+
+        let error = PreparedMathTerminalReceipt::from_terminal_svg("<svg/>", &evidence)
+            .expect_err("duplicate renderer occurrence identities must fail closed");
+
+        assert!(error.contains("duplicate occurrence identity"), "{error}");
     }
 }

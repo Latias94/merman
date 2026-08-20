@@ -1,5 +1,8 @@
 use super::super::*;
-use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
+use super::math_label::{
+    record_sequence_katex_terminal_emission, sequence_katex_label,
+    write_sequence_katex_foreign_object,
+};
 use crate::sequence::{
     SequenceMathHeightMode, bracketize_sequence_block_label, sequence_text_line_step_px,
 };
@@ -95,10 +98,13 @@ pub(super) fn write_loop_text_lines(
     text: &str,
 ) {
     if let Some(katex) = ctx.katex_label(occurrence_id) {
-        ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTextSurface::ControlPrimaryTitle);
         let x = (placement.x - katex.width / 2.0).round();
         write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
+        record_sequence_katex_terminal_emission(
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ControlPrimaryTitle,
+            &katex,
+        );
         return;
     }
 
@@ -146,11 +152,14 @@ pub(super) fn write_section_title_lines(
     text: &str,
 ) {
     if let Some(katex) = ctx.katex_label(occurrence_id) {
-        ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTextSurface::ControlSectionTitle);
         let x = (x - katex.width / 2.0).round();
         let y = (section_start_y - katex.height).round();
         write_sequence_katex_foreign_object(out, &katex, x, y);
+        record_sequence_katex_terminal_emission(
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ControlSectionTitle,
+            &katex,
+        );
         return;
     }
 

@@ -1,6 +1,6 @@
 use super::super::*;
 use super::geometry::node_left_top;
-use super::math_label::sequence_katex_label;
+use super::math_label::{record_sequence_katex_terminal_emission, sequence_katex_label};
 use crate::math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE;
 use crate::sequence::SequenceMathHeightMode;
 use merman_core::diagrams::sequence::SequenceActor;
@@ -356,8 +356,6 @@ fn write_actor_label(
     if let Some(katex) =
         sequence_katex_label(prepared_math, ctx.style, SequenceMathHeightMode::Actor)
     {
-        ctx.typography_receipt
-            .record_candidate(crate::sequence::SequenceTextSurface::ParticipantLabel);
         let x = cx - katex.width / 2.0;
         let y = cy - katex.height / 2.0;
         out.push_str("<switch ");
@@ -386,6 +384,11 @@ fn write_actor_label(
             false,
         );
         out.push_str("</switch>");
+        record_sequence_katex_terminal_emission(
+            ctx.typography_receipt,
+            crate::sequence::SequenceTextSurface::ParticipantLabel,
+            &katex,
+        );
         return;
     }
 

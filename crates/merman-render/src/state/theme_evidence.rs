@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 
 use crate::diagram_theme::{FamilyThemeMechanismKey, ThemeCapability};
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::parse_css_font_stack;
 
 /// Stable identity for one State terminal surface written to the SVG artifact.
@@ -138,30 +139,96 @@ impl StateThemeTerminalReceipt {
     ///
     /// Parsing once at finalization avoids retaining or reparsing a copy of every node fragment.
     /// Byte ranges also make a missing writer branch distinguishable from a plan replay.
-    pub(crate) fn observe_svg(&mut self, svg: &str) {
+    pub(crate) fn observe_svg(
+        &mut self,
+        svg: &str,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
         if self.invalid || self.expected.is_empty() || self.emissions.is_empty() {
-            return;
+            return Ok(());
         }
         let Ok(document) = roxmltree::Document::parse(svg) else {
             self.invalid = true;
-            return;
+            return Ok(());
         };
-        let mut observed = Vec::with_capacity(self.emissions.len());
+        let mut range_groups = BTreeMap::<(usize, usize), Vec<StateThemeTerminalOccurrence>>::new();
         for (occurrence, range) in &self.emissions {
             if range.end > svg.len()
                 || !svg.is_char_boundary(range.start)
                 || !svg.is_char_boundary(range.end)
             {
                 self.invalid = true;
-                return;
+                return Ok(());
             }
-            let Some(expected) = self.expected.get(occurrence) else {
+            range_groups
+                .entry((range.start, range.end))
+                .or_default()
+                .push(occurrence.clone());
+        }
+
+        let groups = range_groups
+            .into_iter()
+            .map(|((start, end), occurrences)| StateTerminalRangeGroup {
+                range: start..end,
+                occurrences,
+            })
+            .collect::<Vec<_>>();
+        if groups
+            .windows(2)
+            .any(|pair| pair[0].range.end > pair[1].range.start)
+        {
+            self.invalid = true;
+            return Ok(());
+        }
+
+        let mut observations = self
+            .emissions
+            .keys()
+            .cloned()
+            .map(|occurrence| (occurrence, StateTerminalSurfaceObservation::default()))
+            .collect::<BTreeMap<_, _>>();
+        let mut group_index = 0usize;
+        let mut ancestors = Vec::<StateTerminalAncestor<'_>>::new();
+        for node in document.descendants().filter(|node| node.is_element()) {
+            work_meter.charge(1)?;
+            let node_range = node.range();
+            while ancestors
+                .last()
+                .is_some_and(|ancestor| node_range.start >= ancestor.end)
+            {
+                ancestors.pop();
+            }
+            let context = StateTerminalNodeContext::for_node(node, ancestors.last());
+            while groups
+                .get(group_index)
+                .is_some_and(|group| node_range.start >= group.range.end)
+            {
+                group_index += 1;
+            }
+            if let Some(group) = groups.get(group_index)
+                && node_range.start >= group.range.start
+                && node_range.end <= group.range.end
+            {
+                for occurrence in &group.occurrences {
+                    let Some(observation) = observations.get_mut(occurrence) else {
+                        self.invalid = true;
+                        return Ok(());
+                    };
+                    observation.observe_node(occurrence, node, &context);
+                }
+            }
+            ancestors.push(context.into_ancestor(node_range.end));
+        }
+
+        let mut observed = Vec::with_capacity(self.emissions.len());
+        for (occurrence, observation) in observations {
+            let Some(expected) = self.expected.get(&occurrence) else {
                 self.invalid = true;
-                return;
+                return Ok(());
             };
             observed.push((
                 occurrence.clone(),
-                observe_terminal_signature(occurrence, expected, range, &document),
+                observation.actual_signature(&occurrence, expected),
             ));
         }
         for (occurrence, actual) in observed {
@@ -169,6 +236,7 @@ impl StateThemeTerminalReceipt {
                 self.invalid = true;
             }
         }
+        Ok(())
     }
 
     fn proves_occurrences(&self, occurrences: &BTreeSet<StateThemeTerminalOccurrence>) -> bool {
@@ -372,79 +440,505 @@ fn normalize_terminal_signature(signature: &str) -> String {
         .join("\u{1f}")
 }
 
-fn observe_terminal_signature(
+struct StateTerminalRangeGroup {
+    range: Range<usize>,
+    occurrences: Vec<StateThemeTerminalOccurrence>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct StateTerminalAncestor<'a> {
+    end: usize,
+    in_label: bool,
+    in_cluster_label: bool,
+    in_inner: bool,
+    in_outer: bool,
+    in_special_inner: bool,
+    in_foreign_object: bool,
+    in_prepared_foreign_object: bool,
+    in_html_label_content: bool,
+    self_outer_path: bool,
+    self_marker: bool,
+    self_foreign_object: bool,
+    self_html_label_carrier: bool,
+    self_html_label_root: bool,
+    label_data_id: Option<&'a str>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct StateTerminalNodeContext<'a> {
+    in_label: bool,
+    in_cluster_label: bool,
+    in_inner: bool,
+    in_outer: bool,
+    in_special_inner: bool,
+    in_foreign_object: bool,
+    in_prepared_foreign_object: bool,
+    in_html_label_content: bool,
+    self_label: bool,
+    self_cluster_label: bool,
+    self_outer_path: bool,
+    self_marker: bool,
+    self_foreign_object: bool,
+    self_html_label_carrier: bool,
+    self_html_label_root: bool,
+    parent_is_marker: bool,
+    parent_is_foreign_object: bool,
+    label_data_id: Option<&'a str>,
+}
+
+impl<'document> StateTerminalNodeContext<'document> {
+    fn for_node<'input>(
+        node: roxmltree::Node<'document, 'input>,
+        parent: Option<&StateTerminalAncestor<'document>>,
+    ) -> Self {
+        let self_label = node_has_class(node, "label");
+        let self_cluster_label = node_has_class(node, "cluster-label");
+        let self_inner = node_has_class(node, "inner");
+        let self_outer = node_has_class(node, "outer");
+        let self_outer_path = node_has_class(node, "outer-path");
+        let self_marker = node.tag_name().name() == "marker";
+        let self_foreign_object = node.tag_name().name() == "foreignObject";
+        let self_prepared_foreign_object = self_foreign_object
+            && node
+                .attribute(crate::svg::PREPARED_TEXT_LABEL_DATA_ATTR)
+                .is_some();
+        let self_html_label_carrier = node.tag_name().name() == "div"
+            && parent.is_some_and(|parent| parent.self_foreign_object);
+        let self_html_label_root = parent.is_some_and(|parent| parent.self_html_label_carrier)
+            && matches!(node.tag_name().name(), "span" | "p");
+        let starts_special_inner = node.tag_name().name() == "g"
+            && node.attribute("class").is_none()
+            && parent.is_some_and(|parent| parent.self_outer_path);
+        let label_data_id = if self_label {
+            node.attribute("data-id")
+                .or_else(|| parent.and_then(|parent| parent.label_data_id))
+        } else {
+            parent.and_then(|parent| parent.label_data_id)
+        };
+        Self {
+            in_label: self_label || parent.is_some_and(|parent| parent.in_label),
+            in_cluster_label: self_cluster_label
+                || parent.is_some_and(|parent| parent.in_cluster_label),
+            in_inner: self_inner || parent.is_some_and(|parent| parent.in_inner),
+            in_outer: self_outer || parent.is_some_and(|parent| parent.in_outer),
+            in_special_inner: starts_special_inner
+                || parent.is_some_and(|parent| parent.in_special_inner),
+            in_foreign_object: self_foreign_object
+                || parent.is_some_and(|parent| parent.in_foreign_object),
+            in_prepared_foreign_object: self_prepared_foreign_object
+                || parent.is_some_and(|parent| parent.in_prepared_foreign_object),
+            in_html_label_content: parent
+                .is_some_and(|parent| parent.in_html_label_content || parent.self_html_label_root),
+            self_label,
+            self_cluster_label,
+            self_outer_path,
+            self_marker,
+            self_foreign_object,
+            self_html_label_carrier,
+            self_html_label_root,
+            parent_is_marker: parent.is_some_and(|parent| parent.self_marker),
+            parent_is_foreign_object: parent.is_some_and(|parent| parent.self_foreign_object),
+            label_data_id,
+        }
+    }
+
+    fn into_ancestor(self, end: usize) -> StateTerminalAncestor<'document> {
+        StateTerminalAncestor {
+            end,
+            in_label: self.in_label,
+            in_cluster_label: self.in_cluster_label,
+            in_inner: self.in_inner,
+            in_outer: self.in_outer,
+            in_special_inner: self.in_special_inner,
+            in_foreign_object: self.in_foreign_object,
+            in_prepared_foreign_object: self.in_prepared_foreign_object,
+            in_html_label_content: self.in_html_label_content,
+            self_outer_path: self.self_outer_path,
+            self_marker: self.self_marker,
+            self_foreign_object: self.self_foreign_object,
+            self_html_label_carrier: self.self_html_label_carrier,
+            self_html_label_root: self.self_html_label_root,
+            label_data_id: self.label_data_id,
+        }
+    }
+}
+
+#[derive(Default)]
+struct StateTerminalSurfaceObservation {
+    direct_styles: Vec<BTreeMap<String, String>>,
+    shape_styles: Vec<BTreeMap<String, String>>,
+    inner_shape_styles: Vec<BTreeMap<String, String>>,
+    outer_shape_styles: Vec<BTreeMap<String, String>>,
+    special_inner_styles: Vec<BTreeMap<String, String>>,
+    label_container_styles: Vec<BTreeMap<String, String>>,
+    html_label_styles: Vec<BTreeMap<String, String>>,
+    native_label_styles: Vec<BTreeMap<String, String>>,
+    html_descendant_styles: Vec<BTreeMap<String, String>>,
+    html_descendant_selector_override: bool,
+    background_styles: Vec<BTreeMap<String, String>>,
+    fallback_fill_values: Vec<String>,
+}
+
+impl StateTerminalSurfaceObservation {
+    fn observe_node(
+        &mut self,
+        occurrence: &StateThemeTerminalOccurrence,
+        node: roxmltree::Node<'_, '_>,
+        context: &StateTerminalNodeContext<'_>,
+    ) {
+        let tag = node.tag_name().name();
+        match occurrence {
+            StateThemeTerminalOccurrence::Title => {
+                if tag == "text" && node_has_class(node, "statediagramTitleText") {
+                    record_style(node, &mut self.direct_styles);
+                }
+            }
+            StateThemeTerminalOccurrence::NodeShape(_) => {
+                if is_shape_terminal_tag(tag)
+                    && !context.in_label
+                    && !context.in_cluster_label
+                    && !context.in_special_inner
+                {
+                    record_style(node, &mut self.shape_styles);
+                    if context.in_inner {
+                        record_style(node, &mut self.inner_shape_styles);
+                    }
+                }
+            }
+            StateThemeTerminalOccurrence::NodeLabel(_) => {
+                self.observe_html_descendant(node, context);
+                if context.self_label && !context.in_cluster_label {
+                    record_style(node, &mut self.label_container_styles);
+                } else if context.in_label
+                    && !context.in_cluster_label
+                    && tag == "div"
+                    && context.parent_is_foreign_object
+                {
+                    record_style(node, &mut self.html_label_styles);
+                } else if context.in_label
+                    && !context.in_cluster_label
+                    && !context.in_foreign_object
+                    && tag == "text"
+                {
+                    record_style(node, &mut self.native_label_styles);
+                }
+            }
+            StateThemeTerminalOccurrence::CompositeHeader(_) => {
+                if is_shape_terminal_tag(tag) && context.in_outer {
+                    record_style(node, &mut self.outer_shape_styles);
+                }
+            }
+            StateThemeTerminalOccurrence::CompositeHeaderLabel(_) => {
+                self.observe_html_descendant(node, context);
+                if context.self_cluster_label {
+                    record_style(node, &mut self.label_container_styles);
+                } else if context.in_cluster_label
+                    && tag == "div"
+                    && context.parent_is_foreign_object
+                {
+                    record_style(node, &mut self.html_label_styles);
+                } else if context.in_cluster_label && !context.in_foreign_object && tag == "text" {
+                    record_style(node, &mut self.native_label_styles);
+                }
+            }
+            StateThemeTerminalOccurrence::SpecialStateInner(_) => {
+                if is_shape_terminal_tag(tag) && context.in_special_inner {
+                    record_style(node, &mut self.special_inner_styles);
+                }
+            }
+            StateThemeTerminalOccurrence::EdgePath(edge_id) => {
+                if tag == "path"
+                    && node.attribute("data-edge") == Some("true")
+                    && node.attribute("data-id") == Some(edge_id.as_str())
+                {
+                    record_style(node, &mut self.direct_styles);
+                }
+            }
+            StateThemeTerminalOccurrence::EdgeMarker(_) => {
+                if tag == "path" && context.parent_is_marker {
+                    record_style(node, &mut self.direct_styles);
+                }
+            }
+            StateThemeTerminalOccurrence::EdgeLabel(edge_id) => {
+                self.observe_html_descendant(node, context);
+                if context.label_data_id == Some(edge_id.as_str()) {
+                    if tag == "div"
+                        && context.parent_is_foreign_object
+                        && node_has_class(node, "labelBkg")
+                    {
+                        record_style(node, &mut self.html_label_styles);
+                    } else if tag == "text" && !context.in_foreign_object {
+                        record_style(node, &mut self.native_label_styles);
+                    }
+                }
+            }
+            StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id) => {
+                self.observe_html_descendant(node, context);
+                if context.label_data_id == Some(edge_id.as_str()) {
+                    if tag == "rect"
+                        && !context.in_foreign_object
+                        && node_has_class(node, "background")
+                    {
+                        record_style(node, &mut self.background_styles);
+                    } else if tag == "div"
+                        && context.parent_is_foreign_object
+                        && node_has_class(node, "labelBkg")
+                    {
+                        record_style(node, &mut self.background_styles);
+                    } else if tag == "foreignObject"
+                        && node
+                            .attribute(crate::svg::FALLBACK_OCCURRENCE_DATA_ATTR)
+                            .and_then(|value| {
+                                value.strip_prefix("state-transition-label-background:")
+                            })
+                            == Some(edge_id.as_str())
+                        && let Some(fill) =
+                            node.attribute(crate::svg::FALLBACK_BACKGROUND_FILL_DATA_ATTR)
+                    {
+                        self.fallback_fill_values.push(fill.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    fn observe_html_descendant(
+        &mut self,
+        node: roxmltree::Node<'_, '_>,
+        context: &StateTerminalNodeContext<'_>,
+    ) {
+        if !context.in_html_label_content || context.in_prepared_foreign_object {
+            return;
+        }
+        if node.has_tag_name("style")
+            || node
+                .attribute("class")
+                .is_some_and(|classes| !classes.trim().is_empty())
+        {
+            self.html_descendant_selector_override = true;
+        }
+        record_style(node, &mut self.html_descendant_styles);
+    }
+
+    fn actual_signature(
+        &self,
+        occurrence: &StateThemeTerminalOccurrence,
+        expected: &str,
+    ) -> String {
+        let components = expected_components(occurrence, expected);
+        match occurrence {
+            StateThemeTerminalOccurrence::Title
+            | StateThemeTerminalOccurrence::EdgePath(_)
+            | StateThemeTerminalOccurrence::EdgeMarker(_) => {
+                exact_style_sequence(&components, &self.direct_styles)
+            }
+            StateThemeTerminalOccurrence::NodeShape(_) => {
+                let styles = if self.inner_shape_styles.is_empty() {
+                    &self.shape_styles
+                } else {
+                    &self.inner_shape_styles
+                };
+                exact_style_sequence(&components, styles)
+            }
+            StateThemeTerminalOccurrence::CompositeHeader(_) => {
+                exact_style_sequence(&components, &self.outer_shape_styles)
+            }
+            StateThemeTerminalOccurrence::SpecialStateInner(_) => {
+                exact_style_sequence(&components, &self.special_inner_styles)
+            }
+            StateThemeTerminalOccurrence::NodeLabel(_)
+            | StateThemeTerminalOccurrence::CompositeHeaderLabel(_) => {
+                label_signature(&components, self)
+            }
+            StateThemeTerminalOccurrence::EdgeLabel(_) => {
+                if html_descendant_overrides(&components, self) {
+                    return "<html-descendant-override>".to_string();
+                }
+                let styles = if self.native_label_styles.is_empty() {
+                    &self.html_label_styles
+                } else {
+                    &self.native_label_styles
+                };
+                repeated_style_signature(&components, styles)
+            }
+            StateThemeTerminalOccurrence::EdgeLabelBackground(_) => {
+                background_signature(&components, self)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum StateTerminalExpectedComponent {
+    Css(BTreeMap<String, String>),
+    FallbackFill(String),
+    Invalid(String),
+}
+
+fn expected_components(
     occurrence: &StateThemeTerminalOccurrence,
     expected: &str,
-    emitted_range: &Range<usize>,
-    document: &roxmltree::Document<'_>,
-) -> String {
+) -> Vec<StateTerminalExpectedComponent> {
     expected
         .split('\u{1f}')
-        .map(|component| observe_terminal_component(occurrence, component, emitted_range, document))
+        .map(|component| {
+            let declarations = css_declarations(component);
+            if !declarations.is_empty() {
+                StateTerminalExpectedComponent::Css(declarations)
+            } else if matches!(
+                occurrence,
+                StateThemeTerminalOccurrence::EdgeLabelBackground(_)
+            ) {
+                StateTerminalExpectedComponent::FallbackFill(component.to_string())
+            } else {
+                StateTerminalExpectedComponent::Invalid(component.to_string())
+            }
+        })
+        .collect()
+}
+
+fn exact_style_sequence(
+    components: &[StateTerminalExpectedComponent],
+    actual_styles: &[BTreeMap<String, String>],
+) -> String {
+    let expected_styles = components
+        .iter()
+        .filter_map(|component| match component {
+            StateTerminalExpectedComponent::Css(style) => Some(style),
+            StateTerminalExpectedComponent::FallbackFill(_)
+            | StateTerminalExpectedComponent::Invalid(_) => None,
+        })
+        .collect::<Vec<_>>();
+    if expected_styles.len() != components.len() {
+        return "<invalid-terminal-component>".to_string();
+    }
+    let expected_properties = expected_styles
+        .iter()
+        .flat_map(|style| style.keys().cloned())
+        .collect::<BTreeSet<_>>();
+    let relevant_actual = actual_styles
+        .iter()
+        .filter(|style| {
+            style
+                .keys()
+                .any(|property| expected_properties.contains(property))
+        })
+        .collect::<Vec<_>>();
+    if relevant_actual.len() != expected_styles.len() {
+        return format!(
+            "<terminal-component-count:{}:{}>",
+            expected_styles.len(),
+            relevant_actual.len()
+        );
+    }
+    expected_styles
+        .into_iter()
+        .zip(relevant_actual)
+        .map(|(expected, actual)| observed_css_component(expected, actual))
         .collect::<Vec<_>>()
         .join("\u{1f}")
 }
 
-fn observe_terminal_component(
-    occurrence: &StateThemeTerminalOccurrence,
-    component: &str,
-    emitted_range: &Range<usize>,
-    document: &roxmltree::Document<'_>,
+fn repeated_style_signature(
+    components: &[StateTerminalExpectedComponent],
+    actual_styles: &[BTreeMap<String, String>],
 ) -> String {
-    let expected_declarations = css_declarations(component);
-    let composite_inner_exists = matches!(occurrence, StateThemeTerminalOccurrence::NodeShape(_))
-        && document
-            .descendants()
-            .filter(|candidate| node_is_within(*candidate, emitted_range))
-            .any(|candidate| {
-                node_has_class(candidate, "inner")
-                    && !node_or_ancestor_has_class(candidate, "label")
-                    && !node_or_ancestor_has_class(candidate, "cluster-label")
-            });
-    if expected_declarations.is_empty() {
-        return document
-            .descendants()
-            .filter(|node| node_is_within(*node, emitted_range))
-            .filter(|node| terminal_candidate(*node, occurrence, composite_inner_exists))
-            .flat_map(|node| node.attributes())
-            .find(|attribute| attribute.value() == component)
-            .map_or_else(
-                || format!("<missing-attribute:{component}>"),
-                |_| component.to_string(),
-            );
+    let [StateTerminalExpectedComponent::Css(expected)] = components else {
+        return "<invalid-terminal-component-count>".to_string();
+    };
+    if actual_styles.is_empty() {
+        return missing_css_component(expected);
     }
+    let signatures = actual_styles
+        .iter()
+        .map(|actual| observed_css_component(expected, actual))
+        .collect::<BTreeSet<_>>();
+    if signatures.len() != 1 {
+        return "<conflicting-terminal-components>".to_string();
+    }
+    signatures.into_iter().next().unwrap_or_default()
+}
 
-    let mut best = None::<(usize, usize, BTreeMap<String, String>)>;
-    for style in document
-        .descendants()
-        .filter(|node| node_is_within(*node, emitted_range))
-        .filter(|node| terminal_candidate(*node, occurrence, composite_inner_exists))
-        .filter_map(|node| node.attribute("style"))
-    {
-        let actual = css_declarations(style);
-        let present = expected_declarations
-            .keys()
-            .filter(|property| actual.contains_key(*property))
-            .count();
-        let exact = expected_declarations
-            .iter()
-            .filter(|(property, value)| actual.get(*property) == Some(*value))
-            .count();
-        if best.as_ref().is_none_or(|(best_present, best_exact, _)| {
-            (present, exact) > (*best_present, *best_exact)
-        }) {
-            best = Some((present, exact, actual));
+fn label_signature(
+    components: &[StateTerminalExpectedComponent],
+    observation: &StateTerminalSurfaceObservation,
+) -> String {
+    if html_descendant_overrides(components, observation) {
+        return "<html-descendant-override>".to_string();
+    }
+    if components.len() == 2 {
+        let container = exact_style_sequence(&components[..1], &observation.label_container_styles);
+        let carrier = repeated_style_signature(&components[1..], &observation.html_label_styles);
+        return format!("{container}\u{1f}{carrier}");
+    }
+    if !observation.native_label_styles.is_empty() {
+        repeated_style_signature(components, &observation.native_label_styles)
+    } else if !observation.label_container_styles.is_empty() {
+        repeated_style_signature(components, &observation.label_container_styles)
+    } else {
+        repeated_style_signature(components, &observation.html_label_styles)
+    }
+}
+
+fn background_signature(
+    components: &[StateTerminalExpectedComponent],
+    observation: &StateTerminalSurfaceObservation,
+) -> String {
+    if html_descendant_overrides(components, observation) {
+        return "<html-descendant-override>".to_string();
+    }
+    let mut actual = Vec::with_capacity(components.len());
+    for component in components {
+        match component {
+            StateTerminalExpectedComponent::Css(_) => {
+                actual.push(repeated_style_signature(
+                    std::slice::from_ref(component),
+                    &observation.background_styles,
+                ));
+            }
+            StateTerminalExpectedComponent::FallbackFill(expected) => {
+                actual.push(match observation.fallback_fill_values.as_slice() {
+                    [actual] => actual.clone(),
+                    [] => format!("<missing-attribute:{expected}>"),
+                    values => format!("<duplicate-attribute:{}>", values.len()),
+                });
+            }
+            StateTerminalExpectedComponent::Invalid(value) => {
+                actual.push(format!("<invalid-terminal-component:{value}>"));
+            }
         }
     }
+    actual.join("\u{1f}")
+}
 
-    let Some((_, _, actual)) = best else {
-        return expected_declarations
+fn html_descendant_overrides(
+    components: &[StateTerminalExpectedComponent],
+    observation: &StateTerminalSurfaceObservation,
+) -> bool {
+    if observation.html_descendant_selector_override {
+        return true;
+    }
+    let expected_properties = components
+        .iter()
+        .filter_map(|component| match component {
+            StateTerminalExpectedComponent::Css(style) => Some(style.keys()),
+            StateTerminalExpectedComponent::FallbackFill(_)
+            | StateTerminalExpectedComponent::Invalid(_) => None,
+        })
+        .flatten()
+        .collect::<BTreeSet<_>>();
+    observation.html_descendant_styles.iter().any(|style| {
+        style
             .keys()
-            .map(|property| format!("{property}:<missing>"))
-            .collect::<Vec<_>>()
-            .join(";");
-    };
-    expected_declarations
+            .any(|property| expected_properties.contains(property))
+    })
+}
+
+fn observed_css_component(
+    expected: &BTreeMap<String, String>,
+    actual: &BTreeMap<String, String>,
+) -> String {
+    expected
         .keys()
         .map(|property| {
             let value = actual
@@ -457,70 +951,30 @@ fn observe_terminal_component(
         .join(";")
 }
 
-fn node_is_within(node: roxmltree::Node<'_, '_>, emitted_range: &Range<usize>) -> bool {
-    let node_range = node.range();
-    node_range.start >= emitted_range.start && node_range.end <= emitted_range.end
+fn missing_css_component(expected: &BTreeMap<String, String>) -> String {
+    expected
+        .keys()
+        .map(|property| format!("{property}:<missing>"))
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
-fn terminal_candidate(
-    node: roxmltree::Node<'_, '_>,
-    occurrence: &StateThemeTerminalOccurrence,
-    composite_inner_exists: bool,
-) -> bool {
-    if !node.is_element() {
-        return false;
+fn record_style(node: roxmltree::Node<'_, '_>, destination: &mut Vec<BTreeMap<String, String>>) {
+    if let Some(style) = node.attribute("style") {
+        let declarations = css_declarations(style);
+        if !declarations.is_empty() {
+            destination.push(declarations);
+        }
     }
-    match occurrence {
-        StateThemeTerminalOccurrence::NodeLabel(_) => {
-            node_or_ancestor_has_class(node, "label")
-                && !node_or_ancestor_has_class(node, "cluster-label")
-        }
-        StateThemeTerminalOccurrence::CompositeHeaderLabel(_) => {
-            node_or_ancestor_has_class(node, "cluster-label")
-        }
-        StateThemeTerminalOccurrence::CompositeHeader(_) => {
-            node_or_ancestor_has_class(node, "outer")
-        }
-        StateThemeTerminalOccurrence::SpecialStateInner(_) => is_special_state_inner(node),
-        StateThemeTerminalOccurrence::NodeShape(_) => {
-            if composite_inner_exists {
-                node_or_ancestor_has_class(node, "inner")
-            } else {
-                !node_or_ancestor_has_class(node, "label")
-                    && !node_or_ancestor_has_class(node, "cluster-label")
-                    && !is_special_state_inner(node)
-            }
-        }
-        StateThemeTerminalOccurrence::Title
-        | StateThemeTerminalOccurrence::EdgePath(_)
-        | StateThemeTerminalOccurrence::EdgeMarker(_)
-        | StateThemeTerminalOccurrence::EdgeLabel(_)
-        | StateThemeTerminalOccurrence::EdgeLabelBackground(_) => true,
-    }
+}
+
+fn is_shape_terminal_tag(tag: &str) -> bool {
+    matches!(tag, "rect" | "circle" | "path")
 }
 
 fn node_has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
     node.attribute("class")
         .is_some_and(|classes| classes.split_ascii_whitespace().any(|value| value == class))
-}
-
-fn node_or_ancestor_has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
-    std::iter::once(node)
-        .chain(node.ancestors())
-        .any(|ancestor| node_has_class(ancestor, class))
-}
-
-fn is_special_state_inner(node: roxmltree::Node<'_, '_>) -> bool {
-    std::iter::once(node)
-        .chain(node.ancestors())
-        .any(|ancestor| {
-            ancestor.is_element()
-                && ancestor.tag_name().name() == "g"
-                && ancestor.attribute("class").is_none()
-                && ancestor
-                    .parent()
-                    .is_some_and(|parent| node_has_class(parent, "outer-path"))
-        })
 }
 
 fn css_declarations(style: &str) -> BTreeMap<String, String> {
@@ -614,6 +1068,13 @@ mod tests {
         start..end
     }
 
+    fn observe_test_svg(receipt: &mut StateThemeTerminalReceipt, svg: &str) {
+        let work_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        receipt.observe_svg(svg, &work_meter).unwrap();
+    }
+
     fn plan() -> StateThemeTerminalPlan {
         StateThemeTerminalPlan::new(
             [
@@ -698,7 +1159,7 @@ mod tests {
             StateThemeTerminalOccurrence::NodeLabel("Ready".to_string()),
             duplicate_range,
         );
-        duplicate.observe_svg(duplicate_svg);
+        observe_test_svg(&mut duplicate, duplicate_svg);
         assert!(!duplicate_plan.record_terminal(duplicate));
 
         let wrong_plan = plan();
@@ -764,7 +1225,7 @@ mod tests {
         let exact_range = element_range(exact_svg, r#"<g id="Ready">"#, "</g></svg>");
         exact.record_emission_if_expected(occurrence.clone(), exact_range.clone());
         exact.record_emission_if_expected(label_occurrence.clone(), exact_range);
-        exact.observe_svg(exact_svg);
+        observe_test_svg(&mut exact, exact_svg);
         assert!(exact_plan.record_terminal(exact));
 
         let mutated_plan = plan();
@@ -773,7 +1234,7 @@ mod tests {
         let mutated_range = element_range(mutated_svg, r#"<g id="Ready">"#, "</g></svg>");
         mutated.record_emission_if_expected(occurrence.clone(), mutated_range.clone());
         mutated.record_emission_if_expected(label_occurrence.clone(), mutated_range);
-        mutated.observe_svg(mutated_svg);
+        observe_test_svg(&mut mutated, mutated_svg);
         assert!(!mutated_plan.record_terminal(mutated));
 
         let missing_plan = plan();
@@ -782,7 +1243,7 @@ mod tests {
             label_occurrence,
             element_range(exact_svg, r#"<g id="Ready">"#, "</g></svg>"),
         );
-        missing.observe_svg(exact_svg);
+        observe_test_svg(&mut missing, exact_svg);
         assert!(!missing_plan.record_terminal(missing));
     }
 
@@ -805,9 +1266,173 @@ mod tests {
             StateThemeTerminalOccurrence::SpecialStateInner("End".to_string()),
             end_range,
         );
-        receipt.observe_svg(svg);
+        observe_test_svg(&mut receipt, svg);
 
         assert!(!plan.record_terminal(receipt));
+    }
+
+    #[test]
+    fn state_terminal_receipt_rejects_edge_label_and_background_surface_swaps() {
+        let edge_id = "edge-0".to_string();
+        let plan = StateThemeTerminalPlan::new(
+            [
+                StateThemeTerminalExpectation::new(
+                    StateThemeTerminalOccurrence::EdgeLabel(edge_id.clone()),
+                    "fill:#f8fafc",
+                ),
+                StateThemeTerminalExpectation::new(
+                    StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.clone()),
+                    "fill:#111827",
+                ),
+            ],
+            BTreeMap::from([(
+                FamilyThemeMechanismKey::Typography,
+                StatePendingTerminalMechanism {
+                    capabilities: BTreeSet::from([
+                        ThemeCapability::Typography,
+                        ThemeCapability::SolidPaint,
+                    ]),
+                    occurrences: BTreeSet::from([
+                        StateThemeTerminalOccurrence::EdgeLabel(edge_id.clone()),
+                        StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.clone()),
+                    ]),
+                },
+            )]),
+        );
+        let svg = r#"<svg><g class="edgeLabel"><g class="label" data-id="edge-0"><g><rect class="background" style="fill:#f8fafc"/><text style="fill:#111827">label</text></g></g></g></svg>"#;
+        let range = element_range(svg, r#"<g class="edgeLabel">"#, "</g></svg>");
+        let mut receipt = plan.begin_receipt(true, true);
+        receipt.record_emission_if_expected(
+            StateThemeTerminalOccurrence::EdgeLabel(edge_id.clone()),
+            range.clone(),
+        );
+        receipt.record_emission_if_expected(
+            StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id),
+            range,
+        );
+        observe_test_svg(&mut receipt, svg);
+
+        assert!(!plan.record_terminal(receipt));
+    }
+
+    #[test]
+    fn state_terminal_receipt_rejects_user_html_descendants_as_native_or_terminal_style() {
+        let edge_id = "edge-0".to_string();
+        let occurrence = StateThemeTerminalOccurrence::EdgeLabel(edge_id.clone());
+        let make_plan = || {
+            StateThemeTerminalPlan::new(
+                [StateThemeTerminalExpectation::new(
+                    occurrence.clone(),
+                    "color:#f8fafc",
+                )],
+                BTreeMap::from([(
+                    FamilyThemeMechanismKey::Typography,
+                    StatePendingTerminalMechanism {
+                        capabilities: BTreeSet::from([ThemeCapability::Typography]),
+                        occurrences: BTreeSet::from([occurrence.clone()]),
+                    },
+                )]),
+            )
+        };
+        for svg in [
+            r#"<svg><g class="edgeLabel"><g class="label" data-id="edge-0"><foreignObject><div class="labelBkg" style="color:#f8fafc"><span class="edgeLabel"><svg><text style="color:#f8fafc">forged</text></svg></span></div></foreignObject></g></g></svg>"#,
+            r#"<svg><g class="edgeLabel"><g class="label" data-id="edge-0"><foreignObject><div class="labelBkg" style="color:#f8fafc"><span class="edgeLabel"><span style="color:#000000">override</span></span></div></foreignObject></g></g></svg>"#,
+        ] {
+            let plan = make_plan();
+            let range = element_range(svg, r#"<g class="edgeLabel">"#, "</g></svg>");
+            let mut receipt = plan.begin_receipt(true, true);
+            receipt.record_emission_if_expected(occurrence.clone(), range);
+            observe_test_svg(&mut receipt, svg);
+
+            assert!(!plan.record_terminal(receipt), "{svg}");
+        }
+    }
+
+    #[test]
+    fn state_terminal_receipt_charges_one_final_svg_sweep_for_shared_ranges() {
+        let edge_id = "edge-0".to_string();
+        let plan = StateThemeTerminalPlan::new(
+            [
+                StateThemeTerminalExpectation::new(
+                    StateThemeTerminalOccurrence::EdgeLabel(edge_id.clone()),
+                    "fill:#f8fafc",
+                ),
+                StateThemeTerminalExpectation::new(
+                    StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.clone()),
+                    "fill:#111827",
+                ),
+            ],
+            BTreeMap::from([(
+                FamilyThemeMechanismKey::Typography,
+                StatePendingTerminalMechanism {
+                    capabilities: BTreeSet::from([ThemeCapability::Typography]),
+                    occurrences: BTreeSet::from([
+                        StateThemeTerminalOccurrence::EdgeLabel(edge_id.clone()),
+                        StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.clone()),
+                    ]),
+                },
+            )]),
+        );
+        let svg = r#"<svg><g class="edgeLabel"><g class="label" data-id="edge-0"><rect class="background" style="fill:#111827"/><text style="fill:#f8fafc">label</text></g></g></svg>"#;
+        let range = element_range(svg, r#"<g class="edgeLabel">"#, "</g></svg>");
+        let mut receipt = plan.begin_receipt(true, true);
+        receipt.record_emission_if_expected(
+            StateThemeTerminalOccurrence::EdgeLabel(edge_id.clone()),
+            range.clone(),
+        );
+        receipt.record_emission_if_expected(
+            StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id),
+            range,
+        );
+        let work_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        receipt.observe_svg(svg, &work_meter).unwrap();
+
+        assert_eq!(work_meter.used(), 5);
+        assert!(plan.record_terminal(receipt));
+    }
+
+    #[test]
+    fn state_terminal_receipt_requires_the_owned_fallback_attribute_name() {
+        let edge_id = "edge-0".to_string();
+        let occurrence = StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.clone());
+        let make_plan = || {
+            StateThemeTerminalPlan::new(
+                [StateThemeTerminalExpectation::new(
+                    occurrence.clone(),
+                    "#123456",
+                )],
+                BTreeMap::from([(
+                    FamilyThemeMechanismKey::Rule {
+                        index: 0,
+                        target: crate::diagram_theme::ThemeTarget::TransitionLabelBackground,
+                    },
+                    StatePendingTerminalMechanism {
+                        capabilities: BTreeSet::from([ThemeCapability::SolidPaint]),
+                        occurrences: BTreeSet::from([occurrence.clone()]),
+                    },
+                )]),
+            )
+        };
+        let plan = make_plan();
+        let svg = r##"<svg><g class="edgeLabel"><g class="label" data-id="edge-0"><foreignObject data-unrelated-fill="#123456"/></g></g></svg>"##;
+        let range = element_range(svg, r#"<g class="edgeLabel">"#, "</g></svg>");
+        let mut receipt = plan.begin_receipt(true, true);
+        receipt.record_emission_if_expected(occurrence.clone(), range);
+        observe_test_svg(&mut receipt, svg);
+
+        assert!(!plan.record_terminal(receipt));
+
+        let exact_occurrence = StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.clone());
+        let exact_plan = make_plan();
+        let exact_svg = r##"<svg><g class="edgeLabel"><g class="label" data-id="edge-0"><foreignObject data-merman-fallback-occurrence="state-transition-label-background:edge-0" data-merman-fallback-background-fill="#123456"/></g></g></svg>"##;
+        let exact_range = element_range(exact_svg, r#"<g class="edgeLabel">"#, "</g></svg>");
+        let mut exact_receipt = exact_plan.begin_receipt(true, true);
+        exact_receipt.record_emission_if_expected(exact_occurrence, exact_range);
+        observe_test_svg(&mut exact_receipt, exact_svg);
+
+        assert!(exact_plan.record_terminal(exact_receipt));
     }
 
     #[test]
@@ -827,7 +1452,7 @@ mod tests {
         );
 
         receipt.shift_emissions_after_prefix_rewrite(before.len(), after.len());
-        receipt.observe_svg(after);
+        observe_test_svg(&mut receipt, after);
 
         assert!(plan.record_terminal(receipt));
     }

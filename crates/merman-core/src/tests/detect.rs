@@ -1003,6 +1003,38 @@ fn overlay_provenance_keeps_host_and_fallback_owners_distinct() {
 }
 
 #[test]
+fn theme_parse_evidence_freezes_surviving_fallback_assignment_values() {
+    let contribution_id = "merman.legacy-family-theme.v1.flowchart.typography";
+    let metadata = Engine::new()
+        .with_fallback_post_detection_config_overlay(family_overlay(
+            "flowchart",
+            contribution_id,
+            "themeVariables.fontFamily",
+            json!("FlowchartOnlyFont"),
+        ))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse flowchart with fallback typography");
+    let evidence = crate::__private::theme_parse_evidence(&metadata);
+    let contribution = evidence
+        .fallback_contributions()
+        .next()
+        .expect("surviving fallback typography contribution");
+
+    assert_eq!(contribution.opaque_id(), contribution_id);
+    assert_eq!(
+        contribution
+            .surviving_assignment_paths()
+            .collect::<Vec<_>>(),
+        ["themeVariables.fontFamily"]
+    );
+    assert_eq!(
+        contribution.surviving_assignment_value("themeVariables.fontFamily"),
+        Some(&json!("FlowchartOnlyFont"))
+    );
+    assert_eq!(contribution.surviving_assignment_value("fontFamily"), None);
+}
+
+#[test]
 fn host_only_overlay_id_is_never_reported_as_fallback_provenance() {
     let shared_id = "merman.legacy-family-theme.v1.flowchart.node-spacing";
     let metadata = Engine::new()

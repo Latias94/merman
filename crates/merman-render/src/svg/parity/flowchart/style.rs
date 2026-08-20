@@ -1,7 +1,7 @@
 //! Flowchart style compilation helpers.
 
 use super::*;
-use cssparser::{BasicParseErrorKind, Parser, ParserInput, Token};
+use cssparser::{BasicParseErrorKind, Delimiter, Parser, ParserInput, Token};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use std::sync::Arc;
@@ -467,6 +467,7 @@ impl FlowchartCompiledStyles {
             style,
             prepared_text_overrides,
             terminal_foreground,
+            typography_cascade: crate::flowchart::FlowchartTypographyCascade::default(),
         }
     }
 
@@ -1147,6 +1148,121 @@ fn sanitized_xhtml_source_residuals(
     }
 
     residuals
+}
+
+pub(super) fn sanitized_xhtml_typography_statuses(
+    sanitized_xhtml: &str,
+) -> (
+    crate::flowchart::FlowchartSourceFacetStatus,
+    crate::flowchart::FlowchartSourceFacetStatus,
+) {
+    use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Admitted, Unverified};
+
+    if sanitized_xhtml.is_empty()
+        || (!contains_ascii_case_insensitive(sanitized_xhtml, b"style")
+            && !contains_ascii_case_insensitive(sanitized_xhtml, b"class"))
+    {
+        return (Absent, Absent);
+    }
+
+    let mut reader = quick_xml::Reader::from_str(sanitized_xhtml);
+    reader.config_mut().enable_all_checks(true);
+    let mut font_stack = Absent;
+    let mut font_size = Absent;
+
+    loop {
+        let decoder = reader.decoder();
+        let element = match reader.read_event() {
+            Ok(Event::Start(element)) | Ok(Event::Empty(element)) => element,
+            Ok(Event::Eof) => break,
+            Ok(_) => continue,
+            Err(_) => return (Unverified, Unverified),
+        };
+
+        let mut renderer_math_wrapper = false;
+        for attribute in element.attributes() {
+            let Ok(attribute) = attribute else {
+                return (Unverified, Unverified);
+            };
+            let name = attribute.key.local_name();
+            renderer_math_wrapper |= matches!(
+                name.as_ref(),
+                b"data-merman-prepared-math-native" | b"data-merman-prepared-math-occurrence"
+            );
+        }
+
+        for attribute in element.attributes() {
+            let Ok(attribute) = attribute else {
+                return (Unverified, Unverified);
+            };
+            let name = attribute.key.local_name();
+            let is_style = name.as_ref().eq_ignore_ascii_case(b"style");
+            let is_class = name.as_ref().eq_ignore_ascii_case(b"class");
+            if (!is_style && !is_class) || renderer_math_wrapper {
+                continue;
+            }
+            let Ok(value) =
+                attribute.decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
+            else {
+                return (Unverified, Unverified);
+            };
+            let value = value.trim();
+            if value.is_empty() {
+                continue;
+            }
+            if is_class {
+                font_stack = font_stack.merge(Unverified);
+                font_size = font_size.merge(Unverified);
+                continue;
+            }
+
+            let mut input = ParserInput::new(value);
+            let mut parser = Parser::new(&mut input);
+            while !parser.is_exhausted() {
+                let start = parser.position();
+                let property = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+                    let property = declaration.expect_ident_cloned()?.to_ascii_lowercase();
+                    declaration.expect_colon()?;
+                    while declaration.next_including_whitespace().is_ok() {}
+                    Ok::<_, cssparser::ParseError<'_, ()>>(property)
+                });
+                let raw = parser
+                    .slice(start..parser.position())
+                    .trim()
+                    .trim_end_matches(';')
+                    .trim();
+                let (affects_stack, affects_size) = match property.as_deref().ok() {
+                    Some("font-family") => (true, false),
+                    Some("font-size") => (false, true),
+                    Some("font") | Some("all") => (true, true),
+                    _ => continue,
+                };
+                let provenance = crate::diagram_theme::SourceStyleProvenance::label_style(
+                    "sanitized-xhtml-fragment",
+                    crate::diagram_theme::SourceStyleChannel::Label,
+                    0,
+                );
+                let status =
+                    match crate::diagram_theme::SourceStyleDeclaration::parse(raw, provenance) {
+                        Ok(declaration)
+                            if matches!(declaration.property(), "font-family" | "font-size")
+                                && label_source_residual_reason(&declaration, true).is_none() =>
+                        {
+                            Admitted
+                        }
+                        Ok(_) | Err(_) => Unverified,
+                    };
+                if affects_stack {
+                    font_stack = font_stack.merge(status);
+                }
+                if affects_size {
+                    font_size = font_size.merge(status);
+                }
+            }
+        }
+    }
+
+    (font_stack, font_size)
 }
 
 fn inspect_sanitized_xhtml_element(
@@ -2189,6 +2305,34 @@ pub(in crate::svg::parity) fn flowchart_label_div_style_prefix(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitized_html_typography_distinguishes_user_overrides_from_prepared_math_wrappers() {
+        use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Admitted, Unverified};
+
+        assert_eq!(
+            sanitized_xhtml_typography_statuses(
+                r#"<span style="font-family:Arial;font-size:24px">label</span>"#,
+            ),
+            (Admitted, Admitted),
+        );
+        assert_eq!(
+            sanitized_xhtml_typography_statuses(r#"<span class="custom">label</span>"#),
+            (Unverified, Unverified),
+        );
+        assert_eq!(
+            sanitized_xhtml_typography_statuses(
+                r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" style="font-family:Typed;font-size:18px">x²</span>"#,
+            ),
+            (Absent, Absent),
+        );
+        assert_eq!(
+            sanitized_xhtml_typography_statuses(
+                r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1"><span style="font-size:31px">user</span></span>"#,
+            ),
+            (Absent, Admitted),
+        );
+    }
 
     fn color_style(value: &str) -> FlowchartCompiledStyles {
         FlowchartCompiledStyles {

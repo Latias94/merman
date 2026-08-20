@@ -159,6 +159,10 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             &flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels),
             ctx.node_html_labels,
         );
+        let (html_font_stack, html_font_size) =
+            crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
+                label_html.as_ref(),
+            );
         super::emission::FlowchartNodeLabelEmissionReceipt::verified()
             .with_prepared_typography_reach(
                 typography_applicable,
@@ -166,6 +170,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
                     crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
                 ),
             )
+            .with_html_typography_statuses(html_font_stack, html_font_size)
     }
 }
 
@@ -274,6 +279,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     } else {
         "label"
     };
+    let mut html_typography_statuses = (
+        crate::flowchart::FlowchartSourceFacetStatus::Absent,
+        crate::flowchart::FlowchartSourceFacetStatus::Absent,
+    );
     if !ctx.node_html_labels {
         let label_group_style = prepared_svg_label.as_ref().map_or_else(
             || common.label_emission.final_style(None),
@@ -322,6 +331,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 prepared_math,
             )
         });
+        html_typography_statuses =
+            crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
+                label_html.as_ref(),
+            );
         let final_style = common.label_emission.final_style(None);
         let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
         let is_math_html_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
@@ -409,12 +422,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
-    super::emission::FlowchartNodeLabelEmissionReceipt::verified().with_prepared_typography_reach(
-        flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels),
-        prepared_svg_label.as_ref().is_some_and(
-            crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
-        ),
-    )
+    super::emission::FlowchartNodeLabelEmissionReceipt::verified()
+        .with_prepared_typography_reach(
+            flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels),
+            prepared_svg_label.as_ref().is_some_and(
+                crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
+            ),
+        )
+        .with_html_typography_statuses(html_typography_statuses.0, html_typography_statuses.1)
 }
 
 fn flowchart_node_label_typography_is_applicable(text: &str, html_labels: bool) -> bool {

@@ -240,6 +240,14 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         });
     };
     let render_title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
+    let title_owner = ctx
+        .svg_label_sidecar
+        .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
+    let title_receipt = super::node::emission::FlowchartNodeLabelEmissionReceipt::verified()
+        .with_prepared_typography_reach(
+            !crate::flowchart::flowchart_label_is_empty_for_render(render_title),
+            false,
+        );
 
     let mut class_attr = String::new();
     for c in &sg.classes {
@@ -305,12 +313,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
                 &sg.classes,
                 &sg.styles,
             );
-            let owner = ctx
-                .svg_label_sidecar
-                .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
             let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
                 ctx.svg_label_sidecar,
-                owner,
+                title_owner,
                 render_title,
                 ctx.measurer,
                 title_text_style.as_ref(),
@@ -325,15 +330,23 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             &compiled_styles
                 .emitted_label_source_residuals(cluster.id.as_str(), label_type != "markdown"),
         );
+        ctx.record_base_typography_label_emission(
+            crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
+                title_owner,
+                title_receipt.typography_applicable(),
+                title_receipt.typography_verified(),
+            )
+            .with_source_facets(
+                compiled_styles.source_font_stack_status(),
+                compiled_styles.source_font_size_status(),
+            ),
+        );
         return Ok(());
     }
 
-    let owner = ctx
-        .svg_label_sidecar
-        .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
     let prepared_math = ctx
         .svg_label_sidecar
-        .zip(owner)
+        .zip(title_owner)
         .map_or(Default::default(), |(sidecar, owner)| {
             sidecar.prepared_math_for_terminal(owner, render_title)
         });
@@ -408,6 +421,25 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             cluster.id.as_str(),
             true,
             &title_html,
+        ),
+    );
+    let html_typography_statuses =
+        crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
+            title_html.as_ref(),
+        );
+    ctx.record_base_typography_label_emission(
+        crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
+            title_owner,
+            title_receipt.typography_applicable(),
+            title_receipt.typography_verified(),
+        )
+        .with_source_facets(
+            compiled_styles
+                .source_font_stack_status()
+                .merge(html_typography_statuses.0),
+            compiled_styles
+                .source_font_size_status()
+                .merge(html_typography_statuses.1),
         ),
     );
     Ok(())

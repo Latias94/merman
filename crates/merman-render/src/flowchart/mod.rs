@@ -92,7 +92,10 @@ impl Deref for FlowchartRenderModelRef<'_> {
 
 pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter;
 
-pub(crate) use base_typography::{FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles};
+pub(crate) use base_typography::{
+    FlowchartBaseTypographyLabelEmission, FlowchartBaseTypographyPlan,
+    FlowchartBaseTypographyStyles,
+};
 pub(crate) use config::{
     FlowchartConfigView, FlowchartLayoutSettings, FlowchartTypographyConfigOwnership,
     flowchart_typography_config_ownership,
@@ -119,9 +122,9 @@ pub(crate) use shapes::{
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
     FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,
-    FlowchartTextStyleResolution, flowchart_apply_html_node_class_box_metrics,
-    flowchart_apply_text_style_decl, flowchart_effective_node_class_names,
-    flowchart_effective_text_style_for_classes,
+    FlowchartTextStyleResolution, FlowchartTypographyCascade,
+    flowchart_apply_html_node_class_box_metrics, flowchart_apply_text_style_decl,
+    flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes,
     flowchart_effective_text_style_for_node_classes_with_provenance,

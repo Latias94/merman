@@ -336,6 +336,27 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         ))
     };
 
+    if let Some(label_receipt) = label_receipt {
+        ctx.record_base_typography_label_emission(
+            crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
+                ctx.svg_label_sidecar.and_then(|sidecar| {
+                    sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())
+                }),
+                label_receipt.typography_applicable(),
+                label_receipt.typography_verified(),
+            )
+            .with_source_facets(
+                compiled_styles
+                    .source_font_stack_status()
+                    .merge(label_receipt.html_font_stack_status()),
+                compiled_styles
+                    .source_font_size_status()
+                    .merge(label_receipt.html_font_size_status()),
+            )
+            .with_target_selection(typed_font_stack_selected, typed_font_size_selected),
+        );
+    }
+
     let mut source_evidence =
         compiled_styles.shape_source_evidence(node_id, shape_outcome.emission(), |class_id| {
             wrapper_classes.contains(class_id)

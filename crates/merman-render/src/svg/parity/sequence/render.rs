@@ -499,7 +499,7 @@ fn render_sequence_diagram_svg_inner(
 
     out.push_str("</svg>\n");
     let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
-    typography_receipt.record_terminal_svg(&svg, diagram_id);
+    typography_receipt.record_terminal_svg(&svg, diagram_id, options.work_meter())?;
     prepared
         .theme_evidence()
         .record_typography_emission(typography_receipt);

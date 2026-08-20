@@ -457,7 +457,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     out.push_str("</svg>\n");
     let out = out.finish()?;
 
-    ctx.theme_receipt.borrow_mut().observe_svg(&out);
+    ctx.theme_receipt
+        .borrow_mut()
+        .observe_svg(&out, options.work_meter())?;
     let terminal_theme_receipt = ctx.theme_receipt.borrow().clone();
     let _ = style_plan.record_terminal_theme_receipt(terminal_theme_receipt);
 

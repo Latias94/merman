@@ -1,5 +1,8 @@
 use super::super::*;
-use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
+use super::math_label::{
+    record_sequence_katex_terminal_emission, sequence_katex_label,
+    write_sequence_katex_foreign_object,
+};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceMathHeightMode, sequence_activation_stack_bounds,
@@ -384,14 +387,17 @@ pub(super) fn render_sequence_messages(
                 ctx.message_text_style,
                 SequenceMathHeightMode::Draw,
             ) {
-                ctx.typography_receipt
-                    .record_candidate(crate::sequence::SequenceTextSurface::MessageLabel);
                 let center_x = (p0.x + p1.x) / 2.0;
                 write_sequence_katex_foreign_object(
                     out,
                     &katex,
                     (center_x - katex.width / 2.0).round(),
                     (p0.y - katex.height).round(),
+                );
+                record_sequence_katex_terminal_emission(
+                    ctx.typography_receipt,
+                    crate::sequence::SequenceTextSurface::MessageLabel,
+                    &katex,
                 );
             } else if msg.wrap && !text.is_empty() {
                 // Mermaid wraps message labels to
@@ -636,21 +642,13 @@ mod tests {
 
     fn default_sequence_typography(
         config: &merman_core::MermaidConfig,
-        style: &TextStyle,
     ) -> (
         crate::sequence::SequenceTypographyPlan,
         crate::sequence::SequenceTypographyThemeReceipt,
     ) {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let plan = crate::sequence::SequenceTypographyPlan::resolve(
-            config,
-            None,
-            &meter,
-            style.clone(),
-            style.clone(),
-            style.clone(),
-        )
-        .expect("resolve default Sequence typography");
+        let plan = crate::sequence::SequenceTypographyPlan::resolve(config, None, &meter)
+            .expect("resolve default Sequence typography");
         let receipt = crate::sequence::SequenceTypographyThemeReceipt::from_plan(&plan);
         (plan, receipt)
     }
@@ -747,8 +745,7 @@ mod tests {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let message_text_style = TextStyle::default();
         let math_sidecar = crate::sequence::SequenceMathSidecar::default();
-        let (typography, typography_receipt) =
-            default_sequence_typography(&sanitize_config, &message_text_style);
+        let (typography, typography_receipt) = default_sequence_typography(&sanitize_config);
         let ctx = SequenceMessageRenderContext {
             model: &model,
             nodes_by_id: &nodes_by_id,
@@ -854,8 +851,7 @@ mod tests {
             let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
             let message_text_style = TextStyle::default();
             let math_sidecar = crate::sequence::SequenceMathSidecar::default();
-            let (typography, typography_receipt) =
-                default_sequence_typography(&sanitize_config, &message_text_style);
+            let (typography, typography_receipt) = default_sequence_typography(&sanitize_config);
             let ctx = SequenceMessageRenderContext {
                 model: &model,
                 nodes_by_id: &nodes_by_id,

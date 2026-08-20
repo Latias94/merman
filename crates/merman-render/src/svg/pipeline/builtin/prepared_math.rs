@@ -9,6 +9,8 @@ use crate::{DiagramFamilyId, Error, Result};
 
 use super::util::{extract_quoted_attr, find_tag_end};
 
+const PREPARED_MATH_NATIVE_MARKER_PREFIX: &str = "data-merman-prepared-math-native=";
+
 pub(crate) fn project_prepared_math(
     svg: &str,
     family_id: Option<DiagramFamilyId>,
@@ -19,8 +21,10 @@ pub(crate) fn project_prepared_math(
             "browser-only math has no renderer-owned native projection",
         ));
     }
-    let has_browser_projection = svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE);
-    let has_native_projection = svg.contains(PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE);
+    let has_browser_projection = svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
+        && svg.contains(PREPARED_MATH_NATIVE_MARKER_PREFIX);
+    let has_native_projection = svg.contains(PREPARED_MATH_NATIVE_CLASS_ATTRIBUTE)
+        && svg.contains(PREPARED_MATH_OCCURRENCE_ATTRIBUTE);
     if !has_browser_projection && !has_native_projection {
         return Ok(svg.to_owned());
     }
@@ -37,6 +41,9 @@ pub(crate) fn project_prepared_math(
         .ok_or_else(|| {
             projection_error("prepared math requires renderer-owned occurrence evidence")
         })?;
+    evidence
+        .validate_unique_occurrences()
+        .map_err(projection_error)?;
     if !has_browser_projection {
         return Ok(svg.to_owned());
     }
@@ -56,7 +63,9 @@ pub(crate) fn project_prepared_math(
                 .ok_or_else(|| projection_error("unclosed prepared-math foreignObject"))?;
         let end = close_start + "</foreignObject>".len();
         let foreign_object = &svg[start..end];
-        if !foreign_object.contains(PREPARED_MATH_CLASS_ATTRIBUTE) {
+        if !foreign_object.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
+            || !foreign_object.contains(PREPARED_MATH_NATIVE_MARKER_PREFIX)
+        {
             output.push_str(&svg[cursor..end]);
             cursor = end;
             continue;
@@ -78,10 +87,8 @@ pub(crate) fn project_prepared_math(
         let occurrence_id = extract_quoted_attr(foreign_object, PREPARED_MATH_OCCURRENCE_ATTRIBUTE)
             .ok_or_else(|| projection_error("prepared-math occurrence identity is missing"))?;
         let (expected_index, expected) = evidence
-            .entries()
-            .iter()
-            .enumerate()
-            .find(|(_, entry)| entry.occurrence_id().as_str() == occurrence_id)
+            .expectation(occurrence_id)
+            .map_err(projection_error)?
             .ok_or_else(|| {
                 projection_error(format!(
                     "prepared-math occurrence `{occurrence_id}` is not renderer-owned"
@@ -165,7 +172,10 @@ pub(crate) fn project_prepared_math(
     }
     output.push_str(&svg[cursor..]);
 
-    if projected == 0 || output.contains(PREPARED_MATH_CLASS_ATTRIBUTE) {
+    if projected == 0
+        || (output.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
+            && output.contains(PREPARED_MATH_NATIVE_MARKER_PREFIX))
+    {
         return Err(projection_error(
             "prepared-math occurrence was not bound to a terminal foreignObject",
         ));
@@ -497,6 +507,57 @@ mod tests {
         )
         .expect_err("one renderer occurrence cannot claim another occurrence's projection");
         assert!(error.to_string().contains("is not renderer-owned"));
+    }
+
+    #[test]
+    fn projection_ignores_an_unowned_user_class_without_reserved_markers() {
+        let svg = concat!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+            r#"<foreignObject width="20" height="10"><div xmlns="http://www.w3.org/1999/xhtml">"#,
+            r#"<span class="merman-prepared-math">user content</span>"#,
+            r#"</div></foreignObject></svg>"#,
+        );
+
+        let output = project_prepared_math(svg, None, None)
+            .expect("an unowned class name must not mint or deny renderer capability");
+
+        assert_eq!(output, svg);
+    }
+
+    #[test]
+    fn projection_preserves_an_unowned_user_class_beside_owned_math() {
+        let projection = concat!(
+            r#"<g data-merman-prepared-math-width="8" data-merman-prepared-math-height="9">"#,
+            r#"<path d="native"/></g>"#,
+        );
+        let (occurrence_id, evidence) = evidence_for_projection(
+            DiagramFamilyId::FLOWCHART,
+            "node-label",
+            0,
+            Some(projection),
+            1,
+        );
+        let svg = format!(
+            concat!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+                r#"<foreignObject width="20" height="10"><div>"#,
+                r#"<span class="merman-prepared-math">user content</span>"#,
+                r#"</div></foreignObject>"#,
+                r#"<foreignObject width="10" height="10"><div>"#,
+                r#"<span class="merman-prepared-math" data-merman-prepared-math-native="v1" "#,
+                r#"data-merman-prepared-math-occurrence="{}">"#,
+                r#"<template data-merman-prepared-math-projection="v1">{}"#,
+                r#"</template></span></div></foreignObject></svg>"#,
+            ),
+            occurrence_id.as_str(),
+            projection,
+        );
+
+        let output = project_prepared_math(&svg, Some(DiagramFamilyId::FLOWCHART), Some(&evidence))
+            .expect("unowned class tokens must not interfere with renderer-owned math");
+
+        assert!(output.contains("user content"), "{output}");
+        assert!(output.contains(r#"d="native""#), "{output}");
     }
 
     #[test]

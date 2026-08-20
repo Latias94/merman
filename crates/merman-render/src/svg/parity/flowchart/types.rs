@@ -103,6 +103,20 @@ impl FlowchartRenderCtx<'_> {
     pub(in crate::svg::parity::flowchart) fn subgraph_has_children(&self, id: &str) -> bool {
         self.subgraph_ids_with_children.contains(id)
     }
+
+    pub(in crate::svg::parity::flowchart) fn record_base_typography_label_emission(
+        &self,
+        emission: crate::flowchart::FlowchartBaseTypographyLabelEmission,
+    ) {
+        let Some(plan) = self
+            .svg_label_sidecar
+            .and_then(crate::flowchart::FlowchartSvgLabelSidecar::base_typography)
+            .filter(|plan| plan.requires_terminal_evidence())
+        else {
+            return;
+        };
+        plan.record_label_emission(emission);
+    }
 }
 
 #[derive(Debug, Default, Clone)]

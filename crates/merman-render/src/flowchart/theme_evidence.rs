@@ -145,6 +145,18 @@ impl FlowchartSourceFacetStatus {
     const fn overrides_theme(self) -> bool {
         !matches!(self, Self::Absent)
     }
+
+    pub(crate) const fn is_absent(self) -> bool {
+        matches!(self, Self::Absent)
+    }
+
+    pub(crate) const fn merge(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Unverified, _) | (_, Self::Unverified) => Self::Unverified,
+            (Self::Admitted, _) | (_, Self::Admitted) => Self::Admitted,
+            (Self::Absent, Self::Absent) => Self::Absent,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

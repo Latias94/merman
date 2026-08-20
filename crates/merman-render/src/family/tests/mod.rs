@@ -8,15 +8,12 @@ use crate::diagram_theme::{
     ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     ThemeTextStyle, TypographySpec,
 };
-#[cfg(feature = "layout-cytoscape")]
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     TextMeasurementOperation, TextMeasurementPhase, TextMeasurementResultKind,
 };
-#[cfg(feature = "layout-cytoscape")]
 use crate::environment::{
     MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
@@ -2348,6 +2345,285 @@ A[Alpha] -->|message| B[Beta]
             rendered.style_report().verification(),
             FamilyStyleVerification::Verified
         );
+    }
+}
+
+#[test]
+fn flowchart_base_typography_is_not_applied_when_every_label_has_a_typed_local_owner() {
+    for (family, source) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A[Alpha]
+"#,
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            r#"---
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TD
+A[Alpha]
+"#,
+        ),
+    ] {
+        let theme = flowchart_node_label_typography_theme(
+            family,
+            Some(FontStack::single("Xiaolai SC").expect("valid base font stack")),
+            Some(26.0),
+            Some(19.0),
+        );
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart-family source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict locally-owned typography session"),
+        )
+        .expect("prepare locally-owned typography")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("local NodeLabel owners must account for base typography");
+
+        assert!(
+            !rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography),
+            "{family}"
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_not_applicable_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography),
+            "{family}"
+        );
+        for rule_index in [0, 1] {
+            assert!(
+                rendered.style_report().theme_applied_mechanisms().contains(
+                    &FamilyThemeMechanismKey::Rule {
+                        index: rule_index,
+                        target: ThemeTarget::NodeLabel,
+                    }
+                ),
+                "{family} rule {rule_index}"
+            );
+        }
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+}
+
+#[test]
+fn flowchart_diagram_title_keeps_unshadowed_base_font_stack_applicable() {
+    for (family, source) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            r#"---
+title: Overview
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A[Alpha]
+"#,
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            r#"---
+title: Overview
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TD
+A[Alpha]
+"#,
+        ),
+    ] {
+        let theme = flowchart_node_label_typography_theme(
+            family,
+            Some(FontStack::single("Xiaolai SC").expect("valid base font stack")),
+            None,
+            None,
+        );
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart-family source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict diagram-title typography session"),
+        )
+        .expect("prepare diagram-title typography")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("the title must seal the unshadowed base font stack");
+
+        assert!(rendered.svg().contains("class=\"flowchartTitleText\""));
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography),
+            "{family}"
+        );
+        assert!(rendered.style_report().theme_applied_mechanisms().contains(
+            &FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::NodeLabel,
+            }
+        ));
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+}
+
+#[test]
+fn flowchart_base_typography_yields_to_user_html_descendant_font_owners() {
+    let source = r#"---
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+---
+flowchart LR
+A["<span style='font-size:31px'>Alpha</span>"]
+"#;
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::FLOWCHART,
+                    ThemeTextStyle::default()
+                        .with_font_size_px(23.0)
+                        .expect("valid fixture font size"),
+                ),
+            ),
+        )
+        .expect("compile Flowchart base font-size theme");
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .expect("Flowchart source should produce a render model");
+    let rendered = prepare(
+        parsed,
+        &LayoutOptions::default(),
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin HTML typography owner session"),
+    )
+    .expect("prepare HTML typography owner")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("HTML descendant owners must account for base typography");
+
+    assert!(rendered.svg().contains("font-size:31px"));
+    assert!(
+        !rendered
+            .style_report()
+            .theme_applied_mechanisms()
+            .contains(&FamilyThemeMechanismKey::Typography)
+    );
+    assert!(
+        rendered
+            .style_report()
+            .theme_not_applicable_mechanisms()
+            .contains(&FamilyThemeMechanismKey::Typography),
+        "applied={:?} not_applicable={:?} residuals={:?}",
+        rendered.style_report().theme_applied_mechanisms(),
+        rendered.style_report().theme_not_applicable_mechanisms(),
+        rendered.style_report().theme_residuals(),
+    );
+    assert!(rendered.style_report().theme_residuals().is_empty());
+}
+
+#[test]
+fn flowchart_base_typography_remains_applied_when_an_unshadowed_label_occurrence_exists() {
+    for (family, source) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+classDef local font-family:Xiaolai SC,font-size:19px
+A[测试]:::local --> B[Base]
+"#,
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            r#"---
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TD
+classDef local font-family:Xiaolai SC,font-size:19px
+A[测试]:::local --> B[Base]
+"#,
+        ),
+    ] {
+        let theme = base_typography_theme(family);
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart-family source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict partially-shadowed typography session"),
+        )
+        .expect("prepare partially-shadowed typography")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("the unshadowed label must prove base typography");
+
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography),
+            "{family}"
+        );
+        assert!(
+            !rendered
+                .style_report()
+                .theme_not_applicable_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography),
+            "{family}"
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
     }
 }
 
@@ -9838,6 +10114,64 @@ fn sidecar_host_measurement(
             }
         }
     }
+}
+
+#[test]
+fn flowchart_measurement_and_terminal_style_share_the_important_typography_winner() {
+    let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A[Important Winner]
+classDef strong font-size:30px!important
+class A strong
+style A font-size:10px
+"#;
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Flowchart important typography")
+        .expect("detect Flowchart important typography");
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.flowchart-important-typography").expect("profile id"),
+        "1",
+    )
+    .expect("profile identity");
+    let host = Arc::new(SidecarRecordingHost::new(SidecarHostOutcome::Success));
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            host.clone(),
+            TextMeasurementPhase::ALL,
+        ))
+        .begin_session()
+        .expect("Flowchart important typography session");
+    let rendered = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Flowchart important typography")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Flowchart important typography");
+
+    let matching = host
+        .snapshot()
+        .into_iter()
+        .filter(|request| request.text.contains("Important Winner"))
+        .collect::<Vec<_>>();
+    assert!(!matching.is_empty(), "expected label measurement requests");
+    assert!(
+        matching
+            .iter()
+            .all(|request| request.font_size_bits == 30.0_f64.to_bits()),
+        "measurement must retain the important class winner: {matching:#?}"
+    );
+
+    let terminal = flowchart_node_label_style(rendered.svg(), "A");
+    assert!(terminal.contains("font-size:30px !important"), "{terminal}");
+    assert!(
+        !terminal.contains("font-size:10px !important"),
+        "{terminal}"
+    );
 }
 
 #[cfg(feature = "layout-cytoscape")]

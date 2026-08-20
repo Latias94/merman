@@ -561,9 +561,6 @@ fn finish_base_typography(
     let Some(receipt) = receipt else {
         return;
     };
-    if !receipt.base.terminal_svg_observed() {
-        return;
-    }
     if receipt.base_relevant_occurrences() == 0 {
         evidence.mark_not_applicable(key);
         return;
@@ -583,6 +580,16 @@ fn finish_base_typography(
         })
         .collect::<Vec<_>>();
     if typed_properties.is_empty() {
+        return;
+    }
+    if typed_properties
+        .iter()
+        .all(|property| !receipt.base.has_typed_property(*property))
+    {
+        evidence.mark_not_applicable(key);
+        return;
+    }
+    if !receipt.base.terminal_svg_observed() {
         return;
     }
     if typed_properties

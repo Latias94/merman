@@ -272,10 +272,7 @@ impl StateEdgeStylePlan {
 
     fn terminal_label_signature(&self, html_labels: bool) -> String {
         if html_labels {
-            terminal_signature([
-                self.label_style_attr.as_str(),
-                self.label_div_style_prefix.as_str(),
-            ])
+            terminal_signature([self.label_div_style_prefix.as_str()])
         } else {
             terminal_native_text_style_signature(&self.label_style_attr)
         }
@@ -526,7 +523,7 @@ fn terminal_native_text_style_signature(style: &str) -> String {
             declarations.push(format!("{property}:{value}"));
         }
     }
-    terminal_signature(declarations.iter().map(String::as_str))
+    declarations.join(";")
 }
 
 #[derive(Debug, Clone)]

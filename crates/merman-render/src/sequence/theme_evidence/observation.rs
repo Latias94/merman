@@ -311,8 +311,8 @@ pub(super) fn observe_typography_rule(
         return;
     }
     match (disposition, facet) {
-        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Typography(_)) => {
-            if role.complete() {
+        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Typography(property)) => {
+            if role.typography_property_complete(property) {
                 observation.capabilities.insert(ThemeCapability::Typography);
             } else {
                 observation.incomplete = true;

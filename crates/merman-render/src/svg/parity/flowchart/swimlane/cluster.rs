@@ -199,6 +199,15 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let label_metrics = lane_label_metrics(ctx, cluster.id.as_str(), lane, render_title);
     let label_width = label_metrics.width.max(0.0);
     let label_height = label_metrics.height.max(0.0);
+    let title_owner = ctx
+        .svg_label_sidecar
+        .and_then(|sidecar| sidecar.swimlane_group_title_owner(cluster.id.as_str()));
+    let title_receipt =
+        super::super::render::node::emission::FlowchartNodeLabelEmissionReceipt::verified()
+            .with_prepared_typography_reach(
+                !flowchart_label_is_empty_for_render(render_title),
+                false,
+            );
 
     let padding = lane.padding.max(0.0);
     let width = lane.width.max(label_width + padding);
@@ -331,6 +340,10 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             .emitted_shape_source_residuals_with_receipt(lane.id.as_str(), shape_source_receipt),
     );
 
+    let mut html_typography_statuses = (
+        crate::flowchart::FlowchartSourceFacetStatus::Absent,
+        crate::flowchart::FlowchartSourceFacetStatus::Absent,
+    );
     if ctx.swimlane_title_html_labels {
         let prepared_math = ctx
             .svg_label_sidecar
@@ -347,6 +360,10 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             ctx.math_renderer,
             prepared_math,
         );
+        html_typography_statuses =
+            crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
+                title_html.as_ref(),
+            );
         let transform = if is_lr {
             label_transform
         } else {
@@ -397,6 +414,21 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             &compiled.emitted_label_source_residuals(lane.id.as_str(), false),
         );
     }
+    ctx.record_base_typography_label_emission(
+        crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
+            title_owner,
+            title_receipt.typography_applicable(),
+            title_receipt.typography_verified(),
+        )
+        .with_source_facets(
+            compiled
+                .source_font_stack_status()
+                .merge(html_typography_statuses.0),
+            compiled
+                .source_font_size_status()
+                .merge(html_typography_statuses.1),
+        ),
+    );
     out.push_str("</g>");
     Ok(())
 }

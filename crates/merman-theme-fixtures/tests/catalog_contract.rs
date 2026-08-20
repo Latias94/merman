@@ -527,14 +527,21 @@ fn typed_evidence_cannot_substitute_a_different_mechanism_with_the_same_capabili
 fn source_required_canvas_variants_must_match_typed_evidence() {
     let temp = copied_theme_root();
     let mut manifest = committed_manifest();
-    let relative = "inputs/layered-canvas.json";
-    let mut input: Value = serde_json::from_str(
-        &fs::read_to_string(temp.path().join(relative)).expect("read layered canvas input"),
-    )
-    .expect("parse layered canvas input");
-    input["blendMode"] = json!("multiply");
-    let hash = write_json(temp.path(), relative, &input);
-    fixture_mut(&mut manifest, "fixture-layered-canvas")["themeInputSha256"] = json!(hash);
+    for (fixture, relative) in [
+        (
+            "fixture-c6-cyberpunk-flowchart",
+            "inputs/c6-cyberpunk-flowchart.json",
+        ),
+        ("fixture-layered-canvas", "inputs/layered-canvas.json"),
+    ] {
+        let mut input: Value = serde_json::from_str(
+            &fs::read_to_string(temp.path().join(relative)).expect("read canvas input"),
+        )
+        .expect("parse canvas input");
+        input["blendMode"] = json!("multiply");
+        let hash = write_json(temp.path(), relative, &input);
+        fixture_mut(&mut manifest, fixture)["themeInputSha256"] = json!(hash);
+    }
 
     assert!(matches!(
         rejection_at(temp.path(), manifest),

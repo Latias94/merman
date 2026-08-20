@@ -36,6 +36,36 @@ fn record_edge_label_emission(
     receipt: FlowchartEdgeLabelEmissionReceipt,
     sanitized_xhtml: Option<&str>,
 ) {
+    let html_typography_statuses = sanitized_xhtml.map_or(
+        (
+            crate::flowchart::FlowchartSourceFacetStatus::Absent,
+            crate::flowchart::FlowchartSourceFacetStatus::Absent,
+        ),
+        crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses,
+    );
+    ctx.record_base_typography_label_emission(
+        crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
+            ctx.svg_label_sidecar
+                .and_then(|sidecar| sidecar.edge_owner(edge_id, ctx.swimlane_direction.is_some())),
+            receipt.typography_applicable(),
+            receipt.typography_verified(),
+        )
+        .with_source_facets(
+            compiled_styles
+                .map_or(
+                    crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                    FlowchartCompiledStyles::source_font_stack_status,
+                )
+                .merge(html_typography_statuses.0),
+            compiled_styles
+                .map_or(
+                    crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                    FlowchartCompiledStyles::source_font_size_status,
+                )
+                .merge(html_typography_statuses.1),
+        )
+        .with_target_selection(typed_font_stack_selected, typed_font_size_selected),
+    );
     let source_residuals = compiled_styles.map_or_else(Vec::new, |compiled_styles| {
         sanitized_xhtml.map_or_else(
             || compiled_styles.label_source_residuals(edge_id, receipt),
