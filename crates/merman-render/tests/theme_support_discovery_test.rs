@@ -413,6 +413,41 @@ fn mindmap_terminal_less_paint_claims_are_unsupported() {
 }
 
 #[test]
+fn tree_view_terminal_less_paint_claims_are_unsupported() {
+    for (target, facet) in [
+        (ThemeTarget::Node, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Node, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::EdgeLabelBackground, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Cluster, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            DiagramFamilyId::TREE_VIEW.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            facet,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(
+            support.state(),
+            ThemeSupportStateV1::Unsupported,
+            "target={} facet={facet:?}",
+            target.id()
+        );
+        assert_eq!(
+            support.reason_ids(),
+            ["theme-support.no-supported-route"],
+            "target={} facet={facet:?}",
+            target.id()
+        );
+    }
+}
+
+#[test]
 fn gitgraph_text_fill_remains_an_explicit_legacy_compatibility_route() {
     let query = ThemeSupportQueryV1::known(
         DiagramFamilyId::GIT_GRAPH.as_str(),

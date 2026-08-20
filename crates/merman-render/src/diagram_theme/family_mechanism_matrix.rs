@@ -1562,13 +1562,23 @@ fn legacy_paint_variants(
         };
     }
 
+    if family == Family::TREE_VIEW {
+        return match channel {
+            Fill if matches!(
+                target,
+                Target::NodeLabel | Target::Text | Target::Edge | Target::Marker
+            ) =>
+            {
+                DEFAULT
+            }
+            Stroke if matches!(target, Target::Edge | Target::Marker) => DEFAULT,
+            Fill | Stroke => &[],
+        };
+    }
+
     let node_family = matches!(
         family,
-        Family::FLOWCHART
-            | Family::SWIMLANE
-            | Family::TREE_VIEW
-            | Family::BLOCK
-            | Family::GIT_GRAPH
+        Family::FLOWCHART | Family::SWIMLANE | Family::BLOCK | Family::GIT_GRAPH
     );
     if node_family {
         let common = match channel {
@@ -1887,6 +1897,40 @@ mod tests {
                 assert_eq!(
                     classify_rule_facet(
                         DiagramFamilyId::MINDMAP,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::Unsupported,
+                    "target={} channel={channel:?} paint_kind={paint_kind:?}",
+                    target.id()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tree_view_terminal_less_paint_routes_are_unsupported() {
+        for (target, channel) in [
+            (ThemeTarget::Node, PaintChannel::Fill),
+            (ThemeTarget::Node, PaintChannel::Stroke),
+            (ThemeTarget::Title, PaintChannel::Fill),
+            (ThemeTarget::EdgeLabelBackground, PaintChannel::Fill),
+            (ThemeTarget::Cluster, PaintChannel::Fill),
+            (ThemeTarget::Cluster, PaintChannel::Stroke),
+            (ThemeTarget::ClusterLabel, PaintChannel::Fill),
+        ] {
+            for paint_kind in [
+                FamilyThemePaintKind::Transparent,
+                FamilyThemePaintKind::Solid,
+            ] {
+                let facet = match channel {
+                    PaintChannel::Fill => FamilyThemeRuleFacet::Fill(paint_kind),
+                    PaintChannel::Stroke => FamilyThemeRuleFacet::Stroke(paint_kind),
+                };
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::TREE_VIEW,
                         target,
                         FamilyThemeSelectorShape::Static { variant: None },
                         facet,

@@ -137,10 +137,12 @@ fn compile_selected_family(
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
-        | DiagramFamilyId::TREE_VIEW
         | DiagramFamilyId::BLOCK
         | DiagramFamilyId::GIT_GRAPH => {
             compile_node_family(&mut builder, family_programs, family);
+        }
+        DiagramFamilyId::TREE_VIEW => {
+            compile_tree_view_family(&mut builder, family_programs);
         }
         DiagramFamilyId::MINDMAP => {
             compile_mindmap_family(&mut builder, family_programs);
@@ -299,19 +301,6 @@ fn compile_node_family(
                 ],
             );
         }
-        DiagramFamilyId::TREE_VIEW => {
-            let mut tree_view = Map::new();
-            if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
-                tree_view.insert("labelColor".to_string(), Value::String(value));
-            }
-            if let Some(value) = reader.stroke_or_fill(ThemeTarget::Edge) {
-                tree_view.insert("lineColor".to_string(), Value::String(value));
-            }
-            if let Some(value) = reader.stroke_or_fill(ThemeTarget::Marker) {
-                tree_view.insert("iconColor".to_string(), Value::String(value));
-            }
-            contributions.add_theme_variable_object("tree-view", "treeView", tree_view);
-        }
         DiagramFamilyId::GIT_GRAPH => {
             contributions.add_theme_variables(
                 "git.commit",
@@ -329,6 +318,31 @@ fn compile_node_family(
         }
         _ => {}
     }
+
+    contributions.finish_into(builder);
+}
+
+fn compile_tree_view_family(
+    builder: &mut OverlayBuilder,
+    family_programs: &FamilyThemeProgramCache,
+) {
+    let family = DiagramFamilyId::TREE_VIEW;
+    let reader = FamilyStyleReader::new(family_programs, family);
+    let mut contributions = FamilyContributions::new(family);
+
+    contributions.add_typography(&reader);
+
+    let mut tree_view = Map::new();
+    if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
+        tree_view.insert("labelColor".to_string(), Value::String(value));
+    }
+    if let Some(value) = reader.stroke_or_fill(ThemeTarget::Edge) {
+        tree_view.insert("lineColor".to_string(), Value::String(value));
+    }
+    if let Some(value) = reader.stroke_or_fill(ThemeTarget::Marker) {
+        tree_view.insert("iconColor".to_string(), Value::String(value));
+    }
+    contributions.add_theme_variable_object("tree-view", "treeView", tree_view);
 
     contributions.finish_into(builder);
 }
@@ -1482,6 +1496,142 @@ mod tests {
             assert_eq!(
                 parsed.effective_config.get_str(path),
                 baseline.effective_config.get_str(path),
+                "path={path}"
+            );
+        }
+    }
+
+    #[test]
+    fn tree_view_terminal_less_paint_rules_do_not_create_a_compatibility_overlay() {
+        let color = "#123456";
+        let styles = ThemeRuleSet::default()
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(solid(color))
+                        .with_stroke(solid(color)),
+                )
+                .for_family(DiagramFamilyId::TREE_VIEW),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(solid(color)),
+                )
+                .for_family(DiagramFamilyId::TREE_VIEW),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(solid(color)),
+                )
+                .for_family(DiagramFamilyId::TREE_VIEW),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Cluster,
+                    ThemeStylePatch::default()
+                        .with_fill(solid(color))
+                        .with_stroke(solid(color)),
+                )
+                .for_family(DiagramFamilyId::TREE_VIEW),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::ClusterLabel,
+                    ThemeStylePatch::default().with_fill(solid(color)),
+                )
+                .for_family(DiagramFamilyId::TREE_VIEW),
+            );
+
+        let artifact = bridge(&DiagramThemeSpec::new().with_styles(styles))
+            .compile_for_family(DiagramFamilyId::TREE_VIEW);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+    }
+
+    #[test]
+    fn tree_view_legacy_paint_projects_only_consumed_tokens() {
+        let source = "treeView-beta\nroot\n  child\n";
+        let label = "#123456";
+        let line = "#654321";
+        let icon = "#abcdef";
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default().with_fill(solid(label)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_fill(solid(line)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Marker,
+                        ThemeStylePatch::default().with_stroke(solid(icon)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW),
+                ),
+        );
+
+        let parsed = parse(&spec, source);
+
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.labelColor"),
+            Some(label)
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.lineColor"),
+            Some(line)
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.iconColor"),
+            Some(icon)
+        );
+
+        let evidence = theme_parse_evidence(&parsed);
+        let contributions = evidence.fallback_contributions().collect::<Vec<_>>();
+        assert_eq!(contributions.len(), 1);
+        let contribution = contributions[0];
+        assert_eq!(
+            contribution.opaque_id(),
+            "merman.legacy-family-theme.v1.treeView.tree-view"
+        );
+        assert_eq!(
+            contribution
+                .surviving_assignment_paths()
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                "themeVariables.treeView.iconColor",
+                "themeVariables.treeView.labelColor",
+                "themeVariables.treeView.lineColor",
+            ])
+        );
+        for (path, value) in [
+            ("themeVariables.treeView.labelColor", label),
+            ("themeVariables.treeView.lineColor", line),
+            ("themeVariables.treeView.iconColor", icon),
+        ] {
+            assert_eq!(
+                contribution
+                    .surviving_assignment_value(path)
+                    .and_then(Value::as_str),
+                Some(value),
                 "path={path}"
             );
         }
