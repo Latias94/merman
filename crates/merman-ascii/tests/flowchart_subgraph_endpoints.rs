@@ -1,6 +1,7 @@
 mod support;
 
 use merman_ascii::AsciiRenderOptions;
+use merman_core::diagrams::flowchart::FlowNodeProvenance;
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use support::render_model;
 
@@ -27,7 +28,16 @@ fn upstream_subgraph_endpoint_edges_route_to_groups_without_visible_placeholder_
         panic!("upstream subgraph endpoint fixture should produce a flowchart model");
     };
     for endpoint_id in ["TOP", "B1", "B2"] {
-        assert!(model.nodes.iter().any(|node| node.id == endpoint_id));
+        let endpoint = model
+            .nodes
+            .iter()
+            .find(|node| node.id == endpoint_id)
+            .unwrap_or_else(|| panic!("missing endpoint node {endpoint_id:?}"));
+        assert_eq!(
+            endpoint.provenance,
+            FlowNodeProvenance::SubgraphAnchor,
+            "subgraph endpoints must carry explicit provenance"
+        );
         assert!(
             model
                 .subgraphs
@@ -51,6 +61,71 @@ fn upstream_subgraph_endpoint_edges_route_to_groups_without_visible_placeholder_
             "subgraph endpoint routing should preserve edge label {label:?}:\n{rendered}"
         );
     }
+}
+
+#[test]
+fn authored_node_can_share_a_subgraph_id_without_becoming_an_anchor() {
+    let source = concat!(
+        "flowchart-elk TD\n",
+        "G\n",
+        "subgraph G\n",
+        "  A\n",
+        "end\n",
+        "G --> A\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("authored node/subgraph collision should parse")
+        .expect("flowchart should be detected");
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected a flowchart model");
+    };
+    let authored = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "G")
+        .expect("authored G node");
+    assert_eq!(authored.provenance, FlowNodeProvenance::Authored);
+
+    let rendered = render_model(parsed.model(), &AsciiRenderOptions::ascii())
+        .expect("authored node/subgraph collision should render");
+    assert_eq!(
+        rendered.matches('G').count(),
+        2,
+        "the authored node and subgraph title must both remain visible:\n{rendered}"
+    );
+}
+
+#[test]
+fn standalone_shape_data_upgrades_a_prior_subgraph_anchor_to_authored() {
+    let source = concat!(
+        "flowchart-elk TD\n",
+        "subgraph G\n",
+        "  A\n",
+        "end\n",
+        "G --> A\n",
+        "G@{ shape: rect, label: \"Authored G\" }\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("standalone shapeData should parse")
+        .expect("flowchart should be detected");
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected a flowchart model");
+    };
+    let authored = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "G")
+        .expect("authored G node");
+    assert_eq!(authored.provenance, FlowNodeProvenance::Authored);
+
+    let rendered = render_model(parsed.model(), &AsciiRenderOptions::ascii())
+        .expect("standalone shapeData node should remain visible");
+    assert!(
+        rendered.contains("Authored G"),
+        "the authored node label must remain visible:\n{rendered}"
+    );
 }
 
 #[test]

@@ -391,6 +391,7 @@ mod tests {
     fn node(id: &str) -> FlowNode {
         FlowNode {
             id: id.to_string(),
+            provenance: Default::default(),
             label: Some(id.to_string()),
             label_type: None,
             layout_shape: None,

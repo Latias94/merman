@@ -350,6 +350,7 @@ pub(super) fn prepare(
         }
         let synthetic = FlowNode {
             id: id.clone(),
+            provenance: Default::default(),
             label: Some(id.clone()),
             label_type: Some("text".to_string()),
             layout_shape: Some("squareRect".to_string()),

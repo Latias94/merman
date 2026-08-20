@@ -5,8 +5,9 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 
 use super::{
-    ClickAction, Edge, EdgeDefaults, FlowSubGraph, LinkStylePos, Node, Stmt, TitleKind,
-    apply_shape_data_value_to_node, value_to_bool, value_to_string,
+    ClickAction, Edge, EdgeDefaults, FlowNodeProvenance, FlowNodeSyntax, FlowSubGraph,
+    LinkStylePos, Node, Stmt, TitleKind, apply_shape_data_value_to_node, value_to_bool,
+    value_to_string,
 };
 
 pub(super) struct FlowchartSemanticContext<'a> {
@@ -55,7 +56,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                     if let Some(&idx) = self.subgraph_index.get(&s.target) {
                         self.subgraphs[idx].styles.extend(s.styles.iter().cloned());
                     } else {
-                        let idx = self.ensure_node(&s.target);
+                        let idx = self.ensure_authored_node(&s.target);
                         self.nodes[idx].styles.extend(s.styles.iter().cloned());
                     }
                 }
@@ -216,7 +217,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                         continue;
                     }
 
-                    let idx = self.ensure_node(target);
+                    let idx = self.ensure_authored_node(target);
                     if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], v) {
                         return Ok(Err(Error::diagram_parse_fallback(
                             self.diagram_type.to_string(),
@@ -253,13 +254,17 @@ impl<'a> FlowchartSemanticContext<'a> {
         Ok(())
     }
 
-    fn ensure_node(&mut self, id: &str) -> usize {
+    fn ensure_authored_node(&mut self, id: &str) -> usize {
         if let Some(&idx) = self.node_index.get(id) {
+            self.nodes[idx].provenance = FlowNodeProvenance::Authored;
+            self.nodes[idx].syntax = FlowNodeSyntax::ExplicitDefinition;
             return idx;
         }
         let idx = self.nodes.len();
         self.nodes.push(Node {
             id: id.to_string(),
+            provenance: FlowNodeProvenance::Authored,
+            syntax: FlowNodeSyntax::ExplicitDefinition,
             id_span: None,
             label: None,
             label_type: TitleKind::Text,

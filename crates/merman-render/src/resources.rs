@@ -1771,6 +1771,7 @@ mod tests {
             vertex_calls: Vec::new(),
             nodes: vec![FlowNode {
                 id: "A".to_string(),
+                provenance: Default::default(),
                 label: Some("Alpha".to_string()),
                 label_type: None,
                 layout_shape: None,

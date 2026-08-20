@@ -173,6 +173,7 @@ fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartMode
         vertex_calls: Vec::new(),
         nodes: vec![FlowNode {
             id: "A".to_string(),
+            provenance: Default::default(),
             label: Some(label.to_string()),
             label_type: None,
             layout_shape: Some(layout_shape.to_string()),

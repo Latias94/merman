@@ -316,6 +316,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
         nodes: vec![
             merman_core::diagrams::flowchart::FlowNode {
                 id: "A".to_string(),
+                provenance: Default::default(),
                 label: Some("A".to_string()),
                 label_type: None,
                 layout_shape: None,
@@ -335,6 +336,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             },
             merman_core::diagrams::flowchart::FlowNode {
                 id: "B".to_string(),
+                provenance: Default::default(),
                 label: Some("B".to_string()),
                 label_type: None,
                 layout_shape: None,

@@ -4,8 +4,8 @@ grammar;
 
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
-  LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
-  SubgraphHeader, TitleKind, Tok
+  FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
 use crate::SourceSpan;
 
@@ -185,6 +185,8 @@ NodeRef: Node = {
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -208,6 +210,12 @@ NodeRef: Node = {
   <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -237,6 +245,8 @@ NodeRefChain: Node = {
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -260,6 +270,8 @@ NodeRefChain: Node = {
   <l:@L> <id:Id> <r:@R> <sd:ShapeData> <cls:ClassOpt> => Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: FlowNodeSyntax::ExplicitDefinition,
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -282,6 +294,12 @@ NodeRefChain: Node = {
   <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,

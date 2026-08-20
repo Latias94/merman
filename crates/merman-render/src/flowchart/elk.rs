@@ -1920,6 +1920,7 @@ mod tests {
     fn node(id: &str, label: Option<&str>, label_type: Option<&str>) -> FlowNode {
         FlowNode {
             id: id.to_string(),
+            provenance: Default::default(),
             label: label.map(str::to_string),
             label_type: label_type.map(str::to_string),
             layout_shape: Some("squareRect".to_string()),

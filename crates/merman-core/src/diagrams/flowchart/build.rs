@@ -1,4 +1,6 @@
-use super::{Edge, Node, Stmt, TitleKind, apply_shape_data_value_to_node};
+use super::{
+    Edge, FlowNodeProvenance, FlowNodeSyntax, Node, Stmt, TitleKind, apply_shape_data_value_to_node,
+};
 use crate::diagram::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
 use crate::{OperationControl, OperationControlResult};
 use serde_json::Value;
@@ -75,6 +77,12 @@ impl FlowchartBuildState {
                         {
                             return Ok(Err(error));
                         }
+                        if !edges.is_empty()
+                            && n.syntax == FlowNodeSyntax::BareReference
+                            && self.subgraph_ids.contains(&n.id)
+                        {
+                            n.provenance = FlowNodeProvenance::SubgraphAnchor;
+                        }
                         self.upsert_node(n);
                     }
                     for (index, id) in deferred_shape_data_vertex_calls.into_iter().enumerate() {
@@ -92,6 +100,7 @@ impl FlowchartBuildState {
                 }
                 Stmt::Node(n) => {
                     let mut n = n.as_ref().clone();
+                    n.provenance = FlowNodeProvenance::Authored;
                     self.vertex_calls.push(n.id.clone());
                     if n.shape_data.is_some() {
                         self.vertex_calls.push(n.id.clone());
@@ -111,17 +120,23 @@ impl FlowchartBuildState {
                 } => {
                     // Mermaid applies shapeData to edges if (and only if) an edge with that ID exists.
                     // For ordering parity we only insert a placeholder node when this currently refers to a node.
-                    if !self.used_edge_ids.contains(target) {
-                        // The upstream flowchart parser calls `addVertex(id)` and then
-                        // `addVertex(id, ..., shapeData)` for `id@{...}` statements.
-                        self.vertex_calls.push(target.clone());
-                        self.vertex_calls.push(target.clone());
+                    if self.used_edge_ids.contains(target) {
+                        continue;
                     }
-                    if !self.used_edge_ids.contains(target) && !self.node_index.contains_key(target)
-                    {
+
+                    // The upstream flowchart parser calls `addVertex(id)` and then
+                    // `addVertex(id, ..., shapeData)` for `id@{...}` statements.
+                    self.vertex_calls.push(target.clone());
+                    self.vertex_calls.push(target.clone());
+                    if let Some(&idx) = self.node_index.get(target) {
+                        self.nodes[idx].provenance = FlowNodeProvenance::Authored;
+                        self.nodes[idx].syntax = FlowNodeSyntax::ExplicitDefinition;
+                    } else {
                         let idx = self.nodes.len();
                         self.nodes.push(Node {
                             id: target.clone(),
+                            provenance: FlowNodeProvenance::Authored,
+                            syntax: FlowNodeSyntax::ExplicitDefinition,
                             id_span: *target_span,
                             label: None,
                             label_type: TitleKind::Text,
@@ -178,6 +193,8 @@ impl FlowchartBuildState {
                             let idx = self.nodes.len();
                             self.nodes.push(Node {
                                 id: s.target.clone(),
+                                provenance: FlowNodeProvenance::Authored,
+                                syntax: FlowNodeSyntax::ExplicitDefinition,
                                 id_span: None,
                                 label: None,
                                 label_type: TitleKind::Text,
@@ -210,6 +227,9 @@ impl FlowchartBuildState {
 
     fn upsert_node(&mut self, n: Node) {
         if let Some(&idx) = self.node_index.get(&n.id) {
+            if matches!(n.provenance, FlowNodeProvenance::Authored) {
+                self.nodes[idx].provenance = FlowNodeProvenance::Authored;
+            }
             if n.label.is_some() {
                 self.nodes[idx].label = n.label;
                 self.nodes[idx].label_type = n.label_type;
@@ -304,6 +324,8 @@ mod tests {
         let nodes = (0..256)
             .map(|index| Node {
                 id: format!("n{index}"),
+                provenance: FlowNodeProvenance::Authored,
+                syntax: FlowNodeSyntax::ExplicitDefinition,
                 id_span: None,
                 label: None,
                 label_type: TitleKind::Text,

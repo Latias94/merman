@@ -407,11 +407,8 @@ impl<'a> FlowchartMembershipIndex<'a> {
         self.group_ids.contains(endpoint_id)
     }
 
-    fn is_group_anchor_placeholder(&self, model: &FlowchartModel, node: &FlowNode) -> bool {
-        if !self.is_group_id(&node.id) || !is_default_group_anchor_node(node) {
-            return false;
-        }
-        model.subgraphs.iter().any(|group| group.id == node.id)
+    fn is_group_anchor_placeholder(&self, node: &FlowNode) -> bool {
+        self.is_group_id(&node.id) && node.is_subgraph_anchor()
     }
 
     fn canonical_group_indices(&self) -> &[usize] {
@@ -424,31 +421,6 @@ impl<'a> FlowchartMembershipIndex<'a> {
             .copied()
             .zip(self.canonical_group_members.iter().map(Vec::as_slice))
     }
-}
-
-fn is_default_group_anchor_node(node: &FlowNode) -> bool {
-    node.label.as_deref().is_none_or(|label| label == node.id)
-        && node
-            .label_type
-            .as_deref()
-            .is_none_or(|label_type| label_type == "text")
-        && node
-            .layout_shape
-            .as_deref()
-            .is_none_or(|layout_shape| layout_shape == "rect" || layout_shape == "squareRect")
-        && node.shape.is_none()
-        && node.icon.is_none()
-        && node.form.is_none()
-        && node.pos.is_none()
-        && node.img.is_none()
-        && node.constraint.is_none()
-        && node.asset_width.is_none()
-        && node.asset_height.is_none()
-        && node.classes.is_empty()
-        && node.styles.is_empty()
-        && node.link.is_none()
-        && node.link_target.is_none()
-        && !node.have_callback
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -659,7 +631,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
             .map_err(|_| projection_allocation_failed())?;
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_projection(execution, index)?;
-            if memberships.is_group_anchor_placeholder(model, node) {
+            if memberships.is_group_anchor_placeholder(node) {
                 nodes.push(None);
                 continue;
             }
@@ -815,12 +787,10 @@ fn validate_supported_flowchart_model(
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
-        if memberships.is_group_id(&node.id)
-            && !memberships.is_group_anchor_placeholder(model, node)
-        {
+        if node.is_subgraph_anchor() && !memberships.is_group_id(&node.id) {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
-                feature: "node ids colliding with subgraph ids",
+                feature: "subgraph anchors without matching subgraphs",
             });
         }
         if !node_ids.insert(node.id.as_str()) {
@@ -875,7 +845,8 @@ mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagrams::flowchart::{
-        FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
+        FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowNodeProvenance,
+        FlowSubgraph,
     };
     use merman_core::resources::ResourceProfile;
     use merman_core::{OperationControl, OperationPhase};
@@ -883,6 +854,7 @@ mod tests {
     fn flow_node(id: &str) -> FlowNode {
         FlowNode {
             id: id.to_string(),
+            provenance: Default::default(),
             label: Some(id.to_string()),
             label_type: None,
             layout_shape: None,
@@ -1347,6 +1319,8 @@ mod tests {
 
     #[test]
     fn flowchart_projection_hides_subgraph_endpoint_placeholder_node() {
+        let mut group_anchor = flow_node("TOP");
+        group_anchor.provenance = FlowNodeProvenance::SubgraphAnchor;
         let model = FlowchartModel {
             keyword: "flowchart".to_string(),
             acc_descr: None,
@@ -1357,7 +1331,7 @@ mod tests {
             vertex_calls: Vec::new(),
             nodes: vec![
                 flow_node("A"),
-                flow_node("TOP"),
+                group_anchor,
                 flow_node("member"),
                 flow_node("B"),
             ],
@@ -1401,7 +1375,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_projection_rejects_colliding_node_and_subgraph_ids() {
+    fn flowchart_projection_preserves_authored_node_colliding_with_subgraph_id() {
         let model = FlowchartModel {
             keyword: "flowchart".to_string(),
             acc_descr: None,
@@ -1410,11 +1384,12 @@ mod tests {
             direction: Some("LR".to_string()),
             edge_defaults: None,
             vertex_calls: Vec::new(),
-            nodes: {
-                let mut top = flow_node("TOP");
-                top.classes.push("authored".to_string());
-                vec![flow_node("A"), top, flow_node("member"), flow_node("B")]
-            },
+            nodes: vec![
+                flow_node("A"),
+                flow_node("TOP"),
+                flow_node("member"),
+                flow_node("B"),
+            ],
             edges: vec![flow_edge("A", "TOP"), flow_edge("TOP", "B")],
             subgraphs: vec![FlowSubgraph {
                 id: "TOP".to_string(),
@@ -1432,17 +1407,10 @@ mod tests {
         let options = AsciiRenderOptions::ascii();
         let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
-        let error = from_flowchart_model(&model, &options, &mut resources)
-            .expect_err("ambiguous node and subgraph identities must be rejected");
+        let graph = from_flowchart_model(&model, &options, &mut resources)
+            .expect("typed provenance keeps the authored node distinct from the group endpoint");
 
-        assert!(matches!(
-            error,
-            AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "node ids colliding with subgraph ids",
-            }
-        ));
-        assert_eq!(resources.layout_work_used(), 0);
-        assert_eq!(resources.document_cells_used(), 0);
+        assert!(graph.nodes.iter().any(|node| node.id == "TOP"));
+        assert!(graph.groups.iter().any(|group| group.id == "TOP"));
     }
 }

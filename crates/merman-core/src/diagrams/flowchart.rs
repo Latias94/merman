@@ -72,11 +72,11 @@ use text::{
 pub use model::FlowchartRenderLabelSources;
 pub use model::{
     FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
-    FlowSubgraph, FlowchartModel,
+    FlowNodeProvenance, FlowSubgraph, FlowchartModel,
 };
 
 pub(crate) use model::{
-    Edge, EdgeDefaults, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
+    Edge, EdgeDefaults, FlowNodeSyntax, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
 };
 
 pub(crate) use ast::{
@@ -262,6 +262,13 @@ pub(crate) fn render_model_to_compat_json(
                 edge.remove("endMarker");
                 edge.remove("strokeKind");
                 edge.remove("visibility");
+            }
+        }
+    }
+    if let Some(nodes) = root.get_mut("nodes").and_then(Value::as_array_mut) {
+        for node in nodes {
+            if let Some(node) = node.as_object_mut() {
+                node.remove("provenance");
             }
         }
     }
@@ -1666,6 +1673,8 @@ fn append_missing_subgraph_nodes(
         if existing_ids.insert(subgraph.id.clone()) {
             nodes.push(Node {
                 id: subgraph.id.clone(),
+                provenance: FlowNodeProvenance::SubgraphAnchor,
+                syntax: FlowNodeSyntax::BareReference,
                 id_span: None,
                 label: None,
                 label_type: TitleKind::Text,
@@ -1701,6 +1710,7 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> (FlowNode, Option<Stri
 
     let node = FlowNode {
         id: n.id,
+        provenance: n.provenance,
         label: Some(label),
         label_type: Some(title_kind_str(&n.label_type).to_string()),
         layout_shape: Some(layout_shape),
@@ -1857,6 +1867,97 @@ fn flow_subgraph_to_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn flowchart_test_meta(diagram_type: &str) -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: diagram_type.to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn flowchart_subgraph_endpoint_provenance_preserves_authored_nodes() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let endpoint_only = parse_flowchart_model_for_render(
+            "flowchart TD\nsubgraph G\n  A\nend\nG --> A\n",
+            &meta,
+        )
+        .expect("subgraph endpoint model");
+        let endpoint = endpoint_only
+            .nodes
+            .iter()
+            .find(|node| node.id == "G")
+            .expect("subgraph endpoint node");
+        assert_eq!(endpoint.provenance, FlowNodeProvenance::SubgraphAnchor);
+
+        for source in [
+            "flowchart TD\nG\nsubgraph G\n  A\nend\nG --> A\n",
+            "flowchart TD\nsubgraph G\n  A\nend\nG --> A\nG\n",
+            "flowchart TD\nsubgraph G\n  A\nend\nG:::authored --> A\n",
+            concat!(
+                "flowchart TD\n",
+                "G@{ shape: rect, label: \"Authored G\" }\n",
+                "subgraph G\n  A\nend\n",
+                "G --> A\n",
+            ),
+            concat!(
+                "flowchart TD\n",
+                "subgraph G\n  A\nend\n",
+                "G --> A\n",
+                "G@{ shape: rect, label: \"Authored G\" }\n",
+            ),
+        ] {
+            let model = parse_flowchart_model_for_render(source, &meta)
+                .expect("authored node and subgraph model");
+            let node = model
+                .nodes
+                .iter()
+                .find(|node| node.id == "G")
+                .expect("authored G node");
+            assert_eq!(node.provenance, FlowNodeProvenance::Authored, "{source}");
+        }
+    }
+
+    #[test]
+    fn flowchart_elk_missing_subgraph_node_is_an_explicit_anchor_fact() {
+        let meta = flowchart_test_meta("flowchart-elk");
+        let model =
+            parse_flowchart_model_for_render("flowchart-elk TD\nsubgraph Empty\nend\n", &meta)
+                .expect("empty ELK subgraph model");
+        let node = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "Empty")
+            .expect("ELK subgraph anchor");
+
+        assert_eq!(node.provenance, FlowNodeProvenance::SubgraphAnchor);
+    }
+
+    #[test]
+    fn legacy_flowchart_json_omits_typed_node_provenance() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let model = parse_flowchart_model_for_render(
+            "flowchart TD\nsubgraph G\n  A\nend\nG --> A\n",
+            &meta,
+        )
+        .expect("subgraph endpoint model");
+        assert!(
+            model
+                .nodes
+                .iter()
+                .any(|node| node.provenance == FlowNodeProvenance::SubgraphAnchor)
+        );
+
+        let compatibility = render_model_to_compat_json(&model, &meta)
+            .expect("legacy flowchart compatibility JSON");
+        let nodes = compatibility
+            .get("nodes")
+            .and_then(Value::as_array)
+            .expect("legacy nodes array");
+        assert!(nodes.iter().all(|node| node.get("provenance").is_none()));
+    }
 
     #[test]
     fn flowchart_model_trims_parser_labels_before_entity_decode() {

@@ -80,6 +80,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     for id in &self_loop_label_node_ids {
         extra_nodes.push(crate::flowchart::FlowNode {
             id: id.clone(),
+            provenance: Default::default(),
             label: Some(String::new()),
             label_type: None,
             layout_shape: None,

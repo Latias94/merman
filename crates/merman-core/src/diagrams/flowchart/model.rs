@@ -113,6 +113,13 @@ pub struct FlowEdgeDefaults {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowNode {
     pub id: String,
+    /// Records whether this node was authored by the user or synthesized solely as a subgraph
+    /// routing endpoint.
+    ///
+    /// Renderers must use this fact instead of inferring provenance from the node's visible
+    /// fields. A bare authored node can otherwise be indistinguishable from an endpoint anchor.
+    #[serde(default, skip_serializing_if = "FlowNodeProvenance::is_authored")]
+    pub provenance: FlowNodeProvenance,
     pub label: Option<String>,
     #[serde(default, rename = "labelType")]
     pub label_type: Option<String>,
@@ -144,6 +151,27 @@ pub struct FlowNode {
     pub link_target: Option<String>,
     #[serde(default, rename = "haveCallback")]
     pub have_callback: bool,
+}
+
+impl FlowNode {
+    pub fn is_subgraph_anchor(&self) -> bool {
+        matches!(self.provenance, FlowNodeProvenance::SubgraphAnchor)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum FlowNodeProvenance {
+    #[default]
+    Authored,
+    SubgraphAnchor,
+}
+
+impl FlowNodeProvenance {
+    fn is_authored(&self) -> bool {
+        matches!(self, Self::Authored)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -388,6 +416,8 @@ pub struct FlowSubgraph {
 #[derive(Debug, Clone)]
 pub(crate) struct Node {
     pub id: String,
+    pub provenance: FlowNodeProvenance,
+    pub syntax: FlowNodeSyntax,
     pub id_span: Option<SourceSpan>,
     pub label: Option<String>,
     pub label_type: TitleKind,
@@ -407,6 +437,12 @@ pub(crate) struct Node {
     pub link: Option<String>,
     pub link_target: Option<String>,
     pub have_callback: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FlowNodeSyntax {
+    BareReference,
+    ExplicitDefinition,
 }
 
 #[derive(Debug, Clone)]

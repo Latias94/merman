@@ -1,9 +1,9 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: 4f3bb5d09b2771cb65955dab00bb9251825bd7cf51a8bf1e75e861b28a84bd25
+// sha3: 67f0ec0b5bc37030a161f93ebd6117c8bf77c74b1413402f983270802fa7fdb3
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
-  LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
-  SubgraphHeader, TitleKind, Tok
+  FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
 use crate::SourceSpan;
 #[allow(unused_extern_crates)]
@@ -19,8 +19,8 @@ mod __parse__FlowchartAst {
 
     use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
-  LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
-  SubgraphHeader, TitleKind, Tok
+  FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
     use crate::SourceSpan;
     #[allow(unused_extern_crates)]
@@ -3107,6 +3107,8 @@ fn __action30<
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -3141,6 +3143,12 @@ fn __action31<
     Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -3180,6 +3188,8 @@ fn __action32<
     Node {
       id_span: Some(SourceSpan::new(l, r)),
       id,
+      provenance: FlowNodeProvenance::Authored,
+      syntax: FlowNodeSyntax::ExplicitDefinition,
       label: Some(text.text),
       label_type: text.kind,
       label_span,
@@ -3215,6 +3225,8 @@ fn __action33<
     Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: FlowNodeSyntax::ExplicitDefinition,
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
@@ -3248,6 +3260,12 @@ fn __action34<
     Node {
     id_span: Some(SourceSpan::new(l, r)),
     id,
+    provenance: FlowNodeProvenance::Authored,
+    syntax: if cls.is_empty() {
+      FlowNodeSyntax::BareReference
+    } else {
+      FlowNodeSyntax::ExplicitDefinition
+    },
     label: None,
     label_type: TitleKind::Text,
     label_span: None,
