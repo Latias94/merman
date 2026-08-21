@@ -14,9 +14,18 @@ use crate::family::{
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod edge_stroke;
+mod surfaces;
 
 use edge_stroke::ArchitectureEdgeStrokePlan;
 pub(crate) use edge_stroke::ArchitectureEdgeThemeReceipt;
+use surfaces::ArchitectureSurfaceThemePlan;
+pub(crate) use surfaces::{
+    ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,
+    ArchitectureGroupTerminal, ArchitectureGroupTerminalEmission,
+    ArchitecturePaintTerminalEmission, ArchitectureServiceTerminal,
+    ArchitectureServiceTerminalEmission, ArchitectureSurfaceThemeReceipt,
+    ArchitectureTextTerminalEmission,
+};
 
 /// Final Architecture group paint shared by terminal emission and family evidence.
 #[derive(Debug)]
@@ -27,6 +36,7 @@ pub(crate) struct ArchitectureGroupThemePlan {
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     terminal_receipt: OnceLock<()>,
     edge_stroke: ArchitectureEdgeStrokePlan,
+    surfaces: Box<ArchitectureSurfaceThemePlan>,
 }
 
 impl ArchitectureGroupThemePlan {
@@ -41,6 +51,10 @@ impl ArchitectureGroupThemePlan {
             return Ok(Self::baseline(group_count, edge_count));
         };
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let surfaces = Box::new(ArchitectureSurfaceThemePlan::resolve(
+            Some(theme),
+            effective_config,
+        ));
         let edge_stroke = ArchitectureEdgeStrokePlan::resolve(
             theme,
             effective_config,
@@ -62,6 +76,7 @@ impl ArchitectureGroupThemePlan {
                 pending,
                 terminal_receipt: OnceLock::new(),
                 edge_stroke,
+                surfaces,
             });
         }
 
@@ -202,6 +217,7 @@ impl ArchitectureGroupThemePlan {
             pending,
             terminal_receipt: OnceLock::new(),
             edge_stroke,
+            surfaces,
         })
     }
 
@@ -213,6 +229,7 @@ impl ArchitectureGroupThemePlan {
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
             edge_stroke: ArchitectureEdgeStrokePlan::baseline(edge_count),
+            surfaces: Box::new(ArchitectureSurfaceThemePlan::baseline()),
         }
     }
 
@@ -250,6 +267,21 @@ impl ArchitectureGroupThemePlan {
         self.edge_stroke.record_terminal(receipt)
     }
 
+    pub(crate) fn begin_surface_terminal_receipt<'a>(
+        &self,
+        services: impl IntoIterator<Item = ArchitectureServiceTerminal<'a>>,
+        groups: impl IntoIterator<Item = ArchitectureGroupTerminal<'a>>,
+        edges: impl IntoIterator<Item = ArchitectureEdgeTerminal<'a>>,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Option<ArchitectureSurfaceThemeReceipt>, OperationWorkError> {
+        self.surfaces
+            .begin_terminal_receipt(services, groups, edges, work_meter)
+    }
+
+    pub(crate) fn record_surface_terminal(&self, receipt: ArchitectureSurfaceThemeReceipt) -> bool {
+        self.surfaces.record_terminal(receipt)
+    }
+
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         if self.terminal_receipt.get().is_some() {
@@ -258,6 +290,7 @@ impl ArchitectureGroupThemePlan {
             }
         }
         self.edge_stroke.finish_evidence(&mut evidence);
+        self.surfaces.finish_evidence(&mut evidence);
         evidence
     }
 }

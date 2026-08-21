@@ -11,7 +11,7 @@ use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
-use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 use merman_theme_contract::{ThemeColorTokenV1, ThemeDefinitionV1, ThemeTokensV1};
 use regex::Regex;
 use serde_json::json;
@@ -97,6 +97,41 @@ fn er_relation_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> Diagra
         .expect("compile ER relation stroke theme")
 }
 
+fn er_visible_text_theme() -> DiagramTheme {
+    let text = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#112233").expect("valid ER text fill")),
+    );
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(text)))
+        .expect("compile ER visible text theme")
+}
+
+fn er_table_row_theme() -> DiagramTheme {
+    let odd_row = ThemeRule::new(
+        ThemeTarget::Table,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#aabbcc").expect("valid ER odd row fill")),
+    )
+    .with_variant(ThemeVariant::Odd);
+    let even_row = ThemeRule::new(
+        ThemeTarget::Table,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#ddeeff").expect("valid ER even row fill")),
+    )
+    .with_variant(ThemeVariant::Even);
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                [odd_row, even_row]
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule),
+            ),
+        )
+        .expect("compile ER table row theme")
+}
+
 fn relationship_path_tags(svg: &str) -> Vec<&str> {
     Regex::new(r#"<path[^>]*class="[^"]*relationshipLine[^"]*"[^>]*/>"#)
         .expect("ER relationship path regex")
@@ -140,14 +175,28 @@ fn try_prepare_er_family_with_theme_and_engine(
     theme: &DiagramTheme,
     engine: Engine,
 ) -> merman_render::Result<family::FamilyRenderArtifact> {
+    try_prepare_er_family_with_theme_and_engine_requirement(
+        text,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn try_prepare_er_family_with_theme_and_engine_requirement(
+    text: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    requirement: ThemePortabilityRequirement,
+) -> merman_render::Result<family::FamilyRenderArtifact> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse themed ER diagram")
         .expect("detect themed ER diagram");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable ER session");
+        .expect("begin ER session");
     family::prepare(parsed, &LayoutOptions::default(), session)
 }
 
@@ -509,6 +558,196 @@ fn er_tokens_only_definition_reaches_the_model_owned_entity_surface() {
 }
 
 #[test]
+fn er_visible_text_and_relation_label_have_direct_terminal_receipts() {
+    let source = r#"erDiagram
+  CUSTOMER {
+    string id PK
+    string name
+  }
+  CUSTOMER ||--o{ ORDER : owns
+"#;
+    let theme = er_visible_text_theme();
+    let artifact = prepare_er_family_with_theme_and_engine(source, &theme, Engine::new());
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render directly themed ER visible surfaces");
+    let svg = rendered.svg();
+
+    assert_eq!(
+        svg.matches(r#"style="color:#112233;fill:#112233""#).count(),
+        8,
+        "the two entity names, five non-empty attribute cells, and relation label must own the direct text fill: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<span class="edgeLabel" style="color:#112233;fill:#112233">"#),
+        "ER relationship label terminal must own its direct fill: {svg}"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    let native_artifact = prepare_er_family_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false
+        }))),
+    );
+    let native = native_artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render native ER relationship label with direct text fill");
+    assert!(
+        Regex::new(r#"<text[^>]*style="color:#112233;fill:#112233"[^>]*>.*?owns.*?</text>"#)
+            .expect("native ER relationship label regex")
+            .is_match(native.svg()),
+        "native ER relationship label text must own its direct fill after stylesheet cascade: {}",
+        native.svg()
+    );
+    let native_evidence =
+        merman_render::__private::family_evidence(native.into_completion().report());
+    assert_eq!(native_evidence.applied_count(), 1);
+    assert_eq!(native_evidence.theme_residual_count(), 0);
+
+    let resvg = prepare_er_family_with_theme_and_engine(source, &theme, Engine::new())
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render HTML ER relationship label for resvg")
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("finalize HTML ER relationship label for resvg");
+    let native_svg = merman_render::__private::native_export_svg(resvg.svg());
+    let native_document =
+        roxmltree::Document::parse(native_svg).expect("valid native ER relationship label SVG");
+    let relationship_label = native_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node
+                    .descendants()
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains("owns"))
+        })
+        .unwrap_or_else(|| panic!("native ER relationship label: {native_svg}"));
+    assert_eq!(relationship_label.attribute("fill"), Some("#112233"));
+}
+
+#[test]
+fn er_mixed_html_color_owners_cannot_prove_portable_typed_text_fill() {
+    let theme = er_visible_text_theme();
+    for (label, source_owned_marker) in [
+        (
+            "Before <span style='color:red'>Red</span> After",
+            "color:red",
+        ),
+        (
+            "Before <span class='label'>CSS-owned</span> After",
+            "class='label'",
+        ),
+    ] {
+        let source = format!("erDiagram\n  CUSTOMER ||--o{{ ORDER : \"{label}\"\n");
+        let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .expect("prepare mixed-color ER relationship label");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render mixed-color ER relationship label in best-effort mode");
+        assert!(
+            rendered
+                .svg()
+                .contains(r#"style="color:#112233;fill:#112233""#),
+            "the inherited runs should keep the typed browser color: {}",
+            rendered.svg()
+        );
+        assert!(
+            rendered.svg().contains(source_owned_marker),
+            "the source-owned run should survive in browser SVG: {}",
+            rendered.svg()
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+
+        let strict = prepare_er_family_with_theme_and_engine(&source, &theme, Engine::new());
+        let error =
+            match strict.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("mixed XHTML color ownership must fail closed in portable mode"),
+                Err(error) => error,
+            };
+        assert!(
+            matches!(
+                error,
+                merman_render::Error::IncompleteFamilyTheme {
+                    family_id: merman_render::DiagramFamilyId::ER,
+                    required_count: 1,
+                    accounted_count: 0,
+                }
+            ),
+            "unexpected ER mixed-color portability error: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn er_table_odd_even_remain_legacy_compatibility_until_qualified_cutover() {
+    let source = r#"erDiagram
+  CUSTOMER {
+    string id PK
+    string name
+  }
+"#;
+    let theme = er_table_row_theme();
+
+    let error = match try_prepare_er_family_with_theme_and_engine(source, &theme, Engine::new()) {
+        Ok(_) => panic!("ER table Odd/Even routes must remain compatibility residuals"),
+        Err(error) => error,
+    };
+    match error {
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id,
+            residual_count,
+        } => {
+            assert_eq!(family_id, merman_render::DiagramFamilyId::ER);
+            assert_eq!(residual_count, 2);
+        }
+        other => panic!("expected ER table compatibility residual, got {other}"),
+    }
+
+    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("BestEffort ER table rendering should retain the compatibility bridge");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render ER table compatibility bridge");
+    let svg = rendered.svg();
+
+    assert!(
+        Regex::new(r##"class="row-rect-odd"[^>]*><path[^>]*fill="#aabbcc""##)
+            .expect("ER odd bridge fill regex")
+            .is_match(svg),
+        "odd ER row must retain rowOdd compatibility projection: {svg}"
+    );
+    assert!(
+        Regex::new(r##"class="row-rect-even"[^>]*><path[^>]*fill="#ddeeff""##)
+            .expect("ER even bridge fill regex")
+            .is_match(svg),
+        "even ER row must retain rowEven compatibility projection: {svg}"
+    );
+    assert!(
+        !svg.contains("style=\"fill:#aabbcc") && !svg.contains("style=\"fill:#ddeeff"),
+        "ER table rows must not claim direct typed inline fills before qualified cutover: {svg}"
+    );
+}
+
+#[test]
 fn er_source_entity_styles_outrank_typed_entity_paint() {
     let source = r#"erDiagram
   BARE
@@ -822,7 +1061,6 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
     let legacy_cases = [
         ThemeRule::new(ThemeTarget::Relation, solid()).with_variant(ThemeVariant::Default),
         ThemeRule::new(ThemeTarget::Relation, fill()),
-        ThemeRule::new(ThemeTarget::Text, fill()),
         ThemeRule::new(ThemeTarget::Title, fill()),
     ];
 
@@ -867,4 +1105,39 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
             other => panic!("expected ER legacy compatibility residual, got {other}"),
         }
     }
+}
+
+#[test]
+fn er_shadowed_unsupported_relation_selector_is_not_applicable() {
+    let unsupported_ordinal = ThemeRule::new(
+        ThemeTarget::Relation,
+        ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#aa0000").expect("valid ordinal stroke")),
+    )
+    .with_ordinal(OrdinalSelector::exact(1).expect("valid ER relation ordinal"));
+    let final_static = ThemeRule::new(
+        ThemeTarget::Relation,
+        ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#123456").expect("valid static stroke")),
+    );
+    let theme = er_relation_rules_theme([unsupported_ordinal, final_static]);
+    let rendered = prepare_er_family_with_theme_and_engine(
+        "erDiagram\n  A ||--o{ B : owns\n",
+        &theme,
+        Engine::new(),
+    )
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("a shadowed unsupported ER selector must not block the final direct winner");
+
+    assert!(
+        relationship_path_tags(rendered.svg())
+            .iter()
+            .all(|path| path.contains("stroke:#123456")),
+        "the final static winner must reach every visible relation: {}",
+        rendered.svg()
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }

@@ -97,18 +97,17 @@ pub(crate) use base_typography::{
     FlowchartBaseTypographyStyles,
 };
 pub(crate) use config::{
-    FlowchartConfigView, FlowchartLayoutSettings, FlowchartTypographyConfigOwnership,
-    flowchart_typography_config_ownership,
+    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartConfigView, FlowchartLayoutSettings,
+    FlowchartTypographyConfigOwnership, flowchart_typography_config_ownership,
 };
+#[cfg(test)]
+pub(crate) use label::flowchart_wrap_svg_source_word_lines;
 pub(crate) use label::{
     FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
     flowchart_label_text_is_empty_for_mode, flowchart_node_svg_width_mode,
-    flowchart_non_markdown_label_for_html, flowchart_trim_html_collapsible_whitespace,
-};
-#[cfg(test)]
-pub(crate) use label::{
-    flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
+    flowchart_non_markdown_label_for_html, flowchart_non_markdown_svg_source_word_lines,
+    flowchart_trim_html_collapsible_whitespace,
 };
 pub(crate) use node::{
     NodeLayoutDimensionsRequest, flowchart_node_render_dimensions, node_layout_dimensions,

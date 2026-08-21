@@ -48,6 +48,47 @@ pub struct LayoutLabel {
 pub struct ClassNodeRowMetrics {
     pub members: Vec<crate::text::TextMetrics>,
     pub methods: Vec<crate::text::TextMetrics>,
+    pub(crate) paint_facts: ClassNodeLabelPaintFacts,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ClassNodeLabelPaintFacts {
+    visible_runs: usize,
+    inherited_color_runs: usize,
+}
+
+impl ClassNodeLabelPaintFacts {
+    pub(crate) fn observe(
+        &mut self,
+        facts: &crate::text::VisibleTextStyleFacts,
+        parent_owns_color: bool,
+    ) {
+        if !facts.parse_valid() {
+            self.visible_runs = self.visible_runs.saturating_add(1);
+            return;
+        }
+        self.visible_runs = self.visible_runs.saturating_add(facts.visible_run_count());
+        if !parent_owns_color {
+            self.inherited_color_runs = self
+                .inherited_color_runs
+                .saturating_add(facts.inherited_color_run_count());
+        }
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.visible_runs = self.visible_runs.saturating_add(other.visible_runs);
+        self.inherited_color_runs = self
+            .inherited_color_runs
+            .saturating_add(other.inherited_color_runs);
+    }
+
+    pub(crate) const fn source_owns_every_visible_run(self) -> bool {
+        self.visible_runs != 0 && self.inherited_color_runs == 0
+    }
+
+    pub(crate) const fn has_mixed_color_ownership(self) -> bool {
+        self.inherited_color_runs != 0 && self.inherited_color_runs < self.visible_runs
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +96,7 @@ pub struct ClassPreparedHtmlLabel {
     pub metrics: crate::text::TextMetrics,
     pub max_width_px: i64,
     pub xhtml: String,
+    pub(crate) visible_style_facts: crate::text::VisibleTextStyleFacts,
 }
 
 #[derive(Debug, Clone)]
@@ -63,12 +105,22 @@ pub struct ClassPreparedHtmlNodeLabels {
     pub annotation: Option<ClassPreparedHtmlLabel>,
     pub members: Vec<ClassPreparedHtmlLabel>,
     pub methods: Vec<ClassPreparedHtmlLabel>,
+    pub(crate) paint_facts: ClassNodeLabelPaintFacts,
 }
 
 #[derive(Debug, Clone)]
 pub enum ClassNodeLabelPlan {
     RowMetrics(ClassNodeRowMetrics),
     PreparedHtml(ClassPreparedHtmlNodeLabels),
+}
+
+impl ClassNodeLabelPlan {
+    pub(crate) const fn paint_facts(&self) -> ClassNodeLabelPaintFacts {
+        match self {
+            Self::RowMetrics(metrics) => metrics.paint_facts,
+            Self::PreparedHtml(prepared) => prepared.paint_facts,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -752,6 +804,10 @@ pub struct ErDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub bounds: Option<Bounds>,
+    /// Renderer-owned labels prepared by the layout pass and reused by theme evidence and SVG
+    /// emission. This is intentionally excluded from compatibility layout JSON.
+    #[serde(skip)]
+    pub(crate) prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
 
 #[derive(Debug, Clone)]

@@ -10,8 +10,8 @@ use super::icons::{
     arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
 };
 use super::labels::{
-    svg_line_formatted_bbox_width_px, wrap_svg_words_to_lines, write_architecture_service_title,
-    write_svg_text_lines,
+    ArchitectureTextAnchor, ArchitectureTextBaseline, architecture_svg_text_terminal_bounds,
+    wrap_svg_words_to_lines, write_architecture_service_title, write_svg_text_lines,
 };
 use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
@@ -27,6 +27,8 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(super) content_bounds: &'a mut Option<Bounds>,
+    pub(super) surface_theme_receipt:
+        Option<&'a mut crate::architecture::ArchitectureSurfaceThemeReceipt>,
 }
 
 fn write_diagram_service_id(out: &mut impl SvgOutput, diagram_id: &str, service_id: &str) {
@@ -51,6 +53,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let sanitize_config = ctx.sanitize_config;
+    let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
     let service_count = model.services().count();
     let junction_count = model.junctions().count();
 
@@ -58,7 +61,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         out.push_str(r#"<g class="architecture-services"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
-        for svc in model.services() {
+        for (service_index, svc) in model.services().enumerate() {
             let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
 
             out.push_str(r#"<g id=""#);
@@ -70,17 +73,36 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 y = fmt(y)
             );
 
-            if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
-                // Mermaid uses `width = iconSize * 1.5` for service titles.
-                write_architecture_service_title(
-                    out,
-                    title,
-                    settings.icon_size_px,
-                    settings.icon_size_px * 1.5,
-                    text_measurer,
-                    &settings.text_style,
-                );
-            }
+            let has_title = svc.title.is_some_and(|title| !title.trim().is_empty());
+            let has_icon_text =
+                svc.icon.is_none() && svc.icon_text.is_some_and(|text| !text.trim().is_empty());
+            let service_title_style = surface_theme_receipt.as_deref().and_then(|receipt| {
+                receipt
+                    .service_title_style(service_index, svc.id)
+                    .map(ToOwned::to_owned)
+            });
+            let service_background_style = surface_theme_receipt.as_deref().and_then(|receipt| {
+                receipt
+                    .service_background_style(service_index, svc.id)
+                    .map(ToOwned::to_owned)
+            });
+            let service_title_bounds =
+                if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
+                    // Mermaid uses `width = iconSize * 1.5` for service titles.
+                    Some(write_architecture_service_title(
+                        out,
+                        title,
+                        x,
+                        y,
+                        settings.icon_size_px,
+                        settings.icon_size_px * 1.5,
+                        text_measurer,
+                        &settings.text_style,
+                        service_title_style.as_deref(),
+                    ))
+                } else {
+                    None
+                };
 
             out.push_str("<g>");
             match (svc.icon, svc.icon_text) {
@@ -120,19 +142,26 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     let sanitized = escape_xml_ampersands_preserving_xml_entities(&sanitized);
                     let _ = write!(
                         out,
-                        r#"<g><foreignObject width="{w}" height="{h}"><div class="node-icon-text" style="height: {h}px;" xmlns="http://www.w3.org/1999/xhtml"><div style="-webkit-line-clamp: {clamp};">{text}</div></div></foreignObject></g>"#,
+                        r#"<g><foreignObject width="{w}" height="{h}"><div class="node-icon-text" style="height: {h}px;" xmlns="http://www.w3.org/1999/xhtml"><div style="-webkit-line-clamp: {clamp};">"#,
                         w = fmt(settings.icon_size_px),
                         h = fmt(settings.icon_size_px),
                         clamp = line_clamp,
-                        text = sanitized
                     );
+                    out.push_str(&sanitized);
+                    out.push_str("</div></div></foreignObject></g>");
                 }
                 (None, None) => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
                     write_diagram_node_id(out, diagram_id, svc.id);
+                    out.push('"');
+                    if let Some(style) = service_background_style.as_deref() {
+                        out.push_str(r#" style=""#);
+                        escape_attr_into(out, style);
+                        out.push('"');
+                    }
                     let _ = write!(
                         out,
-                        r#"" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
+                        r#" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
                         s = fmt(settings.icon_size_px),
                         inner_s = fmt(settings.icon_size_px - 5.0)
                     );
@@ -142,6 +171,29 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
 
             out.push_str("</g>");
             out.checkpoint()?;
+            if let Some(receipt) = surface_theme_receipt.as_deref_mut() {
+                let background_emitted = svc.icon.is_none() && svc.icon_text.is_none();
+                receipt.record_checkpointed_service(
+                    crate::architecture::ArchitectureServiceTerminalEmission {
+                        index: service_index,
+                        id: svc.id,
+                        background: crate::architecture::ArchitecturePaintTerminalEmission {
+                            emitted: background_emitted,
+                            style: background_emitted
+                                .then_some(service_background_style.as_deref())
+                                .flatten(),
+                        },
+                        title: crate::architecture::ArchitectureTextTerminalEmission {
+                            emitted: has_title,
+                            style: has_title
+                                .then_some(service_title_style.as_deref())
+                                .flatten(),
+                            bounds: service_title_bounds.as_ref(),
+                        },
+                        has_icon_text,
+                    },
+                );
+            }
         }
 
         for junction in model.junctions() {
@@ -164,6 +216,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         out.push_str("</g>");
     }
     out.checkpoint()?;
+    ctx.surface_theme_receipt = surface_theme_receipt;
     Ok(())
 }
 
@@ -177,6 +230,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let content_bounds = &mut *ctx.content_bounds;
+    let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
 
     if ctx.model.groups_len() == 0 {
         out.push_str(r#"<g class="architecture-groups"/>"#);
@@ -246,25 +300,37 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                 shifted_y1 += settings.arch_font_size_px / 2.0 - 3.0;
             }
 
-            if let Some(title) = grp.title.map(str::trim).filter(|t| !t.is_empty()) {
+            let has_title = grp.title.is_some_and(|title| !title.trim().is_empty());
+            let group_title_style = surface_theme_receipt.as_deref().and_then(|receipt| {
+                receipt
+                    .group_title_style(group_index, grp.id)
+                    .map(ToOwned::to_owned)
+            });
+            let group_title_bounds = if let Some(title) =
+                grp.title.map(str::trim).filter(|t| !t.is_empty())
+            {
                 let lines = wrap_svg_words_to_lines(title, w, text_measurer, &settings.text_style);
+                let title_x = shifted_x1 + settings.half_icon + 4.0;
+                let title_y = shifted_y1 + settings.half_icon + 2.0;
+                let terminal_bounds = architecture_svg_text_terminal_bounds(
+                    &lines,
+                    title_x,
+                    title_y,
+                    ArchitectureTextAnchor::Start,
+                    ArchitectureTextBaseline::Start,
+                    text_measurer,
+                    &settings.text_style,
+                );
 
                 // Group titles are SVG `<text>` (no explicit bbox geometry), so our SVG bbox pass
                 // cannot "see" their extents. Measure the emitted outer tspan DOM primitive so
                 // `setupGraphViewbox(svg.getBBox() + padding)` matches upstream in parity-root.
-                let title_bbox_w = lines
-                    .iter()
-                    .map(|line| {
-                        svg_line_formatted_bbox_width_px(line, text_measurer, &settings.text_style)
-                    })
-                    .fold(0.0_f64, f64::max);
-                if title_bbox_w.is_finite() && title_bbox_w > 0.0 {
-                    let title_x = shifted_x1 + settings.half_icon + 4.0;
+                if terminal_bounds.max_x > terminal_bounds.min_x {
                     // Keep Y extents within the group rect; we only need this to expand X.
                     let title_bounds = Bounds {
-                        min_x: title_x,
+                        min_x: terminal_bounds.min_x,
                         min_y: y,
-                        max_x: title_x + title_bbox_w,
+                        max_x: terminal_bounds.max_x,
                         max_y: y + h,
                     };
                     extend_bounds(content_bounds, title_bounds);
@@ -272,22 +338,44 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess, O: SvgOut
                 let _ = write!(
                     out,
                     r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="start" text-anchor="start" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
-                    x = fmt(shifted_x1 + settings.half_icon + 4.0),
-                    y = fmt(shifted_y1 + settings.half_icon + 2.0)
+                    x = fmt(title_x),
+                    y = fmt(title_y)
                 );
-                write_svg_text_lines(out, &lines);
+                write_svg_text_lines(
+                    out,
+                    &lines,
+                    group_title_style.as_deref(),
+                    Some(&terminal_bounds),
+                );
                 out.push_str("</g></g>");
-            }
+                Some(terminal_bounds)
+            } else {
+                None
+            };
 
             out.push_str("</g>");
             out.checkpoint()?;
             if let Some(receipt) = terminal_receipt.as_deref_mut() {
                 receipt.record_checkpointed_group(group_index, emitted_inline_style);
             }
+            if let Some(receipt) = surface_theme_receipt.as_deref_mut() {
+                receipt.record_checkpointed_group(
+                    crate::architecture::ArchitectureGroupTerminalEmission {
+                        index: group_index,
+                        id: grp.id,
+                        title: crate::architecture::ArchitectureTextTerminalEmission {
+                            emitted: has_title,
+                            style: has_title.then_some(group_title_style.as_deref()).flatten(),
+                            bounds: group_title_bounds.as_ref(),
+                        },
+                    },
+                );
+            }
         }
 
         out.push_str("</g>");
     }
     out.checkpoint()?;
+    ctx.surface_theme_receipt = surface_theme_receipt;
     Ok(())
 }

@@ -321,6 +321,17 @@ impl GitGraphNodePalettePlan {
                 UnsupportedTerminalDomain::direct(ThemeTarget::Marker, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Edge,
+                    TerminalVariantDomain::uniform(
+                        if layout.show_branches {
+                            layout.branches.len()
+                        } else {
+                            0
+                        },
+                        ThemeVariant::Default,
+                    ),
+                ),
             ],
             work_meter,
         )?;

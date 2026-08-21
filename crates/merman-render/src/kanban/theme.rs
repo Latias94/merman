@@ -571,6 +571,7 @@ pub(crate) struct KanbanTaskThemeReceipt {
     schema_valid: bool,
     palette_capabilities: BTreeSet<ThemeCapability>,
     label_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
+    unverified_label_rules: BTreeSet<usize>,
 }
 
 #[derive(Debug)]
@@ -601,6 +602,7 @@ impl KanbanTaskThemeReceipt {
             schema_valid,
             palette_capabilities: BTreeSet::new(),
             label_capabilities: BTreeMap::new(),
+            unverified_label_rules: BTreeSet::new(),
         }
     }
 
@@ -633,6 +635,7 @@ impl KanbanTaskThemeReceipt {
         role: KanbanTaskLabelRole,
         actual_group_style: &str,
         actual_div_style: &str,
+        visible_run_count: usize,
         inherited_color_run_count: usize,
         decision: &KanbanTaskTerminalDecision,
     ) {
@@ -651,7 +654,12 @@ impl KanbanTaskThemeReceipt {
         self.schema_valid &= item.semantic_id.as_ref() == semantic_id;
         self.schema_valid &= item.expected_labels.contains(role);
         self.schema_valid &= item.emitted_labels.insert(role);
-        self.schema_valid &= inherited_color_run_count > 0;
+        self.schema_valid &= visible_run_count > 0;
+        self.schema_valid &=
+            inherited_color_run_count > 0 && inherited_color_run_count <= visible_run_count;
+        if inherited_color_run_count != visible_run_count {
+            self.unverified_label_rules.insert(rule_index);
+        }
         self.schema_valid &=
             terminal_style_property(actual_group_style, "color") == Some(expected_css);
         self.schema_valid &=
@@ -666,6 +674,7 @@ impl KanbanTaskThemeReceipt {
 
     fn proves_label_rule(&self, rule_index: usize) -> bool {
         self.schema_valid
+            && !self.unverified_label_rules.contains(&rule_index)
             && self
                 .label_capabilities
                 .get(&rule_index)
@@ -761,6 +770,7 @@ mod tests {
             "color:#000000;fill:#000000;text-align:left !important",
             "color: #000000; text-align:center",
             1,
+            1,
             &decision,
         );
         assert!(!incomplete.proves(1));
@@ -778,6 +788,7 @@ mod tests {
                 "color:#ffffff;fill:#000000;text-align:left !important",
                 "color: #000000; text-align:center",
                 1,
+                1,
                 &decision,
             );
         }
@@ -793,6 +804,7 @@ mod tests {
                 "color:#000000;fill:#000000;text-align:left !important",
                 "color: #000000; text-align:center",
                 1,
+                1,
                 &decision,
             );
         }
@@ -805,6 +817,7 @@ mod tests {
             KanbanTaskLabelRole::Title,
             "color:#000000;fill:#000000;text-align:left !important",
             "color: #000000; text-align:center",
+            1,
             1,
             &decision,
         );

@@ -17,10 +17,27 @@ pub(super) fn class_math_html_label(
 
 pub(super) struct ClassInlineStyles<'a> {
     pub style_attr: String,
+    pub color: Option<&'a str>,
     pub fill: Option<&'a str>,
     pub stroke: Option<&'a str>,
     pub stroke_width: Option<&'a str>,
     pub stroke_dasharray: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ClassNodeLabelTerminalTruth {
+    source_owns_paint: bool,
+    typed_fill_verified: bool,
+}
+
+impl ClassNodeLabelTerminalTruth {
+    pub(super) const fn source_owns_paint(self) -> bool {
+        self.source_owns_paint
+    }
+
+    pub(super) const fn typed_fill_verified(self) -> bool {
+        self.typed_fill_verified
+    }
 }
 
 pub(super) struct ClassHtmlLabelSpec<'a> {
@@ -83,6 +100,73 @@ pub(super) fn write_class_svg_text_markdown(
     include_style: bool,
 ) {
     crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
+}
+
+pub(super) fn write_class_svg_text_markdown_with_style(
+    out: &mut impl SvgOutput,
+    markdown: &str,
+    terminal_style: &str,
+) {
+    if terminal_style.trim().is_empty() {
+        write_class_svg_text_markdown(out, markdown, true);
+        return;
+    }
+
+    let markdown = markdown
+        .strip_prefix('\x60')
+        .and_then(|value| value.strip_suffix('\x60'))
+        .unwrap_or(markdown);
+    let lines = crate::text::mermaid_markdown_to_lines(markdown, true);
+    out.push_str(r#"<text y="-10.1" style=""#);
+    super::super::util::escape_attr_into(out, terminal_style);
+    out.push_str(r#"">"#);
+
+    if lines.len() == 1 && lines[0].is_empty() {
+        out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        out.push_str("</text>");
+        return;
+    }
+
+    for (line_index, words) in lines.iter().enumerate() {
+        if line_index == 0 {
+            out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+        } else {
+            let y_em = if line_index == 1 {
+                "1em".to_string()
+            } else {
+                format!("{:.1}em", 1.0 + (line_index as f64 - 1.0) * 1.1)
+            };
+            let _ = write!(
+                out,
+                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
+                y_em
+            );
+        }
+        for (word_index, (word, kind)) in words.iter().enumerate() {
+            let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
+                "italic"
+            } else {
+                "normal"
+            };
+            let font_weight = if *kind == crate::text::MermaidMarkdownWordType::Strong {
+                "bold"
+            } else {
+                "normal"
+            };
+            let _ = write!(
+                out,
+                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                font_style, font_weight
+            );
+            if word_index > 0 {
+                out.push(' ');
+            }
+            escape_xml_into(out, word);
+            out.push_str("</tspan>");
+        }
+        out.push_str("</tspan>");
+    }
+    out.push_str("</text>");
 }
 
 pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, include_style: bool) {
@@ -335,42 +419,36 @@ pub(super) fn class_apply_inline_styles<'a>(
     node: &'a super::ClassSvgNode,
 ) -> ClassInlineStyles<'a> {
     let mut style_attr = String::new();
+    let mut color: Option<&str> = None;
     let mut fill: Option<&str> = None;
     let mut stroke: Option<&str> = None;
     let mut stroke_width: Option<&str> = None;
     let mut stroke_dasharray: Option<&str> = None;
 
     for raw in &node.styles {
-        let trimmed = raw.trim().trim_end_matches(';').trim();
-        if trimmed.is_empty() {
+        let Some(parsed) = crate::mermaid_style::parse_style_declaration(raw) else {
             continue;
-        }
+        };
         if !style_attr.is_empty() {
             style_attr.push(';');
         }
-        style_attr.push_str(trimmed);
+        style_attr.push_str(parsed.property_css());
+        style_attr.push(':');
+        style_attr.push_str(parsed.source_value());
 
-        let Some((k, v)) = trimmed.split_once(':') else {
-            continue;
-        };
-        let key = k.trim();
-        let val = v.trim().trim_end_matches(';').trim();
-        if key.eq_ignore_ascii_case("fill") && !val.is_empty() {
-            fill = Some(val);
-        }
-        if key.eq_ignore_ascii_case("stroke") && !val.is_empty() {
-            stroke = Some(val);
-        }
-        if key.eq_ignore_ascii_case("stroke-width") && !val.is_empty() {
-            stroke_width = Some(val);
-        }
-        if key.eq_ignore_ascii_case("stroke-dasharray") && !val.is_empty() {
-            stroke_dasharray = Some(val);
+        match parsed.property() {
+            "color" => color = Some(parsed.value()),
+            "fill" => fill = Some(parsed.value()),
+            "stroke" => stroke = Some(parsed.value()),
+            "stroke-width" => stroke_width = Some(parsed.value()),
+            "stroke-dasharray" => stroke_dasharray = Some(parsed.value()),
+            _ => {}
         }
     }
 
     ClassInlineStyles {
         style_attr,
+        color,
         fill,
         stroke,
         stroke_width,
@@ -378,9 +456,187 @@ pub(super) fn class_apply_inline_styles<'a>(
     }
 }
 
+pub(super) fn class_node_label_terminal_truth(
+    node: &super::ClassSvgNode,
+    inline_styles: &ClassInlineStyles<'_>,
+    prepared_facts: Option<crate::model::ClassNodeLabelPaintFacts>,
+) -> ClassNodeLabelTerminalTruth {
+    if inline_styles.color.is_some() {
+        return ClassNodeLabelTerminalTruth {
+            source_owns_paint: true,
+            typed_fill_verified: true,
+        };
+    }
+    if let Some(facts) = prepared_facts {
+        return ClassNodeLabelTerminalTruth {
+            source_owns_paint: facts.source_owns_every_visible_run(),
+            typed_fill_verified: !facts.has_mixed_color_ownership()
+                && !class_node_has_mixed_math(node),
+        };
+    }
+
+    let mut runs = ClassLabelPaintRuns::default();
+    runs.observe_text(&node.title_text_for_render(), false);
+    if let Some(annotation) = node.annotation_text_for_render() {
+        runs.observe_text(&annotation, false);
+    }
+    for member in node.members.iter().chain(&node.methods) {
+        runs.observe_text(
+            &member.display_text_for_render(),
+            declarations_own_paint([member.css_style.as_str()], &["color", "fill"]),
+        );
+    }
+
+    ClassNodeLabelTerminalTruth {
+        source_owns_paint: runs.visible != 0 && runs.inherited == 0,
+        typed_fill_verified: !(runs.inherited != 0 && runs.inherited < runs.visible)
+            && !class_node_has_mixed_math(node),
+    }
+}
+
+fn class_node_has_mixed_math(node: &super::ClassSvgNode) -> bool {
+    let is_mixed = |text: &str| {
+        crate::math::contains_delimited_math(text) && !crate::class::class_text_is_math_only(text)
+    };
+    is_mixed(&node.title_text_for_render())
+        || node
+            .annotation_text_for_render()
+            .as_deref()
+            .is_some_and(is_mixed)
+        || node
+            .members
+            .iter()
+            .chain(&node.methods)
+            .any(|member| is_mixed(&member.display_text_for_render()))
+}
+
+pub(super) fn class_source_label_style(color: Option<&str>) -> String {
+    color.map_or_else(String::new, |color| format!("color:{color};fill:{color}"))
+}
+
+fn declarations_own_paint<'a>(
+    declarations: impl IntoIterator<Item = &'a str>,
+    properties: &[&str],
+) -> bool {
+    declarations
+        .into_iter()
+        .flat_map(|declaration| declaration.split(';'))
+        .filter_map(crate::mermaid_style::parse_style_declaration)
+        .any(|parsed| properties.contains(&parsed.property()))
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ClassLabelPaintRuns {
+    visible: usize,
+    inherited: usize,
+}
+
+impl ClassLabelPaintRuns {
+    fn observe_text(&mut self, text: &str, parent_owns_paint: bool) {
+        if text.trim().is_empty() {
+            return;
+        }
+        if parent_owns_paint {
+            self.visible = self.visible.saturating_add(1);
+            return;
+        }
+        let observed = class_embedded_html_paint_runs(text);
+        self.visible = self.visible.saturating_add(observed.visible);
+        self.inherited = self.inherited.saturating_add(observed.inherited);
+    }
+}
+
+fn class_embedded_html_paint_runs(text: &str) -> ClassLabelPaintRuns {
+    if !text.contains('<') {
+        return ClassLabelPaintRuns {
+            visible: 1,
+            inherited: usize::from(!crate::class::class_text_is_math_only(text)),
+        };
+    }
+
+    let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
+    let fragment = crate::xml::normalize_html_fragment_for_xhtml(&fragment);
+    let rooted = format!("<merman-fragment>{fragment}</merman-fragment>");
+    let Ok(document) = roxmltree::Document::parse(&rooted) else {
+        // Malformed source markup cannot safely prove that the typed paint owns the terminal.
+        return ClassLabelPaintRuns {
+            visible: 1,
+            inherited: 0,
+        };
+    };
+
+    document
+        .descendants()
+        .filter(|node| node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty()))
+        .fold(ClassLabelPaintRuns::default(), |mut runs, node| {
+            let source_owns = node
+                .ancestors()
+                .take_while(|ancestor| {
+                    !ancestor.is_element() || ancestor.tag_name().name() != "merman-fragment"
+                })
+                .filter(|ancestor| ancestor.is_element())
+                .any(element_owns_label_paint)
+                || node
+                    .text()
+                    .is_some_and(crate::class::class_text_is_math_only);
+            runs.visible = runs.visible.saturating_add(1);
+            runs.inherited = runs.inherited.saturating_add(usize::from(!source_owns));
+            runs
+        })
+}
+
+fn element_owns_label_paint(node: roxmltree::Node<'_, '_>) -> bool {
+    node.attributes().any(|attribute| {
+        let value = attribute.value().trim();
+        if value.is_empty() {
+            return false;
+        }
+        match attribute.name().to_ascii_lowercase().as_str() {
+            "color" | "fill" => true,
+            "style" => declarations_own_paint([value], &["color", "fill"]),
+            _ => false,
+        }
+    })
+}
+
+pub(super) fn class_node_label_style(source_style: &str, typed_fill: Option<&str>) -> String {
+    let mut style = source_style.trim().trim_end_matches(';').to_string();
+    let Some(fill) = typed_fill else {
+        return style;
+    };
+    if !style.is_empty() {
+        style.push(';');
+    }
+    style.push_str("color:");
+    style.push_str(fill);
+    style.push_str(" !important;fill:");
+    style.push_str(fill);
+    style.push_str(" !important");
+    style
+}
+
+pub(super) fn class_node_paint_style(
+    source_style: &str,
+    property: &str,
+    typed_paint: Option<&str>,
+) -> String {
+    let mut style = source_style.trim().trim_end_matches(';').to_string();
+    let Some(paint) = typed_paint else {
+        return style;
+    };
+    if !style.is_empty() {
+        style.push(';');
+    }
+    style.push_str(property);
+    style.push(':');
+    style.push_str(paint);
+    style.push_str(" !important");
+    style
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ClassHtmlLabelSpec, render_class_html_label};
+    use super::{ClassHtmlLabelSpec, class_embedded_html_paint_runs, render_class_html_label};
 
     #[test]
     fn class_html_label_serializes_raw_html_and_escaped_generics_structurally() {
@@ -417,5 +673,29 @@ mod tests {
         );
         assert!(generic.contains("<p>Generic&lt;T&gt; driver_license</p>"));
         assert!(!generic.contains("&amp;lt;"));
+    }
+
+    #[test]
+    fn class_plain_text_attribute_spellings_do_not_claim_label_paint() {
+        for text in [
+            "class=Premium",
+            "style=color:red",
+            r#"<span title="class=Premium style=color:red">unowned</span>"#,
+            r#"<span class="Premium">unowned</span>"#,
+            r#"<span style="font-weight:bold">unowned</span>"#,
+        ] {
+            let runs = class_embedded_html_paint_runs(text);
+            assert_eq!(runs.visible, 1, "{text}");
+            assert_eq!(runs.inherited, 1, "{text}");
+        }
+
+        let owned = class_embedded_html_paint_runs(r#"<span style="color:red">owned</span>"#);
+        assert_eq!(owned.visible, 1);
+        assert_eq!(owned.inherited, 0);
+
+        let mixed =
+            class_embedded_html_paint_runs(r#"<span style="color:red">owned</span> inherited"#);
+        assert_eq!(mixed.visible, 2);
+        assert_eq!(mixed.inherited, 1);
     }
 }

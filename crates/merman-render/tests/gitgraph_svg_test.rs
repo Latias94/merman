@@ -685,6 +685,49 @@ fn gitgraph_edge_stroke_rejects_ordinal_variant_clear_gradient_and_pattern_route
 }
 
 #[test]
+fn gitgraph_qualified_edge_stroke_accounts_only_real_default_occurrence_winners() {
+    let solid = |color| {
+        ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid(color).expect("valid GitGraph stroke"))
+    };
+    let theme = gitgraph_edge_rules_theme([
+        ThemeRule::new(ThemeTarget::Edge, solid("#111111"))
+            .with_variant(ThemeVariant::Default)
+            .for_family(DiagramFamilyId::GIT_GRAPH),
+        ThemeRule::new(ThemeTarget::Edge, solid("#222222"))
+            .with_variant(ThemeVariant::Default)
+            .for_family(DiagramFamilyId::GIT_GRAPH),
+        ThemeRule::new(ThemeTarget::Edge, solid("#333333"))
+            .with_variant(ThemeVariant::Odd)
+            .with_ordinal(OrdinalSelector::exact(1).expect("valid GitGraph edge ordinal"))
+            .for_family(DiagramFamilyId::GIT_GRAPH),
+    ]);
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new(),
+        "git-edge-qualified-winners",
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("render qualified GitGraph edge winners");
+
+    assert!(
+        stylesheet(rendered.svg())
+            .contains("#git-edge-qualified-winners .branch{stroke-width:1;stroke:#222222;"),
+        "the final Default winner must own the compatibility branch stroke",
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
+}
+
+#[test]
 fn gitgraph_node_palette_reaches_terminal_commit_arrow_and_branch_label_surfaces() {
     let theme = gitgraph_node_palette_theme(&["#123456", "transparent"]);
     let rendered =

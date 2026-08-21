@@ -7,7 +7,10 @@ use super::groups::{
 use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
 };
-use super::label::class_apply_inline_styles;
+use super::label::{
+    class_apply_inline_styles, class_node_label_style, class_node_label_terminal_truth,
+    class_node_paint_style, class_source_label_style,
+};
 use super::namespace::{
     ClassNamespaceClusterGroupContext, class_namespace_root_offset, render_class_elk_subgraphs,
     render_class_namespace_cluster_group, render_class_namespace_clusters_in_root,
@@ -52,6 +55,8 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) node_theme_expectations:
+        &'a FxHashMap<&'a str, &'a crate::class::ClassNodeTerminalExpectation>,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing: RenderTiming,
@@ -110,7 +115,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
         parent_origin: (0.0, 0.0),
     }];
     while let Some(frame) = stack.pop() {
-        match frame {
+        let node_emission = match frame {
             RenderFrame::Enter {
                 root_id,
                 parent_origin,
@@ -233,6 +238,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                         }),
                     }
                 }
+                None
             }
             RenderFrame::Node {
                 id,
@@ -260,9 +266,13 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                 if in_namespace_root {
                     out.push_str("</g>");
                 }
+                None
             }
-        }
+        };
         out.checkpoint()?;
+        if let Some(emission) = node_emission {
+            theme_receipt.record_node(emission);
+        }
     }
     Ok(())
 }
@@ -340,7 +350,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         let ClassRenderItem::Node(id) = item else {
             unreachable!("Class ELK render root was validated as flat")
         };
-        render_class_node_id(
+        let node_emission = render_class_node_id(
             ClassNodesRenderState {
                 out,
                 content_bounds,
@@ -358,6 +368,9 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             },
         );
         out.checkpoint()?;
+        if let Some(emission) = node_emission {
+            theme_receipt.record_node(emission);
+        }
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -632,7 +645,7 @@ fn render_class_node_id<O: SvgOutput>(
     layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
     id: &str,
     offsets: ClassNodeRootOffsets,
-) {
+) -> Option<crate::class::ClassNodeTerminalEmission> {
     let ClassNodesRenderState {
         out,
         content_bounds,
@@ -666,6 +679,8 @@ fn render_class_node_id<O: SvgOutput>(
         node_bounds_ty,
     };
 
+    let node_theme_expectation = ctx.node_theme_expectations.get(id).copied();
+
     if let Some(note) = ctx.note_by_id.get(n.id.as_str()).copied() {
         let stats = render_class_note_node(
             ClassNoteRenderState {
@@ -695,11 +710,12 @@ fn render_class_node_id<O: SvgOutput>(
         detail.notes_sanitize += stats.notes_sanitize;
         detail.path_bounds += stats.path_bounds;
         detail.path_bounds_calls += stats.path_bounds_calls;
-        return;
+        return None;
     }
 
     if let Some(iface) = ctx.iface_by_id.get(n.id.as_str()).copied() {
-        render_class_interface_node(
+        let expectation = node_theme_expectation.expect("validated Class interface theme owner");
+        return Some(render_class_interface_node(
             ClassInterfaceRenderState {
                 out,
                 content_bounds,
@@ -715,9 +731,9 @@ fn render_class_node_id<O: SvgOutput>(
                 look: settings.look.as_str(),
                 mermaid_config: ctx.mermaid_config,
                 math_renderer: ctx.math_renderer,
+                theme_expectation: expectation,
             },
-        );
-        return;
+        ));
     }
 
     let node = ctx
@@ -727,13 +743,53 @@ fn render_class_node_id<O: SvgOutput>(
         .expect("validated Class semantic node payload");
 
     let node_inline_styles = class_apply_inline_styles(node);
+    let expectation = node_theme_expectation.expect("validated Class node theme owner");
+    let node_label_plan = ctx
+        .layout
+        .class_label_plans_by_id
+        .get(n.id.as_str())
+        .map(|plan| plan.as_ref());
     let node_style_attr = node_inline_styles.style_attr.as_str();
-    let node_fill = node_inline_styles
-        .fill
+    let source_owns_fill = node_inline_styles.fill.is_some();
+    let source_owns_stroke = node_inline_styles.stroke.is_some();
+    let label_terminal_truth = class_node_label_terminal_truth(
+        node,
+        &node_inline_styles,
+        node_label_plan.map(crate::model::ClassNodeLabelPlan::paint_facts),
+    );
+    let source_owns_label_fill = label_terminal_truth.source_owns_paint();
+    let emitted_fill = expectation.typed_fill(source_owns_fill);
+    let emitted_stroke = expectation.typed_stroke(source_owns_stroke);
+    let emitted_label_fill = expectation.typed_label_fill(source_owns_label_fill);
+    let node_fill = emitted_fill
+        .as_ref()
+        .map(|(_, css)| *css)
+        .or(node_inline_styles.fill)
         .unwrap_or(settings.default_node_fill.as_str());
-    let node_stroke = node_inline_styles
-        .stroke
+    let node_stroke = emitted_stroke
+        .as_ref()
+        .map(|(_, css)| *css)
+        .or(node_inline_styles.stroke)
         .unwrap_or(settings.default_node_stroke.as_str());
+    let html_node_label_style_attr = class_node_label_style(
+        node_style_attr,
+        emitted_label_fill.as_ref().map(|(_, css)| *css),
+    );
+    let source_label_style = class_source_label_style(node_inline_styles.color);
+    let svg_node_label_style_attr = class_node_label_style(
+        source_label_style.as_str(),
+        emitted_label_fill.as_ref().map(|(_, css)| *css),
+    );
+    let node_fill_style_attr = class_node_paint_style(
+        node_style_attr,
+        "fill",
+        emitted_fill.as_ref().map(|(_, css)| *css),
+    );
+    let node_stroke_style_attr = class_node_paint_style(
+        node_style_attr,
+        "stroke",
+        emitted_stroke.as_ref().map(|(_, css)| *css),
+    );
     let node_stroke_width = node_inline_styles
         .stroke_width
         .unwrap_or("1.3")
@@ -759,7 +815,8 @@ fn render_class_node_id<O: SvgOutput>(
         position,
         &ClassNodeBasicContainerContext {
             diagram_id: ctx.diagram_id,
-            node_style_attr,
+            node_fill_style_attr: node_fill_style_attr.as_str(),
+            node_stroke_style_attr: node_stroke_style_attr.as_str(),
             node_fill,
             node_stroke,
             node_stroke_width,
@@ -772,7 +829,9 @@ fn render_class_node_id<O: SvgOutput>(
     detail.path_bounds += basic_container.stats.path_bounds;
     detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
 
-    if settings.diagram_use_html_labels || crate::class::class_node_requires_math(node) {
+    let use_html_labels =
+        settings.diagram_use_html_labels || crate::class::class_node_requires_math(node);
+    if use_html_labels {
         let html_stats = render_class_html_node_body(
             ClassNodeRenderState {
                 out,
@@ -781,10 +840,7 @@ fn render_class_node_id<O: SvgOutput>(
             position,
             node,
             basic_container.geometry,
-            ctx.layout
-                .class_label_plans_by_id
-                .get(n.id.as_str())
-                .map(|plan| plan.as_ref()),
+            node_label_plan,
             &ClassHtmlNodeBodyContext {
                 measurer: ctx.measurer,
                 text_style: &settings.text_style,
@@ -792,7 +848,9 @@ fn render_class_node_id<O: SvgOutput>(
                 line_height: settings.line_height,
                 class_padding: settings.class_padding,
                 hide_empty_members_box: settings.hide_empty_members_box,
-                node_style_attr,
+                node_stroke_style_attr: node_stroke_style_attr.as_str(),
+                node_label_style_attr: html_node_label_style_attr.as_str(),
+                node_label_fill: emitted_label_fill.as_ref().map(|(_, css)| *css),
                 node_stroke,
                 node_stroke_width,
                 node_stroke_dasharray,
@@ -819,7 +877,8 @@ fn render_class_node_id<O: SvgOutput>(
                 wrap_probe_font_size: settings.wrap_probe_font_size,
                 class_padding: settings.class_padding,
                 hide_empty_members_box: settings.hide_empty_members_box,
-                node_style_attr,
+                node_stroke_style_attr: node_stroke_style_attr.as_str(),
+                node_label_style_attr: svg_node_label_style_attr.as_str(),
                 node_stroke,
                 node_stroke_width,
                 node_stroke_dasharray,
@@ -835,4 +894,30 @@ fn render_class_node_id<O: SvgOutput>(
     if node_link_open {
         out.push_str("</a>");
     }
+    Some(crate::class::ClassNodeTerminalEmission::new(
+        id,
+        crate::class::ClassNodePaintTerminalEmission::new(
+            source_owns_fill,
+            emitted_fill,
+            node_fill,
+        )
+        .with_source_value(node_inline_styles.fill),
+        crate::class::ClassNodePaintTerminalEmission::new(
+            source_owns_stroke,
+            emitted_stroke,
+            node_stroke,
+        )
+        .with_source_value(node_inline_styles.stroke),
+        crate::class::ClassNodePaintTerminalEmission::new(
+            source_owns_label_fill,
+            emitted_label_fill,
+            if use_html_labels {
+                html_node_label_style_attr.as_str()
+            } else {
+                svg_node_label_style_attr.as_str()
+            },
+        )
+        .with_source_value(node_inline_styles.color)
+        .with_terminal_verified(label_terminal_truth.typed_fill_verified()),
+    ))
 }

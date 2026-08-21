@@ -2,12 +2,11 @@
 
 use super::super::*;
 use crate::flowchart::{
-    FlowchartClusterThemeEmission, FlowchartFacetPrecedence, FlowchartShapeFacetEmissionReceipt,
-    FlowchartThemeFacetEmission,
+    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartClusterThemeEmission, FlowchartFacetPrecedence,
+    FlowchartShapeFacetEmissionReceipt, FlowchartThemeFacetEmission,
 };
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 
-const FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH: f64 = 200.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
 const FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
@@ -364,15 +363,15 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let span_style_attr = OptionalStyleXmlAttr(label_style);
     let div_style = if label_type != "markdown" {
         "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
-    } else if label_w >= FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH - 1e-3 {
+    } else if label_w >= FLOWCHART_FIXED_LABEL_WRAP_WIDTH - 1e-3 {
         format!(
             "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-            mw = fmt_display(FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH)
+            mw = fmt_display(FLOWCHART_FIXED_LABEL_WRAP_WIDTH)
         )
     } else {
         format!(
             "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-            mw = fmt_display(FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH)
+            mw = fmt_display(FLOWCHART_FIXED_LABEL_WRAP_WIDTH)
         )
     };
 

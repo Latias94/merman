@@ -14,7 +14,7 @@ const FIXED_CLUSTER_PADDING: f64 = 8.0;
 
 // Mermaid `createText(...)` defaults its `width` argument to 200. Flowchart edge labels and
 // markdown subgraph titles rely on that default instead of `flowchart.wrappingWidth`.
-const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
+pub(crate) const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct FlowchartTypographyConfigOwnership {

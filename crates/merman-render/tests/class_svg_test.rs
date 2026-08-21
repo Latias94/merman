@@ -15,7 +15,7 @@ use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
-use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -84,6 +84,54 @@ fn class_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
     )])
 }
 
+fn class_node_surface_theme() -> DiagramTheme {
+    class_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#112233").expect("valid Class node fill"))
+                .with_stroke(CanvasPaint::solid("#445566").expect("valid Class node stroke")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#ddeeff").expect("valid Class node label fill")),
+        ),
+    ])
+}
+
+fn class_node_ordinal_surface_theme() -> DiagramTheme {
+    class_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#112233").expect("valid static Class node fill"))
+                .with_stroke(
+                    CanvasPaint::solid("#445566").expect("valid static Class node stroke"),
+                ),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#aa0000").expect("valid ordinal Class node fill")),
+        )
+        .with_ordinal(OrdinalSelector::exact(2).expect("valid second Class node ordinal")),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(
+                CanvasPaint::solid("#ddeeff").expect("valid static Class node label fill"),
+            ),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(
+                CanvasPaint::solid("#00aa00").expect("valid ordinal Class node label fill"),
+            ),
+        )
+        .with_ordinal(OrdinalSelector::exact(2).expect("valid second Class label ordinal")),
+    ])
+}
+
 fn class_table_palette_theme() -> DiagramTheme {
     let palette = OrdinalPalette::new([
         ThemeColorValue::parse("#123456").expect("valid Class table palette color")
@@ -127,14 +175,44 @@ fn try_render_class_svg_with_theme_and_engine(
     theme: &DiagramTheme,
     engine: Engine,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_class_svg_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn try_render_class_svg_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_class_svg_with_theme_environment(
+        source,
+        theme,
+        engine,
+        portability,
+        RenderEnvironment::deterministic(),
+    )
+}
+
+fn try_render_class_svg_with_theme_environment(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+    environment: RenderEnvironment,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Class diagram")
         .expect("detect themed Class diagram");
-    let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+    let session = environment
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Class session");
+        .expect("begin themed Class session");
     family::prepare(parsed, &LayoutOptions::default(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
@@ -863,6 +941,592 @@ fn class_direct_edge_stroke_reaches_relation_paths_and_only_their_referenced_mar
 }
 
 #[test]
+fn class_direct_node_surfaces_reach_html_and_native_terminals() {
+    let source = r#"classDiagram
+  class Account {
+    +String owner
+    +close()
+  }
+"#;
+    let theme = class_node_surface_theme();
+
+    for html_labels in [true, false] {
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "htmlLabels": html_labels,
+            }))),
+        )
+        .expect("render directly themed Class node surfaces");
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid themed Class node SVG");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+            })
+            .expect("Class Account terminal node");
+        let terminal_paths = node
+            .descendants()
+            .filter(|terminal| terminal.has_tag_name("path"))
+            .collect::<Vec<_>>();
+        assert!(
+            terminal_paths
+                .iter()
+                .any(|terminal| terminal.attribute("fill") == Some("#112233")),
+            "typed Node.fill must reach the terminal Class shell: {}",
+            rendered.svg(),
+        );
+        assert!(
+            terminal_paths
+                .iter()
+                .any(|terminal| terminal.attribute("stroke") == Some("#445566")),
+            "typed Node.stroke must reach the terminal Class shell: {}",
+            rendered.svg(),
+        );
+
+        let themed_label = if html_labels {
+            node.descendants().find(|terminal| {
+                terminal.has_tag_name("span")
+                    && terminal.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "nodeLabel")
+                    })
+                    && terminal.attribute("style").is_some_and(|style| {
+                        style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                    })
+            })
+        } else {
+            node.descendants().find(|terminal| {
+                terminal.has_tag_name("text")
+                    && terminal.attribute("style").is_some_and(|style| {
+                        style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                    })
+            })
+        };
+        assert!(
+            themed_label.is_some(),
+            "typed NodeLabel.fill must reach the {html_labels:?} terminal label shell: {}",
+            rendered.svg(),
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 2, "html_labels={html_labels}");
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "html_labels={html_labels}"
+        );
+    }
+
+    let resvg = try_render_class_svg_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "htmlLabels": true,
+        }))),
+    )
+    .expect("render directly themed HTML Class labels for resvg")
+    .finalize_resvg(&SvgPipeline::resvg_safe())
+    .expect("finalize directly themed HTML Class labels for resvg");
+    let native_svg = merman_render::__private::native_export_svg(resvg.svg());
+    let native_document =
+        roxmltree::Document::parse(native_svg).expect("valid native Class label SVG");
+    let account_label = native_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node
+                    .descendants()
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text.contains("Account"))
+        })
+        .unwrap_or_else(|| panic!("native Class Account label: {native_svg}"));
+    assert_eq!(account_label.attribute("fill"), Some("#ddeeff"));
+}
+
+#[test]
+fn class_direct_node_surfaces_preserve_source_owned_occurrences() {
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        r#"classDiagram
+  class SourceOwned
+  class ThemeOwned
+  style SourceOwned fill:#aa0000,stroke:#bb0000,color:#cc0000
+"#,
+        &class_node_surface_theme(),
+        Engine::new(),
+    )
+    .expect("source-owned Class node surfaces must coexist with direct typed occurrences");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let terminal_node = |semantic_id: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node.attribute("id").is_some_and(|id| {
+                        id.starts_with(format!("merman-classId-{semantic_id}-").as_str())
+                    })
+            })
+            .unwrap_or_else(|| panic!("missing Class node {semantic_id}"))
+    };
+    let source_owned = terminal_node("SourceOwned");
+    let theme_owned = terminal_node("ThemeOwned");
+
+    assert!(
+        source_owned
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#aa0000")),
+        "source Node.fill must remain the terminal winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        source_owned
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("stroke") == Some("#bb0000")),
+        "source Node.stroke must remain the terminal winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        source_owned.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("color:#cc0000"))
+        }),
+        "source label paint must remain the terminal winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        theme_owned
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#112233")),
+        "unowned Node.fill must retain the typed winner: {}",
+        rendered.svg(),
+    );
+    assert!(
+        theme_owned.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node.attribute("style").is_some_and(|style| {
+                    style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                })
+        }),
+        "unowned NodeLabel.fill must retain the typed winner: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_invalid_source_css_cannot_swallow_typed_node_paint_or_forge_its_receipt() {
+    let source = r#"classDiagram
+  class Account
+  style Account color:red!important;fill:#00ff00!important/*
+"#;
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        source,
+        &class_node_surface_theme(),
+        Engine::new(),
+    )
+    .expect("structurally invalid source CSS must not override direct Class terminal paint");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let account = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+        })
+        .expect("Class Account terminal node");
+
+    assert!(
+        account
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#112233")),
+        "typed Node.fill must remain the terminal value: {}",
+        rendered.svg(),
+    );
+    assert!(
+        account.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node.attribute("style").is_some_and(|style| {
+                    style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                })
+        }),
+        "typed NodeLabel.fill must remain the terminal value: {}",
+        rendered.svg(),
+    );
+    assert!(!rendered.svg().contains("#00ff00"), "{}", rendered.svg());
+    assert!(!rendered.svg().contains("/*"), "{}", rendered.svg());
+
+    let resvg = rendered
+        .finalize_resvg(&SvgPipeline::resvg_safe())
+        .expect("finalize adversarial Class source CSS for ResvgSafe");
+    {
+        let native_svg = merman_render::__private::native_export_svg(resvg.svg());
+        let native_document =
+            roxmltree::Document::parse(native_svg).expect("valid native Class SVG");
+        assert!(
+            native_document.descendants().any(|node| {
+                node.has_tag_name("path") && node.attribute("fill") == Some("#112233")
+            }),
+            "native Class shell must retain typed Node.fill: {native_svg}",
+        );
+    }
+
+    let completion = resvg.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_unsupported_node_ordinals_only_suppress_static_winners_on_matching_occurrences() {
+    let rendered = try_render_class_svg_with_theme_requirement(
+        "classDiagram\n  class First\n  class Second\n  class Third\n",
+        &class_node_ordinal_surface_theme(),
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("resolve Class static and ordinal node winners per occurrence");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+
+    for semantic_id in ["First", "Third"] {
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node.attribute("id").is_some_and(|id| {
+                        id.starts_with(format!("merman-classId-{semantic_id}-").as_str())
+                    })
+            })
+            .unwrap_or_else(|| panic!("missing Class node {semantic_id}"));
+        assert!(
+            node.descendants()
+                .any(|terminal| terminal.has_tag_name("path")
+                    && terminal.attribute("fill") == Some("#112233")),
+            "Class node {semantic_id} must retain its occurrence-local static fill winner: {}",
+            rendered.svg(),
+        );
+        assert!(
+            node.descendants().any(|terminal| {
+                terminal.has_tag_name("span")
+                    && terminal.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "nodeLabel")
+                    })
+                    && terminal.attribute("style").is_some_and(|style| {
+                        style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                    })
+            }),
+            "Class node {semantic_id} must retain its occurrence-local static label winner: {}",
+            rendered.svg(),
+        );
+    }
+
+    let second = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-classId-Second-"))
+        })
+        .expect("Class Second node");
+    assert!(
+        !second
+            .descendants()
+            .any(|terminal| terminal.has_tag_name("path")
+                && terminal.attribute("fill") == Some("#112233")),
+        "the unsupported ordinal winner must suppress static Node.fill only for its own occurrence: {}",
+        rendered.svg(),
+    );
+    assert!(
+        !second.descendants().any(|terminal| {
+            terminal.has_tag_name("span")
+                && terminal.attribute("style").is_some_and(|style| {
+                    style.contains("color:#ddeeff") || style.contains("fill:#ddeeff")
+                })
+        }),
+        "the unsupported ordinal winner must suppress static NodeLabel.fill only for its own occurrence: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 2);
+}
+
+#[test]
+fn class_lollipop_interfaces_are_node_and_label_terminal_occurrences() {
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  IService ()-- Service\n",
+        &class_node_surface_theme(),
+        Engine::new(),
+    )
+    .expect("theme the Class node and lollipop interface occurrences");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+
+    let service = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-classId-Service-"))
+        })
+        .expect("Class Service node");
+    assert!(
+        service
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#112233")),
+        "the ordinary Class node must retain the static occurrence winner: {}",
+        rendered.svg(),
+    );
+
+    let interface = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node.attribute("id") == Some("merman-interface0")
+        })
+        .expect("Class lollipop interface node");
+    let container = interface
+        .children()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| class == "label-container")
+                })
+        })
+        .expect("Class interface terminal container");
+    assert!(
+        container
+            .attribute("style")
+            .is_some_and(|style| style.contains("opacity:0"))
+            && container.attribute("fill") != Some("#112233")
+            && container.attribute("stroke") != Some("#445566")
+            && container.attribute("style").is_none_or(|style| {
+                !style.contains("fill:#112233") && !style.contains("stroke:#445566")
+            }),
+        "the invisible lollipop hitbox must not impersonate a visible Node paint terminal: {}",
+        rendered.svg(),
+    );
+    assert!(
+        interface.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "nodeLabel")
+                })
+                && node.attribute("style").is_some_and(|style| {
+                    style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                })
+        }),
+        "the lollipop label must carry its NodeLabel terminal paint: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_lollipop_hitbox_cannot_be_the_only_node_paint_proof() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#112233").expect("valid Class node fill"))
+            .with_stroke(CanvasPaint::solid("#445566").expect("valid Class node stroke")),
+    )]);
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  IService ()-- Service\n  style Service fill:#aa0000,stroke:#bb0000\n",
+        &theme,
+        Engine::new(),
+    )
+    .expect("an invisible lollipop hitbox makes Node paint not applicable");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let interface_hitbox = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| class == "label-container")
+                })
+                && node.parent().and_then(|parent| parent.attribute("id"))
+                    == Some("merman-interface0")
+        })
+        .expect("Class interface hitbox");
+    assert_ne!(interface_hitbox.attribute("fill"), Some("#112233"));
+    assert_ne!(interface_hitbox.attribute("stroke"), Some("#445566"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_svg_labels_emit_the_structured_source_color_they_claim_owns_paint() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::NodeLabel,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#ddeeff").expect("valid Class label fill")),
+    )]);
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  class SourceOwned\n  style SourceOwned color:#cc0000\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "htmlLabels": false,
+        }))),
+    )
+    .expect("source-owned SVG Class label paint is terminally emitted");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let source_label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("style").is_some_and(|style| {
+                    style.contains("color:#cc0000") && style.contains("fill:#cc0000")
+                })
+        })
+        .unwrap_or_else(|| panic!("source color must reach SVG text: {}", rendered.svg()));
+    assert!(
+        source_label
+            .descendants()
+            .filter_map(|node| node.text())
+            .any(|text| text.contains("SourceOwned")),
+        "the source-colored terminal must own the visible title: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn class_mixed_math_cannot_prove_an_inherited_typed_label_color() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::NodeLabel,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#22cc88").expect("valid Class label fill")),
+    )]);
+    let error = match try_render_class_svg_with_theme_environment(
+        "classDiagram\n  class Formula[\"value: $$x^2$$\"]\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "htmlLabels": true,
+        }))),
+        ThemePortabilityRequirement::RequirePortable,
+        RenderEnvironment::deterministic().with_compiled_math_renderer(),
+    ) {
+        Ok(_) => panic!("formula glyph paint is not proven by the inherited XHTML shell color"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.incomplete_family_theme(),
+        Some((merman_render::DiagramFamilyId::CLASS, 1, 0)),
+    );
+}
+
+#[test]
+fn class_html_label_fill_ownership_is_property_local_and_visible_run_local() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::NodeLabel,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#ddeeff").expect("valid Class label fill")),
+    )]);
+    let error = match try_render_class_svg_with_theme_and_engine(
+        r#"classDiagram
+  class Mixed["<span style='color:#aa0000'>source-owned</span> inherited"]
+"#,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "htmlLabels": true,
+            "securityLevel": "loose",
+        }))),
+    ) {
+        Ok(_) => {
+            panic!("mixed descendant and inherited paint cannot be certified across native export")
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.incomplete_family_theme(),
+        Some((merman_render::DiagramFamilyId::CLASS, 1, 0)),
+    );
+
+    let rendered = try_render_class_svg_with_theme_requirement(
+        r#"classDiagram
+  class Mixed["<span style='color:#aa0000'>source-owned</span> inherited"]
+"#,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "htmlLabels": true,
+            "securityLevel": "loose",
+        }))),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .expect("best-effort browser SVG may preserve mixed descendant paint");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-classId-Mixed-"))
+        })
+        .expect("mixed Class node");
+    assert!(
+        node.descendants().any(|terminal| {
+            terminal.has_tag_name("span")
+                && terminal.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "nodeLabel")
+                })
+                && terminal.attribute("style").is_some_and(|style| {
+                    style.contains("color:#ddeeff") && style.contains("fill:#ddeeff")
+                })
+        }),
+        "best-effort browser SVG must still paint inherited runs: {}",
+        rendered.svg(),
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("color:#aa0000"))
+                && node.text() == Some("source-owned")
+        }),
+        "the explicitly colored child run must remain source-owned: {}",
+        rendered.svg(),
+    );
+}
+
+#[test]
 fn class_non_intersecting_ordinal_stroke_does_not_suppress_static_stroke() {
     let theme = class_edge_rules_theme([
         ThemeRule::new(
@@ -903,6 +1567,51 @@ fn class_non_intersecting_ordinal_stroke_does_not_suppress_static_stroke() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn class_unsupported_ordinal_stroke_does_not_suppress_static_stroke_on_other_relations() {
+    let theme = class_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(
+                CanvasPaint::solid("#123456").expect("valid static Class relation stroke"),
+            ),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(
+                CanvasPaint::solid("#ef4444").expect("valid ordinal Class relation stroke"),
+            ),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).expect("valid Class ordinal")),
+    ]);
+
+    let rendered = try_render_class_svg_with_theme_requirement(
+        "classDiagram\n  A *-- B\n  B *-- C\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let rendered =
+        rendered.expect("an unsupported ordinal must not suppress the static direct route");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let relation_paths = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    assert_eq!(relation_paths.len(), 2, "{}", rendered.svg());
+    assert!(
+        relation_paths.iter().all(|relation| relation
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke:#123456 !important"))),
+        "unsupported ordinal must not clear the static stroke on any relation: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
 }
 
 #[test]

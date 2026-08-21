@@ -11030,7 +11030,7 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
 }
 
 #[test]
-fn custom_catalog_swimlane_group_title_fails_closed_until_markdown_is_prepared() {
+fn custom_catalog_swimlane_group_title_prepares_plain_markdown_and_rejects_complex_markdown() {
     let bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
@@ -11072,7 +11072,41 @@ end
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .expect("begin themed session");
+    let artifact = prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare plain Swimlane group title");
+    let svg = render_family_artifact_svg(
+        &artifact,
+        &SvgRenderOptions::default(),
+        &SvgDebugOptions::default(),
+    )
+    .expect("render plain Swimlane group title");
+    assert!(
+        svg.contains(r#"id="merman-prepared-swimlane-0""#),
+        "plain Markdown must consume the prepared native text artifact: {svg}"
+    );
 
+    let parsed = theme
+        .install_parse_compatibility(Engine::new())
+        .parse_diagram_for_render_model_sync(
+            r#"---
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+subgraph Lane["**Portable lane**"]
+  A[Node]
+end
+"#,
+            ParseOptions::strict(),
+        )
+        .expect("parse Swimlane with complex Markdown")
+        .expect("detect Swimlane");
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .expect("begin themed session");
     assert!(matches!(
         prepare(parsed, &LayoutOptions::default(), session),
         Err(Error::TextLayout(

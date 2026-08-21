@@ -234,6 +234,7 @@ impl ThemeTarget {
                     | DiagramFamilyId::TREE_VIEW
                     | DiagramFamilyId::BLOCK
                     | DiagramFamilyId::GIT_GRAPH
+                    | DiagramFamilyId::ARCHITECTURE
                     | DiagramFamilyId::SANKEY
             ),
             Self::Edge => matches!(
@@ -247,11 +248,7 @@ impl ThemeTarget {
                     | DiagramFamilyId::GIT_GRAPH
                     | DiagramFamilyId::ARCHITECTURE
             ),
-            Self::NodeLabel
-            | Self::EdgeLabel
-            | Self::EdgeLabelBackground
-            | Self::ClusterLabel
-            | Self::Marker => {
+            Self::NodeLabel | Self::EdgeLabel | Self::EdgeLabelBackground | Self::ClusterLabel => {
                 matches!(
                     family,
                     DiagramFamilyId::FLOWCHART
@@ -263,6 +260,17 @@ impl ThemeTarget {
                         | DiagramFamilyId::GIT_GRAPH
                 )
             }
+            Self::Marker => matches!(
+                family,
+                DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::SWIMLANE
+                    | DiagramFamilyId::CLASS
+                    | DiagramFamilyId::MINDMAP
+                    | DiagramFamilyId::TREE_VIEW
+                    | DiagramFamilyId::BLOCK
+                    | DiagramFamilyId::GIT_GRAPH
+                    | DiagramFamilyId::ARCHITECTURE
+            ),
             Self::Cluster => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
@@ -890,15 +898,15 @@ mod tests {
     }
 
     #[test]
-    fn architecture_admits_only_cluster_from_the_shared_node_family_targets() {
+    fn architecture_admits_its_real_service_edge_arrow_and_cluster_targets() {
         assert!(ThemeTarget::Cluster.valid_for(DiagramFamilyId::ARCHITECTURE));
+        assert!(ThemeTarget::Node.valid_for(DiagramFamilyId::ARCHITECTURE));
+        assert!(ThemeTarget::Marker.valid_for(DiagramFamilyId::ARCHITECTURE));
         for target in [
-            ThemeTarget::Node,
             ThemeTarget::NodeLabel,
             ThemeTarget::EdgeLabel,
             ThemeTarget::EdgeLabelBackground,
             ThemeTarget::ClusterLabel,
-            ThemeTarget::Marker,
         ] {
             assert!(!target.valid_for(DiagramFamilyId::ARCHITECTURE));
         }

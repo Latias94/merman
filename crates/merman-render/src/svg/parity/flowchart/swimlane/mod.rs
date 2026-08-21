@@ -330,17 +330,11 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     Ok(())
 }
 
-pub(super) fn write_swimlane_css(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    diagram_id: &str,
-    effective_config: &merman_core::MermaidConfig,
-) {
-    let theme = MermaidThemeAdapter::new(effective_config.as_value()).node_diagram();
+pub(super) fn write_swimlane_css(out: &mut impl crate::svg::parity::SvgOutput, diagram_id: &str) {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let _ = write!(
         out,
-        r#"#{id} .swimlane.cluster rect{{stroke:{border}!important;}}#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
-        border = theme.cluster_border,
+        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
     );
 }
 
@@ -351,14 +345,10 @@ mod tests {
     #[test]
     fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
         let mut css = String::new();
-        write_swimlane_css(
-            &mut css,
-            "seq:prod.v1",
-            &merman_core::MermaidConfig::default(),
-        );
+        write_swimlane_css(&mut css, "seq:prod.v1");
 
-        assert!(css.contains(r"#seq\:prod\.v1 .swimlane.cluster"));
-        assert!(!css.contains("#seq:prod.v1 .swimlane.cluster"));
+        assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].cluster"#));
+        assert!(!css.contains(r#"#seq:prod.v1 [data-look="neo"].cluster"#));
     }
 
     fn point(x: f64, y: f64) -> crate::model::LayoutPoint {

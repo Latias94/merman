@@ -126,16 +126,8 @@ impl TreeViewEdgeThemePlan {
                     if !selector.ordinal_domain_intersects_occurrence_count(expected_line_count) {
                         continue;
                     }
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
                     let route_won = occurrence_winners.contains(&(rule_index, property));
-                    if (!route_won && !qualified_variant)
+                    if !route_won
                         || (mermaid_owns_line_thickness
                             && facet == FamilyThemeRuleFacet::StrokeWidth)
                     {
@@ -160,30 +152,6 @@ impl TreeViewEdgeThemePlan {
                         | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
                             observation.incomplete = true;
                         }
-                    }
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Edge,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if expected_line_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
-                }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Edge,
-                    ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if expected_line_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
                     }
                 }
                 FamilyThemeMechanism::BaseTypography(_)
@@ -226,6 +194,10 @@ impl TreeViewEdgeThemePlan {
                 UnsupportedTerminalDomain::direct(ThemeTarget::EdgeLabelBackground, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Edge,
+                    TerminalVariantDomain::uniform(expected_line_count, ThemeVariant::Default),
+                ),
             ],
             work_meter,
         )?;

@@ -1,11 +1,11 @@
 //! Non-published theme runtime acceptance harness.
 //!
 //! The crate exposes the C6 progress report, the exact native C6a eligibility seal, and the
-//! independent route-cutover authorization summary, plus a representative PNG/JPEG/PDF native
-//! export smoke that does not participate in those gates. Route authorization only permits bridge
-//! ownership cutover; it does not add C6 cells or contribute to the C6 execution or eligibility
-//! digests. Internal observation, per-cell, and per-route receipts remain private so callers cannot
-//! report their own success.
+//! independent route-cutover/KTD23 authorization summaries, plus a representative PNG/JPEG/PDF
+//! native export smoke that does not participate in those gates. KTD23 compares current renderer
+//! probes with an acceptance-owned historical witness; it does not derive authorization from the
+//! current classifier. Internal observation, per-cell, and per-route receipts remain private so
+//! callers cannot report their own success.
 //!
 //! ```compile_fail
 //! use merman_theme_acceptance::C6CellReceipt;
@@ -38,7 +38,6 @@ mod observation;
 #[cfg(feature = "png")]
 mod runner;
 
-#[cfg(feature = "png")]
 mod route_retirement_manifest;
 
 #[cfg(feature = "png")]
@@ -52,6 +51,11 @@ pub use observation::{C6ExecutionReport, C6RuntimeError, RouteCutoverRuntimeErro
 
 #[cfg(feature = "png")]
 pub use runner::{run_c6a_eligibility, run_enforced_c6_runtime, run_route_cutover_authorization};
+
+pub use route_retirement_manifest::{
+    LegacyProjectionRetirementAuthorization, LegacyProjectionVerificationError,
+    authorize_legacy_projection_retirements,
+};
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use runner::{

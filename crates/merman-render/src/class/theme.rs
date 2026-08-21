@@ -1,23 +1,22 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
-    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
-};
-use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRuleFacet, FamilyThemeSelectorShape,
+    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeTarget,
+    ThemeVariant,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod evidence;
+mod node;
 mod terminal;
 
+pub(crate) use evidence::ClassThemeEvidenceRecorder;
+use node::ClassNodeThemePlan;
 use terminal::ExpectedStroke;
 pub(crate) use terminal::{
-    ClassMarkerTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
+    ClassMarkerTerminalExpectation, ClassNodePaintTerminalEmission, ClassNodeTerminalEmission,
+    ClassNodeTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,13 +36,15 @@ impl Default for ClassRelationStrokeWidth {
 }
 
 /// Prepared final Class relation paint winner shared by bounds, SVG emission, and evidence.
+/// Node resolution stays behind the same crate-private handle for existing renderer callers.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassRelationThemePlan {
     stroke: Option<ExpectedStroke>,
     mermaid_owns_stroke: bool,
     stroke_width: ClassRelationStrokeWidth,
-    static_winner_rules: BTreeMap<(ThemeTarget, ResolvedStyleProperty), usize>,
-    ordinal_winner_rules: BTreeSet<(ThemeTarget, usize, ResolvedStyleProperty)>,
+    static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
+    ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
+    node_plan: ClassNodeThemePlan,
 }
 
 impl ClassRelationThemePlan {
@@ -68,9 +69,9 @@ impl ClassRelationThemePlan {
             effective_config,
             "themeVariables.lineColor",
         );
+        let mut node_plan = ClassNodeThemePlan::from_config(effective_config);
         let Some(theme) = theme else {
             return Ok(Self {
-                stroke: None,
                 mermaid_owns_stroke,
                 stroke_width: if mermaid_owns_stroke_width {
                     ClassRelationStrokeWidth::MermaidOwned {
@@ -79,6 +80,7 @@ impl ClassRelationThemePlan {
                 } else {
                     ClassRelationStrokeWidth::Unspecified
                 },
+                node_plan,
                 ..Self::default()
             });
         };
@@ -91,48 +93,59 @@ impl ClassRelationThemePlan {
         let static_winner_rules = style
             .winner_rule_properties()
             .into_iter()
-            .map(|(property, origin)| ((ThemeTarget::Edge, property), origin.rule_index()))
+            .map(|(property, origin)| (property, origin.rule_index()))
             .collect::<BTreeMap<_, _>>();
-        let node_style = theme.style_with_work_meter(
-            ThemeTarget::Node,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let mut static_winner_rules = static_winner_rules;
-        static_winner_rules.extend(
-            node_style
-                .winner_rule_properties()
-                .into_iter()
-                .map(|(property, origin)| ((ThemeTarget::Node, property), origin.rule_index())),
-        );
+        node_plan.resolve_static(theme, work_meter)?;
+        let ordinal_rule_targets = theme
+            .family_rules()
+            .filter_map(|(_, rule)| rule.ordinal().is_some().then_some(rule.target()))
+            .collect::<BTreeSet<_>>();
+        let typed_ordinal_edge_stroke_rules = theme
+            .family_mechanism_routes()
+            .iter()
+            .filter_map(|route| {
+                (route.disposition() == FamilyThemeDisposition::TypedAdapter)
+                    .then(|| match route.mechanism() {
+                        FamilyThemeMechanism::RuleFacet {
+                            rule_index,
+                            target: ThemeTarget::Edge,
+                            selector: FamilyThemeSelectorShape::Ordinal { .. },
+                            facet: FamilyThemeRuleFacet::Stroke(_),
+                        } => Some(rule_index),
+                        FamilyThemeMechanism::BaseTypography(_)
+                        | FamilyThemeMechanism::RuleFacet { .. }
+                        | FamilyThemeMechanism::OrdinalPalette { .. }
+                        | FamilyThemeMechanism::EffectBinding { .. } => None,
+                    })
+                    .flatten()
+            })
+            .collect::<BTreeSet<_>>();
         let mut ordinal_winner_rules = BTreeSet::new();
         let mut has_applicable_ordinal_stroke_winner = false;
-        for (target, target_count) in [
-            (ThemeTarget::Edge, relation_count),
-            (ThemeTarget::Node, node_count),
-        ] {
-            let has_ordinal_rules = theme
-                .family_rules()
-                .any(|(_, rule)| rule.target() == target && rule.ordinal().is_some());
-            if !has_ordinal_rules {
-                continue;
-            }
-            for ordinal in 1..=target_count {
+        if ordinal_rule_targets.contains(&ThemeTarget::Edge) {
+            for ordinal in 1..=relation_count {
                 let ordinal_style = theme.style_with_work_meter(
-                    target,
+                    ThemeTarget::Edge,
                     ThemeVariant::Default,
                     Some(ordinal),
                     work_meter,
                 )?;
                 for (property, origin) in ordinal_style.winner_rule_properties() {
-                    has_applicable_ordinal_stroke_winner |= target == ThemeTarget::Edge
-                        && property == ResolvedStyleProperty::Stroke
-                        && origin.ordinal().is_some();
-                    ordinal_winner_rules.insert((target, origin.rule_index(), property));
+                    has_applicable_ordinal_stroke_winner |= property
+                        == ResolvedStyleProperty::Stroke
+                        && origin.ordinal().is_some()
+                        && typed_ordinal_edge_stroke_rules.contains(&origin.rule_index());
+                    ordinal_winner_rules.insert((origin.rule_index(), property));
                 }
             }
         }
+        node_plan.resolve_ordinals(
+            theme,
+            node_count,
+            ordinal_rule_targets.contains(&ThemeTarget::Node)
+                || ordinal_rule_targets.contains(&ThemeTarget::NodeLabel),
+            work_meter,
+        )?;
         let stroke = if has_applicable_ordinal_stroke_winner {
             None
         } else {
@@ -171,6 +184,7 @@ impl ClassRelationThemePlan {
             stroke_width,
             static_winner_rules,
             ordinal_winner_rules,
+            node_plan,
         })
     }
 
@@ -215,6 +229,25 @@ impl ClassRelationThemePlan {
         )
     }
 
+    pub(crate) fn begin_terminal_receipt_with_nodes(
+        &self,
+        nodes: Vec<ClassNodeTerminalExpectation>,
+        relations: Vec<ClassRelationTerminalExpectation>,
+        markers: Vec<ClassMarkerTerminalExpectation>,
+        hand_drawn: bool,
+    ) -> ClassRelationThemeReceipt {
+        self.begin_terminal_receipt(relations, markers, hand_drawn)
+            .with_nodes(nodes)
+    }
+
+    pub(crate) fn resolve_node_expectations(
+        &self,
+        node_ids: impl IntoIterator<Item = String>,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Vec<ClassNodeTerminalExpectation>, OperationWorkError> {
+        self.node_plan.resolve_expectations(node_ids, work_meter)
+    }
+
     fn typed_stroke_width_emission(&self) -> Option<(usize, f32)> {
         match self.stroke_width {
             ClassRelationStrokeWidth::Typed { rule_index, value } => Some((rule_index, value)),
@@ -240,31 +273,42 @@ impl ClassRelationThemePlan {
         selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        if target == ThemeTarget::Edge
-            && ((facet == FamilyThemeRuleFacet::StrokeWidth
-                && matches!(
-                    self.stroke_width,
-                    ClassRelationStrokeWidth::MermaidOwned { .. }
-                ))
-                || (matches!(facet, FamilyThemeRuleFacet::Stroke(_)) && self.mermaid_owns_stroke))
+        if target != ThemeTarget::Edge {
+            return false;
+        }
+        if (facet == FamilyThemeRuleFacet::StrokeWidth
+            && matches!(
+                self.stroke_width,
+                ClassRelationStrokeWidth::MermaidOwned { .. }
+            ))
+            || (matches!(facet, FamilyThemeRuleFacet::Stroke(_)) && self.mermaid_owns_stroke)
         {
             return false;
         }
-        let property = resolved_style_property_for_facet(facet);
+        let property = crate::family::resolved_style_property_for_facet(facet);
         match selector {
             FamilyThemeSelectorShape::Static {
                 variant: None | Some(ThemeVariant::Default),
-            } => self.static_winner_rules.get(&(target, property)).copied() == Some(rule_index),
+            } => self.static_winner_rules.get(&property).copied() == Some(rule_index),
             FamilyThemeSelectorShape::Ordinal {
                 variant: None | Some(ThemeVariant::Default),
                 ..
-            } => self
-                .ordinal_winner_rules
-                .contains(&(target, rule_index, property)),
+            } => self.ordinal_winner_rules.contains(&(rule_index, property)),
             FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => {
                 false
             }
         }
+    }
+
+    fn node_route_won(
+        &self,
+        rule_index: usize,
+        target: ThemeTarget,
+        selector: FamilyThemeSelectorShape,
+        facet: FamilyThemeRuleFacet,
+    ) -> bool {
+        self.node_plan
+            .route_won(rule_index, target, selector, facet)
     }
 }
 
@@ -312,275 +356,18 @@ fn typed_stroke_expectation(
     })
 }
 
-/// Terminal Class theme ledger. The SVG writer may seal it only after the completed root exists.
-#[derive(Debug)]
-pub(crate) struct ClassThemeEvidenceRecorder {
-    expected_relation_paths: usize,
-    node_count: usize,
-    cluster_label_count: usize,
-    table_group_lengths: Vec<usize>,
-    terminal_receipt: OnceLock<ClassRelationThemeReceipt>,
-}
-
-impl ClassThemeEvidenceRecorder {
-    pub(crate) fn new(
-        expected_relation_paths: usize,
-        node_count: usize,
-        cluster_label_count: usize,
-        table_group_lengths: Vec<usize>,
-    ) -> Self {
-        Self {
-            expected_relation_paths,
-            node_count,
-            cluster_label_count,
-            table_group_lengths,
-            terminal_receipt: OnceLock::new(),
-        }
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: ClassRelationThemeReceipt) -> bool {
-        if receipt.expected_relation_count() != self.expected_relation_paths
-            || !receipt.proves_complete()
-        {
-            return false;
-        }
-        self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(crate) fn finish(
-        &self,
-        theme: Option<&ResolvedDiagramTheme>,
-        plan: &ClassRelationThemePlan,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<FamilyThemeEvidence, OperationWorkError> {
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
-        let Some(theme) = theme else {
-            return Ok(evidence);
-        };
-        let receipt = self.terminal_receipt.get();
-        let has_relations = self.expected_relation_paths != 0;
-        let mut rules = BTreeMap::<(usize, ThemeTarget), ClassRuleObservation>::new();
-
-        for route in theme.family_mechanism_routes().iter().copied() {
-            match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet {
-                    rule_index,
-                    target,
-                    selector,
-                    facet,
-                } if matches!(target, ThemeTarget::Edge | ThemeTarget::Node) => {
-                    let observation = rules.entry((rule_index, target)).or_default();
-                    let route_applies = match target {
-                        ThemeTarget::Edge => has_relations,
-                        ThemeTarget::Node => self.node_count != 0,
-                        _ => unreachable!("guarded Class evidence target"),
-                    } && plan.route_won(rule_index, target, selector, facet);
-                    if !route_applies {
-                        continue;
-                    }
-                    observation.applicable = true;
-                    if target == ThemeTarget::Node {
-                        match route.disposition() {
-                            FamilyThemeDisposition::Unsupported => {
-                                observation
-                                    .residual
-                                    .get_or_insert(unsupported_residual_for_facet(facet));
-                            }
-                            FamilyThemeDisposition::TypedAdapter
-                            | FamilyThemeDisposition::LegacyCompatibility => {
-                                observation.incomplete = true;
-                            }
-                        }
-                        continue;
-                    }
-                    match (route.disposition(), facet) {
-                        (
-                            FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeRuleFacet::Stroke(
-                                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
-                            ),
-                        ) => {
-                            if let Some((winner, css)) = plan.typed_stroke() {
-                                if winner != rule_index {
-                                    observation.incomplete = true;
-                                } else if receipt
-                                    .is_some_and(|receipt| receipt.proves_typed_stroke(rule_index))
-                                {
-                                    observation.capabilities.insert(if css == "transparent" {
-                                        ThemeCapability::TransparentPaint
-                                    } else {
-                                        ThemeCapability::SolidPaint
-                                    });
-                                } else {
-                                    observation.incomplete = true;
-                                }
-                            } else {
-                                observation.incomplete = true;
-                            }
-                        }
-                        (
-                            FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeRuleFacet::StrokeWidth,
-                        ) => {
-                            if plan.stroke_width_is_clear_for(rule_index) {
-                                observation.residual =
-                                    Some(FamilyThemeResidualReason::UnsupportedGeometry);
-                            } else if let Some((winner, _)) = plan.typed_stroke_width_emission() {
-                                if winner != rule_index {
-                                    observation.incomplete = true;
-                                } else if receipt
-                                    .is_some_and(ClassRelationThemeReceipt::proves_typed_width)
-                                {
-                                    observation
-                                        .capabilities
-                                        .insert(ThemeCapability::BorderStyling);
-                                } else {
-                                    observation.incomplete = true;
-                                }
-                            } else {
-                                observation.incomplete = true;
-                            }
-                        }
-                        (FamilyThemeDisposition::TypedAdapter, _) => {
-                            observation.incomplete = true;
-                        }
-                        (FamilyThemeDisposition::Unsupported, facet) => {
-                            observation
-                                .residual
-                                .get_or_insert(unsupported_residual_for_facet(facet));
-                        }
-                        (FamilyThemeDisposition::LegacyCompatibility, _) => {
-                            observation.incomplete = true;
-                        }
-                    }
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Edge,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if !has_relations {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
-                }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Edge,
-                    ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if !has_relations {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                    }
-                }
-                FamilyThemeMechanism::BaseTypography(_)
-                | FamilyThemeMechanism::RuleFacet { .. }
-                | FamilyThemeMechanism::OrdinalPalette { .. }
-                | FamilyThemeMechanism::EffectBinding { .. } => {}
-            }
-        }
-
-        for ((rule_index, target), observation) in rules {
-            let key = crate::diagram_theme::FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target,
-            };
-            if !observation.applicable {
-                evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // Leaving the mechanism unaccounted makes strict completion fail closed.
-            } else if !observation.capabilities.is_empty() {
-                evidence.mark_applied_with_capabilities(key, observation.capabilities);
-            }
-        }
-
-        let mut unsupported_domains = Vec::with_capacity(3);
-        if let Some(marker_count) =
-            receipt.and_then(ClassRelationThemeReceipt::visible_marker_occurrence_count)
-        {
-            unsupported_domains.push(UnsupportedTerminalDomain::direct(
-                ThemeTarget::Marker,
-                TerminalVariantDomain::uniform(marker_count, ThemeVariant::Default),
-            ));
-        }
-        unsupported_domains.push(UnsupportedTerminalDomain::direct(
-            ThemeTarget::ClusterLabel,
-            TerminalVariantDomain::uniform(self.cluster_label_count, ThemeVariant::Default),
-        ));
-        unsupported_domains.push(UnsupportedTerminalDomain::direct(
-            ThemeTarget::Table,
-            TerminalVariantDomain::grouped_alternating(
-                &self.table_group_lengths,
-                ThemeVariant::Odd,
-                ThemeVariant::Even,
-            ),
-        ));
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut evidence,
-            &unsupported_domains,
-            work_meter,
-        )?;
-
-        Ok(evidence)
-    }
-}
-
-#[derive(Debug, Default)]
-struct ClassRuleObservation {
-    applicable: bool,
-    incomplete: bool,
-    residual: Option<FamilyThemeResidualReason>,
-    capabilities: BTreeSet<ThemeCapability>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch,
-    };
-    use crate::resources::RenderResourcePolicy;
-
-    fn work_meter() -> OperationWorkMeter {
-        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
-    }
-
-    fn resolved_fill(target: ThemeTarget, variant: Option<ThemeVariant>) -> ResolvedDiagramTheme {
-        let mut rule = ThemeRule::new(
-            target,
-            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-        )
-        .for_family(DiagramFamilyId::CLASS);
-        if let Some(variant) = variant {
-            rule = rule.with_variant(variant);
-        }
-        DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
-            .expect("compile Class terminal fixture")
-            .resolve(DiagramFamilyId::CLASS)
-    }
 
     #[test]
     fn relation_width_receipt_requires_every_terminal_checkpoint() {
         let plan = ClassRelationThemePlan {
-            stroke: None,
-            mermaid_owns_stroke: false,
             stroke_width: ClassRelationStrokeWidth::Typed {
                 rule_index: 3,
                 value: 6.0,
             },
-            static_winner_rules: BTreeMap::new(),
-            ordinal_winner_rules: BTreeSet::new(),
+            ..ClassRelationThemePlan::default()
         };
         let relations = (0..2)
             .map(|index| ClassRelationTerminalExpectation::new(index, None, None))
@@ -591,90 +378,5 @@ mod tests {
 
         receipt.record_relation(1, None, None, None, ";;;", None, true);
         assert!(receipt.proves_typed_width());
-    }
-
-    #[test]
-    fn terminal_recorder_rejects_wrong_counts_and_duplicate_seals() {
-        let complete_receipt = |count| {
-            let relations = (0..count)
-                .map(|index| ClassRelationTerminalExpectation::new(index, None, None))
-                .collect::<Vec<_>>();
-            let mut receipt = ClassRelationThemeReceipt::new(relations, Vec::new(), None, false);
-            for index in 0..count {
-                receipt.record_relation(index, None, None, None, ";;;", None, false);
-            }
-            receipt
-        };
-        let recorder = ClassThemeEvidenceRecorder::new(2, 0, 0, Vec::new());
-        assert!(!recorder.record_terminal(complete_receipt(1)));
-        assert!(recorder.record_terminal(complete_receipt(2)));
-        assert!(!recorder.record_terminal(complete_receipt(2)));
-    }
-
-    #[test]
-    fn visible_relation_marker_keeps_unsupported_paint_as_a_residual() {
-        let theme = resolved_fill(ThemeTarget::Marker, None);
-        let recorder = ClassThemeEvidenceRecorder::new(1, 0, 0, Vec::new());
-        let mut receipt = ClassRelationThemeReceipt::new(
-            vec![ClassRelationTerminalExpectation::new(
-                0,
-                Some("extensionStart"),
-                None,
-            )],
-            vec![ClassMarkerTerminalExpectation::new("extensionStart", false)],
-            None,
-            false,
-        );
-        receipt.record_marker("extensionStart", false, None, None);
-        receipt.record_relation(0, Some("extensionStart"), None, None, ";;;", None, false);
-        assert!(recorder.record_terminal(receipt));
-
-        let evidence = recorder
-            .finish(
-                Some(&theme),
-                &ClassRelationThemePlan::default(),
-                &work_meter(),
-            )
-            .expect("reconcile visible Class marker evidence");
-        assert_eq!(evidence.residuals().len(), 1);
-        assert_eq!(
-            evidence.residuals()[0].key(),
-            &crate::diagram_theme::FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Marker,
-            }
-        );
-    }
-
-    #[test]
-    fn table_odd_even_variants_restart_for_each_member_group() {
-        let odd_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Odd));
-        let odd_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, vec![1, 1]);
-        let odd_evidence = odd_recorder
-            .finish(
-                Some(&odd_theme),
-                &ClassRelationThemePlan::default(),
-                &work_meter(),
-            )
-            .expect("reconcile Class odd table evidence");
-        assert_eq!(odd_evidence.residuals().len(), 1);
-
-        let even_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Even));
-        let even_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, vec![1, 1]);
-        let even_evidence = even_recorder
-            .finish(
-                Some(&even_theme),
-                &ClassRelationThemePlan::default(),
-                &work_meter(),
-            )
-            .expect("reconcile Class even table evidence");
-        assert!(even_evidence.residuals().is_empty());
-        assert_eq!(
-            even_evidence.not_applicable_mechanisms(),
-            &[crate::diagram_theme::FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Table,
-            }]
-        );
     }
 }

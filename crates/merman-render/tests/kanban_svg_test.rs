@@ -73,6 +73,16 @@ fn render_kanban_with_theme_and_engine(
     engine: Engine,
     portability: ThemePortabilityRequirement,
 ) -> family::RenderedFamilySvg {
+    try_render_kanban_with_theme_and_engine(source, theme, engine, portability)
+        .expect("render themed Kanban")
+}
+
+fn try_render_kanban_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Kanban")
@@ -90,7 +100,6 @@ fn render_kanban_with_theme_and_engine(
             },
             &SvgDebugOptions::default(),
         )
-        .expect("render themed Kanban")
 }
 
 fn kanban_task_rect_style<'input>(
@@ -738,17 +747,18 @@ fn kanban_task_label_inline_html_color_owns_its_visible_text_run() {
 }
 
 #[test]
-fn kanban_task_label_foreground_applies_to_inheriting_runs_beside_inline_color() {
+fn kanban_mixed_color_owners_cannot_prove_portable_task_label_fill() {
     let theme = kanban_task_label_theme("#123456");
+    let source = concat!(
+        "%%{init: {\"securityLevel\": \"loose\"}}%%\n",
+        "kanban\n  todo[Todo]\n",
+        "    task[\"Visible <span style='color:transparent'>Hidden</span>\"]\n",
+    );
     let rendered = render_kanban_with_theme_and_engine(
-        concat!(
-            "%%{init: {\"securityLevel\": \"loose\"}}%%\n",
-            "kanban\n  todo[Todo]\n",
-            "    task[\"Visible <span style='color:transparent'>Hidden</span>\"]\n",
-        ),
+        source,
         &theme,
         Engine::new(),
-        ThemePortabilityRequirement::RequirePortable,
+        ThemePortabilityRequirement::BestEffort,
     );
     let document =
         roxmltree::Document::parse(rendered.svg()).expect("valid mixed-owner Kanban label SVG");
@@ -776,9 +786,62 @@ fn kanban_task_label_foreground_applies_to_inheriting_runs_beside_inline_color()
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.applied_count(), 0);
+
+    let error = match try_render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    ) {
+        Ok(_) => panic!("mixed XHTML color ownership must fail closed in portable mode"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            error,
+            merman_render::Error::UnverifiedFamilyTheme {
+                family_id: merman_render::DiagramFamilyId::KANBAN,
+                residual_count: 1,
+            }
+        ),
+        "unexpected Kanban mixed-color portability error: {error:?}"
+    );
+}
+
+#[test]
+fn kanban_task_label_css_class_ownership_is_not_portably_provable() {
+    let theme = kanban_task_label_theme("#123456");
+    let source = concat!(
+        "%%{init: {\"securityLevel\": \"loose\"}}%%\n",
+        "kanban\n  todo[Todo]\n",
+        "    task[\"Visible <span class='label'>CSS-owned</span>\"]\n",
+    );
+    let rendered = render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+
+    let error = match try_render_kanban_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    ) {
+        Ok(_) => panic!("class-owned XHTML color must fail closed in portable mode"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        merman_render::Error::UnverifiedFamilyTheme {
+            family_id: merman_render::DiagramFamilyId::KANBAN,
+            residual_count: 1,
+        }
+    ));
 }
 
 #[test]

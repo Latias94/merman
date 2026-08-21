@@ -169,7 +169,7 @@ fn open_svg_text(
 ) {
     out.push_str(r#"<text y="-10.1""#);
     if let Some(style) = style {
-        let _ = write!(out, r#" style="{}""#, escape_xml_display(style));
+        let _ = write!(out, r#" style="{}""#, escape_attr_display(style));
     }
     if center_text {
         out.push_str(r#" text-anchor="middle""#);
@@ -490,8 +490,24 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
 mod tests {
     use super::{
         write_prepared_svg_text_source_word_lines_with_style, write_svg_text_centered,
-        write_svg_text_source_word_lines,
+        write_svg_text_source_word_lines, write_svg_text_source_word_lines_with_style,
     };
+
+    #[test]
+    fn svg_text_style_preserves_hex_color_declarations_as_attribute_data() {
+        let mut svg = String::new();
+        write_svg_text_source_word_lines_with_style(
+            &mut svg,
+            &[vec!["label".to_string()]],
+            "color:#112233;fill:#112233",
+            true,
+        );
+
+        assert!(
+            svg.contains(r#"style="color:#112233;fill:#112233""#),
+            "{svg}"
+        );
+    }
 
     #[test]
     fn non_markdown_svg_text_uses_ecmascript_whitespace_boundaries() {

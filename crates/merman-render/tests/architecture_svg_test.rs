@@ -160,6 +160,36 @@ fn architecture_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
     .for_family(DiagramFamilyId::ARCHITECTURE)])
 }
 
+fn architecture_terminal_surface_theme() -> DiagramTheme {
+    architecture_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").expect("valid Architecture service fill")),
+        )
+        .for_family(DiagramFamilyId::ARCHITECTURE),
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_stroke(
+                CanvasPaint::solid("#234567").expect("valid Architecture service stroke"),
+            ),
+        )
+        .for_family(DiagramFamilyId::ARCHITECTURE),
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#345678").expect("valid Architecture text fill")),
+        )
+        .for_family(DiagramFamilyId::ARCHITECTURE),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#456789").expect("valid Architecture arrow fill")),
+        )
+        .for_family(DiagramFamilyId::ARCHITECTURE),
+    ])
+}
+
 fn try_render_architecture_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -223,6 +253,38 @@ fn stylesheet(svg: &str) -> String {
         .filter(|node| node.has_tag_name("style"))
         .filter_map(|node| node.text())
         .collect()
+}
+
+fn stylesheet_property<'a>(css: &'a str, selector: &str, property: &str) -> Option<&'a str> {
+    css.split('}').find_map(|rule| {
+        let (candidate, declarations) = rule.split_once('{')?;
+        if candidate.trim() != selector {
+            return None;
+        }
+        declarations.split(';').find_map(|declaration| {
+            let (name, value) = declaration.split_once(':')?;
+            (name.trim() == property).then_some(value.trim())
+        })
+    })
+}
+
+fn writer_owned_text_bbox(text: roxmltree::Node<'_, '_>) -> [f64; 4] {
+    let values = text
+        .attribute("data-merman-text-bbox")
+        .expect("Architecture writer-owned text bbox")
+        .split(',')
+        .map(|value| value.parse::<f64>().expect("finite Architecture text bbox"))
+        .collect::<Vec<_>>();
+    let [left, top, right, bottom] = values.as_slice() else {
+        panic!("Architecture text bbox must contain four values");
+    };
+    assert!(
+        [*left, *top, *right, *bottom]
+            .into_iter()
+            .all(f64::is_finite)
+    );
+    assert!(right > left && bottom > top);
+    [*left, *top, *right - *left, *bottom - *top]
 }
 
 fn try_render_architecture_svg_with_resource_policy(
@@ -638,6 +700,256 @@ fn architecture_edge_stroke_reaches_every_edge_segment_without_recoloring_arrows
         assert_eq!(evidence.applied_count(), 1, "{case}");
         assert_eq!(evidence.not_applicable_count(), 0, "{case}");
         assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn architecture_service_text_and_arrow_surfaces_have_independent_terminal_owners() {
+    let source = r#"architecture-beta
+  group core(cloud)[Core]
+  service api[API] in core
+  service worker[Worker] in core
+  service db[Database] in core
+  api:R --> L:worker
+"#;
+    let rendered = render_architecture_with_theme_and_engine(
+        source,
+        &architecture_terminal_surface_theme(),
+        Engine::new(),
+        "architecture-surfaces",
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Architecture surface SVG");
+
+    let service_backgrounds = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && has_class(node, "node-bkg")
+                && node.attribute("id").is_some_and(|id| id.contains("-node-"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(service_backgrounds.len(), 3, "{}", rendered.svg());
+    assert!(
+        service_backgrounds
+            .iter()
+            .all(|node| { node.attribute("style") == Some("fill:#123456;stroke:#234567;") })
+    );
+
+    let group_background = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("architecture-surfaces-group-core"))
+        .expect("Architecture group background");
+    assert!(
+        group_background
+            .attribute("style")
+            .is_none_or(|style| !style.contains("#123456") && !style.contains("#234567")),
+        "service paint must not recolor the independent Cluster surface"
+    );
+
+    let visible_svg_text = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .collect::<Vec<_>>();
+    assert_eq!(visible_svg_text.len(), 4, "{}", rendered.svg());
+    assert!(
+        visible_svg_text
+            .iter()
+            .all(|text| { text.attribute("style") == Some("fill:#345678;") })
+    );
+    let terminal_text_bounds = visible_svg_text
+        .iter()
+        .map(|text| writer_owned_text_bbox(*text))
+        .collect::<Vec<_>>();
+    assert_eq!(terminal_text_bounds.len(), 4);
+    assert!(
+        terminal_text_bounds
+            .iter()
+            .all(|bounds| bounds[2] > 0.0 && bounds[3] > 0.0)
+    );
+
+    let arrows = architecture_arrow_polygons(&document);
+    assert_eq!(arrows.len(), 1, "{}", rendered.svg());
+    assert_eq!(arrows[0].attribute("style"), Some("fill:#456789;"));
+    let edges = architecture_edge_paths(&document);
+    assert_eq!(edges.len(), 1, "{}", rendered.svg());
+    assert!(
+        edges[0]
+            .attribute("style")
+            .is_none_or(|style| !style.contains("#456789")),
+        "Marker.fill must not replace the independent Edge.stroke terminal"
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 4);
+    assert_eq!(evidence.applied_count(), 4);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_icon_text_keeps_its_fixed_mermaid_owner_outside_typed_text() {
+    let source = r#"architecture-beta
+  service worker "Icon" [Worker]
+"#;
+    let rendered = render_architecture_with_theme_and_engine(
+        source,
+        &architecture_terminal_surface_theme(),
+        Engine::new(),
+        "architecture-icon-text-owner",
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Architecture icon-text SVG");
+
+    let icon_text = document
+        .descendants()
+        .find(|node| node.has_tag_name("div") && has_class(node, "node-icon-text"))
+        .expect("Architecture icon-text container");
+    let icon_text_content = icon_text
+        .children()
+        .find(|node| node.has_tag_name("div"))
+        .expect("Architecture icon-text content");
+    assert!(
+        icon_text_content
+            .attribute("style")
+            .is_some_and(|style| !style.contains("color:")),
+        "typed Text.fill must not override Mermaid's fixed white iconText owner"
+    );
+    assert_eq!(
+        stylesheet_property(
+            &stylesheet(rendered.svg()),
+            "#architecture-icon-text-owner .node-icon-text>div",
+            "color",
+        ),
+        Some("#fff")
+    );
+
+    let service = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("architecture-icon-text-owner-service-worker"))
+        .expect("Architecture service terminal");
+    let service_title = service
+        .descendants()
+        .find(|node| node.has_tag_name("text"))
+        .expect("Architecture service title");
+    assert_eq!(
+        service_title
+            .descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect::<String>(),
+        "Worker"
+    );
+    assert_eq!(service_title.attribute("style"), Some("fill:#345678;"));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 4);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 3);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_terminal_surface_plan_preserves_explicit_mermaid_owners() {
+    let source = r#"architecture-beta
+  service api[API]
+  service worker[Worker]
+  service db[Database]
+  api:R --> L:worker
+"#;
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "textColor": "#aabbcc",
+            "archEdgeArrowColor": "#bbccdd",
+            "archGroupBorderColor": "#ccddee"
+        }
+    })));
+    let rendered = render_architecture_with_theme_and_engine(
+        source,
+        &architecture_terminal_surface_theme(),
+        engine,
+        "architecture-surface-owners",
+    );
+    let document = roxmltree::Document::parse(rendered.svg())
+        .expect("valid source-owned Architecture surface SVG");
+
+    let service_backgrounds = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && has_class(node, "node-bkg")
+                && node.attribute("id").is_some_and(|id| id.contains("-node-"))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        service_backgrounds
+            .iter()
+            .all(|node| { node.attribute("style") == Some("fill:#123456;") })
+    );
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .all(|text| text.attribute("style") == Some(""))
+    );
+    assert!(
+        architecture_arrow_polygons(&document)
+            .iter()
+            .all(|arrow| arrow.attribute("style").is_none())
+    );
+    let css = stylesheet(rendered.svg());
+    assert_eq!(
+        stylesheet_property(&css, "#architecture-surface-owners", "fill"),
+        Some("#aabbcc")
+    );
+    assert_eq!(
+        stylesheet_property(&css, "#architecture-surface-owners .arrow", "fill"),
+        Some("#bbccdd")
+    );
+    assert_eq!(
+        stylesheet_property(&css, "#architecture-surface-owners .node-bkg", "stroke"),
+        Some("#ccddee")
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 4);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 3);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_title_theme_remains_a_compatibility_residual_until_retirement_is_authorized() {
+    let source = r#"architecture-beta
+  service api[API]
+"#;
+    let theme = architecture_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#abcdef").expect("valid Architecture title fill")),
+    )
+    .for_family(DiagramFamilyId::ARCHITECTURE)]);
+    let error = match try_render_architecture_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        "architecture-no-title-terminal",
+    ) {
+        Ok(_) => panic!("Architecture Title.fill must remain a compatibility residual"),
+        Err(error) => error,
+    };
+    match error {
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id,
+            residual_count,
+        } => {
+            assert_eq!(family_id, DiagramFamilyId::ARCHITECTURE);
+            assert_eq!(residual_count, 1);
+        }
+        other => panic!("expected Architecture legacy compatibility residual, got {other}"),
     }
 }
 

@@ -40,7 +40,7 @@ pub use icons::replace_fontawesome_icons;
 pub(crate) use line_break::html_has_soft_break_opportunity;
 pub(crate) use markdown::{
     MermaidMarkdownAnalysis, MermaidMarkdownWordType, analyze_mermaid_markdown,
-    mermaid_markdown_contains_html_tags, mermaid_markdown_to_lines,
+    mermaid_markdown_contains_html_tags, mermaid_markdown_is_plain_text, mermaid_markdown_to_lines,
 };
 pub(crate) use markdown_label::{
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,

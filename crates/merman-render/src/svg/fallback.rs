@@ -473,6 +473,21 @@ mod tests {
     }
 
     #[test]
+    fn inline_ancestor_fill_outranks_class_styles_in_foreign_object_fallback() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.label{fill:#333}</style><g class="label" style="color:transparent;fill:transparent"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><span>Hidden</span></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(r#"fill="transparent""#),
+            "inline terminal paint must remain the fallback winner: {out}"
+        );
+        assert!(
+            !out.contains(r##"fill="#333""##),
+            "class paint must not override inline terminal paint: {out}"
+        );
+    }
+
+    #[test]
     fn foreign_object_overlay_uses_scoped_label_css_for_fallback_fill() {
         let svg = r##"<svg id="host-theme-block" xmlns="http://www.w3.org/2000/svg"><style>#host-theme-block{fill:#eeeeee;}#host-theme-block .node rect{fill:#111827;}#host-theme-block .label text,#host-theme-block span,#host-theme-block p{fill:#e5e7eb;color:#e5e7eb;}</style><g class="block"><g class="node flowchart-label"><g class="label"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></g></g></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);

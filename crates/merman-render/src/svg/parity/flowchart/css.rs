@@ -133,6 +133,7 @@ pub(in crate::svg::parity) fn write_flowchart_css<DropShadowId, DropShadowSmallI
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
+    omit_cluster_paint: bool,
 ) -> Result<()>
 where
     DropShadowId: std::fmt::Display,
@@ -266,12 +267,19 @@ where
         id.as_str(),
         label_bkg
     );
+    let cluster_paint = if omit_cluster_paint {
+        String::new()
+    } else {
+        format!(
+            "#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}",
+            id.as_str(),
+            cluster_bkg,
+            cluster_border,
+        )
+    };
     let _ = write!(
         &mut *out,
-        r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}"#,
-        id.as_str(),
-        cluster_bkg,
-        cluster_border,
+        "{cluster_paint}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
         id.as_str(),
         title_color,
         id.as_str(),
@@ -385,6 +393,7 @@ fn flowchart_css(
         font_family,
         font_size,
         class_defs,
+        false,
     )?;
     Ok(out)
 }
@@ -482,6 +491,7 @@ mod tests {
             "sans-serif",
             16.0,
             &class_defs,
+            false,
         )
         .expect_err("the fixed Flowchart CSS prefix must exceed the tiny ceiling");
 

@@ -424,7 +424,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         let _ = write!(out, r#" style="{}""#, escape_attr_display(&terminal_style));
         out.push_str("/>");
         out.checkpoint()?;
-        if let Some(relation) = relation {
+        if relation.is_some() {
             let relation_index = ctx
                 .relation_index_by_id
                 .get(e.id.as_str())

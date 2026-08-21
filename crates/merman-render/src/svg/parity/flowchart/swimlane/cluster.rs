@@ -1,10 +1,34 @@
 use super::super::*;
-use crate::flowchart::{FlowchartShapeFacetEmissionReceipt, flowchart_label_is_empty_for_render};
+use crate::flowchart::{
+    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartClusterThemeEmission, FlowchartFacetPrecedence,
+    FlowchartShapeFacetEmissionReceipt, FlowchartThemeFacetEmission,
+    flowchart_label_is_empty_for_render,
+};
 use crate::model::SwimlaneLaneLayout;
 
 const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const SWIMLANE_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
 const SWIMLANE_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+
+#[derive(Debug, Clone, Copy)]
+struct SwimlaneShellEmissionReceipt {
+    body: FlowchartShapeFacetEmissionReceipt,
+    title: FlowchartShapeFacetEmissionReceipt,
+}
+
+impl SwimlaneShellEmissionReceipt {
+    const fn source_facets(self) -> FlowchartShapeFacetEmissionReceipt {
+        self.body.merge(self.title)
+    }
+
+    const fn fill_verified(self) -> bool {
+        self.body.fill && self.title.fill
+    }
+
+    const fn stroke_verified(self) -> bool {
+        self.body.stroke && self.title.stroke
+    }
+}
 
 fn rough_style_from_node_style(node_style: &str, mut keep: impl FnMut(&str) -> bool) -> String {
     let mut out = String::new();
@@ -127,7 +151,17 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let class_names = subgraph.map_or(&[][..], |subgraph| subgraph.classes.as_slice());
     let styles = subgraph.map_or(&[][..], |subgraph| subgraph.styles.as_slice());
     let compiled = flowchart_compile_styles(ctx.class_defs, class_names, styles, &[]);
-    let node_style = compiled.node_style.trim();
+    let fill_precedence = FlowchartFacetPrecedence::new(
+        compiled.source_fill_status(),
+        ctx.cluster_fill_config_override,
+    );
+    let stroke_precedence = FlowchartFacetPrecedence::new(
+        compiled.source_stroke_status(),
+        ctx.cluster_stroke_config_override,
+    );
+    let mut node_style = compiled.node_style.trim().to_string();
+    ctx.cluster_theme
+        .append_inline_style(&mut node_style, fill_precedence, stroke_precedence);
     let label_style = compiled.label_style.trim();
     let render_title = subgraph
         .and_then(|subgraph| {
@@ -152,7 +186,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let title_owner = ctx
         .svg_label_sidecar
         .and_then(|sidecar| sidecar.swimlane_group_title_owner(cluster.id.as_str()));
-    let title_receipt =
+    let mut title_receipt =
         super::super::render::node::emission::FlowchartNodeLabelEmissionReceipt::verified()
             .with_prepared_typography_reach(
                 !flowchart_label_is_empty_for_render(render_title),
@@ -166,7 +200,13 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let lane_left = lane.x - width / 2.0 + ctx.tx - origin_x;
     let is_lr = direction == crate::model::SwimlaneDirection::Lr;
 
-    let theme = MermaidThemeAdapter::new(ctx.config.as_value()).node_diagram();
+    let typed_lane_fill = ctx.cluster_theme.fill_value(fill_precedence, true);
+    let lane_fill = typed_lane_fill.unwrap_or(&ctx.cluster_fill_color);
+    let typed_lane_stroke = ctx.cluster_theme.stroke_value(stroke_precedence, true);
+    let lane_stroke = typed_lane_stroke.unwrap_or(&ctx.cluster_stroke_color);
+    // The body has no compatibility fill path in hand-drawn output. Only a direct typed fill may
+    // add one; a typed stroke owns the outline independently and must not recolor the body.
+    let body_fill = typed_lane_fill;
     let mut classes = String::from("cluster swimlane");
     for class in class_names {
         let class = class.trim();
@@ -197,40 +237,43 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     }
     out.push('>');
 
-    let mut shape_source_receipt = FlowchartShapeFacetEmissionReceipt::none();
-    let (label_x, label_y, label_transform) = if is_lr {
+    let (shell_receipt, label_x, label_y, label_transform) = if is_lr {
         let title_width = geometry.title_band_width;
         let body_x = lane_left + title_width;
         let body_width = (width - title_width).max(0.0);
-        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
+        let body_receipt = write_swimlane_rect(
             out,
             ctx,
             &compiled,
             "swimlane-body",
-            node_style,
+            &node_style,
             body_x,
             lane_top,
             body_width,
             height,
-            None,
-            &theme.cluster_border,
-        ));
-        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
+            body_fill,
+            lane_stroke,
+        );
+        let title_receipt = write_swimlane_rect(
             out,
             ctx,
             &compiled,
             "swimlane-title",
-            node_style,
+            &node_style,
             lane_left,
             lane_top,
             title_width,
             height,
-            Some(&theme.cluster_bkg),
-            &theme.cluster_border,
-        ));
+            Some(lane_fill),
+            lane_stroke,
+        );
         let center_x = geometry.title_label.x + ctx.tx - origin_x;
         let center_y = geometry.title_label.y + ctx.ty - origin_y;
         (
+            SwimlaneShellEmissionReceipt {
+                body: body_receipt,
+                title: title_receipt,
+            },
             0.0,
             0.0,
             format!(
@@ -245,41 +288,56 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let title_height = geometry.title_band_height;
         let body_y = lane_top + title_height;
         let body_height = (lane_bottom - body_y).max(0.0);
-        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
+        let body_receipt = write_swimlane_rect(
             out,
             ctx,
             &compiled,
             "swimlane-body",
-            node_style,
+            &node_style,
             lane_left,
             body_y,
             width,
             body_height,
-            None,
-            &theme.cluster_border,
-        ));
-        shape_source_receipt = shape_source_receipt.merge(write_swimlane_rect(
+            body_fill,
+            lane_stroke,
+        );
+        let title_receipt = write_swimlane_rect(
             out,
             ctx,
             &compiled,
             "swimlane-title",
-            node_style,
+            &node_style,
             lane_left,
             lane_top,
             width,
             title_height,
-            Some(&theme.cluster_bkg),
-            &theme.cluster_border,
-        ));
+            Some(lane_fill),
+            lane_stroke,
+        );
         (
+            SwimlaneShellEmissionReceipt {
+                body: body_receipt,
+                title: title_receipt,
+            },
             geometry.title_label.x - label_width / 2.0 + ctx.tx - origin_x,
             geometry.title_label.y - label_height / 2.0 + ctx.ty - origin_y,
             String::new(),
         )
     };
-    ctx.theme_evidence.record_source_residuals(
-        &compiled
-            .emitted_shape_source_residuals_with_receipt(lane.id.as_str(), shape_source_receipt),
+    let source_residuals = compiled.emitted_shape_source_residuals_with_receipt(
+        lane.id.as_str(),
+        shell_receipt.source_facets(),
+    );
+    ctx.theme_evidence.record_cluster_emission(
+        ctx.cluster_theme,
+        FlowchartClusterThemeEmission {
+            fill: FlowchartThemeFacetEmission::new(fill_precedence, shell_receipt.fill_verified()),
+            stroke: FlowchartThemeFacetEmission::new(
+                stroke_precedence,
+                shell_receipt.stroke_verified(),
+            ),
+        },
+        &source_residuals,
     );
 
     let mut html_typography_statuses = (
@@ -350,10 +408,35 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             r#"<g class="cluster-label swimlane-label" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
             escape_xml_display(&transform),
         );
-        write_flowchart_svg_text_markdown(out, render_title, true);
+        let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+            &ctx.text_style,
+            ctx.class_defs,
+            class_names,
+            styles,
+        );
+        let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+            ctx.svg_label_sidecar,
+            title_owner,
+            render_title,
+            ctx.measurer,
+            title_text_style.as_ref(),
+            Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
+            true,
+            crate::flowchart::FlowchartSvgWidthMode::Bbox,
+        );
+        let prepared_title = prepared.is_prepared();
+        if prepared_title {
+            write_flowchart_svg_label_plan(out, &prepared, true);
+        } else {
+            write_flowchart_svg_text_markdown(out, render_title, true);
+        }
+        title_receipt = title_receipt.with_prepared_typography_reach(
+            !flowchart_label_is_empty_for_render(render_title),
+            prepared_title && prepared.emitted_admitted_typography(),
+        );
         out.push_str("</g></g>");
         ctx.theme_evidence.record_source_residuals(
-            &compiled.emitted_label_source_residuals(lane.id.as_str(), false),
+            &compiled.emitted_label_source_residuals(lane.id.as_str(), prepared_title),
         );
     }
     ctx.record_base_typography_label_emission(

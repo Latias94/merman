@@ -285,6 +285,38 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     )?;
     let edge_stroke = group_theme.edge_stroke();
     let edge_inline_style = edge_stroke.map(|(_, stroke)| format!("stroke:{stroke};"));
+    let mut surface_theme_receipt = group_theme.begin_surface_terminal_receipt(
+        model.services().enumerate().map(|(index, service)| {
+            crate::architecture::ArchitectureServiceTerminal {
+                index,
+                id: service.id,
+                has_background: service.icon.is_none() && service.icon_text.is_none(),
+                has_title: service.title.is_some_and(|title| !title.trim().is_empty()),
+                has_icon_text: service.icon.is_none()
+                    && service
+                        .icon_text
+                        .is_some_and(|text| !text.trim().is_empty()),
+            }
+        }),
+        model.groups().enumerate().map(|(index, group)| {
+            crate::architecture::ArchitectureGroupTerminal {
+                index,
+                id: group.id,
+                has_title: group.title.is_some_and(|title| !title.trim().is_empty()),
+            }
+        }),
+        model.edges().enumerate().map(|(index, edge)| {
+            crate::architecture::ArchitectureEdgeTerminal {
+                index,
+                lhs_id: edge.lhs_id,
+                rhs_id: edge.rhs_id,
+                has_label: edge.title.is_some_and(|title| !title.trim().is_empty()),
+                has_lhs_arrow: edge.lhs_into == Some(true),
+                has_rhs_arrow: edge.rhs_into == Some(true),
+            }
+        }),
+        options.work_meter(),
+    )?;
     let mut edge_theme_receipt = group_theme.begin_edge_terminal_receipt(
         model
             .edges()
@@ -306,6 +338,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             edge_stroke,
             edge_inline_style: edge_inline_style.as_deref(),
             terminal_receipt: edge_theme_receipt.as_mut(),
+            surface_theme_receipt: surface_theme_receipt.as_mut(),
         };
         push_architecture_edges(&mut edge_render_ctx)?;
     }
@@ -325,6 +358,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             icon_registry: options.icon_registry(),
             work_meter: options.work_meter(),
             content_bounds: &mut content_bounds,
+            surface_theme_receipt: surface_theme_receipt.as_mut(),
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
         push_architecture_groups(
@@ -357,6 +391,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     if edge_theme_receipt.is_some_and(|receipt| !group_theme.record_edge_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "Architecture edge stroke receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if surface_theme_receipt.is_some_and(|receipt| !group_theme.record_surface_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Architecture surface theme receipt did not match the terminal SVG"
+                .to_string(),
         });
     }
 

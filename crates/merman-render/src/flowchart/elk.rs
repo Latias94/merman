@@ -2214,7 +2214,7 @@ mod tests {
             "Portable cluster",
             &measurer,
             style.as_ref(),
-            None,
+            Some(settings.wrapping_width),
             true,
             FlowchartSvgWidthMode::Bbox,
         );

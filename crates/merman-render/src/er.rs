@@ -9,19 +9,20 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{Arc, OnceLock};
 
 mod config;
 mod theme;
 
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 use config::{ErLayoutAlgorithm, ErLayoutSettings};
-pub(crate) use theme::{ErEntityThemePlan, ErRelationTerminalExpectation};
+#[cfg(test)]
+pub(crate) use theme::compile_er_entity_source_style;
+pub(crate) use theme::{ErAttributeTextRole, ErEntityThemePlan, ErRelationTerminalExpectation};
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
-pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 
 pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
     ErConfigView::new(effective_config).is_elk_layout()
@@ -33,6 +34,7 @@ pub(crate) struct ErBoxLabel {
     rendered_text: String,
     xhtml_fragment: String,
     generic_workaround: bool,
+    visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
 }
 
 impl ErBoxLabel {
@@ -59,6 +61,7 @@ impl ErBoxLabel {
             rendered_text,
             xhtml_fragment,
             generic_workaround,
+            visible_style_facts: OnceLock::new(),
         }
     }
 
@@ -77,6 +80,145 @@ impl ErBoxLabel {
     pub(crate) fn uses_generic_workaround(&self) -> bool {
         self.generic_workaround
     }
+
+    pub(crate) fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
+        self.visible_style_facts.get_or_init(|| {
+            crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&self.xhtml_fragment)
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ErPreparedRelationshipLabel {
+    source: String,
+    xhtml_fragment: String,
+    metrics: TextMetrics,
+    html_labels: bool,
+    visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
+}
+
+impl ErPreparedRelationshipLabel {
+    fn new(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle, html_labels: bool) -> Self {
+        let source = text.trim().to_string();
+        let xhtml_fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(&source, true);
+        let metrics = if source.is_empty() {
+            TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            }
+        } else if html_labels {
+            crate::text::measure_xhtml_label_fragment(
+                measurer,
+                &xhtml_fragment,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            )
+        } else if let Some(plain_text) =
+            crate::text::mermaid_xhtml_label_plain_text(&xhtml_fragment)
+        {
+            measurer.measure_wrapped(&plain_text, style, None, WrapMode::SvgLike)
+        } else {
+            crate::text::measure_markdown_with_inline_styles(
+                measurer,
+                &source,
+                style,
+                None,
+                WrapMode::SvgLike,
+            )
+        };
+        Self {
+            source,
+            xhtml_fragment,
+            metrics,
+            html_labels,
+            visible_style_facts: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn xhtml_fragment(&self) -> &str {
+        &self.xhtml_fragment
+    }
+
+    fn dimensions(&self) -> (f64, f64) {
+        (self.metrics.width.max(0.0), self.metrics.height.max(0.0))
+    }
+
+    pub(crate) fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
+        self.visible_style_facts.get_or_init(|| {
+            if self.html_labels {
+                crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&self.xhtml_fragment)
+            } else {
+                crate::text::VisibleTextStyleFacts::plain_text(&self.source)
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ErPreparedLabels {
+    entity_measures: BTreeMap<String, ErEntityMeasure>,
+    relationship_labels: Vec<ErPreparedRelationshipLabel>,
+}
+
+impl ErPreparedLabels {
+    fn prepare(
+        model: &merman_core::diagrams::er::ErDiagramRenderModel,
+        measurer: &dyn TextMeasurer,
+        settings: &ErLayoutSettings,
+    ) -> Self {
+        let entity_measures = model
+            .entities
+            .values()
+            .map(|entity| {
+                (
+                    entity.id.clone(),
+                    measure_entity_box(
+                        entity,
+                        measurer,
+                        &settings.label_style,
+                        &settings.attr_style,
+                        settings.entity_measurement,
+                    ),
+                )
+            })
+            .collect();
+        let relationship_labels = model
+            .relationships
+            .iter()
+            .map(|relationship| {
+                ErPreparedRelationshipLabel::new(
+                    &relationship.role_a,
+                    measurer,
+                    &settings.relationship_label_style,
+                    settings.relationship_html_labels,
+                )
+            })
+            .collect();
+        Self {
+            entity_measures,
+            relationship_labels,
+        }
+    }
+
+    pub(crate) fn entity(&self, entity_id: &str) -> Option<&ErEntityMeasure> {
+        self.entity_measures.get(entity_id)
+    }
+
+    pub(crate) fn relationship(&self, index: usize) -> Option<&ErPreparedRelationshipLabel> {
+        self.relationship_labels.get(index)
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn prepare_er_labels(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Arc<ErPreparedLabels> {
+    let settings = ErConfigView::new(effective_config).layout_settings(&model.direction);
+    Arc::new(ErPreparedLabels::prepare(model, measurer, &settings))
 }
 
 pub(crate) fn er_box_label_metrics(
@@ -336,50 +478,6 @@ pub(crate) fn measure_entity_box(
     }
 }
 
-fn entity_box_dimensions(
-    entity: &ErEntity,
-    measurer: &dyn TextMeasurer,
-    label_style: &TextStyle,
-    attr_style: &TextStyle,
-    settings: ErEntityMeasurementSettings,
-) -> (f64, f64) {
-    let m = measure_entity_box(entity, measurer, label_style, attr_style, settings);
-    (m.width, m.height)
-}
-
-fn edge_label_metrics(
-    text: &str,
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
-    html_labels: bool,
-) -> (f64, f64) {
-    let text = text.trim();
-    if text.is_empty() {
-        return (0.0, 0.0);
-    }
-
-    let wrap_mode = if html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-
-    // Mermaid ER relationship labels follow Mermaid's effective HTML-label resolution:
-    // root `htmlLabels` first, then `flowchart.htmlLabels`, then default `true`.
-    // - HTML mode uses the generic HTML edge-label path (`foreignObject`, line-height 1.5)
-    // - SVG mode uses `createFormattedText(...)` (`<text>/<tspan>`, line-height 1.1)
-    // Markdown emphasis is tokenized in both branches before the final DOM shape is emitted.
-    let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-    let m = if html_labels {
-        crate::text::measure_xhtml_label_fragment(measurer, &fragment, style, None, wrap_mode)
-    } else if let Some(plain_text) = crate::text::mermaid_xhtml_label_plain_text(&fragment) {
-        measurer.measure_wrapped(&plain_text, style, None, wrap_mode)
-    } else {
-        crate::text::measure_markdown_with_inline_styles(measurer, text, style, None, wrap_mode)
-    };
-    (m.width.max(0.0), m.height.max(0.0))
-}
-
 fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
     let rest = name.strip_prefix("er-rel-")?;
     let mut end = 0usize;
@@ -589,6 +687,7 @@ fn layout_er_diagram_typed_with_elk_authority(
     let adapter_work = er_layout_adapter_work(model, work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
+    let prepared_labels = Arc::new(ErPreparedLabels::prepare(model, measurer, &settings));
 
     if settings.algorithm == ErLayoutAlgorithm::Elk {
         #[cfg(feature = "layout-elk")]
@@ -599,8 +698,8 @@ fn layout_er_diagram_typed_with_elk_authority(
             return layout_er_diagram_elk_typed(
                 model,
                 effective_config,
-                measurer,
                 settings,
+                Arc::clone(&prepared_labels),
                 operation_seed,
                 work_control,
             );
@@ -615,7 +714,7 @@ fn layout_er_diagram_typed_with_elk_authority(
         }
     }
 
-    layout_er_diagram_dagre_typed(model, measurer, settings, work_control)
+    layout_er_diagram_dagre_typed(model, settings, prepared_labels, work_control)
 }
 
 fn validate_er_relationship_endpoints(
@@ -664,18 +763,18 @@ fn er_layout_adapter_work(
 
 fn layout_er_diagram_dagre_typed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
-    measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
+    prepared_labels: Arc<ErPreparedLabels>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let ErLayoutSettings {
         algorithm: _,
         graph: graph_label,
-        label_style,
-        attr_style,
-        relationship_label_style,
-        relationship_html_labels,
-        entity_measurement,
+        label_style: _,
+        attr_style: _,
+        relationship_label_style: _,
+        relationship_html_labels: _,
+        entity_measurement: _,
     } = settings;
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
@@ -700,13 +799,16 @@ fn layout_er_diagram_dagre_typed(
     });
 
     for e in entities_in_layout_order {
-        let (w, h) =
-            entity_box_dimensions(e, measurer, &label_style, &attr_style, entity_measurement);
+        let measure = prepared_labels
+            .entity(&e.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("ER prepared labels are missing entity {}", e.id),
+            })?;
         g.set_node(
             e.id.clone(),
             NodeLabel {
-                width: w,
-                height: h,
+                width: measure.width,
+                height: measure.height,
                 ..Default::default()
             },
         );
@@ -758,12 +860,10 @@ fn layout_er_diagram_dagre_typed(
             let (label_w, label_h) = if r.role_a.trim().is_empty() {
                 (0.0, 0.0)
             } else {
-                edge_label_metrics(
-                    &r.role_a,
-                    measurer,
-                    &relationship_label_style,
-                    relationship_html_labels,
-                )
+                prepared_labels
+                    .relationship(idx)
+                    .map(ErPreparedRelationshipLabel::dimensions)
+                    .unwrap_or_default()
             };
 
             // First segment: keep start marker, no label.
@@ -821,12 +921,10 @@ fn layout_er_diagram_dagre_typed(
         let (label_w, label_h) = if r.role_a.trim().is_empty() {
             (0.0, 0.0)
         } else {
-            edge_label_metrics(
-                &r.role_a,
-                measurer,
-                &relationship_label_style,
-                relationship_html_labels,
-            )
+            prepared_labels
+                .relationship(idx)
+                .map(ErPreparedRelationshipLabel::dimensions)
+                .unwrap_or_default()
         };
         g.set_edge_named(
             r.entity_a.clone(),
@@ -936,12 +1034,10 @@ fn layout_er_diagram_dagre_typed(
             if role.trim().is_empty() || id.ends_with("-cyclic-0") || id.ends_with("-cyclic-2") {
                 None
             } else {
-                let (w, h) = edge_label_metrics(
-                    &role,
-                    measurer,
-                    &relationship_label_style,
-                    relationship_html_labels,
-                );
+                let (w, h) = rel_idx
+                    .and_then(|index| prepared_labels.relationship(index))
+                    .map(ErPreparedRelationshipLabel::dimensions)
+                    .unwrap_or_default();
                 // Mermaid uses Dagre's computed edge label center (`edge.x/edge.y`) rather than a
                 // polyline midpoint. Prefer those coordinates when present.
                 let (x, y) =
@@ -995,6 +1091,7 @@ fn layout_er_diagram_dagre_typed(
         nodes,
         edges: out_edges,
         bounds,
+        prepared_labels,
     })
 }
 
@@ -1022,12 +1119,12 @@ fn er_layout_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds
 fn layout_er_diagram_elk_typed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
-    measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
+    prepared_labels: Arc<ErPreparedLabels>,
     operation_seed: Option<elk::ElkOperationSeed>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
-    let elk_graph = er_elk_graph(model, effective_config, measurer, &settings)?;
+    let elk_graph = er_elk_graph(model, effective_config, &settings, &prepared_labels)?;
     let source_edge_by_id = elk_graph
         .edges
         .iter()
@@ -1127,6 +1224,7 @@ fn layout_er_diagram_elk_typed(
         nodes: out_nodes,
         edges: out_edges,
         bounds,
+        prepared_labels,
     })
 }
 
@@ -1134,17 +1232,17 @@ fn layout_er_diagram_elk_typed(
 fn er_elk_graph(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
-    measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
+    prepared_labels: &ErPreparedLabels,
 ) -> Result<elk::Graph> {
     let ErLayoutSettings {
         algorithm: _,
         graph,
-        label_style,
-        attr_style,
-        relationship_label_style,
-        relationship_html_labels,
-        entity_measurement,
+        label_style: _,
+        attr_style: _,
+        relationship_label_style: _,
+        relationship_html_labels: _,
+        entity_measurement: _,
     } = settings;
 
     let mut entities: Vec<&ErEntity> = model.entities.values().collect();
@@ -1158,26 +1256,25 @@ fn er_elk_graph(
     let nodes = entities
         .into_iter()
         .map(|entity| {
-            let (width, height) = entity_box_dimensions(
-                entity,
-                measurer,
-                label_style,
-                attr_style,
-                *entity_measurement,
-            );
-            elk::Node {
+            let measure =
+                prepared_labels
+                    .entity(&entity.id)
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!("ER prepared labels are missing entity {}", entity.id),
+                    })?;
+            Ok(elk::Node {
                 id: entity.id.clone(),
                 kind: elk::NodeKind::Leaf,
-                width,
-                height,
+                width: measure.width,
+                height: measure.height,
                 parent: None,
                 direction: None,
                 hierarchy_handling: None,
                 layer_constraint: None,
                 label: None,
-            }
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>>>()?;
 
     let entity_ids = nodes
         .iter()
@@ -1195,12 +1292,10 @@ fn er_elk_graph(
                 ),
             });
         }
-        let (label_width, label_height) = edge_label_metrics(
-            &relationship.role_a,
-            measurer,
-            relationship_label_style,
-            *relationship_html_labels,
-        );
+        let (label_width, label_height) = prepared_labels
+            .relationship(index)
+            .map(ErPreparedRelationshipLabel::dimensions)
+            .unwrap_or_default();
         edges.push(elk::Edge {
             id: format!("er-rel-{index}"),
             source: relationship.entity_a.clone(),
@@ -1351,13 +1446,13 @@ mod tests {
         let effective_config = serde_json::json!({ "layout": "elk" });
         let settings =
             super::ErConfigView::new(&effective_config).layout_settings(&model.direction);
-        let mut graph = super::er_elk_graph(
+        let prepared_labels = super::ErPreparedLabels::prepare(
             &model,
-            &effective_config,
             &VendoredFontMetricsTextMeasurer::default(),
             &settings,
-        )
-        .expect("ER ELK adapter graph");
+        );
+        let mut graph = super::er_elk_graph(&model, &effective_config, &settings, &prepared_labels)
+            .expect("ER ELK adapter graph");
         graph.options.layered.random_seed = 0;
 
         assert!(super::elk::layout(&graph).is_err());
@@ -1485,15 +1580,58 @@ mod tests {
 
     #[test]
     fn er_plain_underscore_edge_label_preserves_host_precision() {
-        assert_eq!(
-            super::edge_label_metrics(
-                "driver_license",
-                &ErPrecisionMeasurer,
-                &default_style(),
-                true,
-            ),
-            (73.123_456_789, 17.25)
+        let prepared = super::ErPreparedRelationshipLabel::new(
+            "driver_license",
+            &ErPrecisionMeasurer,
+            &default_style(),
+            true,
         );
+        assert_eq!(prepared.dimensions(), (73.123_456_789, 17.25));
+    }
+
+    #[test]
+    fn er_prepared_labels_defer_visible_style_parsing_until_theme_evidence_needs_it() {
+        let mut model = merman_core::diagrams::er::ErDiagramRenderModel {
+            direction: "TB".to_string(),
+            ..Default::default()
+        };
+        model.entities.insert(
+            "ENTITY".to_string(),
+            merman_core::diagrams::er::ErEntityRenderModel {
+                id: "entity-ENTITY-0".to_string(),
+                label: "**Entity**".to_string(),
+                ..Default::default()
+            },
+        );
+        model
+            .relationships
+            .push(merman_core::diagrams::er::ErRelationshipRenderModel {
+                entity_a: "entity-ENTITY-0".to_string(),
+                role_a: "**owns**".to_string(),
+                entity_b: "entity-ENTITY-0".to_string(),
+                ..Default::default()
+            });
+        let settings =
+            super::ErConfigView::new(&serde_json::Value::Null).layout_settings(&model.direction);
+        let prepared = super::ErPreparedLabels::prepare(
+            &model,
+            &VendoredFontMetricsTextMeasurer::default(),
+            &settings,
+        );
+
+        let entity = prepared
+            .entity("entity-ENTITY-0")
+            .expect("prepared entity label");
+        let relationship = prepared
+            .relationship(0)
+            .expect("prepared relationship label");
+        assert!(entity.label.visible_style_facts.get().is_none());
+        assert!(relationship.visible_style_facts.get().is_none());
+
+        assert!(entity.label.visible_style_facts().has_visible_runs());
+        assert!(relationship.visible_style_facts().has_visible_runs());
+        assert!(entity.label.visible_style_facts.get().is_some());
+        assert!(relationship.visible_style_facts.get().is_some());
     }
 
     #[test]

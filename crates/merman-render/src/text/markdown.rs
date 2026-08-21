@@ -625,6 +625,25 @@ pub(crate) fn mermaid_markdown_contains_html_tags(markdown: &str) -> bool {
     })
 }
 
+pub(crate) fn mermaid_markdown_is_plain_text(markdown: &str) -> bool {
+    pulldown_cmark::Parser::new_ext(
+        markdown,
+        pulldown_cmark::Options::ENABLE_TABLES
+            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+            | pulldown_cmark::Options::ENABLE_TASKLISTS,
+    )
+    .all(|event| {
+        matches!(
+            event,
+            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph)
+                | pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Paragraph)
+                | pulldown_cmark::Event::Text(_)
+                | pulldown_cmark::Event::SoftBreak
+                | pulldown_cmark::Event::HardBreak
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -922,5 +941,30 @@ mod tests {
         let multiline = analyze_mermaid_markdown("first<br/>second", true);
         assert_eq!(multiline.line_count, 2);
         assert!(multiline.all_runs_normal());
+    }
+
+    #[test]
+    fn plain_text_analysis_rejects_semantic_markdown_constructs() {
+        for plain in [
+            "Lane",
+            "driver_license",
+            "first\nsecond",
+            "literal * marker",
+        ] {
+            assert!(mermaid_markdown_is_plain_text(plain), "plain={plain:?}");
+        }
+        for structured in [
+            "**Lane**",
+            "[Lane](https://example.invalid)",
+            "![Lane](lane.png)",
+            "`Lane`",
+            "<b>Lane</b>",
+            "- Lane",
+        ] {
+            assert!(
+                !mermaid_markdown_is_plain_text(structured),
+                "structured={structured:?}"
+            );
+        }
     }
 }

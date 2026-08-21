@@ -273,6 +273,10 @@ impl MindmapNodePalettePlan {
                 UnsupportedTerminalDomain::direct(ThemeTarget::EdgeLabelBackground, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Edge,
+                    TerminalVariantDomain::uniform(model.edges.len(), ThemeVariant::Default),
+                ),
             ],
             work_meter,
         )?;
@@ -409,15 +413,7 @@ impl MindmapNodePalettePlan {
                     }
                     let route_won = winner_properties
                         .contains(&(rule_index, resolved_style_property_for_facet(facet)));
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
-                    if !route_won && !qualified_variant && !empty_direct_candidate {
+                    if !route_won && !empty_direct_candidate {
                         continue;
                     }
 
@@ -441,31 +437,6 @@ impl MindmapNodePalettePlan {
                         | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
                             observation.incomplete = true;
                         }
-                    }
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Edge,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if edge_count == 0 {
-                        self.evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        self.evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
-                }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Edge,
-                    ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if edge_count == 0 {
-                        self.evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        self.evidence
-                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
                     }
                 }
                 FamilyThemeMechanism::BaseTypography(_)
@@ -1127,9 +1098,14 @@ mod tests {
                 .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact - 1)
                 .unwrap(),
         );
-        assert!(
-            MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &short_meter).is_err()
-        );
-        assert_eq!(short_meter.used(), exact - 1);
+        let error = MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &short_meter)
+            .expect_err("one-unit-short Mindmap budget must fail closed");
+        let OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("expected structured layout work rejection");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, exact);
+        assert_eq!(error.max, exact - 1);
+        assert!(short_meter.used() <= exact - 1);
     }
 }

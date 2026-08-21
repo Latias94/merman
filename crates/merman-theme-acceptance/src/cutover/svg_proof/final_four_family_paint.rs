@@ -95,7 +95,7 @@ fn zenuml_title_observation(
         .collect::<Vec<_>>();
     c6_ensure!(
         "route-svg-proof",
-        titles.len() == 1 && has_visible_text(titles[0]),
+        titles.len() == 1 && has_visible_text_content(titles[0]),
         "ZenUML witness must emit exactly one non-empty text.frame-title"
     );
     let title = titles[0];
@@ -135,7 +135,7 @@ fn zenuml_title_observation(
     let mut terminal = b"merman.c6-route-zenuml-title-fill.v1\0".to_vec();
     append_len_prefixed(&mut terminal, ZENUML_TITLE_SELECTOR.as_bytes());
     append_len_prefixed(&mut terminal, value.as_bytes());
-    append_len_prefixed(&mut terminal, visible_text(title).as_bytes());
+    append_len_prefixed(&mut terminal, visible_text_content(title).as_bytes());
     append_len_prefixed(
         &mut terminal,
         title.attribute("class").unwrap_or_default().as_bytes(),
@@ -171,7 +171,7 @@ fn venn_title_observation(
         .collect::<Vec<_>>();
     c6_ensure!(
         "route-svg-proof",
-        titles.len() == 1 && has_visible_text(titles[0]),
+        titles.len() == 1 && has_visible_text_content(titles[0]),
         "Venn witness must emit exactly one non-empty text.venn-title"
     );
     let title = titles[0];
@@ -229,7 +229,7 @@ fn venn_title_observation(
     append_len_prefixed(&mut terminal, selector.as_bytes());
     append_len_prefixed(&mut terminal, stylesheet_fill.as_bytes());
     append_len_prefixed(&mut terminal, inline_fill.as_bytes());
-    append_len_prefixed(&mut terminal, visible_text(title).as_bytes());
+    append_len_prefixed(&mut terminal, visible_text_content(title).as_bytes());
     append_len_prefixed(
         &mut terminal,
         title.attribute("font-size").unwrap_or_default().as_bytes(),
@@ -284,7 +284,7 @@ fn event_modeling_text_observation(
         let text = exact_direct_child(group, "text", "Event Modeling swimlane text")?;
         c6_ensure!(
             "route-svg-proof",
-            has_visible_text(text) && style_value(text, "fill").is_none(),
+            has_visible_text_content(text) && style_value(text, "fill").is_none(),
             "Event Modeling swimlane {index} lacks one non-empty SVG text terminal"
         );
         let value = text.attribute("fill").ok_or_else(|| {
@@ -329,7 +329,7 @@ fn event_modeling_text_observation(
             .collect::<Vec<_>>();
         c6_ensure!(
             "route-svg-proof",
-            texts.len() == 1 && has_visible_text(texts[0]),
+            texts.len() == 1 && has_visible_text_content(texts[0]),
             "Event Modeling box {index} expected one non-empty resvg-safe text terminal"
         );
         let text = texts[0];
@@ -415,7 +415,7 @@ fn ishikawa_text_observation(
         text_nodes.into_iter().zip(EXPECTED_TEXT).enumerate()
     {
         let class = text.attribute("class").unwrap_or_default();
-        let content = visible_text(text);
+        let content = visible_text_content(text);
         c6_ensure!(
             "route-svg-proof",
             class == expected_class && content == expected_text && text.attribute("fill").is_none(),
@@ -440,7 +440,7 @@ fn ishikawa_text_observation(
         );
         observe_common_value(&mut common_value, value, "Ishikawa text")?;
         let (owner, surface, role) = ishikawa_owner_and_surface(text)?;
-        let region = ishikawa_text_region(document, owner, text, role)?;
+        let region = ishikawa_text_region(owner, text, role)?;
         terminal.extend_from_slice(&usize_to_u64(index).to_be_bytes());
         append_len_prefixed(&mut terminal, role.id().as_bytes());
         append_len_prefixed(&mut terminal, class.as_bytes());
@@ -665,7 +665,6 @@ fn ishikawa_owner_and_surface<'a, 'input>(
 }
 
 fn ishikawa_text_region(
-    document: &roxmltree::Document<'_>,
     owner: roxmltree::Node<'_, '_>,
     text: roxmltree::Node<'_, '_>,
     role: IshikawaTextRole,
@@ -728,7 +727,7 @@ fn ishikawa_visible_text_nodes<'a, 'input>(
                     node.attribute("class"),
                     Some("ishikawa-head-label" | "ishikawa-label cause" | "ishikawa-label align")
                 )
-                && has_visible_text(*node)
+                && has_visible_text_content(*node)
         })
         .collect()
 }
@@ -807,7 +806,7 @@ fn append_terminal_text(
 ) {
     append_len_prefixed(terminal, role.as_bytes());
     terminal.extend_from_slice(&usize_to_u64(index).to_be_bytes());
-    append_len_prefixed(terminal, visible_text(text).as_bytes());
+    append_len_prefixed(terminal, visible_text_content(text).as_bytes());
     append_len_prefixed(terminal, value.as_bytes());
     append_len_prefixed(
         terminal,
@@ -818,20 +817,6 @@ fn append_terminal_text(
         text.attribute("fill").unwrap_or_default().as_bytes(),
     );
     append_rect(terminal, region);
-}
-
-fn visible_text(node: roxmltree::Node<'_, '_>) -> String {
-    node.descendants()
-        .filter(roxmltree::Node::is_text)
-        .filter_map(|node| node.text())
-        .collect()
-}
-
-fn has_visible_text(node: roxmltree::Node<'_, '_>) -> bool {
-    node.descendants()
-        .filter(roxmltree::Node::is_text)
-        .filter_map(|node| node.text())
-        .any(|text| !text.trim().is_empty())
 }
 
 fn transformed_text_anchor(node: roxmltree::Node<'_, '_>) -> C6ProofResult<(f64, f64)> {

@@ -93,7 +93,7 @@ pub mod __private {
     pub use crate::diagram_theme::{
         ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
         ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
-        ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector, ThemeLegacyRouteValue,
+        ThemeLegacyRouteFacet, ThemeLegacyRouteSelector,
     };
 
     /// Returns every currently typed route that replaces a concrete legacy bridge projection.
@@ -103,7 +103,16 @@ pub mod __private {
         crate::diagram_theme::legacy_replacing_typed_routes()
     }
 
-    /// Returns production-sealed receipts for compatibility projections retired as unsupported.
+    /// Returns the production-owned fixed KTD23 retirement inventory.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn retired_legacy_theme_projection_inventory() -> Result<
+        Vec<ThemeLegacyProjectionRetirementDescriptor>,
+        ThemeLegacyProjectionRetirementInventoryError,
+    > {
+        crate::diagram_theme::legacy_projection_retirement_inventory()
+    }
+
+    /// Seals the current empty-bridge receipt for every production-owned KTD23 route.
     #[cfg(feature = "internal-theme-acceptance")]
     pub fn retired_legacy_theme_projection_receipts() -> Result<
         Vec<ThemeLegacyProjectionRetirementReceipt>,

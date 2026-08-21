@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 12;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 13;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 28] = [
+); 29] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -128,6 +128,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::GanttTaskErrorFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::NodeLabelFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -161,6 +165,8 @@ const NODE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::NodeFill];
 const NODE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::NodeStroke];
+const NODE_LABEL_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::NodeLabelFill];
 const EDGE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::EdgeStroke,
     ThemeRouteCutoverProjection::MarkerPaintFromEdge,
@@ -227,7 +233,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 72] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 86] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -339,6 +345,34 @@ const ACTIVE_ROUTES: [RouteAuthorization; 72] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::SEQUENCE,
@@ -677,6 +711,48 @@ const ACTIVE_ROUTES: [RouteAuthorization; 72] = [
         EDGE_STROKE_PROJECTIONS,
     ),
     route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CLASS,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
         DiagramFamilyId::ER,
         ThemeTarget::Relation,
         ThemeRouteCutoverFacet::Stroke,
@@ -689,6 +765,34 @@ const ACTIVE_ROUTES: [RouteAuthorization; 72] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ARCHITECTURE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ARCHITECTURE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::MINDMAP,

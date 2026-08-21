@@ -277,14 +277,10 @@ pub(super) fn render_flowchart_svg_model(
     let node_theme_ordinals =
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
-    let cluster_theme = if swimlane_layout.is_none() {
-        crate::flowchart::FlowchartClusterThemeStyle::resolve(
-            options.resolved_theme(),
-            options.work_meter(),
-        )?
-    } else {
-        crate::flowchart::FlowchartClusterThemeStyle::default()
-    };
+    let cluster_theme = crate::flowchart::FlowchartClusterThemeStyle::resolve(
+        options.resolved_theme(),
+        options.work_meter(),
+    )?;
     let ctx = FlowchartRenderCtx {
         model,
         diagram_id,
@@ -439,6 +435,19 @@ pub(super) fn render_flowchart_svg_model(
     document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
     out.checkpoint()?;
+    // The shared Mermaid rule carries both Cluster fill and stroke. Suppress it only when the
+    // typed fill facet itself owns the terminal fill; a stroke-only theme must leave the
+    // compatibility/config fill available to the Swimlane body.
+    let omit_swimlane_cluster_paint = swimlane_layout.is_some()
+        && cluster_theme
+            .fill_value(
+                crate::flowchart::FlowchartFacetPrecedence::new(
+                    crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                    cluster_fill_config_override,
+                ),
+                true,
+            )
+            .is_some();
     write_flowchart_css(
         &mut out,
         diagram_id,
@@ -448,9 +457,10 @@ pub(super) fn render_flowchart_svg_model(
         &font_family,
         font_size,
         &model.class_defs,
+        omit_swimlane_cluster_paint,
     )?;
     if swimlane_layout.is_some() {
-        super::swimlane::write_swimlane_css(&mut out, diagram_id, effective_config);
+        super::swimlane::write_swimlane_css(&mut out, diagram_id);
     }
     out.push_str("</style>");
     out.checkpoint()?;

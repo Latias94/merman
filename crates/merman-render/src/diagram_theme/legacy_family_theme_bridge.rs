@@ -6,8 +6,6 @@ use merman_core::__private::{
 };
 use merman_core::{MermaidConfig, OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-use sha2::{Digest as _, Sha256};
 
 use crate::DiagramFamilyId;
 use crate::theme_route_cutover::ThemeRouteCutoverProjection;
@@ -27,16 +25,20 @@ use super::family_mechanism_matrix::{
 };
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::legacy_projection_retirement::{
-    ThemeLegacyProjectionRetirementDescriptor, ThemeLegacyProjectionRetirementInventoryError,
-    ThemeLegacyProjectionRetirementReceipt, ThemeLegacyRouteFacet, ThemeLegacyRouteSelector,
-    ThemeLegacyRouteValue, descriptor_digest, legacy_projection_retirement_descriptors,
-    route_has_retired_legacy_projection,
+    ThemeLegacyProjectionDisposition, ThemeLegacyProjectionObservation,
+    ThemeLegacyProjectionProbeError, ThemeLegacyProjectionProbeReceipt, ThemeLegacyRouteFacet,
+    ThemeLegacyRouteSelector, ThemeLegacyRouteValue, value_digest,
 };
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
 const EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID: &str = "marker.paint";
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+type AcceptedLegacyProjections = BTreeSet<ThemeLegacyProjectionObservation>;
+#[cfg(not(any(test, feature = "internal-theme-acceptance")))]
+type AcceptedLegacyProjections = ();
 
 /// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
 /// typed theme program directly.
@@ -60,7 +62,7 @@ struct LegacyFamilyThemeArtifact {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
     contribution_ids: BTreeSet<String>,
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    accepted_path_count: usize,
+    accepted_projections: BTreeSet<ThemeLegacyProjectionObservation>,
 }
 
 impl LegacyFamilyThemeBridge {
@@ -154,14 +156,10 @@ fn compile_selected_family(
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
+        | DiagramFamilyId::MINDMAP
+        | DiagramFamilyId::TREE_VIEW
         | DiagramFamilyId::BLOCK => {
             compile_node_family(&mut builder, family_programs, family);
-        }
-        DiagramFamilyId::TREE_VIEW => {
-            compile_tree_view_family(&mut builder, family_programs);
-        }
-        DiagramFamilyId::MINDMAP => {
-            compile_mindmap_family(&mut builder, family_programs);
         }
         DiagramFamilyId::GIT_GRAPH => {
             compile_gitgraph_family(&mut builder, family_programs);
@@ -209,65 +207,28 @@ fn compile_selected_family(
         DiagramFamilyId::STATE => {}
         _ => {}
     }
-    let (overlay, contribution_ids, accepted_path_count) = builder.finish();
+    let (overlay, contribution_ids, accepted_projections) = builder.finish();
     #[cfg(not(any(test, feature = "internal-theme-acceptance")))]
-    let _ = (&contribution_ids, accepted_path_count);
+    let _ = (&contribution_ids, accepted_projections);
     LegacyFamilyThemeArtifact {
         overlay,
         #[cfg(any(test, feature = "internal-theme-acceptance"))]
         contribution_ids,
         #[cfg(any(test, feature = "internal-theme-acceptance"))]
-        accepted_path_count,
+        accepted_projections,
     }
 }
 
-/// Seals the exact compatibility routes retired because their historical projections have no
-/// family-owned consumer. The probes exercise the real matrix and bridge with both atomic paint
-/// value classes; acceptance only reconciles the resulting opaque receipts.
+/// Observes the current matrix disposition and exact compatibility assignments for one route.
+///
+/// Historical before/after policy deliberately lives in the independent acceptance crate. This
+/// function reports current production facts only, so adding a historical manifest row cannot
+/// change the runtime matrix or suppress a bridge projection.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
-pub(crate) fn legacy_projection_retirement_receipts() -> Result<
-    Vec<ThemeLegacyProjectionRetirementReceipt>,
-    ThemeLegacyProjectionRetirementInventoryError,
-> {
-    let descriptors = legacy_projection_retirement_descriptors();
-    let mut unique = BTreeSet::new();
-    let mut receipts = Vec::with_capacity(descriptors.len());
-
-    for descriptor in descriptors {
-        if !unique.insert(descriptor.id()) {
-            return Err(ThemeLegacyProjectionRetirementInventoryError::new(
-                descriptor,
-                None,
-                "duplicate route descriptor",
-            ));
-        }
-        if descriptor.former_projections().is_empty() {
-            return Err(ThemeLegacyProjectionRetirementInventoryError::new(
-                descriptor,
-                None,
-                "former projection set is empty",
-            ));
-        }
-
-        let transparent =
-            probe_legacy_projection_retirement(descriptor, ThemeLegacyRouteValue::Transparent)?;
-        let solid = probe_legacy_projection_retirement(descriptor, ThemeLegacyRouteValue::Solid)?;
-        receipts.push(ThemeLegacyProjectionRetirementReceipt::seal(
-            descriptor,
-            transparent,
-            solid,
-        )?);
-    }
-
-    Ok(receipts)
-}
-
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-fn probe_legacy_projection_retirement(
-    descriptor: ThemeLegacyProjectionRetirementDescriptor,
+pub(crate) fn legacy_projection_probe(
+    id: super::legacy_projection_retirement::ThemeLegacyRouteId,
     value: ThemeLegacyRouteValue,
-) -> Result<[u8; 32], ThemeLegacyProjectionRetirementInventoryError> {
-    let id = descriptor.id();
+) -> Result<ThemeLegacyProjectionProbeReceipt, ThemeLegacyProjectionProbeError> {
     let selector = FamilyThemeSelectorShape::Static {
         variant: id.selector().variant(),
     };
@@ -280,28 +241,21 @@ fn probe_legacy_projection_retirement(
         ThemeLegacyRouteFacet::Stroke => FamilyThemeRuleFacet::Stroke(paint_kind),
     };
 
-    if !route_has_retired_legacy_projection(id.family_id(), id.target(), selector, facet) {
-        return Err(ThemeLegacyProjectionRetirementInventoryError::new(
-            descriptor,
-            Some(value),
-            "route is not owned by the retirement inventory",
-        ));
-    }
     let disposition = classify_rule_facet(id.family_id(), id.target(), selector, facet);
-    if disposition != FamilyThemeDisposition::Unsupported {
-        return Err(ThemeLegacyProjectionRetirementInventoryError::new(
-            descriptor,
-            Some(value),
-            format!("matrix disposition is {disposition:?}, expected Unsupported"),
-        ));
-    }
+    let observed_disposition = match disposition {
+        FamilyThemeDisposition::TypedAdapter => ThemeLegacyProjectionDisposition::TypedAdapter,
+        FamilyThemeDisposition::LegacyCompatibility => {
+            ThemeLegacyProjectionDisposition::LegacyCompatibility
+        }
+        FamilyThemeDisposition::Unsupported => ThemeLegacyProjectionDisposition::Unsupported,
+    };
 
     let paint = match value {
         ThemeLegacyRouteValue::Transparent => CanvasPaint::Transparent,
         ThemeLegacyRouteValue::Solid => CanvasPaint::solid("#123456").map_err(|error| {
-            ThemeLegacyProjectionRetirementInventoryError::new(
-                descriptor,
-                Some(value),
+            ThemeLegacyProjectionProbeError::new(
+                id,
+                value,
                 format!("solid probe construction failed: {error}"),
             )
         })?,
@@ -316,46 +270,28 @@ fn probe_legacy_projection_retirement(
     }
     let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
     spec.validate().map_err(|error| {
-        ThemeLegacyProjectionRetirementInventoryError::new(
-            descriptor,
-            Some(value),
+        ThemeLegacyProjectionProbeError::new(
+            id,
+            value,
             format!("synthetic route is invalid: {error}"),
         )
     })?;
 
     let family_programs = FamilyThemeProgramCache::new(Arc::new(spec));
     let artifact = compile_selected_family(&family_programs, id.family_id());
-    if !artifact.overlay.is_empty()
-        || !artifact.contribution_ids.is_empty()
-        || artifact.accepted_path_count != 0
-    {
-        return Err(ThemeLegacyProjectionRetirementInventoryError::new(
-            descriptor,
-            Some(value),
-            format!(
-                "bridge emitted overlay={}, contribution_ids={}, accepted_paths={}",
-                !artifact.overlay.is_empty(),
-                artifact.contribution_ids.len(),
-                artifact.accepted_path_count,
-            ),
+    if artifact.overlay.is_empty() != artifact.accepted_projections.is_empty() {
+        return Err(ThemeLegacyProjectionProbeError::new(
+            id,
+            value,
+            "bridge overlay and exact projection observations disagree",
         ));
     }
-
-    let mut hasher = Sha256::new();
-    hasher.update(b"merman.theme-legacy-projection-retirement-probe.v1\0");
-    hasher.update(descriptor_digest(descriptor));
-    super::legacy_projection_retirement::update_len_prefixed(&mut hasher, value.id().as_bytes());
-    super::legacy_projection_retirement::update_len_prefixed(&mut hasher, b"matrix:unsupported");
-    super::legacy_projection_retirement::update_len_prefixed(&mut hasher, b"bridge-overlay:empty");
-    super::legacy_projection_retirement::update_len_prefixed(
-        &mut hasher,
-        b"bridge-contributions:empty",
-    );
-    super::legacy_projection_retirement::update_len_prefixed(
-        &mut hasher,
-        b"bridge-assignments:empty",
-    );
-    Ok(hasher.finalize().into())
+    ThemeLegacyProjectionProbeReceipt::seal(
+        id,
+        value,
+        observed_disposition,
+        artifact.accepted_projections.into_iter().collect(),
+    )
 }
 
 fn compile_node_family(
@@ -381,23 +317,47 @@ fn compile_node_family(
             ("nodeBorder", reader.stroke(ThemeTarget::Node)),
         ],
     );
-    contributions.add_theme_variables(
-        "node-label.fill",
-        [
-            ("primaryTextColor", reader.text_fill(ThemeTarget::NodeLabel)),
-            ("nodeTextColor", reader.text_fill(ThemeTarget::NodeLabel)),
-            ("textColor", reader.text_fill(ThemeTarget::NodeLabel)),
-        ],
-    );
+    let node_label_fill = reader.text_fill(ThemeTarget::NodeLabel);
+    if family == DiagramFamilyId::CLASS {
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
+            [
+                ("primaryTextColor", node_label_fill.clone()),
+                ("nodeTextColor", node_label_fill.clone()),
+                ("textColor", node_label_fill.clone()),
+                ("classText", node_label_fill.clone()),
+                ("labelColor", node_label_fill),
+            ],
+        );
+    } else {
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
+            [
+                ("primaryTextColor", node_label_fill.clone()),
+                ("nodeTextColor", node_label_fill.clone()),
+                ("textColor", node_label_fill),
+            ],
+        );
+    }
     contributions.add_theme_variables(
         "title.fill",
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        [("lineColor", edge_paint)],
-    );
+    if family == DiagramFamilyId::GIT_GRAPH {
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+            [
+                ("lineColor", edge_paint.clone()),
+                ("commitLineColor", edge_paint),
+            ],
+        );
+    } else {
+        contributions.add_theme_variables(
+            ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
+            [("lineColor", edge_paint)],
+        );
+    }
     let marker_paint = reader.marker_paint_contribution();
     contributions.add_theme_variables(
         marker_paint.contribution_id,
@@ -421,29 +381,46 @@ fn compile_node_family(
         ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
         [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
     );
-    if family != DiagramFamilyId::CLASS {
-        contributions.add_theme_variables(
-            "cluster-label.fill",
-            [
-                (
-                    "secondaryTextColor",
-                    reader.text_fill(ThemeTarget::ClusterLabel),
-                ),
-                (
-                    "tertiaryTextColor",
-                    reader.text_fill(ThemeTarget::ClusterLabel),
-                ),
-            ],
-        );
-    }
+    contributions.add_theme_variables(
+        "cluster-label.fill",
+        [
+            (
+                "secondaryTextColor",
+                reader.text_fill(ThemeTarget::ClusterLabel),
+            ),
+            (
+                "tertiaryTextColor",
+                reader.text_fill(ThemeTarget::ClusterLabel),
+            ),
+        ],
+    );
 
     match family {
-        DiagramFamilyId::CLASS => {
+        DiagramFamilyId::TREE_VIEW => {
+            let mut tree_view = Map::new();
+            if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
+                tree_view.insert("labelColor".to_string(), Value::String(value));
+            }
+            if let Some(value) = reader.stroke_or_fill(ThemeTarget::Edge) {
+                tree_view.insert("lineColor".to_string(), Value::String(value));
+            }
+            if let Some(value) = reader.stroke_or_fill(ThemeTarget::Marker) {
+                tree_view.insert("iconColor".to_string(), Value::String(value));
+            }
+            contributions.add_theme_variable_object("tree-view", "treeView", tree_view);
+        }
+        DiagramFamilyId::GIT_GRAPH => {
             contributions.add_theme_variables(
-                "class.text",
+                "git.commit",
                 [
-                    ("classText", reader.text_fill(ThemeTarget::NodeLabel)),
-                    ("labelColor", reader.text_fill(ThemeTarget::NodeLabel)),
+                    ("commitLabelColor", reader.text_fill(ThemeTarget::EdgeLabel)),
+                    (
+                        "commitLabelBackground",
+                        reader.fill(ThemeTarget::EdgeLabelBackground),
+                    ),
+                    ("tagLabelColor", reader.text_fill(ThemeTarget::NodeLabel)),
+                    ("tagLabelBackground", reader.fill(ThemeTarget::Node)),
+                    ("tagLabelBorder", reader.stroke(ThemeTarget::Node)),
                 ],
             );
         }
@@ -453,48 +430,11 @@ fn compile_node_family(
     contributions.finish_into(builder);
 }
 
-fn compile_tree_view_family(
-    builder: &mut OverlayBuilder,
-    family_programs: &FamilyThemeProgramCache,
-) {
-    let family = DiagramFamilyId::TREE_VIEW;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
-
-    contributions.add_typography(&reader);
-
-    let mut tree_view = Map::new();
-    if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
-        tree_view.insert("labelColor".to_string(), Value::String(value));
-    }
-    if let Some(value) = reader.stroke_or_fill(ThemeTarget::Edge) {
-        tree_view.insert("lineColor".to_string(), Value::String(value));
-    }
-    if let Some(value) = reader.stroke_or_fill(ThemeTarget::Marker) {
-        tree_view.insert("iconColor".to_string(), Value::String(value));
-    }
-    contributions.add_theme_variable_object("tree-view", "treeView", tree_view);
-
-    contributions.finish_into(builder);
-}
-
-fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = DiagramFamilyId::MINDMAP;
-    let reader = FamilyStyleReader::new(family_programs, family);
-    let mut contributions = FamilyContributions::new(family);
-
-    contributions.add_typography(&reader);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
-        [("mainBkg", reader.fill(ThemeTarget::Node))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
-        [("nodeBorder", reader.stroke(ThemeTarget::Node))],
-    );
-    contributions.finish_into(builder);
-}
-
+/// Projects only GitGraph variables that its terminal writer actually consumes.
+///
+/// GitGraph arrows are node-palette surfaces, not SVG markers, and its title inherits
+/// `textColor`. Keeping this mapping family-local prevents the generic node bridge from
+/// resurrecting terminal-less marker, cluster, and title projections.
 fn compile_gitgraph_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
@@ -527,7 +467,7 @@ fn compile_gitgraph_family(
         [("textColor", reader.text_fill(ThemeTarget::Text))],
     );
     contributions.add_theme_variables(
-        "node-label.fill",
+        ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
         [("tagLabelColor", reader.text_fill(ThemeTarget::NodeLabel))],
     );
     contributions.add_theme_variables(
@@ -792,13 +732,17 @@ fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyTheme
     let mut contributions = FamilyContributions::new(family);
 
     contributions.add_typography(&reader);
+    let text_fill = reader.text_fill(ThemeTarget::Text);
     contributions.add_theme_variables(
-        "entity.text",
+        ThemeRouteCutoverProjection::TextFill.contribution_id(),
         [
-            ("textColor", reader.text_fill(ThemeTarget::Text)),
-            ("nodeTextColor", reader.text_fill(ThemeTarget::Text)),
-            ("titleColor", reader.text_fill(ThemeTarget::Title)),
+            ("textColor", text_fill.clone()),
+            ("nodeTextColor", text_fill),
         ],
+    );
+    contributions.add_theme_variables(
+        ThemeRouteCutoverProjection::TitleFill.contribution_id(),
+        [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
@@ -1345,6 +1289,8 @@ struct OverlayBuilder {
     overlay: ThemeFamilyCompatibilityOverlayBuilder,
     contribution_ids: BTreeSet<String>,
     claimed_paths: BTreeSet<String>,
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    accepted_projections: AcceptedLegacyProjections,
 }
 
 impl OverlayBuilder {
@@ -1357,6 +1303,8 @@ impl OverlayBuilder {
             ),
             contribution_ids: BTreeSet::new(),
             claimed_paths: BTreeSet::new(),
+            #[cfg(any(test, feature = "internal-theme-acceptance"))]
+            accepted_projections: BTreeSet::new(),
         }
     }
 
@@ -1377,6 +1325,8 @@ impl OverlayBuilder {
         if patch.is_empty() {
             return;
         }
+        #[cfg(any(test, feature = "internal-theme-acceptance"))]
+        let accepted_projections = projection_observations(&opaque_id, &patch);
         if self
             .overlay
             .try_push(mapping, MermaidConfig::from_value(Value::Object(patch)))
@@ -1387,16 +1337,64 @@ impl OverlayBuilder {
 
         self.claimed_paths.extend(accepted_paths);
         self.contribution_ids.insert(opaque_id);
+        #[cfg(any(test, feature = "internal-theme-acceptance"))]
+        self.accepted_projections.extend(accepted_projections);
     }
 
-    fn finish(self) -> (ThemeFamilyCompatibilityOverlay, BTreeSet<String>, usize) {
-        let accepted_path_count = self.claimed_paths.len();
+    fn finish(
+        self,
+    ) -> (
+        ThemeFamilyCompatibilityOverlay,
+        BTreeSet<String>,
+        AcceptedLegacyProjections,
+    ) {
+        #[cfg(any(test, feature = "internal-theme-acceptance"))]
+        let accepted_projections = self.accepted_projections;
+        #[cfg(not(any(test, feature = "internal-theme-acceptance")))]
+        let accepted_projections = ();
         (
             self.overlay.finish(),
             self.contribution_ids,
-            accepted_path_count,
+            accepted_projections,
         )
     }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn projection_observations(
+    contribution_id: &str,
+    patch: &Map<String, Value>,
+) -> Vec<ThemeLegacyProjectionObservation> {
+    fn visit(
+        contribution_id: &str,
+        value: &Value,
+        path: &mut Vec<String>,
+        observations: &mut Vec<ThemeLegacyProjectionObservation>,
+    ) {
+        match value {
+            Value::Object(object) => {
+                for (key, value) in object {
+                    path.push(key.clone());
+                    visit(contribution_id, value, path, observations);
+                    path.pop();
+                }
+            }
+            value => observations.push(ThemeLegacyProjectionObservation::new(
+                contribution_id.to_string(),
+                path.join("."),
+                value_digest(value),
+            )),
+        }
+    }
+
+    let mut observations = Vec::new();
+    visit(
+        contribution_id,
+        &Value::Object(patch.clone()),
+        &mut Vec::new(),
+        &mut observations,
+    );
+    observations
 }
 
 fn retain_unclaimed_assignments(
@@ -1495,19 +1493,44 @@ mod tests {
     }
 
     #[test]
-    fn retired_legacy_projection_inventory_is_sealed_by_the_real_bridge() {
-        let receipts = legacy_projection_retirement_receipts()
-            .expect("seal every retired legacy projection through the production bridge");
-
-        assert_eq!(receipts.len(), 56);
-        assert!(receipts.iter().all(|receipt| receipt.digest() != [0; 32]));
+    fn legacy_projection_probe_reports_current_facts_without_retirement_policy() {
+        let unsupported = legacy_projection_probe(
+            super::super::legacy_projection_retirement::ThemeLegacyRouteId::new(
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Marker,
+                ThemeLegacyRouteSelector::StaticUnqualified,
+                ThemeLegacyRouteFacet::Fill,
+            ),
+            ThemeLegacyRouteValue::Solid,
+        )
+        .expect("observe current Class marker facts");
         assert_eq!(
-            receipts
+            unsupported.disposition(),
+            ThemeLegacyProjectionDisposition::Unsupported
+        );
+        assert!(unsupported.projections().is_empty());
+
+        let partial = legacy_projection_probe(
+            super::super::legacy_projection_retirement::ThemeLegacyRouteId::new(
+                DiagramFamilyId::MINDMAP,
+                ThemeTarget::Node,
+                ThemeLegacyRouteSelector::StaticUnqualified,
+                ThemeLegacyRouteFacet::Fill,
+            ),
+            ThemeLegacyRouteValue::Solid,
+        )
+        .expect("observe current Mindmap node facts");
+        assert_eq!(
+            partial.disposition(),
+            ThemeLegacyProjectionDisposition::LegacyCompatibility
+        );
+        assert_eq!(
+            partial
+                .projections()
                 .iter()
-                .map(|receipt| receipt.descriptor().id())
-                .collect::<BTreeSet<_>>()
-                .len(),
-            receipts.len(),
+                .map(ThemeLegacyProjectionObservation::assignment_path)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["themeVariables.mainBkg", "themeVariables.primaryColor",])
         );
     }
 
@@ -1695,9 +1718,8 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_legacy_node_paint_projects_only_consumed_tokens() {
+    fn mindmap_legacy_node_paint_keeps_its_historical_projection_shape() {
         let source = "mindmap\nroot(Root)\n Child(Child)\n";
-        let baseline = parse(&DiagramThemeSpec::new(), source);
         let fill = "#123456";
         let stroke = "#654321";
         let spec = DiagramThemeSpec::new().with_styles(
@@ -1714,21 +1736,15 @@ mod tests {
 
         let parsed = parse(&spec, source);
 
-        assert_eq!(
-            parsed.effective_config.get_str("themeVariables.mainBkg"),
-            Some(fill)
-        );
-        assert_eq!(
-            parsed.effective_config.get_str("themeVariables.nodeBorder"),
-            Some(stroke)
-        );
-        for path in [
-            "themeVariables.primaryColor",
-            "themeVariables.primaryBorderColor",
+        for (path, value) in [
+            ("themeVariables.primaryColor", fill),
+            ("themeVariables.mainBkg", fill),
+            ("themeVariables.primaryBorderColor", stroke),
+            ("themeVariables.nodeBorder", stroke),
         ] {
             assert_eq!(
                 parsed.effective_config.get_str(path),
-                baseline.effective_config.get_str(path),
+                Some(value),
                 "path={path}"
             );
         }
@@ -1786,7 +1802,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_view_legacy_paint_projects_only_consumed_tokens() {
+    fn tree_view_legacy_paint_keeps_its_historical_projection_shape() {
         let source = "treeView-beta\nroot\n  child\n";
         let label = "#123456";
         let line = "#654321";
@@ -1839,30 +1855,36 @@ mod tests {
 
         let evidence = theme_parse_evidence(&parsed);
         let contributions = evidence.fallback_contributions().collect::<Vec<_>>();
-        assert_eq!(contributions.len(), 1);
-        let contribution = contributions[0];
         assert_eq!(
-            contribution.opaque_id(),
-            "merman.legacy-family-theme.v1.treeView.tree-view"
-        );
-        assert_eq!(
-            contribution
-                .surviving_assignment_paths()
+            contributions
+                .iter()
+                .flat_map(|contribution| contribution.surviving_assignment_paths())
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from([
+                "themeVariables.arrowheadColor",
+                "themeVariables.lineColor",
+                "themeVariables.nodeTextColor",
+                "themeVariables.primaryTextColor",
+                "themeVariables.textColor",
                 "themeVariables.treeView.iconColor",
                 "themeVariables.treeView.labelColor",
                 "themeVariables.treeView.lineColor",
             ])
         );
         for (path, value) in [
+            ("themeVariables.primaryTextColor", label),
+            ("themeVariables.nodeTextColor", label),
+            ("themeVariables.textColor", label),
+            ("themeVariables.lineColor", line),
+            ("themeVariables.arrowheadColor", icon),
             ("themeVariables.treeView.labelColor", label),
             ("themeVariables.treeView.lineColor", line),
             ("themeVariables.treeView.iconColor", icon),
         ] {
             assert_eq!(
-                contribution
-                    .surviving_assignment_value(path)
+                contributions
+                    .iter()
+                    .find_map(|contribution| contribution.surviving_assignment_value(path))
                     .and_then(Value::as_str),
                 Some(value),
                 "path={path}"
@@ -1900,7 +1922,7 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_legacy_paint_projects_only_consumed_tokens() {
+    fn gitgraph_legacy_paint_projects_only_writer_consumed_variables() {
         let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         let node_fill = "#101112";
         let node_stroke = "#131415";
@@ -2015,7 +2037,7 @@ mod tests {
     }
 
     #[test]
-    fn generic_text_fill_reaches_gitgraph_legacy_text_variables() {
+    fn generic_text_fill_reaches_only_gitgraph_visible_text_tokens() {
         let color = "#123456";
         let family = DiagramFamilyId::GIT_GRAPH;
         let spec = DiagramThemeSpec::new().with_styles(
@@ -2029,17 +2051,10 @@ mod tests {
         );
 
         let parsed = parse(&spec, "gitGraph\n  commit id: \"A\" tag: \"v1\"\n");
-        for path in [
-            "themeVariables.textColor",
-            "themeVariables.commitLabelColor",
-            "themeVariables.tagLabelColor",
-        ] {
-            assert_eq!(
-                parsed.effective_config.get_str(path),
-                Some(color),
-                "family={family} path={path}"
-            );
-        }
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.textColor"),
+            Some(color)
+        );
         let evidence = theme_parse_evidence(&parsed);
         let paths = evidence
             .fallback_contributions()
@@ -2324,26 +2339,19 @@ mod tests {
 
         let swimlane = parse(&spec, "swimlane-beta LR\nA --> B\n");
         let flowchart = parse(&spec, "flowchart LR\nA --> B\n");
-        assert_eq!(fallback_contribution_count(&swimlane), 2);
-        assert_ne!(swimlane.effective_config.get_str("theme"), Some("base"));
-        assert_eq!(
-            swimlane
-                .effective_config
-                .get_str("themeVariables.clusterBkg"),
-            Some("#fef3c7")
-        );
-        assert_eq!(
-            swimlane
-                .effective_config
-                .get_str("themeVariables.secondaryColor"),
-            Some("#fef3c7")
-        );
-        assert_eq!(
-            swimlane
-                .effective_config
-                .get_str("themeVariables.clusterBorder"),
-            Some("#a16207")
-        );
+        let baseline = parse(&DiagramThemeSpec::default(), "swimlane-beta LR\nA --> B\n");
+        assert_eq!(fallback_contribution_count(&swimlane), 0);
+        for path in [
+            "themeVariables.clusterBkg",
+            "themeVariables.secondaryColor",
+            "themeVariables.clusterBorder",
+        ] {
+            assert_eq!(
+                swimlane.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Swimlane Cluster paint must not mutate legacy `{path}`"
+            );
+        }
         assert_eq!(fallback_contribution_count(&flowchart), 0);
     }
 

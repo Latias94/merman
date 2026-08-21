@@ -1,17 +1,16 @@
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
-use crate::text::{
-    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownWordType, TextMeasurer, TextStyle,
-    WrapMode,
-};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::super::timing::RenderTiming;
-use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, theme_token};
+use super::super::{SvgOutput, escape_attr_display, fmt, theme_token};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
-use super::label::{class_math_html_label, class_note_html_div_style};
+use super::label::{
+    class_math_html_label, class_note_html_div_style, write_class_svg_text_markdown_with_style,
+};
 use super::node::ClassNodeRenderPosition;
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
@@ -270,63 +269,4 @@ fn class_note_sanitize_config<'a>(
     }
     owned_sanitize_config
         .get_or_insert_with(|| merman_core::MermaidConfig::from_value(effective_config.clone()))
-}
-
-fn write_class_svg_text_markdown_with_style(out: &mut impl SvgOutput, markdown: &str, style: &str) {
-    let markdown = markdown
-        .strip_prefix('`')
-        .and_then(|s| s.strip_suffix('`'))
-        .unwrap_or(markdown);
-    let _ = write!(
-        out,
-        r#"<text y="-10.1" style="{}">"#,
-        escape_attr_display(style)
-    );
-
-    let lines = crate::text::mermaid_markdown_to_lines(markdown, true);
-    if lines.len() == 1 && lines[0].is_empty() {
-        out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
-        out.push_str("</text>");
-        return;
-    }
-
-    for (idx, words) in lines.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
-        } else {
-            let y_em = if idx == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
-                y_em
-            );
-        }
-
-        for (word_idx, (word, ty)) in words.iter().enumerate() {
-            let is_strong = *ty == MermaidMarkdownWordType::Strong;
-            let is_em = *ty == MermaidMarkdownWordType::Em;
-            let font_style = if is_em { "italic" } else { "normal" };
-            let font_weight = if is_strong { "bold" } else { "normal" };
-            let _ = write!(
-                out,
-                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
-                font_style, font_weight
-            );
-            if word_idx == 0 {
-                escape_xml_into(out, word);
-            } else {
-                out.push(' ');
-                escape_xml_into(out, word);
-            }
-            out.push_str("</tspan>");
-        }
-
-        out.push_str("</tspan>");
-    }
-
-    out.push_str("</text>");
 }

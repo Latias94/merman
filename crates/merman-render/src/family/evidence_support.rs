@@ -102,6 +102,7 @@ impl TerminalStyleResolution<'_> {
 pub(crate) struct UnsupportedTerminalDomain<'a> {
     resolution: TerminalStyleResolution<'a>,
     variants: TerminalVariantDomain<'a>,
+    reconcile_rules: bool,
 }
 
 impl<'a> UnsupportedTerminalDomain<'a> {
@@ -109,6 +110,20 @@ impl<'a> UnsupportedTerminalDomain<'a> {
         Self {
             resolution: TerminalStyleResolution::Direct(target),
             variants,
+            reconcile_rules: true,
+        }
+    }
+
+    /// Reconciles only ordinal-palette and effect-binding fallbacks for a surface whose rule
+    /// facets remain owned by a family-local plan.
+    pub(crate) const fn fallbacks_only(
+        target: ThemeTarget,
+        variants: TerminalVariantDomain<'a>,
+    ) -> Self {
+        Self {
+            resolution: TerminalStyleResolution::Direct(target),
+            variants,
+            reconcile_rules: false,
         }
     }
 
@@ -123,6 +138,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
                 owned_rule_targets,
             },
             variants,
+            reconcile_rules: true,
         }
     }
 }
@@ -198,6 +214,9 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
         let key = theme.family_mechanism_key(route);
         match route.mechanism() {
             FamilyThemeMechanism::RuleFacet { facet, .. } => {
+                if !domains[domain_index].reconcile_rules {
+                    continue;
+                }
                 let entry = observations[domain_index].entry(key).or_insert_with(|| {
                     UnsupportedMechanismObservation::Rule {
                         all_unsupported: true,
@@ -242,6 +261,12 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
             .filter(|(_, observation)| observation.is_owned())
             .map(|(key, _)| (key.clone(), None))
             .collect::<BTreeMap<_, Option<FamilyThemeResidualReason>>>();
+        // A domain with no owned unsupported mechanism has nothing to reconcile.  In
+        // particular, do not rescan every ordinal occurrence just to discover that all
+        // observations are typed, shadowed, or otherwise not owned by this fallback path.
+        if outcomes.is_empty() {
+            continue;
+        }
         domain.variants.for_each(|ordinal, variant| {
             work_meter.charge(1)?;
             let terminal_target = domain.resolution.terminal_target();
@@ -376,7 +401,7 @@ mod tests {
         ThemeVariant,
     };
     use crate::family::FamilyThemeEvidence;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     fn resolved_theme(
         family: DiagramFamilyId,
@@ -504,6 +529,31 @@ mod tests {
     }
 
     #[test]
+    fn domains_without_owned_outcomes_do_not_resolve_each_occurrence() {
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [fill_rule(ThemeTarget::Edge, "#123456").for_family(DiagramFamilyId::TREE_VIEW)],
+        );
+        let route_count = theme.family_mechanism_routes().len();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, route_count)
+            .expect("exact route-scan work limit");
+        let meter = OperationWorkMeter::new(policy);
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Edge,
+                TerminalVariantDomain::uniform(10_000, ThemeVariant::Default),
+            )],
+            &meter,
+        )
+        .expect("a domain with no owned fallback must stop after the route scan");
+    }
+
+    #[test]
     fn textual_terminal_domain_uses_one_text_and_role_local_winner_chain() {
         let theme = resolved_theme(
             DiagramFamilyId::MINDMAP,
@@ -589,6 +639,118 @@ mod tests {
         .expect("reconcile absent unsupported palette");
         assert_eq!(absent.not_applicable_mechanisms(), &[key]);
         assert!(absent.residuals().is_empty());
+    }
+
+    #[test]
+    fn fallback_only_palette_uses_the_real_fill_winner_without_claiming_the_rule() {
+        let palette =
+            OrdinalPalette::new([ThemeColorValue::parse("#123456").expect("valid palette color")])
+                .expect("non-empty palette");
+        let theme = resolved_spec(
+            DiagramFamilyId::TREE_VIEW,
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        fill_rule(ThemeTarget::Edge, "#abcdef")
+                            .for_family(DiagramFamilyId::TREE_VIEW),
+                    )
+                    .with_ordinal_palette(ThemeTarget::Edge, palette),
+            ),
+        );
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Edge,
+        };
+        let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::Edge,
+        };
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Edge,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile only TreeView Edge fallbacks");
+
+        assert_eq!(evidence.not_applicable_mechanisms(), &[palette_key]);
+        assert!(evidence.residuals().is_empty());
+        assert!(!evidence.not_applicable_mechanisms().contains(&rule_key));
+    }
+
+    #[test]
+    fn fallback_only_effect_binding_yields_to_an_explicit_effect_winner() {
+        let bound_effect_id = "tree-edge-bound";
+        let explicit_effect_id = "tree-edge-explicit";
+        let effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    bound_effect_id,
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 1.0,
+                    }],
+                )
+                .expect("valid bound effect graph"),
+            )
+            .expect("unique bound effect graph")
+            .with_graph(
+                EffectGraph::new(
+                    explicit_effect_id,
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 2.0,
+                    }],
+                )
+                .expect("valid explicit effect graph"),
+            )
+            .expect("unique explicit effect graph")
+            .with_binding(
+                EffectBinding::new(ThemeTarget::Edge, bound_effect_id)
+                    .expect("valid effect binding"),
+            )
+            .expect("unique effect binding");
+        let explicit_rule = ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default()
+                .with_effect(explicit_effect_id)
+                .expect("valid explicit effect"),
+        )
+        .for_family(DiagramFamilyId::TREE_VIEW);
+        let theme = resolved_spec(
+            DiagramFamilyId::TREE_VIEW,
+            DiagramThemeSpec::new()
+                .with_styles(ThemeRuleSet::default().with_rule(explicit_rule))
+                .with_effects(effects),
+        );
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Edge,
+        };
+        let binding_key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::Edge,
+            effect_id: bound_effect_id.to_string(),
+        };
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+
+        reconcile_unsupported_terminal_domains(
+            &theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Edge,
+                TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+            )],
+            &work_meter(),
+        )
+        .expect("reconcile only TreeView Edge fallbacks");
+
+        assert_eq!(evidence.not_applicable_mechanisms(), &[binding_key]);
+        assert!(evidence.residuals().is_empty());
+        assert!(!evidence.not_applicable_mechanisms().contains(&rule_key));
     }
 
     #[test]

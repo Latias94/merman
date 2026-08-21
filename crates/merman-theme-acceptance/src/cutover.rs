@@ -115,6 +115,24 @@ circles@{ animate: true }
 crosses@{ animate: true }
 points@{ animate: true }
 "#;
+const SWIMLANE_CLUSTER_SOURCE: &str = r#"---
+config:
+  layout: swimlane
+---
+flowchart TD
+subgraph Lane[Lane]
+A[Alpha]
+B[Beta]
+end
+"#;
+const CLASS_NODE_SOURCE: &str = "classDiagram\nclass Alpha\nclass Beta\n";
+const ER_TEXT_SOURCE: &str = "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n";
+const ARCHITECTURE_TEXT_SOURCE: &str = r#"architecture-beta
+  group core(cloud)[Core]
+  service api(server)[API] in core
+  service worker(server)[Worker] in core
+  service db(database)[Database] in core
+"#;
 const SEQUENCE_FILL_SOURCE: &str = r#"sequenceDiagram
 participant Plain
 participant Stick@{"type":"actor"}
@@ -378,6 +396,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SWIMLANE_EDGE_SOURCE)
         }
+        (
+            DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Cluster,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(SWIMLANE_CLUSTER_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Fill) => {
             Ok(SEQUENCE_FILL_SOURCE)
         }
@@ -429,8 +452,22 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::CLASS, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(CLASS_EDGE_SOURCE)
         }
+        (
+            DiagramFamilyId::CLASS,
+            ThemeTarget::Node,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(CLASS_NODE_SOURCE),
+        (DiagramFamilyId::CLASS, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
+            Ok(CLASS_NODE_SOURCE)
+        }
         (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
             Ok(ER_RELATION_SOURCE)
+        }
+        (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(ER_TEXT_SOURCE)
+        }
+        (DiagramFamilyId::ARCHITECTURE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(ARCHITECTURE_TEXT_SOURCE)
         }
         (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(MINDMAP_EDGE_SOURCE)
@@ -898,6 +935,7 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
             let solid = match route.target() {
                 ThemeTarget::Edge | ThemeTarget::Relation => SOLID_EDGE.css,
                 ThemeTarget::Node
+                | ThemeTarget::NodeLabel
                 | ThemeTarget::Cluster
                 | ThemeTarget::Actor
                 | ThemeTarget::Lifeline
@@ -965,6 +1003,12 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             "sectionBkgColor2": "transparent",
             "altSectionBkgColor": "transparent",
             "gridColor": "transparent"
+        }),
+        (DiagramFamilyId::ER, ThemeTarget::Text) => serde_json::json!({
+            // Keep the control surface opaque and identical to the entity surface so the
+            // route proof observes the Text terminal instead of reimplementing rgba
+            // compositing for Mermaid's default edge-label background.
+            "edgeLabelBackground": "#ECECFF"
         }),
         _ => serde_json::json!({}),
     };
@@ -1221,6 +1265,7 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
     match (route.target(), route.facet()) {
         (
             ThemeTarget::Node
+            | ThemeTarget::NodeLabel
             | ThemeTarget::Cluster
             | ThemeTarget::Title
             | ThemeTarget::Actor
@@ -1280,6 +1325,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             | DiagramFamilyId::EVENT_MODELING
             | DiagramFamilyId::CLASS
             | DiagramFamilyId::ER
+            | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::GANTT => Ok("transparent"),
@@ -1291,6 +1337,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
         ThemeRouteCutoverValue::Solid => match (route.target(), route.facet()) {
             (
                 ThemeTarget::Node
+                | ThemeTarget::NodeLabel
                 | ThemeTarget::Cluster
                 | ThemeTarget::Title
                 | ThemeTarget::Actor
@@ -1493,11 +1540,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_seventy_two_routes_and_eighty_eight_artifact_witnesses() {
+    fn route_inventory_retains_eighty_six_routes_and_one_hundred_two_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 72);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 88);
+        assert_eq!(inventory.len(), 86);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 102);
     }
 
     #[test]

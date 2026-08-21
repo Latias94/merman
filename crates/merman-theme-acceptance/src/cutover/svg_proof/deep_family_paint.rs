@@ -14,6 +14,39 @@ pub(super) fn deep_family_route_observation(
     profile: CutoverWitnessProfile,
 ) -> C6ProofResult<DeepFamilyRouteObservation> {
     match route.family_id() {
+        DiagramFamilyId::ARCHITECTURE
+            if route.target() == ThemeTarget::Text
+                && route.facet() == ThemeRouteCutoverFacet::Fill =>
+        {
+            architecture_text_observation(document, route, profile)
+        }
+        DiagramFamilyId::SWIMLANE
+            if route.target() == ThemeTarget::Cluster
+                && matches!(
+                    route.facet(),
+                    ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke
+                ) =>
+        {
+            swimlane_cluster_observation(document, route, profile)
+        }
+        DiagramFamilyId::CLASS
+            if matches!(route.target(), ThemeTarget::Node | ThemeTarget::NodeLabel)
+                && route.facet() == ThemeRouteCutoverFacet::Fill =>
+        {
+            class_node_observation(document, route, profile)
+        }
+        DiagramFamilyId::CLASS
+            if route.target() == ThemeTarget::Node
+                && route.facet() == ThemeRouteCutoverFacet::Stroke =>
+        {
+            class_node_observation(document, route, profile)
+        }
+        DiagramFamilyId::ER
+            if route.target() == ThemeTarget::Text
+                && route.facet() == ThemeRouteCutoverFacet::Fill =>
+        {
+            er_text_observation(document, route, profile)
+        }
         DiagramFamilyId::CLASS => class_edge_observation(document, route, profile),
         DiagramFamilyId::ER => er_relation_observation(document, route, profile),
         DiagramFamilyId::MINDMAP => mindmap_edge_observation(document, route, profile),
@@ -31,9 +64,32 @@ pub(super) fn deep_family_underlay_colors(
     route: ThemeRouteCutoverDescriptor,
     target_regions: &[[f64; 4]],
 ) -> C6ProofResult<Vec<Vec<[u8; 3]>>> {
+    if route.family_id() == DiagramFamilyId::CLASS
+        && route.target() == ThemeTarget::Node
+        && route.facet() == ThemeRouteCutoverFacet::Fill
+    {
+        // A transparent Class Node.fill control exposes the root SVG canvas. There is no solid
+        // terminal underlay to prove, so the pixel proof only checks that typed fill is absent.
+        return Ok(std::iter::repeat_n(Vec::new(), target_regions.len()).collect());
+    }
     let colors = match route.family_id() {
         DiagramFamilyId::CLASS => class_underlay_colors(document)?,
         DiagramFamilyId::ER => er_underlay_colors(document)?,
+        DiagramFamilyId::SWIMLANE
+            if route.target() == ThemeTarget::Cluster
+                && route.facet() == ThemeRouteCutoverFacet::Fill =>
+        {
+            Vec::new()
+        }
+        DiagramFamilyId::SWIMLANE
+            if route.target() == ThemeTarget::Cluster
+                && route.facet() == ThemeRouteCutoverFacet::Stroke =>
+        {
+            return swimlane_cluster_stroke_underlays(document, target_regions);
+        }
+        DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::SWIMLANE => {
+            generic_underlay_colors(document, route)?
+        }
         DiagramFamilyId::MINDMAP => Vec::new(),
         DiagramFamilyId::GIT_GRAPH => Vec::new(),
         DiagramFamilyId::GANTT => {
@@ -48,6 +104,663 @@ pub(super) fn deep_family_underlay_colors(
         }
     };
     Ok(std::iter::repeat_n(colors, target_regions.len()).collect())
+}
+
+fn architecture_text_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    require_route(route, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill)?;
+    require_classic_profile(profile, "Architecture Text")?;
+    let mut groups = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && class_contains(*node, "architecture-service"))
+        .collect::<Vec<_>>();
+    let title_group = document.descendants().find(|node| {
+        node.has_tag_name("g")
+            && node
+                .ancestors()
+                .any(|ancestor| class_contains(ancestor, "architecture-groups"))
+            && node.descendants().any(|descendant| {
+                descendant.has_tag_name("text") && style_value(descendant, "fill").is_some()
+            })
+            && node
+                .descendants()
+                .any(|descendant| descendant.has_tag_name("svg"))
+    });
+    if let Some(title_group) = title_group {
+        groups.push(title_group);
+    }
+    c6_ensure!(
+        "route-svg-proof",
+        groups.len() == 4,
+        "Architecture Text witness expected four terminal groups, found {}",
+        groups.len()
+    );
+
+    let property = facet_property(route.facet());
+    let mut common_value = None;
+    let mut target_regions = Vec::with_capacity(groups.len());
+    let mut terminal = b"merman.c6-route-architecture-text-surface.v2\0".to_vec();
+    for group in groups {
+        let text_nodes = group
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("data-merman-text-bbox").is_some()
+                    && has_visible_text_content(*node)
+            })
+            .collect::<Vec<_>>();
+        c6_ensure!(
+            "route-svg-proof",
+            text_nodes.len() == 1,
+            "Architecture Text terminal group expected one writer-owned text bbox, found {}",
+            text_nodes.len()
+        );
+        let text = text_nodes[0];
+        let value = style_value(text, property).ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                format!("Architecture Text terminal lacks its emitted {property}"),
+            )
+        })?;
+        observe_common_value(&mut common_value, value, "Architecture Text")?;
+        let region = architecture_emitted_text_bounds(text)?;
+        target_regions.push(region);
+        append_len_prefixed(
+            &mut terminal,
+            group.attribute("id").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(
+            &mut terminal,
+            group.attribute("class").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(&mut terminal, visible_text_content(text).trim().as_bytes());
+        append_len_prefixed(&mut terminal, value.as_bytes());
+        append_rect(&mut terminal, region);
+    }
+    Ok(DeepFamilyRouteObservation {
+        value: common_value.ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                "Architecture Text has no emitted terminal value",
+            )
+        })?,
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn architecture_emitted_text_bounds(text: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
+    let raw = text.attribute("data-merman-text-bbox").ok_or_else(|| {
+        C6ProofError::new(
+            "route-svg-geometry",
+            "Architecture text lacks writer-owned measured bounds",
+        )
+    })?;
+    let values = raw
+        .split(',')
+        .map(|value| {
+            value.parse::<f64>().map_err(|error| {
+                C6ProofError::new(
+                    "route-svg-geometry",
+                    format!("invalid Architecture text bounds value {value:?}: {error}"),
+                )
+            })
+        })
+        .collect::<C6ProofResult<Vec<_>>>()?;
+    let [left, top, right, bottom] = values.as_slice() else {
+        return Err(C6ProofError::new(
+            "route-svg-geometry",
+            format!("Architecture text bounds contain {} values", values.len()),
+        ));
+    };
+    c6_ensure!(
+        "route-svg-geometry",
+        [*left, *top, *right, *bottom]
+            .into_iter()
+            .all(f64::is_finite)
+            && right > left
+            && bottom > top,
+        "Architecture text bounds must be finite and positive"
+    );
+    Ok([*left, *top, right - left, bottom - top])
+}
+
+fn swimlane_cluster_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    require_classic_profile(profile, "Swimlane Cluster")?;
+    let groups = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && class_contains(*node, "swimlane"))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        groups.len() == 1,
+        "Swimlane Cluster witness expected one terminal group, found {}",
+        groups.len()
+    );
+    let shells = swimlane_cluster_shells(groups[0])?;
+    let property = facet_property(route.facet());
+    let mut common_value = None;
+    let mut target_regions = Vec::with_capacity(match route.facet() {
+        ThemeRouteCutoverFacet::Fill => shells.len(),
+        ThemeRouteCutoverFacet::Stroke => shells.len() * 4,
+    });
+    let mut terminal = b"merman.c6-route-swimlane-cluster-surface.v3\0".to_vec();
+    for shell in shells {
+        let value = style_value(shell, property)
+            .or_else(|| shell.attribute(property))
+            .ok_or_else(|| {
+                C6ProofError::new(
+                    "route-svg-proof",
+                    format!(
+                        "Swimlane Cluster shell `{}` lacks its emitted {property}",
+                        shell.attribute("class").unwrap_or_default()
+                    ),
+                )
+            })?;
+        observe_common_value(&mut common_value, value, "Swimlane Cluster")?;
+        append_len_prefixed(
+            &mut terminal,
+            shell.attribute("class").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(&mut terminal, value.as_bytes());
+        for region in swimlane_cluster_target_regions(shell, route.facet())? {
+            target_regions.push(region);
+            append_rect(&mut terminal, region);
+        }
+    }
+    Ok(DeepFamilyRouteObservation {
+        value: common_value.ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                "Swimlane Cluster has no emitted terminal value",
+            )
+        })?,
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn swimlane_cluster_target_regions(
+    shell: roxmltree::Node<'_, '_>,
+    facet: ThemeRouteCutoverFacet,
+) -> C6ProofResult<Vec<[f64; 4]>> {
+    if facet == ThemeRouteCutoverFacet::Fill {
+        return Ok(vec![element_bounds(shell, facet)?]);
+    }
+
+    let [left, top, width, height] = raw_element_bounds(shell)?.rect(0.0)?;
+    let raw_stroke_width = style_value(shell, "stroke-width")
+        .or_else(|| shell.attribute("stroke-width"))
+        .unwrap_or("1");
+    let stroke_width = raw_stroke_width
+        .trim()
+        .strip_suffix("px")
+        .unwrap_or(raw_stroke_width.trim())
+        .parse::<f64>()
+        .map_err(|error| {
+            C6ProofError::new(
+                "route-svg-geometry",
+                format!(
+                    "invalid Swimlane Cluster terminal stroke-width `{raw_stroke_width}`: {error}"
+                ),
+            )
+        })?;
+    c6_ensure!(
+        "route-svg-geometry",
+        stroke_width.is_finite() && stroke_width > 0.0,
+        "Swimlane Cluster terminal stroke-width must be finite and positive"
+    );
+    let stroke_half_width = stroke_width * affine_linear_scale(node_transform(shell)?)? / 2.0;
+    let raster_outset = region_padding(ThemeRouteCutoverFacet::Stroke) + stroke_half_width;
+    let right = left + width;
+    let bottom = top + height;
+    let band = raster_outset + stroke_half_width;
+    Ok(vec![
+        [
+            left - raster_outset,
+            top - raster_outset,
+            width + raster_outset * 2.0,
+            band,
+        ],
+        [
+            left - raster_outset,
+            bottom - stroke_half_width,
+            width + raster_outset * 2.0,
+            band,
+        ],
+        [
+            left - raster_outset,
+            top - raster_outset,
+            band,
+            height + raster_outset * 2.0,
+        ],
+        [
+            right - stroke_half_width,
+            top - raster_outset,
+            band,
+            height + raster_outset * 2.0,
+        ],
+    ])
+}
+
+fn swimlane_cluster_shells<'a, 'input>(
+    group: roxmltree::Node<'a, 'input>,
+) -> C6ProofResult<[roxmltree::Node<'a, 'input>; 2]> {
+    let find = |class_name| {
+        group
+            .children()
+            .find(|node| node.has_tag_name("rect") && class_contains(*node, class_name))
+            .ok_or_else(|| {
+                let children = group
+                    .children()
+                    .filter(|node| node.is_element())
+                    .map(|node| {
+                        format!(
+                            "{}:{}",
+                            node.tag_name().name(),
+                            node.attribute("class").unwrap_or_default()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                C6ProofError::new(
+                    "route-svg-proof",
+                    format!(
+                        "Swimlane Cluster lacks `{class_name}` terminal shell; children={children}"
+                    ),
+                )
+            })
+    };
+    Ok([find("swimlane-body")?, find("swimlane-title")?])
+}
+
+fn swimlane_cluster_stroke_underlays(
+    document: &roxmltree::Document<'_>,
+    target_regions: &[[f64; 4]],
+) -> C6ProofResult<Vec<Vec<[u8; 3]>>> {
+    let group = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && class_contains(*node, "swimlane"))
+        .ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                "Swimlane Cluster witness lacks its terminal group",
+            )
+        })?;
+    let shells = swimlane_cluster_shells(group)?;
+    c6_ensure!(
+        "route-svg-proof",
+        shells.len() * 4 == target_regions.len(),
+        "Swimlane Cluster shell stroke underlays differ from target regions"
+    );
+    let shell_facts = shells
+        .into_iter()
+        .map(|shell| {
+            Ok((
+                raw_element_bounds(shell)?.rect(0.0)?,
+                parse_optional_css_rgb(swimlane_cluster_effective_fill(document, shell)?)?
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            ))
+        })
+        .collect::<C6ProofResult<Vec<_>>>()?;
+    let mut underlays = Vec::with_capacity(target_regions.len());
+    for (shell_index, (bounds, fill)) in shell_facts.iter().enumerate() {
+        for edge in 0..4 {
+            let mut colors = fill.clone();
+            for (other_index, (other_bounds, other_fill)) in shell_facts.iter().enumerate() {
+                if shell_index != other_index
+                    && swimlane_shell_edge_touches(*bounds, *other_bounds, edge)
+                {
+                    colors.extend(other_fill);
+                }
+            }
+            colors.sort_unstable();
+            colors.dedup();
+            underlays.push(colors);
+        }
+    }
+    Ok(underlays)
+}
+
+fn swimlane_cluster_effective_fill<'document, 'input: 'document>(
+    document: &'document roxmltree::Document<'input>,
+    shell: roxmltree::Node<'document, 'input>,
+) -> C6ProofResult<&'document str> {
+    if let Some(fill) = style_value(shell, "fill") {
+        return Ok(fill);
+    }
+    let root_id = root_id(document, "Swimlane")?;
+    let selector = format!("#{root_id} .cluster rect");
+    stylesheet_property(document, &selector, "fill")
+}
+
+fn swimlane_shell_edge_touches(shell: [f64; 4], other: [f64; 4], edge: usize) -> bool {
+    const GEOMETRY_EPSILON: f64 = 1.0e-6;
+    let [left, top, width, height] = shell;
+    let [other_left, other_top, other_width, other_height] = other;
+    let right = left + width;
+    let bottom = top + height;
+    let other_right = other_left + other_width;
+    let other_bottom = other_top + other_height;
+    let horizontal_overlap = left < other_right && other_left < right;
+    let vertical_overlap = top < other_bottom && other_top < bottom;
+    match edge {
+        0 => (top - other_bottom).abs() <= GEOMETRY_EPSILON && horizontal_overlap,
+        1 => (bottom - other_top).abs() <= GEOMETRY_EPSILON && horizontal_overlap,
+        2 => (left - other_right).abs() <= GEOMETRY_EPSILON && vertical_overlap,
+        3 => (right - other_left).abs() <= GEOMETRY_EPSILON && vertical_overlap,
+        _ => false,
+    }
+}
+
+fn class_node_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    require_classic_profile(profile, "Class Node")?;
+    let groups = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && class_contains(*node, "node")
+                && node.attribute("id").is_some()
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        groups.len() == 2,
+        "Class Node witness expected two node groups, found {}",
+        groups.len()
+    );
+    generic_group_surface_observation(
+        route,
+        profile,
+        groups,
+        2,
+        "Class Node",
+        if route.target() == ThemeTarget::NodeLabel {
+            GroupSurfaceValue::Text
+        } else {
+            GroupSurfaceValue::NonNonePaint
+        },
+    )
+}
+
+fn er_text_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    require_route(route, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill)?;
+    require_classic_profile(profile, "ER Text")?;
+    let relation_groups = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && class_contains(*node, "edgeLabel")
+                && !class_contains(*node, "merman-foreignobject-fallback")
+                && node.descendants().any(|descendant| {
+                    descendant.has_tag_name("text") && has_visible_text_content(descendant)
+                })
+        })
+        .collect::<Vec<_>>();
+    let entity_text_groups = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && class_contains(*node, "merman-foreignobject-fallback")
+                && class_contains(*node, "nodeLabel")
+                && node.descendants().any(|descendant| {
+                    descendant.has_tag_name("text") && has_visible_text_content(descendant)
+                })
+        })
+        .collect::<Vec<_>>();
+    let entity_geometry_groups = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && class_contains(*node, "node")
+                && !class_contains(*node, "merman-foreignobject-fallback")
+                && node
+                    .ancestors()
+                    .any(|ancestor| class_contains(ancestor, "nodes"))
+                && node.descendants().any(|descendant| {
+                    descendant.has_tag_name("rect") && class_contains(descendant, "label-container")
+                })
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        relation_groups.len() == 1
+            && entity_text_groups.len() == 2
+            && entity_geometry_groups.len() == 2,
+        "ER Text witness expected one relation label and two entity labels/geometries, found relation={} entity-text={} entity-geometry={}",
+        relation_groups.len(),
+        entity_text_groups.len(),
+        entity_geometry_groups.len()
+    );
+
+    let property = facet_property(route.facet());
+    let mut common_value = None;
+    let mut target_regions = Vec::with_capacity(3);
+    let mut terminal = b"merman.c6-route-er-text-surface.v1\0".to_vec();
+    let relation = relation_groups[0];
+    append_er_text_terminal(
+        &mut terminal,
+        &mut common_value,
+        relation,
+        relation,
+        property,
+        GroupSurfaceValue::TextWithAncestor,
+        &mut target_regions,
+    )?;
+    for (text_group, geometry_group) in entity_text_groups
+        .into_iter()
+        .zip(entity_geometry_groups.into_iter())
+    {
+        append_er_text_terminal(
+            &mut terminal,
+            &mut common_value,
+            text_group,
+            geometry_group,
+            property,
+            GroupSurfaceValue::TextWithAncestor,
+            &mut target_regions,
+        )?;
+    }
+    Ok(DeepFamilyRouteObservation {
+        value: common_value.ok_or_else(|| {
+            C6ProofError::new("route-svg-proof", "ER Text has no emitted terminal value")
+        })?,
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn append_er_text_terminal(
+    terminal: &mut Vec<u8>,
+    common_value: &mut Option<String>,
+    text_group: roxmltree::Node<'_, '_>,
+    geometry_group: roxmltree::Node<'_, '_>,
+    property: &str,
+    value_kind: GroupSurfaceValue,
+    target_regions: &mut Vec<[f64; 4]>,
+) -> C6ProofResult<()> {
+    let value = group_surface_value(text_group, property, value_kind).ok_or_else(|| {
+        C6ProofError::new(
+            "route-svg-proof",
+            format!("ER Text terminal group lacks its emitted {property}"),
+        )
+    })?;
+    observe_common_value(common_value, value, "ER Text")?;
+    let region = group_bounds(geometry_group, ThemeRouteCutoverFacet::Fill)?;
+    target_regions.push(region);
+    append_len_prefixed(
+        terminal,
+        text_group.attribute("class").unwrap_or_default().as_bytes(),
+    );
+    append_len_prefixed(terminal, visible_text_content(text_group).trim().as_bytes());
+    append_len_prefixed(terminal, value.as_bytes());
+    append_rect(terminal, region);
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum GroupSurfaceValue {
+    NonNonePaint,
+    Text,
+    TextWithAncestor,
+}
+
+fn group_surface_value<'a>(
+    group: roxmltree::Node<'a, '_>,
+    property: &str,
+    value_kind: GroupSurfaceValue,
+) -> Option<&'a str> {
+    group
+        .descendants()
+        .filter(|node| match value_kind {
+            GroupSurfaceValue::NonNonePaint => true,
+            GroupSurfaceValue::Text => {
+                node.has_tag_name("text")
+                    || (node.has_tag_name("span")
+                        && !node.text().unwrap_or_default().trim().is_empty())
+            }
+            GroupSurfaceValue::TextWithAncestor => {
+                node.has_tag_name("text")
+                    || node.has_tag_name("tspan")
+                    || (node.has_tag_name("span")
+                        && !node.text().unwrap_or_default().trim().is_empty())
+            }
+        })
+        .filter_map(|node| {
+            style_value(node, property)
+                .or_else(|| node.attribute(property))
+                .or_else(|| {
+                    if !matches!(value_kind, GroupSurfaceValue::TextWithAncestor) {
+                        return None;
+                    }
+                    let mut ancestor = node.parent();
+                    while let Some(candidate) = ancestor {
+                        if let Some(value) = style_value(candidate, property)
+                            .or_else(|| candidate.attribute(property))
+                        {
+                            return Some(value);
+                        }
+                        if candidate == group {
+                            break;
+                        }
+                        ancestor = candidate.parent();
+                    }
+                    None
+                })
+        })
+        .find(|value| !matches!(value_kind, GroupSurfaceValue::NonNonePaint) || *value != "none")
+}
+
+fn generic_group_surface_observation(
+    route: ThemeRouteCutoverDescriptor,
+    _profile: CutoverWitnessProfile,
+    groups: Vec<roxmltree::Node<'_, '_>>,
+    expected_count: usize,
+    label: &str,
+    value_kind: GroupSurfaceValue,
+) -> C6ProofResult<DeepFamilyRouteObservation> {
+    c6_ensure!(
+        "route-svg-proof",
+        groups.len() == expected_count,
+        "{label} witness expected {expected_count} terminal groups, found {}",
+        groups.len()
+    );
+    let property = facet_property(route.facet());
+    let mut common_value = None;
+    let mut target_regions = Vec::with_capacity(groups.len());
+    let mut terminal = format!(
+        "merman.c6-route-{}-surface.v1\0",
+        label.to_ascii_lowercase()
+    )
+    .into_bytes();
+    for group in groups {
+        let value = group_surface_value(group, property, value_kind).ok_or_else(|| {
+                let styles = group
+                    .descendants()
+                    .filter(|node| node.attribute("style").is_some())
+                    .map(|node| {
+                        format!(
+                            "{}:{}",
+                            node.tag_name().name(),
+                            node.attribute("style").unwrap_or_default()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";");
+                C6ProofError::new(
+                    "route-svg-proof",
+                    format!(
+                        "{label} terminal group lacks its emitted {property}: class={} text={} styles={styles}",
+                        group.attribute("class").unwrap_or_default(),
+                        group.text().unwrap_or_default().trim()
+                    ),
+                )
+            })?;
+        observe_common_value(&mut common_value, value, label)?;
+        let region = group_bounds(group, route.facet())?;
+        target_regions.push(region);
+        append_len_prefixed(
+            &mut terminal,
+            group.attribute("id").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(
+            &mut terminal,
+            group.attribute("class").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(&mut terminal, value.as_bytes());
+        append_rect(&mut terminal, region);
+    }
+    Ok(DeepFamilyRouteObservation {
+        value: common_value
+            .ok_or_else(|| C6ProofError::new("route-svg-proof", "surface has no emitted value"))?,
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn generic_underlay_colors(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<Vec<[u8; 3]>> {
+    let property = facet_property(route.facet());
+    let target_color = route_control_color(route)?.rgb;
+    let mut colors = Vec::new();
+    for node in document.descendants().filter(|node| node.is_element()) {
+        for candidate in [
+            style_value(node, "fill"),
+            node.attribute("fill"),
+            style_value(node, "stroke"),
+            node.attribute("stroke"),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if candidate == "transparent" || candidate == "none" || candidate == property {
+                continue;
+            }
+            if parse_css_rgb(candidate).ok() == Some(target_color) {
+                continue;
+            }
+            push_optional_color(&mut colors, candidate)?;
+        }
+    }
+    Ok(colors)
 }
 
 fn class_edge_observation(

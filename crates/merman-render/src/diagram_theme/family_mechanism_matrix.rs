@@ -12,7 +12,6 @@ use merman_theme_contract::{
 };
 
 use super::canvas::CanvasPaint;
-use super::legacy_projection_retirement::route_has_retired_legacy_projection;
 use super::resolved::ThemeTypographyProperty;
 use super::semantic::{OrdinalSelector, ThemeRule, ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
@@ -288,15 +287,21 @@ fn legacy_bridge_projections(
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_FILL),
         (
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::BLOCK,
+            DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::BLOCK
+            | DiagramFamilyId::CLASS,
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE),
+        (DiagramFamilyId::CLASS, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL)
+        }
         (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Edge,
@@ -310,15 +315,22 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
         }
+        (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_FILLS)
         }
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, ThemeRouteCutoverFacet::Fill) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_FILL)
-        }
-        (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, ThemeRouteCutoverFacet::Stroke) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_STROKE)
-        }
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Cluster,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_FILL),
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Cluster,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_STROKE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_FILL)
         }
@@ -369,7 +381,9 @@ fn legacy_bridge_projections(
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
         (
-            DiagramFamilyId::EVENT_MODELING | DiagramFamilyId::ISHIKAWA,
+            DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::EVENT_MODELING
+            | DiagramFamilyId::ISHIKAWA,
             ThemeTarget::Text,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL),
@@ -966,6 +980,68 @@ fn classify_base_typography(
     }
 }
 
+/// Current terminal ownership for scalar paint routes that have no Mermaid writer consumer.
+///
+/// This is deliberately independent from KTD23's historical before/after witness. Editing the
+/// retirement manifest cannot change runtime classification, and editing this classification
+/// cannot authorize its own historical projection deletion.
+fn terminal_absent_legacy_paint_route(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    selector: FamilyThemeSelectorShape,
+    facet: FamilyThemeRuleFacet,
+) -> bool {
+    let Some(variant) = (match selector {
+        FamilyThemeSelectorShape::Static { variant } => Some(variant),
+        FamilyThemeSelectorShape::Ordinal { .. } => None,
+    }) else {
+        return false;
+    };
+    let fill = matches!(facet, FamilyThemeRuleFacet::Fill(_));
+    let stroke = matches!(facet, FamilyThemeRuleFacet::Stroke(_));
+    let unqualified_or_default = matches!(variant, None | Some(ThemeVariant::Default));
+
+    match family {
+        DiagramFamilyId::CLASS => {
+            (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
+                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
+                || (target == ThemeTarget::Table
+                    && fill
+                    && matches!(variant, None | Some(ThemeVariant::Odd | ThemeVariant::Even)))
+        }
+        DiagramFamilyId::MINDMAP => {
+            (matches!(
+                target,
+                ThemeTarget::NodeLabel | ThemeTarget::Text | ThemeTarget::Title
+            ) && unqualified_or_default
+                && fill)
+                || (target == ThemeTarget::Edge && unqualified_or_default && fill)
+                || (target == ThemeTarget::Edge && variant == Some(ThemeVariant::Default) && stroke)
+                || (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
+                || (target == ThemeTarget::EdgeLabelBackground && unqualified_or_default && fill)
+                || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
+                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
+        }
+        DiagramFamilyId::TREE_VIEW => {
+            (target == ThemeTarget::Node && unqualified_or_default && (fill || stroke))
+                || (matches!(
+                    target,
+                    ThemeTarget::Title | ThemeTarget::EdgeLabelBackground
+                ) && unqualified_or_default
+                    && fill)
+                || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
+                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
+        }
+        DiagramFamilyId::GIT_GRAPH => {
+            (target == ThemeTarget::Title && unqualified_or_default && fill)
+                || (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
+                || (target == ThemeTarget::Cluster && unqualified_or_default && (fill || stroke))
+                || (target == ThemeTarget::ClusterLabel && unqualified_or_default && fill)
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn classify_rule_facet(
     family: DiagramFamilyId,
     target: ThemeTarget,
@@ -1098,8 +1174,10 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::FLOWCHART
-        && target == ThemeTarget::Cluster
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::Cluster
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
@@ -1147,13 +1225,48 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::CLASS
-        && target == ThemeTarget::Edge
+    if family == DiagramFamilyId::ARCHITECTURE
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
-            facet,
-            FamilyThemeRuleFacet::Stroke(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            (target, facet),
+            (
+                ThemeTarget::Node,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                ) | FamilyThemeRuleFacet::Stroke(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
+            ) | (
+                ThemeTarget::Text | ThemeTarget::Marker,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::CLASS
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            (target, facet),
+            (
+                ThemeTarget::Edge,
+                FamilyThemeRuleFacet::Stroke(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
+            ) | (
+                ThemeTarget::Node,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                ) | FamilyThemeRuleFacet::Stroke(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
+            ) | (
+                ThemeTarget::NodeLabel,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
             )
         )
     {
@@ -1173,7 +1286,7 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if route_has_retired_legacy_projection(family, target, selector, facet) {
+    if terminal_absent_legacy_paint_route(family, target, selector, facet) {
         return FamilyThemeDisposition::Unsupported;
     }
     if family == DiagramFamilyId::CLASS
@@ -1381,6 +1494,20 @@ pub(super) fn classify_rule_facet(
             facet,
             FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::ER
+        && matches!(
+            (target, selector, facet),
+            (
+                ThemeTarget::Text,
+                FamilyThemeSelectorShape::Static { variant: None },
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
             )
         )
     {
@@ -1813,8 +1940,23 @@ mod tests {
         for (family, target, channel) in [
             (
                 DiagramFamilyId::ARCHITECTURE,
+                ThemeTarget::Node,
+                PaintChannel::Fill,
+            ),
+            (
+                DiagramFamilyId::ARCHITECTURE,
+                ThemeTarget::Node,
+                PaintChannel::Stroke,
+            ),
+            (
+                DiagramFamilyId::ARCHITECTURE,
                 ThemeTarget::Edge,
                 PaintChannel::Stroke,
+            ),
+            (
+                DiagramFamilyId::ARCHITECTURE,
+                ThemeTarget::Marker,
+                PaintChannel::Fill,
             ),
             (
                 DiagramFamilyId::QUADRANT_CHART,
@@ -1847,7 +1989,10 @@ mod tests {
                         FamilyThemeSelectorShape::Static { variant: None },
                         facet_for(kind),
                     ),
-                    FamilyThemeDisposition::TypedAdapter
+                    FamilyThemeDisposition::TypedAdapter,
+                    "family={} target={} channel={channel:?} paint_kind={kind:?}",
+                    family.as_str(),
+                    target.id(),
                 );
                 assert_eq!(
                     classify_rule_facet(
@@ -1858,7 +2003,10 @@ mod tests {
                         },
                         facet_for(kind),
                     ),
-                    FamilyThemeDisposition::Unsupported
+                    FamilyThemeDisposition::Unsupported,
+                    "family={} target={} channel={channel:?} paint_kind={kind:?}",
+                    family.as_str(),
+                    target.id(),
                 );
             }
 
@@ -1878,6 +2026,35 @@ mod tests {
                     FamilyThemeDisposition::Unsupported
                 );
             }
+        }
+    }
+
+    #[test]
+    fn architecture_text_fill_keeps_the_default_variant_on_the_compatibility_route() {
+        for kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::ARCHITECTURE,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(kind),
+                ),
+                FamilyThemeDisposition::TypedAdapter,
+            );
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::ARCHITECTURE,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static {
+                        variant: Some(ThemeVariant::Default),
+                    },
+                    FamilyThemeRuleFacet::Fill(kind),
+                ),
+                FamilyThemeDisposition::LegacyCompatibility,
+            );
         }
     }
 
@@ -2214,6 +2391,51 @@ mod tests {
                 ),
                 FamilyThemeDisposition::LegacyCompatibility
             );
+
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::ER,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+                FamilyThemeDisposition::TypedAdapter
+            );
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::ER,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static {
+                        variant: Some(ThemeVariant::Default),
+                    },
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+                FamilyThemeDisposition::LegacyCompatibility
+            );
+
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::ER,
+                    ThemeTarget::Table,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+                FamilyThemeDisposition::LegacyCompatibility
+            );
+            for variant in [ThemeVariant::Odd, ThemeVariant::Even] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::ER,
+                        ThemeTarget::Table,
+                        FamilyThemeSelectorShape::Static {
+                            variant: Some(variant),
+                        },
+                        FamilyThemeRuleFacet::Fill(paint_kind),
+                    ),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                    "variant={variant:?}"
+                );
+            }
         }
     }
 
@@ -2434,7 +2656,7 @@ mod tests {
     }
 
     #[test]
-    fn class_owns_static_edge_stroke_and_default_qualified_stroke_width_only() {
+    fn class_owns_static_edge_and_node_paints_and_default_qualified_stroke_width_only() {
         for paint_kind in [
             FamilyThemePaintKind::Transparent,
             FamilyThemePaintKind::Solid,
@@ -2459,6 +2681,38 @@ mod tests {
                 ),
                 FamilyThemeDisposition::LegacyCompatibility
             );
+
+            for (target, facet) in [
+                (ThemeTarget::Node, FamilyThemeRuleFacet::Fill(paint_kind)),
+                (ThemeTarget::Node, FamilyThemeRuleFacet::Stroke(paint_kind)),
+                (
+                    ThemeTarget::NodeLabel,
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                ),
+            ] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::CLASS,
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::TypedAdapter,
+                    "target={target:?} facet={facet:?}"
+                );
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::CLASS,
+                        target,
+                        FamilyThemeSelectorShape::Static {
+                            variant: Some(ThemeVariant::Default),
+                        },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                    "qualified target={target:?} facet={facet:?}"
+                );
+            }
         }
 
         for variant in [None, Some(ThemeVariant::Default)] {
@@ -3352,7 +3606,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_cluster_only_owns_unqualified_scalar_paints() {
+    fn flowchart_and_swimlane_clusters_own_unqualified_scalar_paints() {
         for paint in [
             CanvasPaint::Transparent,
             CanvasPaint::solid("#123456").expect("valid Cluster paint"),
@@ -3363,11 +3617,13 @@ mod tests {
                     .with_fill(paint.clone())
                     .with_stroke(paint.clone()),
             );
-            assert!(
-                compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &rule)
-                    .iter()
-                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
-            );
+            for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+                assert!(
+                    compile_rule_routes(family, 0, &rule)
+                        .iter()
+                        .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+                );
+            }
 
             let explicit_default = ThemeRule::new(
                 ThemeTarget::Cluster,
@@ -3376,21 +3632,15 @@ mod tests {
                     .with_stroke(paint.clone()),
             )
             .with_variant(ThemeVariant::Default);
-            assert!(
-                compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &explicit_default)
-                    .iter()
-                    .all(|route| {
-                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
-                    })
-            );
-
-            assert!(
-                compile_rule_routes(DiagramFamilyId::SWIMLANE, 0, &rule)
-                    .iter()
-                    .all(|route| {
-                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
-                    })
-            );
+            for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+                assert!(
+                    compile_rule_routes(family, 0, &explicit_default)
+                        .iter()
+                        .all(|route| {
+                            route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                        })
+                );
+            }
         }
 
         for paint_kind in [
@@ -3403,15 +3653,17 @@ mod tests {
                 FamilyThemeRuleFacet::Fill(paint_kind),
                 FamilyThemeRuleFacet::Stroke(paint_kind),
             ] {
-                assert_eq!(
-                    classify_rule_facet(
-                        DiagramFamilyId::FLOWCHART,
-                        ThemeTarget::Cluster,
-                        FamilyThemeSelectorShape::Static { variant: None },
-                        facet,
-                    ),
-                    FamilyThemeDisposition::Unsupported
-                );
+                for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+                    assert_eq!(
+                        classify_rule_facet(
+                            family,
+                            ThemeTarget::Cluster,
+                            FamilyThemeSelectorShape::Static { variant: None },
+                            facet,
+                        ),
+                        FamilyThemeDisposition::Unsupported
+                    );
+                }
             }
         }
     }
@@ -3608,6 +3860,20 @@ mod tests {
             .collect::<Vec<_>>();
         let expected = vec![
             (
+                DiagramFamilyId::ARCHITECTURE,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::ARCHITECTURE,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
                 DiagramFamilyId::BLOCK,
                 ThemeTarget::Node,
                 Stroke,
@@ -3623,6 +3889,48 @@ mod tests {
             ),
             (
                 DiagramFamilyId::CLASS,
+                ThemeTarget::Node,
+                Fill,
+                Transparent,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Node,
+                Fill,
+                Solid,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Node,
+                Stroke,
+                Transparent,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::Node,
+                Stroke,
+                Solid,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Transparent,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Solid,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::CLASS,
                 ThemeTarget::Edge,
                 Stroke,
                 Transparent,
@@ -3634,6 +3942,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::ER,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::ER,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
             ),
             (
                 DiagramFamilyId::ER,
@@ -4078,6 +4400,34 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Cluster,
+                Fill,
+                Transparent,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Cluster,
+                Fill,
+                Solid,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Cluster,
+                Stroke,
+                Transparent,
+                vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Cluster,
+                Stroke,
+                Solid,
+                vec!["cluster.stroke"],
             ),
             (
                 DiagramFamilyId::TREEMAP,
@@ -4170,33 +4520,35 @@ mod tests {
 
     #[test]
     fn cluster_cutover_replaces_each_paint_projection_exactly() {
-        for (facet, expected) in [
-            (
-                ThemeRouteCutoverFacet::Fill,
-                ThemeRouteCutoverProjection::ClusterFill,
-            ),
-            (
-                ThemeRouteCutoverFacet::Stroke,
-                ThemeRouteCutoverProjection::ClusterStroke,
-            ),
-        ] {
-            let route = legacy_replacing_typed_routes()
-                .expect("derive typed legacy-replacing routes")
-                .into_iter()
-                .find(|route| {
-                    route.family_id() == DiagramFamilyId::FLOWCHART
-                        && route.target() == ThemeTarget::Cluster
-                        && route.facet() == facet
-                        && route.value() == ThemeRouteCutoverValue::Solid
-                })
-                .expect("Flowchart Cluster scalar route");
-            let projections = route.projections().iter().collect::<Vec<_>>();
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for (facet, expected) in [
+                (
+                    ThemeRouteCutoverFacet::Fill,
+                    ThemeRouteCutoverProjection::ClusterFill,
+                ),
+                (
+                    ThemeRouteCutoverFacet::Stroke,
+                    ThemeRouteCutoverProjection::ClusterStroke,
+                ),
+            ] {
+                let route = legacy_replacing_typed_routes()
+                    .expect("derive typed legacy-replacing routes")
+                    .into_iter()
+                    .find(|route| {
+                        route.family_id() == family
+                            && route.target() == ThemeTarget::Cluster
+                            && route.facet() == facet
+                            && route.value() == ThemeRouteCutoverValue::Solid
+                    })
+                    .expect("Cluster scalar route");
+                let projections = route.projections().iter().collect::<Vec<_>>();
 
-            assert_eq!(projections, vec![expected]);
-            assert_eq!(
-                projections[0].action(),
-                crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::Replace
-            );
+                assert_eq!(projections, vec![expected]);
+                assert_eq!(
+                    projections[0].action(),
+                    crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::Replace
+                );
+            }
         }
     }
 

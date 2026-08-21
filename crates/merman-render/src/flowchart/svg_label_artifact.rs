@@ -1197,7 +1197,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             }
             PreparedMathMeasurement::NotApplicable => {}
         }
-        if !supports_svg_source_preparation(&request) {
+        if !supports_svg_source_preparation(owner, &request) {
             if self.prepared_text_layout.is_some() {
                 self.record_prepared_error(TextLayoutError::UnsupportedPreparedTextPath(
                     "flowchart_label",
@@ -1689,8 +1689,37 @@ pub(crate) fn measure_flowchart_svg_label_for_layout_with_metrics_style_and_typo
     }
 }
 
-fn supports_svg_source_preparation(request: &FlowchartLabelMetricsRequest<'_>) -> bool {
-    request.wrap_mode == WrapMode::SvgLike && request.label_type != "markdown"
+fn supports_svg_source_preparation(
+    owner: FlowchartSvgLabelOwner,
+    request: &FlowchartLabelMetricsRequest<'_>,
+) -> bool {
+    if request.wrap_mode != WrapMode::SvgLike {
+        return false;
+    }
+    if request.label_type != "markdown" {
+        return true;
+    }
+    matches!(owner, FlowchartSvgLabelOwner::SwimlaneGroupTitle(_))
+        && markdown_matches_non_markdown_svg_source(request.raw_label)
+}
+
+fn markdown_matches_non_markdown_svg_source(raw_label: &str) -> bool {
+    if !crate::text::mermaid_markdown_is_plain_text(raw_label) {
+        return false;
+    }
+    let markdown = crate::text::analyze_mermaid_markdown(raw_label, true);
+    if !markdown.all_runs_normal() {
+        return false;
+    }
+    let svg_lines = crate::flowchart::flowchart_non_markdown_svg_source_word_lines(raw_label);
+    markdown.lines.len() == svg_lines.len()
+        && markdown.lines.iter().zip(svg_lines).all(|(markdown, svg)| {
+            markdown.len() == svg.len()
+                && markdown
+                    .iter()
+                    .zip(svg)
+                    .all(|((markdown, _), svg)| markdown == &svg)
+        })
 }
 
 fn native_typography_pair(
@@ -1782,7 +1811,7 @@ fn measure_svg_label_without_sidecar_with_metrics_style(
     metrics_style: &TextStyle,
     width_mode: FlowchartSvgWidthMode,
 ) -> TextMetrics {
-    if !supports_svg_source_preparation(&request) {
+    if request.wrap_mode != WrapMode::SvgLike || request.label_type == "markdown" {
         return flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             style: metrics_style,
             ..request
@@ -2311,6 +2340,10 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
         }
     }
 
+    pub(crate) const fn is_prepared(&self) -> bool {
+        matches!(self, Self::Prepared { .. })
+    }
+
     pub(crate) fn prepared_text_label_id(&self) -> Option<PreparedTextLabelId> {
         match self {
             Self::Prepared { measured, .. } => measured.label_id_for_emission(),
@@ -2367,6 +2400,7 @@ mod tests {
         ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
     };
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+    use crate::flowchart::FLOWCHART_FIXED_LABEL_WRAP_WIDTH;
     use crate::math::MathRenderer;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{
@@ -2868,6 +2902,66 @@ mod tests {
         assert!(!emission_style.to_ascii_lowercase().contains("trebuchet"));
         assert!(!emission_style.to_ascii_lowercase().contains("arial"));
         assert!(measurer.snapshot().is_empty());
+    }
+
+    #[test]
+    fn native_prepared_swimlane_title_accepts_only_equivalent_plain_markdown() {
+        let (prepared, theme) = native_flowchart_text_fixture();
+        let measurer = StatefulOpaqueTraceMeasurer::new();
+        let config = MermaidConfig::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let owner = FlowchartSvgLabelOwner::SwimlaneGroupTitle(0);
+        let builder = FlowchartSvgLabelSidecarBuilder::new(Some(&prepared), Some(&theme));
+
+        let metrics = builder.measure_for_layout(
+            owner,
+            "lane",
+            FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label: "Portable Lane",
+                label_type: "markdown",
+                style: &style,
+                max_width_px: Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
+                wrap_mode: WrapMode::SvgLike,
+                config: &config,
+                math_renderer: None,
+            },
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+
+        assert!(metrics.width > 0.0);
+        assert!(measurer.snapshot().is_empty());
+        let sidecar = builder.finish();
+        assert!(sidecar.prepared_error().is_none());
+        let plan = FlowchartSvgLabelRenderPlan::new(
+            Some(&sidecar),
+            sidecar.swimlane_group_title_owner("lane"),
+            "Portable Lane",
+            &measurer,
+            &style,
+            Some(FLOWCHART_FIXED_LABEL_WRAP_WIDTH),
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+        assert!(plan.is_prepared());
+        assert_eq!(plan.plain_text(), "Portable Lane");
+        let mut svg = String::new();
+        crate::svg::write_flowchart_svg_label_plan_for_test(&mut svg, &plan, true);
+        assert!(svg.contains("merman-prepared-swimlane-0"), "{svg}");
+        assert!(plan.emitted_admitted_typography());
+
+        for unsupported in ["**Lane**", "[Lane](https://example.invalid)", "<b>Lane</b>"] {
+            assert!(
+                !markdown_matches_non_markdown_svg_source(unsupported),
+                "complex markdown must not enter the plain SVG preparation path: {unsupported}"
+            );
+        }
     }
 
     #[test]

@@ -136,6 +136,7 @@ struct KanbanLabelGroup<'a> {
     div_class: Option<&'a str>,
     wrap_title: bool,
     foreground: Option<&'a str>,
+    visible_run_count: usize,
     inherited_color_run_count: usize,
 }
 
@@ -143,6 +144,7 @@ struct KanbanLabelGroupEmission {
     visible: bool,
     group_style: String,
     div_style: String,
+    visible_run_count: usize,
     inherited_color_run_count: usize,
 }
 
@@ -204,6 +206,7 @@ fn write_kanban_label_group(
         div_class,
         wrap_title,
         foreground,
+        visible_run_count,
         inherited_color_run_count,
     } = group;
     let max_width = context.max_width;
@@ -271,6 +274,7 @@ fn write_kanban_label_group(
         visible,
         group_style,
         div_style,
+        visible_run_count,
         inherited_color_run_count,
     })
 }
@@ -292,6 +296,7 @@ fn record_kanban_label_emission(
                 role,
                 &emission.group_style,
                 &emission.div_style,
+                emission.visible_run_count,
                 emission.inherited_color_run_count,
                 decision,
             );
@@ -471,6 +476,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: n.icon.as_deref().map(|_| "labelBkg"),
                 wrap_title: true,
                 foreground: terminal_decision.label_css(),
+                visible_run_count: prepared_item.title.visible_style_facts.visible_run_count(),
                 inherited_color_run_count: prepared_item
                     .title
                     .visible_style_facts
@@ -509,6 +515,7 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         wrap_title: false,
                         foreground: terminal_decision.label_css(),
+                        visible_run_count: prepared_item.ticket_style_facts.visible_run_count(),
                         inherited_color_run_count: prepared_item
                             .ticket_style_facts
                             .inherited_color_run_count(),
@@ -536,6 +543,7 @@ pub(crate) fn render_kanban_diagram_svg(
                         div_class: None,
                         wrap_title: false,
                         foreground: terminal_decision.label_css(),
+                        visible_run_count: prepared_item.ticket_style_facts.visible_run_count(),
                         inherited_color_run_count: prepared_item
                             .ticket_style_facts
                             .inherited_color_run_count(),
@@ -562,6 +570,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     div_class: None,
                     wrap_title: false,
                     foreground: terminal_decision.label_css(),
+                    visible_run_count: 0,
                     inherited_color_run_count: 0,
                 },
             )?;
@@ -579,6 +588,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 div_class: None,
                 wrap_title: false,
                 foreground: terminal_decision.label_css(),
+                visible_run_count: prepared_item.assigned_style_facts.visible_run_count(),
                 inherited_color_run_count: prepared_item
                     .assigned_style_facts
                     .inherited_color_run_count(),

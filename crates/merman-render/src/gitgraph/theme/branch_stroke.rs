@@ -118,15 +118,7 @@ impl GitGraphBranchStrokePlan {
                     }
                     let route_won = winner_properties
                         .contains(&(rule_index, resolved_style_property_for_facet(facet)));
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
-                    if !route_won && !qualified_variant {
+                    if !route_won {
                         continue;
                     }
 
@@ -154,30 +146,6 @@ impl GitGraphBranchStrokePlan {
                         | (FamilyThemeDisposition::LegacyCompatibility, _, _) => {
                             observation.incomplete = true;
                         }
-                    }
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Edge,
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if expected_branch_line_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                        evidence.mark_residual(
-                            key,
-                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        );
-                    }
-                }
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Edge,
-                    ..
-                } => {
-                    let key = theme.family_mechanism_key(route);
-                    if expected_branch_line_count == 0 {
-                        evidence.mark_not_applicable(key);
-                    } else if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
                     }
                 }
                 FamilyThemeMechanism::BaseTypography(_)

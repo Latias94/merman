@@ -8,6 +8,7 @@ use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
 use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox};
 use super::*;
+use rustc_hash::FxHashMap;
 
 pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
@@ -61,6 +62,19 @@ fn render_class_diagram_svg_model_inner(
         "render.class.roughjs",
     );
     let settings = ClassRenderSettings::from_config(effective_config, hand_drawn_seed);
+    let node_expectations = relation_theme.resolve_node_expectations(
+        model.classes.keys().cloned().chain(
+            model
+                .interfaces
+                .iter()
+                .map(|interface| interface.id.clone()),
+        ),
+        options.work_meter(),
+    )?;
+    let node_expectations_by_id = node_expectations
+        .iter()
+        .map(|expectation| (expectation.id(), expectation))
+        .collect::<FxHashMap<_, _>>();
     let relation_expectations = model
         .relations
         .iter()
@@ -74,7 +88,8 @@ fn render_class_diagram_svg_model_inner(
         })
         .collect();
     let marker_expectations = class_marker_terminal_expectations(&model.relations);
-    let mut relation_theme_receipt = relation_theme.begin_terminal_receipt(
+    let mut relation_theme_receipt = relation_theme.begin_terminal_receipt_with_nodes(
+        node_expectations.clone(),
         relation_expectations,
         marker_expectations,
         settings.look == "handDrawn",
@@ -206,6 +221,7 @@ fn render_class_diagram_svg_model_inner(
         measurer,
         mermaid_config: borrowed_sanitize_config,
         math_renderer: options.math_renderer(),
+        node_theme_expectations: &node_expectations_by_id,
         content_tx,
         content_ty,
         timing,
@@ -314,7 +330,7 @@ fn render_class_diagram_svg_model_inner(
     let rooted_svg = root_document.complete(out)?;
     if !theme_evidence.record_terminal(relation_theme_receipt) {
         return Err(crate::Error::InvalidModel {
-            message: "Class relation theme receipt did not match the terminal SVG".to_string(),
+            message: "Class theme receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)

@@ -22,6 +22,7 @@ enum VisibleTextRunKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum VisibleTextColorOwner {
     Inherited,
+    CssClass,
     Inline(Box<str>),
 }
 
@@ -70,6 +71,10 @@ impl VisibleTextStyleFacts {
         !self.runs.is_empty()
     }
 
+    pub(crate) fn visible_run_count(&self) -> usize {
+        self.runs.len()
+    }
+
     pub(crate) fn inherited_color_run_count(&self) -> usize {
         self.runs
             .iter()
@@ -78,7 +83,7 @@ impl VisibleTextStyleFacts {
     }
 
     #[cfg(test)]
-    fn inline_color_run_count(&self) -> usize {
+    fn non_inherited_color_run_count(&self) -> usize {
         self.runs.len() - self.inherited_color_run_count()
     }
 }
@@ -89,6 +94,14 @@ fn collect_visible_runs(
     runs: &mut Vec<VisibleTextRunStyleFact>,
 ) {
     let color_owner = if node.is_element() {
+        let inherited_color_owner = if node
+            .attribute("class")
+            .is_some_and(|class| !class.trim().is_empty())
+        {
+            &VisibleTextColorOwner::CssClass
+        } else {
+            inherited_color_owner
+        };
         inline_color_owner(node.attribute("style"), inherited_color_owner)
     } else {
         inherited_color_owner.clone()
@@ -176,7 +189,7 @@ mod tests {
         assert!(facts.parse_valid());
         assert!(facts.has_visible_runs());
         assert_eq!(facts.inherited_color_run_count(), 2);
-        assert_eq!(facts.inline_color_run_count(), 1);
+        assert_eq!(facts.non_inherited_color_run_count(), 1);
     }
 
     #[test]
@@ -186,7 +199,7 @@ mod tests {
         );
 
         assert_eq!(facts.inherited_color_run_count(), 0);
-        assert_eq!(facts.inline_color_run_count(), 1);
+        assert_eq!(facts.non_inherited_color_run_count(), 1);
     }
 
     #[test]
@@ -196,6 +209,23 @@ mod tests {
         );
 
         assert_eq!(facts.inherited_color_run_count(), 1);
-        assert_eq!(facts.inline_color_run_count(), 0);
+        assert_eq!(facts.non_inherited_color_run_count(), 0);
+    }
+
+    #[test]
+    fn css_class_ownership_is_not_mistaken_for_inherited_theme_color() {
+        let facts = VisibleTextStyleFacts::from_xhtml_fragment(
+            "<p>Before <span class=\"label\">CSS-owned</span> After</p>",
+        );
+
+        assert_eq!(facts.visible_run_count(), 3);
+        assert_eq!(facts.inherited_color_run_count(), 2);
+        assert_eq!(facts.non_inherited_color_run_count(), 1);
+
+        let inherited = VisibleTextStyleFacts::from_xhtml_fragment(
+            "<span class=\"label\" style=\"color:inherit\">CSS-owned</span>",
+        );
+        assert_eq!(inherited.inherited_color_run_count(), 0);
+        assert_eq!(inherited.non_inherited_color_run_count(), 1);
     }
 }

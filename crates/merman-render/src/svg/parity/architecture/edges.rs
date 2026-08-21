@@ -28,6 +28,8 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) edge_stroke: Option<(usize, &'a str)>,
     pub(super) edge_inline_style: Option<&'a str>,
     pub(super) terminal_receipt: Option<&'a mut crate::architecture::ArchitectureEdgeThemeReceipt>,
+    pub(super) surface_theme_receipt:
+        Option<&'a mut crate::architecture::ArchitectureSurfaceThemeReceipt>,
 }
 
 struct ArchitectureEdgeLabelPlan {
@@ -184,12 +186,19 @@ fn write_architecture_arrow_transform(
 fn write_architecture_arrow_polygon(
     out: &mut impl SvgOutput,
     arrow: &ArchitectureArrowGeometry<'_>,
+    inline_style: Option<&str>,
 ) {
     out.push_str(r#"<polygon points=""#);
     out.push_str(arrow.points);
     out.push_str(r#"" transform=""#);
     write_architecture_arrow_transform(out, arrow.transform);
-    out.push_str(r#"" class="arrow"/>"#);
+    out.push_str(r#"" class="arrow""#);
+    if let Some(style) = inline_style {
+        out.push_str(r#" style=""#);
+        escape_attr_into(out, style);
+        out.push('"');
+    }
+    out.push_str("/>");
 }
 
 fn architecture_dir_unit(dir: char) -> (f64, f64) {
@@ -424,6 +433,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
     let edge_stroke = ctx.edge_stroke;
     let edge_inline_style = ctx.edge_inline_style;
     let mut terminal_receipt = ctx.terminal_receipt.take();
+    let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -611,6 +621,8 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
             }
 
             let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
+            let has_label = label_plan.is_some();
+            let label_bounds = label_plan.as_ref().map(|plan| plan.bounds.clone());
             if let Some(label_plan) = label_plan.as_ref() {
                 extend_bounds(content_bounds, label_plan.bounds.clone());
             }
@@ -618,12 +630,38 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
             out.push_str("<g>");
             write_architecture_edge_path(out, diagram_id, edge, points, edge_inline_style);
 
+            let lhs_arrow_style = surface_theme_receipt.as_deref().and_then(|receipt| {
+                receipt
+                    .edge_arrow_style(
+                        edge_idx,
+                        edge.lhs_id,
+                        edge.rhs_id,
+                        crate::architecture::ArchitectureArrowSide::Lhs,
+                    )
+                    .map(ToOwned::to_owned)
+            });
+            let rhs_arrow_style = surface_theme_receipt.as_deref().and_then(|receipt| {
+                receipt
+                    .edge_arrow_style(
+                        edge_idx,
+                        edge.lhs_id,
+                        edge.rhs_id,
+                        crate::architecture::ArchitectureArrowSide::Rhs,
+                    )
+                    .map(ToOwned::to_owned)
+            });
+            let label_style = surface_theme_receipt.as_deref().and_then(|receipt| {
+                receipt
+                    .edge_label_style(edge_idx, edge.lhs_id, edge.rhs_id)
+                    .map(ToOwned::to_owned)
+            });
+
             if let Some(arrow) = lhs_arrow.as_ref() {
-                write_architecture_arrow_polygon(out, arrow);
+                write_architecture_arrow_polygon(out, arrow, lhs_arrow_style.as_deref());
             }
 
             if let Some(arrow) = rhs_arrow.as_ref() {
-                write_architecture_arrow_polygon(out, arrow);
+                write_architecture_arrow_polygon(out, arrow, rhs_arrow_style.as_deref());
             }
 
             if let Some(label_plan) = label_plan {
@@ -634,7 +672,12 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                     transform = label_plan.transform.as_str()
                 );
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                write_svg_text_lines(out, &label_plan.lines);
+                write_svg_text_lines(
+                    out,
+                    &label_plan.lines,
+                    label_style.as_deref(),
+                    Some(&label_plan.bounds),
+                );
                 out.push_str("</g></g>");
             }
 
@@ -648,6 +691,28 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                     "edge",
                     edge_stroke,
                     edge_inline_style,
+                );
+            }
+            if let Some(receipt) = surface_theme_receipt.as_deref_mut() {
+                receipt.record_checkpointed_edge(
+                    crate::architecture::ArchitectureEdgeTerminalEmission {
+                        index: edge_idx,
+                        lhs_id: edge.lhs_id,
+                        rhs_id: edge.rhs_id,
+                        label: crate::architecture::ArchitectureTextTerminalEmission {
+                            emitted: has_label,
+                            style: label_style.as_deref(),
+                            bounds: label_bounds.as_ref(),
+                        },
+                        lhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
+                            emitted: lhs_arrow.is_some(),
+                            style: lhs_arrow_style.as_deref(),
+                        },
+                        rhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
+                            emitted: rhs_arrow.is_some(),
+                            style: rhs_arrow_style.as_deref(),
+                        },
+                    },
                 );
             }
         }
@@ -786,6 +851,7 @@ mod tests {
             edge_stroke: None,
             edge_inline_style: None,
             terminal_receipt: None,
+            surface_theme_receipt: None,
         };
 
         let error = push_architecture_edges(&mut ctx)

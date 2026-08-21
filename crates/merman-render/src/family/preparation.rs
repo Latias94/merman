@@ -591,13 +591,6 @@ fn prepare_er_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let entity_theme = crate::er::ErEntityThemePlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        &model.entities,
-        model.relationships.len(),
-        execution.work_meter_ref(),
-    )?;
     #[cfg(feature = "layout-elk")]
     let layout = crate::er::layout_er_diagram_typed_with_elk_operation_seed(
         &model,
@@ -612,6 +605,13 @@ fn prepare_er_family(
         meta.effective_config.as_value(),
         execution.text_measurer(),
         execution.work_meter(),
+    )?;
+    let entity_theme = crate::er::ErEntityThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &model,
+        &layout,
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
         pair: FamilyPair::new(model, layout),

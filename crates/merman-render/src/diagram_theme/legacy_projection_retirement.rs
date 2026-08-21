@@ -1,12 +1,11 @@
 use crate::DiagramFamilyId;
 
-use super::family_mechanism_matrix::{FamilyThemeRuleFacet, FamilyThemeSelectorShape};
 use super::semantic::{ThemeTarget, ThemeVariant};
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use sha2::{Digest as _, Sha256};
 
-/// One static selector formerly admitted by the Mermaid compatibility bridge.
+/// One static selector in the historical Mermaid compatibility projection domain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ThemeLegacyRouteSelector {
     StaticUnqualified,
@@ -32,7 +31,7 @@ impl ThemeLegacyRouteSelector {
     }
 }
 
-/// Paint facet formerly projected through Mermaid compatibility.
+/// Paint facet probed against the current compatibility bridge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ThemeLegacyRouteFacet {
     Fill,
@@ -48,7 +47,7 @@ impl ThemeLegacyRouteFacet {
     }
 }
 
-/// Atomic scalar paint value classes probed before a compatibility route is retired.
+/// Atomic scalar paint value classes used by the historical transition witness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ThemeLegacyRouteValue {
     Transparent,
@@ -66,7 +65,7 @@ impl ThemeLegacyRouteValue {
     }
 }
 
-/// Canonical identity for one terminal-absence compatibility retirement.
+/// Canonical identity for one current-state compatibility probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeLegacyRouteId {
     family_id: DiagramFamilyId,
@@ -107,7 +106,7 @@ impl ThemeLegacyRouteId {
     }
 }
 
-/// One exact assignment that the retired bridge route formerly attempted to write.
+/// One exact assignment that a retired bridge route formerly attempted to write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeLegacyProjectionKey {
     contribution_suffix: &'static str,
@@ -131,7 +130,7 @@ impl ThemeLegacyProjectionKey {
     }
 }
 
-/// Production-owned legacy projection retirement plus the exact historical bridge projection set.
+/// Production-owned KTD23 inventory row, including the complete historical projection set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThemeLegacyProjectionRetirementDescriptor {
     id: ThemeLegacyRouteId,
@@ -158,7 +157,62 @@ impl ThemeLegacyProjectionRetirementDescriptor {
     }
 }
 
-/// Opaque production seal proving both atomic value classes leave the retired bridge empty.
+/// Current matrix disposition observed independently of historical transition policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ThemeLegacyProjectionDisposition {
+    TypedAdapter,
+    LegacyCompatibility,
+    Unsupported,
+}
+
+impl ThemeLegacyProjectionDisposition {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::TypedAdapter => "typed-adapter",
+            Self::LegacyCompatibility => "legacy-compatibility",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+/// One exact assignment emitted by the current bridge for a probe value.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ThemeLegacyProjectionObservation {
+    contribution_id: String,
+    assignment_path: String,
+    value_digest: [u8; 32],
+}
+
+impl ThemeLegacyProjectionObservation {
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    pub(super) fn new(
+        contribution_id: String,
+        assignment_path: String,
+        value_digest: [u8; 32],
+    ) -> Self {
+        Self {
+            contribution_id,
+            assignment_path,
+            value_digest,
+        }
+    }
+
+    pub fn assignment_path(&self) -> &str {
+        &self.assignment_path
+    }
+}
+
+/// Production observation of one current matrix-and-bridge route.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeLegacyProjectionProbeReceipt {
+    id: ThemeLegacyRouteId,
+    value: ThemeLegacyRouteValue,
+    disposition: ThemeLegacyProjectionDisposition,
+    projections: Vec<ThemeLegacyProjectionObservation>,
+    digest: [u8; 32],
+}
+
+/// Opaque production seal proving both KTD23 probe values leave one retired route empty.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeLegacyProjectionRetirementReceipt {
     descriptor: ThemeLegacyProjectionRetirementDescriptor,
@@ -167,19 +221,22 @@ pub struct ThemeLegacyProjectionRetirementReceipt {
 
 impl ThemeLegacyProjectionRetirementReceipt {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    pub(super) fn seal(
+    fn seal(
         descriptor: ThemeLegacyProjectionRetirementDescriptor,
         transparent_probe_digest: [u8; 32],
         solid_probe_digest: [u8; 32],
     ) -> Result<Self, ThemeLegacyProjectionRetirementInventoryError> {
         if transparent_probe_digest == [0; 32] || solid_probe_digest == [0; 32] {
-            return Err(ThemeLegacyProjectionRetirementInventoryError::new(
-                descriptor,
-                None,
-                "production bridge probe digest is zero",
-            ));
+            return Err(
+                ThemeLegacyProjectionRetirementInventoryError::for_descriptor(
+                    descriptor,
+                    None,
+                    "production bridge probe digest is zero",
+                ),
+            );
         }
-        let digest = receipt_digest(descriptor, transparent_probe_digest, solid_probe_digest);
+        let digest =
+            retirement_receipt_digest(descriptor, transparent_probe_digest, solid_probe_digest);
         Ok(Self { descriptor, digest })
     }
 
@@ -192,43 +249,147 @@ impl ThemeLegacyProjectionRetirementReceipt {
     }
 }
 
-/// Production inventory failure while sealing one retired compatibility projection.
+impl ThemeLegacyProjectionProbeReceipt {
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    pub(super) fn seal(
+        id: ThemeLegacyRouteId,
+        value: ThemeLegacyRouteValue,
+        disposition: ThemeLegacyProjectionDisposition,
+        mut projections: Vec<ThemeLegacyProjectionObservation>,
+    ) -> Result<Self, ThemeLegacyProjectionProbeError> {
+        projections.sort_unstable();
+        if projections.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(ThemeLegacyProjectionProbeError::new(
+                id,
+                value,
+                "current bridge emitted a duplicate projection observation",
+            ));
+        }
+        if projections
+            .iter()
+            .any(|projection| projection.value_digest == [0; 32])
+        {
+            return Err(ThemeLegacyProjectionProbeError::new(
+                id,
+                value,
+                "current bridge emitted a zero value digest",
+            ));
+        }
+        let digest = probe_digest(id, value, disposition, &projections);
+        Ok(Self {
+            id,
+            value,
+            disposition,
+            projections,
+            digest,
+        })
+    }
+
+    pub const fn id(&self) -> ThemeLegacyRouteId {
+        self.id
+    }
+
+    pub const fn value(&self) -> ThemeLegacyRouteValue {
+        self.value
+    }
+
+    pub const fn disposition(&self) -> ThemeLegacyProjectionDisposition {
+        self.disposition
+    }
+
+    pub fn projections(&self) -> &[ThemeLegacyProjectionObservation] {
+        &self.projections
+    }
+
+    pub const fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
+/// Failure to observe the current matrix-and-bridge route under a synthetic atomic value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeLegacyProjectionProbeError {
+    id: ThemeLegacyRouteId,
+    value: ThemeLegacyRouteValue,
+    detail: String,
+}
+
+impl ThemeLegacyProjectionProbeError {
+    pub(super) fn new(
+        id: ThemeLegacyRouteId,
+        value: ThemeLegacyRouteValue,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            id,
+            value,
+            detail: detail.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for ThemeLegacyProjectionProbeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let variant = self
+            .id
+            .selector()
+            .variant()
+            .map_or("unqualified", ThemeVariant::id);
+        write!(
+            formatter,
+            "legacy projection probe {}/{}/{}/{}/{}: {}",
+            self.id.family_id().as_str(),
+            self.id.target().id(),
+            variant,
+            self.id.facet().id(),
+            self.value.id(),
+            self.detail,
+        )
+    }
+}
+
+impl std::error::Error for ThemeLegacyProjectionProbeError {}
+
+/// Failure while validating or sealing the production-owned KTD23 inventory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThemeLegacyProjectionRetirementInventoryError {
-    descriptor: ThemeLegacyProjectionRetirementDescriptor,
+    descriptor: Option<ThemeLegacyProjectionRetirementDescriptor>,
     value: Option<ThemeLegacyRouteValue>,
     detail: String,
 }
 
 impl ThemeLegacyProjectionRetirementInventoryError {
-    pub(super) fn new(
+    fn inventory(detail: impl Into<String>) -> Self {
+        Self {
+            descriptor: None,
+            value: None,
+            detail: detail.into(),
+        }
+    }
+
+    fn for_descriptor(
         descriptor: ThemeLegacyProjectionRetirementDescriptor,
         value: Option<ThemeLegacyRouteValue>,
         detail: impl Into<String>,
     ) -> Self {
         Self {
-            descriptor,
+            descriptor: Some(descriptor),
             value,
             detail: detail.into(),
         }
-    }
-
-    pub const fn descriptor(&self) -> ThemeLegacyProjectionRetirementDescriptor {
-        self.descriptor
-    }
-
-    pub const fn value(&self) -> Option<ThemeLegacyRouteValue> {
-        self.value
-    }
-
-    pub fn detail(&self) -> &str {
-        &self.detail
     }
 }
 
 impl std::fmt::Display for ThemeLegacyProjectionRetirementInventoryError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let id = self.descriptor.id();
+        let Some(descriptor) = self.descriptor else {
+            return write!(
+                formatter,
+                "legacy projection retirement inventory: {}",
+                self.detail
+            );
+        };
+        let id = descriptor.id();
         write!(
             formatter,
             "legacy projection retirement {}/{}/{}/{}",
@@ -246,16 +407,16 @@ impl std::fmt::Display for ThemeLegacyProjectionRetirementInventoryError {
 
 impl std::error::Error for ThemeLegacyProjectionRetirementInventoryError {}
 
-type PaintChannel = ThemeLegacyRouteFacet;
-
 #[derive(Debug, Clone, Copy)]
 struct LegacyProjectionRetirementPattern {
     family_id: DiagramFamilyId,
     target: ThemeTarget,
-    channel: PaintChannel,
+    facet: ThemeLegacyRouteFacet,
     selectors: &'static [ThemeLegacyRouteSelector],
-    projections: &'static [ThemeLegacyProjectionKey],
+    former_projections: &'static [ThemeLegacyProjectionKey],
 }
+
+const EXPECTED_RETIREMENT_COUNT: usize = 56;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -286,8 +447,10 @@ const NODE_LABEL_FILL: &[ThemeLegacyProjectionKey] = &[
 ];
 const TITLE_FILL: &[ThemeLegacyProjectionKey] =
     &[projection("title.fill", "themeVariables.titleColor")];
-const EDGE_STROKE: &[ThemeLegacyProjectionKey] =
-    &[projection("edge.stroke", "themeVariables.lineColor")];
+const EDGE_WITH_MARKER_FALLBACK: &[ThemeLegacyProjectionKey] = &[
+    projection("edge.stroke", "themeVariables.lineColor"),
+    projection("marker.paint-from-edge", "themeVariables.arrowheadColor"),
+];
 const MARKER_PAINT: &[ThemeLegacyProjectionKey] =
     &[projection("marker.paint", "themeVariables.arrowheadColor")];
 const EDGE_LABEL_BACKGROUND_FILL: &[ThemeLegacyProjectionKey] = &[projection(
@@ -330,235 +493,238 @@ const TABLE_ALL_FILL: &[ThemeLegacyProjectionKey] = &[
     ),
     projection("table.even.fill", "themeVariables.rowEven"),
 ];
+const MINDMAP_TEXT_FILL: &[ThemeLegacyProjectionKey] = &[
+    projection("node-label.fill", "themeVariables.primaryTextColor"),
+    projection("node-label.fill", "themeVariables.nodeTextColor"),
+    projection("node-label.fill", "themeVariables.textColor"),
+    projection("title.fill", "themeVariables.titleColor"),
+    projection("cluster-label.fill", "themeVariables.secondaryTextColor"),
+    projection("cluster-label.fill", "themeVariables.tertiaryTextColor"),
+];
 
 const CLASS_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
-    // Class retains Title.fill for namespace labels. Marker, ClusterLabel, and table paint have no
-    // independent terminal consumer in the Class writer.
     pattern(
         DiagramFamilyId::CLASS,
         ThemeTarget::Marker,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         MARKER_PAINT,
     ),
     pattern(
         DiagramFamilyId::CLASS,
         ThemeTarget::Marker,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         UNQUALIFIED_AND_DEFAULT,
         MARKER_PAINT,
     ),
     pattern(
         DiagramFamilyId::CLASS,
         ThemeTarget::ClusterLabel,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_LABEL_FILL,
     ),
     pattern(
         DiagramFamilyId::CLASS,
         ThemeTarget::Table,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_ONLY,
         TABLE_ALL_FILL,
     ),
     pattern(
         DiagramFamilyId::CLASS,
         ThemeTarget::Table,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         ODD_ONLY,
         TABLE_ODD_FILL,
     ),
     pattern(
         DiagramFamilyId::CLASS,
         ThemeTarget::Table,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         EVEN_ONLY,
         TABLE_EVEN_FILL,
     ),
 ];
 
 const MINDMAP_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
-    // Mindmap directly owns Node palette and unqualified Edge.stroke only.
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::NodeLabel,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         NODE_LABEL_FILL,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Text,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
-        NODE_LABEL_FILL,
+        MINDMAP_TEXT_FILL,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Title,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         TITLE_FILL,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Edge,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
-        EDGE_STROKE,
+        EDGE_WITH_MARKER_FALLBACK,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Edge,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         DEFAULT_ONLY,
-        EDGE_STROKE,
+        EDGE_WITH_MARKER_FALLBACK,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Marker,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         MARKER_PAINT,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Marker,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         UNQUALIFIED_AND_DEFAULT,
         MARKER_PAINT,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::EdgeLabelBackground,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         EDGE_LABEL_BACKGROUND_FILL,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Cluster,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_FILL,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::Cluster,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_STROKE,
     ),
     pattern(
         DiagramFamilyId::MINDMAP,
         ThemeTarget::ClusterLabel,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_LABEL_FILL,
     ),
 ];
 
 const TREE_VIEW_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
-    // TreeView has text, edge, and icon tokens, but no painted node shell, title, or cluster.
     pattern(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Node,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         NODE_FILL,
     ),
     pattern(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Node,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         UNQUALIFIED_AND_DEFAULT,
         NODE_STROKE,
     ),
     pattern(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Title,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         TITLE_FILL,
     ),
     pattern(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::EdgeLabelBackground,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         EDGE_LABEL_BACKGROUND_FILL,
     ),
     pattern(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Cluster,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_FILL,
     ),
     pattern(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Cluster,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_STROKE,
     ),
     pattern(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::ClusterLabel,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_LABEL_FILL,
     ),
 ];
 
 const GIT_GRAPH_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[
-    // GitGraph arrows are Node palette surfaces, not Marker terminals; it has no cluster surface.
     pattern(
         DiagramFamilyId::GIT_GRAPH,
         ThemeTarget::Title,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         TITLE_FILL,
     ),
     pattern(
         DiagramFamilyId::GIT_GRAPH,
         ThemeTarget::Marker,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         MARKER_PAINT,
     ),
     pattern(
         DiagramFamilyId::GIT_GRAPH,
         ThemeTarget::Marker,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         UNQUALIFIED_AND_DEFAULT,
         MARKER_PAINT,
     ),
     pattern(
         DiagramFamilyId::GIT_GRAPH,
         ThemeTarget::Cluster,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_FILL,
     ),
     pattern(
         DiagramFamilyId::GIT_GRAPH,
         ThemeTarget::Cluster,
-        PaintChannel::Stroke,
+        ThemeLegacyRouteFacet::Stroke,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_STROKE,
     ),
     pattern(
         DiagramFamilyId::GIT_GRAPH,
         ThemeTarget::ClusterLabel,
-        PaintChannel::Fill,
+        ThemeLegacyRouteFacet::Fill,
         UNQUALIFIED_AND_DEFAULT,
         CLUSTER_LABEL_FILL,
     ),
 ];
 
-const LEGACY_PROJECTION_RETIREMENT_PATTERN_GROUPS: &[&[LegacyProjectionRetirementPattern]] = &[
+const RETIREMENT_PATTERN_GROUPS: &[&[LegacyProjectionRetirementPattern]] = &[
     CLASS_RETIREMENT_PATTERNS,
     MINDMAP_RETIREMENT_PATTERNS,
     TREE_VIEW_RETIREMENT_PATTERNS,
@@ -575,114 +741,133 @@ const fn projection(
 const fn pattern(
     family_id: DiagramFamilyId,
     target: ThemeTarget,
-    channel: PaintChannel,
+    facet: ThemeLegacyRouteFacet,
     selectors: &'static [ThemeLegacyRouteSelector],
-    projections: &'static [ThemeLegacyProjectionKey],
+    former_projections: &'static [ThemeLegacyProjectionKey],
 ) -> LegacyProjectionRetirementPattern {
     LegacyProjectionRetirementPattern {
         family_id,
         target,
-        channel,
+        facet,
         selectors,
-        projections,
+        former_projections,
     }
 }
 
-/// Returns true when the selected route has no family-owned terminal after direct routes have had
-/// an opportunity to claim their exact selector and facet.
-pub(super) fn route_has_retired_legacy_projection(
-    family_id: DiagramFamilyId,
-    target: ThemeTarget,
-    selector: FamilyThemeSelectorShape,
-    facet: FamilyThemeRuleFacet,
-) -> bool {
-    let Some(channel) = facet_channel(facet) else {
-        return false;
-    };
-    retirement_patterns_for_family(family_id)
-        .iter()
-        .any(|pattern| {
-            pattern.target == target
-                && pattern.channel == channel
-                && pattern
-                    .selectors
-                    .iter()
-                    .any(|expected| selector_matches(*expected, selector))
-        })
-}
-
-fn retirement_patterns_for_family(
-    family_id: DiagramFamilyId,
-) -> &'static [LegacyProjectionRetirementPattern] {
-    match family_id {
-        DiagramFamilyId::CLASS => CLASS_RETIREMENT_PATTERNS,
-        DiagramFamilyId::MINDMAP => MINDMAP_RETIREMENT_PATTERNS,
-        DiagramFamilyId::TREE_VIEW => TREE_VIEW_RETIREMENT_PATTERNS,
-        DiagramFamilyId::GIT_GRAPH => GIT_GRAPH_RETIREMENT_PATTERNS,
-        _ => &[],
-    }
-}
-
-fn selector_matches(expected: ThemeLegacyRouteSelector, actual: FamilyThemeSelectorShape) -> bool {
-    match (expected, actual) {
-        (
-            ThemeLegacyRouteSelector::StaticUnqualified,
-            FamilyThemeSelectorShape::Static { variant: None },
-        ) => true,
-        (
-            ThemeLegacyRouteSelector::StaticVariant(expected),
-            FamilyThemeSelectorShape::Static {
-                variant: Some(actual),
-            },
-        ) => expected == actual,
-        (
-            ThemeLegacyRouteSelector::StaticUnqualified
-            | ThemeLegacyRouteSelector::StaticVariant(_),
-            _,
-        ) => false,
-    }
-}
-
-fn facet_channel(facet: FamilyThemeRuleFacet) -> Option<PaintChannel> {
-    match facet {
-        FamilyThemeRuleFacet::Fill(_) => Some(PaintChannel::Fill),
-        FamilyThemeRuleFacet::Stroke(_) => Some(PaintChannel::Stroke),
-        FamilyThemeRuleFacet::StrokeWidth
-        | FamilyThemeRuleFacet::StrokeDasharray
-        | FamilyThemeRuleFacet::StrokeLinecap
-        | FamilyThemeRuleFacet::StrokeLinejoin
-        | FamilyThemeRuleFacet::Opacity
-        | FamilyThemeRuleFacet::FillOpacity
-        | FamilyThemeRuleFacet::StrokeOpacity
-        | FamilyThemeRuleFacet::Radius
-        | FamilyThemeRuleFacet::Padding
-        | FamilyThemeRuleFacet::Typography(_)
-        | FamilyThemeRuleFacet::Effect => None,
-    }
-}
-
+/// Returns the production-owned fixed KTD23 inventory.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
-pub(super) fn legacy_projection_retirement_descriptors()
--> Vec<ThemeLegacyProjectionRetirementDescriptor> {
-    let mut descriptors = Vec::new();
-    for pattern in LEGACY_PROJECTION_RETIREMENT_PATTERN_GROUPS
+pub(crate) fn legacy_projection_retirement_inventory() -> Result<
+    Vec<ThemeLegacyProjectionRetirementDescriptor>,
+    ThemeLegacyProjectionRetirementInventoryError,
+> {
+    let mut descriptors = Vec::with_capacity(EXPECTED_RETIREMENT_COUNT);
+    for pattern in RETIREMENT_PATTERN_GROUPS
         .iter()
         .flat_map(|patterns| patterns.iter())
     {
-        let facet = pattern.channel;
         for selector in pattern.selectors {
             descriptors.push(ThemeLegacyProjectionRetirementDescriptor::new(
-                ThemeLegacyRouteId::new(pattern.family_id, pattern.target, *selector, facet),
-                pattern.projections,
+                ThemeLegacyRouteId::new(
+                    pattern.family_id,
+                    pattern.target,
+                    *selector,
+                    pattern.facet,
+                ),
+                pattern.former_projections,
             ));
         }
     }
     descriptors.sort_unstable();
-    descriptors
+    if descriptors.len() != EXPECTED_RETIREMENT_COUNT {
+        return Err(ThemeLegacyProjectionRetirementInventoryError::inventory(
+            format!(
+                "expected {EXPECTED_RETIREMENT_COUNT} routes, observed {}",
+                descriptors.len()
+            ),
+        ));
+    }
+    if descriptors
+        .windows(2)
+        .any(|pair| pair[0].id() == pair[1].id())
+    {
+        return Err(ThemeLegacyProjectionRetirementInventoryError::inventory(
+            "duplicate route identity",
+        ));
+    }
+    if descriptors
+        .iter()
+        .any(|descriptor| descriptor.former_projections().is_empty())
+    {
+        return Err(ThemeLegacyProjectionRetirementInventoryError::inventory(
+            "retired routes must bind a non-empty historical projection set",
+        ));
+    }
+    Ok(descriptors)
+}
+
+/// Seals one opaque receipt per production-owned KTD23 route.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+pub(crate) fn legacy_projection_retirement_receipts() -> Result<
+    Vec<ThemeLegacyProjectionRetirementReceipt>,
+    ThemeLegacyProjectionRetirementInventoryError,
+> {
+    let descriptors = legacy_projection_retirement_inventory()?;
+    let mut receipts = Vec::with_capacity(descriptors.len());
+    for descriptor in descriptors {
+        let mut probe_digests = [[0; 32]; 2];
+        for (index, value) in ThemeLegacyRouteValue::ALL.into_iter().enumerate() {
+            let probe =
+                super::legacy_family_theme_bridge::legacy_projection_probe(descriptor.id(), value)
+                    .map_err(|error| {
+                        ThemeLegacyProjectionRetirementInventoryError::for_descriptor(
+                            descriptor,
+                            Some(value),
+                            error.to_string(),
+                        )
+                    })?;
+            if probe.id() != descriptor.id() || probe.value() != value {
+                return Err(
+                    ThemeLegacyProjectionRetirementInventoryError::for_descriptor(
+                        descriptor,
+                        Some(value),
+                        "production probe identity drifted",
+                    ),
+                );
+            }
+            if probe.disposition() != ThemeLegacyProjectionDisposition::Unsupported {
+                return Err(
+                    ThemeLegacyProjectionRetirementInventoryError::for_descriptor(
+                        descriptor,
+                        Some(value),
+                        format!(
+                            "expected unsupported disposition, observed {}",
+                            probe.disposition().id()
+                        ),
+                    ),
+                );
+            }
+            if !probe.projections().is_empty() {
+                return Err(
+                    ThemeLegacyProjectionRetirementInventoryError::for_descriptor(
+                        descriptor,
+                        Some(value),
+                        "retired route still emits compatibility projections",
+                    ),
+                );
+            }
+            probe_digests[index] = probe.digest();
+        }
+        receipts.push(ThemeLegacyProjectionRetirementReceipt::seal(
+            descriptor,
+            probe_digests[0],
+            probe_digests[1],
+        )?);
+    }
+    Ok(receipts)
 }
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
-pub(super) fn descriptor_digest(descriptor: ThemeLegacyProjectionRetirementDescriptor) -> [u8; 32] {
+fn retirement_descriptor_digest(descriptor: ThemeLegacyProjectionRetirementDescriptor) -> [u8; 32] {
     let mut hasher = Sha256::new();
     update_len_prefixed(&mut hasher, b"merman.theme-legacy-projection-retirement.v1");
     update_len_prefixed(&mut hasher, descriptor.id().family_id().as_str().as_bytes());
@@ -703,7 +888,7 @@ pub(super) fn descriptor_digest(descriptor: ThemeLegacyProjectionRetirementDescr
 }
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
-fn receipt_digest(
+fn retirement_receipt_digest(
     descriptor: ThemeLegacyProjectionRetirementDescriptor,
     transparent_probe_digest: [u8; 32],
     solid_probe_digest: [u8; 32],
@@ -713,14 +898,53 @@ fn receipt_digest(
         &mut hasher,
         b"merman.theme-legacy-projection-retirement-receipt.v1",
     );
-    hasher.update(descriptor_digest(descriptor));
+    hasher.update(retirement_descriptor_digest(descriptor));
     hasher.update(transparent_probe_digest);
     hasher.update(solid_probe_digest);
     hasher.finalize().into()
 }
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
-pub(super) fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
+fn probe_digest(
+    id: ThemeLegacyRouteId,
+    value: ThemeLegacyRouteValue,
+    disposition: ThemeLegacyProjectionDisposition,
+    projections: &[ThemeLegacyProjectionObservation],
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    update_len_prefixed(
+        &mut hasher,
+        b"merman.theme-legacy-projection-current-probe.v2",
+    );
+    update_len_prefixed(&mut hasher, id.family_id().as_str().as_bytes());
+    update_len_prefixed(&mut hasher, id.target().id().as_bytes());
+    update_len_prefixed(&mut hasher, id.selector().id().as_bytes());
+    if let Some(variant) = id.selector().variant() {
+        update_len_prefixed(&mut hasher, variant.id().as_bytes());
+    }
+    update_len_prefixed(&mut hasher, id.facet().id().as_bytes());
+    update_len_prefixed(&mut hasher, value.id().as_bytes());
+    update_len_prefixed(&mut hasher, disposition.id().as_bytes());
+    hasher.update((projections.len() as u64).to_be_bytes());
+    for projection in projections {
+        update_len_prefixed(&mut hasher, projection.contribution_id.as_bytes());
+        update_len_prefixed(&mut hasher, projection.assignment_path.as_bytes());
+        hasher.update(projection.value_digest);
+    }
+    hasher.finalize().into()
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+pub(super) fn value_digest(value: &serde_json::Value) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    update_len_prefixed(&mut hasher, b"merman.theme-legacy-projection-value.v1");
+    let encoded = serde_json::to_vec(value).expect("JSON values always serialize");
+    update_len_prefixed(&mut hasher, &encoded);
+    hasher.finalize().into()
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update((bytes.len() as u64).to_be_bytes());
     hasher.update(bytes);
 }
@@ -730,10 +954,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retirement_inventory_distinguishes_selector_shapes() {
-        let descriptors = legacy_projection_retirement_descriptors();
-        assert_eq!(descriptors.len(), 56);
-
+    fn production_inventory_has_exact_ktd23_boundary() {
+        let descriptors = legacy_projection_retirement_inventory().expect("valid KTD23 inventory");
+        assert_eq!(descriptors.len(), EXPECTED_RETIREMENT_COUNT);
         let mindmap_edge_stroke = descriptors
             .iter()
             .filter(|descriptor| {
@@ -750,54 +973,11 @@ mod tests {
     }
 
     #[test]
-    fn class_title_is_not_a_retired_projection_route() {
-        for selector in [
-            FamilyThemeSelectorShape::Static { variant: None },
-            FamilyThemeSelectorShape::Static {
-                variant: Some(ThemeVariant::Default),
-            },
-        ] {
-            assert!(!route_has_retired_legacy_projection(
-                DiagramFamilyId::CLASS,
-                ThemeTarget::Title,
-                selector,
-                FamilyThemeRuleFacet::Fill(
-                    super::super::family_mechanism_matrix::FamilyThemePaintKind::Solid,
-                ),
-            ));
-        }
-    }
-
-    #[test]
-    fn descriptor_digest_binds_selector_and_projection_set() {
-        const DIFFERENT_PROJECTION: &[ThemeLegacyProjectionKey] = &[ThemeLegacyProjectionKey::new(
-            "marker.paint",
-            "themeVariables.lineColor",
-        )];
-        let descriptors = legacy_projection_retirement_descriptors();
-        let marker = descriptors
-            .iter()
-            .copied()
-            .find(|descriptor| {
-                descriptor.id().family_id() == DiagramFamilyId::CLASS
-                    && descriptor.id().target() == ThemeTarget::Marker
-                    && descriptor.id().facet() == ThemeLegacyRouteFacet::Fill
-                    && descriptor.id().selector() == ThemeLegacyRouteSelector::StaticUnqualified
-            })
-            .expect("Class Marker.fill descriptor");
-        let qualified = ThemeLegacyProjectionRetirementDescriptor::new(
-            ThemeLegacyRouteId::new(
-                DiagramFamilyId::CLASS,
-                ThemeTarget::Marker,
-                ThemeLegacyRouteSelector::StaticVariant(ThemeVariant::Default),
-                ThemeLegacyRouteFacet::Fill,
-            ),
-            marker.former_projections(),
-        );
-        let drifted =
-            ThemeLegacyProjectionRetirementDescriptor::new(marker.id(), DIFFERENT_PROJECTION);
-
-        assert_ne!(descriptor_digest(marker), descriptor_digest(qualified));
-        assert_ne!(descriptor_digest(marker), descriptor_digest(drifted));
+    fn class_title_is_not_in_the_ktd23_inventory() {
+        let descriptors = legacy_projection_retirement_inventory().expect("valid KTD23 inventory");
+        assert!(descriptors.iter().all(|descriptor| {
+            descriptor.id().family_id() != DiagramFamilyId::CLASS
+                || descriptor.id().target() != ThemeTarget::Title
+        }));
     }
 }

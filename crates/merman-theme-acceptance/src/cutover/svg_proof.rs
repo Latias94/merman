@@ -4,6 +4,20 @@ mod deep_family_paint;
 mod final_four_family_paint;
 mod sequence_role_paint_proof;
 
+fn visible_text_content(node: roxmltree::Node<'_, '_>) -> String {
+    node.descendants()
+        .filter(roxmltree::Node::is_text)
+        .filter_map(|text| text.text())
+        .collect()
+}
+
+fn has_visible_text_content(node: roxmltree::Node<'_, '_>) -> bool {
+    node.descendants()
+        .filter(roxmltree::Node::is_text)
+        .filter_map(|text| text.text())
+        .any(|text| !text.trim().is_empty())
+}
+
 pub(super) fn prove_svg_routes(
     case: CutoverCase,
     routes: &[ThemeRouteCutoverDescriptor],
@@ -22,7 +36,15 @@ pub(super) fn prove_svg_routes(
     let mut proof_regions = None;
     for &route in routes {
         let (actual, terminal_digest, target_regions) = match case.id.route().family_id() {
-            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE => {
+            DiagramFamilyId::FLOWCHART => {
+                let observation = flowchart_route_observation(&document, route)?;
+                (
+                    observation.value,
+                    observation.terminal_digest,
+                    observation.target_regions,
+                )
+            }
+            DiagramFamilyId::SWIMLANE if route.target() != ThemeTarget::Cluster => {
                 let observation = flowchart_route_observation(&document, route)?;
                 (
                     observation.value,
@@ -87,7 +109,9 @@ pub(super) fn prove_svg_routes(
             | DiagramFamilyId::ER
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
-            | DiagramFamilyId::GANTT => {
+            | DiagramFamilyId::GANTT
+            | DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::SWIMLANE => {
                 let observation = deep_family_paint::deep_family_route_observation(
                     &document,
                     route,
@@ -278,7 +302,8 @@ fn target_underlay_colors(
             | DiagramFamilyId::ER
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
-            | DiagramFamilyId::GANTT,
+            | DiagramFamilyId::GANTT
+            | DiagramFamilyId::SWIMLANE,
             _,
             _,
         ) => deep_family_paint::deep_family_underlay_colors(document, route, target_regions)?,

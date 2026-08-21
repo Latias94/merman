@@ -25,6 +25,7 @@ mod effects;
 mod family_mechanism_matrix;
 mod family_program;
 mod legacy_family_theme_bridge;
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
 mod legacy_projection_retirement;
 mod materializer;
 mod mechanisms;
@@ -89,13 +90,15 @@ pub(crate) use family_mechanism_matrix::{
     FamilyThemeSelectorShape,
 };
 #[cfg(feature = "internal-theme-acceptance")]
-pub(crate) use legacy_family_theme_bridge::legacy_projection_retirement_receipts;
-#[cfg(feature = "internal-theme-acceptance")]
 #[doc(hidden)]
 pub use legacy_projection_retirement::{
     ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
     ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
     ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector, ThemeLegacyRouteValue,
+};
+#[cfg(feature = "internal-theme-acceptance")]
+pub(crate) use legacy_projection_retirement::{
+    legacy_projection_retirement_inventory, legacy_projection_retirement_receipts,
 };
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,

@@ -9,8 +9,8 @@ use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_int
 use super::bounds::{include_path_d, include_xywh};
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
-    class_svg_label_rect, render_class_html_label, wrap_class_svg_text_like_mermaid,
-    write_class_svg_text_markdown,
+    class_node_paint_style, class_svg_label_rect, render_class_html_label,
+    wrap_class_svg_text_like_mermaid, write_class_svg_text_markdown_with_style,
 };
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_hand_drawn_line_path,
@@ -42,7 +42,8 @@ pub(super) struct ClassNodeRenderState<'a, O: SvgOutput> {
 
 pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub diagram_id: &'a str,
-    pub node_style_attr: &'a str,
+    pub node_fill_style_attr: &'a str,
+    pub node_stroke_style_attr: &'a str,
     pub node_fill: &'a str,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
@@ -53,7 +54,7 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
 }
 
 pub(super) struct ClassNodeDividerContext<'a> {
-    pub node_style_attr: &'a str,
+    pub node_stroke_style_attr: &'a str,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
@@ -102,6 +103,7 @@ pub(super) struct ClassSvgNodeLabelRun {
 
 pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub label_style: &'a str,
+    pub inherited_fill: Option<&'a str>,
     pub translate_y: f64,
     pub width: f64,
     pub height: f64,
@@ -122,7 +124,9 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub line_height: f64,
     pub class_padding: f64,
     pub hide_empty_members_box: bool,
-    pub node_style_attr: &'a str,
+    pub node_stroke_style_attr: &'a str,
+    pub node_label_style_attr: &'a str,
+    pub node_label_fill: Option<&'a str>,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
@@ -138,7 +142,8 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub wrap_probe_font_size: f64,
     pub class_padding: f64,
     pub hide_empty_members_box: bool,
-    pub node_style_attr: &'a str,
+    pub node_stroke_style_attr: &'a str,
+    pub node_label_style_attr: &'a str,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
@@ -261,7 +266,7 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
             fmt(left),
             fmt(top + h),
             escape_attr_display(ctx.node_fill),
-            escape_attr_display(ctx.node_style_attr)
+            escape_attr_display(ctx.node_fill_style_attr)
         );
     }
 
@@ -319,7 +324,7 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
         escape_attr_display(ctx.node_stroke),
         escape_attr_display(ctx.node_stroke_width),
         escape_attr_display(ctx.node_stroke_dasharray),
-        escape_attr_display(ctx.node_style_attr),
+        escape_attr_display(ctx.node_stroke_style_attr),
     );
     out.push_str("</g>");
 
@@ -351,7 +356,7 @@ pub(super) fn render_class_node_dividers<O: SvgOutput>(
         let _ = write!(
             out,
             r#"<g class="divider" style="{}">"#,
-            escape_attr_display(ctx.node_style_attr)
+            escape_attr_display(ctx.node_stroke_style_attr)
         );
         let d = if ctx.look == "handDrawn" {
             class_rough_hand_drawn_line_path(
@@ -388,7 +393,7 @@ pub(super) fn render_class_node_dividers<O: SvgOutput>(
             escape_attr_display(ctx.node_stroke),
             escape_attr_display(ctx.node_stroke_width),
             escape_attr_display(ctx.node_stroke_dasharray),
-            escape_attr_display(ctx.node_style_attr),
+            escape_attr_display(ctx.node_stroke_style_attr),
         );
         out.push_str("</g>");
     }
@@ -609,6 +614,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
             out,
             &ClassHtmlNodeLabelGroupSpec {
                 label_style: "",
+                inherited_fill: ctx.node_label_fill,
                 translate_y: -annotation_height / 2.0,
                 width: annotation_width.max(1.0),
                 height: annotation_height.max(1.0),
@@ -616,7 +622,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
                 text: annotation_text,
                 include_p: true,
                 extra_span_class: Some("markdown-node-label"),
-                span_style: Some(ctx.node_style_attr),
+                span_style: Some(ctx.node_label_style_attr),
                 prepared_xhtml: annotation_prepared.map(|prepared| prepared.xhtml.as_str()),
                 mermaid_config: ctx.mermaid_config,
                 math_renderer: ctx.math_renderer,
@@ -642,6 +648,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
         out,
         &ClassHtmlNodeLabelGroupSpec {
             label_style: "font-weight: bolder",
+            inherited_fill: ctx.node_label_fill,
             translate_y: -12.0,
             width: title_width,
             height: title_height,
@@ -649,7 +656,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
             text: title_text,
             include_p: true,
             extra_span_class: Some("markdown-node-label"),
-            span_style: Some(ctx.node_style_attr),
+            span_style: Some(ctx.node_label_style_attr),
             prepared_xhtml: prepared_html.map(|prepared| prepared.title.xhtml.as_str()),
             mermaid_config: ctx.mermaid_config,
             math_renderer: ctx.math_renderer,
@@ -689,7 +696,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
             [divider1_y, divider2_y],
             &geometry.rough_seed,
             &ClassNodeDividerContext {
-                node_style_attr: ctx.node_style_attr,
+                node_stroke_style_attr: ctx.node_stroke_style_attr,
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
@@ -993,6 +1000,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         ann_new_x,
         ann_new_y,
         &annotation_runs,
+        ctx.node_label_style_attr,
     );
 
     let label_new_y = adjust_y(label_ty);
@@ -1002,6 +1010,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         label_new_y,
         &title_lines,
         &title_metrics,
+        ctx.node_label_style_attr,
     );
 
     let members_new_y = adjust_y(members_ty);
@@ -1011,6 +1020,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         adjusted_text_group_x,
         members_new_y,
         &members_runs,
+        ctx.node_label_style_attr,
     );
 
     let methods_new_y = adjust_y(methods_ty);
@@ -1020,6 +1030,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         adjusted_text_group_x,
         methods_new_y,
         &methods_runs,
+        ctx.node_label_style_attr,
     );
 
     // Dividers (classBox.ts uses group bbox heights).
@@ -1048,7 +1059,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
             [divider1_y, divider2_y],
             &geometry.rough_seed,
             &ClassNodeDividerContext {
-                node_style_attr: ctx.node_style_attr,
+                node_stroke_style_attr: ctx.node_stroke_style_attr,
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
@@ -1115,10 +1126,11 @@ pub(super) fn render_class_html_node_label_group(
     out: &mut impl SvgOutput,
     spec: &ClassHtmlNodeLabelGroupSpec<'_>,
 ) {
+    let group_style = class_node_paint_style(spec.label_style, "fill", spec.inherited_fill);
     let _ = write!(
         out,
         r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
-        escape_attr_display(spec.label_style),
+        escape_attr_display(&group_style),
         fmt(spec.translate_y),
         fmt(spec.width),
         fmt(spec.height),
@@ -1172,6 +1184,7 @@ fn render_class_html_node_rows_group(
             out,
             &ClassHtmlNodeLabelGroupSpec {
                 label_style: row.row_style.as_str(),
+                inherited_fill: ctx.node_label_fill,
                 translate_y: row.y,
                 width: row.metrics.width.max(1.0),
                 height: row.metrics.height.max(ctx.line_height).max(1.0),
@@ -1179,7 +1192,7 @@ fn render_class_html_node_rows_group(
                 text: row.text.as_str(),
                 include_p: true,
                 extra_span_class: Some("markdown-node-label"),
-                span_style: Some(ctx.node_style_attr),
+                span_style: Some(ctx.node_label_style_attr),
                 prepared_xhtml: row.prepared_xhtml,
                 mermaid_config: ctx.mermaid_config,
                 math_renderer: ctx.math_renderer,
@@ -1195,6 +1208,7 @@ pub(super) fn render_class_svg_node_runs_group(
     group_x: f64,
     group_y: f64,
     runs: &[ClassSvgNodeLabelRun],
+    group_style: &str,
 ) {
     if runs.is_empty() {
         let _ = write!(
@@ -1223,7 +1237,7 @@ pub(super) fn render_class_svg_node_runs_group(
             escape_attr_display(run.style.as_str()),
             fmt(t_y)
         );
-        write_class_svg_text_markdown(out, run.text.as_str(), true);
+        write_class_svg_text_markdown_with_style(out, run.text.as_str(), group_style);
         out.push_str("</g></g>");
     }
     out.push_str("</g>");
@@ -1235,6 +1249,7 @@ pub(super) fn render_class_svg_title_group(
     group_y: f64,
     title_lines: &[String],
     title_metrics: &crate::text::TextMetrics,
+    group_style: &str,
 ) {
     let _ = write!(
         out,
@@ -1245,8 +1260,9 @@ pub(super) fn render_class_svg_title_group(
     let t_y = -title_metrics.height.max(0.0) / (2.0 * title_metrics.line_count.max(1) as f64);
     let _ = write!(
         out,
-        r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="">"#,
-        fmt(t_y)
+        r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="{}">"#,
+        fmt(t_y),
+        escape_attr_display(group_style),
     );
     for (idx, line) in title_lines.iter().enumerate() {
         if idx == 0 {

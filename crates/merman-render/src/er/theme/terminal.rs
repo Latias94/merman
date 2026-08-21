@@ -12,11 +12,100 @@ pub(super) struct EntityExpectation {
     pub(super) stroke: Option<ExpectedPaint>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ErAttributeTextRole {
+    Type,
+    Name,
+    Keys,
+    Comment,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum ErTextTerminalId {
+    EntityName(Box<str>),
+    Attribute {
+        entity_id: Box<str>,
+        row_index: usize,
+        role: ErAttributeTextRole,
+    },
+    RelationLabel(usize),
+}
+
+impl ErTextTerminalId {
+    pub(super) fn entity_name(entity_id: &str) -> Self {
+        Self::EntityName(entity_id.into())
+    }
+
+    pub(super) fn attribute(entity_id: &str, row_index: usize, role: ErAttributeTextRole) -> Self {
+        Self::Attribute {
+            entity_id: entity_id.into(),
+            row_index,
+            role,
+        }
+    }
+
+    pub(super) const fn relation_label(relationship_index: usize) -> Self {
+        Self::RelationLabel(relationship_index)
+    }
+
+    pub(super) const fn is_relation_label(&self) -> bool {
+        matches!(self, Self::RelationLabel(_))
+    }
+
+    pub(super) fn entity_id(&self) -> Option<&str> {
+        match self {
+            Self::EntityName(entity_id) | Self::Attribute { entity_id, .. } => Some(entity_id),
+            Self::RelationLabel(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct ErTableRowTerminalId {
+    entity_id: Box<str>,
+    row_index: usize,
+}
+
+impl ErTableRowTerminalId {
+    pub(super) fn new(entity_id: &str, row_index: usize) -> Self {
+        Self {
+            entity_id: entity_id.into(),
+            row_index,
+        }
+    }
+
+    pub(super) fn entity_id(&self) -> &str {
+        &self.entity_id
+    }
+
+    pub(super) fn variant(&self) -> crate::diagram_theme::ThemeVariant {
+        if self.row_index.is_multiple_of(2) {
+            crate::diagram_theme::ThemeVariant::Odd
+        } else {
+            crate::diagram_theme::ThemeVariant::Even
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TextTerminalExpectation {
+    pub(super) paint: Option<ExpectedPaint>,
+    pub(super) visible_run_count: usize,
+    pub(super) inherited_color_run_count: usize,
+}
+
+impl TextTerminalExpectation {
+    fn portable_color_runs_verified(&self) -> bool {
+        self.inherited_color_run_count == self.visible_run_count
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ErRelationTerminalExpectation {
     edge_id: String,
     start_marker_id: Option<String>,
     end_marker_id: Option<String>,
+    stroke: Option<ExpectedPaint>,
 }
 
 impl ErRelationTerminalExpectation {
@@ -24,11 +113,16 @@ impl ErRelationTerminalExpectation {
         edge_id: String,
         start_marker_id: Option<String>,
         end_marker_id: Option<String>,
+        stroke: Option<(usize, &str)>,
     ) -> Self {
         Self {
             edge_id,
             start_marker_id,
             end_marker_id,
+            stroke: stroke.map(|(rule_index, css)| ExpectedPaint {
+                rule_index,
+                css: css.to_string(),
+            }),
         }
     }
 }
@@ -37,85 +131,130 @@ impl ErRelationTerminalExpectation {
 struct RelationTerminalCheckpoint {
     start_marker_id: Option<String>,
     end_marker_id: Option<String>,
+    stroke: Option<ExpectedPaint>,
     checkpointed: bool,
 }
 
-/// Writer-owned proof that every semantic ER entity and visible relationship terminal reached its
-/// canonical SVG checkpoint, with exact typed values at the final writer owner.
+#[derive(Debug, Clone)]
+struct TextTerminalCheckpoint {
+    expectation: TextTerminalExpectation,
+    checkpointed: bool,
+}
+
+#[derive(Debug, Clone)]
+struct PaintTerminalCheckpoint {
+    expectation: Option<ExpectedPaint>,
+    checkpointed: bool,
+}
+
+/// Writer-owned proof that every semantic ER terminal reached its canonical SVG checkpoint with
+/// the exact family-plan winner. The receipt records semantic occurrence identities rather than
+/// re-discovering terminals by parsing the finished SVG.
 #[derive(Debug, Clone)]
 pub(crate) struct ErEntityThemeReceipt {
     expectations: Vec<EntityExpectation>,
     checkpointed_entities: Vec<bool>,
-    relation_stroke: Option<ExpectedPaint>,
-    relation_stroke_source_owned: bool,
+    text_terminals: BTreeMap<ErTextTerminalId, TextTerminalCheckpoint>,
+    table_rows: BTreeMap<ErTableRowTerminalId, PaintTerminalCheckpoint>,
     relation_paths: BTreeMap<String, RelationTerminalCheckpoint>,
-    relation_markers: BTreeMap<String, bool>,
+    relation_markers: BTreeMap<String, PaintTerminalCheckpoint>,
+    records_text_terminals: bool,
     attributes_match: bool,
     effective_by_rule: BTreeMap<usize, usize>,
     emitted_by_rule: BTreeMap<usize, usize>,
+    unverified_rules: BTreeSet<usize>,
 }
 
 impl ErEntityThemeReceipt {
-    pub(super) fn new(expectations: Vec<EntityExpectation>) -> Self {
+    pub(super) fn new(
+        expectations: Vec<EntityExpectation>,
+        text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
+        table_rows: BTreeMap<ErTableRowTerminalId, Option<ExpectedPaint>>,
+    ) -> Self {
         Self {
             checkpointed_entities: vec![false; expectations.len()],
             expectations,
-            relation_stroke: None,
-            relation_stroke_source_owned: false,
+            text_terminals: text_terminals
+                .into_iter()
+                .map(|(id, expectation)| {
+                    (
+                        id,
+                        TextTerminalCheckpoint {
+                            expectation,
+                            checkpointed: false,
+                        },
+                    )
+                })
+                .collect(),
+            table_rows: table_rows
+                .into_iter()
+                .map(|(id, expectation)| {
+                    (
+                        id,
+                        PaintTerminalCheckpoint {
+                            expectation,
+                            checkpointed: false,
+                        },
+                    )
+                })
+                .collect(),
             relation_paths: BTreeMap::new(),
             relation_markers: BTreeMap::new(),
+            records_text_terminals: true,
             attributes_match: true,
             effective_by_rule: BTreeMap::new(),
             emitted_by_rule: BTreeMap::new(),
+            unverified_rules: BTreeSet::new(),
         }
+    }
+
+    pub(super) fn without_text_terminals(mut self) -> Self {
+        self.records_text_terminals = false;
+        self.text_terminals.clear();
+        self
+    }
+
+    pub(crate) const fn records_text_terminals(&self) -> bool {
+        self.records_text_terminals
     }
 
     pub(super) fn with_relation_terminals(
         mut self,
-        relation_stroke: Option<ExpectedPaint>,
-        relation_stroke_source_owned: bool,
         relation_terminals: Vec<ErRelationTerminalExpectation>,
     ) -> Self {
         let expected_path_count = relation_terminals.len();
-        let relation_marker_ids = relation_terminals
-            .iter()
-            .flat_map(|terminal| {
-                [
-                    terminal.start_marker_id.as_deref(),
-                    terminal.end_marker_id.as_deref(),
-                ]
-            })
+        for terminal in relation_terminals {
+            for marker_id in [
+                terminal.start_marker_id.as_deref(),
+                terminal.end_marker_id.as_deref(),
+            ]
+            .into_iter()
             .flatten()
-            .map(ToOwned::to_owned)
-            .collect::<BTreeSet<_>>();
-        self.relation_paths = relation_terminals
-            .into_iter()
-            .map(|terminal| {
-                (
-                    terminal.edge_id,
-                    RelationTerminalCheckpoint {
-                        start_marker_id: terminal.start_marker_id,
-                        end_marker_id: terminal.end_marker_id,
-                        checkpointed: false,
-                    },
-                )
-            })
-            .collect();
+            {
+                self.attributes_match &= merge_relation_marker_expectation(
+                    &mut self.relation_markers,
+                    marker_id,
+                    terminal.stroke.as_ref(),
+                );
+            }
+            let checkpoint = RelationTerminalCheckpoint {
+                start_marker_id: terminal.start_marker_id,
+                end_marker_id: terminal.end_marker_id,
+                stroke: terminal.stroke,
+                checkpointed: false,
+            };
+            self.attributes_match &= self
+                .relation_paths
+                .insert(terminal.edge_id, checkpoint)
+                .is_none();
+        }
         self.attributes_match &= self.relation_paths.len() == expected_path_count;
-        self.relation_markers = relation_marker_ids
-            .into_iter()
-            .map(|id| (id, false))
-            .collect();
-        self.relation_stroke = relation_stroke;
-        self.relation_stroke_source_owned = relation_stroke_source_owned;
         self
     }
 
     pub(crate) fn record_checkpointed_entity(
         &mut self,
         entity_index: usize,
-        source_owns_fill: bool,
-        source_owns_stroke: bool,
         emitted_fill: Option<(usize, &str)>,
         emitted_stroke: Option<(usize, &str)>,
     ) {
@@ -135,15 +274,121 @@ impl ErEntityThemeReceipt {
             .unwrap_or_default();
         self.attributes_match &= record_paint_checkpoint(
             expectation.fill.as_ref(),
-            source_owns_fill,
             emitted_fill,
             &mut self.effective_by_rule,
             &mut self.emitted_by_rule,
         );
         self.attributes_match &= record_paint_checkpoint(
             expectation.stroke.as_ref(),
-            source_owns_stroke,
             emitted_stroke,
+            &mut self.effective_by_rule,
+            &mut self.emitted_by_rule,
+        );
+    }
+
+    pub(crate) fn record_entity_name_text(
+        &mut self,
+        entity_id: &str,
+        actual_terminal_style: &str,
+        visible_run_count: usize,
+        inherited_color_run_count: usize,
+    ) {
+        self.record_text_terminal(
+            ErTextTerminalId::entity_name(entity_id),
+            actual_terminal_style,
+            visible_run_count,
+            inherited_color_run_count,
+        );
+    }
+
+    pub(crate) fn record_attribute_text(
+        &mut self,
+        entity_id: &str,
+        row_index: usize,
+        role: ErAttributeTextRole,
+        actual_terminal_style: &str,
+        visible_run_count: usize,
+        inherited_color_run_count: usize,
+    ) {
+        self.record_text_terminal(
+            ErTextTerminalId::attribute(entity_id, row_index, role),
+            actual_terminal_style,
+            visible_run_count,
+            inherited_color_run_count,
+        );
+    }
+
+    pub(crate) fn record_relation_label_text(
+        &mut self,
+        relationship_index: usize,
+        actual_terminal_style: &str,
+        visible_run_count: usize,
+        inherited_color_run_count: usize,
+    ) {
+        self.record_text_terminal(
+            ErTextTerminalId::relation_label(relationship_index),
+            actual_terminal_style,
+            visible_run_count,
+            inherited_color_run_count,
+        );
+    }
+
+    fn record_text_terminal(
+        &mut self,
+        id: ErTextTerminalId,
+        actual_terminal_style: &str,
+        visible_run_count: usize,
+        inherited_color_run_count: usize,
+    ) {
+        if !self.records_text_terminals {
+            return;
+        }
+        let Some(checkpoint) = self.text_terminals.get_mut(&id) else {
+            self.attributes_match = false;
+            return;
+        };
+        if checkpoint.checkpointed {
+            self.attributes_match = false;
+            return;
+        }
+        checkpoint.checkpointed = true;
+        self.attributes_match &= checkpoint.expectation.visible_run_count == visible_run_count;
+        self.attributes_match &=
+            checkpoint.expectation.inherited_color_run_count == inherited_color_run_count;
+        // The generic native fallback emits one fill per label, so mixed inherited and inline
+        // colors cannot attest a portable typed foreground even when the browser terminal is exact.
+        if let Some(expected) = checkpoint.expectation.paint.as_ref()
+            && !checkpoint.expectation.portable_color_runs_verified()
+        {
+            self.unverified_rules.insert(expected.rule_index);
+        }
+        self.attributes_match &= record_terminal_style_checkpoint(
+            checkpoint.expectation.paint.as_ref(),
+            actual_terminal_style,
+            &mut self.effective_by_rule,
+            &mut self.emitted_by_rule,
+        );
+    }
+
+    pub(crate) fn record_table_row(
+        &mut self,
+        entity_id: &str,
+        row_index: usize,
+        actual_terminal_style: &str,
+    ) {
+        let id = ErTableRowTerminalId::new(entity_id, row_index);
+        let Some(checkpoint) = self.table_rows.get_mut(&id) else {
+            self.attributes_match = false;
+            return;
+        };
+        if checkpoint.checkpointed {
+            self.attributes_match = false;
+            return;
+        }
+        checkpoint.checkpointed = true;
+        self.attributes_match &= record_paint_style_checkpoint(
+            checkpoint.expectation.as_ref(),
+            actual_terminal_style,
             &mut self.effective_by_rule,
             &mut self.emitted_by_rule,
         );
@@ -151,6 +396,14 @@ impl ErEntityThemeReceipt {
 
     pub(crate) fn expects_relation_marker(&self, marker_id: &str) -> bool {
         self.relation_markers.contains_key(marker_id)
+    }
+
+    pub(crate) fn relation_marker_stroke(&self, marker_id: &str) -> Option<(usize, String)> {
+        self.relation_markers
+            .get(marker_id)?
+            .expectation
+            .as_ref()
+            .map(|expected| (expected.rule_index, expected.css.clone()))
     }
 
     pub(crate) fn record_checkpointed_relation_path(
@@ -172,8 +425,7 @@ impl ErEntityThemeReceipt {
         self.attributes_match &= checkpoint.start_marker_id.as_deref() == emitted_start_marker_id;
         self.attributes_match &= checkpoint.end_marker_id.as_deref() == emitted_end_marker_id;
         self.attributes_match &= record_paint_checkpoint(
-            self.relation_stroke.as_ref(),
-            self.relation_stroke_source_owned,
+            checkpoint.stroke.as_ref(),
             emitted_stroke,
             &mut self.effective_by_rule,
             &mut self.emitted_by_rule,
@@ -185,13 +437,17 @@ impl ErEntityThemeReceipt {
         marker_id: &str,
         emitted_stroke: Option<(usize, &str)>,
     ) {
-        if !record_terminal_id(&mut self.relation_markers, marker_id) {
+        let Some(checkpoint) = self.relation_markers.get_mut(marker_id) else {
+            self.attributes_match = false;
+            return;
+        };
+        if checkpoint.checkpointed {
             self.attributes_match = false;
             return;
         }
+        checkpoint.checkpointed = true;
         self.attributes_match &= record_paint_checkpoint(
-            self.relation_stroke.as_ref(),
-            self.relation_stroke_source_owned,
+            checkpoint.expectation.as_ref(),
             emitted_stroke,
             &mut self.effective_by_rule,
             &mut self.emitted_by_rule,
@@ -201,8 +457,13 @@ impl ErEntityThemeReceipt {
     pub(super) fn proves_complete(&self) -> bool {
         self.attributes_match
             && self.checkpointed_entities.iter().all(|entry| *entry)
+            && self.text_terminals.values().all(|entry| entry.checkpointed)
+            && self.table_rows.values().all(|entry| entry.checkpointed)
             && self.relation_paths.values().all(|entry| entry.checkpointed)
-            && self.relation_markers.values().all(|entry| *entry)
+            && self
+                .relation_markers
+                .values()
+                .all(|entry| entry.checkpointed)
     }
 
     pub(super) fn has_effective_rule(&self, rule_index: usize) -> bool {
@@ -214,31 +475,41 @@ impl ErEntityThemeReceipt {
     }
 
     pub(super) fn proves_rule(&self, rule_index: usize) -> bool {
-        self.proves_complete() && self.emitted_by_rule.get(&rule_index).copied().unwrap_or(0) != 0
+        self.proves_complete()
+            && !self.unverified_rules.contains(&rule_index)
+            && self.emitted_by_rule.get(&rule_index).copied().unwrap_or(0) != 0
     }
 }
 
-fn record_terminal_id(terminals: &mut BTreeMap<String, bool>, terminal_id: &str) -> bool {
-    let Some(checkpointed) = terminals.get_mut(terminal_id) else {
-        return false;
+fn merge_relation_marker_expectation(
+    markers: &mut BTreeMap<String, PaintTerminalCheckpoint>,
+    marker_id: &str,
+    expected: Option<&ExpectedPaint>,
+) -> bool {
+    let Some(checkpoint) = markers.get_mut(marker_id) else {
+        markers.insert(
+            marker_id.to_string(),
+            PaintTerminalCheckpoint {
+                expectation: expected.cloned(),
+                checkpointed: false,
+            },
+        );
+        return true;
     };
-    if *checkpointed {
-        return false;
+    match (&checkpoint.expectation, expected) {
+        (None, Some(expected)) => checkpoint.expectation = Some(expected.clone()),
+        (Some(current), Some(expected)) if current != expected => return false,
+        (None, None) | (Some(_), None) | (Some(_), Some(_)) => {}
     }
-    *checkpointed = true;
     true
 }
 
 fn record_paint_checkpoint(
     expected: Option<&ExpectedPaint>,
-    source_owns: bool,
     emitted: Option<(usize, &str)>,
     effective_by_rule: &mut BTreeMap<usize, usize>,
     emitted_by_rule: &mut BTreeMap<usize, usize>,
 ) -> bool {
-    if source_owns {
-        return emitted.is_none();
-    }
     match (expected, emitted) {
         (None, None) => true,
         (Some(expected), Some((rule_index, css))) => {
@@ -257,30 +528,82 @@ fn record_paint_checkpoint(
     }
 }
 
+fn record_terminal_style_checkpoint(
+    expected: Option<&ExpectedPaint>,
+    actual_style: &str,
+    effective_by_rule: &mut BTreeMap<usize, usize>,
+    emitted_by_rule: &mut BTreeMap<usize, usize>,
+) -> bool {
+    match expected {
+        None => actual_style.is_empty(),
+        Some(expected) => {
+            *effective_by_rule.entry(expected.rule_index).or_default() += 1;
+            let matches = terminal_style_property(actual_style, "color")
+                == Some(expected.css.as_str())
+                && terminal_style_property(actual_style, "fill") == Some(expected.css.as_str());
+            if matches {
+                *emitted_by_rule.entry(expected.rule_index).or_default() += 1;
+            }
+            matches
+        }
+    }
+}
+
+fn record_paint_style_checkpoint(
+    expected: Option<&ExpectedPaint>,
+    actual_style: &str,
+    effective_by_rule: &mut BTreeMap<usize, usize>,
+    emitted_by_rule: &mut BTreeMap<usize, usize>,
+) -> bool {
+    match expected {
+        None => actual_style.is_empty(),
+        Some(expected) => {
+            *effective_by_rule.entry(expected.rule_index).or_default() += 1;
+            let matches =
+                terminal_style_property(actual_style, "fill") == Some(expected.css.as_str());
+            if matches {
+                *emitted_by_rule.entry(expected.rule_index).or_default() += 1;
+            }
+            matches
+        }
+    }
+}
+
+fn terminal_style_property<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+    style.split(';').find_map(|declaration| {
+        let (candidate, value) = declaration.split_once(':')?;
+        (candidate.trim() == property).then(|| value.trim())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn empty_receipt(expectations: Vec<EntityExpectation>) -> ErEntityThemeReceipt {
+        ErEntityThemeReceipt::new(expectations, BTreeMap::new(), BTreeMap::new())
+    }
+
     #[test]
     fn entity_receipt_requires_every_terminal_checkpoint_and_exact_values() {
-        let mut receipt = ErEntityThemeReceipt::new(vec![EntityExpectation {
+        let mut receipt = empty_receipt(vec![EntityExpectation {
             fill: Some(ExpectedPaint {
                 rule_index: 2,
                 css: "#123456".to_string(),
             }),
             stroke: None,
         }]);
-        receipt.record_checkpointed_entity(0, false, false, None, None);
+        receipt.record_checkpointed_entity(0, None, None);
         assert!(!receipt.proves_complete());
 
-        let mut receipt = ErEntityThemeReceipt::new(vec![EntityExpectation {
+        let mut receipt = empty_receipt(vec![EntityExpectation {
             fill: Some(ExpectedPaint {
                 rule_index: 2,
                 css: "#123456".to_string(),
             }),
             stroke: None,
         }]);
-        receipt.record_checkpointed_entity(0, false, false, Some((2, "#123456")), None);
+        receipt.record_checkpointed_entity(0, Some((2, "#123456")), None);
         assert!(receipt.proves_complete());
         assert!(receipt.has_effective_rule(2));
         assert!(receipt.proves_rule(2));
@@ -288,14 +611,8 @@ mod tests {
 
     #[test]
     fn source_owned_paint_is_not_an_effective_typed_route() {
-        let mut receipt = ErEntityThemeReceipt::new(vec![EntityExpectation {
-            fill: Some(ExpectedPaint {
-                rule_index: 2,
-                css: "#123456".to_string(),
-            }),
-            stroke: None,
-        }]);
-        receipt.record_checkpointed_entity(0, true, false, None, None);
+        let mut receipt = empty_receipt(vec![EntityExpectation::default()]);
+        receipt.record_checkpointed_entity(0, None, None);
 
         assert!(receipt.proves_complete());
         assert!(!receipt.has_effective_rule(2));
@@ -303,41 +620,102 @@ mod tests {
     }
 
     #[test]
-    fn entity_receipt_rejects_duplicate_and_wrong_paint_checkpoint() {
-        let mut receipt = ErEntityThemeReceipt::new(vec![EntityExpectation {
-            fill: Some(ExpectedPaint {
-                rule_index: 2,
-                css: "#123456".to_string(),
-            }),
-            stroke: None,
-        }]);
-        receipt.record_checkpointed_entity(0, false, false, Some((2, "#abcdef")), None);
-        receipt.record_checkpointed_entity(0, false, false, Some((2, "#123456")), None);
-        assert!(!receipt.proves_complete());
+    fn text_receipt_requires_exact_occurrence_style_and_inherited_run_count() {
+        let id = ErTextTerminalId::attribute("entity-A-0", 1, ErAttributeTextRole::Name);
+        let mut receipt = ErEntityThemeReceipt::new(
+            Vec::new(),
+            BTreeMap::from([(
+                id,
+                TextTerminalExpectation {
+                    paint: Some(ExpectedPaint {
+                        rule_index: 7,
+                        css: "#123456".to_string(),
+                    }),
+                    visible_run_count: 2,
+                    inherited_color_run_count: 2,
+                },
+            )]),
+            BTreeMap::new(),
+        );
+        receipt.record_attribute_text(
+            "entity-A-0",
+            1,
+            ErAttributeTextRole::Name,
+            "color:#123456;fill:#123456",
+            2,
+            2,
+        );
+
+        assert!(receipt.proves_complete());
+        assert!(receipt.proves_rule(7));
+    }
+
+    #[test]
+    fn mixed_inline_and_inherited_color_runs_cannot_prove_portable_text_paint() {
+        let id = ErTextTerminalId::relation_label(0);
+        let mut receipt = ErEntityThemeReceipt::new(
+            Vec::new(),
+            BTreeMap::from([(
+                id,
+                TextTerminalExpectation {
+                    paint: Some(ExpectedPaint {
+                        rule_index: 7,
+                        css: "#123456".to_string(),
+                    }),
+                    visible_run_count: 3,
+                    inherited_color_run_count: 2,
+                },
+            )]),
+            BTreeMap::new(),
+        );
+        receipt.record_relation_label_text(0, "color:#123456;fill:#123456", 3, 2);
+
+        assert!(receipt.proves_complete());
+        assert!(receipt.has_effective_rule(7));
+        assert!(!receipt.proves_rule(7));
+    }
+
+    #[test]
+    fn table_receipt_rejects_a_wrong_or_duplicate_row_terminal() {
+        let id = ErTableRowTerminalId::new("entity-A-0", 0);
+        let expectation = ExpectedPaint {
+            rule_index: 8,
+            css: "#abcdef".to_string(),
+        };
+        let mut wrong = ErEntityThemeReceipt::new(
+            Vec::new(),
+            BTreeMap::new(),
+            BTreeMap::from([(id.clone(), Some(expectation.clone()))]),
+        );
+        wrong.record_table_row("entity-A-0", 0, "fill:#123456");
+        assert!(!wrong.proves_complete());
+
+        let mut duplicate = ErEntityThemeReceipt::new(
+            Vec::new(),
+            BTreeMap::new(),
+            BTreeMap::from([(id, Some(expectation))]),
+        );
+        duplicate.record_table_row("entity-A-0", 0, "color:#abcdef;fill:#abcdef");
+        duplicate.record_table_row("entity-A-0", 0, "color:#abcdef;fill:#abcdef");
+        assert!(!duplicate.proves_complete());
     }
 
     #[test]
     fn relation_receipt_requires_every_path_and_referenced_marker_with_exact_stroke() {
-        let expected = ExpectedPaint {
-            rule_index: 4,
-            css: "#123456".to_string(),
-        };
-        let mut complete = ErEntityThemeReceipt::new(Vec::new()).with_relation_terminals(
-            Some(expected.clone()),
-            false,
-            vec![
-                ErRelationTerminalExpectation::new(
-                    "edge-1".to_string(),
-                    Some("marker-start".to_string()),
-                    None,
-                ),
-                ErRelationTerminalExpectation::new(
-                    "edge-2".to_string(),
-                    None,
-                    Some("marker-end".to_string()),
-                ),
-            ],
-        );
+        let mut complete = empty_receipt(Vec::new()).with_relation_terminals(vec![
+            ErRelationTerminalExpectation::new(
+                "edge-1".to_string(),
+                Some("marker-start".to_string()),
+                None,
+                Some((4, "#123456")),
+            ),
+            ErRelationTerminalExpectation::new(
+                "edge-2".to_string(),
+                None,
+                Some("marker-end".to_string()),
+                Some((4, "#123456")),
+            ),
+        ]);
         complete.record_checkpointed_relation_marker("marker-start", Some((4, "#123456")));
         complete.record_checkpointed_relation_marker("marker-end", Some((4, "#123456")));
         complete.record_checkpointed_relation_path(
@@ -355,18 +733,20 @@ mod tests {
         assert!(complete.proves_complete());
         assert!(complete.proves_rule(4));
 
-        let mut missing_segment = ErEntityThemeReceipt::new(Vec::new()).with_relation_terminals(
-            Some(expected),
-            false,
-            vec![
-                ErRelationTerminalExpectation::new(
-                    "edge-1".to_string(),
-                    Some("marker-start".to_string()),
-                    None,
-                ),
-                ErRelationTerminalExpectation::new("edge-2".to_string(), None, None),
-            ],
-        );
+        let mut missing_segment = empty_receipt(Vec::new()).with_relation_terminals(vec![
+            ErRelationTerminalExpectation::new(
+                "edge-1".to_string(),
+                Some("marker-start".to_string()),
+                None,
+                Some((4, "#123456")),
+            ),
+            ErRelationTerminalExpectation::new(
+                "edge-2".to_string(),
+                None,
+                None,
+                Some((4, "#123456")),
+            ),
+        ]);
         missing_segment.record_checkpointed_relation_marker("marker-start", Some((4, "#123456")));
         missing_segment.record_checkpointed_relation_path(
             "edge-1",
@@ -379,19 +759,14 @@ mod tests {
 
     #[test]
     fn relation_receipt_rejects_duplicate_or_mismatched_terminals() {
-        let expected = ExpectedPaint {
-            rule_index: 4,
-            css: "transparent".to_string(),
-        };
-        let mut wrong_marker = ErEntityThemeReceipt::new(Vec::new()).with_relation_terminals(
-            Some(expected.clone()),
-            false,
-            vec![ErRelationTerminalExpectation::new(
+        let mut wrong_marker = empty_receipt(Vec::new()).with_relation_terminals(vec![
+            ErRelationTerminalExpectation::new(
                 "edge-1".to_string(),
                 Some("marker-start".to_string()),
                 None,
-            )],
-        );
+                Some((4, "transparent")),
+            ),
+        ]);
         wrong_marker.record_checkpointed_relation_marker("marker-start", Some((4, "#123456")));
         wrong_marker.record_checkpointed_relation_path(
             "edge-1",
@@ -401,15 +776,14 @@ mod tests {
         );
         assert!(!wrong_marker.proves_complete());
 
-        let mut duplicate_path = ErEntityThemeReceipt::new(Vec::new()).with_relation_terminals(
-            Some(expected),
-            false,
-            vec![ErRelationTerminalExpectation::new(
+        let mut duplicate_path = empty_receipt(Vec::new()).with_relation_terminals(vec![
+            ErRelationTerminalExpectation::new(
                 "edge-1".to_string(),
                 None,
                 None,
-            )],
-        );
+                Some((4, "transparent")),
+            ),
+        ]);
         duplicate_path.record_checkpointed_relation_path(
             "edge-1",
             Some((4, "transparent")),

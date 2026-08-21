@@ -24,7 +24,11 @@ use serde_json::Value;
 mod theme;
 
 pub(crate) use theme::{
-    ArchitectureEdgeThemeReceipt, ArchitectureGroupThemePlan, ArchitectureGroupThemeReceipt,
+    ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,
+    ArchitectureEdgeThemeReceipt, ArchitectureGroupTerminal, ArchitectureGroupTerminalEmission,
+    ArchitectureGroupThemePlan, ArchitectureGroupThemeReceipt, ArchitecturePaintTerminalEmission,
+    ArchitectureServiceTerminal, ArchitectureServiceTerminalEmission,
+    ArchitectureSurfaceThemeReceipt, ArchitectureTextTerminalEmission,
 };
 
 struct ArchitectureManateeWorkControl<'a> {

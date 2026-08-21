@@ -115,11 +115,12 @@ pub enum ThemeRouteCutoverProjection {
     GanttTaskActiveFill = 25,
     GanttTaskSuccessFill = 26,
     GanttTaskErrorFill = 27,
+    NodeLabelFill = 28,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 28] = [
+    const ALL: [Self; 29] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -148,6 +149,7 @@ impl ThemeRouteCutoverProjection {
         Self::GanttTaskActiveFill,
         Self::GanttTaskSuccessFill,
         Self::GanttTaskErrorFill,
+        Self::NodeLabelFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -180,6 +182,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskActiveFill => "task.active.fill",
             Self::GanttTaskSuccessFill => "task.success.fill",
             Self::GanttTaskErrorFill => "task.error.fill",
+            Self::NodeLabelFill => "node-label.fill",
         }
     }
 
@@ -213,7 +216,8 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskDefaultFill
             | Self::GanttTaskActiveFill
             | Self::GanttTaskSuccessFill
-            | Self::GanttTaskErrorFill => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::GanttTaskErrorFill
+            | Self::NodeLabelFill => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -250,6 +254,8 @@ pub struct ThemeRouteCutoverProjectionSet(u64);
 impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_NODE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::NodeFill);
     pub const REPLACE_NODE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::NodeStroke);
+    pub const REPLACE_NODE_LABEL_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::NodeLabelFill);
     pub const REPLACE_EDGE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::EdgeStroke);
     pub const REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK: Self = Self::edge_stroke();
     pub const REPLACE_ACTOR_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::ActorFill);

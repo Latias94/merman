@@ -15,7 +15,8 @@ pub(super) struct Translate {
 pub(super) struct GFrame {
     translate: Translate,
     class_tokens: Vec<String>,
-    fill: Option<String>,
+    inline_fill: Option<String>,
+    presentation_fill: Option<String>,
     font_size: Option<String>,
     font_family: Option<String>,
     font_weight: Option<String>,
@@ -30,9 +31,8 @@ impl GFrame {
                 .map(parse_translate)
                 .unwrap_or_default(),
             class_tokens: parse_class_tokens(tag),
-            fill: parse_attr_str(tag, "fill")
-                .map(ToOwned::to_owned)
-                .or_else(|| style.and_then(|style| extract_style_property(style, "fill"))),
+            inline_fill: style.and_then(|style| extract_style_property(style, "fill")),
+            presentation_fill: parse_attr_str(tag, "fill").map(ToOwned::to_owned),
             font_size: style.and_then(|style| extract_style_property(style, "font-size")),
             font_family: style.and_then(|style| extract_style_property(style, "font-family")),
             font_weight: style.and_then(|style| extract_style_property(style, "font-weight")),
@@ -91,12 +91,15 @@ pub(super) fn extract_svg_text_fill_from_ancestors(
 ) -> Option<String> {
     // Prefer the closest ancestor's classes (more specific) by scanning frames from inner -> outer.
     for frame in g_stack.iter().rev() {
+        if let Some(fill) = &frame.inline_fill {
+            return Some(fill.clone());
+        }
         for token in frame.class_tokens.iter().rev() {
             if let Some(fill) = extract_css_text_fill_for_class(svg, token) {
                 return Some(fill);
             }
         }
-        if let Some(fill) = &frame.fill {
+        if let Some(fill) = &frame.presentation_fill {
             return Some(fill.clone());
         }
     }
