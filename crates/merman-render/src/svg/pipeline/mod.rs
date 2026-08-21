@@ -333,8 +333,33 @@ impl SvgPipeline {
                 execution.checkpoint()
             })?;
         execution.preflight_svg_byte_count(current.len())?;
-        let mut structure =
-            final_validation::validate_well_formed_svg_with_execution(current.as_ref(), execution)?;
+        let mut structure = match final_validation::validate_well_formed_svg_with_execution(
+            current.as_ref(),
+            execution,
+        ) {
+            Ok(structure) => structure,
+            Err(initial_error) if self.preset == SvgPipelinePreset::ResvgSafe => {
+                // Browser-facing SVG may contain HTML named entities in serialized attribute
+                // values (for example `&colon;`). They are not XML entities, so run the same
+                // resource-aware attribute sanitizer once before retrying structural validation.
+                // Text/entity errors remain rejected because this pass never rewrites text nodes.
+                let sanitized =
+                    builtin::attr_sanitize::sanitize_element_attributes_cow_with_checkpoints(
+                        current.clone(),
+                        &mut || execution.checkpoint(),
+                    )?;
+                execution.preflight_svg_byte_count(sanitized.len())?;
+                if sanitized.as_ref() == current.as_ref() {
+                    return Err(initial_error);
+                }
+                current = sanitized;
+                final_validation::validate_well_formed_svg_with_execution(
+                    current.as_ref(),
+                    execution,
+                )?
+            }
+            Err(error) => return Err(error),
+        };
         if self.static_inline_admission {
             static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
         }
