@@ -4,7 +4,8 @@ use crate::cutover_manifest::authorize_cutover_routes;
 use crate::observation::{RouteCutoverRuntimeError, append_len_prefixed, sha256};
 use crate::runner::{
     C6ProofError, C6ProofResult, C6RasterImage, FamilyEvidenceRequirements, class_contains,
-    decode_bounded_png_artifact, portable_svg_request, prove_portable_family_evidence, style_value,
+    decode_bounded_png_artifact, decode_bounded_png_artifact_allow_transparent,
+    portable_svg_request, prove_portable_family_evidence, style_value,
 };
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec,
@@ -127,6 +128,7 @@ end
 "#;
 const CLASS_NODE_SOURCE: &str = "classDiagram\nclass Alpha\nclass Beta\n";
 const ER_TEXT_SOURCE: &str = "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n";
+const INFO_TEXT_SOURCE: &str = "info\n";
 const ARCHITECTURE_TEXT_SOURCE: &str = r#"architecture-beta
   group core(cloud)[Core]
   service api(server)[API] in core
@@ -466,6 +468,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(ER_TEXT_SOURCE)
         }
+        (DiagramFamilyId::INFO, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(INFO_TEXT_SOURCE)
+        }
         (DiagramFamilyId::ARCHITECTURE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(ARCHITECTURE_TEXT_SOURCE)
         }
@@ -521,7 +526,7 @@ struct RenderedCutoverCase {
     svg_target_receipt_digest: [u8; 32],
     png_target_receipt_digest: [u8; 32],
     svg_assertions: BTreeMap<ThemeRouteCutoverDescriptor, [u8; 32]>,
-    svg_view_box: [f64; 4],
+    proof_viewport: [f64; 4],
     target_regions: Vec<[f64; 4]>,
     target_underlay_colors: Vec<Vec<[u8; 3]>>,
     markers: Vec<FlowchartMarkerObservation>,
@@ -546,7 +551,7 @@ struct SequenceRouteObservation {
 
 struct SvgCutoverProof {
     assertions: BTreeMap<ThemeRouteCutoverDescriptor, [u8; 32]>,
-    view_box: [f64; 4],
+    view_box: Option<[f64; 4]>,
     target_regions: Vec<[f64; 4]>,
     target_underlay_colors: Vec<Vec<[u8; 3]>>,
 }
@@ -898,7 +903,27 @@ fn render_cutover_case(
     let report = png_output.export_report();
     let png_plan = report.raster();
     prove_cutover_png_report(report, png_plan, render_evidence)?;
-    let raster = decode_bounded_png_artifact(png_bytes, png_plan)?;
+    let isolated_transparent_info = is_info_text_fill_route(expected_route)
+        && expected_route.value() == ThemeRouteCutoverValue::Transparent;
+    let raster = if isolated_transparent_info {
+        decode_bounded_png_artifact_allow_transparent(png_bytes, png_plan)?
+    } else {
+        decode_bounded_png_artifact(png_bytes, png_plan)?
+    };
+
+    let (proof_viewport, target_regions) = match svg_proof.view_box {
+        Some(view_box) => (view_box, svg_proof.target_regions),
+        None => {
+            c6_ensure!(
+                "route-png-proof",
+                is_info_text_fill_route(expected_route) && svg_proof.target_regions.len() == 1,
+                "only the isolated Info terminal may use a whole-artifact PNG proof"
+            );
+            let (width, height) = raster.dimensions();
+            let viewport = [0.0, 0.0, f64::from(width), f64::from(height)];
+            (viewport, vec![viewport])
+        }
+    };
 
     let svg_receipt = document.standalone_svg_admission();
     let png_receipt = png_output.admission();
@@ -916,8 +941,8 @@ fn render_cutover_case(
         svg_target_receipt_digest,
         png_target_receipt_digest,
         svg_assertions: svg_proof.assertions,
-        svg_view_box: svg_proof.view_box,
-        target_regions: svg_proof.target_regions,
+        proof_viewport,
+        target_regions,
         target_underlay_colors: svg_proof.target_underlay_colors,
         markers,
         raster,
@@ -1305,9 +1330,13 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
 }
 
 fn minimum_control_pixels_per_region(route: ThemeRouteCutoverDescriptor) -> usize {
-    match route.facet() {
-        ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke => 8,
-    }
+    if is_info_text_fill_route(route) { 4 } else { 8 }
+}
+
+fn is_info_text_fill_route(route: ThemeRouteCutoverDescriptor) -> bool {
+    route.family_id() == DiagramFamilyId::INFO
+        && route.target() == ThemeTarget::Text
+        && route.facet() == ThemeRouteCutoverFacet::Fill
 }
 
 fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
@@ -1328,7 +1357,8 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             | DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
-            | DiagramFamilyId::GANTT => Ok("transparent"),
+            | DiagramFamilyId::GANTT
+            | DiagramFamilyId::INFO => Ok("transparent"),
             family => Err(C6ProofError::new(
                 "route-svg-proof",
                 format!("unsupported transparent cutover family {family}"),
@@ -1540,11 +1570,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_eighty_six_routes_and_one_hundred_two_artifact_witnesses() {
+    fn route_inventory_retains_eighty_eight_routes_and_one_hundred_four_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 86);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 102);
+        assert_eq!(inventory.len(), 88);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 104);
     }
 
     #[test]

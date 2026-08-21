@@ -56,13 +56,20 @@ pub(crate) fn decode_bounded_png_artifact(
     bytes: &[u8],
     raster_plan: RasterPlan,
 ) -> C6ProofResult<RasterImage> {
-    let raster = RasterImage::decode_png(bytes, raster_plan)?;
+    let raster = decode_bounded_png_artifact_allow_transparent(bytes, raster_plan)?;
     c6_ensure!(
         "png-artifact",
         raster.pixels.chunks_exact(4).any(|pixel| pixel[3] != 0),
         "decoded PNG artifact is fully transparent"
     );
     Ok(raster)
+}
+
+pub(crate) fn decode_bounded_png_artifact_allow_transparent(
+    bytes: &[u8],
+    raster_plan: RasterPlan,
+) -> C6ProofResult<RasterImage> {
+    RasterImage::decode_png(bytes, raster_plan)
 }
 
 pub(crate) fn parse_c6_svg_view_box(value: &str) -> C6ProofResult<[f64; 4]> {

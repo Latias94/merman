@@ -10,16 +10,16 @@ const ISHIKAWA_BRANCH_SELECTOR: &str =
 const ISHIKAWA_TEXT_SELECTOR: &str = ".ishikawa text ";
 const ISHIKAWA_HEAD_LABEL_SELECTOR: &str = ".ishikawa .ishikawa-head-label ";
 
-pub(super) struct FinalFourRouteObservation {
+pub(super) struct TerminalPaintRouteObservation {
     pub(super) value: String,
     pub(super) terminal_digest: [u8; 32],
     pub(super) target_regions: Vec<[f64; 4]>,
 }
 
-pub(super) fn final_four_route_observation(
+pub(super) fn terminal_paint_route_observation(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
-) -> C6ProofResult<FinalFourRouteObservation> {
+) -> C6ProofResult<TerminalPaintRouteObservation> {
     c6_ensure!(
         "route-svg-proof",
         route.facet() == ThemeRouteCutoverFacet::Fill
@@ -29,11 +29,13 @@ pub(super) fn final_four_route_observation(
                     DiagramFamilyId::ZENUML | DiagramFamilyId::VENN,
                     ThemeTarget::Title
                 ) | (
-                    DiagramFamilyId::ISHIKAWA | DiagramFamilyId::EVENT_MODELING,
+                    DiagramFamilyId::ISHIKAWA
+                        | DiagramFamilyId::EVENT_MODELING
+                        | DiagramFamilyId::INFO,
                     ThemeTarget::Text
                 )
             ),
-        "unsupported final-four cutover route {}",
+        "unsupported terminal-paint cutover route {}",
         route_label(route)
     );
 
@@ -42,14 +44,15 @@ pub(super) fn final_four_route_observation(
         DiagramFamilyId::VENN => venn_title_observation(document),
         DiagramFamilyId::ISHIKAWA => ishikawa_text_observation(document),
         DiagramFamilyId::EVENT_MODELING => event_modeling_text_observation(document),
+        DiagramFamilyId::INFO if is_info_text_fill_route(route) => info_text_observation(document),
         family => Err(C6ProofError::new(
             "route-svg-proof",
-            format!("unsupported final-four route family {family}"),
+            format!("unsupported terminal-paint route family {family}"),
         )),
     }
 }
 
-pub(super) fn final_four_underlay_colors(
+pub(super) fn terminal_paint_underlay_colors(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
     target_regions: &[[f64; 4]],
@@ -67,10 +70,13 @@ pub(super) fn final_four_underlay_colors(
         DiagramFamilyId::VENN => vec![underlay_colors([root_underlay])],
         DiagramFamilyId::ISHIKAWA => ishikawa_underlay_colors(document, root_underlay)?,
         DiagramFamilyId::EVENT_MODELING => event_modeling_underlay_colors(document, root_underlay)?,
+        DiagramFamilyId::INFO if is_info_text_fill_route(route) => {
+            vec![underlay_colors([root_underlay])]
+        }
         family => {
             return Err(C6ProofError::new(
                 "route-svg-proof",
-                format!("unsupported final-four underlay family {family}"),
+                format!("unsupported terminal-paint underlay family {family}"),
             ));
         }
     };
@@ -85,9 +91,71 @@ pub(super) fn final_four_underlay_colors(
     Ok(underlays)
 }
 
+fn info_text_observation(
+    document: &roxmltree::Document<'_>,
+) -> C6ProofResult<TerminalPaintRouteObservation> {
+    let versions = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("text")
+                && class_contains(*node, "version")
+                && has_visible_text_content(*node)
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        versions.len() == 1,
+        "Info witness must emit exactly one non-empty text.version"
+    );
+    let version = versions[0];
+    let value = version.attribute("fill").ok_or_else(|| {
+        C6ProofError::new("route-svg-proof", "Info version lacks its terminal fill")
+    })?;
+    let x = number_attribute(version, "x")?;
+    let y = number_attribute(version, "y")?;
+    let font_size = number_attribute(version, "font-size")?;
+    c6_ensure!(
+        "route-svg-geometry",
+        x.is_finite() && y.is_finite() && font_size.is_finite() && font_size > 0.0,
+        "Info version has invalid terminal geometry"
+    );
+    let width = style_value(document.root_element(), "max-width")
+        .and_then(|value| value.strip_suffix("px"))
+        .and_then(|value| value.parse::<f64>().ok())
+        .ok_or_else(|| C6ProofError::new("route-svg-geometry", "Info root lacks max-width"))?;
+    let region = rect_from_edges(
+        0.0,
+        (y - font_size).max(0.0),
+        width,
+        y + font_size * 0.25,
+        "Info version band",
+    )?;
+
+    let mut terminal = b"merman.c6-route-info-text-fill.v1\0".to_vec();
+    append_len_prefixed(&mut terminal, visible_text_content(version).as_bytes());
+    append_len_prefixed(&mut terminal, value.as_bytes());
+    append_len_prefixed(
+        &mut terminal,
+        version
+            .attribute("font-size")
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    append_len_prefixed(
+        &mut terminal,
+        version.attribute("style").unwrap_or_default().as_bytes(),
+    );
+    append_rect(&mut terminal, region);
+    Ok(TerminalPaintRouteObservation {
+        value: value.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions: vec![region],
+    })
+}
+
 fn zenuml_title_observation(
     document: &roxmltree::Document<'_>,
-) -> C6ProofResult<FinalFourRouteObservation> {
+) -> C6ProofResult<TerminalPaintRouteObservation> {
     let value = stylesheet_property(document, ZENUML_TITLE_SELECTOR, "fill")?;
     let titles = document
         .descendants()
@@ -149,7 +217,7 @@ fn zenuml_title_observation(
     );
     append_rect(&mut terminal, region);
     append_point(&mut terminal, title_anchor);
-    Ok(FinalFourRouteObservation {
+    Ok(TerminalPaintRouteObservation {
         value: value.to_owned(),
         terminal_digest: sha256(terminal),
         target_regions: vec![region],
@@ -158,7 +226,7 @@ fn zenuml_title_observation(
 
 fn venn_title_observation(
     document: &roxmltree::Document<'_>,
-) -> C6ProofResult<FinalFourRouteObservation> {
+) -> C6ProofResult<TerminalPaintRouteObservation> {
     let root = document.root_element();
     let root_id = root
         .attribute("id")
@@ -239,7 +307,7 @@ fn venn_title_observation(
         title.attribute("style").unwrap_or_default().as_bytes(),
     );
     append_rect(&mut terminal, region);
-    Ok(FinalFourRouteObservation {
+    Ok(TerminalPaintRouteObservation {
         value: inline_fill.to_owned(),
         terminal_digest: sha256(terminal),
         target_regions: vec![region],
@@ -248,7 +316,7 @@ fn venn_title_observation(
 
 fn event_modeling_text_observation(
     document: &roxmltree::Document<'_>,
-) -> C6ProofResult<FinalFourRouteObservation> {
+) -> C6ProofResult<TerminalPaintRouteObservation> {
     let stylesheet_color = stylesheet_property(document, EVENT_MODELING_TEXT_SELECTOR, "color")?;
     let swimlanes = event_modeling_groups(document, "em-swimlane");
     let boxes = event_modeling_groups(document, "em-box");
@@ -380,7 +448,7 @@ fn event_modeling_text_observation(
         target_regions.push(region);
     }
 
-    Ok(FinalFourRouteObservation {
+    Ok(TerminalPaintRouteObservation {
         value: common_value
             .ok_or_else(|| C6ProofError::new("route-svg-proof", "missing Event Modeling text"))?
             .to_owned(),
@@ -391,7 +459,7 @@ fn event_modeling_text_observation(
 
 fn ishikawa_text_observation(
     document: &roxmltree::Document<'_>,
-) -> C6ProofResult<FinalFourRouteObservation> {
+) -> C6ProofResult<TerminalPaintRouteObservation> {
     const EXPECTED_TEXT: [(&str, &str); 6] = [
         ("ishikawa-head-label", "Root cause"),
         ("ishikawa-label cause", "Process"),
@@ -456,7 +524,7 @@ fn ishikawa_text_observation(
         target_regions.push(region);
     }
 
-    Ok(FinalFourRouteObservation {
+    Ok(TerminalPaintRouteObservation {
         value: common_value
             .ok_or_else(|| C6ProofError::new("route-svg-proof", "missing Ishikawa text"))?
             .to_owned(),

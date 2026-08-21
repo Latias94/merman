@@ -8,13 +8,13 @@ use super::{
     resolve_zenuml_title,
 };
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
-    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability,
+    ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
 
@@ -59,12 +59,18 @@ impl ZenumlTitleThemePlan {
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect::<BTreeSet<_>>();
 
-        let typed_fill = style
-            .as_ref()
-            .and_then(|style| typed_static_fill(theme, style));
-        let (fill_css, typed_fill_rule, typed_fill_capability) = typed_fill
-            .map_or((None, None, None), |fill| {
-                (Some(fill.css), Some(fill.rule_index), Some(fill.capability))
+        let typed_fill = style.as_ref().and_then(|style| {
+            resolve_direct_static_fill(
+                theme,
+                style,
+                &[ThemeTarget::Title],
+                DirectStaticSelectorDomain::Unqualified,
+            )
+        });
+        let (fill_css, typed_fill_rule, typed_fill_capability) =
+            typed_fill.map_or((None, None, None), |fill| {
+                let (css, rule_index, capability) = fill.into_parts();
+                (Some(css), Some(rule_index), Some(capability))
             });
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
@@ -300,51 +306,6 @@ fn has_visible_non_title_text(layout: &ZenumlDiagramLayout) -> bool {
             .comments
             .iter()
             .any(|comment| !comment.text.trim().is_empty())
-}
-
-struct ZenumlTitleFill {
-    css: Box<str>,
-    rule_index: usize,
-    capability: ThemeCapability,
-}
-
-fn typed_static_fill(
-    theme: &ResolvedDiagramTheme,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-) -> Option<ZenumlTitleFill> {
-    let origin = style.fill_resolution().winner()?;
-    let rule = theme
-        .family_rules()
-        .find_map(|(index, rule)| (index == origin.rule_index()).then_some(rule))?;
-    if rule.variant().is_some()
-        || rule.ordinal().is_some()
-        || theme.rule_facet_disposition(
-            origin.rule_index(),
-            FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?,
-        ) != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return None;
-    }
-
-    match style.fill_resolution().specified() {
-        Specified::Value(CanvasPaint::Transparent) => Some(ZenumlTitleFill {
-            css: "transparent".into(),
-            rule_index: origin.rule_index(),
-            capability: ThemeCapability::TransparentPaint,
-        }),
-        Specified::Value(CanvasPaint::Solid(color)) => Some(ZenumlTitleFill {
-            css: color.as_css().into_boxed_str(),
-            rule_index: origin.rule_index(),
-            capability: ThemeCapability::SolidPaint,
-        }),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(
-            CanvasPaint::LinearGradient(_)
-            | CanvasPaint::RadialGradient(_)
-            | CanvasPaint::Pattern(_),
-        ) => None,
-    }
 }
 
 /// Writer-owned proof that Title.fill reached the stylesheet and exactly one `text.frame-title`.

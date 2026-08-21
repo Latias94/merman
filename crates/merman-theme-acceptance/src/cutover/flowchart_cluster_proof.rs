@@ -131,7 +131,7 @@ pub(super) fn prove_flowchart_cluster_svg(
 
     Ok(SvgCutoverProof {
         assertions: BTreeMap::from([(*route, assertion)]),
-        view_box,
+        view_box: Some(view_box),
         // SVG proof binds the exact Cluster surface. PNG only confirms that the unique control
         // color appears and disappears in the same artifact, so it intentionally uses one coarse
         // document ROI instead of reimplementing Flowchart geometry.

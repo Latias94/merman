@@ -4,13 +4,12 @@ use std::sync::OnceLock;
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, Specified,
-    ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::EventModelingDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -42,13 +41,6 @@ impl EventModelingTextOccurrences {
     }
 }
 
-#[derive(Debug, Clone)]
-struct EventModelingTypedTextFill {
-    rule_index: usize,
-    css: Box<str>,
-    capability: ThemeCapability,
-}
-
 #[derive(Debug, Default)]
 struct EventModelingTextRuleObservation {
     applicable: bool,
@@ -61,7 +53,7 @@ struct EventModelingTextRuleObservation {
 /// Final Event Modeling text paint shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct EventModelingTextThemePlan {
-    typed_fill: Option<EventModelingTypedTextFill>,
+    typed_fill: Option<DirectStaticPaint>,
     occurrences: EventModelingTextOccurrences,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, ThemeCapability>,
@@ -102,9 +94,14 @@ impl EventModelingTextThemePlan {
             .collect::<BTreeSet<_>>();
         let typed_fill = (!config_owns_fill)
             .then(|| {
-                style
-                    .as_ref()
-                    .and_then(|style| typed_static_text_fill(theme, style))
+                style.as_ref().and_then(|style| {
+                    resolve_direct_static_fill(
+                        theme,
+                        style,
+                        &[ThemeTarget::Text],
+                        DirectStaticSelectorDomain::Unqualified,
+                    )
+                })
             })
             .flatten();
 
@@ -154,10 +151,10 @@ impl EventModelingTextThemePlan {
                         (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Fill(_))
                             if typed_fill
                                 .as_ref()
-                                .is_some_and(|fill| fill.rule_index == rule_index) =>
+                                .is_some_and(|fill| fill.rule_index() == rule_index) =>
                         {
                             observation.pending_fill =
-                                typed_fill.as_ref().map(|fill| fill.capability);
+                                typed_fill.as_ref().map(DirectStaticPaint::capability);
                         }
                         (FamilyThemeDisposition::Unsupported, facet) => {
                             observation
@@ -263,7 +260,7 @@ impl EventModelingTextThemePlan {
     pub(crate) fn terminal_fill<'a>(&'a self, configured_fill: &'a str) -> &'a str {
         self.typed_fill
             .as_ref()
-            .map_or(configured_fill, |fill| fill.css.as_ref())
+            .map_or(configured_fill, DirectStaticPaint::css)
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -285,46 +282,6 @@ impl EventModelingTextThemePlan {
             }
         }
         evidence
-    }
-}
-
-fn typed_static_text_fill(
-    theme: &ResolvedDiagramTheme,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-) -> Option<EventModelingTypedTextFill> {
-    let origin = style.fill_resolution().winner()?;
-    let rule = theme
-        .family_rules()
-        .find_map(|(index, rule)| (index == origin.rule_index()).then_some(rule))?;
-    if rule.target() != ThemeTarget::Text
-        || rule.variant().is_some()
-        || rule.ordinal().is_some()
-        || theme.rule_facet_disposition(
-            origin.rule_index(),
-            FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?,
-        ) != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return None;
-    }
-
-    match style.fill_resolution().specified() {
-        Specified::Value(CanvasPaint::Transparent) => Some(EventModelingTypedTextFill {
-            rule_index: origin.rule_index(),
-            css: "transparent".into(),
-            capability: ThemeCapability::TransparentPaint,
-        }),
-        Specified::Value(CanvasPaint::Solid(color)) => Some(EventModelingTypedTextFill {
-            rule_index: origin.rule_index(),
-            css: color.as_css().into_boxed_str(),
-            capability: ThemeCapability::SolidPaint,
-        }),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(
-            CanvasPaint::LinearGradient(_)
-            | CanvasPaint::RadialGradient(_)
-            | CanvasPaint::Pattern(_),
-        ) => None,
     }
 }
 

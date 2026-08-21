@@ -2,13 +2,13 @@ use std::sync::OnceLock;
 
 use crate::Result;
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
+    ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
-    InheritedTextViewportFacts, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
+    InheritedTextViewportFacts, resolve_direct_static_fill, unsupported_residual_for_facet,
 };
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::text::TextMeasurer;
@@ -31,6 +31,7 @@ pub(crate) struct InfoSurfaceReceipt {
     root_variable_font_family_css: Option<Box<str>>,
     css_emission_unique: bool,
     version_text_count: usize,
+    version_fill_css: Option<Box<str>>,
     terminal_matches: bool,
 }
 
@@ -44,6 +45,7 @@ impl InfoSurfaceReceipt {
             root_variable_font_family_css: None,
             css_emission_unique: true,
             version_text_count: 0,
+            version_fill_css: None,
             terminal_matches: true,
         }
     }
@@ -78,6 +80,7 @@ impl InfoSurfaceReceipt {
         font_size_px: f64,
         x: f64,
         y: f64,
+        fill_css: Option<&str>,
     ) {
         self.terminal_matches &= emitted_class == "version";
         self.terminal_matches &= self
@@ -86,6 +89,7 @@ impl InfoSurfaceReceipt {
         if !text.trim().is_empty() {
             self.version_text_count = self.version_text_count.saturating_add(1);
         }
+        self.version_fill_css = fill_css.map(Into::into);
     }
 
     fn proves_font_stack(&self) -> bool {
@@ -98,6 +102,24 @@ impl InfoSurfaceReceipt {
             && self.version_text_count == 1
             && self.terminal_matches
     }
+
+    fn proves_text_fill(&self, expected_fill_css: &str) -> bool {
+        self.version_text_count == 1
+            && self.terminal_matches
+            && self.version_fill_css.as_deref() == Some(expected_fill_css)
+    }
+}
+
+#[derive(Debug)]
+struct InfoDirectTextFillRoute {
+    key: FamilyThemeMechanismKey,
+    rule_index: usize,
+}
+
+#[derive(Debug, Default)]
+struct InfoThemeRoutes {
+    unsupported: Box<[InfoUnsupportedRoute]>,
+    direct_text_fill: Box<[InfoDirectTextFillRoute]>,
 }
 
 /// Final inherited Info font shared by terminal CSS emission and family evidence.
@@ -107,6 +129,9 @@ pub(crate) struct InfoTypographyThemePlan {
     terminal_geometry: InheritedTextViewportFacts,
     evidence: FamilyThemeEvidence,
     unsupported_routes: Box<[InfoUnsupportedRoute]>,
+    text_fill: Option<DirectStaticPaint>,
+    direct_text_fill_routes: Box<[InfoDirectTextFillRoute]>,
+    config_owns_text_fill: bool,
     terminal_receipt: OnceLock<InfoSurfaceReceipt>,
 }
 
@@ -136,12 +161,29 @@ impl InfoTypographyThemePlan {
             inherited_font_stack.font_family_css(),
             measurer,
         );
-        let unsupported_routes = info_unsupported_routes(theme);
+        let routes = info_theme_routes(theme);
+        let text_fill = theme.and_then(|theme| {
+            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+            resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Text],
+                DirectStaticSelectorDomain::Unqualified,
+            )
+        });
+        let config_owns_text_fill = theme.is_some()
+            && merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.textColor",
+            );
         Self {
             inherited_font_stack,
             terminal_geometry,
             evidence: FamilyThemeEvidence::from_theme(theme),
-            unsupported_routes,
+            unsupported_routes: routes.unsupported,
+            text_fill,
+            direct_text_fill_routes: routes.direct_text_fill,
+            config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -168,6 +210,13 @@ impl InfoTypographyThemePlan {
 
     pub(crate) fn version_geometry(&self) -> &InheritedTextRunFacts {
         self.terminal_geometry.run(0)
+    }
+
+    pub(crate) fn version_fill_css(&self) -> Option<&str> {
+        (!self.config_owns_text_fill)
+            .then_some(self.text_fill.as_ref())
+            .flatten()
+            .map(DirectStaticPaint::css)
     }
 
     pub(crate) fn record_terminal(&self, receipt: InfoSurfaceReceipt) -> bool {
@@ -197,41 +246,79 @@ impl InfoTypographyThemePlan {
             }
             InheritedFontStackOutcome::Inactive => {}
         }
+        for route in &self.direct_text_fill_routes {
+            if self.config_owns_text_fill {
+                evidence.mark_not_applicable(route.key.clone());
+                continue;
+            }
+            let Some(fill) = self
+                .text_fill
+                .as_ref()
+                .filter(|fill| fill.rule_index() == route.rule_index)
+            else {
+                evidence.mark_not_applicable(route.key.clone());
+                continue;
+            };
+            if receipt.proves_text_fill(fill.css()) {
+                evidence.mark_applied_with_capabilities(route.key.clone(), [fill.capability()]);
+            } else {
+                evidence.mark_residual(
+                    route.key.clone(),
+                    FamilyThemeResidualReason::UnsupportedPaint,
+                );
+            }
+        }
         evidence
     }
 }
 
-fn info_unsupported_routes(theme: Option<&ResolvedDiagramTheme>) -> Box<[InfoUnsupportedRoute]> {
+fn info_theme_routes(theme: Option<&ResolvedDiagramTheme>) -> InfoThemeRoutes {
     let Some(theme) = theme else {
-        return Box::new([]);
+        return InfoThemeRoutes::default();
     };
-    theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .filter_map(|route| {
-            if route.disposition() != FamilyThemeDisposition::Unsupported {
-                return None;
+    let mut unsupported = Vec::new();
+    let mut direct_text_fill = Vec::new();
+    for route in theme.family_mechanism_routes().iter().copied() {
+        match route.mechanism() {
+            FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::Text,
+                facet: FamilyThemeRuleFacet::Fill(_),
+                ..
+            } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
+                direct_text_fill.push(InfoDirectTextFillRoute {
+                    key: theme.family_mechanism_key(route),
+                    rule_index,
+                });
             }
-            let reason = match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet { facet, .. } => {
-                    unsupported_residual_for_facet(facet)
-                }
-                FamilyThemeMechanism::OrdinalPalette { .. } => {
-                    FamilyThemeResidualReason::UnsupportedOrdinalPalette
-                }
-                FamilyThemeMechanism::EffectBinding { .. } => {
-                    FamilyThemeResidualReason::UnsupportedEffect
-                }
-                FamilyThemeMechanism::BaseTypography(_) => return None,
-            };
-            Some(InfoUnsupportedRoute {
-                key: theme.family_mechanism_key(route),
-                reason,
-            })
-        })
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
+            mechanism if route.disposition() == FamilyThemeDisposition::Unsupported => {
+                let reason = match mechanism {
+                    FamilyThemeMechanism::RuleFacet { facet, .. } => {
+                        unsupported_residual_for_facet(facet)
+                    }
+                    FamilyThemeMechanism::OrdinalPalette { .. } => {
+                        FamilyThemeResidualReason::UnsupportedOrdinalPalette
+                    }
+                    FamilyThemeMechanism::EffectBinding { .. } => {
+                        FamilyThemeResidualReason::UnsupportedEffect
+                    }
+                    FamilyThemeMechanism::BaseTypography(_) => continue,
+                };
+                unsupported.push(InfoUnsupportedRoute {
+                    key: theme.family_mechanism_key(route),
+                    reason,
+                });
+            }
+            FamilyThemeMechanism::BaseTypography(_)
+            | FamilyThemeMechanism::RuleFacet { .. }
+            | FamilyThemeMechanism::OrdinalPalette { .. }
+            | FamilyThemeMechanism::EffectBinding { .. } => {}
+        }
+    }
+    InfoThemeRoutes {
+        unsupported: unsupported.into_boxed_slice(),
+        direct_text_fill: direct_text_fill.into_boxed_slice(),
+    }
 }
 
 pub(crate) fn layout_info_diagram_typed(

@@ -206,7 +206,7 @@ pub(super) fn prove_sequence_message_svg(
 
     Ok(SvgCutoverProof {
         assertions,
-        view_box,
+        view_box: Some(view_box),
         target_regions,
         target_underlay_colors,
     })

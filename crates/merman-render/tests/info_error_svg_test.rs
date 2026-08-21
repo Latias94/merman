@@ -475,6 +475,66 @@ fn assert_residual_evidence(
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
+fn assert_single_info_text_fill(
+    rendered: family::RenderedFamilySvg,
+    expected_fill: Option<&str>,
+    expected_applied: usize,
+    expected_not_applicable: usize,
+) {
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Info SVG");
+    let version = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "version")
+                })
+                && node.text().is_some_and(|text| !text.trim().is_empty())
+        })
+        .expect("one visible Info version terminal");
+    assert_eq!(version.attribute("fill"), expected_fill);
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), expected_applied);
+    assert_eq!(evidence.not_applicable_count(), expected_not_applicable);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn info_transparent_text_fill_is_owned_by_the_same_terminal() {
+    let family = InheritedTextFamily::Info;
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                    )
+                    .for_family(family.family_id()),
+                ),
+            ),
+        )
+        .expect("compile transparent Info text theme");
+    let rendered = try_render_family(
+        family,
+        family.base_source(),
+        &theme,
+        Engine::new(),
+        "info-transparent-text-fill",
+    )
+    .expect("transparent Info text must remain portable");
+
+    assert_single_info_text_fill(rendered, Some("transparent"), 1, 0);
+}
+
 fn non_empty_text_count_with_class(svg: &str, expected_class: &str) -> usize {
     let document = roxmltree::Document::parse(svg).expect("valid inherited-family SVG");
     document
@@ -489,6 +549,41 @@ fn non_empty_text_count_with_class(svg: &str, expected_class: &str) -> usize {
                 && node.text().is_some_and(|text| !text.trim().is_empty())
         })
         .count()
+}
+
+#[test]
+fn info_text_fill_is_written_and_proved_by_the_version_terminal() {
+    let family = InheritedTextFamily::Info;
+    let theme = inherited_paint_theme(family, &[ThemeTarget::Text]);
+    let rendered = try_render_family(
+        family,
+        family.base_source(),
+        &theme,
+        Engine::new(),
+        "info-direct-text-fill",
+    )
+    .expect("Info must directly own its visible Text.fill terminal");
+
+    assert_single_info_text_fill(rendered, Some("#123456"), 1, 0);
+}
+
+#[test]
+fn info_config_text_color_outranks_typed_text_fill_per_property() {
+    let family = InheritedTextFamily::Info;
+    let theme = inherited_paint_theme(family, &[ThemeTarget::Text]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "textColor": "#abcdef" }
+    })));
+    let rendered = try_render_family(
+        family,
+        family.base_source(),
+        &theme,
+        engine,
+        "info-config-owned-text-fill",
+    )
+    .expect("explicit Info textColor ownership must remain portable");
+
+    assert_single_info_text_fill(rendered, None, 0, 1);
 }
 
 #[test]

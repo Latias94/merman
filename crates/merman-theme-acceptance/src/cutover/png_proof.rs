@@ -45,7 +45,7 @@ pub(super) fn prove_terminal_png_pair(
     );
     c6_ensure!(
         "route-png-proof",
-        solid.svg_view_box == transparent.svg_view_box
+        solid.proof_viewport == transparent.proof_viewport
             && solid.target_regions == transparent.target_regions
             && solid.target_underlay_colors == transparent.target_underlay_colors
             && !solid.target_regions.is_empty(),
@@ -74,213 +74,213 @@ pub(super) fn prove_terminal_png_pair(
         .map(|marker| marker.probe_rect)
         .collect::<Vec<_>>();
 
-    let mut assertions = BTreeMap::new();
-    for route in solid.routes.iter().chain(&transparent.routes).copied() {
-        let color = route_control_color(route)?;
-        let transparent_count = transparent
+    let route = solid_route;
+    let color = route_control_color(route)?;
+    let transparent_count = transparent
+        .raster
+        .count_opaque_pixels_near(color.rgb, COLOR_TOLERANCE);
+    c6_ensure!(
+        "route-png-proof",
+        transparent_count <= MAX_TRANSPARENT_CONTROL_PIXELS,
+        "{} transparent PNG retained {transparent_count} solid-control pixels",
+        route_label(route)
+    );
+    let mut observation = Vec::new();
+    observation.extend_from_slice(&solid.png_target_receipt_digest);
+    observation.extend_from_slice(&transparent.png_target_receipt_digest);
+    observation.extend_from_slice(&color.rgb);
+    observation.extend_from_slice(&usize_to_u64(transparent_count).to_be_bytes());
+    let global_exclusions = if marker_assertion.is_some() {
+        marker_exclusions.as_slice()
+    } else {
+        &[]
+    };
+    observation.extend_from_slice(&usize_to_u64(global_exclusions.len()).to_be_bytes());
+    for exclusion in global_exclusions {
+        append_rect(&mut observation, *exclusion);
+    }
+    for (index, region) in solid.target_regions.iter().copied().enumerate() {
+        let exclusions =
+            route_region_exclusions(route, &solid.target_regions, index, global_exclusions)?;
+        let solid_count = solid
             .raster
-            .count_opaque_pixels_near(color.rgb, COLOR_TOLERANCE);
+            .count_opaque_pixels_near_in_svg_rect(
+                solid.proof_viewport,
+                region,
+                color.rgb,
+                COLOR_TOLERANCE,
+            )
+            .ok_or_else(|| C6ProofError::new("route-png-proof", "invalid solid target region"))?;
+        let transparent_region_count = transparent
+            .raster
+            .count_opaque_pixels_near_in_svg_rect(
+                transparent.proof_viewport,
+                region,
+                color.rgb,
+                COLOR_TOLERANCE,
+            )
+            .ok_or_else(|| {
+                C6ProofError::new("route-png-proof", "invalid transparent target region")
+            })?;
+        let (masked_control_pixels, non_transparent_pixels_at_control_mask) = transparent
+            .raster
+            .control_mask_alpha_counts_in_svg_rect(
+                &solid.raster,
+                solid.proof_viewport,
+                region,
+                color.rgb,
+                COLOR_TOLERANCE,
+                TRANSPARENT_ALPHA_TOLERANCE,
+                exclusions,
+            )
+            .ok_or_else(|| {
+                C6ProofError::new(
+                    "route-png-proof",
+                    "solid and transparent local control masks differ",
+                )
+            })?;
+        let minimum = minimum_control_pixels_per_region(route);
         c6_ensure!(
             "route-png-proof",
-            transparent_count <= MAX_TRANSPARENT_CONTROL_PIXELS,
-            "{} transparent PNG retained {transparent_count} solid-control pixels",
+            solid_count >= masked_control_pixels && masked_control_pixels >= minimum,
+            "{} region {index} retained {solid_count} local solid pixels and {masked_control_pixels} non-Marker mask pixels; minimum={minimum}",
             route_label(route)
         );
-        let mut value = b"merman.c6-route-png-assertion.v5\0".to_vec();
-        append_route(&mut value, route);
-        value.extend_from_slice(&solid.png_target_receipt_digest);
-        value.extend_from_slice(&transparent.png_target_receipt_digest);
-        value.extend_from_slice(&color.rgb);
-        value.extend_from_slice(&usize_to_u64(transparent_count).to_be_bytes());
-        let global_exclusions = if marker_assertion.is_some() {
-            marker_exclusions.as_slice()
-        } else {
-            &[]
-        };
-        value.extend_from_slice(&usize_to_u64(global_exclusions.len()).to_be_bytes());
-        for exclusion in global_exclusions {
-            append_rect(&mut value, *exclusion);
-        }
-        for (index, region) in solid.target_regions.iter().copied().enumerate() {
-            let exclusions =
-                route_region_exclusions(route, &solid.target_regions, index, global_exclusions)?;
-            let solid_count = solid
-                .raster
-                .count_opaque_pixels_near_in_svg_rect(
-                    solid.svg_view_box,
-                    region,
-                    color.rgb,
-                    COLOR_TOLERANCE,
-                )
-                .ok_or_else(|| {
-                    C6ProofError::new("route-png-proof", "invalid solid target region")
-                })?;
-            let transparent_region_count = transparent
-                .raster
-                .count_opaque_pixels_near_in_svg_rect(
-                    transparent.svg_view_box,
-                    region,
-                    color.rgb,
-                    COLOR_TOLERANCE,
-                )
-                .ok_or_else(|| {
-                    C6ProofError::new("route-png-proof", "invalid transparent target region")
-                })?;
-            let (masked_control_pixels, non_transparent_pixels_at_control_mask) = transparent
-                .raster
-                .control_mask_alpha_counts_in_svg_rect(
-                    &solid.raster,
-                    solid.svg_view_box,
-                    region,
-                    color.rgb,
-                    COLOR_TOLERANCE,
-                    TRANSPARENT_ALPHA_TOLERANCE,
-                    exclusions,
-                )
-                .ok_or_else(|| {
-                    C6ProofError::new(
-                        "route-png-proof",
-                        "solid and transparent local control masks differ",
+        c6_ensure!(
+            "route-png-proof",
+            transparent_region_count <= MAX_TRANSPARENT_CONTROL_PIXELS,
+            "{} region {index} retained {transparent_region_count} solid-control pixels in transparent output",
+            route_label(route)
+        );
+        let mut underlay_pixels = 0usize;
+        let mut unexpected_opaque_pixels = 0usize;
+        let underlay_colors = &transparent.target_underlay_colors[index];
+        let underlay_matches = underlay_colors
+            .iter()
+            .copied()
+            .map(|color| (color, COLOR_TOLERANCE))
+            .collect::<Vec<_>>();
+        if route.facet() == ThemeRouteCutoverFacet::Fill {
+            let maximum_non_transparent = masked_control_pixels
+                .saturating_mul(MAX_NON_TRANSPARENT_MASK_PERCENT)
+                .div_ceil(100)
+                .max(MIN_NON_TRANSPARENT_MASK_ALLOWANCE);
+            if !underlay_matches.is_empty() {
+                let (underlay_control_pixels, underlay_pixels_in_region) = transparent
+                    .raster
+                    .control_mask_colors_counts_in_svg_rect(
+                        &solid.raster,
+                        solid.proof_viewport,
+                        region,
+                        (color.rgb, COLOR_TOLERANCE),
+                        &underlay_matches,
+                        exclusions,
                     )
-                })?;
-            let minimum = minimum_control_pixels_per_region(route);
-            c6_ensure!(
-                "route-png-proof",
-                solid_count >= masked_control_pixels && masked_control_pixels >= minimum,
-                "{} region {index} retained {solid_count} local solid pixels and {masked_control_pixels} non-Marker mask pixels; minimum={minimum}",
-                route_label(route)
-            );
-            c6_ensure!(
-                "route-png-proof",
-                transparent_region_count <= MAX_TRANSPARENT_CONTROL_PIXELS,
-                "{} region {index} retained {transparent_region_count} solid-control pixels in transparent output",
-                route_label(route)
-            );
-            let mut underlay_pixels = 0usize;
-            let mut unexpected_opaque_pixels = 0usize;
-            let underlay_colors = &transparent.target_underlay_colors[index];
-            let underlay_matches = underlay_colors
-                .iter()
-                .copied()
-                .map(|color| (color, COLOR_TOLERANCE))
-                .collect::<Vec<_>>();
-            if route.facet() == ThemeRouteCutoverFacet::Fill {
-                let maximum_non_transparent = masked_control_pixels
-                    .saturating_mul(MAX_NON_TRANSPARENT_MASK_PERCENT)
-                    .div_ceil(100)
-                    .max(MIN_NON_TRANSPARENT_MASK_ALLOWANCE);
-                if !underlay_matches.is_empty() {
-                    let (underlay_control_pixels, underlay_pixels_in_region) = transparent
-                        .raster
-                        .control_mask_colors_counts_in_svg_rect(
-                            &solid.raster,
-                            solid.svg_view_box,
-                            region,
-                            (color.rgb, COLOR_TOLERANCE),
-                            &underlay_matches,
-                            exclusions,
-                        )
-                        .ok_or_else(|| {
-                            C6ProofError::new("route-png-proof", "invalid underlay target region")
-                        })?;
+                    .ok_or_else(|| {
+                        C6ProofError::new("route-png-proof", "invalid underlay target region")
+                    })?;
+                c6_ensure!(
+                    "route-png-proof",
+                    underlay_control_pixels == masked_control_pixels,
+                    "{} region {index} underlay mask differs: {underlay_control_pixels} != {masked_control_pixels}",
+                    route_label(route)
+                );
+                underlay_pixels = underlay_pixels_in_region;
+                if is_sparse_terminal_reveal(route) {
                     c6_ensure!(
                         "route-png-proof",
-                        underlay_control_pixels == masked_control_pixels,
-                        "{} region {index} underlay mask differs: {underlay_control_pixels} != {masked_control_pixels}",
+                        underlay_pixels_in_region != 0
+                            && underlay_pixels_in_region == non_transparent_pixels_at_control_mask,
+                        "{} region {index} retained {non_transparent_pixels_at_control_mask} non-transparent pixels but only {underlay_pixels_in_region} matched its terminal reveal layers",
                         route_label(route)
                     );
-                    underlay_pixels = underlay_pixels_in_region;
-                    if is_sparse_terminal_reveal(route) {
-                        c6_ensure!(
-                            "route-png-proof",
-                            underlay_pixels_in_region != 0
-                                && underlay_pixels_in_region
-                                    == non_transparent_pixels_at_control_mask,
-                            "{} region {index} retained {non_transparent_pixels_at_control_mask} non-transparent pixels but only {underlay_pixels_in_region} matched its terminal reveal layers",
-                            route_label(route)
-                        );
-                    } else if requires_exact_terminal_reveal(route) {
-                        c6_ensure!(
-                            "route-png-proof",
-                            non_transparent_pixels_at_control_mask == underlay_pixels_in_region,
-                            "{} region {index} retained {non_transparent_pixels_at_control_mask} non-transparent control-mask pixels but only {underlay_pixels_in_region} matched its verified terminal underlay {underlay_colors:?}",
-                            route_label(route)
-                        );
-                    } else {
-                        c6_ensure!(
-                            "route-png-proof",
-                            underlay_pixels_in_region.saturating_mul(100)
-                                >= masked_control_pixels.saturating_mul(MIN_UNDERLAY_MASK_PERCENT),
-                            "{} region {index} did not retain the rendered underlay: {underlay_pixels_in_region}/{masked_control_pixels} pixels",
-                            route_label(route)
-                        );
-                    }
                 } else if requires_exact_terminal_reveal(route) {
-                    require_exact_terminal_reveal_mask(non_transparent_pixels_at_control_mask, 0)?;
+                    c6_ensure!(
+                        "route-png-proof",
+                        non_transparent_pixels_at_control_mask == underlay_pixels_in_region,
+                        "{} region {index} retained {non_transparent_pixels_at_control_mask} non-transparent control-mask pixels but only {underlay_pixels_in_region} matched its verified terminal underlay {underlay_colors:?}",
+                        route_label(route)
+                    );
                 } else {
                     c6_ensure!(
                         "route-png-proof",
-                        non_transparent_pixels_at_control_mask <= maximum_non_transparent,
-                        "{} region {index} retained {non_transparent_pixels_at_control_mask} non-transparent pixels at control positions; maximum={maximum_non_transparent}",
+                        underlay_pixels_in_region.saturating_mul(100)
+                            >= masked_control_pixels.saturating_mul(MIN_UNDERLAY_MASK_PERCENT),
+                        "{} region {index} did not retain the rendered underlay: {underlay_pixels_in_region}/{masked_control_pixels} pixels",
                         route_label(route)
                     );
                 }
+            } else if requires_exact_terminal_reveal(route) {
+                require_exact_terminal_reveal_mask(non_transparent_pixels_at_control_mask, 0)?;
             } else {
-                if !underlay_matches.is_empty() {
-                    let (underlay_control_pixels, underlay_pixels_in_region) = transparent
-                        .raster
-                        .control_mask_colors_counts_in_svg_rect(
-                            &solid.raster,
-                            solid.svg_view_box,
-                            region,
-                            (color.rgb, COLOR_TOLERANCE),
-                            &underlay_matches,
-                            exclusions,
-                        )
-                        .ok_or_else(|| {
-                            C6ProofError::new("route-png-proof", "invalid stroke underlay region")
-                        })?;
-                    c6_ensure!(
-                        "route-png-proof",
-                        underlay_control_pixels == masked_control_pixels,
-                        "{} region {index} stroke underlay mask differs: {underlay_control_pixels} != {masked_control_pixels}",
-                        route_label(route)
-                    );
-                    underlay_pixels = underlay_pixels_in_region;
-                }
-                unexpected_opaque_pixels = require_transparent_stroke_mask_for_region(
-                    route,
-                    index,
-                    masked_control_pixels,
-                    non_transparent_pixels_at_control_mask,
-                    underlay_pixels,
-                )?;
+                c6_ensure!(
+                    "route-png-proof",
+                    non_transparent_pixels_at_control_mask <= maximum_non_transparent,
+                    "{} region {index} retained {non_transparent_pixels_at_control_mask} non-transparent pixels at control positions; maximum={maximum_non_transparent}",
+                    route_label(route)
+                );
             }
-            append_rect(&mut value, region);
-            value.extend_from_slice(&usize_to_u64(exclusions.len()).to_be_bytes());
-            for exclusion in exclusions {
-                append_rect(&mut value, *exclusion);
+        } else {
+            if !underlay_matches.is_empty() {
+                let (underlay_control_pixels, underlay_pixels_in_region) = transparent
+                    .raster
+                    .control_mask_colors_counts_in_svg_rect(
+                        &solid.raster,
+                        solid.proof_viewport,
+                        region,
+                        (color.rgb, COLOR_TOLERANCE),
+                        &underlay_matches,
+                        exclusions,
+                    )
+                    .ok_or_else(|| {
+                        C6ProofError::new("route-png-proof", "invalid stroke underlay region")
+                    })?;
+                c6_ensure!(
+                    "route-png-proof",
+                    underlay_control_pixels == masked_control_pixels,
+                    "{} region {index} stroke underlay mask differs: {underlay_control_pixels} != {masked_control_pixels}",
+                    route_label(route)
+                );
+                underlay_pixels = underlay_pixels_in_region;
             }
-            value.extend_from_slice(&usize_to_u64(solid_count).to_be_bytes());
-            value.extend_from_slice(&usize_to_u64(transparent_region_count).to_be_bytes());
-            value.extend_from_slice(&usize_to_u64(masked_control_pixels).to_be_bytes());
-            value.extend_from_slice(
-                &usize_to_u64(non_transparent_pixels_at_control_mask).to_be_bytes(),
-            );
-            value.extend_from_slice(&usize_to_u64(underlay_colors.len()).to_be_bytes());
-            for underlay in underlay_colors {
-                value.extend_from_slice(underlay);
-            }
-            value.extend_from_slice(&usize_to_u64(underlay_pixels).to_be_bytes());
-            value.extend_from_slice(&usize_to_u64(unexpected_opaque_pixels).to_be_bytes());
+            unexpected_opaque_pixels = require_transparent_stroke_mask_for_region(
+                route,
+                index,
+                masked_control_pixels,
+                non_transparent_pixels_at_control_mask,
+                underlay_pixels,
+            )?;
         }
-        value.extend_from_slice(&solid_dimensions.0.to_be_bytes());
-        value.extend_from_slice(&solid_dimensions.1.to_be_bytes());
-        value.extend_from_slice(&transparent_dimensions.0.to_be_bytes());
-        value.extend_from_slice(&transparent_dimensions.1.to_be_bytes());
-        if let Some(marker_assertion) = marker_assertion {
-            value.extend_from_slice(&marker_assertion);
+        append_rect(&mut observation, region);
+        observation.extend_from_slice(&usize_to_u64(exclusions.len()).to_be_bytes());
+        for exclusion in exclusions {
+            append_rect(&mut observation, *exclusion);
         }
+        observation.extend_from_slice(&usize_to_u64(solid_count).to_be_bytes());
+        observation.extend_from_slice(&usize_to_u64(transparent_region_count).to_be_bytes());
+        observation.extend_from_slice(&usize_to_u64(masked_control_pixels).to_be_bytes());
+        observation
+            .extend_from_slice(&usize_to_u64(non_transparent_pixels_at_control_mask).to_be_bytes());
+        observation.extend_from_slice(&usize_to_u64(underlay_colors.len()).to_be_bytes());
+        for underlay in underlay_colors {
+            observation.extend_from_slice(underlay);
+        }
+        observation.extend_from_slice(&usize_to_u64(underlay_pixels).to_be_bytes());
+        observation.extend_from_slice(&usize_to_u64(unexpected_opaque_pixels).to_be_bytes());
+    }
+    observation.extend_from_slice(&solid_dimensions.0.to_be_bytes());
+    observation.extend_from_slice(&solid_dimensions.1.to_be_bytes());
+    observation.extend_from_slice(&transparent_dimensions.0.to_be_bytes());
+    observation.extend_from_slice(&transparent_dimensions.1.to_be_bytes());
+    if let Some(marker_assertion) = marker_assertion {
+        observation.extend_from_slice(&marker_assertion);
+    }
+
+    let mut assertions = BTreeMap::new();
+    for route in [solid_route, transparent_route] {
+        let mut value = b"merman.c6-route-png-assertion.v5\0".to_vec();
+        append_route(&mut value, route);
+        value.extend_from_slice(&observation);
         assertions.insert(route, sha256(value));
     }
     Ok(assertions)
@@ -344,7 +344,7 @@ fn is_sparse_terminal_reveal(route: ThemeRouteCutoverDescriptor) -> bool {
 
 fn requires_exact_terminal_reveal(route: ThemeRouteCutoverDescriptor) -> bool {
     route.facet() == ThemeRouteCutoverFacet::Fill
-        && matches!(
+        && (matches!(
             (route.family_id(), route.target()),
             (
                 DiagramFamilyId::ZENUML | DiagramFamilyId::VENN,
@@ -353,7 +353,7 @@ fn requires_exact_terminal_reveal(route: ThemeRouteCutoverDescriptor) -> bool {
                 DiagramFamilyId::ISHIKAWA | DiagramFamilyId::EVENT_MODELING,
                 ThemeTarget::Text
             ) | (DiagramFamilyId::GANTT, ThemeTarget::Task)
-        )
+        ) || is_info_text_fill_route(route))
 }
 
 fn require_exact_terminal_reveal_mask(

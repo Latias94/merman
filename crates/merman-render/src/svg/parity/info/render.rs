@@ -53,10 +53,18 @@ pub(crate) fn render_info_diagram_svg(
     }
     let _ = write!(
         &mut out,
-        r#"<g><text x="{}" y="{}" class="version" font-size="{}" style="text-anchor: middle;">{}</text></g>"#,
+        r#"<g><text x="{}" y="{}" class="version" font-size="{}""#,
         fmt(version.x()),
         fmt(version.y()),
         fmt(version.font_size_px()),
+    );
+    let version_fill_css = typography_theme.version_fill_css();
+    if let Some(fill_css) = version_fill_css {
+        let _ = write!(&mut out, r#" fill="{}""#, escape_xml(fill_css));
+    }
+    let _ = write!(
+        &mut out,
+        r#" style="text-anchor: middle;">{}</text></g>"#,
         escape_xml(version.text())
     );
     out.checkpoint()?;
@@ -66,6 +74,7 @@ pub(crate) fn render_info_diagram_svg(
         version.font_size_px(),
         version.x(),
         version.y(),
+        version_fill_css,
     );
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;

@@ -318,6 +318,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
+        (DiagramFamilyId::INFO, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_FILLS)
         }
@@ -1065,6 +1068,18 @@ pub(super) fn classify_rule_facet(
                 variant: None | Some(ThemeVariant::Default)
             }
         )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::INFO
+        && target == ThemeTarget::Text
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -4749,6 +4764,16 @@ mod tests {
 
         assert_eq!(
             disposition(DiagramFamilyId::INFO, ThemeTarget::Text),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        let explicit_default = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").expect("valid Info terminal fill")),
+        )
+        .with_variant(ThemeVariant::Default);
+        assert_eq!(
+            compile_rule_routes(DiagramFamilyId::INFO, 0, &explicit_default)[0].disposition(),
             FamilyThemeDisposition::LegacyCompatibility
         );
         assert_eq!(

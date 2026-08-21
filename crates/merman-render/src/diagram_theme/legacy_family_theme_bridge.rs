@@ -2583,23 +2583,14 @@ mod tests {
                     .contains(&format!("{prefix}.title.fill")),
                 "{family} has no Title terminal and must not retain a Title bridge"
             );
-            if family == DiagramFamilyId::INFO {
-                assert!(
-                    artifact
-                        .contribution_ids
-                        .contains(&format!("{prefix}.text.fill")),
-                    "Info .version inherits the real textColor bridge"
-                );
-            } else {
-                assert!(
-                    !artifact
-                        .contribution_ids
-                        .contains(&format!("{prefix}.text.fill")),
-                    "Error .error-text reads errorTextColor, not generic textColor"
-                );
-                assert!(artifact.overlay.is_empty());
-                assert!(artifact.contribution_ids.is_empty());
-            }
+            assert!(
+                !artifact
+                    .contribution_ids
+                    .contains(&format!("{prefix}.text.fill")),
+                "Info and Error text paint must not recreate a legacy contribution"
+            );
+            assert!(artifact.overlay.is_empty());
+            assert!(artifact.contribution_ids.is_empty());
         }
     }
 

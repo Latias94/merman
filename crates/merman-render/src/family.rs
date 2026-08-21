@@ -1,9 +1,13 @@
 mod capability;
+mod direct_static_paint;
 mod evidence_support;
 mod inherited_font_stack;
 mod preparation;
 
 pub use capability::{RenderCapabilityPlan, plan_render};
+pub(crate) use direct_static_paint::{
+    DirectStaticPaint, DirectStaticSelectorDomain, resolve_direct_static_fill,
+};
 pub(crate) use evidence_support::{
     TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,

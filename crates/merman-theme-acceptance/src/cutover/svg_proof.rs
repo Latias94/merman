@@ -1,8 +1,8 @@
 use super::*;
 
 mod deep_family_paint;
-mod final_four_family_paint;
 mod sequence_role_paint_proof;
+mod terminal_paint;
 
 fn visible_text_content(node: roxmltree::Node<'_, '_>) -> String {
     node.descendants()
@@ -26,12 +26,16 @@ pub(super) fn prove_svg_routes(
 ) -> C6ProofResult<SvgCutoverProof> {
     let document = roxmltree::Document::parse(svg)
         .map_err(|error| C6ProofError::new("route-svg-parse", error.to_string()))?;
-    let view_box = parse_svg_view_box(
-        document
-            .root_element()
-            .attribute("viewBox")
-            .ok_or_else(|| C6ProofError::new("route-svg-proof", "SVG root lacks a viewBox"))?,
-    )?;
+    let view_box = match document.root_element().attribute("viewBox") {
+        Some(raw) => Some(parse_svg_view_box(raw)?),
+        None if is_info_text_fill_route(case.id.route()) => None,
+        None => {
+            return Err(C6ProofError::new(
+                "route-svg-proof",
+                "SVG root lacks a viewBox",
+            ));
+        }
+    };
     let mut assertions = BTreeMap::new();
     let mut proof_regions = None;
     for &route in routes {
@@ -96,9 +100,10 @@ pub(super) fn prove_svg_routes(
             DiagramFamilyId::ZENUML
             | DiagramFamilyId::VENN
             | DiagramFamilyId::ISHIKAWA
-            | DiagramFamilyId::EVENT_MODELING => {
+            | DiagramFamilyId::EVENT_MODELING
+            | DiagramFamilyId::INFO => {
                 let observation =
-                    final_four_family_paint::final_four_route_observation(&document, route)?;
+                    terminal_paint::terminal_paint_route_observation(&document, route)?;
                 (
                     observation.value,
                     observation.terminal_digest,
@@ -293,10 +298,11 @@ fn target_underlay_colors(
             DiagramFamilyId::ZENUML
             | DiagramFamilyId::VENN
             | DiagramFamilyId::ISHIKAWA
-            | DiagramFamilyId::EVENT_MODELING,
+            | DiagramFamilyId::EVENT_MODELING
+            | DiagramFamilyId::INFO,
             _,
             ThemeRouteCutoverFacet::Fill,
-        ) => final_four_family_paint::final_four_underlay_colors(document, route, target_regions)?,
+        ) => terminal_paint::terminal_paint_underlay_colors(document, route, target_regions)?,
         (
             DiagramFamilyId::CLASS
             | DiagramFamilyId::ER

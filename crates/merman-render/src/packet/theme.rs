@@ -10,13 +10,13 @@ use merman_core::{
 };
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
-    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeCapability,
+    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -64,13 +64,6 @@ impl PacketRuleObservation {
     }
 }
 
-#[derive(Debug, Clone)]
-struct PacketTypedFill {
-    rule_index: usize,
-    css: Box<str>,
-    capability: ThemeCapability,
-}
-
 impl PacketUnsupportedRoute {
     fn is_applicable(&self, receipt: &PacketSurfaceReceipt) -> bool {
         receipt.occurrence_count(self.target) != 0
@@ -81,9 +74,9 @@ impl PacketUnsupportedRoute {
 #[derive(Debug)]
 pub(crate) struct PacketTypographyThemePlan {
     font_family_css: Box<str>,
-    byte_label_fill: Option<PacketTypedFill>,
-    field_label_fill: Option<PacketTypedFill>,
-    title_fill: Option<PacketTypedFill>,
+    byte_label_fill: Option<DirectStaticPaint>,
+    field_label_fill: Option<DirectStaticPaint>,
+    title_fill: Option<DirectStaticPaint>,
     text_color_ownership: PacketTextColorOwnership,
     evidence: FamilyThemeEvidence,
     outcome: PacketTypographyOutcome,
@@ -143,13 +136,13 @@ impl PacketTypographyThemePlan {
             work_meter,
         )?;
         let byte_label_fill =
-            typed_static_fill(theme, &byte_label_style, &[ThemeTarget::PacketByteLabel]);
-        let field_label_fill = typed_static_fill(
+            packet_direct_static_fill(theme, &byte_label_style, &[ThemeTarget::PacketByteLabel]);
+        let field_label_fill = packet_direct_static_fill(
             theme,
             &field_label_style,
             &[ThemeTarget::Text, ThemeTarget::PacketFieldLabel],
         );
-        let title_fill = typed_static_fill(theme, &title_style, &[ThemeTarget::Title]);
+        let title_fill = packet_direct_static_fill(theme, &title_style, &[ThemeTarget::Title]);
         let terminal_winner_resolver = Some(PacketTerminalWinnerResolver::new(
             theme,
             &byte_label_style,
@@ -192,8 +185,8 @@ impl PacketTypographyThemePlan {
                                 &field_label_fill,
                                 &title_fill,
                             )
-                            .filter(|fill| fill.rule_index == rule_index)
-                            .map(|fill| fill.capability);
+                            .filter(|fill| fill.rule_index() == rule_index)
+                            .map(DirectStaticPaint::capability);
                         }
                         (FamilyThemeDisposition::Unsupported, _, facet) => {
                             observation
@@ -281,7 +274,7 @@ impl PacketTypographyThemePlan {
             &self.field_label_fill,
             &self.title_fill,
         )
-        .map_or(configured_fill, |fill| fill.css.as_ref())
+        .map_or(configured_fill, DirectStaticPaint::css)
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -391,8 +384,11 @@ impl PacketTypographyThemePlan {
             ) else {
                 continue;
             };
-            match receipt.prove_typed_fill(observation.target, &fill.css, self.text_color_ownership)
-            {
+            match receipt.prove_typed_fill(
+                observation.target,
+                fill.css(),
+                self.text_color_ownership,
+            ) {
                 PacketFillProof::NotApplicable => evidence.mark_not_applicable(key.clone()),
                 PacketFillProof::Verified => {
                     evidence.mark_applied_with_capabilities(key.clone(), [capability]);
@@ -430,7 +426,7 @@ impl PacketTypographyThemePlan {
             let Some(fill) = fill else {
                 return Box::new([]);
             };
-            if receipt.prove_typed_fill(target, &fill.css, self.text_color_ownership)
+            if receipt.prove_typed_fill(target, fill.css(), self.text_color_ownership)
                 == PacketFillProof::Unverified
             {
                 return Box::new([]);
@@ -475,11 +471,11 @@ fn has_complete_direct_text_surface_plan(theme: &ResolvedDiagramTheme) -> bool {
     let field_label_style = theme.style(ThemeTarget::PacketFieldLabel, ThemeVariant::Default, None);
     let text_style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
     let title_style = theme.style(ThemeTarget::Title, ThemeVariant::Default, None);
-    typed_static_fill(theme, &byte_label_style, &[ThemeTarget::PacketByteLabel]).is_some()
-        && (typed_static_fill(theme, &field_label_style, &[ThemeTarget::PacketFieldLabel])
+    packet_direct_static_fill(theme, &byte_label_style, &[ThemeTarget::PacketByteLabel]).is_some()
+        && (packet_direct_static_fill(theme, &field_label_style, &[ThemeTarget::PacketFieldLabel])
             .is_some()
-            || typed_static_fill(theme, &text_style, &[ThemeTarget::Text]).is_some())
-        && typed_static_fill(theme, &title_style, &[ThemeTarget::Title]).is_some()
+            || packet_direct_static_fill(theme, &text_style, &[ThemeTarget::Text]).is_some())
+        && packet_direct_static_fill(theme, &title_style, &[ThemeTarget::Title]).is_some()
         && theme.family_mechanism_routes().iter().any(|route| {
             route.disposition() == FamilyThemeDisposition::TypedAdapter
                 && route.mechanism()
@@ -516,10 +512,10 @@ fn packet_dark_mode_is_canonical(config: &MermaidConfig) -> bool {
 
 fn selected_fill_for_target<'a>(
     target: ThemeTarget,
-    byte_label_fill: &'a Option<PacketTypedFill>,
-    field_label_fill: &'a Option<PacketTypedFill>,
-    title_fill: &'a Option<PacketTypedFill>,
-) -> Option<&'a PacketTypedFill> {
+    byte_label_fill: &'a Option<DirectStaticPaint>,
+    field_label_fill: &'a Option<DirectStaticPaint>,
+    title_fill: &'a Option<DirectStaticPaint>,
+) -> Option<&'a DirectStaticPaint> {
     match target {
         ThemeTarget::PacketByteLabel => byte_label_fill.as_ref(),
         ThemeTarget::Text | ThemeTarget::PacketFieldLabel => field_label_fill.as_ref(),
@@ -528,45 +524,17 @@ fn selected_fill_for_target<'a>(
     }
 }
 
-fn typed_static_fill(
+fn packet_direct_static_fill(
     theme: &ResolvedDiagramTheme,
     style: &crate::diagram_theme::ResolvedThemeStyle,
     accepted_targets: &[ThemeTarget],
-) -> Option<PacketTypedFill> {
-    let origin = style.fill_resolution().winner()?;
-    let rule = theme
-        .family_rules()
-        .find_map(|(index, rule)| (index == origin.rule_index()).then_some(rule))?;
-    if !accepted_targets.contains(&rule.target())
-        || !matches!(rule.variant(), None | Some(ThemeVariant::Default))
-        || rule.ordinal().is_some()
-        || theme.rule_facet_disposition(
-            origin.rule_index(),
-            FamilyThemeRuleFacet::fill(style.fill_resolution().specified())?,
-        ) != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return None;
-    }
-
-    match style.fill_resolution().specified() {
-        Specified::Value(CanvasPaint::Transparent) => Some(PacketTypedFill {
-            rule_index: origin.rule_index(),
-            css: "transparent".into(),
-            capability: ThemeCapability::TransparentPaint,
-        }),
-        Specified::Value(CanvasPaint::Solid(color)) => Some(PacketTypedFill {
-            rule_index: origin.rule_index(),
-            css: color.as_css().into_boxed_str(),
-            capability: ThemeCapability::SolidPaint,
-        }),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(
-            CanvasPaint::LinearGradient(_)
-            | CanvasPaint::RadialGradient(_)
-            | CanvasPaint::Pattern(_),
-        ) => None,
-    }
+) -> Option<DirectStaticPaint> {
+    resolve_direct_static_fill(
+        theme,
+        style,
+        accepted_targets,
+        DirectStaticSelectorDomain::Default,
+    )
 }
 
 const fn selector_intersects_default_variant(selector: FamilyThemeSelectorShape) -> bool {
@@ -599,8 +567,9 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, MermaidThemeCompatibility,
-        ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle, TypographySpec,
+        CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+        MermaidThemeCompatibility, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle,
+        TypographySpec,
     };
 
     fn typed_packet_plan() -> PacketTypographyThemePlan {
