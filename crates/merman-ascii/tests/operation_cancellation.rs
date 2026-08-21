@@ -304,7 +304,7 @@ fn sequence_projection_observes_cancellation_at_semantic_checkpoint() {
 fn class_resource_admission_observes_cancellation_before_layout_work_failure() {
     let model = parse_model("classDiagram\nclass A\n");
     let control = OperationControl::new();
-    control.cancel_after_checkpoints(3);
+    control.cancel_after_checkpoints(2);
 
     let error = render_controlled_model(
         &model,
@@ -329,7 +329,7 @@ fn class_resource_admission_observes_cancellation_before_layout_work_failure() {
 fn er_resource_admission_observes_cancellation_before_layout_work_failure() {
     let model = parse_model("erDiagram\nA {\n  string id\n}\n");
     let control = OperationControl::new();
-    control.cancel_after_checkpoints(3);
+    control.cancel_after_checkpoints(2);
 
     let error = render_controlled_model(
         &model,
