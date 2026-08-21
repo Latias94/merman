@@ -10,12 +10,14 @@ use crate::diagram_theme::{
     ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 pub(crate) const MINDMAP_SECTION_COUNT: usize = 11;
+const MINDMAP_LABEL_RULE_TARGETS: [ThemeTarget; 2] = [ThemeTarget::Text, ThemeTarget::NodeLabel];
 const MINDMAP_THEME_COLOR_LIMIT_DEFAULT: usize = MINDMAP_SECTION_COUNT + 1;
 const MINDMAP_COLOR_SCALE_PATHS: [&str; MINDMAP_SECTION_COUNT] = [
     "themeVariables.cScale1",
@@ -256,6 +258,24 @@ impl MindmapNodePalettePlan {
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         plan.resolve_node_palette(theme, visited, work_meter)?;
         plan.resolve_edge_stroke(theme, work_meter)?;
+        let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut plan.evidence,
+            &[
+                UnsupportedTerminalDomain::textual(
+                    ThemeTarget::NodeLabel,
+                    &MINDMAP_LABEL_RULE_TARGETS,
+                    TerminalVariantDomain::uniform(model.nodes.len(), ThemeVariant::Default),
+                ),
+                UnsupportedTerminalDomain::direct(ThemeTarget::Title, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::Marker, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::EdgeLabelBackground, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
+            ],
+            work_meter,
+        )?;
         Ok(plan)
     }
 
@@ -988,6 +1008,83 @@ mod tests {
                 capability: ThemeCapability::TransparentPaint,
             }
         );
+    }
+
+    #[test]
+    fn visible_label_terminal_reconciles_text_and_node_label_winners() {
+        let styles = ThemeRuleSet::default()
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#111111").unwrap()),
+                )
+                .for_family(DiagramFamilyId::MINDMAP),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#222222").unwrap()),
+                )
+                .for_family(DiagramFamilyId::MINDMAP),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile Mindmap label terminal fixture")
+            .resolve(DiagramFamilyId::MINDMAP);
+        let config = effective_config(json!({}));
+        let model = model_with_sections([None]);
+
+        let evidence =
+            MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &work_meter())
+                .expect("resolve Mindmap label terminal evidence")
+                .finish_evidence();
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Text,
+            }]
+        );
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &FamilyThemeMechanismKey::Rule {
+                index: 1,
+                target: ThemeTarget::NodeLabel,
+            }
+        );
+    }
+
+    #[test]
+    fn terminal_less_mindmap_title_is_not_applicable() {
+        let styles = ThemeRuleSet::default().with_rule(
+            ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .for_family(DiagramFamilyId::MINDMAP),
+        );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile terminal-less Mindmap title fixture")
+            .resolve(DiagramFamilyId::MINDMAP);
+        let config = effective_config(json!({}));
+        let model = model_with_sections([None]);
+
+        let evidence =
+            MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &work_meter())
+                .expect("resolve terminal-less Mindmap title evidence")
+                .finish_evidence();
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Title,
+            }]
+        );
+        assert!(evidence.residuals().is_empty());
     }
 
     #[test]

@@ -1485,8 +1485,8 @@ mod tests {
     #[test]
     fn route_authorization_binds_manifest_and_aggregate_report_digests() {
         let baseline = RouteCutoverAuthorizationReceipt::for_test([1; 32], [2; 32]);
-        let changed_manifest = RouteCutoverAuthorizationReceipt::for_test([3; 32], [2; 32]);
-        let changed_report = RouteCutoverAuthorizationReceipt::for_test([1; 32], [4; 32]);
+        let changed_manifest = RouteCutoverAuthorizationReceipt::for_test([5; 32], [2; 32]);
+        let changed_report = RouteCutoverAuthorizationReceipt::for_test([1; 32], [6; 32]);
 
         assert_ne!(baseline.digest(), changed_manifest.digest());
         assert_ne!(baseline.digest(), changed_report.digest());

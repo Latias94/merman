@@ -5,6 +5,7 @@ mod preparation;
 
 pub use capability::{RenderCapabilityPlan, plan_render};
 pub(crate) use evidence_support::{
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 pub(crate) use inherited_font_stack::{
@@ -655,6 +656,8 @@ struct FamilyRenderContext {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FamilyThemeEvidence {
     required: Vec<FamilyThemeMechanismKey>,
+    required_index: BTreeSet<FamilyThemeMechanismKey>,
+    accounted_index: BTreeSet<FamilyThemeMechanismKey>,
     applied: Vec<FamilyThemeMechanismKey>,
     applied_capabilities: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     not_applicable: Vec<FamilyThemeMechanismKey>,
@@ -666,8 +669,11 @@ impl FamilyThemeEvidence {
         let Some(theme) = theme else {
             return Self::default();
         };
+        let required = theme.family_mechanism_keys();
         Self {
-            required: theme.family_mechanism_keys(),
+            required_index: required.iter().cloned().collect(),
+            required,
+            accounted_index: BTreeSet::new(),
             applied: Vec::new(),
             applied_capabilities: BTreeMap::new(),
             not_applicable: Vec::new(),
@@ -688,7 +694,7 @@ impl FamilyThemeEvidence {
         key: FamilyThemeMechanismKey,
         capabilities: impl IntoIterator<Item = ThemeCapability>,
     ) {
-        if self.required.contains(&key) && !self.is_accounted(&key) {
+        if self.required_index.contains(&key) && self.accounted_index.insert(key.clone()) {
             let capabilities = capabilities.into_iter().collect::<BTreeSet<_>>();
             self.applied.push(key.clone());
             self.applied_capabilities.insert(key, capabilities);
@@ -696,7 +702,7 @@ impl FamilyThemeEvidence {
     }
 
     pub(crate) fn mark_not_applicable(&mut self, key: FamilyThemeMechanismKey) {
-        if self.required.contains(&key) && !self.is_accounted(&key) {
+        if self.required_index.contains(&key) && self.accounted_index.insert(key.clone()) {
             self.not_applicable.push(key);
         }
     }
@@ -706,7 +712,7 @@ impl FamilyThemeEvidence {
         key: FamilyThemeMechanismKey,
         reason: FamilyThemeResidualReason,
     ) {
-        if self.required.contains(&key) && !self.is_accounted(&key) {
+        if self.required_index.contains(&key) && self.accounted_index.insert(key.clone()) {
             self.residuals.push(FamilyThemeResidual { key, reason });
         }
     }
@@ -789,12 +795,6 @@ impl FamilyThemeEvidence {
                 self.residuals.push(FamilyThemeResidual { key, reason });
             }
         }
-    }
-
-    fn is_accounted(&self, key: &FamilyThemeMechanismKey) -> bool {
-        self.applied.contains(key)
-            || self.not_applicable.contains(key)
-            || self.residuals.iter().any(|residual| residual.key == *key)
     }
 
     pub(crate) fn applied_capabilities(&self) -> BTreeSet<ThemeCapability> {
@@ -2202,14 +2202,15 @@ impl BuiltinFamilyArtifact {
     fn class_theme_evidence(
         &self,
         theme: Option<&ResolvedDiagramTheme>,
-    ) -> Option<FamilyThemeEvidence> {
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<Option<FamilyThemeEvidence>> {
         match self {
-            Self::Class(artifact) => Some(
-                artifact
-                    .theme_evidence()
-                    .finish(theme, artifact.relation_theme()),
-            ),
-            _ => None,
+            Self::Class(artifact) => Ok(Some(artifact.theme_evidence().finish(
+                theme,
+                artifact.relation_theme(),
+                work_meter,
+            )?)),
+            _ => Ok(None),
         }
     }
 
@@ -3105,9 +3106,10 @@ impl FamilyRenderArtifact {
         let sequence_theme_evidence = self
             .family
             .sequence_theme_evidence(self.context.resolved_theme());
-        let class_theme_evidence = self
-            .family
-            .class_theme_evidence(self.context.resolved_theme());
+        let class_theme_evidence = self.family.class_theme_evidence(
+            self.context.resolved_theme(),
+            self.context.session().work_meter().as_ref(),
+        )?;
         let kanban_theme_evidence = self.family.kanban_theme_evidence();
         let gantt_theme_evidence = self.family.gantt_theme_evidence();
         let pie_theme_evidence = self.family.pie_theme_evidence();

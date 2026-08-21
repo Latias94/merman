@@ -7,8 +7,9 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -106,6 +107,7 @@ impl ClassRelationThemePlan {
                 .map(|(property, origin)| ((ThemeTarget::Node, property), origin.rule_index())),
         );
         let mut ordinal_winner_rules = BTreeSet::new();
+        let mut has_applicable_ordinal_stroke_winner = false;
         for (target, target_count) in [
             (ThemeTarget::Edge, relation_count),
             (ThemeTarget::Node, node_count),
@@ -123,20 +125,15 @@ impl ClassRelationThemePlan {
                     Some(ordinal),
                     work_meter,
                 )?;
-                ordinal_winner_rules.extend(
-                    ordinal_style
-                        .winner_rule_properties()
-                        .into_iter()
-                        .map(|(property, origin)| (target, origin.rule_index(), property)),
-                );
+                for (property, origin) in ordinal_style.winner_rule_properties() {
+                    has_applicable_ordinal_stroke_winner |= target == ThemeTarget::Edge
+                        && property == ResolvedStyleProperty::Stroke
+                        && origin.ordinal().is_some();
+                    ordinal_winner_rules.insert((target, origin.rule_index(), property));
+                }
             }
         }
-        let has_ordinal_stroke_rules = theme.family_rules().any(|(_, rule)| {
-            rule.target() == ThemeTarget::Edge
-                && rule.ordinal().is_some()
-                && !matches!(rule.style().stroke.paint, Specified::Unspecified)
-        });
-        let stroke = if has_ordinal_stroke_rules {
+        let stroke = if has_applicable_ordinal_stroke_winner {
             None
         } else {
             typed_stroke_expectation(theme, &style, mermaid_owns_stroke)
@@ -320,14 +317,23 @@ fn typed_stroke_expectation(
 pub(crate) struct ClassThemeEvidenceRecorder {
     expected_relation_paths: usize,
     node_count: usize,
+    cluster_label_count: usize,
+    table_group_lengths: Vec<usize>,
     terminal_receipt: OnceLock<ClassRelationThemeReceipt>,
 }
 
 impl ClassThemeEvidenceRecorder {
-    pub(crate) fn new(expected_relation_paths: usize, node_count: usize) -> Self {
+    pub(crate) fn new(
+        expected_relation_paths: usize,
+        node_count: usize,
+        cluster_label_count: usize,
+        table_group_lengths: Vec<usize>,
+    ) -> Self {
         Self {
             expected_relation_paths,
             node_count,
+            cluster_label_count,
+            table_group_lengths,
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -345,10 +351,11 @@ impl ClassThemeEvidenceRecorder {
         &self,
         theme: Option<&ResolvedDiagramTheme>,
         plan: &ClassRelationThemePlan,
-    ) -> FamilyThemeEvidence {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<FamilyThemeEvidence, OperationWorkError> {
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
         let Some(theme) = theme else {
-            return evidence;
+            return Ok(evidence);
         };
         let receipt = self.terminal_receipt.get();
         let has_relations = self.expected_relation_paths != 0;
@@ -494,7 +501,35 @@ impl ClassThemeEvidenceRecorder {
             }
         }
 
-        evidence
+        let mut unsupported_domains = Vec::with_capacity(3);
+        if let Some(marker_count) =
+            receipt.and_then(ClassRelationThemeReceipt::visible_marker_occurrence_count)
+        {
+            unsupported_domains.push(UnsupportedTerminalDomain::direct(
+                ThemeTarget::Marker,
+                TerminalVariantDomain::uniform(marker_count, ThemeVariant::Default),
+            ));
+        }
+        unsupported_domains.push(UnsupportedTerminalDomain::direct(
+            ThemeTarget::ClusterLabel,
+            TerminalVariantDomain::uniform(self.cluster_label_count, ThemeVariant::Default),
+        ));
+        unsupported_domains.push(UnsupportedTerminalDomain::direct(
+            ThemeTarget::Table,
+            TerminalVariantDomain::grouped_alternating(
+                &self.table_group_lengths,
+                ThemeVariant::Odd,
+                ThemeVariant::Even,
+            ),
+        ));
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &unsupported_domains,
+            work_meter,
+        )?;
+
+        Ok(evidence)
     }
 }
 
@@ -509,6 +544,31 @@ struct ClassRuleObservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
+    use crate::resources::RenderResourcePolicy;
+
+    fn work_meter() -> OperationWorkMeter {
+        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
+    }
+
+    fn resolved_fill(target: ThemeTarget, variant: Option<ThemeVariant>) -> ResolvedDiagramTheme {
+        let mut rule = ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .for_family(DiagramFamilyId::CLASS);
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .expect("compile Class terminal fixture")
+            .resolve(DiagramFamilyId::CLASS)
+    }
 
     #[test]
     fn relation_width_receipt_requires_every_terminal_checkpoint() {
@@ -545,9 +605,76 @@ mod tests {
             }
             receipt
         };
-        let recorder = ClassThemeEvidenceRecorder::new(2, 0);
+        let recorder = ClassThemeEvidenceRecorder::new(2, 0, 0, Vec::new());
         assert!(!recorder.record_terminal(complete_receipt(1)));
         assert!(recorder.record_terminal(complete_receipt(2)));
         assert!(!recorder.record_terminal(complete_receipt(2)));
+    }
+
+    #[test]
+    fn visible_relation_marker_keeps_unsupported_paint_as_a_residual() {
+        let theme = resolved_fill(ThemeTarget::Marker, None);
+        let recorder = ClassThemeEvidenceRecorder::new(1, 0, 0, Vec::new());
+        let mut receipt = ClassRelationThemeReceipt::new(
+            vec![ClassRelationTerminalExpectation::new(
+                0,
+                Some("extensionStart"),
+                None,
+            )],
+            vec![ClassMarkerTerminalExpectation::new("extensionStart", false)],
+            None,
+            false,
+        );
+        receipt.record_marker("extensionStart", false, None, None);
+        receipt.record_relation(0, Some("extensionStart"), None, None, ";;;", None, false);
+        assert!(recorder.record_terminal(receipt));
+
+        let evidence = recorder
+            .finish(
+                Some(&theme),
+                &ClassRelationThemePlan::default(),
+                &work_meter(),
+            )
+            .expect("reconcile visible Class marker evidence");
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Marker,
+            }
+        );
+    }
+
+    #[test]
+    fn table_odd_even_variants_restart_for_each_member_group() {
+        let odd_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Odd));
+        let odd_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, vec![1, 1]);
+        let odd_evidence = odd_recorder
+            .finish(
+                Some(&odd_theme),
+                &ClassRelationThemePlan::default(),
+                &work_meter(),
+            )
+            .expect("reconcile Class odd table evidence");
+        assert_eq!(odd_evidence.residuals().len(), 1);
+
+        let even_theme = resolved_fill(ThemeTarget::Table, Some(ThemeVariant::Even));
+        let even_recorder = ClassThemeEvidenceRecorder::new(0, 0, 0, vec![1, 1]);
+        let even_evidence = even_recorder
+            .finish(
+                Some(&even_theme),
+                &ClassRelationThemePlan::default(),
+                &work_meter(),
+            )
+            .expect("reconcile Class even table evidence");
+        assert!(even_evidence.residuals().is_empty());
+        assert_eq!(
+            even_evidence.not_applicable_mechanisms(),
+            &[crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Table,
+            }]
+        );
     }
 }

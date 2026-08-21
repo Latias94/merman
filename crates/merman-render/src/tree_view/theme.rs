@@ -11,8 +11,9 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
@@ -44,7 +45,7 @@ impl TreeViewEdgeThemePlan {
         let Some(theme) = theme else {
             return Ok(Self::baseline(0));
         };
-        let expected_line_count = tree_view_line_count(&model.root);
+        let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
 
         let mermaid_owns_line_thickness =
             merman_core::__private::config_path_overrides_typed_default(
@@ -212,6 +213,23 @@ impl TreeViewEdgeThemePlan {
             }
         }
 
+        let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Node,
+                    TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
+                ),
+                UnsupportedTerminalDomain::direct(ThemeTarget::Title, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::EdgeLabelBackground, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
+            ],
+            work_meter,
+        )?;
+
         Ok(Self {
             line_thickness_override,
             expected_line_count,
@@ -325,17 +343,19 @@ fn has_direct_static_stroke_width_route(
         })
 }
 
-fn tree_view_line_count(root: &TreeViewNode) -> usize {
+fn tree_view_terminal_counts(root: &TreeViewNode) -> (usize, usize) {
+    let mut node_count = 0usize;
     let mut line_count = 0usize;
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
+        node_count = node_count.saturating_add(1);
         line_count = line_count.saturating_add(1);
         if !node.children.is_empty() {
             line_count = line_count.saturating_add(1);
         }
         stack.extend(node.children.iter());
     }
-    line_count
+    (node_count, line_count)
 }
 
 /// Writer-owned proof that every Tree View line emitted the resolved terminal width once.
@@ -388,7 +408,31 @@ struct TreeViewEdgeRuleObservation {
 
 #[cfg(test)]
 mod tests {
-    use super::TreeViewEdgeStrokeWidthThemeReceipt;
+    use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
+    use crate::resources::RenderResourcePolicy;
+
+    fn work_meter() -> OperationWorkMeter {
+        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
+    }
+
+    fn resolved_fill(target: ThemeTarget) -> ResolvedDiagramTheme {
+        let styles = ThemeRuleSet::default().with_rule(
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .for_family(DiagramFamilyId::TREE_VIEW),
+        );
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile TreeView terminal fixture")
+            .resolve(DiagramFamilyId::TREE_VIEW)
+    }
 
     #[test]
     fn edge_width_receipt_requires_ordered_matching_terminal_lines() {
@@ -413,5 +457,57 @@ mod tests {
         let mut mismatch = TreeViewEdgeStrokeWidthThemeReceipt::new(1, "5.9999995".into());
         mismatch.record_checkpointed_line(0, Some("6"));
         assert!(!mismatch.proves(1));
+    }
+
+    #[test]
+    fn visible_tree_node_keeps_unsupported_fill_as_a_residual() {
+        let theme = resolved_fill(ThemeTarget::Node);
+        let model = TreeViewDiagramRenderModel::default();
+
+        let evidence = TreeViewEdgeThemePlan::resolve(
+            Some(&theme),
+            &merman_core::MermaidConfig::default(),
+            &model,
+            &work_meter(),
+        )
+        .expect("resolve visible TreeView Node evidence")
+        .finish_evidence();
+
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }
+        );
+        assert!(evidence.not_applicable_mechanisms().is_empty());
+    }
+
+    #[test]
+    fn tree_view_model_title_is_not_a_visible_title_terminal() {
+        let theme = resolved_fill(ThemeTarget::Title);
+        let model = TreeViewDiagramRenderModel {
+            title: Some("Not rendered".to_string()),
+            ..Default::default()
+        };
+
+        let evidence = TreeViewEdgeThemePlan::resolve(
+            Some(&theme),
+            &merman_core::MermaidConfig::default(),
+            &model,
+            &work_meter(),
+        )
+        .expect("resolve terminal-less TreeView title evidence")
+        .finish_evidence();
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Title,
+            }]
+        );
+        assert!(evidence.residuals().is_empty());
     }
 }

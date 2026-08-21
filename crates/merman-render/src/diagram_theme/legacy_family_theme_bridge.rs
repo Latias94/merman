@@ -6,19 +6,34 @@ use merman_core::__private::{
 };
 use merman_core::{MermaidConfig, OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use sha2::{Digest as _, Sha256};
 
 use crate::DiagramFamilyId;
 use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
 use super::canvas::CanvasPaint;
-use super::family_mechanism_matrix::{FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES};
+use super::family_mechanism_matrix::{
+    FamilyThemeDisposition, FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES,
+};
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
 use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyProperty};
 use super::semantic::{ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
 
-#[cfg(test)]
-use super::DiagramThemeSpec;
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use super::family_mechanism_matrix::{
+    FamilyThemePaintKind, FamilyThemeSelectorShape, classify_rule_facet,
+};
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use super::legacy_projection_retirement::{
+    ThemeLegacyProjectionRetirementDescriptor, ThemeLegacyProjectionRetirementInventoryError,
+    ThemeLegacyProjectionRetirementReceipt, ThemeLegacyRouteFacet, ThemeLegacyRouteSelector,
+    ThemeLegacyRouteValue, descriptor_digest, legacy_projection_retirement_descriptors,
+    route_has_retired_legacy_projection,
+};
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use super::{DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
 const EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID: &str = "marker.paint";
@@ -42,8 +57,10 @@ struct LegacyFamilyThemeBridgeInner {
 #[derive(Debug)]
 struct LegacyFamilyThemeArtifact {
     overlay: ThemeFamilyCompatibilityOverlay,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
     contribution_ids: BTreeSet<String>,
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
+    accepted_path_count: usize,
 }
 
 impl LegacyFamilyThemeBridge {
@@ -192,14 +209,153 @@ fn compile_selected_family(
         DiagramFamilyId::STATE => {}
         _ => {}
     }
-    let (overlay, contribution_ids) = builder.finish();
-    #[cfg(not(test))]
-    let _ = &contribution_ids;
+    let (overlay, contribution_ids, accepted_path_count) = builder.finish();
+    #[cfg(not(any(test, feature = "internal-theme-acceptance")))]
+    let _ = (&contribution_ids, accepted_path_count);
     LegacyFamilyThemeArtifact {
         overlay,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "internal-theme-acceptance"))]
         contribution_ids,
+        #[cfg(any(test, feature = "internal-theme-acceptance"))]
+        accepted_path_count,
     }
+}
+
+/// Seals the exact compatibility routes retired because their historical projections have no
+/// family-owned consumer. The probes exercise the real matrix and bridge with both atomic paint
+/// value classes; acceptance only reconciles the resulting opaque receipts.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+pub(crate) fn legacy_projection_retirement_receipts() -> Result<
+    Vec<ThemeLegacyProjectionRetirementReceipt>,
+    ThemeLegacyProjectionRetirementInventoryError,
+> {
+    let descriptors = legacy_projection_retirement_descriptors();
+    let mut unique = BTreeSet::new();
+    let mut receipts = Vec::with_capacity(descriptors.len());
+
+    for descriptor in descriptors {
+        if !unique.insert(descriptor.id()) {
+            return Err(ThemeLegacyProjectionRetirementInventoryError::new(
+                descriptor,
+                None,
+                "duplicate route descriptor",
+            ));
+        }
+        if descriptor.former_projections().is_empty() {
+            return Err(ThemeLegacyProjectionRetirementInventoryError::new(
+                descriptor,
+                None,
+                "former projection set is empty",
+            ));
+        }
+
+        let transparent =
+            probe_legacy_projection_retirement(descriptor, ThemeLegacyRouteValue::Transparent)?;
+        let solid = probe_legacy_projection_retirement(descriptor, ThemeLegacyRouteValue::Solid)?;
+        receipts.push(ThemeLegacyProjectionRetirementReceipt::seal(
+            descriptor,
+            transparent,
+            solid,
+        )?);
+    }
+
+    Ok(receipts)
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn probe_legacy_projection_retirement(
+    descriptor: ThemeLegacyProjectionRetirementDescriptor,
+    value: ThemeLegacyRouteValue,
+) -> Result<[u8; 32], ThemeLegacyProjectionRetirementInventoryError> {
+    let id = descriptor.id();
+    let selector = FamilyThemeSelectorShape::Static {
+        variant: id.selector().variant(),
+    };
+    let paint_kind = match value {
+        ThemeLegacyRouteValue::Transparent => FamilyThemePaintKind::Transparent,
+        ThemeLegacyRouteValue::Solid => FamilyThemePaintKind::Solid,
+    };
+    let facet = match id.facet() {
+        ThemeLegacyRouteFacet::Fill => FamilyThemeRuleFacet::Fill(paint_kind),
+        ThemeLegacyRouteFacet::Stroke => FamilyThemeRuleFacet::Stroke(paint_kind),
+    };
+
+    if !route_has_retired_legacy_projection(id.family_id(), id.target(), selector, facet) {
+        return Err(ThemeLegacyProjectionRetirementInventoryError::new(
+            descriptor,
+            Some(value),
+            "route is not owned by the retirement inventory",
+        ));
+    }
+    let disposition = classify_rule_facet(id.family_id(), id.target(), selector, facet);
+    if disposition != FamilyThemeDisposition::Unsupported {
+        return Err(ThemeLegacyProjectionRetirementInventoryError::new(
+            descriptor,
+            Some(value),
+            format!("matrix disposition is {disposition:?}, expected Unsupported"),
+        ));
+    }
+
+    let paint = match value {
+        ThemeLegacyRouteValue::Transparent => CanvasPaint::Transparent,
+        ThemeLegacyRouteValue::Solid => CanvasPaint::solid("#123456").map_err(|error| {
+            ThemeLegacyProjectionRetirementInventoryError::new(
+                descriptor,
+                Some(value),
+                format!("solid probe construction failed: {error}"),
+            )
+        })?,
+    };
+    let style = match id.facet() {
+        ThemeLegacyRouteFacet::Fill => ThemeStylePatch::default().with_fill(paint),
+        ThemeLegacyRouteFacet::Stroke => ThemeStylePatch::default().with_stroke(paint),
+    };
+    let mut rule = ThemeRule::new(id.target(), style).for_family(id.family_id());
+    if let ThemeLegacyRouteSelector::StaticVariant(variant) = id.selector() {
+        rule = rule.with_variant(variant);
+    }
+    let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+    spec.validate().map_err(|error| {
+        ThemeLegacyProjectionRetirementInventoryError::new(
+            descriptor,
+            Some(value),
+            format!("synthetic route is invalid: {error}"),
+        )
+    })?;
+
+    let family_programs = FamilyThemeProgramCache::new(Arc::new(spec));
+    let artifact = compile_selected_family(&family_programs, id.family_id());
+    if !artifact.overlay.is_empty()
+        || !artifact.contribution_ids.is_empty()
+        || artifact.accepted_path_count != 0
+    {
+        return Err(ThemeLegacyProjectionRetirementInventoryError::new(
+            descriptor,
+            Some(value),
+            format!(
+                "bridge emitted overlay={}, contribution_ids={}, accepted_paths={}",
+                !artifact.overlay.is_empty(),
+                artifact.contribution_ids.len(),
+                artifact.accepted_path_count,
+            ),
+        ));
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"merman.theme-legacy-projection-retirement-probe.v1\0");
+    hasher.update(descriptor_digest(descriptor));
+    super::legacy_projection_retirement::update_len_prefixed(&mut hasher, value.id().as_bytes());
+    super::legacy_projection_retirement::update_len_prefixed(&mut hasher, b"matrix:unsupported");
+    super::legacy_projection_retirement::update_len_prefixed(&mut hasher, b"bridge-overlay:empty");
+    super::legacy_projection_retirement::update_len_prefixed(
+        &mut hasher,
+        b"bridge-contributions:empty",
+    );
+    super::legacy_projection_retirement::update_len_prefixed(
+        &mut hasher,
+        b"bridge-assignments:empty",
+    );
+    Ok(hasher.finalize().into())
 }
 
 fn compile_node_family(
@@ -233,12 +389,10 @@ fn compile_node_family(
             ("textColor", reader.text_fill(ThemeTarget::NodeLabel)),
         ],
     );
-    if family != DiagramFamilyId::CLASS {
-        contributions.add_theme_variables(
-            "title.fill",
-            [("titleColor", reader.text_fill(ThemeTarget::Title))],
-        );
-    }
+    contributions.add_theme_variables(
+        "title.fill",
+        [("titleColor", reader.text_fill(ThemeTarget::Title))],
+    );
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
@@ -338,11 +492,6 @@ fn compile_mindmap_family(builder: &mut OverlayBuilder, family_programs: &Family
         ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
         [("nodeBorder", reader.stroke(ThemeTarget::Node))],
     );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        [("lineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
-    );
-
     contributions.finish_into(builder);
 }
 
@@ -849,12 +998,14 @@ fn compile_text_family(
 }
 
 struct FamilyStyleReader {
+    family: DiagramFamilyId,
     program: Arc<FamilyThemeProgram>,
 }
 
 impl FamilyStyleReader {
     fn new(family_programs: &FamilyThemeProgramCache, family: DiagramFamilyId) -> Self {
         Self {
+            family,
             program: family_programs.get_or_compile(family),
         }
     }
@@ -916,6 +1067,15 @@ impl FamilyStyleReader {
                     .stroke_or_fill_resolution(ThemeTarget::Edge)
                     .into_value(),
             },
+            LegacyPaintResolution::Unsupported if self.family == DiagramFamilyId::CLASS => {
+                MarkerPaintContribution {
+                    contribution_id: ThemeRouteCutoverProjection::MarkerPaintFromEdge
+                        .contribution_id(),
+                    value: self
+                        .stroke_or_fill_resolution(ThemeTarget::Edge)
+                        .into_value(),
+                }
+            }
             marker => MarkerPaintContribution {
                 contribution_id: EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID,
                 value: marker.into_value(),
@@ -985,13 +1145,16 @@ impl FamilyStyleReader {
         let Some(facet) = facet(property.specified()) else {
             return LegacyPaintResolution::Unspecified;
         };
-        if !self
+        match self
             .program
-            .has_legacy_rule_facet(origin.rule_index(), facet)
+            .rule_facet_disposition(origin.rule_index(), facet)
         {
-            return LegacyPaintResolution::Suppressed;
+            Some(FamilyThemeDisposition::LegacyCompatibility) => {
+                LegacyPaintResolution::from_property(property)
+            }
+            Some(FamilyThemeDisposition::Unsupported) => LegacyPaintResolution::Unsupported,
+            Some(FamilyThemeDisposition::TypedAdapter) | None => LegacyPaintResolution::Suppressed,
         }
-        LegacyPaintResolution::from_property(property)
     }
 }
 
@@ -1010,6 +1173,7 @@ enum PaletteProjection {
 #[derive(Debug, PartialEq, Eq)]
 enum LegacyPaintResolution {
     Unspecified,
+    Unsupported,
     Suppressed,
     Value(String),
 }
@@ -1026,7 +1190,7 @@ impl LegacyPaintResolution {
     fn into_value(self) -> Option<String> {
         match self {
             Self::Value(value) => Some(value),
-            Self::Unspecified | Self::Suppressed => None,
+            Self::Unspecified | Self::Unsupported | Self::Suppressed => None,
         }
     }
 }
@@ -1225,8 +1389,13 @@ impl OverlayBuilder {
         self.contribution_ids.insert(opaque_id);
     }
 
-    fn finish(self) -> (ThemeFamilyCompatibilityOverlay, BTreeSet<String>) {
-        (self.overlay.finish(), self.contribution_ids)
+    fn finish(self) -> (ThemeFamilyCompatibilityOverlay, BTreeSet<String>, usize) {
+        let accepted_path_count = self.claimed_paths.len();
+        (
+            self.overlay.finish(),
+            self.contribution_ids,
+            accepted_path_count,
+        )
     }
 }
 
@@ -1323,6 +1492,23 @@ mod tests {
         install_theme_compatibility(merman_core::Engine::new(), &plan)
             .parse_metadata_sync(source)
             .expect("test diagram should parse")
+    }
+
+    #[test]
+    fn retired_legacy_projection_inventory_is_sealed_by_the_real_bridge() {
+        let receipts = legacy_projection_retirement_receipts()
+            .expect("seal every retired legacy projection through the production bridge");
+
+        assert_eq!(receipts.len(), 56);
+        assert!(receipts.iter().all(|receipt| receipt.digest() != [0; 32]));
+        assert_eq!(
+            receipts
+                .iter()
+                .map(|receipt| receipt.descriptor().id())
+                .collect::<BTreeSet<_>>()
+                .len(),
+            receipts.len(),
+        );
     }
 
     #[test]
@@ -1484,6 +1670,22 @@ mod tests {
                 .for_family(DiagramFamilyId::MINDMAP),
             );
         }
+        styles = styles
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default().with_fill(solid(color)),
+                )
+                .for_family(DiagramFamilyId::MINDMAP),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default().with_stroke(solid(color)),
+                )
+                .with_variant(ThemeVariant::Default)
+                .for_family(DiagramFamilyId::MINDMAP),
+            );
 
         let artifact = bridge(&DiagramThemeSpec::new().with_styles(styles))
             .compile_for_family(DiagramFamilyId::MINDMAP);
@@ -2607,6 +2809,41 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_marker_paint_blocks_edge_fallback_outside_class() {
+        for family in [
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::SWIMLANE,
+            DiagramFamilyId::BLOCK,
+        ] {
+            let edge = ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default().with_stroke(solid("#22c55e")),
+            )
+            .with_variant(ThemeVariant::Default)
+            .for_family(family);
+            let mut marker_style = ThemeStylePatch::default();
+            marker_style.stroke.paint = Specified::Clear;
+            let marker = ThemeRule::new(ThemeTarget::Marker, marker_style).for_family(family);
+            let spec = DiagramThemeSpec::new()
+                .with_styles(ThemeRuleSet::default().with_rule(edge).with_rule(marker));
+            let artifact = bridge(&spec).compile_for_family(family);
+
+            assert!(artifact.contribution_ids.iter().any(|id| {
+                id == &format!(
+                    "merman.legacy-family-theme.v1.{}.edge.stroke",
+                    family.as_str(),
+                )
+            }));
+            assert!(!artifact.contribution_ids.iter().any(|id| {
+                id == &format!(
+                    "merman.legacy-family-theme.v1.{}.marker.paint-from-edge",
+                    family.as_str(),
+                )
+            }));
+        }
+    }
+
+    #[test]
     fn typed_flowchart_cluster_paint_does_not_create_legacy_assignments() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
@@ -2676,6 +2913,59 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_class_marker_rule_does_not_block_legacy_edge_marker_fallback() {
+        let edge = ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(solid("#22c55e")),
+        )
+        .with_variant(ThemeVariant::Default)
+        .for_family(DiagramFamilyId::CLASS);
+        let marker = ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_stroke(solid("#ef4444")),
+        )
+        .for_family(DiagramFamilyId::CLASS);
+        let spec = DiagramThemeSpec::new()
+            .with_styles(ThemeRuleSet::default().with_rule(edge).with_rule(marker));
+        let parsed = parse(&spec, "classDiagram\nA *-- B\n");
+
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.lineColor"),
+            Some("#22c55e"),
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.arrowheadColor"),
+            Some("#22c55e"),
+            "an unsupported Marker rule must not consume the Edge fallback slot",
+        );
+    }
+
+    #[test]
+    fn class_title_fill_projects_to_the_visible_namespace_label_token() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(solid("#e2e8f0")),
+                )
+                .for_family(DiagramFamilyId::CLASS),
+            ),
+        );
+        let parsed = parse(
+            &spec,
+            "classDiagram\nnamespace Platform {\n  class Runtime\n}\n",
+        );
+
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.titleColor"),
+            Some("#e2e8f0"),
+        );
+        assert_eq!(fallback_contribution_count(&parsed), 1);
+    }
+
+    #[test]
     fn class_terminal_less_paint_rules_do_not_create_legacy_assignments() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
@@ -2710,13 +3000,6 @@ mod tests {
                     )
                     .with_variant(ThemeVariant::Even)
                     .for_family(DiagramFamilyId::CLASS),
-                )
-                .with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Title,
-                        ThemeStylePatch::default().with_fill(solid("#e2e8f0")),
-                    )
-                    .for_family(DiagramFamilyId::CLASS),
                 ),
         );
         let bridge = bridge(&spec);
@@ -2729,7 +3012,6 @@ mod tests {
         let baseline = parse(&DiagramThemeSpec::default(), "classDiagram\nclass Alpha\n");
         for path in [
             "themeVariables.arrowheadColor",
-            "themeVariables.titleColor",
             "themeVariables.secondaryTextColor",
             "themeVariables.tertiaryTextColor",
             "themeVariables.attributeBackgroundColorOdd",
@@ -2938,7 +3220,7 @@ mod tests {
         duplicate.add_theme_variables("duplicate", [("primaryColor", Some("#22c55e".to_string()))]);
         duplicate.finish_into(&mut builder);
 
-        let (_, contribution_ids) = builder.finish();
+        let (_, contribution_ids, _) = builder.finish();
         assert!(contribution_ids.contains("merman.legacy-family-theme.v1.flowchart.direct"));
         assert!(!contribution_ids.contains("merman.legacy-family-theme.v1.flowchart.duplicate"));
     }

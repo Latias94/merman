@@ -206,15 +206,6 @@ impl FamilyThemeProgram {
         )
     }
 
-    pub(super) fn has_legacy_rule_facet(
-        &self,
-        rule_index: usize,
-        facet: FamilyThemeRuleFacet,
-    ) -> bool {
-        self.rule_facet_disposition(rule_index, facet)
-            == Some(FamilyThemeDisposition::LegacyCompatibility)
-    }
-
     pub(super) fn rule_facet_disposition(
         &self,
         rule_index: usize,

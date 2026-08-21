@@ -19,6 +19,22 @@ pub(crate) use theme::{
     GitGraphPaletteSource, GitGraphPaletteSurface, GitGraphPaletteSurfaceOwnership, palette_slot,
 };
 
+pub(crate) fn resolve_gitgraph_title<'a>(
+    model: &'a GitGraphRenderModel,
+    metadata_title: Option<&'a str>,
+) -> Option<&'a str> {
+    model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            metadata_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+}
+
 const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;

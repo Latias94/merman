@@ -25,6 +25,7 @@ mod effects;
 mod family_mechanism_matrix;
 mod family_program;
 mod legacy_family_theme_bridge;
+mod legacy_projection_retirement;
 mod materializer;
 mod mechanisms;
 mod mermaid_compatibility;
@@ -86,6 +87,15 @@ pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape,
+};
+#[cfg(feature = "internal-theme-acceptance")]
+pub(crate) use legacy_family_theme_bridge::legacy_projection_retirement_receipts;
+#[cfg(feature = "internal-theme-acceptance")]
+#[doc(hidden)]
+pub use legacy_projection_retirement::{
+    ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
+    ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
+    ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector, ThemeLegacyRouteValue,
 };
 pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,

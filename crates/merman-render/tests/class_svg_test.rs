@@ -4,8 +4,9 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, GradientStop,
-    LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
+    CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, GradientStop, LinearGradient,
+    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, Specified, ThemeColorValue,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     ThemeVariant,
 };
@@ -81,6 +82,44 @@ fn class_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
         ThemeTarget::Edge,
         ThemeStylePatch::default().with_stroke(stroke),
     )])
+}
+
+fn class_table_palette_theme() -> DiagramTheme {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#123456").expect("valid Class table palette color")
+    ])
+    .expect("non-empty Class table palette");
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Table, palette),
+            ),
+        )
+        .expect("compile Class table palette theme")
+}
+
+fn class_table_effect_theme() -> DiagramTheme {
+    let effect_id = "class-table-blur";
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                effect_id,
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .expect("valid Class table effect graph"),
+        )
+        .expect("unique Class table effect graph")
+        .with_binding(
+            EffectBinding::new(ThemeTarget::Table, effect_id)
+                .expect("valid Class table effect binding"),
+        )
+        .expect("unique Class table effect binding");
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .expect("compile Class table effect theme")
 }
 
 fn try_render_class_svg_with_theme_and_engine(
@@ -824,6 +863,49 @@ fn class_direct_edge_stroke_reaches_relation_paths_and_only_their_referenced_mar
 }
 
 #[test]
+fn class_non_intersecting_ordinal_stroke_does_not_suppress_static_stroke() {
+    let theme = class_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(
+                CanvasPaint::solid("#123456").expect("valid static Class relation stroke"),
+            ),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(
+                CanvasPaint::solid("#ef4444").expect("valid ordinal Class relation stroke"),
+            ),
+        )
+        .with_ordinal(OrdinalSelector::exact(99).expect("valid non-intersecting Class ordinal")),
+    ]);
+
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\n  A *-- B\n",
+        &theme,
+        Engine::new(),
+    )
+    .expect("a non-intersecting unsupported ordinal must not suppress the static direct route");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed Class SVG");
+    let relation = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .expect("Class relation path");
+    assert!(
+        relation
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke:#123456 !important")),
+        "the static Class stroke must remain the terminal winner: {}",
+        rendered.svg(),
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn class_direct_edge_stroke_supports_transparent_terminals() {
     let svg = render_class_svg_with_theme(
         "classDiagram\n  A *-- B\n",
@@ -1007,6 +1089,36 @@ fn class_edge_stroke_rejects_ordinal_variant_clear_gradient_and_pattern_routes()
             error.unverified_family_theme(),
             Some((merman_render::DiagramFamilyId::CLASS, 1))
         );
+    }
+}
+
+#[test]
+fn class_table_palette_and_effect_require_real_row_occurrences() {
+    let visible_rows = "classDiagram\nclass A {\n  +String name\n  +run()\n}\n";
+    let empty_table = "classDiagram\nclass A\n";
+
+    for theme in [class_table_palette_theme(), class_table_effect_theme()] {
+        let error =
+            match try_render_class_svg_with_theme_and_engine(visible_rows, &theme, Engine::new()) {
+                Ok(_) => {
+                    panic!("visible Class rows must retain unsupported Table theme mechanisms")
+                }
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::CLASS, 1)),
+        );
+
+        let rendered =
+            try_render_class_svg_with_theme_and_engine(empty_table, &theme, Engine::new())
+                .expect("an empty Class table makes the unsupported mechanism not applicable");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 

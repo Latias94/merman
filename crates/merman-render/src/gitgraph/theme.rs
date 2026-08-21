@@ -4,11 +4,12 @@ use std::sync::OnceLock;
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanismKey, ResolvedDiagramTheme, ThemeCapability,
+    ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, unsupported_residual_for_facet,
+    FamilyThemeEvidence, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
 };
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -297,6 +298,7 @@ impl GitGraphNodePalettePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         layout: &GitGraphDiagramLayout,
+        has_title: bool,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline(layout);
@@ -307,7 +309,21 @@ impl GitGraphNodePalettePlan {
         };
 
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        plan.resolve_terminal_less_routes(theme);
+        let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut plan.evidence,
+            &[
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(usize::from(has_title), ThemeVariant::Default),
+                ),
+                UnsupportedTerminalDomain::direct(ThemeTarget::Marker, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
+                UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
+            ],
+            work_meter,
+        )?;
         plan.resolve_node_palette(theme, work_meter)?;
         plan.branch_stroke = GitGraphBranchStrokePlan::resolve(
             theme,
@@ -321,35 +337,6 @@ impl GitGraphNodePalettePlan {
             &mut plan.evidence,
         )?;
         Ok(plan)
-    }
-
-    fn resolve_terminal_less_routes(&mut self, theme: &ResolvedDiagramTheme) {
-        for route in theme.family_mechanism_routes().iter().copied() {
-            if route.disposition() != FamilyThemeDisposition::Unsupported {
-                continue;
-            }
-
-            let reason = match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet { target, facet, .. }
-                    if gitgraph_target_has_no_terminal(target) =>
-                {
-                    unsupported_residual_for_facet(facet)
-                }
-                FamilyThemeMechanism::OrdinalPalette { target }
-                    if gitgraph_target_has_no_terminal(target) =>
-                {
-                    FamilyThemeResidualReason::UnsupportedOrdinalPalette
-                }
-                FamilyThemeMechanism::EffectBinding { target, .. }
-                    if gitgraph_target_has_no_terminal(target) =>
-                {
-                    FamilyThemeResidualReason::UnsupportedEffect
-                }
-                _ => continue,
-            };
-            self.evidence
-                .mark_residual(theme.family_mechanism_key(route), reason);
-        }
     }
 
     fn resolve_node_palette(
@@ -641,13 +628,6 @@ impl GitGraphNodePalettePlan {
     }
 }
 
-const fn gitgraph_target_has_no_terminal(target: ThemeTarget) -> bool {
-    matches!(
-        target,
-        ThemeTarget::Title | ThemeTarget::Marker | ThemeTarget::Cluster | ThemeTarget::ClusterLabel
-    )
-}
-
 /// Writer-owned proof that all GitGraph palette rules and visible occurrences reached terminal
 /// SVG in their canonical order.
 #[derive(Debug)]
@@ -781,6 +761,46 @@ pub(crate) fn palette_slot(index: i64) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
+    use crate::resources::RenderResourcePolicy;
+
+    fn empty_layout() -> GitGraphDiagramLayout {
+        GitGraphDiagramLayout {
+            bounds: None,
+            direction: "LR".to_string(),
+            rotate_commit_label: false,
+            show_branches: false,
+            show_commit_label: false,
+            parallel_commits: false,
+            diagram_padding: 0.0,
+            max_pos: 0.0,
+            branches: Vec::new(),
+            commits: Vec::new(),
+            arrows: Vec::new(),
+        }
+    }
+
+    fn unsupported_fill_theme(target: ThemeTarget) -> ResolvedDiagramTheme {
+        let styles = ThemeRuleSet::default().with_rule(
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .for_family(DiagramFamilyId::GIT_GRAPH),
+        );
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile GitGraph terminal fixture")
+            .resolve(DiagramFamilyId::GIT_GRAPH)
+    }
+
+    fn work_meter() -> OperationWorkMeter {
+        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
+    }
 
     fn receipt_plan() -> GitGraphNodePalettePlan {
         let solid = GitGraphNodePaletteFill {
@@ -892,6 +912,53 @@ mod tests {
                 ThemeCapability::TransparentPaint,
             ])
         );
+    }
+
+    #[test]
+    fn absent_gitgraph_marker_is_not_applicable() {
+        let theme = unsupported_fill_theme(ThemeTarget::Marker);
+        let evidence = GitGraphNodePalettePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::default(),
+            &empty_layout(),
+            false,
+            &work_meter(),
+        )
+        .expect("resolve absent GitGraph marker evidence")
+        .finish_evidence();
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Marker,
+            }]
+        );
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn visible_gitgraph_title_keeps_unsupported_fill_as_a_residual() {
+        let theme = unsupported_fill_theme(ThemeTarget::Title);
+        let evidence = GitGraphNodePalettePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::default(),
+            &empty_layout(),
+            true,
+            &work_meter(),
+        )
+        .expect("resolve visible GitGraph title evidence")
+        .finish_evidence();
+
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Title,
+            }
+        );
+        assert!(evidence.not_applicable_mechanisms().is_empty());
     }
 
     #[test]

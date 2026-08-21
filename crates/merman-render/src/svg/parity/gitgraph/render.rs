@@ -683,12 +683,7 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let diagram_title = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or(diagram_title);
+    let diagram_title = crate::gitgraph::resolve_gitgraph_title(model, diagram_title);
     let acc_title = model
         .acc_title
         .as_deref()

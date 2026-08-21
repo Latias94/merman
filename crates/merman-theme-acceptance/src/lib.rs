@@ -39,6 +39,9 @@ mod observation;
 mod runner;
 
 #[cfg(feature = "png")]
+mod route_retirement_manifest;
+
+#[cfg(feature = "png")]
 pub use cutover::RouteCutoverAuthorizationReport;
 
 #[cfg(feature = "png")]

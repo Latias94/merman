@@ -679,6 +679,8 @@ fn prepare_gitgraph_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
+    let has_title =
+        crate::gitgraph::resolve_gitgraph_title(&model, meta.title.as_deref()).is_some();
     let layout = crate::gitgraph::layout_gitgraph_diagram_typed(
         &model,
         meta.effective_config.as_value(),
@@ -688,6 +690,7 @@ fn prepare_gitgraph_family(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
+        has_title,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::GitGraph(Box::new(
@@ -786,6 +789,33 @@ fn prepare_class_family(
 ) -> Result<BuiltinFamilyArtifact> {
     let relation_count = model.relations.len();
     let node_count = model.classes.len();
+    let needs_unsupported_table_evidence = execution.resolved_theme().is_some_and(|theme| {
+        theme.family_mechanism_routes().iter().any(|route| {
+            let targets_table = matches!(
+                route.mechanism(),
+                crate::diagram_theme::FamilyThemeMechanism::RuleFacet {
+                    target: crate::diagram_theme::ThemeTarget::Table,
+                    ..
+                } | crate::diagram_theme::FamilyThemeMechanism::OrdinalPalette {
+                    target: crate::diagram_theme::ThemeTarget::Table,
+                } | crate::diagram_theme::FamilyThemeMechanism::EffectBinding {
+                    target: crate::diagram_theme::ThemeTarget::Table,
+                    ..
+                }
+            );
+            targets_table
+                && route.disposition() == crate::diagram_theme::FamilyThemeDisposition::Unsupported
+        })
+    });
+    let table_group_lengths = needs_unsupported_table_evidence
+        .then(|| {
+            model
+                .classes
+                .values()
+                .flat_map(|class| [class.members.len(), class.methods.len()])
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let relation_theme = crate::class::ClassRelationThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -799,6 +829,7 @@ fn prepare_class_family(
         &meta.effective_config,
         execution,
     )?;
+    let cluster_label_count = layout.clusters.len();
     Ok(BuiltinFamilyArtifact::Class(Box::new(
         ClassFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -806,6 +837,8 @@ fn prepare_class_family(
             theme_evidence: crate::class::ClassThemeEvidenceRecorder::new(
                 relation_count,
                 node_count,
+                cluster_label_count,
+                table_group_lengths,
             ),
         },
     )))

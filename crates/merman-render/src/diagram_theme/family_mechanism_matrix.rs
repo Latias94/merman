@@ -12,6 +12,7 @@ use merman_theme_contract::{
 };
 
 use super::canvas::CanvasPaint;
+use super::legacy_projection_retirement::route_has_retired_legacy_projection;
 use super::resolved::ThemeTypographyProperty;
 use super::semantic::{OrdinalSelector, ThemeRule, ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
@@ -1172,6 +1173,9 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if route_has_retired_legacy_projection(family, target, selector, facet) {
+        return FamilyThemeDisposition::Unsupported;
+    }
     if family == DiagramFamilyId::CLASS
         && target == ThemeTarget::Edge
         && matches!(
@@ -1543,6 +1547,7 @@ fn legacy_paint_variants(
                 Target::Node
                     | Target::NodeLabel
                     | Target::Text
+                    | Target::Title
                     | Target::Edge
                     | Target::EdgeLabelBackground
                     | Target::Cluster
@@ -1923,6 +1928,31 @@ mod tests {
                 );
             }
         }
+
+        for (selector, facet) in [
+            (
+                FamilyThemeSelectorShape::Static { variant: None },
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+            ),
+            (
+                FamilyThemeSelectorShape::Static {
+                    variant: Some(ThemeVariant::Default),
+                },
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+            ),
+            (
+                FamilyThemeSelectorShape::Static {
+                    variant: Some(ThemeVariant::Default),
+                },
+                FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Solid),
+            ),
+        ] {
+            assert_eq!(
+                classify_rule_facet(DiagramFamilyId::MINDMAP, ThemeTarget::Edge, selector, facet,),
+                FamilyThemeDisposition::Unsupported,
+                "Mindmap Edge compatibility paint has no terminal consumer",
+            );
+        }
     }
 
     #[test]
@@ -1999,6 +2029,11 @@ mod tests {
                 FamilyThemePaintKind::Transparent,
                 FamilyThemePaintKind::Solid,
             ] {
+                let expected_qualified = if family == DiagramFamilyId::MINDMAP {
+                    FamilyThemeDisposition::Unsupported
+                } else {
+                    FamilyThemeDisposition::LegacyCompatibility
+                };
                 assert_eq!(
                     classify_rule_facet(
                         family,
@@ -2017,7 +2052,7 @@ mod tests {
                         },
                         FamilyThemeRuleFacet::Stroke(paint_kind),
                     ),
-                    FamilyThemeDisposition::LegacyCompatibility
+                    expected_qualified
                 );
             }
 
@@ -2491,7 +2526,6 @@ mod tests {
                     ThemeTarget::ClusterLabel,
                     FamilyThemeRuleFacet::Fill(paint_kind),
                 ),
-                (ThemeTarget::Title, FamilyThemeRuleFacet::Fill(paint_kind)),
             ] {
                 for variant in [None, Some(ThemeVariant::Default)] {
                     assert_eq!(
@@ -2505,6 +2539,19 @@ mod tests {
                         "target={target:?} facet={facet:?} variant={variant:?}"
                     );
                 }
+            }
+
+            for variant in [None, Some(ThemeVariant::Default)] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::CLASS,
+                        ThemeTarget::Title,
+                        FamilyThemeSelectorShape::Static { variant },
+                        FamilyThemeRuleFacet::Fill(paint_kind),
+                    ),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                    "Class Title.fill still owns visible namespace labels",
+                );
             }
 
             for variant in [None, Some(ThemeVariant::Odd), Some(ThemeVariant::Even)] {

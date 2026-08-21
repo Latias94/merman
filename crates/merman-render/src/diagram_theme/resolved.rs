@@ -32,7 +32,6 @@ impl ThemeRuleOrigin {
         self.rule_index
     }
 
-    #[cfg(test)]
     pub(crate) const fn target(self) -> ThemeTarget {
         self.target
     }
@@ -485,49 +484,65 @@ impl ResolvedThemeStyle {
         self.fill.value()
     }
 
-    pub(crate) fn winner_rule_properties(&self) -> Vec<(ResolvedStyleProperty, ThemeRuleOrigin)> {
-        let mut winners = Vec::new();
-        macro_rules! collect_property_winner {
-            ($kind:expr, $property:expr) => {
-                if let Some(origin) = $property.winner() {
-                    winners.push(($kind, origin));
-                }
-            };
-        }
-        collect_property_winner!(ResolvedStyleProperty::Fill, self.fill);
-        collect_property_winner!(ResolvedStyleProperty::Stroke, self.stroke);
-        collect_property_winner!(ResolvedStyleProperty::StrokeWidth, self.stroke_width);
-        collect_property_winner!(
-            ResolvedStyleProperty::StrokeDasharray,
-            self.stroke_dasharray
-        );
-        collect_property_winner!(ResolvedStyleProperty::StrokeLinecap, self.stroke_linecap);
-        collect_property_winner!(ResolvedStyleProperty::StrokeLinejoin, self.stroke_linejoin);
-        collect_property_winner!(ResolvedStyleProperty::Opacity, self.opacity);
-        collect_property_winner!(ResolvedStyleProperty::FillOpacity, self.fill_opacity);
-        collect_property_winner!(ResolvedStyleProperty::StrokeOpacity, self.stroke_opacity);
-        collect_property_winner!(ResolvedStyleProperty::Radius, self.radius);
-        collect_property_winner!(ResolvedStyleProperty::Padding, self.padding);
-        collect_property_winner!(ResolvedStyleProperty::Effect, self.effect);
-        for property in [
-            ThemeTypographyProperty::FontStack,
-            ThemeTypographyProperty::FontSize,
-            ThemeTypographyProperty::FontWeight,
-            ThemeTypographyProperty::FontStyle,
-            ThemeTypographyProperty::LineHeight,
-            ThemeTypographyProperty::LetterSpacing,
-            ThemeTypographyProperty::WordSpacing,
-            ThemeTypographyProperty::Transform,
-            ThemeTypographyProperty::Decoration,
-            ThemeTypographyProperty::TextAlign,
-            ThemeTypographyProperty::WhiteSpace,
-            ThemeTypographyProperty::Wrap,
-        ] {
-            if let Some(origin) = self.typography.winner(property) {
-                winners.push((ResolvedStyleProperty::Typography(property), origin));
-            }
-        }
-        winners
+    pub(crate) fn winner_rule_properties(
+        &self,
+    ) -> impl Iterator<Item = (ResolvedStyleProperty, ThemeRuleOrigin)> + '_ {
+        [
+            (ResolvedStyleProperty::Fill, self.fill.winner()),
+            (ResolvedStyleProperty::Stroke, self.stroke.winner()),
+            (
+                ResolvedStyleProperty::StrokeWidth,
+                self.stroke_width.winner(),
+            ),
+            (
+                ResolvedStyleProperty::StrokeDasharray,
+                self.stroke_dasharray.winner(),
+            ),
+            (
+                ResolvedStyleProperty::StrokeLinecap,
+                self.stroke_linecap.winner(),
+            ),
+            (
+                ResolvedStyleProperty::StrokeLinejoin,
+                self.stroke_linejoin.winner(),
+            ),
+            (ResolvedStyleProperty::Opacity, self.opacity.winner()),
+            (
+                ResolvedStyleProperty::FillOpacity,
+                self.fill_opacity.winner(),
+            ),
+            (
+                ResolvedStyleProperty::StrokeOpacity,
+                self.stroke_opacity.winner(),
+            ),
+            (ResolvedStyleProperty::Radius, self.radius.winner()),
+            (ResolvedStyleProperty::Padding, self.padding.winner()),
+            (ResolvedStyleProperty::Effect, self.effect.winner()),
+        ]
+        .into_iter()
+        .filter_map(|(property, origin)| origin.map(|origin| (property, origin)))
+        .chain(
+            [
+                ThemeTypographyProperty::FontStack,
+                ThemeTypographyProperty::FontSize,
+                ThemeTypographyProperty::FontWeight,
+                ThemeTypographyProperty::FontStyle,
+                ThemeTypographyProperty::LineHeight,
+                ThemeTypographyProperty::LetterSpacing,
+                ThemeTypographyProperty::WordSpacing,
+                ThemeTypographyProperty::Transform,
+                ThemeTypographyProperty::Decoration,
+                ThemeTypographyProperty::TextAlign,
+                ThemeTypographyProperty::WhiteSpace,
+                ThemeTypographyProperty::Wrap,
+            ]
+            .into_iter()
+            .filter_map(|property| {
+                self.typography
+                    .winner(property)
+                    .map(|origin| (ResolvedStyleProperty::Typography(property), origin))
+            }),
+        )
     }
 
     pub(crate) fn matched_rule_indices(&self) -> impl Iterator<Item = usize> + '_ {

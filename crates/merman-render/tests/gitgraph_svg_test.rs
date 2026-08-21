@@ -367,7 +367,7 @@ gitGraph
 }
 
 #[test]
-fn gitgraph_terminal_less_routes_fail_closed_as_unsupported_residuals() {
+fn gitgraph_unsupported_routes_follow_real_terminal_occurrences() {
     let source = r#"---
 title: GitGraph unsupported surfaces
 ---
@@ -375,14 +375,27 @@ gitGraph
   commit id: "1" tag: "v1"
 "#;
     let solid = || CanvasPaint::solid("#123456").expect("valid GitGraph unsupported paint");
-    let cases = [
-        (
-            "title-fill",
-            ThemeRule::new(
-                ThemeTarget::Title,
-                ThemeStylePatch::default().with_fill(solid()),
-            ),
-        ),
+    let visible_title = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(solid()),
+    )
+    .for_family(DiagramFamilyId::GIT_GRAPH)]);
+    let portable_error = match try_render_gitgraph_with_theme_engine_and_requirement(
+        source,
+        &visible_title,
+        Engine::new(),
+        "git-unsupported-title-fill",
+        ThemePortabilityRequirement::RequirePortable,
+    ) {
+        Ok(_) => panic!("visible unsupported GitGraph Title must fail closed"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        portable_error.unverified_family_theme(),
+        Some((DiagramFamilyId::GIT_GRAPH, 1))
+    );
+
+    let absent_cases = [
         (
             "marker-fill",
             ThemeRule::new(
@@ -420,38 +433,22 @@ gitGraph
         ),
     ];
 
-    for (case, rule) in cases {
+    for (case, rule) in absent_cases {
         let theme = gitgraph_edge_rules_theme([rule.for_family(DiagramFamilyId::GIT_GRAPH)]);
-        let portable_error = match try_render_gitgraph_with_theme_engine_and_requirement(
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             source,
             &theme,
             Engine::new(),
             &format!("git-unsupported-{case}"),
             ThemePortabilityRequirement::RequirePortable,
-        ) {
-            Ok(_) => panic!("terminal-less GitGraph route must fail closed: {case}"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            portable_error.unverified_family_theme(),
-            Some((DiagramFamilyId::GIT_GRAPH, 1)),
-            "case={case}"
-        );
-
-        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
-            source,
-            &theme,
-            Engine::new(),
-            &format!("git-unsupported-best-effort-{case}"),
-            ThemePortabilityRequirement::BestEffort,
         )
-        .expect("best-effort GitGraph should retain unsupported evidence");
+        .expect("absent GitGraph terminals must make unsupported rules not applicable");
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.required_count(), 1, "case={case}");
         assert_eq!(evidence.applied_count(), 0, "case={case}");
-        assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
-        assert_eq!(evidence.theme_residual_count(), 1, "case={case}");
+        assert_eq!(evidence.not_applicable_count(), 1, "case={case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
     }
 }
 

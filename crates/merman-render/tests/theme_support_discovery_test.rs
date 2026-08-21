@@ -246,7 +246,6 @@ fn class_terminal_less_paint_claims_are_unsupported() {
         (ThemeTarget::Marker, ThemeRuleFacetV1::StrokePaint),
         (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Table, ThemeRuleFacetV1::Fill),
-        (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
     ] {
         let query = ThemeSupportQueryV1::known(
             DiagramFamilyId::CLASS.as_str(),
@@ -270,6 +269,27 @@ fn class_terminal_less_paint_claims_are_unsupported() {
             target.id()
         );
     }
+}
+
+#[test]
+fn class_namespace_title_remains_a_conditional_compatibility_surface() {
+    let query = ThemeSupportQueryV1::known(
+        DiagramFamilyId::CLASS.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Title.id(),
+        ThemeRuleFacetV1::Fill,
+    );
+
+    let support = describe_theme_support(&query);
+
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.legacy-compatibility-only",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
 }
 
 #[test]

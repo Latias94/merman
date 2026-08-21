@@ -174,6 +174,18 @@ impl ClassRelationThemeReceipt {
         self.proves_complete_relation_emission() && self.proves_complete_marker_emission()
     }
 
+    pub(super) fn visible_marker_occurrence_count(&self) -> Option<usize> {
+        self.proves_complete().then(|| {
+            self.relation_events
+                .iter()
+                .map(|event| {
+                    usize::from(event.start_marker.is_some())
+                        .saturating_add(usize::from(event.end_marker.is_some()))
+                })
+                .sum()
+        })
+    }
+
     pub(super) fn proves_typed_width(&self) -> bool {
         self.proves_complete_relation_emission()
             && self.checkpointed_typed_width_paths == self.expected_relations.len()
@@ -369,6 +381,34 @@ mod tests {
             false,
         );
         assert!(!wrong_marker_fill.proves_complete());
+    }
+
+    #[test]
+    fn marker_occurrence_count_comes_from_complete_relation_events() {
+        let relations = vec![
+            ClassRelationTerminalExpectation::new(0, Some("compositionStart"), None),
+            ClassRelationTerminalExpectation::new(1, None, Some("extensionEnd")),
+        ];
+        let markers = vec![
+            ClassMarkerTerminalExpectation::new("extensionEnd", false),
+            ClassMarkerTerminalExpectation::new("compositionStart", true),
+        ];
+        let mut receipt =
+            ClassRelationThemeReceipt::new(relations.clone(), markers, expected_stroke(), false);
+        record_valid_markers(&mut receipt);
+        for expected in &relations {
+            record_relation(
+                &mut receipt,
+                expected.relation_index,
+                expected.start_marker,
+                expected.end_marker,
+            );
+        }
+        assert_eq!(receipt.visible_marker_occurrence_count(), Some(2));
+
+        let incomplete =
+            ClassRelationThemeReceipt::new(relations, Vec::new(), expected_stroke(), false);
+        assert_eq!(incomplete.visible_marker_occurrence_count(), None);
     }
 
     fn single_hand_drawn_receipt() -> ClassRelationThemeReceipt {

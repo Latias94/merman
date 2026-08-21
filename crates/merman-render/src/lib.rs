@@ -89,11 +89,27 @@ pub mod __private {
         ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
     };
 
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub use crate::diagram_theme::{
+        ThemeLegacyProjectionKey, ThemeLegacyProjectionRetirementDescriptor,
+        ThemeLegacyProjectionRetirementInventoryError, ThemeLegacyProjectionRetirementReceipt,
+        ThemeLegacyRouteFacet, ThemeLegacyRouteId, ThemeLegacyRouteSelector, ThemeLegacyRouteValue,
+    };
+
     /// Returns every currently typed route that replaces a concrete legacy bridge projection.
     #[cfg(feature = "internal-theme-acceptance")]
     pub fn legacy_replacing_typed_theme_routes()
     -> Result<Vec<ThemeRouteCutoverDescriptor>, ThemeRouteCutoverInventoryError> {
         crate::diagram_theme::legacy_replacing_typed_routes()
+    }
+
+    /// Returns production-sealed receipts for compatibility projections retired as unsupported.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn retired_legacy_theme_projection_receipts() -> Result<
+        Vec<ThemeLegacyProjectionRetirementReceipt>,
+        ThemeLegacyProjectionRetirementInventoryError,
+    > {
+        crate::diagram_theme::legacy_projection_retirement_receipts()
     }
 
     /// Coarse family-evidence state used by the workspace facade.

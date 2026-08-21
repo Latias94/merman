@@ -589,6 +589,65 @@ fn mindmap_line_color_does_not_claim_the_edge_terminal() {
 }
 
 #[test]
+fn mindmap_edge_fill_is_explicitly_unsupported_without_a_dead_line_color_bridge() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#123456")
+                                .expect("valid unsupported Mindmap Edge fill"),
+                        ),
+                    )
+                    .for_family(merman_render::DiagramFamilyId::MINDMAP),
+                ),
+            ),
+        )
+        .expect("compile unsupported Mindmap Edge fill");
+    let source = "mindmap\n  Root\n    Child\n";
+
+    let rendered = render_mindmap_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        "mindmap-unsupported-edge-fill",
+        ThemePortabilityRequirement::BestEffort,
+    );
+    assert_eq!(
+        mindmap_edge_attribute(rendered.svg(), "edge_0_1", "style"),
+        None,
+        "an unsupported Edge.fill must not manufacture a Mindmap terminal style",
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse strict Mindmap with unsupported Edge.fill")
+        .expect("detect strict Mindmap with unsupported Edge.fill");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict Mindmap session");
+    let error = match family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare strict Mindmap with unsupported Edge.fill")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("strict Mindmap must reject an applicable unsupported Edge.fill"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::MINDMAP, 1)),
+    );
+}
+
+#[test]
 fn mindmap_edge_stroke_is_not_applicable_without_edge_paths() {
     let theme = mindmap_edge_stroke_theme(
         CanvasPaint::solid("#123456").expect("valid Mindmap Edge stroke"),
