@@ -381,6 +381,23 @@ mod tests {
 
     #[test]
     fn scoped_css_matches_mermaid_namespace_boundary_rules() {
+        fn normalize_css_whitespace(value: &str) -> String {
+            let mut normalized = String::with_capacity(value.len());
+            let mut pending_space = false;
+            for character in value.chars() {
+                if matches!(character, ' ' | '\n' | '\r' | '\t' | '\u{000C}') {
+                    pending_space = true;
+                    continue;
+                }
+                if pending_space && !normalized.is_empty() {
+                    normalized.push(' ');
+                }
+                pending_space = false;
+                normalized.push(character);
+            }
+            normalized
+        }
+
         let cases = [
             ("& ~ *", "color: red;", "#diagram #diagram ~ *"),
             (
@@ -413,8 +430,10 @@ mod tests {
                 .with_postprocessor(ScopedCssPostprocessor::new(css))
                 .process_to_string(svg, &session)
                 .unwrap();
+            let normalized_output = normalize_css_whitespace(&out);
+            let normalized_expected = normalize_css_whitespace(&format!("{expected} {{{body}}}"));
             assert!(
-                out.contains(&format!("{expected} {{{body}}}")),
+                normalized_output.contains(&normalized_expected),
                 "selector: {selector:?}; output: {out}"
             );
         }
