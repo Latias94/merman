@@ -1,4 +1,4 @@
-use crate::svg::icon_registry::scope_svg_internal_ids;
+use crate::svg::icon_registry::{IconIdScope, scope_svg_internal_ids};
 
 use super::super::fmt_into;
 use std::borrow::Cow;
@@ -46,10 +46,13 @@ pub(super) fn write_arch_icon_svg(
     out: &mut String,
     icon_name: &str,
     icon_size_px: f64,
-    id_scope: &str,
+    id_scope: Option<IconIdScope>,
 ) -> crate::Result<()> {
     let body = arch_icon_body(icon_name);
     let body = if arch_icon_body_has_internal_ids(icon_name) {
+        let id_scope = id_scope.ok_or_else(|| {
+            crate::Error::icon_processing("built-in icon with internal IDs is missing its scope")
+        })?;
         Cow::Owned(scope_svg_internal_ids(body, id_scope)?)
     } else {
         Cow::Borrowed(body)
@@ -69,7 +72,7 @@ pub(super) fn write_arch_icon_svg_with_registry(
     icon_name: &str,
     icon_size_px: f64,
     icon_registry: Option<&crate::svg::IconRegistry>,
-    id_scope: &str,
+    id_scope: IconIdScope,
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
 ) -> crate::Result<()> {
@@ -89,7 +92,7 @@ pub(super) fn write_arch_icon_svg_with_registry(
     if let Some(svg) = svg {
         out.push_str(&svg);
     } else {
-        write_arch_icon_svg(out, icon_name, icon_size_px, id_scope)?;
+        write_arch_icon_svg(out, icon_name, icon_size_px, Some(id_scope))?;
     }
     Ok(())
 }
@@ -98,12 +101,13 @@ pub(super) fn write_arch_icon_svg_with_registry(
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::svg::icon_registry::icon_id_scope_for_test;
     use crate::svg::{IconPack, IconRegistry};
 
     #[test]
     fn write_arch_icon_svg_preserves_builtin_id_scoping_behavior() {
         let mut server = String::new();
-        write_arch_icon_svg(&mut server, "server", 80.0, "scope-a").unwrap();
+        write_arch_icon_svg(&mut server, "server", 80.0, None).unwrap();
         assert!(server.starts_with(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">"#
         ));
@@ -111,7 +115,13 @@ mod tests {
         assert!(!server.contains("IconifyId"), "{server}");
 
         let mut database = String::new();
-        write_arch_icon_svg(&mut database, "database", 80.0, "scope-b").unwrap();
+        write_arch_icon_svg(
+            &mut database,
+            "database",
+            80.0,
+            Some(icon_id_scope_for_test("scope-b")),
+        )
+        .unwrap();
         assert!(database.contains(r#"id="IconifyId"#), "{database}");
         assert!(!database.contains(r#"id="b""#), "{database}");
     }
@@ -146,7 +156,7 @@ mod tests {
             "test:clip",
             80.0,
             Some(&registry),
-            "diagram-service-a-icon",
+            icon_id_scope_for_test("diagram-service-a-icon"),
             &effective_config,
             &work_meter,
         )
@@ -157,7 +167,7 @@ mod tests {
             "test:clip",
             60.0,
             Some(&registry),
-            "diagram-group-app-icon",
+            icon_id_scope_for_test("diagram-group-app-icon"),
             &effective_config,
             &work_meter,
         )

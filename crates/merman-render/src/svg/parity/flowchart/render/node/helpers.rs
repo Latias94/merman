@@ -15,18 +15,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     icon_name: &str,
     icon_size: f64,
 ) -> crate::Result<String> {
-    let id_scope = format!("{}-flowchart-icon-{node_id}", ctx.diagram_id.semantic_str());
     let icon = match ctx.icon_registry {
-        Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-            icon_name,
-            width_px: icon_size,
-            height_px: icon_size,
-            fallback_prefix: None,
-            extra_class: None,
-            id_scope: &id_scope,
-            effective_config: ctx.config,
-            work_meter: ctx.work_meter,
-        })?,
+        Some(registry) => {
+            let prefix = ctx.icon_scope_prefix.ok_or_else(|| {
+                crate::Error::icon_processing("flowchart icon scope prefix is unavailable")
+            })?;
+            let id_scope = prefix.scope_parts(&[node_id], ctx.work_meter)?;
+            registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+                icon_name,
+                width_px: icon_size,
+                height_px: icon_size,
+                fallback_prefix: None,
+                extra_class: None,
+                id_scope,
+                effective_config: ctx.config,
+                work_meter: ctx.work_meter,
+            })?
+        }
         None => None,
     };
     Ok(icon.unwrap_or_else(|| {

@@ -301,7 +301,7 @@ impl TransformedIcon {
             .map_err(|_| crate::Error::icon_processing("transformed icon size overflowed"))
     }
 
-    fn apply(&self, body: &ValidatedIconBody, scope: &str) -> crate::Result<String> {
+    fn apply(&self, body: &ValidatedIconBody, scope: super::IconIdScope) -> crate::Result<String> {
         let Some((start, end)) = &self.wrapper else {
             return body
                 .scope(scope)
@@ -417,7 +417,7 @@ fn js_number(mut value: f64) -> String {
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
-    use crate::svg::icon_registry::limits::IconRegistryBuildLimits;
+    use crate::svg::icon_registry::{icon_id_scope_for_test, limits::IconRegistryBuildLimits};
     use serde_json::json;
     use std::sync::Arc;
 
@@ -495,7 +495,7 @@ mod tests {
                 height_px: 16.0,
                 fallback_prefix: None,
                 extra_class: None,
-                id_scope: "icon-scope",
+                id_scope: icon_id_scope_for_test("icon-scope"),
                 effective_config: &config,
                 work_meter: &work_meter,
             },
@@ -527,7 +527,7 @@ mod tests {
                         height_px: 16.0,
                         fallback_prefix: None,
                         extra_class: None,
-                        id_scope: &scope,
+                        id_scope: icon_id_scope_for_test(&scope),
                         effective_config: &config,
                         work_meter: &work_meter,
                     },

@@ -1,6 +1,7 @@
 use std::fmt::Write as _;
 
 use crate::model::Bounds;
+use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
 use crate::text::TextMeasurer;
 
 use super::super::{SvgDiagramId, escape_xml_into, fmt};
@@ -29,8 +30,38 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(super) icon_scope_root: Option<IconIdScopePrefix>,
+    pub(super) service_icon_scope_prefix: Option<IconIdScopePrefix>,
+    pub(super) group_icon_scope_prefix: Option<IconIdScopePrefix>,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
+}
+
+fn architecture_icon_scope(
+    root: &mut Option<IconIdScopePrefix>,
+    branch: &mut Option<IconIdScopePrefix>,
+    diagram_id: SvgDiagramId<'_>,
+    branch_name: &'static str,
+    local_id: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> crate::Result<IconIdScope> {
+    let root_prefix = match *root {
+        Some(prefix) => prefix,
+        None => {
+            let prefix = IconIdScopePrefix::from_parts(&[diagram_id.semantic_str()], work_meter)?;
+            *root = Some(prefix);
+            prefix
+        }
+    };
+    let branch_prefix = match *branch {
+        Some(prefix) => prefix,
+        None => {
+            let prefix = root_prefix.extend_parts(&[branch_name], work_meter)?;
+            *branch = Some(prefix);
+            prefix
+        }
+    };
+    branch_prefix.scope_parts(&[local_id, "-icon"], work_meter)
 }
 
 fn write_diagram_service_id(out: &mut String, diagram_id: SvgDiagramId<'_>, service_id: &str) {
@@ -57,6 +88,10 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let sanitize_config = ctx.sanitize_config;
+    let icon_registry = ctx.icon_registry;
+    let work_meter = ctx.work_meter;
+    let icon_scope_root = &mut ctx.icon_scope_root;
+    let service_icon_scope_prefix = &mut ctx.service_icon_scope_prefix;
     let service_count = model.services().count();
     let junction_count = model.junctions().count();
 
@@ -94,26 +129,32 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             match (svc.icon, svc.icon_text) {
                 (Some(icon), _) => {
                     out.push_str("<g>");
-                    if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
-                        let id_scope =
-                            format!("{}-service-{}-icon", diagram_id.semantic_str(), svc.id);
+                    if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
+                        let id_scope = architecture_icon_scope(
+                            icon_scope_root,
+                            service_icon_scope_prefix,
+                            diagram_id,
+                            "-service-",
+                            svc.id,
+                            work_meter,
+                        )?;
                         write_arch_icon_svg_with_registry(
                             out,
                             icon,
                             settings.icon_size_px,
-                            ctx.icon_registry,
-                            &id_scope,
+                            icon_registry,
+                            id_scope,
                             sanitize_config,
-                            ctx.work_meter,
+                            work_meter,
                         )?;
                     } else {
-                        write_arch_icon_svg(out, icon, settings.icon_size_px, "")?;
+                        write_arch_icon_svg(out, icon, settings.icon_size_px, None)?;
                     }
                     out.push_str("</g>");
                 }
                 (None, Some(icon_text)) => {
                     out.push_str("<g>");
-                    write_arch_icon_svg(out, "blank", settings.icon_size_px, "")?;
+                    write_arch_icon_svg(out, "blank", settings.icon_size_px, None)?;
                     out.push_str("</g>");
 
                     // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
@@ -186,6 +227,10 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let content_bounds = &mut *ctx.content_bounds;
+    let icon_registry = ctx.icon_registry;
+    let work_meter = ctx.work_meter;
+    let icon_scope_root = &mut ctx.icon_scope_root;
+    let group_icon_scope_prefix = &mut ctx.group_icon_scope_prefix;
 
     if ctx.model.groups_len() == 0 {
         out.push_str(r#"<g class="architecture-groups"/>"#);
@@ -227,20 +272,26 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                     x = fmt(shifted_x1 + settings.half_icon + 1.0),
                     y = fmt(shifted_y1 + settings.half_icon + 1.0)
                 );
-                if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
-                    let id_scope =
-                        format!("{}-group-{}-icon", ctx.diagram_id.semantic_str(), grp.id);
+                if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
+                    let id_scope = architecture_icon_scope(
+                        icon_scope_root,
+                        group_icon_scope_prefix,
+                        ctx.diagram_id,
+                        "-group-",
+                        grp.id,
+                        work_meter,
+                    )?;
                     write_arch_icon_svg_with_registry(
                         out,
                         icon,
                         group_icon_size_px,
-                        ctx.icon_registry,
-                        &id_scope,
+                        icon_registry,
+                        id_scope,
                         ctx.sanitize_config,
-                        ctx.work_meter,
+                        work_meter,
                     )?;
                 } else {
-                    write_arch_icon_svg(out, icon, group_icon_size_px, "")?;
+                    write_arch_icon_svg(out, icon, group_icon_size_px, None)?;
                 }
                 out.push_str("</g></g>");
                 shifted_x1 += group_icon_size_px;

@@ -21,6 +21,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) svg_label_sidecar:
         Option<&'a crate::flowchart::FlowchartSvgLabelSidecar>,
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,
+    pub(in crate::svg::parity::flowchart) icon_scope_prefix:
+        Option<crate::svg::icon_registry::IconIdScopePrefix>,
     pub(in crate::svg::parity::flowchart) security_level_loose: bool,
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,

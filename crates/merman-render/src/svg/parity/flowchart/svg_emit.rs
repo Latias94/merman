@@ -236,6 +236,15 @@ pub(super) fn render_flowchart_svg_model(
     let node_dom_index = flowchart_node_dom_indices(model);
 
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
+    let icon_registry = options.icon_registry();
+    let icon_scope_prefix = icon_registry
+        .map(|_| {
+            crate::svg::icon_registry::IconIdScopePrefix::from_parts(
+                &[diagram_id.semantic_str(), "-flowchart-icon-"],
+                options.work_meter(),
+            )
+        })
+        .transpose()?;
     let ctx = FlowchartRenderCtx {
         model,
         diagram_id,
@@ -248,7 +257,8 @@ pub(super) fn render_flowchart_svg_model(
         work_meter: options.work_meter(),
         math_renderer: options.math_renderer(),
         svg_label_sidecar: Some(svg_label_sidecar),
-        icon_registry: options.icon_registry(),
+        icon_registry,
+        icon_scope_prefix,
         security_level_loose: effective_config.get_str("securityLevel") == Some("loose"),
         node_html_labels,
         edge_html_labels,

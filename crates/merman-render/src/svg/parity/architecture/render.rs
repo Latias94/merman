@@ -338,6 +338,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             sanitize_config,
             icon_registry: options.icon_registry(),
             work_meter: options.work_meter(),
+            icon_scope_root: None,
+            service_icon_scope_prefix: None,
+            group_icon_scope_prefix: None,
             content_bounds: &mut content_bounds,
             checkpoints,
         };
