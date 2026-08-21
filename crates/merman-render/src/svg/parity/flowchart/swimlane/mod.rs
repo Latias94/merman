@@ -25,7 +25,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             layout: &flowchart_layout,
             swimlane_layout: Some(layout),
             model,
-            render_label_sources: artifact.label_sources(),
+            render_context: artifact.render_context(),
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),

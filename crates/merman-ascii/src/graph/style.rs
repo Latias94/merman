@@ -5,7 +5,7 @@ use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::style_color::{parse_border_color, parse_css_color};
 use merman_core::OperationPhase;
-use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
 
 #[derive(Clone, Copy)]
 struct StyleTargets {
@@ -102,6 +102,7 @@ pub(super) struct FlowchartStylePlan {
 impl FlowchartStylePlan {
     pub(super) fn try_new(
         model: &FlowchartModel,
+        render_context: Option<&FlowchartRenderContext>,
         is_group_id: impl Fn(&str) -> bool,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
@@ -138,10 +139,33 @@ impl FlowchartStylePlan {
         nodes
             .try_reserve_exact(model.nodes.len())
             .map_err(|_| style_allocation_failed())?;
+        let mut direct_group_overlays = Vec::new();
+        if render_context.is_none() {
+            direct_group_overlays
+                .try_reserve_exact(model.nodes.len())
+                .map_err(|_| style_allocation_failed())?;
+        }
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_style(execution, index)?;
             let mut style = GraphNodeStyle::default();
             if is_group_id(&node.id) {
+                if render_context.is_none() && !node.is_subgraph_anchor() {
+                    let mut group_overlay = GraphGroupStyle::default();
+                    for (class_index, class_name) in node.classes.iter().enumerate() {
+                        checkpoint_style(execution, class_index)?;
+                        if let Some(class_index) = model.class_defs.get_index_of(class_name) {
+                            class_styles[class_index].apply_group(&mut group_overlay);
+                        }
+                    }
+                    prepare_style_declarations(
+                        node.styles.iter().map(String::as_str),
+                        StyleTargets::GROUP,
+                        resources,
+                        execution,
+                    )?
+                    .apply_group(&mut group_overlay);
+                    direct_group_overlays.push((node.id.as_str(), group_overlay));
+                }
                 nodes.push(style);
                 continue;
             }
@@ -192,10 +216,10 @@ impl FlowchartStylePlan {
         for (index, group) in model.subgraphs.iter().enumerate() {
             checkpoint_style(execution, index)?;
             let mut style = GraphGroupStyle::default();
-            let (classes, declarations) = match &group.same_id_vertex_style {
-                Some(vertex) => (vertex.classes.as_slice(), vertex.styles.as_slice()),
-                None => (group.classes.as_slice(), group.styles.as_slice()),
-            };
+            let (classes, declarations) = render_context.map_or_else(
+                || (group.classes.as_slice(), group.styles.as_slice()),
+                |context| context.effective_subgraph_css(group),
+            );
             for (class_index, class_name) in classes.iter().enumerate() {
                 checkpoint_style(execution, class_index)?;
                 if let Some(class_index) = model.class_defs.get_index_of(class_name) {
@@ -209,6 +233,20 @@ impl FlowchartStylePlan {
                 execution,
             )?
             .apply_group(&mut style);
+            if let Some((_, overlay)) = direct_group_overlays
+                .iter()
+                .find(|(node_id, _)| *node_id == group.id.as_str())
+            {
+                if overlay.title.is_some() {
+                    style.title = overlay.title;
+                }
+                if overlay.border.is_some() {
+                    style.border = overlay.border;
+                }
+                if overlay.background.is_some() {
+                    style.background = overlay.background;
+                }
+            }
             groups.push(style);
         }
 

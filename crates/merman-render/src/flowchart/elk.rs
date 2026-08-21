@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::sync::Arc;
 
 use merman_core::diagrams::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
 #[cfg(test)]
 use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
@@ -63,7 +63,7 @@ pub(crate) fn layout_flowchart_elk_typed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
-    let render_label_sources = FlowchartRenderLabelSources::default();
+    let render_label_sources = FlowchartRenderContext::default();
     let graph = build_flowchart_elk_graph_with_render_labels(
         model,
         &render_label_sources,
@@ -98,7 +98,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
 ) -> Result<FlowchartLayout> {
     layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         FlowchartElkLayoutExecution::new(measurer, math_renderer, operation_seed, None, work_meter),
     )
@@ -106,7 +106,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
 
 pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     execution: FlowchartElkLayoutExecution<'_>,
 ) -> Result<FlowchartLayout> {
@@ -147,7 +147,7 @@ fn flowchart_layout_from_elk(
 ) -> Result<FlowchartLayout> {
     flowchart_layout_from_elk_with_render_labels(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         graph,
         layout,
@@ -157,7 +157,7 @@ fn flowchart_layout_from_elk(
 #[cfg(test)]
 fn flowchart_layout_from_elk_with_render_labels(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
@@ -182,7 +182,7 @@ fn flowchart_layout_from_elk_with_work_control(
 ) -> Result<FlowchartLayout> {
     flowchart_layout_from_elk_with_render_labels_and_work_control(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         graph,
         layout,
@@ -192,7 +192,7 @@ fn flowchart_layout_from_elk_with_work_control(
 
 fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
@@ -499,10 +499,8 @@ pub fn build_flowchart_elk_graph(
             ),
         });
     };
-    let empty_sources = FlowchartRenderLabelSources::default();
-    let render_label_sources = parsed
-        .flowchart_render_label_sources()
-        .unwrap_or(&empty_sources);
+    let empty_sources = FlowchartRenderContext::default();
+    let render_label_sources = parsed.flowchart_render_context().unwrap_or(&empty_sources);
     build_flowchart_elk_graph_with_render_labels(
         model,
         render_label_sources,
@@ -521,7 +519,7 @@ fn build_flowchart_elk_graph_from_semantic(
 ) -> Result<elk::Graph> {
     build_flowchart_elk_graph_with_render_labels(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         measurer,
         math_renderer,
@@ -530,7 +528,7 @@ fn build_flowchart_elk_graph_from_semantic(
 
 fn build_flowchart_elk_graph_with_render_labels(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -556,7 +554,7 @@ fn build_flowchart_elk_graph_with_work_control(
 ) -> Result<elk::Graph> {
     build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
-        &FlowchartRenderLabelSources::default(),
+        &FlowchartRenderContext::default(),
         effective_config,
         measurer,
         math_renderer,
@@ -626,7 +624,7 @@ fn comparison_sort_work_units(
 
 fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1534,11 +1532,12 @@ fn mark_include_children_path<'a>(
 fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let title = ctx.model.subgraph_title_for_render(sg);
+    let (classes, styles) = ctx.model.effective_subgraph_css(sg);
     let text_style = flowchart_effective_text_style_for_classes(
         ctx.cluster_label_base_style,
         &ctx.model.class_defs,
-        &sg.classes,
-        &sg.styles,
+        classes,
+        styles,
     );
     // ELK's temporary subgraph node uses Flowchart wrappingWidth for layout, while Mermaid's final
     // cluster SVG calls createLabel with an unbounded width. The exact binding can never be reused,
@@ -1843,7 +1842,7 @@ mod tests {
 
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
-            &FlowchartRenderLabelSources::default(),
+            &FlowchartRenderContext::default(),
             &config,
             &measurer,
             None,
@@ -1990,7 +1989,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes,
         }
     }
@@ -2508,7 +2506,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         });
 
@@ -2567,7 +2564,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["a".to_string(), "b".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -2578,7 +2574,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: Vec::new(),
         });
 
@@ -2618,7 +2613,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["cluster-a".to_string(), "cluster-b".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -2629,7 +2623,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["later-a".to_string()],
         });
 
@@ -2678,7 +2671,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["C".to_string(), "D".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -2689,7 +2681,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["E".to_string(), "F".to_string()],
         });
 
@@ -3096,7 +3087,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["B1".to_string(), "B2".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -3107,7 +3097,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["i1".to_string(), "f1".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -3118,7 +3107,6 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["i2".to_string(), "f2".to_string()],
         });
 

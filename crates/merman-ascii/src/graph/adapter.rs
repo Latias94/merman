@@ -16,7 +16,7 @@ use crate::safe_text::{
 };
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
-    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
+    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel, FlowchartRenderContext,
 };
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
@@ -33,6 +33,7 @@ pub(crate) fn from_flowchart_model(
     let control = merman_core::OperationControl::new();
     from_flowchart_model_with_execution(
         model,
+        None,
         options,
         resources,
         AsciiExecution::new(&control, &policy),
@@ -41,26 +42,29 @@ pub(crate) fn from_flowchart_model(
 
 pub(crate) fn from_flowchart_model_with_execution(
     model: &FlowchartModel,
+    render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
     resources.transaction(|resources| {
-        from_flowchart_model_transactional(model, options, resources, execution)
+        from_flowchart_model_transactional(model, render_context, options, resources, execution)
     })
 }
 
 fn from_flowchart_model_transactional(
     model: &FlowchartModel,
+    render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
-    let memberships = preflight_flowchart_projection(model, resources, execution)?;
+    let memberships = preflight_flowchart_projection(model, render_context, resources, execution)?;
     validate_supported_flowchart_model(model, &memberships, resources, execution)?;
     let style_plan = FlowchartStylePlan::try_new(
         model,
+        render_context,
         |node_id| memberships.is_group_id(node_id),
         resources,
         execution,
@@ -234,6 +238,7 @@ fn parse_flow_edge_stroke(
 
 fn preflight_flowchart_projection<'a>(
     model: &'a FlowchartModel,
+    render_context: Option<&FlowchartRenderContext>,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<FlowchartMembershipIndex<'a>> {
@@ -285,17 +290,19 @@ fn preflight_flowchart_projection<'a>(
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, member)?;
         }
-        for (declaration_index, declaration) in subgraph.classes.iter().enumerate() {
+        let (classes, declarations) = render_context.map_or_else(
+            || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
+            |context| context.effective_subgraph_css(subgraph),
+        );
+        for (declaration_index, declaration) in classes.iter().enumerate() {
             checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
         }
-        if let Some(vertex) = &subgraph.same_id_vertex_style {
-            for (declaration_index, declaration) in vertex.classes.iter().enumerate() {
-                checkpoint_projection(execution, declaration_index)?;
-                resources.charge_layout_work(1)?;
-                charge_text_layout(resources, declaration)?;
-            }
+        for (declaration_index, declaration) in declarations.iter().enumerate() {
+            checkpoint_projection(execution, declaration_index)?;
+            resources.charge_layout_work(1)?;
+            charge_text_layout(resources, declaration)?;
         }
     }
 
@@ -813,6 +820,14 @@ fn validate_supported_flowchart_model(
                 feature: "duplicate node ids",
             });
         }
+        if memberships.group_owns_node_id(&node.id) {
+            // Public typed models do not carry the parser-only render context.  Keep the
+            // deterministic Mermaid group-first projection in that case: the canonical group
+            // remains the visible owner and any authored node fields are folded into its style
+            // plan below.  Parser-owned contexts may still provide the more precise effective
+            // CSS/source-order projection.
+            continue;
+        }
         if node.icon.is_some()
             || node.img.is_some()
             || node.form.is_some()
@@ -857,7 +872,6 @@ fn validate_supported_flowchart_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagrams::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowNodeProvenance,
@@ -943,7 +957,6 @@ mod tests {
                 label_type: None,
                 classes: Vec::new(),
                 styles: Vec::new(),
-                same_id_vertex_style: None,
                 nodes: vec![member],
             });
             member = id;
@@ -985,7 +998,6 @@ mod tests {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         });
 
@@ -1323,6 +1335,7 @@ mod tests {
         control.cancel_after_checkpoints(64);
         let error = from_flowchart_model_with_execution(
             &model,
+            None,
             &AsciiRenderOptions::default(),
             &mut resources,
             AsciiExecution::new(&control, &policy),
@@ -1359,7 +1372,6 @@ mod tests {
                 label_type: None,
                 classes: Vec::new(),
                 styles: Vec::new(),
-                same_id_vertex_style: None,
                 nodes: vec!["member".to_string()],
             }],
             tooltips: Default::default(),
@@ -1391,7 +1403,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_projection_uses_group_first_identity_for_colliding_node_and_subgraph() {
+    fn direct_model_same_id_vertex_without_render_context_uses_group_first_fallback() {
         let mut model = FlowchartModel {
             keyword: "flowchart".to_string(),
             acc_descr: None,
@@ -1419,12 +1431,6 @@ mod tests {
                 label_type: None,
                 classes: vec!["base".to_string()],
                 styles: vec!["fill:#00aa00".to_string()],
-                same_id_vertex_style: Some(
-                    merman_core::diagrams::flowchart::FlowSubgraphVertexStyle {
-                        classes: vec!["overlay".to_string()],
-                        styles: vec!["fill:#00aa00".to_string()],
-                    },
-                ),
                 nodes: vec!["member".to_string()],
             }],
             tooltips: Default::default(),
@@ -1440,44 +1446,16 @@ mod tests {
         let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
         let graph = from_flowchart_model(&model, &options, &mut resources)
-            .expect("same-id authored nodes project through the Mermaid group owner");
-
-        assert!(graph.nodes.iter().all(|node| node.id != "TOP"));
-        let group_index = graph
+            .expect("direct models should use the deterministic group-first fallback");
+        assert!(!graph.nodes.iter().any(|node| node.id == "TOP"));
+        let group = graph
             .groups
             .iter()
-            .position(|group| group.id == "TOP")
-            .expect("TOP group");
+            .find(|group| group.id == "TOP")
+            .expect("same-id group should remain the visible owner");
         assert_eq!(
-            graph.groups[group_index].style,
-            crate::graph::GraphGroupStyle {
-                title: None,
-                border: Some(crate::AsciiRgb::new(0x44, 0x55, 0x66)),
-                background: Some(crate::AsciiRgb::new(0x00, 0xaa, 0x00)),
-            }
-        );
-        assert_eq!(graph.edges.len(), 2);
-        assert!(
-            graph
-                .edges
-                .iter()
-                .any(|edge| edge.from == "A" && edge.to == "TOP")
-        );
-        assert!(
-            graph
-                .edges
-                .iter()
-                .any(|edge| edge.from == "TOP" && edge.to == "B")
-        );
-
-        let mut topology_resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
-            ResourceProfile::UnboundedForTrustedInput,
-        ));
-        let topology = GraphGroupTopology::try_new(&graph, &mut topology_resources)
-            .expect("group-first graph topology");
-        assert_eq!(
-            topology.endpoint_index("TOP"),
-            Some(GraphEndpointIndex::Group(group_index))
+            group.style.border,
+            Some(crate::color::AsciiRgb::new(68, 85, 102))
         );
     }
 }

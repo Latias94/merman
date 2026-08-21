@@ -40,33 +40,29 @@ impl FlowchartModel {
     }
 }
 
-#[doc(hidden)]
 #[derive(Debug, Clone, Default)]
-pub struct FlowchartRenderLabelSources {
+pub(crate) struct FlowchartRenderLabelSources {
     nodes: FxHashMap<String, String>,
     edges: FxHashMap<String, String>,
     subgraphs: FxHashMap<String, String>,
 }
 
 impl FlowchartRenderLabelSources {
-    #[doc(hidden)]
-    pub fn node_label_for_render<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
+    pub(crate) fn node_label_for_render<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
         self.nodes
             .get(&node.id)
             .map(String::as_str)
             .or(node.label.as_deref())
     }
 
-    #[doc(hidden)]
-    pub fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
+    pub(crate) fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
         self.edges
             .get(&edge.id)
             .map(String::as_str)
             .or(edge.label.as_deref())
     }
 
-    #[doc(hidden)]
-    pub fn subgraph_title_for_render<'a>(&'a self, subgraph: &'a FlowSubgraph) -> &'a str {
+    pub(crate) fn subgraph_title_for_render<'a>(&'a self, subgraph: &'a FlowSubgraph) -> &'a str {
         self.subgraphs
             .get(&subgraph.id)
             .map(String::as_str)
@@ -99,6 +95,99 @@ impl FlowchartRenderLabelSources {
             .fold(0usize, |total, (id, label)| {
                 total.saturating_add(id.len()).saturating_add(label.len())
             })
+    }
+}
+
+/// Parser-owned CSS provenance used only while rendering a Flowchart model.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FlowchartRenderStyleSources {
+    subgraph_vertices: IndexMap<String, FlowSubgraphVertexStyle>,
+}
+
+impl FlowchartRenderStyleSources {
+    /// Returns the CSS sources exposed by Mermaid for the rendered subgraph node.
+    pub(crate) fn effective_subgraph_css<'a>(
+        &'a self,
+        subgraph: &'a FlowSubgraph,
+    ) -> (&'a [String], &'a [String]) {
+        self.subgraph_vertices.get(&subgraph.id).map_or_else(
+            || (subgraph.classes.as_slice(), subgraph.styles.as_slice()),
+            |vertex| (vertex.classes.as_slice(), vertex.styles.as_slice()),
+        )
+    }
+
+    /// Returns whether parsing observed a FlowDB vertex with this subgraph ID.
+    pub(crate) fn contains_subgraph_vertex(&self, id: &str) -> bool {
+        self.subgraph_vertices.contains_key(id)
+    }
+
+    pub(crate) fn entry_mut(&mut self, id: String) -> &mut FlowSubgraphVertexStyle {
+        self.subgraph_vertices.entry(id).or_default()
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.subgraph_vertices
+            .iter()
+            .fold(0usize, |total, (id, vertex)| {
+                vertex
+                    .classes
+                    .iter()
+                    .chain(&vertex.styles)
+                    .fold(total.saturating_add(id.len()), |subtotal, value| {
+                        subtotal.saturating_add(value.len())
+                    })
+            })
+    }
+}
+
+/// Parser-owned render facts that are intentionally absent from [`FlowchartModel`].
+#[doc(hidden)]
+#[derive(Debug, Clone, Default)]
+pub struct FlowchartRenderContext {
+    labels: FlowchartRenderLabelSources,
+    styles: FlowchartRenderStyleSources,
+}
+
+impl FlowchartRenderContext {
+    pub(crate) fn new(
+        labels: FlowchartRenderLabelSources,
+        styles: FlowchartRenderStyleSources,
+    ) -> Self {
+        Self { labels, styles }
+    }
+
+    #[doc(hidden)]
+    pub fn node_label_for_render<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
+        self.labels.node_label_for_render(node)
+    }
+
+    #[doc(hidden)]
+    pub fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
+        self.labels.edge_label_for_render(edge)
+    }
+
+    #[doc(hidden)]
+    pub fn subgraph_title_for_render<'a>(&'a self, subgraph: &'a FlowSubgraph) -> &'a str {
+        self.labels.subgraph_title_for_render(subgraph)
+    }
+
+    #[doc(hidden)]
+    pub fn effective_subgraph_css<'a>(
+        &'a self,
+        subgraph: &'a FlowSubgraph,
+    ) -> (&'a [String], &'a [String]) {
+        self.styles.effective_subgraph_css(subgraph)
+    }
+
+    #[doc(hidden)]
+    pub fn contains_subgraph_vertex(&self, id: &str) -> bool {
+        self.styles.contains_subgraph_vertex(id)
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.labels
+            .retained_bytes()
+            .saturating_add(self.styles.retained_bytes())
     }
 }
 
@@ -410,27 +499,13 @@ pub struct FlowSubgraph {
     pub classes: Vec<String>,
     #[serde(default)]
     pub styles: Vec<String>,
-    /// Captures the final CSS inputs of a FlowDB vertex that shares this subgraph's ID.
-    ///
-    /// Mermaid emits subgraphs before vertices. A same-ID vertex therefore replaces the
-    /// subgraph's classes and styles during the later vertex projection. `None` means no such
-    /// vertex was created; `Some` with empty vectors is observably different because it clears
-    /// the subgraph CSS inputs.
-    #[serde(
-        default,
-        rename = "sameIdVertexStyle",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub same_id_vertex_style: Option<FlowSubgraphVertexStyle>,
     pub nodes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FlowSubgraphVertexStyle {
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct FlowSubgraphVertexStyle {
+    pub(crate) classes: Vec<String>,
+    pub(crate) styles: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

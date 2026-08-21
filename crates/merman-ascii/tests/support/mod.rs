@@ -1,5 +1,5 @@
 use merman_ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy};
-use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
 use merman_core::{OperationControl, runtime::OperationContext};
 
 #[allow(dead_code)]
@@ -24,6 +24,22 @@ pub(crate) fn render_model_with_resources(
         &OperationControl::new(),
         &context,
         resources,
+    )
+}
+
+#[allow(dead_code)]
+pub(crate) fn render_parsed(
+    parsed: &ParsedDiagramRender,
+    options: &AsciiRenderOptions,
+) -> merman_ascii::Result<String> {
+    let context = merman_core::runtime::RuntimePolicy::deterministic()
+        .begin_operation()
+        .expect("deterministic test operation context");
+    AsciiRenderer::new(*options)?.render_parsed(
+        parsed,
+        &OperationControl::new(),
+        &context,
+        AsciiResourcePolicy::default(),
     )
 }
 

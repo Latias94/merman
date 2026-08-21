@@ -265,6 +265,7 @@ pub(super) fn resolve_node_render_info<'a>(
     if let Some(sg) = ctx.subgraphs_by_id.get(node_id)
         && !ctx.subgraph_has_children(node_id)
     {
+        let (node_classes, node_styles) = ctx.model.effective_subgraph_css(sg);
         return Some(ResolvedNodeRenderInfo {
             dom_idx: None,
             class_attr_base: "node",
@@ -281,8 +282,8 @@ pub(super) fn resolve_node_render_info<'a>(
             node_constraint: None,
             node_asset_width: None,
             node_asset_height: None,
-            node_styles: &sg.styles,
-            node_classes: &sg.classes,
+            node_styles,
+            node_classes,
         });
     }
 

@@ -221,7 +221,6 @@ impl SubgraphBuilder {
             title,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             dir,
             has_explicit_dir,
             label_type,
@@ -237,22 +236,25 @@ fn push_statement_items(
     control: &OperationControl,
 ) -> OperationControlResult<()> {
     match stmt {
-        Stmt::Chain { nodes, edges } => {
+        Stmt::Chain {
+            node_groups,
+            edge_groups,
+        } => {
             // Mermaid FlowDB's subgraph membership list is based on the Jison
             // `vertexStatement.nodes` shape, which prepends the last node in a chain first
             // (e.g. `a-->b` yields `[b, a]`).
             //
             // For node-only group statements (e.g. `A & B`), there are no edges and the list
             // preserves the input order.
-            if edges.is_empty() {
-                for (index, n) in nodes.iter().enumerate() {
+            if edge_groups.is_empty() {
+                for (index, n) in node_groups.iter().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
                     out.push(StatementItem::Id(n.id.clone()));
                 }
             } else {
-                for (index, n) in nodes.iter().rev().enumerate() {
+                for (index, n) in node_groups.iter().flatten().rev().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }

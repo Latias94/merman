@@ -160,7 +160,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         return;
     }
 
-    let compiled_styles = flowchart_compile_styles(ctx.class_defs, &sg.classes, &sg.styles, &[]);
+    let (classes, styles) = ctx.model.effective_subgraph_css(sg);
+    let compiled_styles = flowchart_compile_styles(ctx.class_defs, classes, styles, &[]);
     let rect_style = compiled_styles.node_style.trim();
     let label_style = compiled_styles.label_style.trim();
 
@@ -179,7 +180,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let render_title = ctx.model.subgraph_title_for_render(sg);
 
     let mut class_attr = String::new();
-    for c in &sg.classes {
+    for c in classes {
         let c = c.trim();
         if c.is_empty() {
             continue;
@@ -228,8 +229,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 ctx.class_defs,
-                &sg.classes,
-                &sg.styles,
+                classes,
+                styles,
             );
             let owner = ctx
                 .svg_label_sidecar

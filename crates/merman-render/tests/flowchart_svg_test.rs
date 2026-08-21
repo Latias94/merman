@@ -1756,6 +1756,65 @@ fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
 }
 
 #[test]
+fn flowchart_svg_uses_parser_owned_same_id_group_css_in_statement_order() {
+    let cases = [
+        (
+            concat!(
+                "flowchart TD\n",
+                "classDef base stroke:#00f\n",
+                "subgraph G\n  A\nend\n",
+                "class G base\n",
+                "style G fill:#f00\n",
+            ),
+            false,
+        ),
+        (
+            concat!(
+                "flowchart TD\n",
+                "classDef base stroke:#00f\n",
+                "subgraph G\n  A\nend\n",
+                "style G fill:#f00\n",
+                "class G base\n",
+            ),
+            true,
+        ),
+    ];
+
+    for (source, expects_base_class) in cases {
+        let svg = render_flowchart_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let cluster = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("id").is_some_and(|id| id.ends_with("-G"))
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "cluster")
+                    })
+            })
+            .expect("subgraph G cluster");
+        let classes = cluster
+            .attribute("class")
+            .expect("cluster class attribute")
+            .split_ascii_whitespace()
+            .collect::<Vec<_>>();
+        let shape_style = cluster
+            .children()
+            .find(|node| node.has_tag_name("rect") || node.has_tag_name("path"))
+            .and_then(|node| node.attribute("style"))
+            .expect("cluster shape style");
+
+        assert_eq!(classes.contains(&"base"), expects_base_class, "{svg}");
+        assert!(shape_style.contains("fill:#f00 !important"), "{svg}");
+        assert_eq!(
+            shape_style.contains("stroke:#00f !important"),
+            expects_base_class,
+            "{svg}",
+        );
+    }
+}
+
+#[test]
 fn flowchart_svg_edge_label_wraps_with_inherited_style_before_link_style_bbox() {
     fn source(extra: &str) -> String {
         format!(
@@ -2377,7 +2436,7 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    let text = "flowchart TD\nsubgraph Empty\nend\nclassDef hot fill:#0f0,color:#111\nclass Empty hot\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
+    let text = "flowchart TD\nsubgraph Empty\nend\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
     let engine = Engine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
@@ -2393,8 +2452,8 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
     .expect("render svg");
 
     assert!(
-        svg.contains(r#"<g class="node hot" id="merman-Empty""#),
-        "expected empty subgraph to render as a scoped node with its assigned class: {svg}"
+        svg.contains(r#"<g class="node" id="merman-Empty""#),
+        "expected empty subgraph to render as a scoped node: {svg}"
     );
     assert!(
         svg.contains(r#"style="fill:#f00 !important;stroke:#00f !important""#),

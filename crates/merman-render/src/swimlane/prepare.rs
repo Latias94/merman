@@ -14,7 +14,7 @@ use crate::text::{TextMeasurer, WrapMode};
 use indexmap::IndexMap;
 use merman_core::MermaidConfig;
 use merman_core::diagrams::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -34,7 +34,7 @@ fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
 }
 
 struct MeasureContext<'a> {
-    model: &'a FlowchartModel,
+    model: &'a FlowchartRenderModelRef<'a>,
     config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -231,11 +231,12 @@ fn measure_group_title(
     } else {
         &ctx.settings.text_style
     };
+    let (classes, styles) = ctx.model.effective_subgraph_css(subgraph);
     let style = flowchart_effective_text_style_for_classes(
         base_style,
         &ctx.model.class_defs,
-        &subgraph.classes,
-        &subgraph.styles,
+        classes,
+        styles,
     );
     // Mermaid 11.16's dedicated Swimlane renderer omits createText's `markdown` option, so the
     // default `true` applies independently of FlowDB's public subgraph labelType.
@@ -255,7 +256,7 @@ fn measure_group_title(
 
 pub(super) fn prepare(
     model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderLabelSources,
+    render_label_sources: &FlowchartRenderContext,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,

@@ -10,37 +10,44 @@ mod style;
 mod svg_label_artifact;
 
 pub(crate) use merman_core::diagrams::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
 use std::ops::Deref;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartRenderModelRef<'a> {
     semantic: &'a FlowchartModel,
-    label_sources: &'a FlowchartRenderLabelSources,
+    render_context: &'a FlowchartRenderContext,
 }
 
 impl<'a> FlowchartRenderModelRef<'a> {
     pub(crate) const fn new(
         semantic: &'a FlowchartModel,
-        label_sources: &'a FlowchartRenderLabelSources,
+        render_context: &'a FlowchartRenderContext,
     ) -> Self {
         Self {
             semantic,
-            label_sources,
+            render_context,
         }
     }
 
     pub(crate) fn node_label_for_render<'b>(&'b self, node: &'b FlowNode) -> Option<&'b str> {
-        self.label_sources.node_label_for_render(node)
+        self.render_context.node_label_for_render(node)
     }
 
     pub(crate) fn edge_label_for_render<'b>(&'b self, edge: &'b FlowEdge) -> Option<&'b str> {
-        self.label_sources.edge_label_for_render(edge)
+        self.render_context.edge_label_for_render(edge)
     }
 
     pub(crate) fn subgraph_title_for_render<'b>(&'b self, subgraph: &'b FlowSubgraph) -> &'b str {
-        self.label_sources.subgraph_title_for_render(subgraph)
+        self.render_context.subgraph_title_for_render(subgraph)
+    }
+
+    pub(crate) fn effective_subgraph_css<'b>(
+        &'b self,
+        subgraph: &'b FlowSubgraph,
+    ) -> (&'b [String], &'b [String]) {
+        self.render_context.effective_subgraph_css(subgraph)
     }
 
     pub(crate) fn requires_math(&self) -> bool {

@@ -53,9 +53,9 @@ pub use resource::{
 };
 pub use safe_text::{normalize_terminal_diagnostic, normalize_terminal_text};
 
-use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagram::{ParsedDiagramRender, RenderSemanticModel};
 use merman_core::diagrams::er::ErDiagramRenderModel;
-use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_core::diagrams::gantt::GanttDiagramRenderModel;
 use merman_core::diagrams::git_graph::GitGraphRenderModel;
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
@@ -97,12 +97,38 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let execution = operation::AsciiExecution::new(control, &resources);
-        render_model_with_execution(model, &self.options, execution, context.local_time_zone())
+        render_model_with_execution(
+            model,
+            None,
+            &self.options,
+            execution,
+            context.local_time_zone(),
+        )
+    }
+
+    /// Renders one parser-owned model together with its render-only semantic context.
+    #[doc(hidden)]
+    pub fn render_parsed(
+        &self,
+        parsed: &ParsedDiagramRender,
+        control: &merman_core::OperationControl,
+        context: &OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Result<String> {
+        let execution = operation::AsciiExecution::new(control, &resources);
+        render_model_with_execution(
+            parsed.model(),
+            parsed.flowchart_render_context(),
+            &self.options,
+            execution,
+            context.local_time_zone(),
+        )
     }
 }
 
 fn render_model_with_execution(
     model: &RenderSemanticModel,
+    flowchart_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     execution: operation::AsciiExecution<'_>,
     local_time_zone: &merman_core::time::LocalTimeZone,
@@ -113,7 +139,9 @@ fn render_model_with_execution(
     let rendered = match model {
         RenderSemanticModel::Class(model) => render_class_model(model, options, &execution),
         RenderSemanticModel::Er(model) => render_er_model(model, options, &execution),
-        RenderSemanticModel::Flowchart(model) => render_flowchart_model(model, options, &execution),
+        RenderSemanticModel::Flowchart(model) => {
+            render_flowchart_model(model, flowchart_context, options, &execution)
+        }
         RenderSemanticModel::Gantt(model) => {
             render_gantt_model(model, options, local_time_zone, &execution)
         }
@@ -171,6 +199,7 @@ fn render_er_model(
 
 fn render_flowchart_model(
     model: &FlowchartModel,
+    render_context: Option<&FlowchartRenderContext>,
     options: &AsciiRenderOptions,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
@@ -180,6 +209,7 @@ fn render_flowchart_model(
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
     let graph = graph::from_flowchart_model_with_execution(
         model,
+        render_context,
         options,
         &mut semantic_resources,
         *execution,
@@ -824,7 +854,6 @@ mod tests {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         }];
 
@@ -860,7 +889,6 @@ mod tests {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         }];
 

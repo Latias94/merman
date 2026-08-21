@@ -69,14 +69,15 @@ use text::{
 };
 
 #[doc(hidden)]
-pub use model::FlowchartRenderLabelSources;
+pub use model::FlowchartRenderContext;
 pub use model::{
     FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
-    FlowNodeProvenance, FlowSubgraph, FlowSubgraphVertexStyle, FlowchartModel,
+    FlowNodeProvenance, FlowSubgraph, FlowchartModel,
 };
 
 pub(crate) use model::{
-    Edge, EdgeDefaults, FlowNodeSyntax, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
+    Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, FlowchartRenderLabelSources,
+    FlowchartRenderStyleSources, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
 };
 
 pub(crate) use ast::{
@@ -115,7 +116,6 @@ pub(crate) struct FlowSubGraph {
     pub title: String,
     pub classes: Vec<String>,
     pub styles: Vec<String>,
-    pub same_id_vertex_style: Option<FlowSubgraphVertexStyle>,
     pub dir: Option<String>,
     pub has_explicit_dir: bool,
     pub label_type: String,
@@ -133,6 +133,7 @@ struct FlowchartSemanticSource {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
+    subgraph_vertex_styles: FlowchartRenderStyleSources,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -228,7 +229,7 @@ pub(crate) fn parse_flowchart_model_for_render(
 pub(crate) fn parse_flowchart_model_with_render_context(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
+) -> Result<(FlowchartModel, FlowchartRenderContext)> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model_parts(meta)
 }
 
@@ -236,7 +237,7 @@ pub(crate) fn parse_flowchart_model_with_render_context_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
+) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
     let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
     match source {
         Ok(source) => source.into_render_model_parts_controlled(meta, control),
@@ -270,13 +271,6 @@ pub(crate) fn render_model_to_compat_json(
         for node in nodes {
             if let Some(node) = node.as_object_mut() {
                 node.remove("provenance");
-            }
-        }
-    }
-    if let Some(subgraphs) = root.get_mut("subgraphs").and_then(Value::as_array_mut) {
-        for subgraph in subgraphs {
-            if let Some(subgraph) = subgraph.as_object_mut() {
-                subgraph.remove("sameIdVertexStyle");
             }
         }
     }
@@ -378,36 +372,15 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         .collect();
 
     let mut build = FlowchartBuildState::new(subgraph_ids);
-    if let Err(error) = build.add_statements(&ast.statements, &shape_data_documents, control)? {
-        return Ok(Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            error,
-        )));
-    }
-    let FlowchartBuildState {
-        nodes,
-        edges,
-        vertex_calls,
-        mut same_id_vertex_styles,
-        warning_facts: build_warning_facts,
-        ..
-    } = build;
+    build.add_statements(&ast.statements, control)?;
+    let FlowchartBuildState { nodes, edges, .. } = build;
     let mut nodes = nodes;
     let mut edges = edges;
 
-    // Mermaid keeps vertices in a global ID map and resolves duplicate subgraph IDs with
-    // last-declaration-wins lookup semantics. Attach the captured vertex CSS source to that same
-    // canonical subgraph declaration so the render model can reproduce the later vertex pass.
-    for (index, subgraph) in builder.subgraphs.iter_mut().rev().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if let Some(style) = same_id_vertex_styles.remove(&subgraph.id) {
-            subgraph.same_id_vertex_style = Some(style);
-        }
-    }
-
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
+    let mut subgraph_vertex_styles = FlowchartRenderStyleSources::default();
+    let mut vertex_calls = Vec::new();
+    let mut warning_facts = Vec::new();
     let mut tooltips: HashMap<String, String> = HashMap::new();
     let mut edge_defaults = EdgeDefaults {
         style: Vec::new(),
@@ -421,14 +394,6 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         }
         node_index.insert(n.id.clone(), idx);
     }
-    let mut subgraph_index: HashMap<String, usize> = HashMap::new();
-    for (idx, sg) in builder.subgraphs.iter().enumerate() {
-        if idx % 128 == 0 {
-            control.checkpoint()?;
-        }
-        subgraph_index.insert(sg.id.clone(), idx);
-    }
-
     let security_level_loose = meta.effective_config.get_str("securityLevel") == Some("loose");
     {
         let mut semantic_ctx = FlowchartSemanticContext {
@@ -436,7 +401,9 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
             node_index: &mut node_index,
             edges: &mut edges,
             subgraphs: &mut builder.subgraphs,
-            subgraph_index: &mut subgraph_index,
+            subgraph_vertex_styles: &mut subgraph_vertex_styles,
+            vertex_calls: &mut vertex_calls,
+            warning_facts: &mut warning_facts,
             class_defs: &mut class_defs,
             tooltips: &mut tooltips,
             edge_defaults: &mut edge_defaults,
@@ -452,7 +419,6 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
     }
 
     let direction = ast.direction;
-    let mut warning_facts = build_warning_facts;
     warning_facts.extend(flowchart_warning_facts(&direction, ast.header_span));
     control.checkpoint()?;
     Ok(Ok(FlowchartSemanticSource {
@@ -467,6 +433,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         nodes,
         edges,
         subgraphs: builder.subgraphs,
+        subgraph_vertex_styles,
         warning_facts,
     }))
 }
@@ -490,8 +457,8 @@ fn prepare_flowchart_shape_data(
         visited = visited.saturating_add(1);
 
         match statement {
-            Stmt::Chain { nodes, .. } => {
-                for (index, node) in nodes.iter().enumerate() {
+            Stmt::Chain { node_groups, .. } => {
+                for (index, node) in node_groups.iter().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
@@ -971,19 +938,23 @@ fn collect_editor_facts_from_statements_with_seen_edges(
         visited = visited.saturating_add(1);
 
         match stmt {
-            Stmt::Chain { nodes, edges } => {
-                for (index, node) in nodes.iter().enumerate() {
+            Stmt::Chain {
+                node_groups,
+                edge_groups,
+            } => {
+                for (index, node) in node_groups.iter().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
-                    let occurrence = if edges.is_empty() || node_defines_flowchart_entity(node) {
-                        FlowchartNodeOccurrence::Definition
-                    } else {
-                        FlowchartNodeOccurrence::RelationEndpoint
-                    };
+                    let occurrence =
+                        if edge_groups.is_empty() || node_defines_flowchart_entity(node) {
+                            FlowchartNodeOccurrence::Definition
+                        } else {
+                            FlowchartNodeOccurrence::RelationEndpoint
+                        };
                     push_flowchart_node_symbol(facts, node, seen_entities, occurrence);
                 }
-                for (index, edge) in edges.iter().enumerate() {
+                for (index, edge) in edge_groups.iter().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
@@ -1566,7 +1537,7 @@ impl FlowchartSemanticSource {
     fn into_render_model_parts(
         self,
         meta: &ParseMetadata,
-    ) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
+    ) -> Result<(FlowchartModel, FlowchartRenderContext)> {
         let control = OperationControl::new();
         self.into_render_model_parts_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
@@ -1586,7 +1557,7 @@ impl FlowchartSemanticSource {
         self,
         meta: &ParseMetadata,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
+    ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
         control.checkpoint()?;
         let FlowchartSemanticSource {
             acc_descr,
@@ -1597,6 +1568,7 @@ impl FlowchartSemanticSource {
             mut nodes,
             edges,
             subgraphs,
+            subgraph_vertex_styles,
             warning_facts,
             tooltips,
             keyword,
@@ -1671,7 +1643,10 @@ impl FlowchartSemanticSource {
             tooltips: render_tooltips,
             warning_facts,
         };
-        Ok(Ok((model, render_label_sources)))
+        Ok(Ok((
+            model,
+            FlowchartRenderContext::new(render_label_sources, subgraph_vertex_styles),
+        )))
     }
 }
 
@@ -1878,7 +1853,6 @@ fn flow_subgraph_to_model(
         title,
         classes: sg.classes,
         styles: sg.styles,
-        same_id_vertex_style: sg.same_id_vertex_style,
         dir: sg.dir,
         has_explicit_dir: sg.has_explicit_dir,
         label_type: Some(sg.label_type),
@@ -1902,7 +1876,7 @@ mod tests {
     #[test]
     fn flowchart_subgraph_endpoint_provenance_preserves_authored_nodes() {
         let meta = flowchart_test_meta("flowchart-v2");
-        let endpoint_only = parse_flowchart_model_for_render(
+        let (endpoint_only, endpoint_context) = parse_flowchart_model_with_render_context(
             "flowchart TD\nsubgraph G\n  A\nend\nG --> A\n",
             &meta,
         )
@@ -1913,10 +1887,7 @@ mod tests {
             .find(|node| node.id == "G")
             .expect("subgraph endpoint node");
         assert_eq!(endpoint.provenance, FlowNodeProvenance::SubgraphAnchor);
-        assert_eq!(
-            endpoint_only.subgraphs[0].same_id_vertex_style,
-            Some(FlowSubgraphVertexStyle::default())
-        );
+        assert!(endpoint_context.contains_subgraph_vertex("G"));
 
         for source in [
             "flowchart TD\nG\nsubgraph G\n  A\nend\nG --> A\n",
@@ -1935,7 +1906,7 @@ mod tests {
                 "G@{ shape: rect, label: \"Authored G\" }\n",
             ),
         ] {
-            let model = parse_flowchart_model_for_render(source, &meta)
+            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
                 .expect("authored node and subgraph model");
             let node = model
                 .nodes
@@ -1943,11 +1914,33 @@ mod tests {
                 .find(|node| node.id == "G")
                 .expect("authored G node");
             assert_eq!(node.provenance, FlowNodeProvenance::Authored, "{source}");
-            assert!(
-                model.subgraphs[0].same_id_vertex_style.is_some(),
-                "{source}"
-            );
+            assert!(context.contains_subgraph_vertex("G"), "{source}");
         }
+    }
+
+    #[test]
+    fn same_id_shape_data_is_retained_on_the_authored_typed_node() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, _) = parse_flowchart_model_with_render_context(
+            concat!(
+                "flowchart TD\n",
+                "subgraph G\n",
+                "  A\n",
+                "end\n",
+                "G --> A\n",
+                "G@{ shape: stadium, label: \"Authored G\" }\n",
+            ),
+            &meta,
+        )
+        .expect("same-id shapeData should parse");
+        let node = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "G")
+            .expect("authored G node");
+        assert_eq!(node.provenance, FlowNodeProvenance::Authored);
+        assert_eq!(node.shape.as_deref(), Some("stadium"));
+        assert_eq!(node.label.as_deref(), Some("Authored G"));
     }
 
     #[test]
@@ -1977,28 +1970,25 @@ mod tests {
         ];
 
         for (source, expected_vertex_classes) in cases {
-            let model =
-                parse_flowchart_model_for_render(source, &meta).expect("same-ID group model");
+            let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
+                .expect("same-ID group model");
             let subgraph = model
                 .subgraphs
                 .iter()
                 .find(|subgraph| subgraph.id == "G")
                 .expect("subgraph G");
-            let vertex_style = subgraph
-                .same_id_vertex_style
-                .as_ref()
-                .expect("same-ID FlowDB vertex style source");
+            let (vertex_classes, vertex_styles) = context.effective_subgraph_css(subgraph);
 
             assert_eq!(subgraph.classes, ["base"]);
-            assert_eq!(vertex_style.classes, expected_vertex_classes, "{source}");
-            assert_eq!(vertex_style.styles, ["fill:#f00"], "{source}");
+            assert_eq!(vertex_classes, expected_vertex_classes, "{source}");
+            assert_eq!(vertex_styles, ["fill:#f00"], "{source}");
         }
     }
 
     #[test]
-    fn same_id_subgraph_vertex_style_round_trips_without_changing_legacy_json() {
+    fn same_id_subgraph_vertex_style_stays_out_of_the_public_model() {
         let meta = flowchart_test_meta("flowchart-v2");
-        let model = parse_flowchart_model_for_render(
+        let (model, context) = parse_flowchart_model_with_render_context(
             concat!(
                 "flowchart TD\n",
                 "subgraph G\n  A\nend\n",
@@ -2010,24 +2000,11 @@ mod tests {
         .expect("same-ID group model");
 
         let json = serde_json::to_value(&model).expect("serialize Flowchart model");
-        assert_eq!(
-            json["subgraphs"][0]["sameIdVertexStyle"]["classes"],
-            json!(["hot"])
-        );
-        assert_eq!(
-            json["subgraphs"][0]["sameIdVertexStyle"]["styles"],
-            json!(["fill:#f00"])
-        );
-
-        let roundtrip: FlowchartModel =
-            serde_json::from_value(json).expect("deserialize Flowchart model");
-        assert_eq!(
-            roundtrip.subgraphs[0].same_id_vertex_style,
-            Some(FlowSubgraphVertexStyle {
-                classes: vec!["hot".to_string()],
-                styles: vec!["fill:#f00".to_string()],
-            })
-        );
+        assert!(json["subgraphs"][0].get("sameIdVertexStyle").is_none());
+        let subgraph = &model.subgraphs[0];
+        let (classes, styles) = context.effective_subgraph_css(subgraph);
+        assert_eq!(classes, ["hot"]);
+        assert_eq!(styles, ["fill:#f00"]);
 
         let compatibility =
             render_model_to_compat_json(&model, &meta).expect("legacy flowchart JSON");
@@ -2036,6 +2013,36 @@ mod tests {
                 .get("sameIdVertexStyle")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn duplicate_subgraph_ids_share_one_effective_css_owner() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, context) = parse_flowchart_model_with_render_context(
+            concat!(
+                "flowchart TD\n",
+                "subgraph X\n",
+                "  A\n",
+                "end\n",
+                "subgraph X\n",
+                "  B\n",
+                "end\n",
+                "style X fill:#f00\n",
+            ),
+            &meta,
+        )
+        .expect("duplicate subgraph declarations should parse");
+
+        let groups = model
+            .subgraphs
+            .iter()
+            .filter(|subgraph| subgraph.id == "X")
+            .collect::<Vec<_>>();
+        assert_eq!(groups.len(), 2);
+        for group in groups {
+            let (_, styles) = context.effective_subgraph_css(group);
+            assert_eq!(styles, ["fill:#f00"]);
+        }
     }
 
     #[test]
@@ -2277,9 +2284,9 @@ F -- "&nbsp;" --> G
             )
             .expect("parse flowchart")
             .expect("detect flowchart");
-        let render_label_sources = parsed
-            .flowchart_render_label_sources()
-            .expect("flowchart render label sources");
+        let render_context = parsed
+            .flowchart_render_context()
+            .expect("flowchart render context");
         let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
             panic!("expected Flowchart model");
         };
@@ -2291,7 +2298,7 @@ F -- "&nbsp;" --> G
             .expect("comparison node");
         assert_eq!(comparison.label.as_deref(), Some("x &lt; y and y > z"));
         assert_eq!(
-            render_label_sources.node_label_for_render(comparison),
+            render_context.node_label_for_render(comparison),
             Some("x &lt; y and y &gt; z")
         );
 
@@ -2301,7 +2308,7 @@ F -- "&nbsp;" --> G
             .find(|node| node.id == "D")
             .expect("formatted node");
         assert_eq!(
-            render_label_sources.node_label_for_render(formatted),
+            render_context.node_label_for_render(formatted),
             Some("<u>under</u> and <i>italic</i>")
         );
     }
@@ -2387,7 +2394,8 @@ F -- "&nbsp;" --> G
         let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
         assert!(matches!(
             ast.statements.as_slice(),
-            [Stmt::Chain { nodes, .. }] if nodes.len() == 256
+            [Stmt::Chain { node_groups, .. }]
+                if node_groups.iter().map(Vec::len).sum::<usize>() == 256
         ));
 
         let shape_data_control = OperationControl::new();
@@ -2453,7 +2461,6 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
-                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),
@@ -2464,7 +2471,6 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
-                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),
@@ -2475,7 +2481,6 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
-                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),
@@ -2486,7 +2491,6 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
-                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),

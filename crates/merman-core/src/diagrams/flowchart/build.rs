@@ -1,10 +1,5 @@
-use super::{
-    Edge, FlowNodeProvenance, FlowNodeSyntax, FlowSubgraphVertexStyle, Node, Stmt, TitleKind,
-    apply_shape_data_value_to_node,
-};
-use crate::diagram::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
+use super::{Edge, FlowNodeProvenance, FlowNodeSyntax, Node, Stmt, TitleKind};
 use crate::{OperationControl, OperationControlResult};
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
 pub(super) struct FlowchartBuildState {
@@ -14,9 +9,6 @@ pub(super) struct FlowchartBuildState {
     pub(super) used_edge_ids: HashSet<String>,
     pub(super) subgraph_ids: HashSet<String>,
     pub(super) edge_pair_counts: HashMap<(String, String), usize>,
-    pub(super) vertex_calls: Vec<String>,
-    pub(super) same_id_vertex_styles: HashMap<String, FlowSubgraphVertexStyle>,
-    pub(super) warning_facts: Vec<DiagramWarningFact>,
 }
 
 impl FlowchartBuildState {
@@ -28,18 +20,14 @@ impl FlowchartBuildState {
             used_edge_ids: HashSet::new(),
             subgraph_ids,
             edge_pair_counts: HashMap::new(),
-            vertex_calls: Vec::new(),
-            same_id_vertex_styles: HashMap::new(),
-            warning_facts: Vec::new(),
         }
     }
 
     pub(super) fn add_statements(
         &mut self,
         statements: &[Stmt],
-        shape_data_documents: &HashMap<String, std::result::Result<Value, String>>,
         control: &OperationControl,
-    ) -> OperationControlResult<std::result::Result<(), String>> {
+    ) -> OperationControlResult<()> {
         // Keep Mermaid's preorder statement handling without using the Rust call stack for
         // deeply nested subgraphs.
         let mut stack = vec![statements.iter()];
@@ -55,67 +43,32 @@ impl FlowchartBuildState {
             visited = visited.saturating_add(1);
 
             match stmt {
-                Stmt::Chain { nodes, edges } => {
-                    let mut deferred_shape_data_vertex_calls: Vec<String> = Vec::new();
-                    for (index, mut n) in nodes.iter().cloned().enumerate() {
-                        if index % 128 == 0 {
-                            control.checkpoint()?;
-                        }
-                        // Mermaid FlowDB `vertexCounter` increments on every `addVertex(...)` call.
-                        // Our grammar models `shapeData` attachments in the AST, so we can replay the
-                        // observable call sequence:
-                        // - once for the vertex token itself
-                        // - once more if a `@{ ... }` shapeData block is present
-                        self.vertex_calls.push(n.id.clone());
-                        self.record_same_id_vertex(&n);
-                        if n.shape_data.is_some() {
-                            // For multi-vertex statements (notably `&`-separated nodes), the upstream
-                            // parser's reduction order can apply shapeData after the statement's
-                            // vertices have already been introduced. Record these shapeData calls
-                            // after we've visited every vertex in the statement.
-                            deferred_shape_data_vertex_calls.push(n.id.clone());
-                        }
-                        if let Some(sd) = n.shape_data.take()
-                            && let Err(error) =
-                                apply_shape_data_document(&mut n, &sd, shape_data_documents)
-                        {
-                            return Ok(Err(error));
-                        }
-                        if !edges.is_empty()
-                            && n.syntax == FlowNodeSyntax::BareReference
-                            && self.subgraph_ids.contains(&n.id)
-                        {
-                            n.provenance = FlowNodeProvenance::SubgraphAnchor;
-                        }
-                        self.upsert_node(n);
+                Stmt::Chain {
+                    node_groups,
+                    edge_groups,
+                } => {
+                    let has_edges = !edge_groups.is_empty();
+                    if let Some(first_group) = node_groups.first() {
+                        self.upsert_group(first_group, has_edges, control)?;
                     }
-                    for (index, id) in deferred_shape_data_vertex_calls.into_iter().enumerate() {
-                        if index % 128 == 0 {
-                            control.checkpoint()?;
+                    for (segment_index, edges) in edge_groups.iter().enumerate() {
+                        if let Some(next_group) = node_groups.get(segment_index + 1) {
+                            self.upsert_group(next_group, true, control)?;
                         }
-                        self.vertex_calls.push(id);
-                    }
-                    for (index, e) in edges.iter().cloned().enumerate() {
-                        if index % 128 == 0 {
-                            control.checkpoint()?;
+                        for (edge_index, edge) in edges.iter().cloned().enumerate() {
+                            if edge_index % 128 == 0 {
+                                control.checkpoint()?;
+                            }
+                            self.push_edge(edge);
                         }
-                        self.push_edge(e);
                     }
                 }
                 Stmt::Node(n) => {
                     let mut n = n.as_ref().clone();
+                    if self.used_edge_ids.contains(&n.id) {
+                        continue;
+                    }
                     n.provenance = FlowNodeProvenance::Authored;
-                    self.vertex_calls.push(n.id.clone());
-                    self.record_same_id_vertex(&n);
-                    if n.shape_data.is_some() {
-                        self.vertex_calls.push(n.id.clone());
-                    }
-                    if let Some(sd) = n.shape_data.take()
-                        && let Err(error) =
-                            apply_shape_data_document(&mut n, &sd, shape_data_documents)
-                    {
-                        return Ok(Err(error));
-                    }
                     self.upsert_node(n);
                 }
                 Stmt::ShapeData {
@@ -123,23 +76,10 @@ impl FlowchartBuildState {
                     target_span,
                     ..
                 } => {
-                    // Mermaid applies shapeData to edges if (and only if) an edge with that ID exists.
-                    // For ordering parity we only insert a placeholder node when this currently refers to a node.
-                    if self.used_edge_ids.contains(target) {
-                        continue;
-                    }
-
-                    // The upstream flowchart parser calls `addVertex(id)` and then
-                    // `addVertex(id, ..., shapeData)` for `id@{...}` statements.
-                    self.vertex_calls.push(target.clone());
-                    self.vertex_calls.push(target.clone());
-                    self.record_same_id_vertex_call(target);
-                    if let Some(&idx) = self.node_index.get(target) {
-                        self.nodes[idx].provenance = FlowNodeProvenance::Authored;
-                        self.nodes[idx].syntax = FlowNodeSyntax::ExplicitDefinition;
-                    } else {
-                        let idx = self.nodes.len();
-                        self.nodes.push(Node {
+                    // Reserve the structural node slot in source order. The semantic replay is
+                    // the sole owner of parsing and applying shapeData values.
+                    if !self.used_edge_ids.contains(target) {
+                        self.upsert_node(Node {
                             id: target.clone(),
                             provenance: FlowNodeProvenance::Authored,
                             syntax: FlowNodeSyntax::ExplicitDefinition,
@@ -163,117 +103,44 @@ impl FlowchartBuildState {
                             link_target: None,
                             have_callback: false,
                         });
-                        self.node_index.insert(target.clone(), idx);
                     }
                 }
+                Stmt::Style(_) => {}
                 Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
-                Stmt::ClassAssign(class) => {
-                    for (index, target) in class.targets.iter().enumerate() {
-                        if index % 128 == 0 {
-                            control.checkpoint()?;
-                        }
-                        self.record_same_id_vertex_class(target, &class.class_name);
-                    }
-                }
-                Stmt::Click(click) => {
-                    for (index, target) in click.ids.iter().enumerate() {
-                        if index % 128 == 0 {
-                            control.checkpoint()?;
-                        }
-                        self.record_same_id_vertex_class(target, "clickable");
-                    }
-                }
-                Stmt::Direction(_) | Stmt::ClassDef(_) | Stmt::LinkStyle(_) => {}
-                Stmt::Style(s) => {
-                    // Mermaid still advances the vertex counter for `style <subgraph-id>`.
-                    // Record that observable call, but do not synthesize a node or warning
-                    // for subgraph targets because the style belongs to the cluster.
-                    if self.subgraph_ids.contains(&s.target) {
-                        self.vertex_calls.push(s.target.clone());
-                        if !self.used_edge_ids.contains(&s.target) {
-                            let style = self
-                                .same_id_vertex_styles
-                                .entry(s.target.clone())
-                                .or_default();
-                            style.styles.extend(s.styles.iter().cloned());
-                        }
-                        continue;
-                    }
-                    // Mermaid's `style` statement routes through FlowDB `addVertex(id, ..., styles)`.
-                    // This increments `vertexCounter` for nodes (but is a no-op for edges).
-                    if !self.used_edge_ids.contains(&s.target) {
-                        self.vertex_calls.push(s.target.clone());
-                        if !self.node_index.contains_key(&s.target) {
-                            let mut warning = DiagramWarningFact::new(
-                                FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-                                format!(
-                                    "Style applied to unknown node \"{}\". This may indicate a typo. The node will be created automatically.",
-                                    s.target
-                                ),
-                            );
-                            if let Some(span) = s.target_span {
-                                warning = warning.with_span(span);
-                            }
-                            self.warning_facts.push(warning);
-                            let idx = self.nodes.len();
-                            self.nodes.push(Node {
-                                id: s.target.clone(),
-                                provenance: FlowNodeProvenance::Authored,
-                                syntax: FlowNodeSyntax::ExplicitDefinition,
-                                id_span: None,
-                                label: None,
-                                label_type: TitleKind::Text,
-                                label_span: None,
-                                label_selection: None,
-                                shape: None,
-                                shape_data: None,
-                                icon: None,
-                                form: None,
-                                pos: None,
-                                img: None,
-                                constraint: None,
-                                asset_width: None,
-                                asset_height: None,
-                                styles: Vec::new(),
-                                classes: Vec::new(),
-                                link: None,
-                                link_target: None,
-                                have_callback: false,
-                            });
-                            self.node_index.insert(s.target.clone(), idx);
-                        }
-                    }
-                }
+                Stmt::Direction(_)
+                | Stmt::ClassDef(_)
+                | Stmt::ClassAssign(_)
+                | Stmt::Click(_)
+                | Stmt::LinkStyle(_) => {}
             }
         }
         control.checkpoint()?;
-        Ok(Ok(()))
+        Ok(())
     }
 
-    fn record_same_id_vertex(&mut self, node: &Node) {
-        if !self.subgraph_ids.contains(&node.id) || self.used_edge_ids.contains(&node.id) {
-            return;
+    fn upsert_group(
+        &mut self,
+        nodes: &[Node],
+        has_edges: bool,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        for (index, node) in nodes.iter().cloned().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if self.used_edge_ids.contains(&node.id) {
+                continue;
+            }
+            let mut node = node;
+            if has_edges
+                && node.syntax == FlowNodeSyntax::BareReference
+                && self.subgraph_ids.contains(&node.id)
+            {
+                node.provenance = FlowNodeProvenance::SubgraphAnchor;
+            }
+            self.upsert_node(node);
         }
-        let style = self
-            .same_id_vertex_styles
-            .entry(node.id.clone())
-            .or_default();
-        style.classes.extend(node.classes.iter().cloned());
-        style.styles.extend(node.styles.iter().cloned());
-    }
-
-    fn record_same_id_vertex_call(&mut self, id: &str) {
-        if self.subgraph_ids.contains(id) && !self.used_edge_ids.contains(id) {
-            self.same_id_vertex_styles
-                .entry(id.to_string())
-                .or_default();
-        }
-    }
-
-    fn record_same_id_vertex_class(&mut self, id: &str, class_name: &str) {
-        if let Some(style) = self.same_id_vertex_styles.get_mut(id) {
-            style.classes.push(class_name.to_string());
-        }
+        Ok(())
     }
 
     fn upsert_node(&mut self, n: Node) {
@@ -352,23 +219,10 @@ impl FlowchartBuildState {
     }
 }
 
-fn apply_shape_data_document(
-    node: &mut Node,
-    source: &str,
-    documents: &HashMap<String, std::result::Result<Value, String>>,
-) -> std::result::Result<(), String> {
-    match documents
-        .get(source)
-        .expect("flowchart shape data must be prepared before semantic construction")
-    {
-        Ok(document) => apply_shape_data_value_to_node(node, document),
-        Err(error) => Err(error.clone()),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagrams::flowchart::TitleKind;
 
     #[test]
     fn single_large_chain_observes_cancellation_inside_node_projection() {
@@ -399,15 +253,15 @@ mod tests {
             })
             .collect();
         let statements = [Stmt::Chain {
-            nodes,
-            edges: Vec::new(),
+            node_groups: vec![nodes],
+            edge_groups: Vec::new(),
         }];
         let mut build = FlowchartBuildState::new(HashSet::new());
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
-            build.add_statements(&statements, &HashMap::new(), &control),
+            build.add_statements(&statements, &control),
             Err(crate::OperationCancelled { .. })
         ));
         assert!(build.nodes.len() < 256);

@@ -973,8 +973,8 @@ fn render_ascii_target(
     let renderer = merman_ascii::AsciiRenderer::new(request.options);
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let renderer = renderer.map_err(map_ascii_error)?;
-    let result = renderer.render_model(
-        parsed.model(),
+    let result = renderer.render_parsed(
+        &parsed,
         &operation.control,
         &operation.context,
         request.resources,

@@ -68,7 +68,6 @@ fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         },
         merman_core::diagrams::flowchart::FlowSubgraph {
@@ -79,7 +78,6 @@ fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["B".to_string()],
         },
     ];
@@ -114,7 +112,6 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         },
         merman_core::diagrams::flowchart::FlowSubgraph {
@@ -125,7 +122,6 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["B".to_string()],
         },
         merman_core::diagrams::flowchart::FlowSubgraph {
@@ -136,7 +132,6 @@ fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["Y".to_string()],
         },
     ];
@@ -389,7 +384,6 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
-            same_id_vertex_style: None,
             nodes: vec!["A".to_string(), "B".to_string()],
         }],
         tooltips: Default::default(),

@@ -445,7 +445,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     layout_flowchart_typed_with_render_labels_by_engine(
         diagram_type,
         model,
-        &merman_core::diagrams::flowchart::FlowchartRenderLabelSources::default(),
+        &merman_core::diagrams::flowchart::FlowchartRenderContext::default(),
         effective_config,
         options,
         None,
@@ -455,7 +455,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     diagram_type: &str,
     model: &FlowchartModel,
-    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
@@ -486,7 +486,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
 fn layout_flowchart_elk_typed_by_feature(
     _diagram_type: &str,
     model: &FlowchartModel,
-    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
@@ -509,7 +509,7 @@ fn layout_flowchart_elk_typed_by_feature(
 fn layout_flowchart_elk_typed_by_feature(
     diagram_type: &str,
     _model: &FlowchartModel,
-    _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
+    _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderContext,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
     _svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,

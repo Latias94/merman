@@ -18,7 +18,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             layout: artifact.pair().layout(),
             swimlane_layout: None,
             model: artifact.pair().semantic(),
-            render_label_sources: artifact.label_sources(),
+            render_context: artifact.render_context(),
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
@@ -33,7 +33,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) layout: &'a FlowchartLayout,
     pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(super) model: &'a crate::flowchart::FlowchartModel,
-    pub(super) render_label_sources: &'a crate::flowchart::FlowchartRenderLabelSources,
+    pub(super) render_context: &'a crate::flowchart::FlowchartRenderContext,
     pub(super) effective_config: &'a merman_core::MermaidConfig,
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
@@ -49,14 +49,14 @@ pub(super) fn render_flowchart_svg_model(
         layout,
         swimlane_layout,
         model,
-        render_label_sources,
+        render_context,
         effective_config,
         diagram_type,
         diagram_title,
         presentation_policy,
         svg_label_sidecar,
     } = request;
-    let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
+    let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
     let model = &render_model;
     if model
         .nodes

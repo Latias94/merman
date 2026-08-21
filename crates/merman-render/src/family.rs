@@ -208,7 +208,7 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 #[derive(Debug)]
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
-    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    render_context: diagrams::flowchart::FlowchartRenderContext,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     policy: Option<FlowchartPresentationPolicy>,
 }
@@ -218,8 +218,8 @@ impl<L> FlowchartFamilyArtifact<L> {
         &self.pair
     }
 
-    pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
-        &self.label_sources
+    pub(crate) fn render_context(&self) -> &diagrams::flowchart::FlowchartRenderContext {
+        &self.render_context
     }
 
     pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
@@ -935,25 +935,25 @@ const DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION: FlowchartSvgLabelPreparation =
 
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
-    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    render_context: diagrams::flowchart::FlowchartRenderContext,
     policy: Option<FlowchartPresentationPolicy>,
     svg_label_preparation: FlowchartSvgLabelPreparation,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
-        &diagrams::flowchart::FlowchartRenderLabelSources,
+        &diagrams::flowchart::FlowchartRenderContext,
         Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
     let svg_label_sidecar = svg_label_preparation
         .enabled()
         .then(crate::flowchart::FlowchartSvgLabelSidecarBuilder::default);
-    let layout = layout(&semantic, &label_sources, svg_label_sidecar.as_ref())?;
+    let layout = layout(&semantic, &render_context, svg_label_sidecar.as_ref())?;
     let svg_label_sidecar = svg_label_sidecar
         .map(crate::flowchart::FlowchartSvgLabelSidecarBuilder::finish)
         .unwrap_or_default();
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
-        label_sources,
+        render_context,
         svg_label_sidecar,
         policy,
     }))
@@ -995,15 +995,13 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
 fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
     match parsed.model() {
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
-        RenderSemanticModel::Flowchart(model) => {
-            parsed.flowchart_render_label_sources().map_or_else(
-                || semantic_flowchart_requires_math(model),
-                |label_sources| {
-                    crate::flowchart::FlowchartRenderModelRef::new(model, label_sources)
-                        .requires_math()
-                },
-            )
-        }
+        RenderSemanticModel::Flowchart(model) => parsed.flowchart_render_context().map_or_else(
+            || semantic_flowchart_requires_math(model),
+            |render_context| {
+                crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
+                    .requires_math()
+            },
+        ),
         RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,
@@ -1243,7 +1241,7 @@ fn prepare_non_class_render(
     flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
-    let flowchart_label_sources = render_context.into_flowchart_label_sources();
+    let flowchart_label_sources = render_context.into_flowchart_render_context();
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, &session);
     let effective_config = meta.effective_config.as_value();
@@ -2146,7 +2144,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
             };
             let model = crate::flowchart::FlowchartRenderModelRef::new(
                 flowchart.pair().semantic(),
-                flowchart.label_sources(),
+                flowchart.render_context(),
             );
             let edge = model.edges.get(1).expect("self-loop edge");
             assert_eq!(edge.id, "self-loop-edge");
@@ -2286,7 +2284,7 @@ linkStyle 0 font-size:12px,font-style:italic
             };
             let model = crate::flowchart::FlowchartRenderModelRef::new(
                 swimlane.pair().semantic(),
-                swimlane.label_sources(),
+                swimlane.render_context(),
             );
             let edge = model.edges.first().expect("styled Swimlane edge");
             assert_eq!(edge.id, "styled");
