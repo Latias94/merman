@@ -410,7 +410,27 @@ pub struct FlowSubgraph {
     pub classes: Vec<String>,
     #[serde(default)]
     pub styles: Vec<String>,
+    /// Captures the final CSS inputs of a FlowDB vertex that shares this subgraph's ID.
+    ///
+    /// Mermaid emits subgraphs before vertices. A same-ID vertex therefore replaces the
+    /// subgraph's classes and styles during the later vertex projection. `None` means no such
+    /// vertex was created; `Some` with empty vectors is observably different because it clears
+    /// the subgraph CSS inputs.
+    #[serde(
+        default,
+        rename = "sameIdVertexStyle",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub same_id_vertex_style: Option<FlowSubgraphVertexStyle>,
     pub nodes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowSubgraphVertexStyle {
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub styles: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

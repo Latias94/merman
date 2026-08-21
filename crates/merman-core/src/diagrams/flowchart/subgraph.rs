@@ -221,6 +221,7 @@ impl SubgraphBuilder {
             title,
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             dir,
             has_explicit_dir,
             label_type,

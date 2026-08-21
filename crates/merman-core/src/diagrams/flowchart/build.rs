@@ -1,5 +1,6 @@
 use super::{
-    Edge, FlowNodeProvenance, FlowNodeSyntax, Node, Stmt, TitleKind, apply_shape_data_value_to_node,
+    Edge, FlowNodeProvenance, FlowNodeSyntax, FlowSubgraphVertexStyle, Node, Stmt, TitleKind,
+    apply_shape_data_value_to_node,
 };
 use crate::diagram::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
 use crate::{OperationControl, OperationControlResult};
@@ -14,6 +15,7 @@ pub(super) struct FlowchartBuildState {
     pub(super) subgraph_ids: HashSet<String>,
     pub(super) edge_pair_counts: HashMap<(String, String), usize>,
     pub(super) vertex_calls: Vec<String>,
+    pub(super) same_id_vertex_styles: HashMap<String, FlowSubgraphVertexStyle>,
     pub(super) warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -27,6 +29,7 @@ impl FlowchartBuildState {
             subgraph_ids,
             edge_pair_counts: HashMap::new(),
             vertex_calls: Vec::new(),
+            same_id_vertex_styles: HashMap::new(),
             warning_facts: Vec::new(),
         }
     }
@@ -64,6 +67,7 @@ impl FlowchartBuildState {
                         // - once for the vertex token itself
                         // - once more if a `@{ ... }` shapeData block is present
                         self.vertex_calls.push(n.id.clone());
+                        self.record_same_id_vertex(&n);
                         if n.shape_data.is_some() {
                             // For multi-vertex statements (notably `&`-separated nodes), the upstream
                             // parser's reduction order can apply shapeData after the statement's
@@ -102,6 +106,7 @@ impl FlowchartBuildState {
                     let mut n = n.as_ref().clone();
                     n.provenance = FlowNodeProvenance::Authored;
                     self.vertex_calls.push(n.id.clone());
+                    self.record_same_id_vertex(&n);
                     if n.shape_data.is_some() {
                         self.vertex_calls.push(n.id.clone());
                     }
@@ -128,6 +133,7 @@ impl FlowchartBuildState {
                     // `addVertex(id, ..., shapeData)` for `id@{...}` statements.
                     self.vertex_calls.push(target.clone());
                     self.vertex_calls.push(target.clone());
+                    self.record_same_id_vertex_call(target);
                     if let Some(&idx) = self.node_index.get(target) {
                         self.nodes[idx].provenance = FlowNodeProvenance::Authored;
                         self.nodes[idx].syntax = FlowNodeSyntax::ExplicitDefinition;
@@ -161,17 +167,36 @@ impl FlowchartBuildState {
                     }
                 }
                 Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
-                Stmt::Direction(_)
-                | Stmt::ClassDef(_)
-                | Stmt::ClassAssign(_)
-                | Stmt::Click(_)
-                | Stmt::LinkStyle(_) => {}
+                Stmt::ClassAssign(class) => {
+                    for (index, target) in class.targets.iter().enumerate() {
+                        if index % 128 == 0 {
+                            control.checkpoint()?;
+                        }
+                        self.record_same_id_vertex_class(target, &class.class_name);
+                    }
+                }
+                Stmt::Click(click) => {
+                    for (index, target) in click.ids.iter().enumerate() {
+                        if index % 128 == 0 {
+                            control.checkpoint()?;
+                        }
+                        self.record_same_id_vertex_class(target, "clickable");
+                    }
+                }
+                Stmt::Direction(_) | Stmt::ClassDef(_) | Stmt::LinkStyle(_) => {}
                 Stmt::Style(s) => {
                     // Mermaid still advances the vertex counter for `style <subgraph-id>`.
                     // Record that observable call, but do not synthesize a node or warning
                     // for subgraph targets because the style belongs to the cluster.
                     if self.subgraph_ids.contains(&s.target) {
                         self.vertex_calls.push(s.target.clone());
+                        if !self.used_edge_ids.contains(&s.target) {
+                            let style = self
+                                .same_id_vertex_styles
+                                .entry(s.target.clone())
+                                .or_default();
+                            style.styles.extend(s.styles.iter().cloned());
+                        }
                         continue;
                     }
                     // Mermaid's `style` statement routes through FlowDB `addVertex(id, ..., styles)`.
@@ -223,6 +248,32 @@ impl FlowchartBuildState {
         }
         control.checkpoint()?;
         Ok(Ok(()))
+    }
+
+    fn record_same_id_vertex(&mut self, node: &Node) {
+        if !self.subgraph_ids.contains(&node.id) || self.used_edge_ids.contains(&node.id) {
+            return;
+        }
+        let style = self
+            .same_id_vertex_styles
+            .entry(node.id.clone())
+            .or_default();
+        style.classes.extend(node.classes.iter().cloned());
+        style.styles.extend(node.styles.iter().cloned());
+    }
+
+    fn record_same_id_vertex_call(&mut self, id: &str) {
+        if self.subgraph_ids.contains(id) && !self.used_edge_ids.contains(id) {
+            self.same_id_vertex_styles
+                .entry(id.to_string())
+                .or_default();
+        }
+    }
+
+    fn record_same_id_vertex_class(&mut self, id: &str, class_name: &str) {
+        if let Some(style) = self.same_id_vertex_styles.get_mut(id) {
+            style.classes.push(class_name.to_string());
+        }
     }
 
     fn upsert_node(&mut self, n: Node) {

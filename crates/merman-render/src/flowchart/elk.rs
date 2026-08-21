@@ -1990,6 +1990,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes,
         }
     }
@@ -2507,6 +2508,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         });
 
@@ -2565,6 +2567,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["a".to_string(), "b".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -2575,6 +2578,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: Vec::new(),
         });
 
@@ -2614,6 +2618,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["cluster-a".to_string(), "cluster-b".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -2624,6 +2629,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["later-a".to_string()],
         });
 
@@ -2672,6 +2678,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["C".to_string(), "D".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -2682,6 +2689,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["E".to_string(), "F".to_string()],
         });
 
@@ -3088,6 +3096,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["B1".to_string(), "B2".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -3098,6 +3107,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["i1".to_string(), "f1".to_string()],
         });
         model.subgraphs.push(FlowSubgraph {
@@ -3108,6 +3118,7 @@ mod tests {
             label_type: Some("text".to_string()),
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["i2".to_string(), "f2".to_string()],
         });
 

@@ -16,7 +16,7 @@ use crate::safe_text::{
 };
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
-    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowNode, FlowchartModel,
+    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
 };
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
@@ -59,7 +59,12 @@ fn from_flowchart_model_transactional(
 ) -> Result<AsciiGraph> {
     let memberships = preflight_flowchart_projection(model, resources, execution)?;
     validate_supported_flowchart_model(model, &memberships, resources, execution)?;
-    let style_plan = FlowchartStylePlan::try_new(model, resources, execution)?;
+    let style_plan = FlowchartStylePlan::try_new(
+        model,
+        |node_id| memberships.is_group_id(node_id),
+        resources,
+        execution,
+    )?;
 
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
@@ -285,6 +290,13 @@ fn preflight_flowchart_projection<'a>(
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
         }
+        if let Some(vertex) = &subgraph.same_id_vertex_style {
+            for (declaration_index, declaration) in vertex.classes.iter().enumerate() {
+                checkpoint_projection(execution, declaration_index)?;
+                resources.charge_layout_work(1)?;
+                charge_text_layout(resources, declaration)?;
+            }
+        }
     }
 
     for (index, class_name) in model.class_defs.keys().enumerate() {
@@ -407,8 +419,8 @@ impl<'a> FlowchartMembershipIndex<'a> {
         self.group_ids.contains(endpoint_id)
     }
 
-    fn is_group_anchor_placeholder(&self, node: &FlowNode) -> bool {
-        self.is_group_id(&node.id) && node.is_subgraph_anchor()
+    fn group_owns_node_id(&self, node_id: &str) -> bool {
+        self.is_group_id(node_id)
     }
 
     fn canonical_group_indices(&self) -> &[usize] {
@@ -631,7 +643,9 @@ impl<'a> FlowchartProjectionPlan<'a> {
             .map_err(|_| projection_allocation_failed())?;
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_projection(execution, index)?;
-            if memberships.is_group_anchor_placeholder(node) {
+            // Mermaid 11.16.1 emits subgraphs before vertices. A same-id vertex replaces the
+            // group's style sources but never becomes a second layout node.
+            if memberships.group_owns_node_id(&node.id) {
                 nodes.push(None);
                 continue;
             }
@@ -843,6 +857,7 @@ fn validate_supported_flowchart_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagrams::flowchart::{
         FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowNodeProvenance,
@@ -928,6 +943,7 @@ mod tests {
                 label_type: None,
                 classes: Vec::new(),
                 styles: Vec::new(),
+                same_id_vertex_style: None,
                 nodes: vec![member],
             });
             member = id;
@@ -969,6 +985,7 @@ mod tests {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         });
 
@@ -1128,6 +1145,7 @@ mod tests {
             .iter()
             .map(|group| group.nodes.len())
             .sum::<usize>();
+        let construction_work = GROUP_COUNT + member_count;
         let exact_work = GROUP_COUNT * 3 + member_count;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
 
@@ -1162,10 +1180,7 @@ mod tests {
         assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
         assert_eq!(details.actual, exact_work);
         assert_eq!(details.max, exact_work - 1);
-        assert_eq!(
-            below_resources.layout_work_used(),
-            GROUP_COUNT + member_count
-        );
+        assert_eq!(below_resources.layout_work_used(), construction_work);
     }
 
     #[test]
@@ -1344,6 +1359,7 @@ mod tests {
                 label_type: None,
                 classes: Vec::new(),
                 styles: Vec::new(),
+                same_id_vertex_style: None,
                 nodes: vec!["member".to_string()],
             }],
             tooltips: Default::default(),
@@ -1375,8 +1391,8 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_projection_preserves_authored_node_colliding_with_subgraph_id() {
-        let model = FlowchartModel {
+    fn flowchart_projection_uses_group_first_identity_for_colliding_node_and_subgraph() {
+        let mut model = FlowchartModel {
             keyword: "flowchart".to_string(),
             acc_descr: None,
             acc_title: None,
@@ -1386,7 +1402,11 @@ mod tests {
             vertex_calls: Vec::new(),
             nodes: vec![
                 flow_node("A"),
-                flow_node("TOP"),
+                {
+                    let mut node = flow_node("TOP");
+                    node.classes.push("overlay".to_string());
+                    node
+                },
                 flow_node("member"),
                 flow_node("B"),
             ],
@@ -1397,20 +1417,67 @@ mod tests {
                 dir: Some("TB".to_string()),
                 has_explicit_dir: true,
                 label_type: None,
-                classes: Vec::new(),
-                styles: Vec::new(),
+                classes: vec!["base".to_string()],
+                styles: vec!["fill:#00aa00".to_string()],
+                same_id_vertex_style: Some(
+                    merman_core::diagrams::flowchart::FlowSubgraphVertexStyle {
+                        classes: vec!["overlay".to_string()],
+                        styles: vec!["fill:#00aa00".to_string()],
+                    },
+                ),
                 nodes: vec!["member".to_string()],
             }],
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };
+        model
+            .class_defs
+            .insert("base".to_string(), vec!["fill:#aa0000".to_string()]);
+        model
+            .class_defs
+            .insert("overlay".to_string(), vec!["stroke:#445566".to_string()]);
         let options = AsciiRenderOptions::ascii();
         let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
         let graph = from_flowchart_model(&model, &options, &mut resources)
-            .expect("typed provenance keeps the authored node distinct from the group endpoint");
+            .expect("same-id authored nodes project through the Mermaid group owner");
 
-        assert!(graph.nodes.iter().any(|node| node.id == "TOP"));
-        assert!(graph.groups.iter().any(|group| group.id == "TOP"));
+        assert!(graph.nodes.iter().all(|node| node.id != "TOP"));
+        let group_index = graph
+            .groups
+            .iter()
+            .position(|group| group.id == "TOP")
+            .expect("TOP group");
+        assert_eq!(
+            graph.groups[group_index].style,
+            crate::graph::GraphGroupStyle {
+                title: None,
+                border: Some(crate::AsciiRgb::new(0x44, 0x55, 0x66)),
+                background: Some(crate::AsciiRgb::new(0x00, 0xaa, 0x00)),
+            }
+        );
+        assert_eq!(graph.edges.len(), 2);
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|edge| edge.from == "A" && edge.to == "TOP")
+        );
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|edge| edge.from == "TOP" && edge.to == "B")
+        );
+
+        let mut topology_resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let topology = GraphGroupTopology::try_new(&graph, &mut topology_resources)
+            .expect("group-first graph topology");
+        assert_eq!(
+            topology.endpoint_index("TOP"),
+            Some(GraphEndpointIndex::Group(group_index))
+        );
     }
 }

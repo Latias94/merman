@@ -1748,6 +1748,15 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
             .fold(total, |subtotal, value| {
                 subtotal.saturating_add(value.len())
             });
+        if let Some(vertex) = &subgraph.same_id_vertex_style {
+            total = vertex
+                .classes
+                .iter()
+                .chain(&vertex.styles)
+                .fold(total, |subtotal, value| {
+                    subtotal.saturating_add(value.len())
+                });
+        }
     }
     total = model.tooltips.iter().fold(total, |subtotal, (id, value)| {
         subtotal

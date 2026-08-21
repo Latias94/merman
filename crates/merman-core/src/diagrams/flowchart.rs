@@ -72,7 +72,7 @@ use text::{
 pub use model::FlowchartRenderLabelSources;
 pub use model::{
     FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
-    FlowNodeProvenance, FlowSubgraph, FlowchartModel,
+    FlowNodeProvenance, FlowSubgraph, FlowSubgraphVertexStyle, FlowchartModel,
 };
 
 pub(crate) use model::{
@@ -115,6 +115,7 @@ pub(crate) struct FlowSubGraph {
     pub title: String,
     pub classes: Vec<String>,
     pub styles: Vec<String>,
+    pub same_id_vertex_style: Option<FlowSubgraphVertexStyle>,
     pub dir: Option<String>,
     pub has_explicit_dir: bool,
     pub label_type: String,
@@ -272,6 +273,13 @@ pub(crate) fn render_model_to_compat_json(
             }
         }
     }
+    if let Some(subgraphs) = root.get_mut("subgraphs").and_then(Value::as_array_mut) {
+        for subgraph in subgraphs {
+            if let Some(subgraph) = subgraph.as_object_mut() {
+                subgraph.remove("sameIdVertexStyle");
+            }
+        }
+    }
     root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     if model
         .warning_facts
@@ -380,11 +388,24 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         nodes,
         edges,
         vertex_calls,
+        mut same_id_vertex_styles,
         warning_facts: build_warning_facts,
         ..
     } = build;
     let mut nodes = nodes;
     let mut edges = edges;
+
+    // Mermaid keeps vertices in a global ID map and resolves duplicate subgraph IDs with
+    // last-declaration-wins lookup semantics. Attach the captured vertex CSS source to that same
+    // canonical subgraph declaration so the render model can reproduce the later vertex pass.
+    for (index, subgraph) in builder.subgraphs.iter_mut().rev().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        if let Some(style) = same_id_vertex_styles.remove(&subgraph.id) {
+            subgraph.same_id_vertex_style = Some(style);
+        }
+    }
 
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
     let mut tooltips: HashMap<String, String> = HashMap::new();
@@ -1857,6 +1878,7 @@ fn flow_subgraph_to_model(
         title,
         classes: sg.classes,
         styles: sg.styles,
+        same_id_vertex_style: sg.same_id_vertex_style,
         dir: sg.dir,
         has_explicit_dir: sg.has_explicit_dir,
         label_type: Some(sg.label_type),
@@ -1891,6 +1913,10 @@ mod tests {
             .find(|node| node.id == "G")
             .expect("subgraph endpoint node");
         assert_eq!(endpoint.provenance, FlowNodeProvenance::SubgraphAnchor);
+        assert_eq!(
+            endpoint_only.subgraphs[0].same_id_vertex_style,
+            Some(FlowSubgraphVertexStyle::default())
+        );
 
         for source in [
             "flowchart TD\nG\nsubgraph G\n  A\nend\nG --> A\n",
@@ -1917,7 +1943,99 @@ mod tests {
                 .find(|node| node.id == "G")
                 .expect("authored G node");
             assert_eq!(node.provenance, FlowNodeProvenance::Authored, "{source}");
+            assert!(
+                model.subgraphs[0].same_id_vertex_style.is_some(),
+                "{source}"
+            );
         }
+    }
+
+    #[test]
+    fn same_id_subgraph_vertex_style_preserves_statement_order() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let cases = [
+            (
+                concat!(
+                    "flowchart TD\n",
+                    "classDef base stroke:#00f\n",
+                    "subgraph G\n  A\nend\n",
+                    "class G base\n",
+                    "style G fill:#f00\n",
+                ),
+                Vec::<String>::new(),
+            ),
+            (
+                concat!(
+                    "flowchart TD\n",
+                    "classDef base stroke:#00f\n",
+                    "subgraph G\n  A\nend\n",
+                    "style G fill:#f00\n",
+                    "class G base\n",
+                ),
+                vec!["base".to_string()],
+            ),
+        ];
+
+        for (source, expected_vertex_classes) in cases {
+            let model =
+                parse_flowchart_model_for_render(source, &meta).expect("same-ID group model");
+            let subgraph = model
+                .subgraphs
+                .iter()
+                .find(|subgraph| subgraph.id == "G")
+                .expect("subgraph G");
+            let vertex_style = subgraph
+                .same_id_vertex_style
+                .as_ref()
+                .expect("same-ID FlowDB vertex style source");
+
+            assert_eq!(subgraph.classes, ["base"]);
+            assert_eq!(vertex_style.classes, expected_vertex_classes, "{source}");
+            assert_eq!(vertex_style.styles, ["fill:#f00"], "{source}");
+        }
+    }
+
+    #[test]
+    fn same_id_subgraph_vertex_style_round_trips_without_changing_legacy_json() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let model = parse_flowchart_model_for_render(
+            concat!(
+                "flowchart TD\n",
+                "subgraph G\n  A\nend\n",
+                "style G fill:#f00\n",
+                "class G hot\n",
+            ),
+            &meta,
+        )
+        .expect("same-ID group model");
+
+        let json = serde_json::to_value(&model).expect("serialize Flowchart model");
+        assert_eq!(
+            json["subgraphs"][0]["sameIdVertexStyle"]["classes"],
+            json!(["hot"])
+        );
+        assert_eq!(
+            json["subgraphs"][0]["sameIdVertexStyle"]["styles"],
+            json!(["fill:#f00"])
+        );
+
+        let roundtrip: FlowchartModel =
+            serde_json::from_value(json).expect("deserialize Flowchart model");
+        assert_eq!(
+            roundtrip.subgraphs[0].same_id_vertex_style,
+            Some(FlowSubgraphVertexStyle {
+                classes: vec!["hot".to_string()],
+                styles: vec!["fill:#f00".to_string()],
+            })
+        );
+
+        let compatibility =
+            render_model_to_compat_json(&model, &meta).expect("legacy flowchart JSON");
+        assert!(
+            compatibility["subgraphs"][0]
+                .get("sameIdVertexStyle")
+                .is_none()
+        );
     }
 
     #[test]
@@ -2335,6 +2453,7 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
+                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),
@@ -2345,6 +2464,7 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
+                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),
@@ -2355,6 +2475,7 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
+                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),
@@ -2365,6 +2486,7 @@ F -- "&nbsp;" --> G
                 title: "".to_string(),
                 classes: Vec::new(),
                 styles: Vec::new(),
+                same_id_vertex_style: None,
                 dir: None,
                 has_explicit_dir: false,
                 label_type: "text".to_string(),

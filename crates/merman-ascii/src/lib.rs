@@ -824,6 +824,7 @@ mod tests {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         }];
 
@@ -859,6 +860,7 @@ mod tests {
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
+            same_id_vertex_style: None,
             nodes: vec!["A".to_string()],
         }];
 

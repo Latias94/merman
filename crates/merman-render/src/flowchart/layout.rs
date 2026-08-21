@@ -4545,6 +4545,7 @@ mod tests {
                 label_type: None,
                 classes: Vec::new(),
                 styles: Vec::new(),
+                same_id_vertex_style: None,
                 nodes: vec![format!("n{}", i + 1)],
             });
         }

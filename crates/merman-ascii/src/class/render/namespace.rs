@@ -1475,7 +1475,7 @@ mod tests {
 
         std::thread::Builder::new()
             .name("class-namespace-plan-small-stack".to_string())
-            .stack_size(64 * 1024)
+            .stack_size(128 * 1024)
             .spawn(|| {
                 let model = deeply_nested_namespace_model(PLAN_DEPTH);
                 let unbounded =

@@ -102,6 +102,7 @@ pub(super) struct FlowchartStylePlan {
 impl FlowchartStylePlan {
     pub(super) fn try_new(
         model: &FlowchartModel,
+        is_group_id: impl Fn(&str) -> bool,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
@@ -140,6 +141,10 @@ impl FlowchartStylePlan {
         for (index, node) in model.nodes.iter().enumerate() {
             checkpoint_style(execution, index)?;
             let mut style = GraphNodeStyle::default();
+            if is_group_id(&node.id) {
+                nodes.push(style);
+                continue;
+            }
             for (class_index, class_name) in node.classes.iter().enumerate() {
                 checkpoint_style(execution, class_index)?;
                 if let Some(class_index) = model.class_defs.get_index_of(class_name) {
@@ -187,14 +192,18 @@ impl FlowchartStylePlan {
         for (index, group) in model.subgraphs.iter().enumerate() {
             checkpoint_style(execution, index)?;
             let mut style = GraphGroupStyle::default();
-            for (class_index, class_name) in group.classes.iter().enumerate() {
+            let (classes, declarations) = match &group.same_id_vertex_style {
+                Some(vertex) => (vertex.classes.as_slice(), vertex.styles.as_slice()),
+                None => (group.classes.as_slice(), group.styles.as_slice()),
+            };
+            for (class_index, class_name) in classes.iter().enumerate() {
                 checkpoint_style(execution, class_index)?;
                 if let Some(class_index) = model.class_defs.get_index_of(class_name) {
                     class_styles[class_index].apply_group(&mut style);
                 }
             }
             prepare_style_declarations(
-                group.styles.iter().map(String::as_str),
+                declarations.iter().map(String::as_str),
                 StyleTargets::GROUP,
                 resources,
                 execution,
