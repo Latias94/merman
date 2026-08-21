@@ -149,6 +149,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Gantt, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -170,6 +171,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let css = gantt_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
+    options.checkpoint_emit()?;
 
     let (min_ms, max_ms) = match (
         layout.tasks.iter().map(|t| t.start_ms).min(),
@@ -228,6 +230,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     cx = fmt_allow_nan(cx),
                     cy = fmt_allow_nan(cy),
                 );
+                options.checkpoint_emit()?;
             }
             out.push_str("</g>");
         }
@@ -296,6 +299,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 r#" id="{}""#,
                 escape_attr(&gantt_dom_id(diagram_id, &t.bar.id))
             );
+            options.checkpoint_emit()?;
             let _ = write!(
                 &mut out,
                 r#" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{origin}" class="{cls}"/>"#,
@@ -369,6 +373,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 x = fmt(t.label.x),
                 y = fmt(t.label.y),
             );
+            options.checkpoint_emit()?;
             if preserve_task_text_height {
                 let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
             }
@@ -461,5 +466,6 @@ pub(crate) fn render_gantt_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }

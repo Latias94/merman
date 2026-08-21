@@ -1,9 +1,10 @@
 use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
-use super::context::ClassRenderDetails;
+use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::edge::{
     ClassEdgeGroupsRenderContext, ClassEdgeGroupsRenderState, render_class_edge_groups,
 };
+use crate::Result;
 use crate::model::{Bounds, LayoutEdge};
 use crate::svg::parity::SvgDiagramId;
 use crate::text::{TextMeasurer, TextStyle};
@@ -31,6 +32,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(super) timing: RenderTiming,
     pub(super) edge_paths_class: &'static str,
+    pub(super) emit: ClassEmitCheckpoint<'a>,
 }
 
 pub(super) struct ClassSplitEdgeGroups {
@@ -43,7 +45,7 @@ pub(super) fn render_class_split_edge_groups(
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
-) -> ClassSplitEdgeGroups {
+) -> Result<ClassSplitEdgeGroups> {
     let ClassSplitEdgeGroupsRenderState {
         content_bounds,
         detail,
@@ -77,10 +79,11 @@ pub(super) fn render_class_split_edge_groups(
             hand_drawn_seed: ctx.hand_drawn_seed.clone(),
             timing: ctx.timing,
             edge_paths_class: ctx.edge_paths_class,
+            emit: ctx.emit,
         },
-    );
-    ClassSplitEdgeGroups {
+    )?;
+    Ok(ClassSplitEdgeGroups {
         edge_paths,
         edge_labels,
-    }
+    })
 }

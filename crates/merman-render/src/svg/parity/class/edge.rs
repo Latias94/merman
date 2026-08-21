@@ -1,13 +1,14 @@
 use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
 use super::bounds::{include_path_bounds, include_path_d, include_xywh};
-use super::context::ClassRenderDetails;
+use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::defs::class_marker_name;
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_math_html_label, render_class_html_label,
     write_class_svg_edge_text, write_class_svg_edge_text_markdown,
 };
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
+use crate::Result;
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::svg::parity::SvgDiagramId;
@@ -48,6 +49,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
     pub edge_paths_class: &'static str,
+    pub emit: ClassEmitCheckpoint<'a>,
 }
 
 fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
@@ -168,7 +170,7 @@ pub(super) fn class_line_with_marker_offset_points_into(
 pub(super) fn render_class_edge_groups(
     state: ClassEdgeGroupsRenderState<'_>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) {
+) -> Result<()> {
     let out = &mut *state.edge_paths;
     let content_bounds = &mut *state.content_bounds;
     let detail = &mut *state.detail;
@@ -188,6 +190,7 @@ pub(super) fn render_class_edge_groups(
         FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
     let _ = write!(out, r#"<g class="{}">"#, ctx.edge_paths_class);
     for e in ordered_edges.iter().copied() {
+        ctx.emit.checkpoint()?;
         if e.points.len() < 2 {
             continue;
         }
@@ -305,10 +308,12 @@ pub(super) fn render_class_edge_groups(
                 CLASS_HAND_DRAWN_EDGE_STROKE, CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH,
             );
         }
+        out.push_str(r#" id=""#);
+        let _ = write!(out, "{}", ctx.diagram_id);
+        ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r#" id="{}-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-            ctx.diagram_id,
+            r#"-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_class_buf),
             escape_attr_display(&edge_dom_id_buf),
@@ -319,19 +324,23 @@ pub(super) fn render_class_edge_groups(
             && let Some(rel) = ctx.relations_by_id.get(e.id.as_str())
         {
             if let Some(name) = class_marker_name(rel.relation.type1, true) {
+                out.push_str(r#" marker-start="url(#"#);
+                let _ = write!(out, "{}", ctx.diagram_id);
+                ctx.emit.checkpoint()?;
                 let _ = write!(
                     out,
-                    r#" marker-start="url(#{}_{}-{})""#,
-                    ctx.diagram_id,
+                    r#"_{}-{})""#,
                     escape_attr_display(ctx.diagram_marker_class),
                     name,
                 );
             }
             if let Some(name) = class_marker_name(rel.relation.type2, false) {
+                out.push_str(r#" marker-end="url(#"#);
+                let _ = write!(out, "{}", ctx.diagram_id);
+                ctx.emit.checkpoint()?;
                 let _ = write!(
                     out,
-                    r#" marker-end="url(#{}_{}-{})""#,
-                    ctx.diagram_id,
+                    r#"_{}-{})""#,
                     escape_attr_display(ctx.diagram_marker_class),
                     name,
                 );
@@ -354,6 +363,7 @@ pub(super) fn render_class_edge_groups(
     out.push_str(r#"<g class="edgeLabels">"#);
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
     for e in ordered_edges.iter().copied() {
+        ctx.emit.checkpoint()?;
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
         let label_text = if e.id.starts_with("edgeNote") {
             ""
@@ -395,6 +405,7 @@ pub(super) fn render_class_edge_groups(
         );
     }
     for e in ordered_edges.iter().copied() {
+        ctx.emit.checkpoint()?;
         let Some(rel) = ctx.relations_by_id.get(e.id.as_str()).copied() else {
             continue;
         };
@@ -437,6 +448,7 @@ pub(super) fn render_class_edge_groups(
         )
     });
     for (_, e) in ordered_end_edges {
+        ctx.emit.checkpoint()?;
         let Some(rel) = ctx.relations_by_id.get(e.id.as_str()).copied() else {
             continue;
         };
@@ -468,6 +480,7 @@ pub(super) fn render_class_edge_groups(
     if let Some(s) = edge_labels_start {
         detail.edge_labels += s.elapsed();
     }
+    Ok(())
 }
 
 pub(super) fn class_edge_label_center(

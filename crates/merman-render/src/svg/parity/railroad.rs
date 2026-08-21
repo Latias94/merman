@@ -35,6 +35,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Railroad, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -56,6 +57,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
         railroad_css(&style, diagram_id)
     );
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     for (rule_index, rule) in layout.rules.iter().enumerate() {
         let model_rule = model
@@ -106,6 +108,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     }
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

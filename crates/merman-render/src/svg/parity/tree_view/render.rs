@@ -60,6 +60,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::TreeView, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     let css = tree_view_css(effective_config_value);
     if let Some(title) = acc_title {
@@ -85,6 +86,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         effective_config,
         options.work_meter(),
     )?;
+    options.checkpoint_emit()?;
     let emit_icon_use =
         config_string(effective_config_value, &["securityLevel"]).as_deref() == Some("loose");
     out.push_str("<g/>");
@@ -132,6 +134,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         );
     }
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

@@ -360,6 +360,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                 .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
                 root_chrome,
             )?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
@@ -389,6 +390,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
         escape_attr_display(arrowhead_id)
     );
+    options.checkpoint_emit()?;
 
     for item in &layout.actor_legend {
         let _ = write!(
@@ -460,6 +462,7 @@ pub(crate) fn render_journey_diagram_svg_model(
             x2 = fmt(task.line_x2),
             y2 = fmt(task.line_y2),
         );
+        options.checkpoint_emit()?;
 
         let _ = write!(
             &mut out,
@@ -585,6 +588,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

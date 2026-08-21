@@ -319,9 +319,11 @@ fn write_links(
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
     diagram_id: SvgDiagramId<'_>,
-) {
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     out.push_str(r#"<g class="wardley-links">"#);
     for link in &layout.links {
+        options.checkpoint_emit()?;
         let class = if link.dashed {
             "wardley-link wardley-link--dashed"
         } else {
@@ -350,6 +352,7 @@ fn write_links(
             );
         }
         out.insert_str(insert_at, &marker_attrs);
+        options.checkpoint_emit()?;
     }
     for link in &layout.links {
         if let Some(label) = &link.label {
@@ -363,6 +366,7 @@ fn write_links(
         }
     }
     out.push_str("</g>");
+    Ok(())
 }
 
 fn write_trends(
@@ -370,9 +374,11 @@ fn write_trends(
     layout: &WardleyDiagramLayout,
     theme: &WardleyTheme,
     diagram_id: SvgDiagramId<'_>,
-) {
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     out.push_str(r#"<g class="wardley-trends">"#);
     for trend in &layout.trends {
+        options.checkpoint_emit()?;
         write_line(
             out,
             trend.line,
@@ -386,8 +392,10 @@ fn write_trends(
             insert_at,
             &format!(r#" marker-end="url(#arrow-{diagram_id})""#),
         );
+        options.checkpoint_emit()?;
     }
     out.push_str("</g>");
+    Ok(())
 }
 
 fn write_source_overlay(
@@ -662,6 +670,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Wardley, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
     write_accessibility(&mut out, diagram_id, acc_title, acc_descr);
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="wardley-map">"#);
     let _ = write!(
@@ -684,8 +693,8 @@ pub(crate) fn render_wardley_diagram_svg_model(
     write_stages(&mut out, layout, &theme);
     write_grid(&mut out, layout, &theme);
     write_pipelines(&mut out, layout, model, &theme);
-    write_links(&mut out, layout, &theme, diagram_id);
-    write_trends(&mut out, layout, &theme, diagram_id);
+    write_links(&mut out, layout, &theme, diagram_id, options)?;
+    write_trends(&mut out, layout, &theme, diagram_id, options)?;
     write_nodes(&mut out, layout, &theme);
     write_annotations(&mut out, layout, &theme);
     write_notes(&mut out, layout, &theme);
@@ -704,5 +713,6 @@ pub(crate) fn render_wardley_diagram_svg_model(
     out.push_str("</g>");
     write_defs(&mut out, diagram_id, &theme);
     out.push_str("</svg>");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }

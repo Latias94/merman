@@ -109,6 +109,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Packet, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -130,6 +131,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     let css = packet_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
+    options.checkpoint_emit()?;
 
     for word in &layout.words {
         out.push_str("<g>");
@@ -211,6 +213,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     }
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

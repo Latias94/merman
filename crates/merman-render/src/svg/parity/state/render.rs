@@ -288,6 +288,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     let css = state_css(diagram_id, model, effective_config);
+    options.checkpoint_emit()?;
 
     let estimated_svg_bytes = 2048usize
         + css.len()
@@ -313,6 +314,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         root_svg::DeferredRootSpec::responsive(),
         root_chrome,
     )?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
@@ -338,6 +340,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
     state_markers(&mut out, diagram_id, effective_config);
+    options.checkpoint_emit()?;
 
     // `svg.getBBox()` does not include `<style>` and typically excludes non-rendered `<defs>`
     // content from the rendered bbox. Scan only the rendered graph payload to reduce overhead
@@ -350,13 +353,15 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         None,
         origin_x,
         origin_y,
+        options,
         timing,
         &mut detail,
-    );
+    )?;
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
     state_root_defs(&mut out, diagram_id, effective_config);
+    options.checkpoint_emit()?;
     out.push_str(TITLE_PLACEHOLDER_COMMENT);
     out.push_str("</svg>\n");
 
@@ -470,10 +475,12 @@ fn render_state_root(
     root: Option<&str>,
     parent_origin_x: f64,
     parent_origin_y: f64,
+    options: &SvgExecution<'_>,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-) {
+) -> Result<()> {
     details.root_calls += 1;
+    options.checkpoint_emit()?;
 
     // Mermaid's dagre-wrapper uses a fixed graph margin (`marginx/marginy=8`). For nested state
     // roots (extracted cluster graphs), Mermaid keeps the root cluster frame at x/y=8 in the
@@ -515,6 +522,7 @@ fn render_state_root(
     out.push_str(r#"<g class="clusters">"#);
     if let Some(root_id) = root {
         render_state_cluster(out, ctx, root_id, origin_x, origin_y);
+        options.checkpoint_emit()?;
     }
 
     for &cluster_id in &ctx.node_order {
@@ -540,6 +548,7 @@ fn render_state_root(
             continue;
         }
         render_state_cluster(out, ctx, cluster_id, origin_x, origin_y);
+        options.checkpoint_emit()?;
     }
 
     for &cluster_id in &ctx.node_order {
@@ -591,6 +600,7 @@ fn render_state_root(
             fmt_display(cluster.width.max(1.0)),
             fmt_display(cluster.height.max(1.0))
         );
+        options.checkpoint_emit()?;
     }
     out.push_str("</g>");
     drop(_g_clusters);
@@ -613,6 +623,7 @@ fn render_state_root(
                 continue;
             }
             render_state_edge_path(out, ctx, edge, origin_x, origin_y);
+            options.checkpoint_emit()?;
         }
     }
     out.push_str("</g>");
@@ -636,6 +647,7 @@ fn render_state_root(
                 continue;
             }
             render_state_edge_label(out, ctx, edge, origin_x, origin_y);
+            options.checkpoint_emit()?;
         }
     }
     out.push_str("</g>");
@@ -676,6 +688,7 @@ fn render_state_root(
                 continue;
             }
             render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details);
+            options.checkpoint_emit()?;
         }
         if let Some(s) = leaf_start {
             details.leaf_nodes += s.elapsed();
@@ -690,9 +703,11 @@ fn render_state_root(
             Some(child_root),
             origin_x,
             origin_y,
+            options,
             timing,
             details,
-        );
+        )?;
+        options.checkpoint_emit()?;
         if let Some(s) = nested_start {
             details.nested_roots += s.elapsed();
         }
@@ -749,6 +764,7 @@ fn render_state_root(
                         fmt_display(cy),
                     );
                 }
+                options.checkpoint_emit()?;
             }
         }
         drop(_g_placeholders);
@@ -756,6 +772,7 @@ fn render_state_root(
 
     out.push_str("</g>");
     out.push_str("</g>");
+    Ok(())
 }
 
 fn render_state_cluster(

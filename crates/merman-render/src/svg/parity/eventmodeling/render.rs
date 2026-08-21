@@ -42,6 +42,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         diagram_id,
     )
     .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -61,6 +62,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     let css = eventmodeling_css(&theme);
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     for swimlane in &layout.swimlanes {
         let _ = write!(
@@ -108,6 +110,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             fmt(relation.x2),
             fmt(relation.y2)
         );
+        options.checkpoint_emit()?;
     }
 
     let marker_fill = &theme.arrowhead_fill;
@@ -118,6 +121,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

@@ -407,6 +407,7 @@ pub(super) fn render_sequence_messages(
             .map(|local_id| marker_attr("marker-start", ctx.diagram_id, local_id));
         let marker_end = endpoint_marker_local_id(signal_semantics.target_marker, false)
             .map(|local_id| marker_attr("marker-end", ctx.diagram_id, local_id));
+        ctx.checkpoints.checkpoint()?;
         let data_attrs = message_data_attrs(&msg.id, from, to);
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
@@ -508,6 +509,7 @@ pub(super) fn render_sequence_messages(
                 marker_start =
                     escape_attr_display(scoped_svg_url(ctx.diagram_id, "sequencenumber")),
             );
+            ctx.checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="{font_size}" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
@@ -518,6 +520,7 @@ pub(super) fn render_sequence_messages(
         }
 
         let _ = (from, to);
+        ctx.checkpoints.checkpoint()?;
     }
     ctx.checkpoints.checkpoint()
 }

@@ -433,6 +433,7 @@ pub(crate) fn render_er_diagram_svg_model(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     let root_document = root_viewport.write_plan(&mut out, &root_plan, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
@@ -492,6 +493,7 @@ pub(crate) fn render_er_diagram_svg_model(
 <defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/></marker></defs>
 <defs><marker id="{diagram_id}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
     );
+    options.checkpoint_emit()?;
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();
@@ -560,6 +562,7 @@ pub(crate) fn render_er_diagram_svg_model(
             }
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
             let edge_svg_id = format!("{diagram_id}-{edge_dom_id}");
+            options.checkpoint_emit()?;
             let is_dashed = e.stroke_dasharray.as_deref() == Some("8,8");
             let pattern_class = if is_dashed {
                 "edge-pattern-dashed"
@@ -609,6 +612,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 let marker = er_unified_marker_id(diagram_id, diagram_type, m);
                 let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(&marker));
             }
+            options.checkpoint_emit()?;
             out.push_str(" />");
         }
     }
@@ -847,6 +851,7 @@ pub(crate) fn render_er_diagram_svg_model(
             fmt(cx),
             fmt(cy)
         );
+        options.checkpoint_emit()?;
 
         if entity.attributes.is_empty() {
             let _ = write!(
@@ -1416,6 +1421,7 @@ pub(crate) fn render_er_diagram_svg_model(
     push_er_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

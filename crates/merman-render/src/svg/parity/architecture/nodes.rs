@@ -4,6 +4,7 @@ use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
 use super::super::{SvgDiagramId, escape_xml_into, fmt};
+use super::ArchitectureEmitCheckpoints;
 use super::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
 };
@@ -29,6 +30,7 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(super) content_bounds: &'a mut Option<Bounds>,
+    pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
 fn write_diagram_service_id(out: &mut String, diagram_id: SvgDiagramId<'_>, service_id: &str) {
@@ -46,6 +48,8 @@ fn write_diagram_node_id(out: &mut String, diagram_id: SvgDiagramId<'_>, node_id
 pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureNodeRenderContext<'_, M>,
 ) -> crate::Result<()> {
+    let checkpoints = ctx.checkpoints;
+    checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let model = ctx.model;
@@ -61,10 +65,12 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
         for svc in model.services() {
+            checkpoints.checkpoint()?;
             let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
 
             out.push_str(r#"<g id=""#);
             write_diagram_service_id(out, diagram_id, svc.id);
+            checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"" class="architecture-service" transform="translate({x},{y})">"#,
@@ -133,6 +139,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 (None, None) => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
                     write_diagram_node_id(out, diagram_id, svc.id);
+                    checkpoints.checkpoint()?;
                     let _ = write!(
                         out,
                         r#"" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
@@ -147,6 +154,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         }
 
         for junction in model.junctions() {
+            checkpoints.checkpoint()?;
             let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
 
             let _ = write!(
@@ -156,6 +164,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 y = fmt(y),
             );
             write_diagram_node_id(out, diagram_id, junction.id);
+            checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
@@ -171,6 +180,8 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureNodeRenderContext<'a, M>,
     group_rects: &[GroupRect<'a>],
 ) -> crate::Result<()> {
+    let checkpoints = ctx.checkpoints;
+    checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
@@ -182,6 +193,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
         out.push_str(r#"<g class="architecture-groups">"#);
 
         for grp in group_rects {
+            checkpoints.checkpoint()?;
             let x = grp.x;
             let y = grp.y;
             let w = grp.w;
@@ -194,6 +206,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             let _ = write!(out, "{}", ctx.diagram_id);
             out.push_str("-group-");
             escape_xml_into(out, grp.id);
+            checkpoints.checkpoint()?;
             let _ = write!(
                 out,
                 r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg"/>"#,

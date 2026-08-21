@@ -8,6 +8,7 @@ use crate::model::Bounds;
 use crate::text::TextMeasurer;
 
 use super::super::{SvgDiagramId, escape_xml_into, fmt, fmt_into, fmt_string};
+use super::ArchitectureEmitCheckpoints;
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
     svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
@@ -27,6 +28,7 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
+    pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
 struct ArchitectureEdgeLabelPlan {
@@ -406,7 +408,9 @@ fn architecture_edge_label_plan(
 
 pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureEdgeRenderContext<'_, M>,
-) {
+) -> crate::Result<()> {
+    let checkpoints = ctx.checkpoints;
+    checkpoints.checkpoint()?;
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -600,6 +604,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
 
             out.push_str("<g>");
             write_architecture_edge_path(out, diagram_id, edge, points);
+            checkpoints.checkpoint()?;
 
             if let Some(arrow) = lhs_arrow.as_ref() {
                 write_architecture_arrow_polygon(out, arrow);
@@ -624,4 +629,5 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
             out.push_str("</g>");
         }
     }
+    Ok(())
 }

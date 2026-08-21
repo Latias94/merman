@@ -32,6 +32,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Cynefin, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -54,6 +55,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         cynefin_css(diagram_id, effective_config, &theme)
     );
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
     if let Some(title) = acc_title {
         let _ = write!(&mut out, "<title>{}</title>", escape_xml_display(title));
     }
@@ -74,7 +76,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         push_subtitles(&mut out, layout);
     }
     push_items(&mut out, layout, &theme);
-    push_transitions(&mut out, layout, diagram_id);
+    push_transitions(&mut out, layout, diagram_id, options)?;
     if let Some(title) = title {
         let _ = write!(
             &mut out,
@@ -93,6 +95,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         );
     }
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 
@@ -265,12 +268,18 @@ fn push_items(
     out.push_str("</g>");
 }
 
-fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, diagram_id: SvgDiagramId<'_>) {
+fn push_transitions(
+    out: &mut String,
+    layout: &CynefinDiagramLayout,
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     if layout.transitions.is_empty() {
-        return;
+        return Ok(());
     }
     out.push_str(r#"<g class="cynefin-arrows">"#);
     for transition in &layout.transitions {
+        options.checkpoint_emit()?;
         let d = format!(
             "M{},{} Q{},{} {},{}",
             fmt(transition.x1),
@@ -298,8 +307,10 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, diagram_id:
                 escape_xml_display(label)
             );
         }
+        options.checkpoint_emit()?;
     }
     out.push_str("</g>");
+    Ok(())
 }
 
 fn cynefin_css<I>(

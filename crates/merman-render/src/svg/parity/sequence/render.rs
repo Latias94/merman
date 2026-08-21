@@ -127,6 +127,7 @@ fn render_sequence_diagram_svg_inner(
     let mut out = String::new();
     checkpoints.checkpoint()?;
     let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
+    checkpoints.checkpoint()?;
 
     render_sequence_box_frames_and_rect_blocks(
         &mut out,
@@ -172,6 +173,7 @@ fn render_sequence_diagram_svg_inner(
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     checkpoints.checkpoint()?;
     write_scoped_sequence_base_defs(&mut out, diagram_id);
+    checkpoints.checkpoint()?;
 
     render_sequence_actor_man_tops(
         &mut out,

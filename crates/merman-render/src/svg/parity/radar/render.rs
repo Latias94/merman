@@ -162,6 +162,7 @@ pub(crate) fn render_radar_diagram_svg_model(
                 .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
                 root_chrome,
             )?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
@@ -184,6 +185,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     let css = radar_css(diagram_id, &theme);
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     let _ = write!(
         &mut out,
@@ -326,6 +328,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

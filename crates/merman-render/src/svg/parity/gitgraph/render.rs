@@ -665,6 +665,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             ..root_svg::RootChrome::new(diagram_id, "gitGraph")
         },
     )?;
+    options.checkpoint_emit()?;
 
     if let Some(t) = acc_title {
         let _ = write!(
@@ -693,6 +694,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         font_style: None,
     };
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g/>"#);
     out.push_str(&css.defs);
@@ -736,6 +738,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     if layout.show_branches {
         out.push_str("<g>");
         for b in &layout.branches {
+            options.checkpoint_emit()?;
             let idx = b.index % THEME_COLOR_LIMIT;
             let pos = b.pos;
 
@@ -883,6 +886,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     name = name
                 );
             }
+            options.checkpoint_emit()?;
         }
         out.push_str("</g>");
     }
@@ -1275,6 +1279,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
 
     // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
     // in the precomputed layout bounds. Mirror Mermaid's `setupGraphViewbox(svg.getBBox() + pad)`

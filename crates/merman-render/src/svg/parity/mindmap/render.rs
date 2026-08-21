@@ -811,6 +811,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     ..root_svg::RootChrome::new(diagram_id, "mindmap")
                 },
             )?;
+    options.checkpoint_emit()?;
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));
@@ -836,6 +837,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         r#"<marker id="{id}_mindmap-pointStart-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
         id = diagram_id
     );
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="subgraphs"/>"#);
 
@@ -891,6 +893,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         );
         let data_look_attr = mindmap_data_look_attr(&e.look, config);
         let edge_dom_id = mindmap_dom_id(diagram_id, &e.id);
+        options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}"{look_attr} data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
@@ -939,6 +942,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             x = fmt(x),
             y = fmt(y),
         );
+        options.checkpoint_emit()?;
 
         match n.shape.as_str() {
             "defaultMindmapNode" => {
@@ -974,6 +978,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     id = escape_xml(&mindmap_dom_id(diagram_id, &n.dom_id)),
                     d = escape_attr(&rect_path),
                 );
+                options.checkpoint_emit()?;
                 let _ = write!(
                     &mut out,
                     r#"<line class="node-line-" x1="{x1}" y1="{y}" x2="{x2}" y2="{y}"/>"#,
@@ -1218,6 +1223,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str("</g>");
     push_mindmap_shadow_defs(&mut out, diagram_id, config.as_value());
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
 
     drop(_g_render_svg);
 

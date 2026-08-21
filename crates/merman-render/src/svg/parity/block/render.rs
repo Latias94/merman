@@ -211,7 +211,8 @@ pub(crate) fn render_block_diagram_svg_model(
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
-    ) -> String {
+        options: &SvgExecution<'_>,
+    ) -> Result<String> {
         fn important_declarations(styles: &[String]) -> String {
             let mut out = String::new();
             for style in styles {
@@ -225,6 +226,7 @@ pub(crate) fn render_block_diagram_svg_model(
 
         let mut out = String::new();
         for class_def in class_defs.values() {
+            options.checkpoint_emit()?;
             let class = escape_xml(&class_def.id);
             let shape_style = important_declarations(&class_def.styles);
             if !shape_style.is_empty() {
@@ -250,8 +252,9 @@ pub(crate) fn render_block_diagram_svg_model(
                     text_style
                 );
             }
+            options.checkpoint_emit()?;
         }
-        out
+        Ok(out)
     }
 
     fn block_css(
@@ -261,6 +264,7 @@ pub(crate) fn render_block_diagram_svg_model(
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
+        options: &SvgExecution<'_>,
     ) -> Result<String> {
         let theme = PresentationTheme::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
@@ -365,7 +369,7 @@ pub(crate) fn render_block_diagram_svg_model(
             diagram_id,
             font_family
         );
-        out.push_str(&block_class_css(diagram_id, class_defs));
+        out.push_str(&block_class_css(diagram_id, class_defs, options)?);
         Ok(out)
     }
 
@@ -396,9 +400,16 @@ pub(crate) fn render_block_diagram_svg_model(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Block, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
     out.push_str("<style>");
-    out.push_str(&block_css(diagram_id, effective_config, &model.class_defs)?);
+    out.push_str(&block_css(
+        diagram_id,
+        effective_config,
+        &model.class_defs,
+        options,
+    )?);
     out.push_str("</style><g/>");
+    options.checkpoint_emit()?;
 
     let _ = write!(
         &mut out,
@@ -430,6 +441,7 @@ pub(crate) fn render_block_diagram_svg_model(
         r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "crossStart"))
     );
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="block">"#);
 
@@ -454,6 +466,7 @@ pub(crate) fn render_block_diagram_svg_model(
                     message: format!("missing Block shape geometry for node `{}`", n.id),
                 })?;
         let id_attr = format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)));
+        options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
             r#"<g class="node default {}"{} transform="translate({}, {})">"#,
@@ -676,6 +689,7 @@ pub(crate) fn render_block_diagram_svg_model(
                 escape_attr(&marker_url(diagram_id, m))
             );
         }
+        options.checkpoint_emit()?;
         out.push_str("/>");
     }
 
@@ -701,5 +715,58 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::RenderEnvironment;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn diagram_id_terminal_precedes_later_block_model_validation() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+            .expect("valid SVG byte limit");
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        let request = SvgRenderOptions {
+            diagram_id: Some("terminal".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let options = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let layout = BlockDiagramLayout {
+            nodes: vec![LayoutNode {
+                id: "node".to_string(),
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+                is_cluster: false,
+                label_width: None,
+                label_height: None,
+            }],
+            edges: Vec::new(),
+            shape_geometries: Vec::new(),
+            bounds: None,
+        };
+        let model: merman_core::diagrams::block::BlockDiagramRenderModel =
+            serde_json::from_value(serde_json::json!({
+                "blocksFlat": [{ "id": "node" }]
+            }))
+            .expect("valid Block render model");
+
+        let error =
+            render_block_diagram_svg_model(&layout, &model, &serde_json::json!({}), &options)
+                .expect_err("diagram-id projection must stop before missing geometry validation");
+        let Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte resource rejection");
+        };
+        assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    }
 }

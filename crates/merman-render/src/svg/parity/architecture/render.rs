@@ -2,6 +2,7 @@ use super::super::*;
 use crate::architecture_metrics::architecture_estimate_service_bounds;
 use crate::model::ArchitectureCytoscapeServiceBounds;
 
+use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::labels::{svg_line_plain_text, wrap_svg_words_to_lines};
@@ -119,7 +120,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let diagram_id = options.diagram_id_or("architecture");
+    let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
+    checkpoints.checkpoint()?;
     let settings = ArchitectureRenderSettings::from_config(diagram_id, effective_config);
+    checkpoints.checkpoint()?;
     let css = settings.css.as_str();
     let icon_size_px = settings.icon_size_px;
     let half_icon = settings.half_icon;
@@ -128,14 +132,16 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
+
+    let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
+    checkpoints.checkpoint()?;
+
     let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
     for n in &layout.nodes {
         node_xy.insert(n.id.as_str(), (n.x, n.y));
     }
 
     let text_measurer = options.text_measurer();
-
-    let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
 
     // Mermaid Architecture uses `setupGraphViewbox()` which expands the viewBox based on the
     // SVG's `getBBox()` plus `architecture.padding`. Reconstruct that effective bbox from the
@@ -302,6 +308,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         &a11y,
         use_max_width,
     )?;
+    checkpoints.checkpoint()?;
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
@@ -314,8 +321,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             text_measurer,
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
+            checkpoints,
         };
-        push_architecture_edges(&mut edge_render_ctx);
+        push_architecture_edges(&mut edge_render_ctx)?;
     }
     out.push_str("</g>");
 
@@ -331,11 +339,13 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             icon_registry: options.icon_registry(),
             work_meter: options.work_meter(),
             content_bounds: &mut content_bounds,
+            checkpoints,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
         push_architecture_groups(&mut node_render_ctx, &group_rects)?;
     }
 
+    checkpoints.checkpoint()?;
     out.push_str("</svg>\n");
 
     let rooted_svg = finalize_architecture_root_viewport(ArchitectureRootViewportContext {

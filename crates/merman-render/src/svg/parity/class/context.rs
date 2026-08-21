@@ -3,6 +3,21 @@ use super::*;
 use rustc_hash::FxHashMap;
 use std::time::Duration;
 
+#[derive(Clone, Copy)]
+pub(super) struct ClassEmitCheckpoint<'a> {
+    checkpoint: &'a dyn Fn() -> crate::Result<()>,
+}
+
+impl<'a> ClassEmitCheckpoint<'a> {
+    pub(super) fn new(checkpoint: &'a dyn Fn() -> crate::Result<()>) -> Self {
+        Self { checkpoint }
+    }
+
+    pub(super) fn checkpoint(self) -> crate::Result<()> {
+        (self.checkpoint)()
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub(super) struct ClassRenderDetails {
     pub clusters: Duration,

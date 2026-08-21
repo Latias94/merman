@@ -38,10 +38,12 @@ pub(crate) fn render_ishikawa_diagram_svg(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Ishikawa, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     let css = ishikawa_css(layout, effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str(r#"<g/><g class="ishikawa">"#);
+    options.checkpoint_emit()?;
     if crate::config::config_diagram_look(effective_config).as_str() == "handDrawn" {
         let theme = PresentationTheme::new(effective_config).ishikawa();
         let rough = RoughContext {
@@ -57,10 +59,11 @@ pub(crate) fn render_ishikawa_diagram_svg(
         };
         push_hand_drawn_diagram(&mut out, layout, &rough);
     } else {
-        push_classic_diagram(&mut out, layout, diagram_id);
+        push_classic_diagram(&mut out, layout, diagram_id, options)?;
     }
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 
@@ -68,14 +71,16 @@ fn push_classic_diagram(
     out: &mut String,
     layout: &IshikawaDiagramLayout,
     diagram_id: SvgDiagramId<'_>,
-) {
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     let _ = write!(
         out,
         r#"<defs><marker id="ishikawa-arrow-{diagram_id}" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
     );
+    options.checkpoint_emit()?;
 
     if let Some(spine) = &layout.spine {
-        push_line(out, spine, diagram_id);
+        push_line(out, spine, diagram_id, options)?;
     }
     if let Some(head) = &layout.head {
         let _ = write!(
@@ -90,13 +95,15 @@ fn push_classic_diagram(
         out.push_str("</g>");
     }
     for pair in &layout.pairs {
+        options.checkpoint_emit()?;
         out.push_str(r#"<g class="ishikawa-pair">"#);
-        push_branch(out, &pair.upper, diagram_id);
+        push_branch(out, &pair.upper, diagram_id, options)?;
         if let Some(lower) = &pair.lower {
-            push_branch(out, lower, diagram_id);
+            push_branch(out, lower, diagram_id, options)?;
         }
         out.push_str("</g>");
     }
+    Ok(())
 }
 
 fn push_hand_drawn_diagram(out: &mut String, layout: &IshikawaDiagramLayout, rough: &RoughContext) {
@@ -124,12 +131,18 @@ fn push_hand_drawn_diagram(out: &mut String, layout: &IshikawaDiagramLayout, rou
     }
 }
 
-fn push_branch(out: &mut String, branch: &IshikawaBranchLayout, diagram_id: SvgDiagramId<'_>) {
-    push_line(out, &branch.line, diagram_id);
+fn push_branch(
+    out: &mut String,
+    branch: &IshikawaBranchLayout,
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
+    push_line(out, &branch.line, diagram_id, options)?;
     push_cause_label_group(out, &branch.label_group);
     for sub_group in &branch.sub_groups {
-        push_sub_group(out, sub_group, diagram_id);
+        push_sub_group(out, sub_group, diagram_id, options)?;
     }
+    Ok(())
 }
 
 fn push_cause_label_group(out: &mut String, group: &IshikawaCauseLabelGroupLayout) {
@@ -147,11 +160,17 @@ fn push_cause_label_group(out: &mut String, group: &IshikawaCauseLabelGroupLayou
     out.push_str("</g>");
 }
 
-fn push_sub_group(out: &mut String, group: &IshikawaSubGroupLayout, diagram_id: SvgDiagramId<'_>) {
+fn push_sub_group(
+    out: &mut String,
+    group: &IshikawaSubGroupLayout,
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-sub-group">"#);
-    push_line(out, &group.line, diagram_id);
+    push_line(out, &group.line, diagram_id, options)?;
     push_text_with_offset(out, &group.label, 0.0, 0.0);
     out.push_str("</g>");
+    Ok(())
 }
 
 fn push_hand_drawn_branch(out: &mut String, branch: &IshikawaBranchLayout, rough: &RoughContext) {
@@ -187,7 +206,12 @@ fn push_hand_drawn_sub_group(
     out.push_str("</g>");
 }
 
-fn push_line(out: &mut String, line: &IshikawaLineLayout, diagram_id: SvgDiagramId<'_>) {
+fn push_line(
+    out: &mut String,
+    line: &IshikawaLineLayout,
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
     let _ = write!(
         out,
         r#"<line class="{}" x1="{}" y1="{}" x2="{}" y2="{}""#,
@@ -201,6 +225,7 @@ fn push_line(out: &mut String, line: &IshikawaLineLayout, diagram_id: SvgDiagram
         let _ = write!(out, r#" marker-start="url(#ishikawa-arrow-{diagram_id})""#,);
     }
     out.push_str("></line>");
+    options.checkpoint_emit()
 }
 
 fn push_rough_line(out: &mut String, line: &IshikawaLineLayout, rough: &RoughContext) {

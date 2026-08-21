@@ -1,5 +1,5 @@
 use super::super::timing::RenderTiming;
-use super::context::ClassRenderDetails;
+use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::groups::{
     ClassSplitEdgeGroupsRenderContext, ClassSplitEdgeGroupsRenderState,
     render_class_split_edge_groups,
@@ -55,6 +55,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing: RenderTiming,
+    pub(super) emit: ClassEmitCheckpoint<'a>,
 }
 
 pub(super) fn render_class_render_tree(
@@ -158,11 +159,12 @@ pub(super) fn render_class_render_tree(
                             mermaid_config: ctx.mermaid_config,
                             math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
+                            emit: ctx.emit,
                         },
                         namespace_id,
                         origin.0,
                         origin.1,
-                    );
+                    )?;
                 } else {
                     let clusters = root
                         .cluster_ids
@@ -189,8 +191,9 @@ pub(super) fn render_class_render_tree(
                             mermaid_config: ctx.mermaid_config,
                             math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
+                            emit: ctx.emit,
                         },
-                    );
+                    )?;
                 }
 
                 let edges = root
@@ -212,7 +215,7 @@ pub(super) fn render_class_render_tree(
                     origin.0,
                     origin.1,
                     in_namespace_root,
-                );
+                )?;
                 out.push_str(&split.edge_paths);
                 out.push_str(&split.edge_labels);
                 out.push_str(r#"<g class="nodes">"#);
@@ -252,7 +255,7 @@ pub(super) fn render_class_render_tree(
                     namespace_root_dy: origin.1,
                     in_namespace_root,
                 },
-            ),
+            )?,
             RenderFrame::Close { in_namespace_root } => {
                 out.push_str("</g>");
                 if in_namespace_root {
@@ -327,8 +330,9 @@ pub(super) fn render_class_elk_adapter_dom(
             mermaid_config: ctx.mermaid_config,
             math_renderer: ctx.math_renderer,
             timing: ctx.timing,
+            emit: ctx.emit,
         },
-    );
+    )?;
 
     out.push_str(r#"<g class="nodes">"#);
     for item in &root.items {
@@ -351,7 +355,7 @@ pub(super) fn render_class_elk_adapter_dom(
                 namespace_root_dy: 0.0,
                 in_namespace_root: false,
             },
-        );
+        )?;
     }
     out.push_str("</g>");
 
@@ -374,7 +378,7 @@ pub(super) fn render_class_elk_adapter_dom(
         0.0,
         0.0,
         false,
-    );
+    )?;
     out.push_str(&split.edge_paths);
     out.push_str(&split.edge_labels);
     Ok(())
@@ -573,7 +577,7 @@ fn render_class_split_edges_for_namespace(
     root_dx: f64,
     root_dy: f64,
     in_namespace_root: bool,
-) -> super::groups::ClassSplitEdgeGroups {
+) -> Result<super::groups::ClassSplitEdgeGroups> {
     let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
         relations_by_id: edge_ctx.relations_by_id,
@@ -602,6 +606,7 @@ fn render_class_split_edges_for_namespace(
         hand_drawn_seed: edge_ctx.hand_drawn_seed.clone(),
         timing: edge_ctx.timing,
         edge_paths_class: edge_ctx.edge_paths_class,
+        emit: edge_ctx.emit,
     };
     render_class_split_edge_groups(
         ClassSplitEdgeGroupsRenderState {
@@ -620,7 +625,7 @@ fn render_class_node_id(
     layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
     id: &str,
     offsets: ClassNodeRootOffsets,
-) {
+) -> Result<()> {
     let ClassNodesRenderState {
         out,
         content_bounds,
@@ -678,12 +683,13 @@ fn render_class_node_id(
                 look: settings.look.as_str(),
                 hand_drawn_seed: settings.hand_drawn_seed.clone(),
                 timing: ctx.timing,
+                emit: ctx.emit,
             },
-        );
+        )?;
         detail.notes_sanitize += stats.notes_sanitize;
         detail.path_bounds += stats.path_bounds;
         detail.path_bounds_calls += stats.path_bounds_calls;
-        return;
+        return Ok(());
     }
 
     if let Some(iface) = ctx.iface_by_id.get(n.id.as_str()).copied() {
@@ -703,9 +709,10 @@ fn render_class_node_id(
                 look: settings.look.as_str(),
                 mermaid_config: ctx.mermaid_config,
                 math_renderer: ctx.math_renderer,
+                emit: ctx.emit,
             },
-        );
-        return;
+        )?;
+        return Ok(());
     }
 
     let node = ctx
@@ -734,9 +741,10 @@ fn render_class_node_id(
         node,
         position,
         ctx.diagram_id,
+        ctx.emit,
         settings.look.as_str(),
         settings.security_level_loose,
-    );
+    )?;
     let basic_container = render_class_node_basic_container(
         ClassNodeRenderState {
             out,
@@ -823,4 +831,5 @@ fn render_class_node_id(
     if node_link_open {
         out.push_str("</a>");
     }
+    Ok(())
 }

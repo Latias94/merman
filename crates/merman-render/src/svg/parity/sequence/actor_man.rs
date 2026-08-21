@@ -39,6 +39,7 @@ pub(super) fn render_sequence_actor_man_tops(
             actor_height,
             diagram_id,
         );
+        checkpoints.checkpoint()?;
     }
     checkpoints.checkpoint()
 }
@@ -89,6 +90,7 @@ pub(super) fn render_sequence_actor_man_bottoms(
             },
             diagram_id,
         );
+        checkpoints.checkpoint()?;
     }
     checkpoints.checkpoint()
 }

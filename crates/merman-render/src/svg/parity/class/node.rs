@@ -10,6 +10,7 @@ use super::super::SvgDiagramId;
 use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_d, include_xywh};
+use super::context::ClassEmitCheckpoint;
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
     class_svg_label_rect, render_class_html_label, wrap_class_svg_text_like_mermaid,
@@ -154,9 +155,10 @@ pub(super) fn render_class_node_shell_open(
     node: &ClassSvgNode,
     position: ClassNodeRenderPosition,
     diagram_id: SvgDiagramId<'_>,
+    emit: ClassEmitCheckpoint<'_>,
     look: &str,
     security_level_loose: bool,
-) -> bool {
+) -> crate::Result<bool> {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
 
@@ -208,6 +210,7 @@ pub(super) fn render_class_node_shell_open(
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
     let _ = write!(out, "{diagram_id}");
+    emit.checkpoint()?;
     out.push('-');
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
@@ -230,7 +233,7 @@ pub(super) fn render_class_node_shell_open(
     }
     out.push('>');
 
-    link.is_some()
+    Ok(link.is_some())
 }
 
 pub(super) fn render_class_node_basic_container(

@@ -265,6 +265,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::C4, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = model
         .acc_title
@@ -296,6 +297,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let css = c4_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
 
@@ -315,6 +317,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
         escape_attr_display(scoped_svg_id(diagram_id, "clock"))
     );
+    options.checkpoint_emit()?;
 
     let mut shape_meta: std::collections::HashMap<&str, &C4SvgModelShape> =
         std::collections::HashMap::new();
@@ -333,6 +336,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
 
     for item in c4_paint_order(layout)? {
+        options.checkpoint_emit()?;
         match item {
             C4PaintItem::Shape(index) => {
                 let s = &layout.shapes[index];
@@ -706,11 +710,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
         r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
         escape_attr_display(scoped_svg_id(diagram_id, "crosshead"))
     );
+    options.checkpoint_emit()?;
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#,
         escape_attr_display(scoped_svg_id(diagram_id, "filled-head"))
     );
+    options.checkpoint_emit()?;
 
     out.push_str("<g>");
     for (idx, rel) in layout.rels.iter().enumerate() {
@@ -784,6 +790,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             }
             out.push_str("/>");
         }
+        options.checkpoint_emit()?;
 
         let midx = rel.start_point.x.min(rel.end_point.x)
             + (rel.end_point.x - rel.start_point.x).abs() / 2.0
@@ -847,6 +854,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
 
     out.push_str("</svg>");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

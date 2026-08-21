@@ -523,6 +523,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         }),
         root_chrome,
     )?;
+    options.checkpoint_emit()?;
 
     out.push_str(&a11y_nodes);
 
@@ -548,6 +549,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         &mut out,
         r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"/></marker></defs>"#,
     );
+    options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="root">"#);
     out.push_str(r#"<g class="clusters"/>"#);
@@ -598,6 +600,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         } else {
             prepared_label.rendered_id.clone()
         };
+        options.checkpoint_emit()?;
 
         let _ = write!(
             &mut out,
@@ -756,6 +759,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         } else {
             format!(r#" id="{}""#, escape_xml(&n.id))
         };
+        options.checkpoint_emit()?;
         let color_id_attr = color_indices
             .get(n.id.as_str())
             .and_then(|index| requirement_color_id(&border_colors, *index))
@@ -945,6 +949,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     push_requirement_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 

@@ -12,6 +12,7 @@ use super::super::timing::RenderTiming;
 use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
+use super::context::ClassEmitCheckpoint;
 use super::label::{class_math_html_label, class_note_html_div_style};
 use super::node::ClassNodeRenderPosition;
 use super::rough::{
@@ -30,6 +31,7 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
     pub timing: RenderTiming,
+    pub emit: ClassEmitCheckpoint<'a>,
 }
 
 pub(super) struct ClassNoteRenderState<'a> {
@@ -52,7 +54,7 @@ pub(super) fn render_class_note_node(
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
     ctx: &ClassNoteRenderContext<'_>,
-) -> ClassNoteRenderStats {
+) -> crate::Result<ClassNoteRenderStats> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
     let sanitize_config = &mut *state.sanitize_config;
@@ -208,11 +210,12 @@ pub(super) fn render_class_note_node(
     if ctx.use_html_labels {
         let note_div_style =
             class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
+        let _ = write!(out, r#"<g class="{}" id=""#, note_node_class);
+        let _ = write!(out, "{}", ctx.diagram_id);
+        ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
-            note_node_class,
-            ctx.diagram_id,
+            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
             escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
@@ -244,11 +247,12 @@ pub(super) fn render_class_note_node(
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
+        let _ = write!(out, r#"<g class="{}" id=""#, note_node_class);
+        let _ = write!(out, "{}", ctx.diagram_id);
+        ctx.emit.checkpoint()?;
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="{}" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
-            note_node_class,
-            ctx.diagram_id,
+            r##"-{}"{} transform="translate({}, {})">{}<g class="{}" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
             escape_attr_display(&note.id),
             note_data_look_attr,
             fmt(position.node_tx),
@@ -263,7 +267,7 @@ pub(super) fn render_class_note_node(
         out.push_str("</g></g></g>");
     }
 
-    stats
+    Ok(stats)
 }
 
 fn class_note_sanitize_config<'a>(

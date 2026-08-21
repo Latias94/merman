@@ -1,4 +1,5 @@
 use super::super::timing::RenderTimings;
+use super::context::ClassEmitCheckpoint;
 use super::groups::ClassSplitEdgeGroupsRenderContext;
 use super::nodes::{
     ClassNodesRenderContext, ClassNodesRenderState, render_class_elk_adapter_dom,
@@ -44,6 +45,8 @@ fn render_class_diagram_svg_model_inner(
     let mut detail = ClassRenderDetails::default();
 
     let diagram_id = options.diagram_id_or("merman");
+    let checkpoint_emit = || options.checkpoint_emit();
+    let emit = ClassEmitCheckpoint::new(&checkpoint_emit);
     let aria_roledescription = model.diagram_type.as_str();
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
@@ -87,6 +90,7 @@ fn render_class_diagram_svg_model_inner(
         aria_roledescription,
         &root_context,
     )?;
+    emit.checkpoint()?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     let css = class_css(
@@ -102,15 +106,18 @@ fn render_class_diagram_svg_model_inner(
     out.push_str("<style>");
     out.push_str(&css);
     out.push_str("</style>");
+    emit.checkpoint()?;
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
     // Mermaid 11.16 inserts both the ordinary and margin-aware marker variants for every look.
     class_markers(&mut out, diagram_id, aria_roledescription, true);
+    emit.checkpoint()?;
     if layout.uses_elk_adapter_dom {
         out.push_str("</g>");
         push_class_shadow_defs(&mut out, diagram_id, effective_config);
         push_class_gradient(&mut out, diagram_id, effective_config);
+        emit.checkpoint()?;
     }
 
     let ClassRenderLookups {
@@ -150,6 +157,7 @@ fn render_class_diagram_svg_model_inner(
         } else {
             "edgePaths"
         },
+        emit,
     };
 
     // The layout-owned render tree preserves the exact recursive Dagre graph that produced these
@@ -171,6 +179,7 @@ fn render_class_diagram_svg_model_inner(
         content_tx,
         content_ty,
         timing,
+        emit,
     };
     if layout.uses_elk_adapter_dom {
         render_class_elk_adapter_dom(
@@ -209,6 +218,7 @@ fn render_class_diagram_svg_model_inner(
     if !layout.uses_elk_adapter_dom {
         push_class_shadow_defs(&mut out, diagram_id, effective_config);
         push_class_gradient(&mut out, diagram_id, effective_config);
+        emit.checkpoint()?;
     }
 
     drop(render_guard);

@@ -76,6 +76,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         ),
         root_chrome,
     )?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -97,6 +98,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         r#"<style>{}</style>"#,
         info_css_with_config(diagram_id, effective_config)
     );
+    options.checkpoint_emit()?;
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);
@@ -209,5 +211,6 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     out.push_str("</g>");
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }

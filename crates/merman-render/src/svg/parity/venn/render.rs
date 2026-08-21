@@ -256,6 +256,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         aria_labelledby.as_deref(),
         aria_describedby.as_deref(),
     )?;
+    options.checkpoint_emit()?;
 
     if has_acc_title {
         let _ = write!(
@@ -278,6 +279,7 @@ pub(crate) fn render_venn_diagram_svg_model(
     let css = venn_css(diagram_id, &theme);
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
     out.push_str("<g/>");
+    options.checkpoint_emit()?;
 
     if let Some(title) = title {
         let _ = write!(
@@ -494,5 +496,6 @@ pub(crate) fn render_venn_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }

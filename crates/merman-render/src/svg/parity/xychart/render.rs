@@ -214,6 +214,7 @@ pub(crate) fn render_xychart_diagram_svg(
     let root_document =
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::XyChart, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
+    options.checkpoint_emit()?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -233,6 +234,7 @@ pub(crate) fn render_xychart_diagram_svg(
     out.push_str("<style>");
     push_xychart_css(&mut out, diagram_id);
     out.push_str("</style>");
+    options.checkpoint_emit()?;
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);
@@ -436,6 +438,7 @@ pub(crate) fn render_xychart_diagram_svg(
     render_node(&mut out, &arena, 0);
     out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
     out.push_str("</svg>\n");
+    options.checkpoint_emit()?;
     root_document.complete(out)
 }
 
