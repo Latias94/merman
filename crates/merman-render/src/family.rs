@@ -6,8 +6,8 @@ use crate::presentation::{
 };
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
-    ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessExecution,
-    SvgPostprocessMetadata, SvgRenderOptions,
+    FlowchartEdgeTraceCollector, ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline,
+    SvgPostprocessExecution, SvgPostprocessMetadata, SvgRenderOptions,
 };
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
@@ -853,9 +853,24 @@ impl FamilyRenderArtifact {
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        let svg = render_family_artifact_svg(&self, options, debug)?;
+        let trace_stage = debug.flowchart_edge_trace().map(|(edge_id, destination)| {
+            let staging = FlowchartEdgeTraceCollector::default();
+            let staged_debug = debug
+                .clone()
+                .with_flowchart_edge_trace(edge_id.to_owned(), staging.clone());
+            (destination.clone(), staging, staged_debug)
+        });
+        let render_debug = trace_stage
+            .as_ref()
+            .map_or(debug, |(_, _, staged_debug)| staged_debug);
+        let svg = render_family_artifact_svg(&self, options, render_debug)?;
         admit_rendered_svg_output(&self.session, &svg)?;
         self.session.checkpoint(OperationPhase::Emit)?;
+        if let Some((destination, staging, _)) = trace_stage {
+            for trace in staging.drain() {
+                destination.record(trace);
+            }
+        }
         let family_kind = self.family.kind();
         let Self {
             metadata,

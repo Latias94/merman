@@ -11,7 +11,7 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::FlowchartLayout;
-use merman_render::resources::RenderResourcePolicy;
+use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
 use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -127,6 +127,66 @@ fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
     assert_eq!(traces[0].edge_id, edge_id);
     assert!(!traces[0].base_points.is_empty());
     assert!(collector.snapshot().is_empty());
+}
+
+#[test]
+fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
+    let source = "flowchart TD\nA --> B\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
+        .expect("parse succeeds")
+        .expect("detects flowchart");
+    let edge_id = flowchart_model(&parsed)
+        .edges
+        .first()
+        .expect("fixture has an edge")
+        .id
+        .clone();
+    let collector = FlowchartEdgeTraceCollector::default();
+    let debug =
+        SvgDebugOptions::default().with_flowchart_edge_trace(edge_id.clone(), collector.clone());
+
+    let successful_session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
+        .expect("create successful session");
+    let successful_artifact =
+        family::prepare(parsed, &LayoutOptions::default(), successful_session)
+            .expect("prepare successful artifact");
+    let successful_svg = successful_artifact
+        .render_svg(&SvgRenderOptions::default(), &debug)
+        .expect("render succeeds");
+    let retained_trace = collector.snapshot();
+    assert_eq!(retained_trace.len(), 1);
+
+    let failing_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(
+            ResourceLimitId::MaxSvgBytes,
+            successful_svg.svg().len().saturating_sub(1),
+        )
+        .expect("configure the N-1 SVG ceiling");
+    let failing_session = RenderEnvironment::deterministic()
+        .with_resource_policy(failing_policy)
+        .begin_session()
+        .expect("create failing session");
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse succeeds")
+            .expect("detects flowchart");
+    let failing_artifact = family::prepare(parsed, &LayoutOptions::default(), failing_session)
+        .expect("prepare failing artifact");
+    assert!(
+        failing_artifact
+            .render_svg(&SvgRenderOptions::default(), &debug)
+            .is_err(),
+        "the N-1 SVG ceiling must reject the second render"
+    );
+
+    assert_eq!(
+        collector.snapshot(),
+        retained_trace,
+        "a failed render must not publish staged trace records or erase prior successes"
+    );
 }
 
 #[test]
