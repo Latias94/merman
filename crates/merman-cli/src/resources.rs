@@ -716,7 +716,7 @@ pub(crate) enum ByteLedgerKind {
     AggregateIcons,
     #[cfg(any(test, feature = "markdown"))]
     StagedOutput,
-    #[cfg(any(test, feature = "rustdoc"))]
+    #[cfg(feature = "rustdoc")]
     RustdocInput,
 }
 
@@ -728,7 +728,7 @@ impl ByteLedgerKind {
             Self::AggregateIcons => CliResourceLimitId::MaxAggregateIconBytes,
             #[cfg(any(test, feature = "markdown"))]
             Self::StagedOutput => CliResourceLimitId::MaxStagedBytes,
-            #[cfg(any(test, feature = "rustdoc"))]
+            #[cfg(feature = "rustdoc")]
             Self::RustdocInput => CliResourceLimitId::MaxRustdocInputBytes,
         }
     }
