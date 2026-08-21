@@ -1537,7 +1537,7 @@ fn subgraph_label(
     ctx: &ElkMeasureContext<'_>,
 ) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
-    let title = ctx.model.subgraph_title_for_render(sg);
+    let title = ctx.model.subgraph_title_for_render(declaration_ordinal, sg);
     let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
     let text_style = flowchart_effective_text_style_for_classes(
         ctx.cluster_label_base_style,

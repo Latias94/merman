@@ -293,7 +293,7 @@ pub(super) fn prepare(
     let mut nodes = IndexMap::new();
     for subgraph_index in (0..model.subgraphs.len()).rev() {
         let subgraph = &model.subgraphs[subgraph_index];
-        let render_title = model.subgraph_title_for_render(subgraph);
+        let render_title = model.subgraph_title_for_render(subgraph_index, subgraph);
         let (label_width, label_height) =
             measure_group_title(subgraph_index, subgraph, render_title, &measure_ctx);
         nodes.insert(

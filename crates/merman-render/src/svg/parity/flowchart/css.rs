@@ -2,7 +2,11 @@
 
 use super::*;
 
-fn scope_flowchart_drop_shadow(diagram_id: impl std::fmt::Display + Copy, value: &str) -> String {
+fn scope_flowchart_drop_shadow(
+    diagram_id: impl std::fmt::Display + Copy,
+    value: &str,
+    checkpoint: &dyn Fn() -> Result<()>,
+) -> Result<String> {
     const SMALL: &str = "url(#drop-shadow-small)";
     const REGULAR: &str = "url(#drop-shadow)";
 
@@ -20,20 +24,22 @@ fn scope_flowchart_drop_shadow(diagram_id: impl std::fmt::Display + Copy, value:
         };
         let Some((index, matched_len, local_id)) = next else {
             out.push_str(rest);
-            return out;
+            return Ok(out);
         };
         out.push_str(&rest[..index]);
         let _ = write!(out, "url(#{diagram_id}-{local_id})");
+        checkpoint()?;
         rest = &rest[index + matched_len..];
     }
 }
 
-pub(in crate::svg::parity) fn flowchart_css(
+pub(in crate::svg::parity::flowchart) fn flowchart_css(
     diagram_id: SvgDiagramId<'_>,
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
+    emit: FlowchartEmitCheckpoint<'_>,
 ) -> Result<String> {
     flowchart_css_for_id(
         diagram_id,
@@ -41,6 +47,7 @@ pub(in crate::svg::parity) fn flowchart_css(
         font_family,
         font_size,
         class_defs,
+        &|| emit.checkpoint(),
     )
 }
 
@@ -50,6 +57,7 @@ fn flowchart_css_for_id(
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
+    checkpoint: &dyn Fn() -> Result<()>,
 ) -> Result<String> {
     let theme = PresentationTheme::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
@@ -81,6 +89,7 @@ fn flowchart_css_for_id(
         fmt(font_size),
         text_color
     );
+    checkpoint()?;
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
@@ -89,21 +98,25 @@ fn flowchart_css_for_id(
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
         id, id
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
         id, error_bkg, id, error_text, error_text
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
         id, stroke_width, id, id, id, id, id
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
         id, stroke, stroke, id, stroke
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};color:{};}}"#,
@@ -115,20 +128,24 @@ fn flowchart_css_for_id(
         font_family,
         node_text_color
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .label text,#{} span{{fill:{};color:{};}}"#,
         id, title_color, id, title_color, id, id, id, node_text_color, node_text_color
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{id} .node rect,#{id} .node circle,#{id} .node ellipse,#{id} .node polygon,#{id} .node path{{fill:{main_bkg};stroke:{node_border};stroke-width:{stroke_width}px;}}#{id} .rough-node .label text,#{id} .node .label text,#{id} .image-shape .label,#{id} .icon-shape .label{{text-anchor:middle;}}#{id} .node .katex path{{fill:#000;stroke:#000;stroke-width:1px;}}#{id} .rough-node .label,#{id} .node .label,#{id} .image-shape .label,#{id} .icon-shape .label{{text-align:center;}}#{id} .node.clickable{{cursor:pointer;}}"#
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
         id, stroke, stroke, id, arrowhead_color, id, stroke, stroke_width, id, stroke
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
@@ -142,6 +159,7 @@ fn flowchart_css_for_id(
         id,
         label_bkg
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}"#,
@@ -160,6 +178,7 @@ fn flowchart_css_for_id(
         text_color,
         diagram_id
     );
+    checkpoint()?;
     let _ = write!(
         &mut out,
         r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
@@ -178,12 +197,14 @@ fn flowchart_css_for_id(
         id,
         font_family
     );
+    checkpoint()?;
     if neo {
-        let scoped_drop_shadow = scope_flowchart_drop_shadow(diagram_id, drop_shadow);
+        let scoped_drop_shadow = scope_flowchart_drop_shadow(diagram_id, drop_shadow, checkpoint)?;
         let _ = write!(
             &mut out,
             r#"#{id} .node[data-look="neo"] rect.basic.label-container{{rx:{radius}px;ry:{radius}px;}}#{id} .node[data-look="neo"] .label-container{{filter:{scoped_drop_shadow};stroke-linejoin:round;}}#{id} .flowchart-link[data-look="neo"]{{stroke-linecap:round;stroke-linejoin:round;}}#{id} .edgeLabel rect{{opacity:1;}}#{id} .labelBkg{{background-color:{edge_label_background};}}"#,
         );
+        checkpoint()?;
     }
 
     // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
@@ -194,6 +215,7 @@ fn flowchart_css_for_id(
     let shape_elements: &[&str] = &["rect", "polygon", "ellipse", "circle", "path"];
 
     for (class, decls) in class_defs {
+        checkpoint()?;
         if decls.is_empty() {
             continue;
         }
@@ -224,6 +246,7 @@ fn flowchart_css_for_id(
                 escape_xml(class),
                 style
             );
+            checkpoint()?;
         } else {
             for css_element in shape_elements {
                 let _ = write!(
@@ -234,6 +257,7 @@ fn flowchart_css_for_id(
                     css_element,
                     style
                 );
+                checkpoint()?;
             }
         }
         if let Some(c) = text_color.as_deref() {
@@ -244,6 +268,7 @@ fn flowchart_css_for_id(
                 escape_xml(class),
                 escape_xml(c)
             );
+            checkpoint()?;
         }
     }
 
@@ -312,6 +337,7 @@ mod tests {
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
             &IndexMap::new(),
+            &|| Ok(()),
         )
         .expect("valid khroma color");
 
@@ -332,6 +358,7 @@ mod tests {
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
             &IndexMap::new(),
+            &|| Ok(()),
         )
         .expect_err("unsupported khroma color must fail");
 

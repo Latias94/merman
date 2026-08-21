@@ -6,6 +6,23 @@
 use super::super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+#[derive(Clone, Copy)]
+pub(in crate::svg::parity::flowchart) struct FlowchartEmitCheckpoint<'a> {
+    checkpoint: &'a dyn Fn() -> crate::Result<()>,
+}
+
+impl<'a> FlowchartEmitCheckpoint<'a> {
+    pub(in crate::svg::parity::flowchart) fn new(
+        checkpoint: &'a dyn Fn() -> crate::Result<()>,
+    ) -> Self {
+        Self { checkpoint }
+    }
+
+    pub(in crate::svg::parity::flowchart) fn checkpoint(self) -> crate::Result<()> {
+        (self.checkpoint)()
+    }
+}
+
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) model: &'a crate::flowchart::FlowchartRenderModelRef<'a>,
     pub(in crate::svg::parity::flowchart) diagram_id: SvgDiagramId<'a>,
@@ -16,6 +33,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) config: &'a merman_core::MermaidConfig,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(in crate::svg::parity::flowchart) emit: FlowchartEmitCheckpoint<'a>,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg::parity::flowchart) svg_label_sidecar:
@@ -78,6 +96,10 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
 impl FlowchartRenderCtx<'_> {
     pub(in crate::svg::parity::flowchart) fn subgraph_has_children(&self, id: &str) -> bool {
         self.subgraph_ids_with_children.contains(id)
+    }
+
+    pub(in crate::svg::parity::flowchart) fn checkpoint_emit(&self) -> crate::Result<()> {
+        self.emit.checkpoint()
     }
 }
 

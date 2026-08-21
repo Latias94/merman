@@ -44,7 +44,13 @@ impl FlowchartModel {
 pub(crate) struct FlowchartRenderLabelSources {
     nodes: FxHashMap<String, String>,
     edges: FxHashMap<String, String>,
-    subgraphs: FxHashMap<String, String>,
+    subgraphs: Vec<Option<FlowSubgraphRenderLabelSource>>,
+}
+
+#[derive(Debug, Clone)]
+struct FlowSubgraphRenderLabelSource {
+    id: String,
+    source: String,
 }
 
 impl FlowchartRenderLabelSources {
@@ -62,10 +68,16 @@ impl FlowchartRenderLabelSources {
             .or(edge.label.as_deref())
     }
 
-    pub(crate) fn subgraph_title_for_render<'a>(&'a self, subgraph: &'a FlowSubgraph) -> &'a str {
+    pub(crate) fn subgraph_title_for_render<'a>(
+        &'a self,
+        declaration_ordinal: usize,
+        subgraph: &'a FlowSubgraph,
+    ) -> &'a str {
         self.subgraphs
-            .get(&subgraph.id)
-            .map(String::as_str)
+            .get(declaration_ordinal)
+            .and_then(Option::as_ref)
+            .filter(|source| source.id == subgraph.id)
+            .map(|source| source.source.as_str())
             .unwrap_or(subgraph.title.as_str())
     }
 
@@ -77,13 +89,18 @@ impl FlowchartRenderLabelSources {
         self.edges.insert(id, source);
     }
 
-    pub(crate) fn set_subgraph(&mut self, id: String, source: Option<String>) {
+    pub(crate) fn insert_subgraph(
+        &mut self,
+        id: String,
+        declaration_ordinal: usize,
+        source: Option<String>,
+    ) {
         if let Some(source) = source {
-            self.subgraphs.insert(id, source);
-        } else {
-            // Flowchart's renderer indexes subgraphs by id with last-declaration-wins semantics.
-            // A later ordinary title must therefore retire an earlier provenance override.
-            self.subgraphs.remove(&id);
+            if self.subgraphs.len() <= declaration_ordinal {
+                self.subgraphs.resize_with(declaration_ordinal + 1, || None);
+            }
+            self.subgraphs[declaration_ordinal] =
+                Some(FlowSubgraphRenderLabelSource { id, source });
         }
     }
 
@@ -91,10 +108,19 @@ impl FlowchartRenderLabelSources {
         self.nodes
             .iter()
             .chain(&self.edges)
-            .chain(&self.subgraphs)
             .fold(0usize, |total, (id, label)| {
                 total.saturating_add(id.len()).saturating_add(label.len())
             })
+            .saturating_add(
+                self.subgraphs
+                    .iter()
+                    .flatten()
+                    .fold(0usize, |total, source| {
+                        total
+                            .saturating_add(source.id.len())
+                            .saturating_add(source.source.len())
+                    }),
+            )
     }
 }
 
@@ -188,8 +214,13 @@ impl FlowchartRenderContext {
     }
 
     #[doc(hidden)]
-    pub fn subgraph_title_for_render<'a>(&'a self, subgraph: &'a FlowSubgraph) -> &'a str {
-        self.labels.subgraph_title_for_render(subgraph)
+    pub fn subgraph_title_for_render<'a>(
+        &'a self,
+        declaration_ordinal: usize,
+        subgraph: &'a FlowSubgraph,
+    ) -> &'a str {
+        self.labels
+            .subgraph_title_for_render(declaration_ordinal, subgraph)
     }
 
     #[doc(hidden)]

@@ -39,8 +39,13 @@ impl<'a> FlowchartRenderModelRef<'a> {
         self.render_context.edge_label_for_render(edge)
     }
 
-    pub(crate) fn subgraph_title_for_render<'b>(&'b self, subgraph: &'b FlowSubgraph) -> &'b str {
-        self.render_context.subgraph_title_for_render(subgraph)
+    pub(crate) fn subgraph_title_for_render<'b>(
+        &'b self,
+        declaration_ordinal: usize,
+        subgraph: &'b FlowSubgraph,
+    ) -> &'b str {
+        self.render_context
+            .subgraph_title_for_render(declaration_ordinal, subgraph)
     }
 
     pub(crate) fn effective_subgraph_css<'b>(
@@ -64,7 +69,8 @@ impl<'a> FlowchartRenderModelRef<'a> {
             .chain(
                 self.subgraphs
                     .iter()
-                    .map(|subgraph| self.subgraph_title_for_render(subgraph)),
+                    .enumerate()
+                    .map(|(ordinal, subgraph)| self.subgraph_title_for_render(ordinal, subgraph)),
             )
             .any(crate::math::contains_delimited_math)
     }

@@ -1716,7 +1716,7 @@ fn layout_flowchart_with_model(
             classes,
             styles,
         );
-        let title = model.subgraph_title_for_render(sg);
+        let title = model.subgraph_title_for_render(subgraph_index, sg);
         // Mermaid renders an empty subgraph through the ordinary node `labelHelper`: wrapping
         // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
         // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
@@ -2188,7 +2188,8 @@ fn layout_flowchart_with_model(
         ctx: &ClusterTitleMetricsContext<'_>,
     ) -> Option<(f64, f64)> {
         let sg = ctx.subgraphs_by_id.get(id)?;
-        let title = ctx.model.subgraph_title_for_render(sg);
+        let subgraph_index = ctx.subgraph_index_by_id.get(id).copied()?;
+        let title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
         let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
@@ -2196,7 +2197,6 @@ fn layout_flowchart_with_model(
         } else {
             ctx.text_style
         };
-        let subgraph_index = ctx.subgraph_index_by_id.get(id).copied()?;
         let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         let text_style =
             flowchart_effective_text_style_for_classes(base_style, ctx.class_defs, classes, styles);
@@ -3297,13 +3297,6 @@ fn layout_flowchart_with_model(
             }
 
             let label_type = sg.label_type.as_deref().unwrap_or("text");
-            let title = ctx.model.subgraph_title_for_render(sg);
-            let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
-            let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
-                ctx.html_label_text_style
-            } else {
-                ctx.text_style
-            };
             let subgraph_index = ctx
                 .subgraph_index_by_id
                 .get(frame.id.as_str())
@@ -3311,6 +3304,13 @@ fn layout_flowchart_with_model(
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!("missing canonical subgraph index for {}", frame.id),
                 })?;
+            let title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
+            let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
+            let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+                ctx.html_label_text_style
+            } else {
+                ctx.text_style
+            };
             let (classes, styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
             let text_style = flowchart_effective_text_style_for_classes(
                 base_style,
@@ -3525,7 +3525,7 @@ fn layout_flowchart_with_model(
         if !nonempty_subgraph_ids.contains(sg.id.as_str()) {
             continue;
         }
-        let title = model.subgraph_title_for_render(sg);
+        let title = model.subgraph_title_for_render(subgraph_index, sg);
 
         let (rect, base_width) = if extracted_graphs.contains_key(&sg.id) {
             // For extracted (recursive) clusters, match Mermaid's `updateNodeBounds(...)` intent by

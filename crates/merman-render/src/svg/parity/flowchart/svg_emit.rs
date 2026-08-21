@@ -83,6 +83,8 @@ pub(super) fn render_flowchart_svg_model(
     );
 
     let diagram_id = options.diagram_id_or("merman");
+    let checkpoint_emit = || options.checkpoint_emit();
+    let emit = FlowchartEmitCheckpoint::new(&checkpoint_emit);
     let _g_build_ctx = render_timing.section(&mut timings.build_ctx);
 
     let FlowchartRenderInputs {
@@ -255,6 +257,7 @@ pub(super) fn render_flowchart_svg_model(
         config: effective_config,
         hand_drawn_seed,
         work_meter: options.work_meter(),
+        emit,
         math_renderer: options.math_renderer(),
         svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry,
@@ -404,9 +407,12 @@ pub(super) fn render_flowchart_svg_model(
         &font_family,
         font_size,
         &model.class_defs,
+        emit,
     )?;
+    emit.checkpoint()?;
     if swimlane_layout.is_some() {
         css.push_str(&super::swimlane::swimlane_css(diagram_id, effective_config));
+        emit.checkpoint()?;
     }
 
     let estimated_svg_bytes = 2048usize
@@ -414,6 +420,7 @@ pub(super) fn render_flowchart_svg_model(
         + layout.nodes.len().saturating_mul(256)
         + render_edges.len().saturating_mul(256)
         + layout.clusters.len().saturating_mul(128);
+    emit.checkpoint()?;
     let mut out = String::with_capacity(estimated_svg_bytes);
 
     let root_document = document.push_root_open(&mut out)?;
@@ -421,6 +428,7 @@ pub(super) fn render_flowchart_svg_model(
     out.push_str("<style>");
     out.push_str(&css);
     out.push_str("</style>");
+    emit.checkpoint()?;
 
     let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx);
 
@@ -432,20 +440,27 @@ pub(super) fn render_flowchart_svg_model(
     if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
         defs.push_base_markers(&mut out);
+        emit.checkpoint()?;
         defs.push_extra_markers(&mut out);
+        emit.checkpoint()?;
         out.push_str("</g>");
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        emit.checkpoint()?;
         render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session)?;
     } else {
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        emit.checkpoint()?;
         out.push_str("<g>");
         defs.push_base_markers(&mut out);
+        emit.checkpoint()?;
         render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session)?;
 
         defs.push_extra_markers(&mut out);
+        emit.checkpoint()?;
         out.push_str("</g>");
     }
     push_flowchart_gradient(&mut out, diagram_id, effective_config_value);
+    emit.checkpoint()?;
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;
         let title_y = -title_top_margin;
@@ -551,4 +566,92 @@ fn push_flowchart_gradient(
         gradient_start.as_str(),
         gradient_stop.as_str()
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::RenderEnvironment;
+    use crate::model::{FlowchartLayout, LayoutNode};
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+    use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    #[test]
+    fn diagram_id_terminal_precedes_later_flowchart_node_emission_error() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart TD\nA@{ img: \"https://example.invalid/a.svg\", label: \"A\" }\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse succeeds")
+            .expect("detects Flowchart");
+        let render_context = parsed
+            .flowchart_render_context()
+            .expect("Flowchart render context")
+            .clone();
+        let (metadata, semantic) = parsed.into_parts();
+        let RenderSemanticModel::Flowchart(mut model) = semantic else {
+            panic!("expected Flowchart model");
+        };
+        let node = model.nodes.first_mut().expect("fixture node");
+        assert_eq!(node.layout_shape.as_deref(), Some("imageSquare"));
+        node.img = None;
+
+        let layout = FlowchartLayout {
+            nodes: vec![LayoutNode {
+                id: node.id.clone(),
+                x: 40.0,
+                y: 30.0,
+                width: 80.0,
+                height: 60.0,
+                is_cluster: false,
+                label_width: Some(10.0),
+                label_height: Some(10.0),
+            }],
+            edges: Vec::new(),
+            clusters: Vec::new(),
+            bounds: None,
+            dom_node_order_by_root: std::collections::HashMap::from([(
+                String::new(),
+                vec![node.id.clone()],
+            )]),
+            uses_elk_adapter_dom: false,
+        };
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+            .expect("valid SVG byte limit");
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        let request = SvgRenderOptions {
+            diagram_id: Some("terminal".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+
+        let error = render_flowchart_svg_model(
+            FlowchartSvgModelRequest {
+                layout: &layout,
+                swimlane_layout: None,
+                model: &model,
+                render_context: &render_context,
+                effective_config: &metadata.effective_config,
+                diagram_type: metadata.diagram_type.as_str(),
+                diagram_title: metadata.title.as_deref(),
+                presentation_policy: None,
+                svg_label_sidecar: &sidecar,
+            },
+            &execution,
+        )
+        .expect_err("diagram-ID rejection must stop before the invalid image node is emitted");
+
+        let crate::Error::ResourceLimitExceeded(details) = error else {
+            panic!("expected SVG byte rejection, got {error}");
+        };
+        assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    }
 }

@@ -278,7 +278,7 @@ pub(super) fn resolve_node_render_info<'a>(
             wrapped_in_a: false,
             href: None,
             target: None,
-            label_text: ctx.model.subgraph_title_for_render(sg),
+            label_text: ctx.model.subgraph_title_for_render(subgraph_index, sg),
             label_text_is_node_id: false,
             label_type: sg.label_type.as_deref().unwrap_or("text"),
             shape: "squareRect",

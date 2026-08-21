@@ -190,6 +190,42 @@ fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
 }
 
 #[test]
+fn public_flowchart_artifact_replays_diagram_id_terminal_during_emit() {
+    let mut source = String::from("flowchart TD\n");
+    for index in 0..256 {
+        source.push_str(&format!("N{index} --> N{}\n", index + 1));
+    }
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(&source, ParseOptions::default()))
+            .expect("parse succeeds")
+            .expect("detects Flowchart");
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+        .expect("valid SVG byte limit");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .expect("begin render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare public Flowchart artifact");
+
+    let error = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("terminal".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect_err("diagram-ID projection must reject the public render path");
+
+    let merman_render::Error::ResourceLimitExceeded(details) = error else {
+        panic!("expected SVG byte rejection, got {error}");
+    };
+    assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
+}
+
+#[test]
 fn flowchart_root_normalizes_diagram_id_before_scoping_accessibility_ids() {
     let source =
         "flowchart TD\naccTitle: Accessible title\naccDescr: Accessible description\nA-->B\n";
@@ -1792,6 +1828,11 @@ fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
         "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
         "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
         "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+        concat!(
+            "flowchart TD\n",
+            "  subgraph X[First title]\n    A\n  end\n",
+            "  subgraph X[\"&nbsp;Second title&nbsp;\"]\n    B\n  end\n",
+        ),
     ] {
         let svg = render_flowchart_svg_from_text(source);
         let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");

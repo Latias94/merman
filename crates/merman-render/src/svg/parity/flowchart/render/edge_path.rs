@@ -13,7 +13,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     origin_y: f64,
     scratch: &mut FlowchartEdgeDataPointsScratch,
     edge_cache: &mut FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-) {
+) -> crate::Result<()> {
     let trace_enabled = ctx.trace_edge_id.is_some_and(|id| id == edge.id.as_str());
 
     let cached_geom = edge_cache
@@ -41,7 +41,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         g
     } else {
         let Some(g) = owned_geom.as_ref() else {
-            return;
+            return Ok(());
         };
         g
     };
@@ -112,6 +112,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.diagram_id,
         escape_xml_display(&edge.id),
     );
+    ctx.checkpoint_emit()?;
     css::write_flowchart_edge_class_attr(out, edge);
     if hand_drawn {
         out.push_str(" transition");
@@ -173,6 +174,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     {
         cache_entry.geom.emitted_d_for_label = Some(emitted_d_for_label);
     }
+    Ok(())
 }
 
 fn flowchart_edge_is_animated(

@@ -153,6 +153,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             look,
         },
     );
+    ctx.checkpoint_emit()?;
 
     let style_start = timing.start();
     let mut compiled_styles =

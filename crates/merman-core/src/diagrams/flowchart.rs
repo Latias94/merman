@@ -1613,7 +1613,7 @@ impl FlowchartSemanticSource {
             }
             let (subgraph, render_title_source) =
                 flow_subgraph_to_model(subgraph, &meta.effective_config);
-            render_label_sources.set_subgraph(subgraph.id.clone(), render_title_source);
+            render_label_sources.insert_subgraph(subgraph.id.clone(), index, render_title_source);
             render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
@@ -2214,7 +2214,7 @@ F -- "&nbsp;" --> G
             .expect("subgraph SG");
         assert_eq!(subgraph.title, format!("{nbsp}Group{nbsp}"));
         assert_eq!(
-            subgraph_render_label_sources.subgraph_title_for_render(subgraph),
+            subgraph_render_label_sources.subgraph_title_for_render(0, subgraph),
             "&nbsp;Group&nbsp;"
         );
 
@@ -2230,7 +2230,7 @@ F -- "&nbsp;" --> G
             .expect("entity subgraph");
         assert_eq!(entity_subgraph.title, "A & < >");
         assert_eq!(
-            entity_subgraph_render_label_sources.subgraph_title_for_render(entity_subgraph),
+            entity_subgraph_render_label_sources.subgraph_title_for_render(0, entity_subgraph),
             "A &amp; &lt; &gt;"
         );
 
@@ -2241,8 +2241,26 @@ F -- "&nbsp;" --> G
                 .expect("duplicate subgraph model");
         assert_eq!(duplicate_model.subgraphs.len(), 2);
         assert_eq!(
-            duplicate_sources.subgraph_title_for_render(&duplicate_model.subgraphs[1]),
+            duplicate_sources.subgraph_title_for_render(0, &duplicate_model.subgraphs[0]),
+            "&nbsp;First"
+        );
+        assert_eq!(
+            duplicate_sources.subgraph_title_for_render(1, &duplicate_model.subgraphs[1]),
             "Second"
+        );
+
+        let later_entity_source =
+            "flowchart LR\nsubgraph X[First]\n  A\nend\nsubgraph X[\"&nbsp;Second\"]\n  B\nend\n";
+        let (later_entity_model, later_entity_sources) =
+            parse_flowchart_model_with_render_context(later_entity_source, &meta)
+                .expect("duplicate subgraph model with later entity label");
+        assert_eq!(
+            later_entity_sources.subgraph_title_for_render(0, &later_entity_model.subgraphs[0]),
+            "First"
+        );
+        assert_eq!(
+            later_entity_sources.subgraph_title_for_render(1, &later_entity_model.subgraphs[1]),
+            "&nbsp;Second"
         );
 
         let punctuation_source = "flowchart LR\nsubgraph \"A;B\"\n  Bare\nend\nsubgraph \"`M;D`\"\n  Markdown\nend\nsubgraph SG[\"A]B\"]\n  Bracket\nend\n";
