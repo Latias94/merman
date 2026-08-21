@@ -87,4 +87,36 @@ test("binding error contract accepts operation statuses and cancellation-only de
     }),
     false,
   );
+  assert.equal(
+    isBindingErrorPayload({
+      ...cancellationError,
+      kind: "missing-capability",
+      capability_id: "svg-png",
+    }),
+    false,
+  );
+  assert.equal(
+    isBindingErrorPayload({
+      ...cancellationError,
+      capability_id: "svg-png",
+    }),
+    false,
+  );
+  assert.equal(
+    isBindingErrorPayload({
+      ...cancellationError,
+      details: {
+        ...cancellationError.details,
+        resource: {
+          cause: "ceiling",
+          limit_id: "max_svg_bytes",
+          phase: "render",
+          actual: 2,
+          max: 1,
+          profile: "constrained",
+        },
+      },
+    }),
+    false,
+  );
 });

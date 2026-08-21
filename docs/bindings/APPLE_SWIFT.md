@@ -163,8 +163,11 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 3 generated source and native libraries together to API 4. Add `control: nil` to generic
-  request construction until the host adopts `MermanOperationControl`.
+- Move API 4 generated source and native libraries together to API 5. `MermanOperationRequestV4`
+  remains the current request record; add `control: nil` to generic request construction until the
+  host adopts `MermanOperationControl`. Handle the optional `diagnostic`
+  `MermanDiagnosticErrorDetails` payload on `MermanError.Binding` instead of inferring parser or
+  ASCII failures from display text.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
   required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
   optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.

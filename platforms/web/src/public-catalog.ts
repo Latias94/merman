@@ -416,6 +416,13 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
         OPERATION_PHASE_IDENTIFIER.test(cancellationRecord.phase)
       );
     })();
+  const hasConsistentCancellationTerminal =
+    cancellation === undefined ||
+    (payload.kind === "generic" &&
+      payload.capability_id === null &&
+      resource === undefined &&
+      diagnostic === undefined &&
+      iconRegistry === undefined);
   const hasValidDetails =
     payload.details === undefined ||
     (!!details &&
@@ -444,6 +451,7 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
       typeof payload.capability_id === "string") &&
     (payload.code_name !== "MERMAN_CANCELLED" || cancellation !== undefined) &&
     (cancellation === undefined || payload.code_name === "MERMAN_CANCELLED") &&
+    hasConsistentCancellationTerminal &&
     hasValidDetails &&
     typeof payload.message === "string"
   );
