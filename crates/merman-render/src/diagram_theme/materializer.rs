@@ -2,13 +2,13 @@ use std::collections::BTreeMap;
 
 use merman_theme_contract::{
     DiagramThemeSpecWireV1, MaterializedThemeWireV1, SpecifiedWireV1, ThemeCanvasPaintWireV1,
-    ThemeCanvasSpecWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeLineHeightWireV1,
-    ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1, ThemeRuleSetWireV1,
-    ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTextStyleWireV1, ThemeTypographySpecWireV1,
+    ThemeCanvasSpecWireV1, ThemeColorTokenV1, ThemeDefinitionV1, ThemeMaterializationDiagnosticV1,
+    ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
+    ThemeTextStyleWireV1, ThemeTypographySpecWireV1,
 };
 
 use super::definition_admission::AdmittedThemeDefinition;
-use super::{FontStack, LineHeight, ThemeColorValue, ThemeTarget, ThemeTextStyle, ThemeVariant};
+use super::{FontStack, ThemeColorValue, ThemeTarget, ThemeTextStyle, ThemeVariant};
 
 const DEFAULT_SERIES: [&str; 4] = ["#2563eb", "#16a34a", "#d97706", "#9333ea"];
 const DEFAULT_FONT_STACK: [&str; 4] = ["Inter", "ui-sans-serif", "system-ui", "sans-serif"];
@@ -383,7 +383,6 @@ fn expected_domain_id(path: &str) -> &'static str {
         }
         "/tokens/typography/font_size_px" => "positive-finite-pixels",
         "/tokens/typography/font_weight" => "font-weight-1-1000",
-        "/tokens/typography/line_height" => "line-height",
         "/styles" => "finite-theme-style-values",
         _ => "theme-authoring-value",
     }
@@ -585,47 +584,24 @@ fn resolve_typography(
     let font_weight = authored
         .and_then(|typography| typography.font_weight())
         .unwrap_or(DEFAULT_FONT_WEIGHT);
-    let line_height = authored
-        .and_then(|typography| typography.line_height())
-        .cloned()
-        .unwrap_or_else(|| ThemeLineHeightWireV1::Keyword("normal".to_owned()));
-
     let stack =
         FontStack::new(font_stack).map_err(|_| ThemeMaterializationError::InvalidTokenValue {
             path: "/tokens/typography/font_stack",
         })?;
-    let internal_line_height = match &line_height {
-        ThemeLineHeightWireV1::Keyword(value) if value == "normal" => LineHeight::Normal,
-        ThemeLineHeightWireV1::Multiplier(value) => LineHeight::Multiplier(*value),
-        ThemeLineHeightWireV1::Px { px } => LineHeight::Px(*px),
-        ThemeLineHeightWireV1::Keyword(_) => {
-            return Err(ThemeMaterializationError::InvalidTokenValue {
-                path: "/tokens/typography/line_height",
-            });
-        }
-    };
-    let style = ThemeTextStyle::default().with_font_stack(stack.clone());
-    let style = style.with_font_size_px(font_size_px).map_err(|_| {
-        ThemeMaterializationError::InvalidTokenValue {
+    let validated_style = ThemeTextStyle::default()
+        .with_font_stack(stack)
+        .with_font_size_px(font_size_px)
+        .map_err(|_| ThemeMaterializationError::InvalidTokenValue {
             path: "/tokens/typography/font_size_px",
-        }
-    })?;
-    let style = style.with_font_weight(font_weight).map_err(|_| {
-        ThemeMaterializationError::InvalidTokenValue {
+        })?
+        .with_font_weight(font_weight)
+        .map_err(|_| ThemeMaterializationError::InvalidTokenValue {
             path: "/tokens/typography/font_weight",
-        }
-    })?;
-    style.with_line_height(internal_line_height).map_err(|_| {
-        ThemeMaterializationError::InvalidTokenValue {
-            path: "/tokens/typography/line_height",
-        }
-    })?;
-
+        })?;
     Ok(ThemeTextStyleWireV1 {
-        font_stack: Some(stack.families().to_vec()),
-        font_size_px: Some(font_size_px),
-        font_weight: Some(font_weight),
-        line_height: Some(line_height),
+        font_stack: Some(validated_style.font_stack().families().to_vec()),
+        font_size_px: Some(validated_style.font_size_px()),
+        font_weight: Some(validated_style.font_weight()),
         ..ThemeTextStyleWireV1::default()
     })
 }

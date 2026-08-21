@@ -178,6 +178,7 @@ mod tests {
         materialize_theme_with_resource_policy,
     };
     use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
+    use merman_theme_authoring_fixtures::THEME_AUTHORING_GOLDEN_VECTORS_V1;
     use serde_json::{Value, json};
 
     fn assert_theme_authoring_error(
@@ -262,6 +263,38 @@ mod tests {
                 .expect("binding output should retain the complete contract wire"),
             expected
         );
+    }
+
+    #[test]
+    fn binding_materialization_replays_the_shared_authoring_vectors_exactly() {
+        for vector in THEME_AUTHORING_GOLDEN_VECTORS_V1 {
+            let materialized = crate::materialize_theme_definition_json(
+                vector.readable_definition_json(),
+            )
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{} shared definition should materialize through bindings-core: {error:?}",
+                    vector.name(),
+                )
+            });
+            let materialized: MaterializedThemeWireV1 = serde_json::from_slice(&materialized)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} bindings-core materialized wire should decode: {error}",
+                        vector.name(),
+                    )
+                });
+
+            assert_eq!(
+                materialized
+                    .spec()
+                    .canonical_json_bytes()
+                    .expect("the bindings-core materialized spec should canonicalize"),
+                vector.canonical_spec_json(),
+                "{} bindings-core materialization drifted from the contract vector",
+                vector.name(),
+            );
+        }
     }
 
     #[test]

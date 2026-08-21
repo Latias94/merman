@@ -79,6 +79,7 @@ sha2 = { workspace = true, optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]
+merman-theme-authoring-fixtures = { path = "../merman-theme-authoring-fixtures" }
 base64.workspace = true
 criterion = "0.8.2"
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }

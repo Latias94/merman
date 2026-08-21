@@ -2432,6 +2432,7 @@ dependencies = [
  "merman-export",
  "merman-fixture-render-context",
  "merman-render",
+ "merman-theme-authoring-fixtures",
  "merman-theme-contract",
  "png",
  "roxmltree 0.21.1",
@@ -2480,6 +2481,7 @@ dependencies = [
  "merman-analysis",
  "merman-core",
  "merman-render",
+ "merman-theme-authoring-fixtures",
  "merman-theme-contract",
  "roxmltree 0.21.1",
  "serde",
@@ -2714,9 +2716,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-theme-authoring-fixtures"
+version = "0.8.0-alpha.5"
+
+[[package]]
 name = "merman-theme-contract"
 version = "0.8.0-alpha.5"
 dependencies = [
+ "merman-theme-authoring-fixtures",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",

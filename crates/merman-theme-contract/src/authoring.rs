@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::canonical_json::{CanonicalJsonError, canonical_json_bytes};
 use crate::finite::ContainsNonFiniteNumber;
 use crate::version::THEME_CONTRACT_V1;
-use crate::wire::{ThemeLineHeightWireV1, ThemeRuleSetWireV1, deserialize_optional_non_null};
+use crate::wire::{ThemeRuleSetWireV1, deserialize_optional_non_null};
 
 /// The closed version 1 theme-authoring envelope.
 #[derive(Debug, Clone, PartialEq)]
@@ -354,12 +354,6 @@ pub struct ThemeAuthoringTypographyV1 {
         skip_serializing_if = "Option::is_none"
     )]
     font_weight: Option<u16>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_optional_non_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    line_height: Option<ThemeLineHeightWireV1>,
 }
 
 impl ThemeAuthoringTypographyV1 {
@@ -381,12 +375,6 @@ impl ThemeAuthoringTypographyV1 {
         self
     }
 
-    /// Sets the authored line height without applying materializer validation.
-    pub fn with_line_height(mut self, line_height: ThemeLineHeightWireV1) -> Self {
-        self.line_height = Some(line_height);
-        self
-    }
-
     /// Returns the authored font stack, preserving omission separately from an empty list.
     pub fn font_stack(&self) -> Option<&[String]> {
         self.font_stack.as_deref()
@@ -401,22 +389,10 @@ impl ThemeAuthoringTypographyV1 {
     pub const fn font_weight(&self) -> Option<u16> {
         self.font_weight
     }
-
-    /// Returns the authored line height.
-    pub const fn line_height(&self) -> Option<&ThemeLineHeightWireV1> {
-        self.line_height.as_ref()
-    }
 }
 
 impl ContainsNonFiniteNumber for ThemeAuthoringTypographyV1 {
     fn contains_non_finite_number(&self) -> bool {
-        let Self {
-            font_stack: _,
-            font_size_px,
-            font_weight: _,
-            line_height,
-        } = self;
-
-        font_size_px.contains_non_finite_number() || line_height.contains_non_finite_number()
+        self.font_size_px.contains_non_finite_number()
     }
 }

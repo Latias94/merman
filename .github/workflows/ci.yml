@@ -491,7 +491,7 @@ jobs:
         if: matrix.parity
         run: |
           cargo nextest run --locked -p merman \
-            --no-default-features --features svg,png --test theme_authoring \
+            --no-default-features --features svg,png,internal-theme-acceptance --test theme_authoring \
             --cargo-quiet
 
       - name: Test exact Rustdoc artifact recipe

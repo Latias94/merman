@@ -15,6 +15,7 @@ import type {
   ThemePaint,
   ThemeRadialGradientRepetition,
   ThemeCapabilityDescriptorV2,
+  ThemeAuthoringTypographyV1,
   ThemeDefinitionV1,
   ThemeStylePatch,
   ThemeSupportQueryV2,
@@ -110,6 +111,11 @@ const nullOuterStroke = { stroke: null } satisfies ThemeStylePatch;
 
 // @ts-expect-error the Rust authoring wire rejects null for the outer typography patch.
 const nullOuterTypography = { typography: null } satisfies ThemeStylePatch;
+
+const compactTypographyWithLineHeight = {
+  // @ts-expect-error compact authoring typography has no portable base line-height consumer.
+  line_height: "normal",
+} satisfies ThemeAuthoringTypographyV1;
 
 const presetExport = exportThemePreset("editor-light");
 if (presetExport.kind === "complete_spec") {

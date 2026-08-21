@@ -1,9 +1,43 @@
+use merman_theme_authoring_fixtures::THEME_AUTHORING_GOLDEN_VECTORS_V1;
 use merman_theme_contract::{
     CanonicalJsonErrorKind, SpecifiedWireV1, ThemeAuthoringTypographyV1,
     ThemeCanvasPaintObjectWireV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionV1,
     ThemeGradientStopWireV1, ThemeOrdinalCycleWireV1, ThemeOrdinalSelectorWireV1,
     ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
 };
+
+#[test]
+fn shared_authoring_golden_vectors_are_canonical_contract_values() {
+    for vector in THEME_AUTHORING_GOLDEN_VECTORS_V1 {
+        let definition: ThemeDefinitionV1 =
+            serde_json::from_slice(vector.readable_definition_json()).unwrap_or_else(|error| {
+                panic!("{} readable definition must decode: {error}", vector.name())
+            });
+        assert_eq!(
+            definition
+                .canonical_json_bytes()
+                .expect("the shared definition must canonicalize"),
+            vector.canonical_definition_json(),
+            "{} canonical definition bytes changed",
+            vector.name(),
+        );
+
+        let spec: merman_theme_contract::DiagramThemeSpecWireV1 =
+            serde_json::from_slice(vector.canonical_spec_json()).unwrap_or_else(|error| {
+                panic!(
+                    "{} canonical materialized spec must decode: {error}",
+                    vector.name()
+                )
+            });
+        assert_eq!(
+            spec.canonical_json_bytes()
+                .expect("the shared materialized spec must canonicalize"),
+            vector.canonical_spec_json(),
+            "{} canonical materialized spec bytes are not canonical",
+            vector.name(),
+        );
+    }
+}
 
 #[test]
 fn minimal_definition_decodes_and_rust_construction_selects_version_one() {
@@ -107,8 +141,8 @@ fn removed_family_specific_tokens_and_nested_unknown_fields_are_rejected() {
         r##"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"actor_background":"#fff"}}"##,
         r##"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"note_text":"#111"}}"##,
         r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"typography":{"font_style":"italic"}}}"#,
+        r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"typography":{"line_height":1.4}}}"#,
         r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"unknown":1}}]}"#,
-        r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"typography":{"line_height":{"px":20,"extra":1}}}}"#,
         r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","family":null,"style":{}}]}"#,
         r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","ordinal":{"exact":1,"extra":1},"style":{}}]}"#,
         r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"ordinal-palette","target":"node","colors":null}]}"#,
@@ -165,8 +199,7 @@ fn complete_rule_support_wire_round_trips_without_changing_shape() {
             "typography": {
                 "font_stack": ["Inter", "sans-serif"],
                 "font_size_px": 16,
-                "font_weight": 450,
-                "line_height": {"px": 24}
+                "font_weight": 450
             }
         },
         "styles": [

@@ -290,9 +290,6 @@ fn admit_typed_definition<'a>(
                 usage.font_family("/tokens/typography/font_stack", family)?;
             }
         }
-        if let Some(ThemeLineHeightWireV1::Keyword(value)) = typography.line_height() {
-            usage.string("/tokens/typography/line_height", value)?;
-        }
     }
 
     // This is transport admission, not canonical identity. Stream the contract-owned wire shape

@@ -1,8 +1,8 @@
 use merman_render::diagram_theme::{DiagramThemeCompiler, materialize_theme};
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeAuthoringTypographyV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1,
-    ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1,
-    ThemeStylePatchWireV1, ThemeTokensV1,
+    ThemeDefinitionV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
+    ThemeTokensV1,
 };
 
 #[test]
@@ -36,6 +36,7 @@ fn tokens_only_definition_materializes_the_complete_version_one_spec() {
     );
     assert_eq!(typography.font_size_px, Some(16.0));
     assert_eq!(typography.font_weight, Some(400));
+    assert_eq!(typography.line_height, None);
 
     let styles = spec
         .styles
@@ -142,8 +143,7 @@ fn authored_rules_append_and_authored_palettes_replace_or_extend_generated_slots
                 ThemeAuthoringTypographyV1::default()
                     .with_font_stack(vec!["Merman Sans".to_owned(), "sans-serif".to_owned()])
                     .with_font_size_px(18.0)
-                    .with_font_weight(500)
-                    .with_line_height(ThemeLineHeightWireV1::Multiplier(1.4)),
+                    .with_font_weight(500),
             ),
     )
     .with_styles(vec![
@@ -183,10 +183,7 @@ fn authored_rules_append_and_authored_palettes_replace_or_extend_generated_slots
     );
     assert_eq!(typography.font_size_px, Some(18.0));
     assert_eq!(typography.font_weight, Some(500));
-    assert_eq!(
-        typography.line_height,
-        Some(ThemeLineHeightWireV1::Multiplier(1.4))
-    );
+    assert_eq!(typography.line_height, None);
     assert!(matches!(
         &styles[0],
         ThemeRuleSetWireV1::Rule { style, .. }

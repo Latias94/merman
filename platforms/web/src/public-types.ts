@@ -243,7 +243,6 @@ export interface ThemeAuthoringTypographyV1 {
   font_stack?: string[];
   font_size_px?: number;
   font_weight?: number;
-  line_height?: ThemeLineHeight;
 }
 
 export interface MaterializedThemeWireV1 {

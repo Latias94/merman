@@ -1,14 +1,17 @@
 use merman::diagram_theme::{
     DiagramFamilyId, DiagramThemeCompiler, DiagramThemeSpecWireV1, SpecifiedWireV1,
-    ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeDefinitionBuilderV1,
-    ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeRuleBuilderV1, ThemeRuleFacetV1,
-    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeSupportOutputV1,
-    ThemeSupportQueryV1, ThemeSupportStateV1, ThemeTarget, ThemeTokensV1, ThemeVariant,
-    compile_theme_definition, compile_theme_definition_json, describe_theme_support,
+    ThemeAuthoringTypographyV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1,
+    ThemeDefinitionBuilderV1, ThemeDefinitionCompileError, ThemeDefinitionV1, ThemeRuleBuilderV1,
+    ThemeRuleFacetV1, ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1,
+    ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1, ThemeTarget, ThemeTokensV1,
+    ThemeVariant, compile_theme_definition, compile_theme_definition_json, describe_theme_support,
     materialize_theme,
 };
 use merman::svg::{ThemeResourceLimitId, ThemeResourcePolicy};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer};
+use merman_theme_authoring_fixtures::{
+    THEME_AUTHORING_GOLDEN_VECTORS_V1, ThemeAuthoringGoldenVectorV1,
+};
 
 struct AuthoringRenderWitness {
     name: &'static str,
@@ -64,8 +67,34 @@ const TERMINAL_PIE_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
     source: "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n",
 };
 
+const REPRESENTATIVE_CLASS_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "Class representative authored shape",
+    diagram_id: "authoring-shape-class",
+    source: "classDiagram\nA *-- B\n",
+};
+
+const REPRESENTATIVE_GANTT_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "Gantt representative authored shape",
+    diagram_id: "authoring-shape-gantt",
+    source: "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d\n",
+};
+
+const REPRESENTATIVE_PIE_WITNESS: AuthoringRenderWitness = AuthoringRenderWitness {
+    name: "Pie representative authored shape",
+    diagram_id: "authoring-shape-pie",
+    source: TERMINAL_PIE_WITNESS.source,
+};
+
 const TERMINAL_SERIES: [&str; 2] = ["#12ab34", "#3456de"];
 const TERMINAL_FIRST_SERIES_RGB: &str = "rgb(18, 171, 52)";
+const AUTHORING_FONT_STACK: [&str; 4] = ["Inter", "ui-sans-serif", "system-ui", "sans-serif"];
+
+fn authoring_typography(font_size_px: f32, font_weight: u16) -> ThemeAuthoringTypographyV1 {
+    ThemeAuthoringTypographyV1::default()
+        .with_font_stack(AUTHORING_FONT_STACK.map(str::to_owned).to_vec())
+        .with_font_size_px(font_size_px)
+        .with_font_weight(font_weight)
+}
 
 #[derive(Clone, Copy)]
 struct GeneratedRuleTerminalWitness {
@@ -288,7 +317,8 @@ fn light_authoring_witness() -> ThemeDefinitionV1 {
                 "#f59e0b".to_owned(),
                 "#84cc16".to_owned(),
                 "#06b6d4".to_owned(),
-            ]),
+            ])
+            .with_typography(authoring_typography(17.0, 500)),
     )
 }
 
@@ -307,8 +337,39 @@ fn dark_authoring_witness() -> ThemeDefinitionV1 {
                 "#22d3ee".to_owned(),
                 "#a78bfa".to_owned(),
                 "#fb7185".to_owned(),
-            ]),
+            ])
+            .with_typography(authoring_typography(19.0, 600)),
     )
+}
+
+fn shared_authoring_vector(name: &str) -> ThemeAuthoringGoldenVectorV1 {
+    THEME_AUTHORING_GOLDEN_VECTORS_V1
+        .into_iter()
+        .find(|vector| vector.name() == name)
+        .unwrap_or_else(|| panic!("missing shared authoring vector {name}"))
+}
+
+fn assert_shared_authoring_vector(
+    definition: &ThemeDefinitionV1,
+    materialized: &merman::diagram_theme::MaterializedThemeWireV1,
+    name: &str,
+) {
+    let vector = shared_authoring_vector(name);
+    assert_eq!(
+        definition
+            .canonical_json_bytes()
+            .expect("the typed shared definition should canonicalize"),
+        vector.canonical_definition_json(),
+        "{name} typed definition drifted from the persisted shared vector",
+    );
+    assert_eq!(
+        materialized
+            .spec()
+            .canonical_json_bytes()
+            .expect("the materialized shared spec should canonicalize"),
+        vector.canonical_spec_json(),
+        "{name} materialization drifted from the persisted shared vector",
+    );
 }
 
 fn terminal_color(token: ThemeColorTokenV1) -> &'static str {
@@ -335,7 +396,8 @@ fn terminal_witness_definition() -> ThemeDefinitionV1 {
             .with_border(terminal_color(ThemeColorTokenV1::Border))
             .with_line(terminal_color(ThemeColorTokenV1::Line))
             .with_accent(terminal_color(ThemeColorTokenV1::Accent))
-            .with_series(TERMINAL_SERIES.map(str::to_owned).to_vec()),
+            .with_series(TERMINAL_SERIES.map(str::to_owned).to_vec())
+            .with_typography(authoring_typography(21.0, 650)),
     )
 }
 
@@ -1072,13 +1134,15 @@ fn render_authoring_png(
 }
 
 #[test]
-fn prefreeze_tokens_only_themes_round_trip_and_render_without_state_leakage() {
+fn shared_light_and_dark_token_themes_round_trip_and_render_without_state_leakage() {
     let light_definition = light_authoring_witness();
     let dark_definition = dark_authoring_witness();
     assert!(light_definition.styles().is_empty());
     assert!(dark_definition.styles().is_empty());
     let light_materialized = materialize_pretty_json_round_trip(&light_definition, "light");
     let dark_materialized = materialize_pretty_json_round_trip(&dark_definition, "dark");
+    assert_shared_authoring_vector(&light_definition, &light_materialized, "light");
+    assert_shared_authoring_vector(&dark_definition, &dark_materialized, "dark");
     let compiler = DiagramThemeCompiler::new();
     let light_theme = compiler
         .compile_spec_wire(light_materialized.into_spec())
@@ -1361,6 +1425,282 @@ fn generated_authoring_rows_and_palettes_reach_typed_terminal_witnesses() {
                 panic!("generated palette {palette_index} should compile: {error}")
             });
         assert_generated_palette_terminal(&renderer, witness, &theme);
+    }
+}
+
+#[test]
+fn generated_authoring_root_and_typography_reach_terminal_witnesses() {
+    let materialized = materialize_theme(&terminal_witness_definition())
+        .expect("the terminal-witness definition should materialize");
+    let materialized_spec = materialized.spec();
+    let compiler = DiagramThemeCompiler::new();
+    let renderer = Renderer::new();
+
+    let canvas_theme = compiler
+        .compile_spec_wire(DiagramThemeSpecWireV1 {
+            canvas: materialized_spec.canvas.clone(),
+            ..DiagramThemeSpecWireV1::default()
+        })
+        .expect("the isolated generated canvas should compile");
+    let canvas_output =
+        render_authoring_svg_output(&renderer, &AUTHORING_RENDER_WITNESSES[0], &canvas_theme);
+    assert!(canvas_output.evidence().theme_evidence().is_verified());
+    #[cfg(feature = "internal-theme-acceptance")]
+    {
+        let root =
+            merman::__theme_acceptance::theme_acceptance_evidence(canvas_output.evidence()).root();
+        assert_eq!(root.required_count(), 1);
+        assert_eq!(root.accounted_count(), 1);
+        assert_eq!(root.applied_count(), 1);
+        assert_eq!(root.residual_count(), 0);
+        assert!(root.is_verified());
+    }
+    let canvas_document =
+        roxmltree::Document::parse(canvas_output.svg()).expect("valid canvas witness SVG");
+    let canvas_nodes = canvas_document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && element_has_class(*node, "merman-theme-canvas-base")
+                && node.attribute("data-merman-theme-canvas") == Some("base")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(canvas_nodes.len(), 1, "canvas base must emit exactly once");
+    assert_element_property(
+        canvas_nodes[0],
+        "fill",
+        terminal_color(ThemeColorTokenV1::Canvas),
+        "generated root canvas",
+    );
+
+    let typography_theme = compiler
+        .compile_spec_wire(DiagramThemeSpecWireV1 {
+            typography: materialized_spec.typography.clone(),
+            ..DiagramThemeSpecWireV1::default()
+        })
+        .expect("the isolated generated typography should compile");
+    let typography_output =
+        render_authoring_svg_output(&renderer, &AUTHORING_RENDER_WITNESSES[1], &typography_theme);
+    assert!(typography_output.evidence().theme_evidence().is_verified());
+    assert_single_family_route_verified(&typography_output, "generated State base typography");
+    let typography_document =
+        roxmltree::Document::parse(typography_output.svg()).expect("valid typography witness SVG");
+    let label = find_element_with_class_and_text(
+        &typography_document,
+        "span",
+        "nodeLabel",
+        "Active",
+        "generated State base-typography label",
+    );
+    for (property, expected) in [
+        ("font-family", "Inter,ui-sans-serif,system-ui,sans-serif"),
+        ("font-size", "21px"),
+        ("font-weight", "650"),
+    ] {
+        assert_element_property(label, property, expected, "generated State base typography");
+    }
+}
+
+fn assert_single_family_route_verified(output: &merman::SvgOutput, context: &str) {
+    assert!(
+        output.evidence().theme_evidence().is_verified(),
+        "{context} must retain verified theme evidence",
+    );
+    #[cfg(feature = "internal-theme-acceptance")]
+    {
+        let family =
+            merman::__theme_acceptance::theme_acceptance_evidence(output.evidence()).family();
+        assert_eq!(family.required_count(), 1, "{context}");
+        assert_eq!(family.accounted_count(), 1, "{context}");
+        assert_eq!(family.applied_count(), 1, "{context}");
+        assert_eq!(family.not_applicable_count(), 0, "{context}");
+        assert_eq!(family.residual_count(), 0, "{context}");
+        assert!(family.is_verified(), "{context}");
+    }
+}
+
+#[test]
+fn representative_family_shapes_reach_terminal_writers() {
+    const CLASS_EDGE_STROKE: &str = "#123456";
+    const GANTT_TASK_FILL: &str = "#345678";
+    const GANTT_TASK_RADIUS: f32 = 7.0;
+    let definition = ThemeDefinitionBuilderV1::new(ThemeTokensV1::default())
+        .with_rule(
+            ThemeRuleBuilderV1::new(ThemeTarget::Edge)
+                .for_family(DiagramFamilyId::CLASS)
+                .with_stroke_color(CLASS_EDGE_STROKE),
+        )
+        .with_rule(
+            ThemeRuleBuilderV1::new(ThemeTarget::Task)
+                .for_family(DiagramFamilyId::GANTT)
+                .with_fill_color(GANTT_TASK_FILL)
+                .with_radius(GANTT_TASK_RADIUS),
+        )
+        .with_ordinal_palette(ThemeTarget::PieSlice, TERMINAL_SERIES)
+        .build();
+    let materialized = materialize_theme(&definition)
+        .expect("the representative family-shape definition should materialize");
+    let styles = materialized
+        .spec()
+        .styles
+        .as_ref()
+        .expect("representative authored shapes must materialize into styles");
+
+    let unique_entry = |predicate: &dyn Fn(&ThemeRuleSetWireV1) -> bool, context: &str| {
+        let mut matches = styles.iter().filter(|entry| predicate(entry));
+        let entry = matches
+            .next()
+            .unwrap_or_else(|| panic!("{context} is missing"));
+        assert!(matches.next().is_none(), "{context} must be unique");
+        entry
+    };
+    let class_entry = unique_entry(
+        &|entry| {
+            matches!(
+                entry,
+                ThemeRuleSetWireV1::Rule {
+                    target,
+                    family: Some(family),
+                    ..
+                } if target == ThemeTarget::Edge.id()
+                    && family == DiagramFamilyId::CLASS.as_str()
+            )
+        },
+        "Class authored route",
+    );
+    let gantt_entry = unique_entry(
+        &|entry| {
+            matches!(
+                entry,
+                ThemeRuleSetWireV1::Rule {
+                    target,
+                    family: Some(family),
+                    ..
+                } if target == ThemeTarget::Task.id()
+                    && family == DiagramFamilyId::GANTT.as_str()
+            )
+        },
+        "Gantt authored route",
+    );
+    let pie_entry = unique_entry(
+        &|entry| {
+            matches!(
+                entry,
+                ThemeRuleSetWireV1::OrdinalPalette { target, colors }
+                    if target == ThemeTarget::PieSlice.id()
+                        && colors.iter().map(String::as_str).eq(TERMINAL_SERIES)
+            )
+        },
+        "Pie authored palette",
+    );
+
+    let compiler = DiagramThemeCompiler::new();
+    let renderer = Renderer::new();
+    let compile_entry = |entry: &ThemeRuleSetWireV1| {
+        compiler
+            .compile_spec_wire(DiagramThemeSpecWireV1 {
+                styles: Some(vec![entry.clone()]),
+                ..DiagramThemeSpecWireV1::default()
+            })
+            .expect("the isolated representative authored route should compile")
+    };
+
+    let class_output = render_authoring_svg_output(
+        &renderer,
+        &REPRESENTATIVE_CLASS_WITNESS,
+        &compile_entry(class_entry),
+    );
+    assert_single_family_route_verified(&class_output, REPRESENTATIVE_CLASS_WITNESS.name);
+    let class_document =
+        roxmltree::Document::parse(class_output.svg()).expect("valid Class shape SVG");
+    let relation_paths = class_document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        relation_paths.len(),
+        1,
+        "Class relation path must emit once"
+    );
+    assert_element_property(
+        relation_paths[0],
+        "stroke",
+        CLASS_EDGE_STROKE,
+        "Class relation path",
+    );
+    let marker_id = relation_paths[0]
+        .attribute("marker-start")
+        .and_then(|value| value.strip_prefix("url(#"))
+        .and_then(|value| value.strip_suffix(')'))
+        .expect("Class composition relation must reference its start marker");
+    let marker_path = class_document
+        .descendants()
+        .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+        .and_then(|marker| marker.descendants().find(|node| node.has_tag_name("path")))
+        .expect("Class composition marker path");
+    assert_element_property(
+        marker_path,
+        "stroke",
+        CLASS_EDGE_STROKE,
+        "Class composition marker",
+    );
+    assert_element_property(
+        marker_path,
+        "fill",
+        CLASS_EDGE_STROKE,
+        "Class composition marker",
+    );
+
+    let gantt_output = render_authoring_svg_output(
+        &renderer,
+        &REPRESENTATIVE_GANTT_WITNESS,
+        &compile_entry(gantt_entry),
+    );
+    assert_single_family_route_verified(&gantt_output, REPRESENTATIVE_GANTT_WITNESS.name);
+    let gantt_document =
+        roxmltree::Document::parse(gantt_output.svg()).expect("valid Gantt shape SVG");
+    let task = gantt_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("id") == Some("authoring-shape-gantt-task")
+                && element_has_class(*node, "task")
+                && element_has_class(*node, "task0")
+        })
+        .expect("Gantt authored task rect");
+    assert_element_property(task, "fill", GANTT_TASK_FILL, "Gantt authored task");
+    assert_eq!(task.attribute("rx"), Some("7"));
+    assert_eq!(task.attribute("ry"), Some("7"));
+
+    let pie_output = render_authoring_svg_output(
+        &renderer,
+        &REPRESENTATIVE_PIE_WITNESS,
+        &compile_entry(pie_entry),
+    );
+    assert_single_family_route_verified(&pie_output, REPRESENTATIVE_PIE_WITNESS.name);
+    let pie_document = roxmltree::Document::parse(pie_output.svg()).expect("valid Pie shape SVG");
+    let slice_fills = pie_document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && element_has_class(*node, "pieCircle"))
+        .map(|node| node.attribute("fill").expect("Pie slice fill"))
+        .collect::<Vec<_>>();
+    assert_eq!(slice_fills, TERMINAL_SERIES);
+    let legend_swatches = pie_document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.parent().is_some_and(|parent| {
+                    parent.has_tag_name("g") && element_has_class(parent, "legend")
+                })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(legend_swatches.len(), 2);
+    for (swatch, expected) in legend_swatches
+        .into_iter()
+        .zip(["rgb(18, 171, 52)", "rgb(52, 86, 222)"])
+    {
+        assert_element_property(swatch, "fill", expected, "Pie legend swatch");
+        assert_element_property(swatch, "stroke", expected, "Pie legend swatch");
     }
 }
 
